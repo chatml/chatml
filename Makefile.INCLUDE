@@ -1,0 +1,82 @@
+# -*- Mode: makefile -*-
+
+# Copyright 2015 The Chatml Authors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+.SUFFIXES:
+
+VERSION=$(shell cat `git rev-parse --show-toplevel`/VERSION)
+
+OS=$(shell uname)
+ARCH=$(shell uname -m)
+
+# The release engineers apparently need to key their binary artifacts to the
+# Mac OS X release family.
+MAC_OS_X_VERSION ?= 10.8
+
+BUILD_PATH = $(PWD)/.build
+
+GO_VERSION   := 1.4
+GOOS      = $(subst Darwin,darwin,$(subst Linux,linux,$(OS)))
+
+ifeq ($(GOOS),darwin)
+RELEASE_SUFFIX ?= -osx$(MAC_OS_X_VERSION)
+else
+RELEASE_SUFFIX ?=
+endif
+
+# Never honor GOBIN, should it be set at all.
+unexport GOBIN
+
+GOARCH      = $(subst x86_64,amd64,$(ARCH))
+GOPKG      ?= go$(GO_VERSION).$(GOOS)-$(GOARCH)$(RELEASE_SUFFIX).tar.gz
+GOURL      ?= https://golang.org/dl
+GOROOT      = $(BUILD_PATH)/root/go
+GOPATH      = $(BUILD_PATH)/root/gopath
+GOCC        = $(GOROOT)/bin/go
+TMPDIR      = /tmp
+GOENV       = TMPDIR=$(TMPDIR) GOROOT=$(GOROOT) GOPATH=$(GOPATH)
+GO          = $(GOENV) $(GOCC)
+GODEP       = $(GOENV) $(GOPATH)/bin/godep
+GOFMT       = $(GOROOT)/bin/gofmt
+GOIMPORT    = $(GOENV) $(GOPATH)/bin/goimports
+GOBINDATA   = $(GOENV) $(GOPATH)/bin/go-bindata
+
+UNAME := $(shell uname)
+FULL_GOPATH := $(GOPATH)/src/github.com/chatml/server
+FULL_GOPATH_BASE := $(GOPATH)/src/github.com/chatml
+
+export PREFIX=$(BUILD_PATH)/root
+
+export PATH := $(GOPATH)/bin:$(GOROOT)/bin:$(PATH)
+
+export GO_TEST_FLAGS ?= -v -short
+
+GO_GET := $(GO) get -u -v -x
+
+REV        := $(shell git rev-parse --short HEAD)
+BRANCH     := $(shell git rev-parse --abbrev-ref HEAD)
+HOSTNAME   := $(shell hostname -f)
+BUILD_DATE := $(shell date +%Y%m%d-%H:%M:%S)
+BUILDFLAGS := -ldflags \
+        " -X main.buildVersion $(VERSION)\
+    -X main.buildRevision $(REV)\
+    -X main.buildBranch $(BRANCH)\
+    -X main.buildUser $(USER)@$(HOSTNAME)\
+    -X main.buildDate $(BUILD_DATE)\
+    -X main.goVersion $(GO_VERSION)"
+
+PROTOC := protoc
+CURL := curl
+
+ARCHIVE := chatml-server-$(VERSION).$(GOOS)-$(GOARCH).tar.gz

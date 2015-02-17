@@ -1,0 +1,4 @@
+global <
+  logPath = "./chatmld.log"
+  pid_file = "./chatmld.pid"
+>

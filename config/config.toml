@@ -1,0 +1,12 @@
+pid_file = "./chatml.pid"
+
+[api]
+port = 3000
+
+
+[storage]
+path = "~/tmp"
+
+[logging]
+file = "./chatml.log"
+
