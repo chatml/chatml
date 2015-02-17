@@ -1,3 +1,2 @@
-# Chatml Server
+# Nothing here yet
 
-A real-time business messaging platform for modern companies.
