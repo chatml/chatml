@@ -53,8 +53,7 @@ GOIMPORT    = $(GOENV) $(GOPATH)/bin/goimports
 GOBINDATA   = $(GOENV) $(GOPATH)/bin/go-bindata
 
 UNAME := $(shell uname)
-SELFLINK  = $(GOPATH)/src/github.com/chatml/server
-
+SELFLINK  = $(GOPATH)/src/github.com/chatml/chatml
 export PREFIX=$(BUILD_PATH)/root
 
 export PATH := $(GOPATH)/bin:$(GOROOT)/bin:$(PATH)
@@ -78,4 +77,4 @@ BUILDFLAGS := -ldflags \
 PROTOC := protoc
 CURL := curl
 
-ARCHIVE := chatml-server-$(VERSION).$(GOOS)-$(GOARCH).tar.gz
+ARCHIVE := chatml-$(VERSION).$(GOOS)-$(GOARCH).tar.gz

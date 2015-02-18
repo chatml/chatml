@@ -4,13 +4,15 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+
+	"github.com/chatml/chatml/util/log"
 )
 
 type ApiService struct {
 	router *mux.Router
 }
 
-func NewApiService() *ApiService {
+func NewApiService() (*ApiService, error) {
 
 	log.V(1).Info("Starting API Service")
 
@@ -19,28 +21,28 @@ func NewApiService() *ApiService {
 	}
 
 	service.registerRoutes()
-	return service
+	return service, nil
 }
 
-func (s *ApiServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	s.router.ServeHTTP(rw, req)
 }
 
-func (s *ApiServer) registerEndpoint(method string, pattern string, f http.HandlerFunc) {
-	switch method {
-	case "GET":
-		s.router.HandleFunc(pattern, CompressionHeaderHandler(f)).Methods("GET")
-	case "POST":
-		s.router.HandleFunc(pattern, HeaderHandler(f)).Methods("POST")
-	case "PUT":
-		s.router.HandleFunc(pattern, HeaderHandler(f)).Methods("PUT")
-	case "DELETE":
-		s.router.HandleFunc(pattern, HeaderHandler(f)).Methods("DELETE")
-	}
-	s.router.HandleFunc(pattern, HeaderHandler(s.sendCrossOriginHeader)).Methods("OPTIONS")
+func (s *ApiService) registerEndpoint(method string, pattern string, f http.HandlerFunc) {
+	//switch method {
+	//case "GET":
+	//s.router.HandleFunc(pattern, CompressionHeaderHandler(f)).Methods("GET")
+	//case "POST":
+	//s.router.HandleFunc(pattern, HeaderHandler(f)).Methods("POST")
+	//case "PUT":
+	//s.router.HandleFunc(pattern, HeaderHandler(f)).Methods("PUT")
+	//case "DELETE":
+	//s.router.HandleFunc(pattern, HeaderHandler(f)).Methods("DELETE")
+	//}
+	//s.router.HandleFunc(pattern, HeaderHandler(s.sendCrossOriginHeader)).Methods("OPTIONS")
 }
 
-func (s *ApiServer) registerRoutes() {
+func (s *ApiService) registerRoutes() {
 
 	s.registerEndpoint("POST", "/api/v1/account/verify", s.handleAccountVerify)
 	s.registerEndpoint("POST", "/api/v1/account/setup", s.handleAccountSetup)
@@ -82,127 +84,127 @@ func (s *ApiServer) registerRoutes() {
 
 }
 
-func (s *ApiServer) handleAccountVerify(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) handleAccountVerify(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("accountVerify goes here"))
 }
 
-func (s *ApiServer) handleAccountSetup(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) handleAccountSetup(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("accountSetup goes here"))
 }
 
-func (s *ApiServer) handleDeviceRegistration(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) handleDeviceRegistration(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("handleDeviceRegistration goes here"))
 }
 
-func (s *ApiServer) listConversations(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) listConversations(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("listChannels goes here"))
 }
 
-func (s *ApiServer) createConversation(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) createConversation(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("createChannel goes here"))
 }
 
-func (s *ApiServer) showConversation(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) showConversation(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("getChannel goes here"))
 }
 
-func (s *ApiServer) updateConversation(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) updateConversation(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("updateChannel goes here"))
 }
 
-func (s *ApiServer) joinConversation(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) joinConversation(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("joinChannel goes here"))
 }
 
-func (s *ApiServer) leaveConversation(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) leaveConversation(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("leaveChannel goes here"))
 }
 
-func (s *ApiServer) listMessages(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) listMessages(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("listMessages goes here"))
 }
 
-func (s *ApiServer) postMessage(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) postMessage(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("postMessage goes here"))
 }
 
-func (s *ApiServer) showMessage(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) showMessage(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("showMessage goes here"))
 }
 
-func (s *ApiServer) updateMessage(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) updateMessage(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("updateMessage goes here"))
 }
 
-func (s *ApiServer) deleteMessage(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) deleteMessage(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("deleteMessage goes here"))
 }
 
-func (s *ApiServer) listAttachments(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) listAttachments(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("listAttachments goes here"))
 }
 
-func (s *ApiServer) postAttachment(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) postAttachment(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("postAttachment goes here"))
 }
 
-func (s *ApiServer) showAttachment(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) showAttachment(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("showAttachment goes here"))
 }
 
-func (s *ApiServer) postLocation(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) postLocation(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("postLocation goes here"))
 }
 
-func (s *ApiServer) deleteAttachment(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) deleteAttachment(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("deleteAttachment goes here"))
 }
 
-func (s *ApiServer) renderImage(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) renderImage(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("renderImage goes here"))
 }
 
-func (s *ApiServer) listRecipients(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) listRecipients(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("listRecipients goes here"))
 }
 
-func (s *ApiServer) addRecipients(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) addRecipients(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("addRecipients goes here"))
 }
 
-func (s *ApiServer) removeRecipients(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) removeRecipients(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("renderImage goes here"))
 }
 
-func (s *ApiServer) listGroups(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) listGroups(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("listGroups goes here"))
 }
 
-func (s *ApiServer) showRecipient(rw http.ResponseWriter, req *http.Request) {
+func (s *ApiService) showRecipient(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	rw.Write([]byte("showRecipient goes here"))
 }

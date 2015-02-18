@@ -4,16 +4,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
+	ossignal "os/signal"
 	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
 
-	"github.com/chatml/server/util"
-	"github.com/chatml/server/util/log"
-	"github.com/chatml/server/util/signal"
-	"github.com/chatml/server/web"
+	"github.com/chatml/chatml/config"
+	"github.com/chatml/chatml/util"
+	"github.com/chatml/chatml/util/log"
+	"github.com/chatml/chatml/util/signal"
+	"github.com/chatml/chatml/web"
 )
 
 const (
@@ -37,7 +38,7 @@ type chatml struct {
 }
 
 func NewChatml() *chatml {
-	conf, err = config.LoadFromFile(*configFile)
+	conf, err := config.LoadFromFile(*configFile)
 	if err != nil {
 		log.Fatalf("Error loading configuration from %s: %v", *configFile, err)
 	}
@@ -93,18 +94,18 @@ func (c *chatml) close() {
 
 func adjustMaxProcs() {
 	// Set appropriate GOMAXPROCS
-	runtime.GOMAXPROCS(maxprocs)
+	runtime.GOMAXPROCS(*maxprocs)
 	log.Infof("GOMAXPROCS is set to %d", maxprocs)
-	if maxprocs < runtime.NumCPU() {
+	if *maxprocs < runtime.NumCPU() {
 		log.Infof("GOMAXPROCS (%d) is less than number of CPUs (%d), this may reduce performance. You can change it via environment variable GOMAXPROCS or by passing CLI parameter -gomaxprocs", maxprocs, runtime.NumCPU())
 	}
 }
 
 func setupStacktraceDumper() {
 	// Dump goroutine stacktraces upon receiving interrupt signal
-	if debug {
+	if *debug {
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
+		ossignal.Notify(c, os.Interrupt)
 		go func() {
 			for _ = range c {
 				pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)

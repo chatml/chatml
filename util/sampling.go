@@ -21,7 +21,7 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/chatml/server/util/log"
+	"github.com/chatml/chatml/util/log"
 )
 
 // A Sample is a subset of elements picked from a large set or stream.

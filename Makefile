@@ -22,8 +22,9 @@ $(BUILD_PATH)/cache/$(GOPKG):
 	$(CURL) -o $@ -L $(GOURL)/$(GOPKG)
 
 $(SELFLINK): $(GOPATH)
-	mkdir -p $@
-	ln -s $(CURDIR) $@
+	@echo "$(OK_COLOR)==> Downloading GoLang compiler package $(NO_COLOR)"
+	mkdir -p $(GOPATH)/src/github.com/chatml
+	ln -s $(CURDIR) $(GOPATH)/src/github.com/chatml/chatml
 
 $(GOPATH):
 	@echo "$(OK_COLOR)==> Copying GoDep Workspace$(NO_COLOR)"
@@ -34,23 +35,25 @@ advice: $(GOCC)
 	$(GO) vet ./...
 
 binary: build
+	@echo "$(OK_COLOR)==> Building Binary...$(NO_COLOR)"
 
-build: config web $(GOPATH)
+build: $(GOPATH) config web
 	@echo "$(OK_COLOR)==> Compiling source code$(NO_COLOR)"
 	$(GO) build -tags '$(BUILDTAGS)' -o chatmld $(BUILDFLAGS) .
 
 docker: build
 	@echo "$(OK_COLOR)==> Building docker image$(NO_COLOR)"
-	docker build -t chatml-server:$(REV) .
+	docker build -t chatml:$(REV) .
 
 tarball: $(ARCHIVE)
 
 $(ARCHIVE): build
 	@echo "$(OK_COLOR)==> Creating Archive$(NO_COLOR)"
-	tar -czf $(ARCHIVE) chatml-server
+	tar -czf $(ARCHIVE) chatmld
 
 benchmark: config dependencies tools web
-    $(GO) test $(GO_TEST_FLAGS) -test.run='NONE' -test.bench='.*' -test.benchmem ./... | tee benchmark.txt
+	@echo "$(OK_COLOR)==> Running benchmarks...$(NO_COLOR)"
+	$(GO) test $(GO_TEST_FLAGS) -test.run='NONE' -test.bench='.*' -test.benchmem ./... | tee benchmark.txt
 
 clean:
 	@echo "$(OK_COLOR)==> Cleaning up build environment$(NO_COLOR)"
@@ -67,15 +70,17 @@ config:
 	@echo "$(OK_COLOR)==> Runing config/Makefile$(NO_COLOR)"
 	$(MAKE) -C config
 
-dependencies: $(GOCC) | $(SELFLINK)
+dependencies: $(GOCC) $(SELFLINK)
+	@echo "$(OK_COLOR)==> Preparing dependencies...$(NO_COLOR)"
 
 documentation: search_index
+	@echo "$(OK_COLOR)==> Generating documentation...$(NO_COLOR)"
 	godoc -http=:6060 -index -index_files='search_index'
 
 format:
 	@echo "$(OK_COLOR)==> Formatting the code $(NO_COLOR)"
 	find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOFMT) -w -s=true
-	find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOIMPORT) -w
+	#find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOIMPORT) -w
 
 race_condition_binary: build
 	$(GO) build -race -o chatmld.race $(BUILDFLAGS) .
@@ -124,4 +129,4 @@ install-dev-tools:
 	go get golang.org/x/tools/cmd/vet
 	go get github.com/jteeuwen/go-bindata/...
 
-.PHONY: all install format clean config dependencies test doc vet cover tag ctags assets release contributors
+.PHONY: advice binary build clean config dependencies documentation format race_condition_binary race_condition_run release run search_index tag tarball test

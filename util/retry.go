@@ -3,7 +3,7 @@ package util
 import (
 	"time"
 
-	"github.com/chatml/server/util/log"
+	"github.com/chatml/chatml/util/log"
 )
 
 // RetryOptions provides control of retry loop logic via the

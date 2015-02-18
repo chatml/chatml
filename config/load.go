@@ -3,9 +3,8 @@ package config
 import (
 	"io/ioutil"
 
-	"code.google.com/p/goprotobuf/proto"
-
-	pb "github.com/chatml/server/config/generated"
+	pb "github.com/chatml/chamtl/config/generated"
+	"github.com/golang/protobuf/proto"
 )
 
 // LoadFromString returns a config parsed from the provided string.

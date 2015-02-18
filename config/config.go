@@ -4,10 +4,10 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/chatml/server/util"
+	"github.com/chatml/chatml/util"
 	"github.com/golang/protobuf/proto"
 
-	pb "github.com/chatml/server/config/generated"
+	pb "github.com/chatml/chatml/config/generated"
 )
 
 var labelNameRE = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")

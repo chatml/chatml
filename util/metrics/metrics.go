@@ -34,7 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chatml/server/util/log"
+	"github.com/chatml/chatml/util/log"
 )
 
 const (

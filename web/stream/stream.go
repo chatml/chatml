@@ -3,7 +3,7 @@ package stream
 import (
 	"net/http"
 
-	"github.com/chatml/server/util/log"
+	"github.com/chatml/chatml/util/log"
 	"github.com/googollee/go-socket.io"
 )
 
