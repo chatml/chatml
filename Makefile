@@ -22,10 +22,11 @@ $(BUILD_PATH)/cache/$(GOPKG):
 	$(CURL) -o $@ -L $(GOURL)/$(GOPKG)
 
 $(SELFLINK): $(GOPATH)
+	mkdir -p $@
 	ln -s $(CURDIR) $@
 
 $(GOPATH):
-	@echo "$(OK_COLOR)==> Compiling GoDep Workspace$(NO_COLOR)"
+	@echo "$(OK_COLOR)==> Copying GoDep Workspace$(NO_COLOR)"
 	cp -a $(CURDIR)/Godeps/_workspace $(GOPATH)
 
 advice: $(GOCC)

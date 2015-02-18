@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chatml/server/configuration"
 	"github.com/chatml/server/util"
 	"github.com/chatml/server/util/log"
 	"github.com/chatml/server/util/signal"
