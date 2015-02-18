@@ -1,4 +1,4 @@
-package com.chatml
+package com.chatml;
 
 // The global Chatml configuration section.
 message GlobalConfig {

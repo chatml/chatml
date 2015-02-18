@@ -12,32 +12,30 @@ release: all
 
 all: binary test
 
-$(GOCC): $(BUILD_PATH)/cache/$(GOPKG) $(FULL_GOPATH)
+$(GOCC): $(BUILD_PATH)/cache/$(GOPKG)
 	@echo "$(OK_COLOR)==> Extracting $(GOPKG) into build directory $(NO_COLOR)"
 	tar -C $(BUILD_PATH)/root -xzf $<
 	touch $@
 
 $(BUILD_PATH)/cache/$(GOPKG):
 	@echo "$(OK_COLOR)==> Downloading GoLang compiler package $(NO_COLOR)"
-	mkdir -p $(BUILD_PATH)/cache
-	$(CURL) -L '$(GOURL)/$(GOPKG)' -o '$@'
+	$(CURL) -o $@ -L $(GOURL)/$(GOPKG)
 
-assets:
-	@echo "$(OK_COLOR)==> Compiling Assets$(NO_COLOR)"
-	$(GO) get -u github.com/jteeuwen/go-bindata/...
-	$(GOBINDATA) -nomemcopy -pkg=assets -tags=$(BUILDTAGS) \
-		-debug=$(if $(findstring debug,$(BUILDTAGS)),true,false) \
-		-o=assets/assets_$(BUILDTAGS).go \
-		web/static/...
+$(SELFLINK): $(GOPATH)
+	ln -s $(CURDIR) $@
 
-format:
-	@echo "$(OK_COLOR)==> Formatting the code $(NO_COLOR)"
-	find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOFMT) -w -s=true
-	find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOIMPORT) -w
+$(GOPATH):
+	@echo "$(OK_COLOR)==> Compiling GoDep Workspace$(NO_COLOR)"
+	cp -a $(CURDIR)/Godeps/_workspace $(GOPATH)
+
+advice: $(GOCC)
+	@echo "$(OK_COLOR)==> Running go vet $(NO_COLOR)"
+	$(GO) vet ./...
 
 binary: build
 
-build: assets config dependencies tools web
+build: config web $(GOPATH)
+	@echo "$(OK_COLOR)==> Compiling source code$(NO_COLOR)"
 	$(GO) build -tags '$(BUILDTAGS)' -o chatmld $(BUILDFLAGS) .
 
 docker: build
@@ -50,9 +48,13 @@ $(ARCHIVE): build
 	@echo "$(OK_COLOR)==> Creating Archive$(NO_COLOR)"
 	tar -czf $(ARCHIVE) chatml-server
 
+benchmark: config dependencies tools web
+    $(GO) test $(GO_TEST_FLAGS) -test.run='NONE' -test.bench='.*' -test.benchmem ./... | tee benchmark.txt
+
 clean:
 	@echo "$(OK_COLOR)==> Cleaning up build environment$(NO_COLOR)"
-	# $(MAKE) -C $(BUILD_PATH) clean
+	$(MAKE) -C $(BUILD_PATH) clean
+	$(MAKE) -C web clean
 	rm -rf $(TEST_ARTIFACTS)
 	rm -rf assets
 	-rm $(ARCHIVE)
@@ -60,17 +62,19 @@ clean:
 	-find . -type f -name '*#' -exec rm '{}' ';'
 	-find . -type f -name '.#*' -exec rm '{}' ';'
 
-config: dependencies
-	# $(MAKE) -C config
+config:
+	@echo "$(OK_COLOR)==> Runing config/Makefile$(NO_COLOR)"
+	$(MAKE) -C config
 
-dependencies: $(GOCC) $(FULL_GOPATH)
-	@echo "$(OK_COLOR)==> Downloading dependencies$(NO_COLOR)"
-	$(GO) get github.com/tools/godep
-	$(GODEP) restore
-	$(GO) get -d
+dependencies: $(GOCC) | $(SELFLINK)
 
 documentation: search_index
 	godoc -http=:6060 -index -index_files='search_index'
+
+format:
+	@echo "$(OK_COLOR)==> Formatting the code $(NO_COLOR)"
+	find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOFMT) -w -s=true
+	find . -iname '*.go' | egrep -v "^\./\.build|./generated|\./Godeps|\.(l|y)\.go" | xargs -n1 $(GOIMPORT) -w
 
 race_condition_binary: build
 	$(GO) build -race -o chatmld.race $(BUILDFLAGS) .
@@ -84,28 +88,22 @@ run: binary
 search_index:
 	godoc -index -write_index -index_files='search_index'
 
-server: config dependencies
-	$(MAKE) -C server
+web: dependencies
+	@echo "$(OK_COLOR)==> Runing web/Makefile$(NO_COLOR)"
+	$(MAKE) -C web
 
-tools: dependencies
-	# $(MAKE) -C tools
-
-web: config dependencies
-	# $(MAKE) -C web
-
-# $(FULL_GOPATH) is responsible for ensuring that the builder has not done anything
-# stupid like working on Chatml outside of ${GOPATH}.
-$(FULL_GOPATH):
-	-[ -d "$(FULL_GOPATH)" ] || { mkdir -vp $(FULL_GOPATH_BASE) ; ln -s "$(PWD)" "$(FULL_GOPATH)" ; }
-	[ -d "$(FULL_GOPATH)" ]
+assets:
+	@echo "$(OK_COLOR)==> Compiling Assets$(NO_COLOR)"
+	$(GO) get -u github.com/jteeuwen/go-bindata/...
+	$(GOBINDATA) -nomemcopy -pkg=assets -tags=$(BUILDTAGS) \
+		-debug=$(if $(findstring debug,$(BUILDTAGS)),true,false) \
+		-o=assets/assets_$(BUILDTAGS).go \
+		web/static/...
 
 cover:
 	go test -cover -coverprofile cover.out
 	go tool cover -html=cover.out
 
-vet:
-	@echo "$(OK_COLOR)==> Running go vet $(NO_COLOR)"
-	$(GO) vet .
 
 ctags:
 	@ctags -R --exclude=.build --exclude=test

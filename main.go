@@ -7,11 +7,8 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
 	"sync"
 	"time"
-
-	"bitbucket.org/radsense/chatml-server/src/chatml/server"
 
 	"github.com/chatml/server/configuration"
 	"github.com/chatml/server/util"
@@ -30,7 +27,7 @@ var (
 	printVersion = flag.Bool("version", false, "Print version information.")
 	fileName     = flag.String("config", "config.toml", "Config file written in TOML format")
 	wantsVersion = flag.Bool("version", false, "Get version number")
-	maxprocs     = flag.Int("gomaxprocs", defaultMaxprocs, "GOMAXPROCS")
+	maxprocs     = flag.Int("gomaxprocs", runtime.NumCPU(), "GOMAXPROCS")
 	debug        = flag.Bool("debug", false, "Dump goroutine stack traces upon receiving interrupt signal")
 )
 
@@ -95,40 +92,16 @@ func (c *chatml) close() {
 	// remaining shut-downs happen in Serve().
 }
 
-func setMaxProcs() {
-
-}
-
-func main() {
-
-	var err error
-	var defaultMaxprocs int
-	if defaultMaxprocs, err = strconv.Atoi(os.Getenv("GOMAXPROCS")); err != nil {
-		defaultMaxprocs = runtime.NumCPU()
-	}
-
-	var maxprocs int
-	var debug bool
-	ver := fmt.Sprintf("Chatml Server v%s (git: %s)", Version, GitSHA)
-
-	flag.IntVar(&maxprocs, "gomaxprocs", defaultMaxprocs, "GOMAXPROCS")
-
-	// Parse all the command flags
-	flag.Parse()
-
+func adjustMaxProcs() {
 	// Set appropriate GOMAXPROCS
 	runtime.GOMAXPROCS(maxprocs)
 	log.Infof("GOMAXPROCS is set to %d", maxprocs)
 	if maxprocs < runtime.NumCPU() {
 		log.Infof("GOMAXPROCS (%d) is less than number of CPUs (%d), this may reduce performance. You can change it via environment variable GOMAXPROCS or by passing CLI parameter -gomaxprocs", maxprocs, runtime.NumCPU())
 	}
+}
 
-	// If they just want the version, print and exit
-	if wantsVersion != nil && *wantsVersion {
-		fmt.Println(ver)
-		return
-	}
-
+func setupStacktraceDumper() {
 	// Dump goroutine stacktraces upon receiving interrupt signal
 	if debug {
 		c := make(chan os.Signal, 1)
@@ -139,30 +112,31 @@ func main() {
 			}
 		}()
 	}
+}
 
-	// Load the configuration and set the Version
-	config := configuration.LoadConfiguration(*fileName)
-	config.Version = ver
+func main() {
+
+	var err error
+	ver := fmt.Sprintf("Chatml Server v%s (git: %s)", Version, GitSHA)
+
+	// Parse all the command flags
+	flag.Parse()
+
+	adjustMaxProcs()
+
+	versionInfoTmpl.Execute(os.Stdout, BuildInfo)
+
+	if *printVersion {
+		os.Exit(0)
+	}
+
+	setupStacktraceDumper()
 
 	// Try to create the pid file, exits with error if we can't'
 	if err := util.CreatePidFile(config.PidFile); err != nil {
 		panic(err)
 	}
 
-	server, err := server.NewServer(config, Version)
-	if err != nil {
-		time.Sleep(time.Second) // sleep for the log to flush
-		panic(err)
-	}
-
-	err = server.ListenAndServe()
-	if err != nil {
-		log.Errorf("ListenAndServe failed: %s", err)
-	}
-
-	for {
-	}
-
-	log.Info("Terminating Chatml Server...Goodbye!")
-
+	app := NewChatml()
+	app.Serve()
 }

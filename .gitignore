@@ -23,7 +23,6 @@ _testmain.go
 
 *.exe
 *.swp
-.build
 build.sh
 
 tags
