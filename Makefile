@@ -10,6 +10,9 @@ include Makefile.INCLUDE
 release: all
 	BUILDTAGS=release
 
+debug: all
+	BUILDTAGS=debug
+
 all: binary test
 
 $(GOCC): $(BUILD_PATH)/cache/$(GOPKG)
@@ -22,9 +25,11 @@ $(BUILD_PATH)/cache/$(GOPKG):
 	$(CURL) -o $@ -L $(GOURL)/$(GOPKG)
 
 $(SELFLINK): $(GOPATH)
-	@echo "$(OK_COLOR)==> Downloading GoLang compiler package $(NO_COLOR)"
+	@echo "$(OK_COLOR)==> Creating Symlink into Build workspace$(NO_COLOR)"
 	mkdir -p $(GOPATH)/src/github.com/chatml
-	ln -s $(CURDIR) $(GOPATH)/src/github.com/chatml/chatml
+	@echo "$(OK_COLOR)==> $@ $(NO_COLOR)"
+	ln -sFh $(CURDIR) $@
+	
 
 $(GOPATH): $(GOCC)
 	@echo "$(OK_COLOR)==> Copying GoDep Workspace$(NO_COLOR)"
@@ -58,6 +63,7 @@ benchmark: config dependencies tools web
 clean:
 	@echo "$(OK_COLOR)==> Cleaning up build environment$(NO_COLOR)"
 	$(MAKE) -C $(BUILD_PATH) clean
+	$(MAKE) -C config clean
 	$(MAKE) -C web clean
 	rm -rf $(TEST_ARTIFACTS)
 	rm -rf assets
@@ -71,7 +77,7 @@ config:
 	@echo "$(OK_COLOR)==> Runing config/Makefile$(NO_COLOR)"
 	$(MAKE) -C config
 
-dependencies: $(GOCC) $(SELFLINK)
+dependencies: $(GOCC) | $(SELFLINK)
 	@echo "$(OK_COLOR)==> Preparing dependencies...$(NO_COLOR)"
 
 documentation: search_index
