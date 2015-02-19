@@ -3,7 +3,7 @@ package com.chatml;
 // The global Chatml configuration section.
 message GlobalConfig {
   optional string logPath = 1;
-  optional string pid_file = 2;
+  optional string pidFile = 2;
 }
 
 // The top-level Chatml configuration.

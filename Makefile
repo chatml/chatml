@@ -26,7 +26,7 @@ $(SELFLINK): $(GOPATH)
 	mkdir -p $(GOPATH)/src/github.com/chatml
 	ln -s $(CURDIR) $(GOPATH)/src/github.com/chatml/chatml
 
-$(GOPATH):
+$(GOPATH): $(GOCC)
 	@echo "$(OK_COLOR)==> Copying GoDep Workspace$(NO_COLOR)"
 	cp -a $(CURDIR)/Godeps/_workspace $(GOPATH)
 
@@ -61,6 +61,7 @@ clean:
 	$(MAKE) -C web clean
 	rm -rf $(TEST_ARTIFACTS)
 	rm -rf assets
+	rm -f config/config.pb.go
 	-rm $(ARCHIVE)
 	-find . -type f -name '*~' -exec rm '{}' ';'
 	-find . -type f -name '*#' -exec rm '{}' ';'

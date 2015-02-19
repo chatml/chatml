@@ -3,12 +3,12 @@
 	"GoVersion": "go1.4.1",
 	"Deps": [
 		{
-			"ImportPath": "github.com/alexcesaro/log",
-			"Rev": "eeac98ed1f4a7cd63ea11dabc073648a9d84878b"
-		},
-		{
 			"ImportPath": "github.com/golang/glog",
 			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
+		},
+		{
+			"ImportPath": "github.com/golang/protobuf/proto",
+			"Rev": "5677a0e3d5e89854c9974e1256839ee23f8233ca"
 		},
 		{
 			"ImportPath": "github.com/googollee/go-engine.io",

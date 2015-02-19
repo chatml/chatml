@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/chatml/chatml/config"
-	"github.com/chatml/chatml/util"
 	"github.com/chatml/chatml/util/log"
 	"github.com/chatml/chatml/util/signal"
 	"github.com/chatml/chatml/web"
@@ -67,7 +66,7 @@ func NewChatml() *chatml {
 
 func (c *chatml) Serve() {
 
-	signal.Trap(c.Close())
+	signal.Trap(func() { c.Close() })
 
 	go func() {
 		err := c.webService.ServeForever()
@@ -116,8 +115,10 @@ func setupStacktraceDumper() {
 
 func main() {
 
-	var err error
+	//var err error
 	ver := fmt.Sprintf("Chatml Server v%s (git: %s)", Version, GitSHA)
+
+	fmt.Printf(ver)
 
 	// Parse all the command flags
 	flag.Parse()
@@ -133,9 +134,9 @@ func main() {
 	setupStacktraceDumper()
 
 	// Try to create the pid file, exits with error if we can't'
-	if err := util.CreatePidFile(config.PidFile); err != nil {
-		panic(err)
-	}
+	//if err := util.CreatePidFile(config.PidFile); err != nil {
+	//panic(err)
+	//}
 
 	app := NewChatml()
 	app.Serve()

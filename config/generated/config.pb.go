@@ -24,7 +24,7 @@ var _ = math.Inf
 // The global Chatml configuration section.
 type GlobalConfig struct {
 	LogPath          *string `protobuf:"bytes,1,opt,name=logPath" json:"logPath,omitempty"`
-	PidFile          *string `protobuf:"bytes,2,opt,name=pid_file" json:"pid_file,omitempty"`
+	PidFile          *string `protobuf:"bytes,2,opt,name=pidFile" json:"pidFile,omitempty"`
 	XXX_unrecognized []byte  `json:"-"`
 }
 
