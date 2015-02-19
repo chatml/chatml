@@ -29,7 +29,6 @@ $(SELFLINK): $(GOPATH)
 	mkdir -p $(GOPATH)/src/github.com/chatml
 	@echo "$(OK_COLOR)==> $@ $(NO_COLOR)"
 	ln -sFh $(CURDIR) $@
-	
 
 $(GOPATH): $(GOCC)
 	@echo "$(OK_COLOR)==> Copying GoDep Workspace$(NO_COLOR)"
