@@ -21,9 +21,10 @@ import (
 	"github.com/chatml/chatml/web/stream"
 )
 
+const DEFAULT_TIMEOUT = 30
+
 var (
 	listenAddress  = flag.String("web.listen-address", ":9090", "Address to listen on for the web interface, API, and telemetry.")
-	enableQuit     = flag.Bool("web.enable-remote-shutdown", false, "Enable remote service shutdown.")
 	useLocalAssets = flag.Bool("web.use-local-assets", false, "Read assets/templates from file instead of binary.")
 )
 
@@ -59,25 +60,26 @@ func NewWebService() (*WebService, error) {
 
 func (ws *WebService) ServeForever() error {
 
-	http.Handle("/favicon.ico", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "", 404)
-	}))
+	http.Handle("/favicon.ico", http.HandlerFunc(ws.faviconHandler))
+	http.Handle("/robots.txt", http.HandlerFunc(ws.robotsHandler))
 
-	//http.Handle("/", chatml.InstrumentHandler(
-	//"/", ws.StatusHandler,
-	//))
-
-	//http.Handle("/heap", chatml.InstrumentHandler(
-	//"/heap", http.HandlerFunc(dumpHeap),
-	//))
-
-	if *enableQuit {
-		http.Handle("/-/quit", http.HandlerFunc(ws.quitHandler))
-	}
+	ws.ApiService.RegisterRoutes()
 
 	log.Info("listening on ", *listenAddress)
 
 	return http.ListenAndServe(*listenAddress, nil)
+}
+
+func (ws *WebService) faviconHandler(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "", 404)
+}
+
+func (ws *WebService) robotsHandler(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "", 404)
+}
+
+func (ws *WebService) timeoutHandler(h http.Handler) http.Handler {
+	return http.TimeoutHandler(h, DEFAULT_TIMEOUT*time.Second, "timed out")
 }
 
 func (ws *WebService) quitHandler(w http.ResponseWriter, r *http.Request) {

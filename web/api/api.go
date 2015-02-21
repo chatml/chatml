@@ -3,32 +3,26 @@ package api
 import (
 	"net/http"
 
-	"github.com/gorilla/mux"
-
+	"github.com/chatml/chatml/config"
 	"github.com/chatml/chatml/util/log"
 )
 
 type ApiService struct {
-	router *mux.Router
+	Config *config.Config
 }
 
-func NewApiService() (*ApiService, error) {
+func NewApiService(config *config.Config) (*ApiService, error) {
 
 	log.V(1).Info("Starting API Service")
 
 	service := &ApiService{
-		router: mux.NewRouter(),
+		Config: config,
 	}
 
-	service.registerRoutes()
 	return service, nil
 }
 
-func (s *ApiService) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	s.router.ServeHTTP(rw, req)
-}
-
-func (s *ApiService) registerEndpoint(method string, pattern string, f http.HandlerFunc) {
+func (s *ApiService) route(method string, pattern string, f http.HandlerFunc) {
 	//switch method {
 	//case "GET":
 	//s.router.HandleFunc(pattern, CompressionHeaderHandler(f)).Methods("GET")
@@ -42,45 +36,43 @@ func (s *ApiService) registerEndpoint(method string, pattern string, f http.Hand
 	//s.router.HandleFunc(pattern, HeaderHandler(s.sendCrossOriginHeader)).Methods("OPTIONS")
 }
 
-func (s *ApiService) registerRoutes() {
+func (s *ApiService) RegisterRoutes() {
 
-	s.registerEndpoint("POST", "/api/v1/account/verify", s.handleAccountVerify)
-	s.registerEndpoint("POST", "/api/v1/account/setup", s.handleAccountSetup)
+	s.route("POST", "/api/v1/account/verify", s.handleAccountVerify)
+	s.route("POST", "/api/v1/account/setup", s.handleAccountSetup)
 
-	s.registerEndpoint("POST", "/api/v1/device/register", s.handleDeviceRegistration)
+	s.route("POST", "/api/v1/device/register", s.handleDeviceRegistration)
 
-	s.registerEndpoint("GET", "/api/v1/conversations", s.listConversations)
-	s.registerEndpoint("POST", "/api/v1/conversations", s.createConversation)
+	s.route("GET", "/api/v1/conversations", s.listConversations)
+	s.route("POST", "/api/v1/conversations", s.createConversation)
 
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}", s.showConversation)
-	s.registerEndpoint("PUT", "/api/v1/conversations/{conversation}", s.updateConversation)
-	s.registerEndpoint("POST", "/api/v1/conversations/{conversation}", s.joinConversation)
-	s.registerEndpoint("DELETE", "/api/v1/conversations/{conversation}", s.leaveConversation)
+	s.route("GET", "/api/v1/conversations/{conversation}", s.showConversation)
+	s.route("PUT", "/api/v1/conversations/{conversation}", s.updateConversation)
+	s.route("POST", "/api/v1/conversations/{conversation}", s.joinConversation)
+	s.route("DELETE", "/api/v1/conversations/{conversation}", s.leaveConversation)
 
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}/messages", s.listMessages)
-	s.registerEndpoint("POST", "/api/v1/conversations/{conversation}/messages", s.postMessage)
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}/messages/{message_id}", s.showMessage)
-	s.registerEndpoint("PUT", "/api/v1/conversations/{conversation}/messages/{message_id}", s.updateMessage)
-	s.registerEndpoint("DELETE", "/api/v1/conversations/{conversation}/messages/{message_id}", s.deleteMessage)
+	s.route("GET", "/api/v1/conversations/{conversation}/messages", s.listMessages)
+	s.route("POST", "/api/v1/conversations/{conversation}/messages", s.postMessage)
+	s.route("GET", "/api/v1/conversations/{conversation}/messages/{message_id}", s.showMessage)
+	s.route("PUT", "/api/v1/conversations/{conversation}/messages/{message_id}", s.updateMessage)
+	s.route("DELETE", "/api/v1/conversations/{conversation}/messages/{message_id}", s.deleteMessage)
 
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}/attachments", s.listAttachments)
-	s.registerEndpoint("POST", "/api/v1/conversations/{conversation}/attachments", s.postAttachment)
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}/attachments/{attachment_id}", s.showAttachment)
-	s.registerEndpoint("DELETE", "/api/v1/conversations/{conversation}/attachments/{attachment_id}", s.deleteAttachment)
+	s.route("GET", "/api/v1/conversations/{conversation}/attachments", s.listAttachments)
+	s.route("POST", "/api/v1/conversations/{conversation}/attachments", s.postAttachment)
+	s.route("GET", "/api/v1/conversations/{conversation}/attachments/{attachment_id}", s.showAttachment)
+	s.route("DELETE", "/api/v1/conversations/{conversation}/attachments/{attachment_id}", s.deleteAttachment)
 
-	s.registerEndpoint("POST", "/api/v1/conversations/{conversation}/location", s.postLocation)
+	s.route("POST", "/api/v1/conversations/{conversation}/location", s.postLocation)
 
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}/images/{attachment_id}", s.renderImage)
+	s.route("GET", "/api/v1/conversations/{conversation}/images/{attachment_id}", s.renderImage)
 
-	s.registerEndpoint("GET", "/api/v1/conversations/{conversation}/recipients", s.listRecipients)
-	s.registerEndpoint("POST", "/api/v1/conversations/{conversation}/recipients", s.addRecipients)
-	s.registerEndpoint("DELETE", "/api/v1/conversations/{conversation}/recipients", s.removeRecipients)
+	s.route("GET", "/api/v1/conversations/{conversation}/recipients", s.listRecipients)
+	s.route("POST", "/api/v1/conversations/{conversation}/recipients", s.addRecipients)
+	s.route("DELETE", "/api/v1/conversations/{conversation}/recipients", s.removeRecipients)
 
-	s.registerEndpoint("GET", "/api/v1/groups", s.listGroups)
-	s.registerEndpoint("GET", "/api/v1/recipients", s.listRecipients)
-	s.registerEndpoint("GET", "/api/v1/recipients/{recipient}", s.showRecipient)
-
-	http.Handle("/", s.router)
+	s.route("GET", "/api/v1/groups", s.listGroups)
+	s.route("GET", "/api/v1/recipients", s.listRecipients)
+	s.route("GET", "/api/v1/recipients/{recipient}", s.showRecipient)
 
 }
 

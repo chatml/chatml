@@ -3,12 +3,15 @@ package stream
 import (
 	"net/http"
 
-	"github.com/chatml/chatml/util/log"
 	"github.com/googollee/go-socket.io"
+
+	"github.com/chatml/chatml/config"
+	"github.com/chatml/chatml/util/log"
 )
 
 type StreamService struct {
-	sio *socketio.Server
+	Config *config.Config
+	sio    *socketio.Server
 }
 
 func NewStreamService() (*StreamService, error) {
