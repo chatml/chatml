@@ -14,7 +14,7 @@ func RequestIDHandler(size int) func(http.Handler) http.Handler {
 
 			id, err := generateRequestID(size)
 			if err == nil {
-				req.Header.Set(RequestIDHeaderKey, id)
+				w.Header().Set(RequestIDHeaderKey, id)
 			}
 
 			next.ServeHTTP(w, req)
