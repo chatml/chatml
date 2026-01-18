@@ -26,7 +26,7 @@ export default function Home() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(0);
+  const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   // Track left sidebar width for overlay positioning
@@ -36,7 +36,8 @@ export default function Home() {
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setSidebarWidth(entry.contentRect.width);
+        // Use offsetWidth to include padding/borders
+        setSidebarWidth(el.offsetWidth);
       }
     });
     observer.observe(el);
@@ -294,7 +295,7 @@ export default function Home() {
         {showWorkspaceManagement && (
           <div
             className="absolute inset-0 z-10 bg-background"
-            style={{ left: sidebarWidth + 1 }}
+            style={{ left: sidebarWidth + 5 }}
           >
             <WorkspaceManagement
               onSelectSession={handleSelectSessionFromManagement}
