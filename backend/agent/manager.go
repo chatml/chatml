@@ -79,11 +79,15 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 		m.onStatus(agentID, models.StatusRunning)
 	}
 
-	// Handle output streaming
+	// Handle output streaming with parsing
 	go func() {
 		for line := range proc.Output() {
 			if m.onOutput != nil {
-				m.onOutput(agentID, line)
+				event := ParseStreamLine(line)
+				formatted := FormatEvent(event)
+				if formatted != "" {
+					m.onOutput(agentID, formatted)
+				}
 			}
 		}
 	}()

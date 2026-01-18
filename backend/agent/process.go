@@ -22,7 +22,12 @@ type Process struct {
 func NewProcess(id, workdir, task string) *Process {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cmd := exec.CommandContext(ctx, "claude", "-p", task, "--dangerously-skip-permissions")
+	cmd := exec.CommandContext(ctx, "claude",
+		"-p", task,
+		"--dangerously-skip-permissions",
+		"--output-format", "stream-json",
+		"--verbose",
+	)
 	cmd.Dir = workdir
 
 	return &Process{
