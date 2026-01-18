@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { listRepos, listSessions, listConversations, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
@@ -22,6 +22,26 @@ import {
 export default function Home() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(0);
+  const leftSidebarRef = useRef<HTMLDivElement>(null);
+
+  // Track left sidebar width for overlay positioning
+  useEffect(() => {
+    const el = leftSidebarRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setSidebarWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(el);
+
+    // Initial measurement
+    setSidebarWidth(el.offsetWidth);
+
+    return () => observer.disconnect();
+  }, []);
 
   const {
     workspaces,
@@ -206,60 +226,64 @@ export default function Home() {
 
   return (
     <TooltipProvider>
-      <div className="h-screen overflow-hidden flex">
+      <div className="h-screen overflow-hidden flex relative">
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Left Sidebar - Workspaces */}
           <ResizablePanel
             id="left-sidebar"
-            defaultSize="18%"
+            defaultSize={22}
             minSize="200px"
             maxSize="400px"
           >
-            <WorkspaceSidebar
-              onAddWorkspace={() => setShowAddWorkspace(true)}
-              onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
-            />
+            <div ref={leftSidebarRef} className="h-full">
+              <WorkspaceSidebar
+                onAddWorkspace={() => setShowAddWorkspace(true)}
+                onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
+                onSessionSelected={() => setShowWorkspaceManagement(false)}
+              />
+            </div>
           </ResizablePanel>
 
-        <ResizableHandle />
+          <ResizableHandle />
 
-        {showWorkspaceManagement ? (
-          /* Workspace Management View - Full width */
-          <ResizablePanel id="workspace-management" defaultSize="82%" minSize="300px">
+          {/* Main Content */}
+          <ResizablePanel id="main-content" defaultSize={48} minSize="300px">
+            <div className="flex flex-col h-full">
+              <TopBar />
+              <ConversationArea>
+                <ChatInput />
+              </ConversationArea>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          {/* Right Sidebar */}
+          <ResizablePanel
+            id="right-sidebar"
+            defaultSize={30}
+            minSize="250px"
+            maxSize="500px"
+          >
+            <ChangesPanel />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+
+        {/* Workspace Management Overlay - covers main content and right sidebar */}
+        {showWorkspaceManagement && (
+          <div
+            className="absolute inset-0 z-10 bg-background"
+            style={{ left: sidebarWidth + 1 }}
+          >
             <WorkspaceManagement
               onSelectSession={handleSelectSessionFromManagement}
               onBack={() => setShowWorkspaceManagement(false)}
             />
-          </ResizablePanel>
-        ) : (
-          <>
-            {/* Main Content */}
-            <ResizablePanel id="main-content" defaultSize="57%" minSize="300px">
-              <div className="flex flex-col h-full">
-                <TopBar />
-                <ConversationArea>
-                  <ChatInput />
-                </ConversationArea>
-              </div>
-            </ResizablePanel>
-
-            <ResizableHandle />
-
-            {/* Right Sidebar - Changes (full height with own header) */}
-            <ResizablePanel
-              id="right-sidebar"
-              defaultSize="25%"
-              minSize="250px"
-              maxSize="500px"
-            >
-              <ChangesPanel />
-            </ResizablePanel>
-          </>
+          </div>
         )}
-      </ResizablePanelGroup>
 
-      {/* Add Workspace Modal */}
+        {/* Add Workspace Modal */}
         <AddWorkspaceModal
           isOpen={showAddWorkspace}
           onClose={() => setShowAddWorkspace(false)}

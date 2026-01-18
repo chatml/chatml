@@ -6,6 +6,7 @@ import {
   Group,
   Panel,
   Separator,
+  type PanelImperativeHandle,
 } from "react-resizable-panels"
 
 import { cn } from "@/lib/utils"
@@ -28,17 +29,19 @@ function ResizablePanelGroup({
   )
 }
 
-function ResizablePanel({
-  className,
-  ...props
-}: React.ComponentProps<typeof Panel>) {
+const ResizablePanel = React.forwardRef<
+  PanelImperativeHandle,
+  React.ComponentProps<typeof Panel>
+>(({ className, ...props }, ref) => {
   return (
     <Panel
+      panelRef={ref}
       className={cn("", className)}
       {...props}
     />
   )
-}
+})
+ResizablePanel.displayName = "ResizablePanel"
 
 function ResizableHandle({
   withHandle,

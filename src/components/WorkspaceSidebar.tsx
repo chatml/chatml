@@ -53,9 +53,10 @@ import type { Workspace, WorktreeSession } from '@/lib/types';
 interface WorkspaceSidebarProps {
   onAddWorkspace: () => void;
   onShowWorkspaceManagement?: () => void;
+  onSessionSelected?: () => void;
 }
 
-export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, onSessionSelected }: WorkspaceSidebarProps) {
   const {
     workspaces,
     sessions,
@@ -284,6 +285,7 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement }: 
                     onSelectSession={(sessionId) => {
                       selectWorkspace(workspace.id);
                       selectSession(sessionId);
+                      onSessionSelected?.();
                     }}
                     onArchiveSession={handleArchiveSession}
                     getStatusColor={getStatusColor}

@@ -250,13 +250,13 @@ export function ChangesPanel() {
           variant="ghost"
           size="sm"
           className={cn(
-            'h-7 text-xs gap-1',
-            hasActivePR && 'text-green-600 dark:text-green-400 hover:bg-green-500/20',
-            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:bg-red-500/20',
-            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:bg-primary/10'
+            'h-7 text-xs gap-1.5 border border-transparent transition-colors',
+            hasActivePR && 'text-green-600 dark:text-green-400 hover:border-green-500/50 hover:bg-green-500/10',
+            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:border-red-500/50 hover:bg-red-500/10',
+            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:border-primary/50 hover:bg-primary/10'
           )}
         >
-          <Eye className="h-3 w-3" />
+          <Eye className="h-3.5 w-3.5" />
           Review
         </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7">
