@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { NewSessionModal } from '@/components/NewSessionModal';
 import {
   Collapsible,
   CollapsibleContent,
@@ -48,6 +49,11 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
   // Track which workspaces are expanded (default all expanded)
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
     () => new Set(workspaces.map((w) => w.id))
+  );
+
+  // New session modal state
+  const [newSessionWorkspace, setNewSessionWorkspace] = useState<{ id: string; name: string } | null>(
+    null
   );
 
   const toggleWorkspace = (workspaceId: string) => {
@@ -168,7 +174,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                         className="h-6 w-6 hover:bg-sidebar-accent"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // TODO: Create new session
+                          setNewSessionWorkspace({ id: workspace.id, name: workspace.name });
                         }}
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -289,6 +295,16 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
           <span className="text-sm">Add repository</span>
         </Button>
       </div>
+
+      {/* New Session Modal */}
+      {newSessionWorkspace && (
+        <NewSessionModal
+          isOpen={!!newSessionWorkspace}
+          onClose={() => setNewSessionWorkspace(null)}
+          workspaceId={newSessionWorkspace.id}
+          workspaceName={newSessionWorkspace.name}
+        />
+      )}
     </div>
   );
 }
