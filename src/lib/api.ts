@@ -132,6 +132,7 @@ export interface SessionDTO {
   prNumber?: number;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
+  pinned?: boolean;
   createdAt: string;
   updatedAt: string;
 }

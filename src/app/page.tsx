@@ -89,6 +89,7 @@ export default function Home() {
     prNumber: session.prNumber,
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
+    pinned: session.pinned,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   }), []);

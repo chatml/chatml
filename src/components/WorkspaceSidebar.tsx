@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
-import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -75,6 +75,7 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
     selectConversation,
     reorderWorkspaces,
     archiveSession,
+    updateSession,
   } = useAppStore();
 
   const sensors = useSensors(
@@ -230,6 +231,22 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
     }
   };
 
+  const handlePinSession = async (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    const newPinned = !session.pinned;
+
+    try {
+      // Update backend
+      await updateSessionApi(session.workspaceId, sessionId, { pinned: newPinned });
+      // Update local store
+      updateSession(sessionId, { pinned: newPinned });
+    } catch (error) {
+      console.error('Failed to pin session:', error);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       {/* Header - pl-20 gives space for macOS traffic lights */}
@@ -294,6 +311,7 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
                       onSessionSelected?.();
                     }}
                     onArchiveSession={handleArchiveSession}
+                    onPinSession={handlePinSession}
                     getStatusColor={getStatusColor}
                     formatTimeAgo={formatTimeAgo}
                     getInitial={getInitial}
@@ -339,6 +357,7 @@ interface SortableWorkspaceItemProps {
   onCreateSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
+  onPinSession: (sessionId: string) => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -353,6 +372,7 @@ function SortableWorkspaceItem({
   onCreateSession,
   onSelectSession,
   onArchiveSession,
+  onPinSession,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -507,6 +527,10 @@ function SortableWorkspaceItem({
                         <span className="text-sm font-medium truncate flex-1">
                           {session.branch || session.name}
                         </span>
+                        {/* Pinned indicator - hidden on hover */}
+                        {session.pinned && (
+                          <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:hidden" />
+                        )}
                         {/* Stats - hidden on hover */}
                         {hasStats && (
                           <span className="text-[10px] shrink-0 group-hover:hidden">
@@ -517,10 +541,13 @@ function SortableWorkspaceItem({
                         {/* Actions - shown on hover */}
                         <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                           <button
-                            className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+                            className={cn(
+                              "p-0.5 rounded hover:bg-sidebar-accent hover:text-foreground",
+                              session.pinned ? "text-primary" : "text-muted-foreground"
+                            )}
                             onClick={(e) => {
                               e.stopPropagation();
-                              // TODO: Pin session
+                              onPinSession(session.id);
                             }}
                           >
                             <Pin className="h-2.5 w-2.5" />

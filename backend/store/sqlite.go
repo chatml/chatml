@@ -193,6 +193,22 @@ func (s *SQLiteStore) runMigrations() error {
 		}
 		log.Printf("[sqlite] Migration: Added setup_info column to messages")
 	}
+
+	// Migration: Add pinned column to sessions if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'pinned'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
+		if err != nil {
+			return err
+		}
+		log.Printf("[sqlite] Migration: Added pinned column to sessions")
+	}
+
 	return nil
 }
 
@@ -288,13 +304,14 @@ func (s *SQLiteStore) AddSession(session *models.Session) {
 	_, err := s.db.Exec(`
 		INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, task,
 			status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
-			has_check_failures, stats_additions, stats_deletions, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			has_check_failures, stats_additions, stats_deletions, pinned, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		session.ID, session.WorkspaceID, session.Name, session.Branch,
 		session.WorktreePath, session.Task, session.Status, session.AgentID,
 		session.PRStatus, session.PRUrl, session.PRNumber,
 		boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
-		statsAdditions, statsDeletions, session.CreatedAt, session.UpdatedAt)
+		statsAdditions, statsDeletions, boolToInt(session.Pinned),
+		session.CreatedAt, session.UpdatedAt)
 	if err != nil {
 		log.Printf("[sqlite] AddSession error: %v", err)
 	}
@@ -302,25 +319,26 @@ func (s *SQLiteStore) AddSession(session *models.Session) {
 
 func (s *SQLiteStore) GetSession(id string) *models.Session {
 	var session models.Session
-	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions int
+	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
 	var agentID sql.NullString
 
 	err := s.db.QueryRow(`
 		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, created_at, updated_at
+			stats_additions, stats_deletions, pinned, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-		&session.CreatedAt, &session.UpdatedAt)
+		&pinned, &session.CreatedAt, &session.UpdatedAt)
 	if err != nil {
 		return nil
 	}
 
 	session.HasMergeConflict = intToBool(hasMergeConflict)
 	session.HasCheckFailures = intToBool(hasCheckFailures)
+	session.Pinned = intToBool(pinned)
 	if agentID.Valid {
 		session.AgentID = agentID.String
 	}
@@ -338,8 +356,9 @@ func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
 	rows, err := s.db.Query(`
 		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, created_at, updated_at
-		FROM sessions WHERE workspace_id = ?`, workspaceID)
+			stats_additions, stats_deletions, pinned, created_at, updated_at
+		FROM sessions WHERE workspace_id = ?
+		ORDER BY pinned DESC, created_at DESC`, workspaceID)
 	if err != nil {
 		log.Printf("[sqlite] ListSessions error: %v", err)
 		return []*models.Session{}
@@ -349,7 +368,7 @@ func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
 	sessions := []*models.Session{}
 	for rows.Next() {
 		var session models.Session
-		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions int
+		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
 		var agentID sql.NullString
 
 		if err := rows.Scan(
@@ -357,13 +376,14 @@ func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
 			&session.WorktreePath, &session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-			&session.CreatedAt, &session.UpdatedAt); err != nil {
+			&pinned, &session.CreatedAt, &session.UpdatedAt); err != nil {
 			log.Printf("[sqlite] ListSessions scan error: %v", err)
 			continue
 		}
 
 		session.HasMergeConflict = intToBool(hasMergeConflict)
 		session.HasCheckFailures = intToBool(hasCheckFailures)
+		session.Pinned = intToBool(pinned)
 		if agentID.Valid {
 			session.AgentID = agentID.String
 		}
@@ -402,13 +422,14 @@ func (s *SQLiteStore) UpdateSession(id string, updates func(*models.Session)) {
 			name = ?, branch = ?, worktree_path = ?, task = ?,
 			status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
 			pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
-			stats_additions = ?, stats_deletions = ?, updated_at = ?
+			stats_additions = ?, stats_deletions = ?, pinned = ?, updated_at = ?
 		WHERE id = ?`,
 		session.Name, session.Branch, session.WorktreePath, session.Task,
 		session.Status, session.AgentID, session.PRStatus, session.PRUrl,
 		session.PRNumber, boolToInt(session.HasMergeConflict),
 		boolToInt(session.HasCheckFailures),
-		statsAdditions, statsDeletions, session.UpdatedAt, id)
+		statsAdditions, statsDeletions, boolToInt(session.Pinned),
+		session.UpdatedAt, id)
 	if err != nil {
 		log.Printf("[sqlite] UpdateSession error: %v", err)
 	}
@@ -416,25 +437,26 @@ func (s *SQLiteStore) UpdateSession(id string, updates func(*models.Session)) {
 
 func (s *SQLiteStore) getSessionNoLock(id string) *models.Session {
 	var session models.Session
-	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions int
+	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
 	var agentID sql.NullString
 
 	err := s.db.QueryRow(`
 		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, created_at, updated_at
+			stats_additions, stats_deletions, pinned, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-		&session.CreatedAt, &session.UpdatedAt)
+		&pinned, &session.CreatedAt, &session.UpdatedAt)
 	if err != nil {
 		return nil
 	}
 
 	session.HasMergeConflict = intToBool(hasMergeConflict)
 	session.HasCheckFailures = intToBool(hasCheckFailures)
+	session.Pinned = intToBool(pinned)
 	if agentID.Valid {
 		session.AgentID = agentID.String
 	}

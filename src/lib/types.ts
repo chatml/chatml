@@ -17,6 +17,7 @@ export interface WorktreeSession {
   task?: string; // optional task description
   status: 'active' | 'idle' | 'done' | 'error';
   archived?: boolean; // whether the session is archived
+  pinned?: boolean; // whether the session is pinned to the top
   stats?: {
     additions: number;
     deletions: number;

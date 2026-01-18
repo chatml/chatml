@@ -26,6 +26,7 @@ type Session struct {
 	PRNumber         int           `json:"prNumber,omitempty"`
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
+	Pinned           bool          `json:"pinned,omitempty"`
 	CreatedAt        time.Time     `json:"createdAt"`
 	UpdatedAt        time.Time     `json:"updatedAt"`
 }
