@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { NewSessionModal } from '@/components/NewSessionModal';
 import {
   Collapsible,
   CollapsibleContent,
@@ -44,16 +43,14 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
     selectedSessionId,
     selectWorkspace,
     selectSession,
+    addSession,
+    addConversation,
+    selectConversation,
   } = useAppStore();
 
   // Track which workspaces are expanded (default all expanded)
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
     () => new Set(workspaces.map((w) => w.id))
-  );
-
-  // New session modal state
-  const [newSessionWorkspace, setNewSessionWorkspace] = useState<{ id: string; name: string } | null>(
-    null
   );
 
   const toggleWorkspace = (workspaceId: string) => {
@@ -100,6 +97,52 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
       default:
         return 'text-muted-foreground';
     }
+  };
+
+  const generateBranchName = () => {
+    const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
+    const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
+    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const num = Math.floor(Math.random() * 100);
+    return `${adj}-${noun}-${num}`;
+  };
+
+  const handleCreateSession = (workspaceId: string) => {
+    const branchName = generateBranchName();
+    const sessionId = `session-${Date.now()}`;
+    const now = new Date().toISOString();
+
+    // Create session in idle state (agent not started yet)
+    addSession({
+      id: sessionId,
+      workspaceId,
+      name: branchName,
+      branch: branchName,
+      worktreePath: '', // Will be set when agent starts
+      status: 'idle',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Create conversation for this session
+    const convId = `conv-${sessionId}`;
+    addConversation({
+      id: convId,
+      sessionId,
+      title: 'New conversation',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Expand the workspace if not already
+    setExpandedWorkspaces((prev) => new Set([...prev, workspaceId]));
+
+    // Select the new session and conversation
+    selectWorkspace(workspaceId);
+    selectSession(sessionId);
+    selectConversation(convId);
   };
 
   return (
@@ -174,7 +217,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                         className="h-6 w-6 hover:bg-sidebar-accent"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setNewSessionWorkspace({ id: workspace.id, name: workspace.name });
+                          handleCreateSession(workspace.id);
                         }}
                       >
                         <Plus className="h-3.5 w-3.5" />
@@ -296,15 +339,6 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
         </Button>
       </div>
 
-      {/* New Session Modal */}
-      {newSessionWorkspace && (
-        <NewSessionModal
-          isOpen={!!newSessionWorkspace}
-          onClose={() => setNewSessionWorkspace(null)}
-          workspaceId={newSessionWorkspace.id}
-          workspaceName={newSessionWorkspace.name}
-        />
-      )}
-    </div>
+      </div>
   );
 }

@@ -35,11 +35,16 @@ export function ChatInput() {
   const {
     selectedConversationId,
     selectedWorkspaceId,
+    selectedSessionId,
     sessions,
     addMessage,
-    addSession,
+    updateSession,
+    updateConversation,
     conversations,
   } = useAppStore();
+
+  // Get current session to check its status
+  const currentSession = sessions.find((s) => s.id === selectedSessionId);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -66,21 +71,28 @@ export function ChatInput() {
     setIsLoading(true);
 
     try {
-      // Spawn agent via backend API
-      const agent = await spawnAgent(selectedWorkspaceId, task);
+      // Check if this is an idle session (first message spawns the agent)
+      if (currentSession && currentSession.status === 'idle') {
+        // Spawn agent via backend API
+        const agent = await spawnAgent(selectedWorkspaceId, task);
 
-      // Add as a new session
-      addSession({
-        id: agent.id,
-        workspaceId: agent.repoId,
-        name: agent.branch,
-        branch: agent.branch,
-        worktreePath: agent.worktree,
-        task: agent.task,
-        status: agent.status === 'running' ? 'active' : 'idle',
-        createdAt: agent.createdAt,
-        updatedAt: agent.createdAt,
-      });
+        // Update existing session with agent details
+        updateSession(currentSession.id, {
+          id: agent.id, // Update to backend-assigned ID
+          worktreePath: agent.worktree,
+          task: agent.task,
+          status: agent.status === 'running' ? 'active' : 'idle',
+          updatedAt: new Date().toISOString(),
+        });
+
+        // Update conversation title based on task
+        updateConversation(selectedConversationId, {
+          title: task.slice(0, 50) + (task.length > 50 ? '...' : ''),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      // For active sessions, the message is sent via WebSocket (to be implemented)
+      // For now, we just add the message to the conversation
 
       // The response will stream via WebSocket
       // WebSocket hook will add assistant messages as output arrives

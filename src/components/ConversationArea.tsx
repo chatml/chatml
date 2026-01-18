@@ -30,6 +30,7 @@ import {
   Circle,
   SquareCheck,
   Square,
+  GitBranch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
@@ -42,6 +43,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const {
     conversations,
     messages,
+    sessions,
     selectedSessionId,
     selectedConversationId,
     selectConversation,
@@ -49,6 +51,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     removeConversation,
   } = useAppStore();
 
+  const currentSession = sessions.find((s) => s.id === selectedSessionId);
   const sessionConversations = conversations.filter(
     (c) => c.sessionId === selectedSessionId
   );
@@ -133,7 +136,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       <div className="flex-1 overflow-auto min-h-0">
         <div className="p-4 space-y-1">
           {conversationMessages.length === 0 ? (
-            <EmptyState />
+            <EmptyState sessionName={currentSession?.name} />
           ) : (
             conversationMessages.map((message, idx) => (
               <MessageBlock
@@ -152,20 +155,27 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ sessionName }: { sessionName?: string }) {
   return (
     <div className="py-12 px-4">
-      <div className="max-w-lg mx-auto">
-        <p className="text-sm text-muted-foreground mb-4">
-          Start a conversation to work with your AI coding assistant.
+      <div className="max-w-lg mx-auto text-center">
+        {sessionName && (
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
+            <GitBranch className="w-4 h-4" />
+            {sessionName}
+          </div>
+        )}
+        <h2 className="text-lg font-semibold mb-2">New Session</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Describe your task below. An AI agent will work on it in an isolated git branch.
         </p>
-        <div className="space-y-2 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground/80">Example prompts:</p>
-          <ul className="space-y-1.5 ml-4">
-            <li className="font-mono">&quot;Refactor the auth module to use JWT tokens&quot;</li>
-            <li className="font-mono">&quot;Write tests for the user service&quot;</li>
-            <li className="font-mono">&quot;Find and fix the memory leak in the worker&quot;</li>
-          </ul>
+        <div className="text-left bg-muted/50 rounded-lg p-4 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Example tasks</p>
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">&quot;Add user authentication with JWT tokens&quot;</p>
+            <p className="text-muted-foreground">&quot;Write unit tests for the payment service&quot;</p>
+            <p className="text-muted-foreground">&quot;Refactor the API to use async/await&quot;</p>
+          </div>
         </div>
       </div>
     </div>
