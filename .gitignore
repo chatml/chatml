@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Go
+backend/chatml-backend
+
+# Tauri
+src-tauri/target/
