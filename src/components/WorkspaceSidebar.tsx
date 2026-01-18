@@ -515,7 +515,7 @@ function SortableWorkspaceItem({
                           </span>
                         )}
                         {/* Actions - shown on hover */}
-                        <div className="hidden group-hover:flex items-center shrink-0">
+                        <div className="hidden group-hover:flex items-center gap-1 shrink-0">
                           <button
                             className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
