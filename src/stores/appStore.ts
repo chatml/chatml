@@ -33,6 +33,7 @@ interface AppState {
   addWorkspace: (workspace: Workspace) => void;
   removeWorkspace: (id: string) => void;
   selectWorkspace: (id: string | null) => void;
+  reorderWorkspaces: (activeId: string, overId: string) => void;
 
   // Session actions
   setSessions: (sessions: WorktreeSession[]) => void;
@@ -101,6 +102,15 @@ export const useAppStore = create<AppState>((set) => ({
     selectedWorkspaceId: state.selectedWorkspaceId === id ? null : state.selectedWorkspaceId,
   })),
   selectWorkspace: (id) => set({ selectedWorkspaceId: id }),
+  reorderWorkspaces: (activeId, overId) => set((state) => {
+    const oldIndex = state.workspaces.findIndex((w) => w.id === activeId);
+    const newIndex = state.workspaces.findIndex((w) => w.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return state;
+    const newWorkspaces = [...state.workspaces];
+    const [removed] = newWorkspaces.splice(oldIndex, 1);
+    newWorkspaces.splice(newIndex, 0, removed);
+    return { workspaces: newWorkspaces };
+  }),
 
   // Session actions
   setSessions: (sessions) => set({ sessions }),
