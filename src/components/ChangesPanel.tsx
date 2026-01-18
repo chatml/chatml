@@ -76,6 +76,10 @@ export function ChangesPanel() {
       <div className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
         <span className="text-sm font-medium text-muted-foreground">Working...</span>
         <div className="flex-1" />
+        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary hover:text-primary hover:bg-primary/10">
+          <Eye className="h-3 w-3" />
+          Review
+        </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <MoreVertical className="h-3.5 w-3.5" />
         </Button>
@@ -114,10 +118,6 @@ export function ChangesPanel() {
         </Button>
         <div className="flex-1 min-w-0" />
         <div className="flex items-center shrink-0">
-          <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 px-1.5 text-muted-foreground hover:text-foreground">
-            <Eye className="h-3 w-3" />
-            <span className="hidden xl:inline">Review</span>
-          </Button>
           <Button variant="ghost" size="icon" className="h-6 w-6">
             <SplitSquareHorizontal className="h-3 w-3" />
           </Button>
