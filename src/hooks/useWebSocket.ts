@@ -6,9 +6,11 @@ import type { WSEvent, AgentEvent } from '@/lib/types';
 
 const WS_URL = 'ws://localhost:9876/ws';
 
-export function useWebSocket() {
+export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
 
   const {
     appendOutput,
@@ -190,6 +192,7 @@ export function useWebSocket() {
   ]);
 
   const connect = useCallback(() => {
+    if (!enabledRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const ws = new WebSocket(WS_URL);
@@ -227,7 +230,10 @@ export function useWebSocket() {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      // Only reconnect if still enabled
+      if (enabledRef.current) {
+        reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      }
     };
 
     ws.onerror = () => {
@@ -238,14 +244,24 @@ export function useWebSocket() {
   }, [appendOutput, updateSession, handleConversationEvent]);
 
   useEffect(() => {
-    connect();
+    if (enabled) {
+      connect();
+    } else {
+      // Close connection if disabled
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      wsRef.current?.close();
+      wsRef.current = null;
+    }
+
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, [enabled, connect]);
 
   return wsRef.current;
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -124,13 +125,23 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate session ID
+	sessionID := uuid.New().String()
+
+	// Create git worktree for this session
+	worktreePath, branchName, err := h.worktreeManager.CreateWithBranch(repo.Path, sessionID, req.Branch)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create worktree: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	now := time.Now()
 	session := &models.Session{
-		ID:           uuid.New().String(),
+		ID:           sessionID,
 		WorkspaceID:  workspaceID,
 		Name:         req.Name,
-		Branch:       req.Branch,
-		WorktreePath: req.WorktreePath,
+		Branch:       branchName,
+		WorktreePath: worktreePath,
 		Task:         req.Task,
 		Status:       "idle",
 		PRStatus:     "none",
@@ -247,8 +258,19 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "sessionId")
-	h.store.DeleteSession(id)
+	sessionID := chi.URLParam(r, "sessionId")
+
+	// Get session to find workspace and worktree path
+	session := h.store.GetSession(sessionID)
+	if session != nil {
+		repo := h.store.GetRepo(session.WorkspaceID)
+		if repo != nil && session.WorktreePath != "" {
+			// Remove the git worktree
+			h.worktreeManager.RemoveByPath(repo.Path, sessionID, session.Branch)
+		}
+	}
+
+	h.store.DeleteSession(sessionID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

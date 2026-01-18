@@ -241,6 +241,54 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+export interface HealthCheckResult {
+  success: boolean;
+  error?: string;
+  attempts: number;
+}
+
+/**
+ * Check backend health with exponential backoff retry
+ * @param maxRetries Maximum number of retry attempts
+ * @param initialDelay Initial delay in ms (doubles each retry)
+ * @param onAttempt Callback called before each attempt with attempt number
+ */
+export async function checkHealthWithRetry(
+  maxRetries: number = 10,
+  initialDelay: number = 500,
+  onAttempt?: (attempt: number) => void
+): Promise<HealthCheckResult> {
+  let delay = initialDelay;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    onAttempt?.(attempt);
+
+    try {
+      const res = await fetch(`${API_BASE}/health`, {
+        signal: AbortSignal.timeout(5000) // 5 second timeout per request
+      });
+
+      if (res.ok) {
+        return { success: true, attempts: attempt };
+      }
+    } catch {
+      // Connection failed, will retry
+    }
+
+    // Don't wait after the last attempt
+    if (attempt < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay = Math.min(delay * 1.5, 5000); // Exponential backoff, max 5s
+    }
+  }
+
+  return {
+    success: false,
+    error: 'Backend service did not respond after multiple attempts',
+    attempts: maxRetries
+  };
+}
+
 // Conversation DTOs and functions
 export interface ConversationDTO {
   id: string;

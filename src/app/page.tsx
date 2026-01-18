@@ -6,12 +6,14 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { listRepos, listSessions, listConversations, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
+import { SettingsPage } from '@/components/SettingsPage';
 import { TopBar } from '@/components/TopBar';
 import { ConversationArea } from '@/components/ConversationArea';
 import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
 import { UpdateChecker } from '@/components/UpdateChecker';
+import { BackendStatus } from '@/components/BackendStatus';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   ResizableHandle,
@@ -20,8 +22,10 @@ import {
 } from '@/components/ui/resizable';
 
 export default function Home() {
+  const [backendConnected, setBackendConnected] = useState(false);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(0);
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
@@ -58,8 +62,8 @@ export default function Home() {
     selectConversation,
   } = useAppStore();
 
-  // Connect WebSocket for real-time updates
-  useWebSocket();
+  // Connect WebSocket for real-time updates (only when backend is connected)
+  useWebSocket(backendConnected);
 
   // Map backend Repo to frontend Workspace
   const repoToWorkspace = useCallback((repo: RepoDTO) => ({
@@ -95,6 +99,7 @@ export default function Home() {
     conversationId,
     role: msg.role as 'user' | 'assistant' | 'system',
     content: msg.content,
+    setupInfo: msg.setupInfo,
     timestamp: msg.timestamp,
   }), []);
 
@@ -116,8 +121,10 @@ export default function Home() {
     updatedAt: conv.updatedAt,
   }), [messageToMessage]);
 
-  // Load data from backend
+  // Load data from backend (only when connected)
   useEffect(() => {
+    if (!backendConnected) return;
+
     async function loadData() {
       try {
         // Fetch repos from backend
@@ -175,7 +182,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation, selectConversation]);
+  }, [backendConnected, repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation, selectConversation]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -224,6 +231,17 @@ export default function Home() {
     setShowWorkspaceManagement(false);
   }, [conversations, selectWorkspace, selectSession, selectConversation]);
 
+  // Show connection screen until backend is ready
+  if (!backendConnected) {
+    return (
+      <BackendStatus
+        onConnected={() => setBackendConnected(true)}
+        maxRetries={15}
+        initialDelay={300}
+      />
+    );
+  }
+
   return (
     <TooltipProvider>
       <div className="h-screen overflow-hidden flex relative">
@@ -241,6 +259,7 @@ export default function Home() {
                 onAddWorkspace={() => setShowAddWorkspace(true)}
                 onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
                 onSessionSelected={() => setShowWorkspaceManagement(false)}
+                onOpenSettings={() => setShowSettings(true)}
               />
             </div>
           </ResizablePanel>
@@ -280,6 +299,13 @@ export default function Home() {
               onSelectSession={handleSelectSessionFromManagement}
               onBack={() => setShowWorkspaceManagement(false)}
             />
+          </div>
+        )}
+
+        {/* Settings Overlay - full screen */}
+        {showSettings && (
+          <div className="absolute inset-0 z-20 bg-background">
+            <SettingsPage onBack={() => setShowSettings(false)} />
           </div>
         )}
 

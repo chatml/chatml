@@ -194,7 +194,7 @@ export function ChangesPanel() {
       setChangesLoading(true);
       getSessionChanges(selectedWorkspaceId, selectedSessionId)
         .then((data) => {
-          setChanges(data);
+          setChanges(data || []);
         })
         .catch(console.error)
         .finally(() => setChangesLoading(false));
@@ -281,7 +281,7 @@ export function ChangesPanel() {
           onClick={() => setSelectedTab('changes')}
         >
           Changes
-          {changes.length > 0 && (
+          {changes?.length > 0 && (
             <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
               {changes.length}
             </span>
@@ -330,7 +330,7 @@ export function ChangesPanel() {
               <div className="h-full flex items-center justify-center">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-            ) : changes.length === 0 ? (
+            ) : !changes?.length ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center text-muted-foreground">
                   <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />

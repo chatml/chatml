@@ -46,6 +46,7 @@ import {
   Circle,
   GripVertical,
   Archive,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession } from '@/lib/types';
@@ -54,9 +55,10 @@ interface WorkspaceSidebarProps {
   onAddWorkspace: () => void;
   onShowWorkspaceManagement?: () => void;
   onSessionSelected?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, onSessionSelected }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, onSessionSelected, onOpenSettings }: WorkspaceSidebarProps) {
   const {
     workspaces,
     sessions,
@@ -300,15 +302,23 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
       </ScrollArea>
 
       {/* Footer */}
-      <div className="p-2 border-t border-sidebar-border">
+      <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
+          className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
           onClick={onAddWorkspace}
         >
           <Plus className="w-4 h-4" />
           <span className="text-sm">Add repository</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+          onClick={onOpenSettings}
+        >
+          <Settings className="w-4 h-4" />
         </Button>
       </div>
 

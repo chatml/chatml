@@ -233,7 +233,11 @@ export const useAppStore = create<AppState>((set) => ({
   }),
 
   // Conversation actions
-  setConversations: (conversations) => set({ conversations }),
+  setConversations: (conversations) => set({
+    conversations,
+    // Also populate the messages array from all conversations
+    messages: conversations.flatMap((c) => c.messages),
+  }),
   addConversation: (conversation) => set((state) => ({
     conversations: [...state.conversations, conversation],
     // Also add the conversation's messages to the messages array
