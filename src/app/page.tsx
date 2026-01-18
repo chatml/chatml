@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { ActivityBar, type ActivityView } from '@/components/ActivityBar';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
+import { SearchPanel } from '@/components/SearchPanel';
+import { AgentsPanel } from '@/components/AgentsPanel';
+import { HistoryPanel } from '@/components/HistoryPanel';
 import { TopBar } from '@/components/TopBar';
 import { ConversationArea } from '@/components/ConversationArea';
 import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -16,6 +21,7 @@ import {
 
 export default function Home() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
+  const [activeView, setActiveView] = useState<ActivityView>('workspaces');
 
   const {
     workspaces,
@@ -136,8 +142,17 @@ export default function Home() {
         e.preventDefault();
         // TODO: Open command palette
       }
-      // Cmd+1-9 to switch sessions
-      if (e.metaKey && e.key >= '1' && e.key <= '9') {
+      // Cmd+1-4 to switch activity views
+      if (e.metaKey && !e.shiftKey && e.key >= '1' && e.key <= '4') {
+        e.preventDefault();
+        const views: ActivityView[] = ['workspaces', 'search', 'agents', 'history'];
+        const index = parseInt(e.key) - 1;
+        if (views[index]) {
+          setActiveView(views[index]);
+        }
+      }
+      // Cmd+Shift+1-9 to switch sessions
+      if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
         if (sessions[index]) {
@@ -157,18 +172,38 @@ export default function Home() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [sessions, conversations, selectSession, selectConversation]);
 
+  const renderSidebarContent = () => {
+    switch (activeView) {
+      case 'workspaces':
+        return <WorkspaceSidebar onAddWorkspace={() => setShowAddWorkspace(true)} />;
+      case 'search':
+        return <SearchPanel />;
+      case 'agents':
+        return <AgentsPanel />;
+      case 'history':
+        return <HistoryPanel />;
+      default:
+        return <WorkspaceSidebar onAddWorkspace={() => setShowAddWorkspace(true)} />;
+    }
+  };
+
   return (
-    <div className="h-screen overflow-hidden">
-      <ResizablePanelGroup direction="horizontal" className="h-full">
-        {/* Left Sidebar - Workspaces */}
-        <ResizablePanel
-          id="left-sidebar"
-          defaultSize="18%"
-          minSize="200px"
-          maxSize="400px"
-        >
-          <WorkspaceSidebar onAddWorkspace={() => setShowAddWorkspace(true)} />
-        </ResizablePanel>
+    <TooltipProvider>
+      <div className="h-screen overflow-hidden flex">
+        {/* Activity Bar */}
+        <ActivityBar activeView={activeView} onViewChange={setActiveView} />
+
+        {/* Main Layout */}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          {/* Left Sidebar - Dynamic based on activeView */}
+          <ResizablePanel
+            id="left-sidebar"
+            defaultSize="18%"
+            minSize="200px"
+            maxSize="400px"
+          >
+            {renderSidebarContent()}
+          </ResizablePanel>
 
         <ResizableHandle />
 
@@ -196,10 +231,11 @@ export default function Home() {
       </ResizablePanelGroup>
 
       {/* Add Workspace Modal */}
-      <AddWorkspaceModal
-        isOpen={showAddWorkspace}
-        onClose={() => setShowAddWorkspace(false)}
-      />
-    </div>
+        <AddWorkspaceModal
+          isOpen={showAddWorkspace}
+          onClose={() => setShowAddWorkspace(false)}
+        />
+      </div>
+    </TooltipProvider>
   );
 }

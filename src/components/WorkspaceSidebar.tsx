@@ -21,10 +21,8 @@ import {
   Plus,
   MoreHorizontal,
   GitBranch,
-  HelpCircle,
-  Settings,
   FolderPlus,
-  ChevronRight,
+  ChevronDown,
   FolderOpen,
   Terminal,
   Trash2,
@@ -110,7 +108,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
 
       {/* Workspace List */}
       <ScrollArea className="flex-1">
-        <div className="p-2">
+        <div className="py-2 px-1">
           {workspaces.length === 0 ? (
             <div className="px-3 py-12 text-center">
               <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
@@ -143,33 +141,26 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                   className="mb-1"
                 >
                   {/* Workspace Header */}
-                  <div
-                    className={cn(
-                      'group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer',
-                      'hover:bg-sidebar-accent transition-colors'
-                    )}
-                  >
-                    <CollapsibleTrigger asChild>
-                      <button className="p-0.5 hover:bg-sidebar-accent rounded">
-                        <ChevronRight
-                          className={cn(
-                            'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200',
-                            isExpanded && 'rotate-90'
-                          )}
-                        />
-                      </button>
-                    </CollapsibleTrigger>
+                  <CollapsibleTrigger asChild>
                     <div
-                      className="flex-1 flex items-center gap-2 min-w-0"
-                      onClick={() => selectWorkspace(workspace.id)}
+                      className={cn(
+                        'group flex items-center gap-1.5 px-1 py-1.5 rounded-md cursor-pointer',
+                        'hover:bg-sidebar-accent transition-colors'
+                      )}
                     >
                       <div className="w-6 h-6 rounded-md bg-primary/15 flex items-center justify-center text-[11px] font-semibold text-primary shrink-0">
                         {getInitial(workspace.name)}
                       </div>
-                      <span className="flex-1 text-sm font-medium truncate">
+                      <span className="text-sm font-medium truncate">
                         {workspace.name}
                       </span>
-                    </div>
+                      <ChevronDown
+                        className={cn(
+                          'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 shrink-0',
+                          !isExpanded && '-rotate-90'
+                        )}
+                      />
+                      <div className="flex-1" />
                     <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
                         variant="ghost"
@@ -214,11 +205,12 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  </div>
+                    </div>
+                  </CollapsibleTrigger>
 
                   {/* Sessions */}
                   <CollapsibleContent>
-                    <div className="ml-3 pl-3 border-l border-sidebar-border">
+                    <div className="ml-1">
                       {workspaceSessions.length === 0 ? (
                         <div className="py-2 px-2 text-xs text-muted-foreground/70">
                           No active sessions
@@ -270,7 +262,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                                 </div>
                               </div>
                               {sessionIndex < 9 && (
-                                <span className="kbd shrink-0">⌘{sessionIndex + 1}</span>
+                                <span className="kbd shrink-0">⇧⌘{sessionIndex + 1}</span>
                               )}
                             </div>
                           );
@@ -296,14 +288,6 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
           <Plus className="w-4 h-4" />
           <span className="text-sm">Add repository</span>
         </Button>
-        <div className="flex items-center gap-1 mt-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <HelpCircle className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
       </div>
     </div>
   );
