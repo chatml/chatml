@@ -50,6 +50,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Pin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession } from '@/lib/types';
@@ -496,7 +497,7 @@ function SortableWorkspaceItem({
                     onClick={() => onSelectSession(session.id)}
                   >
                     <div className="flex-1 min-w-0">
-                      {/* First line: icon + branch name + stats */}
+                      {/* First line: icon + branch name + stats/actions */}
                       <div className="flex items-center gap-1.5">
                         {hasPR ? (
                           <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
@@ -506,13 +507,38 @@ function SortableWorkspaceItem({
                         <span className="text-sm font-medium truncate flex-1">
                           {session.branch || session.name}
                         </span>
+                        {/* Stats - hidden on hover */}
                         {hasStats && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/50 shrink-0">
+                          <span className="text-[10px] shrink-0 group-hover:hidden">
                             <span className="text-green-500">+{session.stats!.additions}</span>
-                            {' '}
-                            <span className="text-red-500">-{session.stats!.deletions}</span>
+                            <span className="text-red-500 ml-1">-{session.stats!.deletions}</span>
                           </span>
                         )}
+                        {/* Actions - shown on hover */}
+                        <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 hover:bg-sidebar-accent"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // TODO: Pin session
+                            }}
+                          >
+                            <Pin className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 hover:bg-sidebar-accent"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onArchiveSession(session.id);
+                            }}
+                          >
+                            <Archive className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                       {/* Second line: session name · PR info · status */}
                       <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
@@ -538,34 +564,6 @@ function SortableWorkspaceItem({
                           </>
                         )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                      {sessionIndex < 9 && (
-                        <span className="text-[10px] text-muted-foreground/60 font-mono">⇧⌘{sessionIndex + 1}</span>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreHorizontal className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onArchiveSession(session.id);
-                            }}
-                          >
-                            <Archive className="h-4 w-4 mr-2" />
-                            Archive
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </div>
                   </div>
                 );
