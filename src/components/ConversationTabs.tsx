@@ -111,14 +111,12 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
                 {conv.type}
               </Badge>
             )}
-            {sessionConversations.length > 1 && (
-              <button
-                className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive ml-0.5"
-                onClick={(e) => handleRemoveConversation(conv.id, e)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
+            <button
+              className="hover:text-destructive ml-0.5"
+              onClick={(e) => handleRemoveConversation(conv.id, e)}
+            >
+              <X className="h-3 w-3" />
+            </button>
           </div>
         );
       })}

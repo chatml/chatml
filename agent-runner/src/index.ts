@@ -90,19 +90,24 @@ function extractNameSuggestion(text: string): string | null {
   return null;
 }
 
-// Buffer for line-level streaming
-let lineBuffer = "";
+// Buffer for block-level streaming (emit on paragraph breaks)
+let blockBuffer = "";
 
 function processTextChunk(text: string): void {
-  lineBuffer += text;
+  blockBuffer += text;
   accumulatedText += text;
 
-  // Emit complete lines
-  const lines = lineBuffer.split("\n");
-  lineBuffer = lines.pop() || ""; // Keep incomplete line in buffer
+  // Emit complete blocks (separated by double newlines)
+  const blocks = blockBuffer.split("\n\n");
 
-  for (const line of lines) {
-    emit({ type: "assistant_text", content: line + "\n" });
+  // Keep the last incomplete block in buffer
+  blockBuffer = blocks.pop() || "";
+
+  // Emit all complete blocks
+  for (const block of blocks) {
+    if (block.trim()) {
+      emit({ type: "assistant_text", content: block + "\n\n" });
+    }
   }
 
   // Try to suggest a name after accumulating some text
@@ -115,15 +120,60 @@ function processTextChunk(text: string): void {
   }
 }
 
-function flushLineBuffer(): void {
-  if (lineBuffer) {
-    emit({ type: "assistant_text", content: lineBuffer });
-    lineBuffer = "";
+function flushBlockBuffer(): void {
+  if (blockBuffer.trim()) {
+    emit({ type: "assistant_text", content: blockBuffer });
+    blockBuffer = "";
   }
 }
 
 // Track active tool uses
 const activeTools = new Map<string, { tool: string; startTime: number }>();
+
+// Track statistics for the run
+interface RunStats {
+  toolCalls: number;
+  toolsByType: Record<string, number>;
+  subAgents: number;
+  filesRead: number;
+  filesWritten: number;
+  bashCommands: number;
+  webSearches: number;
+  totalToolDurationMs: number;
+}
+
+const runStats: RunStats = {
+  toolCalls: 0,
+  toolsByType: {},
+  subAgents: 0,
+  filesRead: 0,
+  filesWritten: 0,
+  bashCommands: 0,
+  webSearches: 0,
+  totalToolDurationMs: 0,
+};
+
+function trackToolStart(toolName: string): void {
+  runStats.toolCalls++;
+  runStats.toolsByType[toolName] = (runStats.toolsByType[toolName] || 0) + 1;
+
+  // Track specific tool types
+  if (toolName === "Task") {
+    runStats.subAgents++;
+  } else if (toolName === "Read" || toolName === "Glob" || toolName === "Grep") {
+    runStats.filesRead++;
+  } else if (toolName === "Write" || toolName === "Edit") {
+    runStats.filesWritten++;
+  } else if (toolName === "Bash") {
+    runStats.bashCommands++;
+  } else if (toolName === "WebSearch" || toolName === "WebFetch") {
+    runStats.webSearches++;
+  }
+}
+
+function trackToolEnd(durationMs: number): void {
+  runStats.totalToolDurationMs += durationMs;
+}
 
 async function main(): Promise<void> {
   emit({ type: "ready", conversationId, cwd });
@@ -145,7 +195,7 @@ async function main(): Promise<void> {
       handleMessage(message);
     }
 
-    flushLineBuffer();
+    flushBlockBuffer();
     emit({ type: "complete" });
   } catch (err) {
     emit({ type: "error", message: `${err}` });
@@ -156,19 +206,26 @@ async function main(): Promise<void> {
 function handleMessage(message: SDKMessage): void {
   switch (message.type) {
     case "assistant": {
-      // Full assistant message - extract text content
+      // Full assistant message - extract content blocks
+      // NOTE: We skip text blocks here because text is already handled
+      // via stream_event -> content_block_delta during streaming.
+      // Processing it here would cause duplicate content.
       const content = message.message.content;
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (block.type === "text") {
-            // For full messages, process any remaining text
-            processTextChunk(block.text);
+          if (block.type === "thinking") {
+            // Thinking block - emit thinking event
+            emit({
+              type: "thinking",
+              content: (block as { type: "thinking"; thinking: string }).thinking,
+            });
           } else if (block.type === "tool_use") {
             // Tool use started
             activeTools.set(block.id, {
               tool: block.name,
               startTime: Date.now(),
             });
+            trackToolStart(block.name);
             emit({
               type: "tool_start",
               id: block.id,
@@ -185,9 +242,21 @@ function handleMessage(message: SDKMessage): void {
       // Partial streaming message
       const event = message.event;
       if (event.type === "content_block_delta") {
-        const delta = event.delta;
+        const delta = event.delta as Record<string, unknown>;
         if ("text" in delta && delta.text) {
-          processTextChunk(delta.text);
+          processTextChunk(delta.text as string);
+        } else if ("thinking" in delta && delta.thinking) {
+          // Streaming thinking content
+          emit({
+            type: "thinking_delta",
+            content: delta.thinking as string,
+          });
+        }
+      } else if (event.type === "content_block_start") {
+        // Track when a thinking block starts
+        const contentBlock = (event as { content_block?: { type: string } }).content_block;
+        if (contentBlock?.type === "thinking") {
+          emit({ type: "thinking_start" });
         }
       }
       break;
@@ -218,6 +287,7 @@ function handleMessage(message: SDKMessage): void {
                 }
               }
 
+              trackToolEnd(duration);
               emit({
                 type: "tool_end",
                 id: block.tool_use_id,
@@ -236,7 +306,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "result": {
-      flushLineBuffer();
+      flushBlockBuffer();
       if (message.subtype === "success") {
         emit({
           type: "result",
@@ -244,6 +314,16 @@ function handleMessage(message: SDKMessage): void {
           summary: message.result,
           cost: message.total_cost_usd,
           turns: message.num_turns,
+          stats: {
+            toolCalls: runStats.toolCalls,
+            toolsByType: runStats.toolsByType,
+            subAgents: runStats.subAgents,
+            filesRead: runStats.filesRead,
+            filesWritten: runStats.filesWritten,
+            bashCommands: runStats.bashCommands,
+            webSearches: runStats.webSearches,
+            totalToolDurationMs: runStats.totalToolDurationMs,
+          },
         });
       } else {
         emit({
@@ -251,6 +331,16 @@ function handleMessage(message: SDKMessage): void {
           success: false,
           subtype: message.subtype,
           errors: "errors" in message ? message.errors : [],
+          stats: {
+            toolCalls: runStats.toolCalls,
+            toolsByType: runStats.toolsByType,
+            subAgents: runStats.subAgents,
+            filesRead: runStats.filesRead,
+            filesWritten: runStats.filesWritten,
+            bashCommands: runStats.bashCommands,
+            webSearches: runStats.webSearches,
+            totalToolDurationMs: runStats.totalToolDurationMs,
+          },
         });
       }
       break;

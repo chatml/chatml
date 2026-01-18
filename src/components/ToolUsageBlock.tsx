@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   XCircle,
   FolderOpen,
+  Circle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -72,32 +73,33 @@ export function ToolUsageBlock({
   };
 
   const getToolLabel = () => {
+    // Shorter, more concise labels
     switch (tool) {
       case 'Read':
       case 'read_file':
-        return 'Reading file';
+        return 'Read';
       case 'Write':
       case 'write_file':
-        return 'Writing file';
+        return 'Write';
       case 'Edit':
       case 'edit_file':
-        return 'Editing file';
+        return 'Edit';
       case 'Bash':
       case 'bash':
       case 'execute_command':
-        return 'Running command';
+        return 'Run';
       case 'Grep':
-        return 'Searching content';
+        return 'Search';
       case 'Glob':
-        return 'Finding files';
+        return 'Find';
       case 'WebFetch':
-        return 'Fetching URL';
+        return 'Fetch';
       case 'WebSearch':
-        return 'Searching web';
+        return 'Search web';
       case 'list_dir':
-        return 'Listing directory';
+        return 'List';
       default:
-        return `Using ${tool}`;
+        return tool;
     }
   };
 
@@ -118,8 +120,8 @@ export function ToolUsageBlock({
 
     if (typeof path === 'string') {
       // Truncate long paths/commands
-      if (path.length > 60) {
-        return path.slice(0, 57) + '...';
+      if (path.length > 50) {
+        return path.slice(0, 47) + '...';
       }
       return path;
     }
@@ -135,34 +137,38 @@ export function ToolUsageBlock({
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger
         className={cn(
-          'flex items-center gap-2 text-xs w-full rounded px-2 py-1.5 transition-colors',
+          'flex items-center gap-1.5 text-[11px] w-full rounded px-1.5 py-1 transition-colors',
           'hover:bg-muted/50',
-          isActive && 'bg-primary/5 border border-primary/20'
+          isActive && 'bg-primary/5'
         )}
       >
         {/* Status indicator */}
         {isActive ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+          <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
         ) : success === true ? (
-          <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+          <Circle className="w-2 h-2 fill-green-500 text-green-500 shrink-0" />
         ) : success === false ? (
-          <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+          <Circle className="w-2 h-2 fill-red-500 text-red-500 shrink-0" />
         ) : (
-          <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50 shrink-0" />
         )}
 
-        {/* Tool info */}
+        {/* Tool icon and label */}
+        <Icon className="w-3 h-3 text-muted-foreground shrink-0" />
         <span className="font-medium text-foreground">{getToolLabel()}</span>
 
         {target && (
-          <span className="font-mono text-muted-foreground truncate flex-1 text-left">
+          <code className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[250px]">
             {target}
-          </span>
+          </code>
         )}
+
+        {/* Spacer */}
+        <span className="flex-1" />
 
         {/* Duration */}
         {duration && !isActive && (
-          <span className="text-muted-foreground/70 shrink-0">
+          <span className="text-[10px] text-muted-foreground/70 shrink-0">
             {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
           </span>
         )}
@@ -171,9 +177,9 @@ export function ToolUsageBlock({
         {hasDetails && (
           <span className="shrink-0 text-muted-foreground">
             {isOpen ? (
-              <ChevronDown className="w-3 h-3" />
+              <ChevronDown className="w-2.5 h-2.5" />
             ) : (
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="w-2.5 h-2.5" />
             )}
           </span>
         )}
@@ -181,11 +187,11 @@ export function ToolUsageBlock({
 
       {hasDetails && (
         <CollapsibleContent>
-          <div className="mt-1 ml-5 rounded border bg-muted/30 p-2 text-xs">
+          <div className="mt-0.5 ml-4 rounded border bg-muted/30 p-1.5 text-[10px]">
             {summary && (
-              <div className="mb-2 text-muted-foreground">{summary}</div>
+              <div className="mb-1 text-muted-foreground">{summary}</div>
             )}
-            <pre className="font-mono text-[10px] text-muted-foreground overflow-x-auto">
+            <pre className="font-mono text-[9px] text-muted-foreground overflow-x-auto">
               {JSON.stringify(params, null, 2)}
             </pre>
           </div>
@@ -199,21 +205,34 @@ interface ActiveToolsDisplayProps {
   conversationId: string;
 }
 
+interface ActiveToolType {
+  id: string;
+  tool: string;
+  params?: Record<string, unknown>;
+  startTime: number;
+  endTime?: number;
+  success?: boolean;
+  summary?: string;
+}
+
 export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) {
   const { activeTools } = require('@/stores/appStore').useAppStore();
-  const tools = activeTools[conversationId] || [];
+  const tools: ActiveToolType[] = activeTools[conversationId] || [];
 
   if (tools.length === 0) return null;
 
   return (
-    <div className="space-y-1 my-2">
-      {tools.map((tool: { id: string; tool: string; params?: Record<string, unknown>; startTime: number }) => (
+    <div className="space-y-0.5">
+      {tools.map((tool) => (
         <ToolUsageBlock
           key={tool.id}
           id={tool.id}
           tool={tool.tool}
           params={tool.params}
-          isActive={true}
+          isActive={!tool.endTime}
+          success={tool.success}
+          summary={tool.summary}
+          duration={tool.endTime ? tool.endTime - tool.startTime : undefined}
         />
       ))}
     </div>

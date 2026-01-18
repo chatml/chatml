@@ -46,6 +46,7 @@ import {
   Copy,
   Circle,
   GripVertical,
+  Archive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession } from '@/lib/types';
@@ -66,6 +67,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
     addConversation,
     selectConversation,
     reorderWorkspaces,
+    archiveSession,
   } = useAppStore();
 
   const sensors = useSensors(
@@ -104,7 +106,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
   };
 
   const getWorkspaceSessions = (workspaceId: string) => {
-    return sessions.filter((s) => s.workspaceId === workspaceId);
+    return sessions.filter((s) => s.workspaceId === workspaceId && !s.archived);
   };
 
   const getInitial = (name: string) => {
@@ -251,6 +253,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                       selectWorkspace(workspace.id);
                       selectSession(sessionId);
                     }}
+                    onArchiveSession={archiveSession}
                     getStatusColor={getStatusColor}
                     formatTimeAgo={formatTimeAgo}
                     getInitial={getInitial}
@@ -287,6 +290,7 @@ interface SortableWorkspaceItemProps {
   onToggle: () => void;
   onCreateSession: () => void;
   onSelectSession: (sessionId: string) => void;
+  onArchiveSession: (sessionId: string) => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -300,6 +304,7 @@ function SortableWorkspaceItem({
   onToggle,
   onCreateSession,
   onSelectSession,
+  onArchiveSession,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -449,9 +454,34 @@ function SortableWorkspaceItem({
                         </span>
                       </div>
                     </div>
-                    {sessionIndex < 9 && (
-                      <span className="kbd shrink-0">⇧⌘{sessionIndex + 1}</span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {sessionIndex < 9 && (
+                        <span className="kbd">⇧⌘{sessionIndex + 1}</span>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onArchiveSession(session.id);
+                            }}
+                          >
+                            <Archive className="h-4 w-4 mr-2" />
+                            Archive
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 );
               })

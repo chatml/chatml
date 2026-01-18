@@ -16,6 +16,7 @@ export interface WorktreeSession {
   worktreePath: string;
   task?: string; // optional task description
   status: 'active' | 'idle' | 'done' | 'error';
+  archived?: boolean; // whether the session is archived
   stats?: {
     additions: number;
     deletions: number;
@@ -51,6 +52,26 @@ export interface ToolAction {
   success: boolean;
 }
 
+// Run summary displayed at end of agent turn
+export interface RunSummary {
+  success: boolean;
+  cost?: number;
+  turns?: number;
+  durationMs?: number;
+  stats?: RunStats;
+  errors?: unknown[];
+}
+
+// Tool usage record for message history
+export interface ToolUsage {
+  id: string;
+  tool: string;
+  params?: Record<string, unknown>;
+  success?: boolean;
+  summary?: string;
+  durationMs?: number;
+}
+
 // Message = Individual message in a conversation
 export interface Message {
   id: string;
@@ -60,8 +81,23 @@ export interface Message {
   // For assistant messages, can include structured content
   verificationResults?: VerificationResult[];
   fileChanges?: FileChange[];
+  toolUsage?: ToolUsage[];
   timestamp: string;
   durationMs?: number;
+  // Run summary at end of agent turn
+  runSummary?: RunSummary;
+}
+
+// Run statistics from agent
+export interface RunStats {
+  toolCalls: number;
+  toolsByType: Record<string, number>;
+  subAgents: number;
+  filesRead: number;
+  filesWritten: number;
+  bashCommands: number;
+  webSearches: number;
+  totalToolDurationMs: number;
 }
 
 // Agent event from WebSocket
@@ -77,6 +113,12 @@ export interface AgentEvent {
   duration?: number;
   name?: string;
   message?: string;
+  // Result event fields
+  cost?: number;
+  turns?: number;
+  stats?: RunStats;
+  subtype?: string;
+  errors?: unknown[];
 }
 
 export interface VerificationResult {
@@ -112,7 +154,7 @@ export interface Agent {
 }
 
 export interface WSEvent {
-  type: string; // 'output' | 'status' | 'assistant_text' | 'tool_start' | 'tool_end' | 'name_suggestion' | 'conversation_status' | etc.
+  type: string; // 'output' | 'status' | 'assistant_text' | 'tool_start' | 'tool_end' | 'name_suggestion' | 'conversation_status' | 'thinking' | 'thinking_delta' | 'thinking_start' | etc.
   agentId?: string;
   sessionId?: string;
   conversationId?: string;

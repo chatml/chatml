@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -37,6 +37,8 @@ import { CodeViewer } from '@/components/CodeViewer';
 import { FileTabIcon } from '@/components/FileTabIcon';
 import { ConversationTabs } from '@/components/ConversationTabs';
 import { StreamingMessage } from '@/components/StreamingMessage';
+import { RunSummaryBlock } from '@/components/RunSummaryBlock';
+import { ToolUsageHistory } from '@/components/ToolUsageHistory';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 
 interface ConversationAreaProps {
@@ -57,6 +59,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectedFileTabId,
     selectFileTab,
     closeFileTab,
+    streamingState,
   } = useAppStore();
 
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
@@ -66,6 +69,49 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const conversationMessages = messages.filter(
     (m) => m.conversationId === selectedConversationId
   );
+
+  // Auto-scroll management
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isUserScrolled, setIsUserScrolled] = useState(false);
+
+  // Check if user has scrolled away from bottom
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    setIsUserScrolled(!isAtBottom);
+  }, []);
+
+  // Auto-scroll to bottom when new content arrives
+  const scrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container && !isUserScrolled) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [isUserScrolled]);
+
+  // Scroll when messages change or streaming updates
+  const streamingText = selectedConversationId
+    ? streamingState[selectedConversationId]?.text
+    : null;
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [conversationMessages.length, streamingText, scrollToBottom]);
+
+  // Reset scroll state when conversation changes
+  useEffect(() => {
+    setIsUserScrolled(false);
+    // Scroll to bottom immediately when switching conversations
+    setTimeout(() => {
+      const container = scrollContainerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 0);
+  }, [selectedConversationId]);
 
   // Get current file tab
   const currentFileTab = fileTabs.find((t) => t.id === selectedFileTabId);
@@ -181,7 +227,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       ) : (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-auto min-h-0">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-auto min-h-0"
+          >
             <div className="p-4 space-y-1">
               {conversationMessages.length === 0 && !selectedConversationId ? (
                 <EmptyState sessionName={currentSession?.name} />
@@ -258,26 +308,22 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
 
   if (message.role === 'user') {
     return (
-      <div className={cn('py-3', !isFirst && 'border-t border-border/50')}>
-        <div className="flex items-start gap-3">
-          <div className="w-5 h-5 rounded bg-muted flex items-center justify-center shrink-0 mt-0.5">
-            <span className="text-[10px] font-semibold text-muted-foreground">U</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm leading-relaxed">{message.content}</p>
-          </div>
+      <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
+        <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2">
+          <p className="text-[13px] leading-relaxed">{message.content}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn('py-3', !isFirst && 'border-t border-border/50')}>
-      <div className="flex items-start gap-3">
-        <div className="w-5 h-5 rounded bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
-          <Zap className="w-3 h-3 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0 space-y-3">
+    <div className={cn('py-2', !isFirst && 'border-t border-border/50')}>
+      <div className="space-y-1.5">
+          {/* Tool Usage History */}
+          {message.toolUsage && message.toolUsage.length > 0 && (
+            <ToolUsageHistory tools={message.toolUsage} />
+          )}
+
           {/* Verification Results */}
           {message.verificationResults && message.verificationResults.length > 0 && (
             <VerificationBlock results={message.verificationResults} />
@@ -286,7 +332,7 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
           {/* Main Content */}
           {message.content && (
             <div className="group relative">
-              <div className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:border prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-p:leading-relaxed prose-headings:font-semibold prose-headings:tracking-tight">
+              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-p:my-1 prose-pre:my-2 prose-pre:bg-muted prose-pre:border prose-pre:text-xs prose-code:text-[11px] prose-code:before:content-none prose-code:after:content-none prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                   {message.content}
                 </ReactMarkdown>
@@ -294,13 +340,13 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-0 right-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={copyContent}
               >
                 {copied ? (
-                  <Check className="h-3 w-3 text-green-500" />
+                  <Check className="h-2.5 w-2.5 text-green-500" />
                 ) : (
-                  <Copy className="h-3 w-3" />
+                  <Copy className="h-2.5 w-2.5" />
                 )}
               </Button>
             </div>
@@ -311,14 +357,10 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
             <FileChangesBlock changes={message.fileChanges} />
           )}
 
-          {/* Metadata */}
-          {message.durationMs && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Clock className="w-3 h-3" />
-              <span>{formatDuration(message.durationMs)}</span>
-            </div>
+          {/* Run Summary */}
+          {message.runSummary && (
+            <RunSummaryBlock summary={message.runSummary} />
           )}
-        </div>
       </div>
     </div>
   );

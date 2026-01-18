@@ -174,7 +174,25 @@ export function ChatInput() {
 
   return (
     <div className="p-4">
-      <div className="rounded-lg border bg-muted/50">
+      <div className={cn(
+        'relative',
+        isStreaming && 'streaming-border'
+      )}>
+        {isStreaming && (
+          <svg className="streaming-border-svg">
+            <rect
+              x="1"
+              y="1"
+              rx="8"
+              ry="8"
+              style={{ width: 'calc(100% - 2px)', height: 'calc(100% - 2px)' }}
+            />
+          </svg>
+        )}
+      <div className={cn(
+        'rounded-lg border bg-muted/50',
+        isStreaming && 'border-transparent'
+      )}>
         {/* Text Input */}
         <Textarea
           ref={textareaRef}
@@ -252,6 +270,7 @@ export function ChatInput() {
             </Button>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

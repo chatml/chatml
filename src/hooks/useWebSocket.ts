@@ -18,8 +18,12 @@ export function useWebSocket() {
     setStreaming,
     setStreamingError,
     clearStreamingText,
+    appendThinkingText,
+    setThinking,
+    clearThinking,
     addActiveTool,
     completeActiveTool,
+    clearActiveTools,
     addMessage,
   } = useAppStore();
 
@@ -42,9 +46,29 @@ export function useWebSocket() {
 
     switch (data.type) {
       case 'assistant_text':
-        // Append streaming text
+        // Append streaming text - clear thinking when regular text starts
         if (event?.content) {
+          clearThinking(conversationId);
           appendStreamingText(conversationId, event.content);
+        }
+        break;
+
+      case 'thinking_start':
+        // Start a new thinking block
+        setThinking(conversationId, true);
+        break;
+
+      case 'thinking_delta':
+        // Append thinking text
+        if (event?.content) {
+          appendThinkingText(conversationId, event.content);
+        }
+        break;
+
+      case 'thinking':
+        // Full thinking content (non-streaming)
+        if (event?.content) {
+          appendThinkingText(conversationId, event.content);
         }
         break;
 
@@ -61,9 +85,14 @@ export function useWebSocket() {
         break;
 
       case 'tool_end':
-        // Complete active tool
+        // Complete active tool with success/summary info
         if (event?.id) {
-          completeActiveTool(conversationId, event.id);
+          completeActiveTool(
+            conversationId,
+            event.id,
+            event.success as boolean | undefined,
+            event.summary as string | undefined
+          );
         }
         break;
 
@@ -75,15 +104,23 @@ export function useWebSocket() {
         break;
 
       case 'result':
-        // Result event contains metadata (cost, turns) but we wait for 'complete' to add message
-        // This prevents duplicate messages since both events are sent
-        break;
-
-      case 'complete':
-        // Finalize streaming - add message and clear streaming state
-        // Only handle on 'complete' to avoid duplicates (both 'result' and 'complete' are sent)
+        // Result event signals the end of a turn - finalize streaming
         const state = useAppStore.getState();
         const streamingText = state.streamingState[conversationId]?.text;
+        const startTime = state.streamingState[conversationId]?.startTime;
+        const durationMs = startTime ? Date.now() - startTime : undefined;
+
+        // Capture tool usage before clearing
+        const tools = state.activeTools[conversationId] || [];
+        const toolUsage = tools.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          params: t.params,
+          success: t.success,
+          summary: t.summary,
+          durationMs: t.endTime && t.startTime ? t.endTime - t.startTime : undefined,
+        }));
+
         if (streamingText) {
           addMessage({
             id: `msg-${Date.now()}`,
@@ -91,10 +128,31 @@ export function useWebSocket() {
             role: 'assistant',
             content: streamingText,
             timestamp: new Date().toISOString(),
+            durationMs,
+            toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
+            runSummary: {
+              success: event.success !== false,
+              cost: event.cost,
+              turns: event.turns,
+              durationMs,
+              stats: event.stats,
+              errors: event.errors,
+            },
           });
         }
         clearStreamingText(conversationId);
         setStreaming(conversationId, false);
+        clearThinking(conversationId);
+        clearActiveTools(conversationId);
+        break;
+
+      case 'complete':
+        // Complete event signals the entire conversation ended (stdin closed)
+        // Clear any remaining state
+        clearStreamingText(conversationId);
+        setStreaming(conversationId, false);
+        clearThinking(conversationId);
+        clearActiveTools(conversationId);
         break;
 
       case 'conversation_status':
@@ -125,6 +183,10 @@ export function useWebSocket() {
     clearStreamingText,
     setStreaming,
     setStreamingError,
+    appendThinkingText,
+    setThinking,
+    clearThinking,
+    clearActiveTools,
   ]);
 
   const connect = useCallback(() => {

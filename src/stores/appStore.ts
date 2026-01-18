@@ -19,6 +19,9 @@ interface StreamingState {
   text: string;
   isStreaming: boolean;
   error: string | null;
+  thinking: string | null; // Current thinking content being streamed
+  isThinking: boolean;
+  startTime?: number; // When streaming started (for elapsed time)
 }
 
 interface ActiveTool {
@@ -26,6 +29,9 @@ interface ActiveTool {
   tool: string;
   params?: Record<string, unknown>;
   startTime: number;
+  endTime?: number;
+  success?: boolean;
+  summary?: string;
 }
 
 interface AppState {
@@ -64,6 +70,7 @@ interface AppState {
   updateSession: (id: string, updates: Partial<WorktreeSession>) => void;
   removeSession: (id: string) => void;
   selectSession: (id: string | null) => void;
+  archiveSession: (id: string) => void;
 
   // Conversation actions
   setConversations: (conversations: Conversation[]) => void;
@@ -98,8 +105,12 @@ interface AppState {
   setStreaming: (conversationId: string, isStreaming: boolean) => void;
   setStreamingError: (conversationId: string, error: string | null) => void;
   clearStreamingText: (conversationId: string) => void;
+  appendThinkingText: (conversationId: string, text: string) => void;
+  setThinking: (conversationId: string, isThinking: boolean) => void;
+  clearThinking: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool) => void;
-  completeActiveTool: (conversationId: string, toolId: string) => void;
+  completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string) => void;
+  clearActiveTools: (conversationId: string) => void;
 
   // Legacy support
   repos: Repo[];
@@ -167,7 +178,53 @@ export const useAppStore = create<AppState>((set) => ({
     sessions: state.sessions.filter((s) => s.id !== id),
     selectedSessionId: state.selectedSessionId === id ? null : state.selectedSessionId,
   })),
-  selectSession: (id) => set({ selectedSessionId: id }),
+  selectSession: (id) => set((state) => {
+    // When switching sessions, reset conversation and file tabs
+    // Find the first conversation for this session to auto-select
+    const sessionConversations = state.conversations.filter(c => c.sessionId === id);
+    const firstConversation = sessionConversations[0];
+
+    return {
+      selectedSessionId: id,
+      selectedConversationId: firstConversation?.id || null,
+      selectedFileTabId: null,
+      fileTabs: [], // Close all file tabs when switching sessions
+    };
+  }),
+  archiveSession: (id) => set((state) => {
+    // Archive the session
+    const updatedSessions = state.sessions.map((s) =>
+      s.id === id ? { ...s, archived: true } : s
+    );
+
+    // If this was the selected session, select another non-archived session
+    let newSelectedSessionId = state.selectedSessionId;
+    let newSelectedConversationId = state.selectedConversationId;
+
+    if (state.selectedSessionId === id) {
+      const session = state.sessions.find((s) => s.id === id);
+      const otherSessions = updatedSessions.filter(
+        (s) => s.workspaceId === session?.workspaceId && !s.archived && s.id !== id
+      );
+      newSelectedSessionId = otherSessions[0]?.id || null;
+
+      // Find first conversation for new session
+      if (newSelectedSessionId) {
+        const sessionConvs = state.conversations.filter(c => c.sessionId === newSelectedSessionId);
+        newSelectedConversationId = sessionConvs[0]?.id || null;
+      } else {
+        newSelectedConversationId = null;
+      }
+    }
+
+    return {
+      sessions: updatedSessions,
+      selectedSessionId: newSelectedSessionId,
+      selectedConversationId: newSelectedConversationId,
+      selectedFileTabId: null,
+      fileTabs: [],
+    };
+  }),
 
   // Conversation actions
   setConversations: (conversations) => set({ conversations }),
@@ -248,9 +305,12 @@ export const useAppStore = create<AppState>((set) => ({
     streamingState: {
       ...state.streamingState,
       [conversationId]: {
+        ...state.streamingState[conversationId],
         text: (state.streamingState[conversationId]?.text || '') + text,
         isStreaming: true,
         error: null,
+        thinking: state.streamingState[conversationId]?.thinking || null,
+        isThinking: false, // Stop thinking when text starts
       },
     },
   })),
@@ -262,6 +322,12 @@ export const useAppStore = create<AppState>((set) => ({
         text: state.streamingState[conversationId]?.text || '',
         isStreaming,
         error: state.streamingState[conversationId]?.error || null,
+        thinking: state.streamingState[conversationId]?.thinking || null,
+        isThinking: state.streamingState[conversationId]?.isThinking || false,
+        // Set startTime when streaming starts, clear when it stops
+        startTime: isStreaming
+          ? (state.streamingState[conversationId]?.startTime || Date.now())
+          : undefined,
       },
     },
   })),
@@ -272,13 +338,54 @@ export const useAppStore = create<AppState>((set) => ({
         text: state.streamingState[conversationId]?.text || '',
         isStreaming: false,
         error,
+        thinking: null,
+        isThinking: false,
       },
     },
   })),
   clearStreamingText: (conversationId) => set((state) => ({
     streamingState: {
       ...state.streamingState,
-      [conversationId]: { text: '', isStreaming: false, error: null },
+      [conversationId]: { text: '', isStreaming: false, error: null, thinking: null, isThinking: false },
+    },
+  })),
+  appendThinkingText: (conversationId, text) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming: true,
+        error: null,
+        thinking: (state.streamingState[conversationId]?.thinking || '') + text,
+        isThinking: true,
+      },
+    },
+  })),
+  setThinking: (conversationId, isThinking) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming: state.streamingState[conversationId]?.isStreaming || false,
+        error: state.streamingState[conversationId]?.error || null,
+        thinking: state.streamingState[conversationId]?.thinking || null,
+        isThinking,
+      },
+    },
+  })),
+  clearThinking: (conversationId) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming: state.streamingState[conversationId]?.isStreaming || false,
+        error: state.streamingState[conversationId]?.error || null,
+        thinking: null,
+        isThinking: false,
+      },
     },
   })),
   addActiveTool: (conversationId, tool) => set((state) => ({
@@ -287,12 +394,20 @@ export const useAppStore = create<AppState>((set) => ({
       [conversationId]: [...(state.activeTools[conversationId] || []), tool],
     },
   })),
-  completeActiveTool: (conversationId, toolId) => set((state) => ({
+  completeActiveTool: (conversationId, toolId, success, summary) => set((state) => ({
     activeTools: {
       ...state.activeTools,
-      [conversationId]: (state.activeTools[conversationId] || []).filter(
-        (t) => t.id !== toolId
+      [conversationId]: (state.activeTools[conversationId] || []).map((t) =>
+        t.id === toolId
+          ? { ...t, endTime: Date.now(), success, summary }
+          : t
       ),
+    },
+  })),
+  clearActiveTools: (conversationId) => set((state) => ({
+    activeTools: {
+      ...state.activeTools,
+      [conversationId]: [],
     },
   })),
 

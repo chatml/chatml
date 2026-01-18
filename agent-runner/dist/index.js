@@ -67,16 +67,20 @@ function extractNameSuggestion(text) {
     }
     return null;
 }
-// Buffer for line-level streaming
-let lineBuffer = "";
+// Buffer for block-level streaming (emit on paragraph breaks)
+let blockBuffer = "";
 function processTextChunk(text) {
-    lineBuffer += text;
+    blockBuffer += text;
     accumulatedText += text;
-    // Emit complete lines
-    const lines = lineBuffer.split("\n");
-    lineBuffer = lines.pop() || ""; // Keep incomplete line in buffer
-    for (const line of lines) {
-        emit({ type: "assistant_text", content: line + "\n" });
+    // Emit complete blocks (separated by double newlines)
+    const blocks = blockBuffer.split("\n\n");
+    // Keep the last incomplete block in buffer
+    blockBuffer = blocks.pop() || "";
+    // Emit all complete blocks
+    for (const block of blocks) {
+        if (block.trim()) {
+            emit({ type: "assistant_text", content: block + "\n\n" });
+        }
     }
     // Try to suggest a name after accumulating some text
     if (!hasEmittedNameSuggestion && accumulatedText.length > 50) {
@@ -87,14 +91,47 @@ function processTextChunk(text) {
         }
     }
 }
-function flushLineBuffer() {
-    if (lineBuffer) {
-        emit({ type: "assistant_text", content: lineBuffer });
-        lineBuffer = "";
+function flushBlockBuffer() {
+    if (blockBuffer.trim()) {
+        emit({ type: "assistant_text", content: blockBuffer });
+        blockBuffer = "";
     }
 }
 // Track active tool uses
 const activeTools = new Map();
+const runStats = {
+    toolCalls: 0,
+    toolsByType: {},
+    subAgents: 0,
+    filesRead: 0,
+    filesWritten: 0,
+    bashCommands: 0,
+    webSearches: 0,
+    totalToolDurationMs: 0,
+};
+function trackToolStart(toolName) {
+    runStats.toolCalls++;
+    runStats.toolsByType[toolName] = (runStats.toolsByType[toolName] || 0) + 1;
+    // Track specific tool types
+    if (toolName === "Task") {
+        runStats.subAgents++;
+    }
+    else if (toolName === "Read" || toolName === "Glob" || toolName === "Grep") {
+        runStats.filesRead++;
+    }
+    else if (toolName === "Write" || toolName === "Edit") {
+        runStats.filesWritten++;
+    }
+    else if (toolName === "Bash") {
+        runStats.bashCommands++;
+    }
+    else if (toolName === "WebSearch" || toolName === "WebFetch") {
+        runStats.webSearches++;
+    }
+}
+function trackToolEnd(durationMs) {
+    runStats.totalToolDurationMs += durationMs;
+}
 async function main() {
     emit({ type: "ready", conversationId, cwd });
     try {
@@ -112,7 +149,7 @@ async function main() {
         for await (const message of result) {
             handleMessage(message);
         }
-        flushLineBuffer();
+        flushBlockBuffer();
         emit({ type: "complete" });
     }
     catch (err) {
@@ -123,13 +160,19 @@ async function main() {
 function handleMessage(message) {
     switch (message.type) {
         case "assistant": {
-            // Full assistant message - extract text content
+            // Full assistant message - extract content blocks
+            // NOTE: We skip text blocks here because text is already handled
+            // via stream_event -> content_block_delta during streaming.
+            // Processing it here would cause duplicate content.
             const content = message.message.content;
             if (Array.isArray(content)) {
                 for (const block of content) {
-                    if (block.type === "text") {
-                        // For full messages, process any remaining text
-                        processTextChunk(block.text);
+                    if (block.type === "thinking") {
+                        // Thinking block - emit thinking event
+                        emit({
+                            type: "thinking",
+                            content: block.thinking,
+                        });
                     }
                     else if (block.type === "tool_use") {
                         // Tool use started
@@ -137,6 +180,7 @@ function handleMessage(message) {
                             tool: block.name,
                             startTime: Date.now(),
                         });
+                        trackToolStart(block.name);
                         emit({
                             type: "tool_start",
                             id: block.id,
@@ -155,6 +199,20 @@ function handleMessage(message) {
                 const delta = event.delta;
                 if ("text" in delta && delta.text) {
                     processTextChunk(delta.text);
+                }
+                else if ("thinking" in delta && delta.thinking) {
+                    // Streaming thinking content
+                    emit({
+                        type: "thinking_delta",
+                        content: delta.thinking,
+                    });
+                }
+            }
+            else if (event.type === "content_block_start") {
+                // Track when a thinking block starts
+                const contentBlock = event.content_block;
+                if (contentBlock?.type === "thinking") {
+                    emit({ type: "thinking_start" });
                 }
             }
             break;
@@ -181,6 +239,7 @@ function handleMessage(message) {
                                     summary = textContent.text.slice(0, 100);
                                 }
                             }
+                            trackToolEnd(duration);
                             emit({
                                 type: "tool_end",
                                 id: block.tool_use_id,
@@ -197,7 +256,7 @@ function handleMessage(message) {
             break;
         }
         case "result": {
-            flushLineBuffer();
+            flushBlockBuffer();
             if (message.subtype === "success") {
                 emit({
                     type: "result",
@@ -205,6 +264,16 @@ function handleMessage(message) {
                     summary: message.result,
                     cost: message.total_cost_usd,
                     turns: message.num_turns,
+                    stats: {
+                        toolCalls: runStats.toolCalls,
+                        toolsByType: runStats.toolsByType,
+                        subAgents: runStats.subAgents,
+                        filesRead: runStats.filesRead,
+                        filesWritten: runStats.filesWritten,
+                        bashCommands: runStats.bashCommands,
+                        webSearches: runStats.webSearches,
+                        totalToolDurationMs: runStats.totalToolDurationMs,
+                    },
                 });
             }
             else {
@@ -213,6 +282,16 @@ function handleMessage(message) {
                     success: false,
                     subtype: message.subtype,
                     errors: "errors" in message ? message.errors : [],
+                    stats: {
+                        toolCalls: runStats.toolCalls,
+                        toolsByType: runStats.toolsByType,
+                        subAgents: runStats.subAgents,
+                        filesRead: runStats.filesRead,
+                        filesWritten: runStats.filesWritten,
+                        bashCommands: runStats.bashCommands,
+                        webSearches: runStats.webSearches,
+                        totalToolDurationMs: runStats.totalToolDurationMs,
+                    },
                 });
             }
             break;
