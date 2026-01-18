@@ -33,13 +33,23 @@ export async function listRepos(): Promise<RepoDTO[]> {
 }
 
 export async function addRepo(path: string): Promise<RepoDTO> {
-  const res = await fetch(`${API_BASE}/api/repos`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/repos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    return res.json();
+  } catch (err) {
+    if (err instanceof TypeError && err.message === 'Load failed') {
+      throw new Error('Cannot connect to backend. Is the server running?');
+    }
+    throw err;
+  }
 }
 
 export async function deleteRepo(id: string): Promise<void> {
