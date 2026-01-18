@@ -45,3 +45,4 @@ backend/chatml-backend
 
 # Tauri
 src-tauri/target/
+.worktrees/

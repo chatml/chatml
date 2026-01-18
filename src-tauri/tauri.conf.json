@@ -35,15 +35,5 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {
-    "shell": {
-      "sidecar": true,
-      "scope": [
-        {
-          "name": "binaries/chatml-backend",
-          "sidecar": true
-        }
-      ]
-    }
-  }
+  "plugins": {}
 }

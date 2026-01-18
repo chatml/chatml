@@ -8,7 +8,8 @@ interface OutputLogProps {
 }
 
 export function OutputLog({ agentId }: OutputLogProps) {
-  const output = useAppStore((state) => state.agentOutputs[agentId] || []);
+  const agentOutputs = useAppStore((state) => state.agentOutputs);
+  const output = agentOutputs[agentId] ?? [];
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -7,16 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "shell:allow-spawn",
-    "shell:allow-execute",
-    {
-      "identifier": "shell:allow-sidecar",
-      "allow": [
-        {
-          "name": "binaries/chatml-backend",
-          "sidecar": true
-        }
-      ]
-    }
+    "shell:default"
   ]
 }
