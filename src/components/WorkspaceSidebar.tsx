@@ -37,16 +37,19 @@ import {
   Plus,
   MoreHorizontal,
   GitBranch,
+  GitPullRequest,
   FolderPlus,
   ChevronDown,
   FolderOpen,
   Terminal,
   Trash2,
   Copy,
-  Circle,
   GripVertical,
   Archive,
   Settings,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession } from '@/lib/types';
@@ -458,6 +461,28 @@ function SortableWorkspaceItem({
             ) : (
               sessions.map((session, sessionIndex) => {
                 const isSessionSelected = selectedSessionId === session.id;
+                const hasPR = session.prStatus && session.prStatus !== 'none';
+                const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
+
+                // Determine PR status display
+                const getPRStatusInfo = () => {
+                  if (!hasPR) return null;
+                  if (session.hasMergeConflict) {
+                    return { text: 'Merge conflict', color: 'text-orange-500', icon: AlertTriangle };
+                  }
+                  if (session.hasCheckFailures) {
+                    return { text: 'Checks failing', color: 'text-red-500', icon: XCircle };
+                  }
+                  if (session.prStatus === 'merged') {
+                    return { text: 'Merged', color: 'text-purple-500', icon: CheckCircle2 };
+                  }
+                  if (session.prStatus === 'open') {
+                    return { text: 'Ready to merge', color: 'text-green-500', icon: CheckCircle2 };
+                  }
+                  return null;
+                };
+
+                const prStatusInfo = getPRStatusInfo();
 
                 return (
                   <div
@@ -470,37 +495,53 @@ function SortableWorkspaceItem({
                     )}
                     onClick={() => onSelectSession(session.id)}
                   >
-                    <div className="mt-0.5">
-                      <Circle className={cn('w-2 h-2 fill-current', getStatusColor(session.status))} />
-                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <GitBranch className="w-3 h-3 text-muted-foreground shrink-0" />
-                        <span className="text-sm font-medium truncate">
-                          {session.name}
+                      {/* First line: icon + branch name + stats */}
+                      <div className="flex items-center gap-1.5">
+                        {hasPR ? (
+                          <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                        ) : (
+                          <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        )}
+                        <span className="text-sm font-medium truncate flex-1">
+                          {session.branch || session.name}
                         </span>
-                      </div>
-                      {session.task && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {session.task}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2 mt-1">
-                        {session.stats && (
-                          <span className="text-[10px] font-mono">
-                            <span className="text-green-500">+{session.stats.additions}</span>
+                        {hasStats && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/50 shrink-0">
+                            <span className="text-green-500">+{session.stats!.additions}</span>
                             {' '}
-                            <span className="text-red-500">-{session.stats.deletions}</span>
+                            <span className="text-red-500">-{session.stats!.deletions}</span>
                           </span>
                         )}
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatTimeAgo(session.updatedAt)}
-                        </span>
+                      </div>
+                      {/* Second line: session name · PR info · status */}
+                      <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
+                        <span className="truncate">{session.name}</span>
+                        {hasPR && session.prNumber && (
+                          <>
+                            <span className="text-muted-foreground/50">·</span>
+                            <span className="shrink-0">PR #{session.prNumber}</span>
+                          </>
+                        )}
+                        {prStatusInfo && (
+                          <>
+                            <span className="text-muted-foreground/50">·</span>
+                            <span className={cn('shrink-0', prStatusInfo.color)}>
+                              {prStatusInfo.text}
+                            </span>
+                          </>
+                        )}
+                        {!hasPR && (
+                          <>
+                            <span className="text-muted-foreground/50">·</span>
+                            <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
                       {sessionIndex < 9 && (
-                        <span className="kbd">⇧⌘{sessionIndex + 1}</span>
+                        <span className="text-[10px] text-muted-foreground/60 font-mono">⇧⌘{sessionIndex + 1}</span>
                       )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
