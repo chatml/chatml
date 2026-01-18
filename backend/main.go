@@ -17,7 +17,12 @@ func main() {
 		port = "9876"
 	}
 
-	s := store.New()
+	s, err := store.NewSQLiteStore()
+	if err != nil {
+		log.Fatalf("Failed to initialize store: %v", err)
+	}
+	defer s.Close()
+
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
 	agentMgr := agent.NewManager(s, wm)

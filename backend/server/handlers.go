@@ -18,13 +18,13 @@ import (
 )
 
 type Handlers struct {
-	store           *store.Store
+	store           *store.SQLiteStore
 	repoManager     *git.RepoManager
 	worktreeManager *git.WorktreeManager
 	agentManager    *agent.Manager
 }
 
-func NewHandlers(s *store.Store, am *agent.Manager) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 	return &Handlers{
 		store:           s,
 		repoManager:     git.NewRepoManager(),
@@ -124,6 +124,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
 	session := &models.Session{
 		ID:           uuid.New().String(),
 		WorkspaceID:  workspaceID,
@@ -133,11 +134,44 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Task:         req.Task,
 		Status:       "idle",
 		PRStatus:     "none",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	h.store.AddSession(session)
+
+	// Create initial "Untitled" conversation with setup info
+	convID := uuid.New().String()[:8]
+	conv := &models.Conversation{
+		ID:          convID,
+		SessionID:   session.ID,
+		Type:        models.ConversationTypeTask,
+		Name:        "Untitled",
+		Status:      models.ConversationStatusIdle,
+		Messages:    []models.Message{},
+		ToolSummary: []models.ToolAction{},
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	h.store.AddConversation(conv)
+
+	// Add system message with setup info
+	originBranch := repo.Branch
+	if originBranch == "" {
+		originBranch = "main"
+	}
+	setupMsg := models.Message{
+		ID:      uuid.New().String()[:8],
+		Role:    "system",
+		Content: "",
+		SetupInfo: &models.SetupInfo{
+			SessionName:  session.Name,
+			BranchName:   session.Branch,
+			OriginBranch: originBranch,
+		},
+		Timestamp: now,
+	}
+	h.store.AddMessageToConversation(convID, setupMsg)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(session)
@@ -216,6 +250,107 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "sessionId")
 	h.store.DeleteSession(id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetSessionChanges returns the list of changed files in a session's worktree
+func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	session := h.store.GetSession(sessionID)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Get the workspace to find the base branch
+	repo := h.store.GetRepo(session.WorkspaceID)
+	if repo == nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	// Get the base branch (the workspace's default branch)
+	baseBranch := repo.Branch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	// Get changed files in the session's worktree compared to base branch
+	changes, err := h.repoManager.GetChangedFilesWithStats(session.WorktreePath, baseBranch)
+	if err != nil {
+		// If there's no diff (e.g., new worktree with no changes), return empty list
+		changes = []git.FileChange{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(changes)
+}
+
+// GetSessionFileDiff returns the diff for a specific file in a session's worktree
+func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	session := h.store.GetSession(sessionID)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Get the workspace to find the base branch
+	repo := h.store.GetRepo(session.WorkspaceID)
+	if repo == nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Clean the path
+	cleanPath := filepath.Clean(filePath)
+	if strings.HasPrefix(cleanPath, "..") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Get the base branch (the workspace's default branch)
+	baseBranch := repo.Branch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	// Read current file content from the worktree
+	fullPath := filepath.Join(session.WorktreePath, cleanPath)
+	newContent, err := os.ReadFile(fullPath)
+	if err != nil && !os.IsNotExist(err) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get base branch version using git show (from the worktree)
+	oldContent, err := h.repoManager.GetFileAtRef(session.WorktreePath, baseBranch, cleanPath)
+	if err != nil {
+		// File might not exist in base branch (new file)
+		oldContent = ""
+	}
+
+	// Check for conflict markers
+	hasConflict := strings.Contains(string(newContent), "<<<<<<<") &&
+		strings.Contains(string(newContent), "=======") &&
+		strings.Contains(string(newContent), ">>>>>>>")
+
+	response := FileDiffResponse{
+		Path:        cleanPath,
+		OldContent:  oldContent,
+		NewContent:  string(newContent),
+		OldFilename: cleanPath + " (base)",
+		NewFilename: cleanPath,
+		HasConflict: hasConflict,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 type SendMessageRequest struct {

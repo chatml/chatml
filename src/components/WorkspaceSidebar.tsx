@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
-import { createSession as createSessionApi } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -34,7 +34,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Zap,
   Plus,
   MoreHorizontal,
   GitBranch,
@@ -152,7 +151,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
     const branchName = generateBranchName();
 
     try {
-      // Create session via backend API
+      // Create session via backend API (backend auto-creates "Untitled" conversation)
       const session = await createSessionApi(workspaceId, {
         name: branchName,
         branch: branchName,
@@ -172,27 +171,38 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
         updatedAt: session.updatedAt,
       });
 
-      // Create conversation for this session
-      const convId = `conv-${session.id}`;
-      addConversation({
-        id: convId,
-        sessionId: session.id,
-        type: 'task',
-        name: 'Task #1',
-        status: 'idle',
-        messages: [],
-        toolSummary: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      // Fetch conversations created by backend (includes "Untitled" with setup info)
+      const conversations = await listConversationsApi(workspaceId, session.id);
+      conversations.forEach((conv) => {
+        addConversation({
+          id: conv.id,
+          sessionId: conv.sessionId,
+          type: conv.type,
+          name: conv.name,
+          status: conv.status,
+          messages: conv.messages.map((m) => ({
+            id: m.id,
+            conversationId: conv.id,
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+            setupInfo: (m as any).setupInfo,
+            timestamp: m.timestamp,
+          })),
+          toolSummary: conv.toolSummary,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+        });
       });
 
       // Expand the workspace if not already
       setExpandedWorkspaces((prev) => new Set([...prev, workspaceId]));
 
-      // Select the new session and conversation
+      // Select the new session and first conversation
       selectWorkspace(workspaceId);
       selectSession(session.id);
-      selectConversation(convId);
+      if (conversations.length > 0) {
+        selectConversation(conversations[0].id);
+      }
     } catch (error) {
       console.error('Failed to create session:', error);
     }
@@ -200,11 +210,8 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
 
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
-      {/* Header */}
-      <div className="h-11 px-3 flex items-center gap-2 border-b bg-sidebar shrink-0">
-        <div className="w-6 h-6 rounded-md bg-primary/20 flex items-center justify-center">
-          <Zap className="w-3.5 h-3.5 text-primary" />
-        </div>
+      {/* Header - pl-20 gives space for macOS traffic lights */}
+      <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center border-b bg-sidebar shrink-0">
         <span className="text-sm font-semibold">ChatML</span>
       </div>
 

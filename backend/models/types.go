@@ -67,12 +67,21 @@ type Conversation struct {
 	UpdatedAt   time.Time    `json:"updatedAt"`
 }
 
+// SetupInfo contains information about the worktree setup for system messages
+type SetupInfo struct {
+	SessionName  string `json:"sessionName"`
+	BranchName   string `json:"branchName"`
+	OriginBranch string `json:"originBranch"`
+	FileCount    int    `json:"fileCount,omitempty"`
+}
+
 // Message represents a single message in a conversation
 type Message struct {
-	ID        string    `json:"id"`
-	Role      string    `json:"role"` // "user", "assistant"
-	Content   string    `json:"content"`
-	Timestamp time.Time `json:"timestamp"`
+	ID        string     `json:"id"`
+	Role      string     `json:"role"` // "user", "assistant", "system"
+	Content   string     `json:"content"`
+	SetupInfo *SetupInfo `json:"setupInfo,omitempty"` // For system messages with setup info
+	Timestamp time.Time  `json:"timestamp"`
 }
 
 // ToolAction represents a tool usage record for the summary

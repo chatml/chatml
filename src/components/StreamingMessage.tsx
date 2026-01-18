@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useAppStore } from '@/stores/appStore';
-import { Zap, Loader2, AlertCircle, Brain, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, Brain, Clock } from 'lucide-react';
 import { ActiveToolsDisplay } from '@/components/ToolUsageBlock';
 
 interface StreamingMessageProps {
@@ -58,11 +58,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
 
   return (
     <div className="py-2 border-t border-border/50">
-      <div className="flex items-start gap-2">
-        <div className="w-4 h-4 rounded bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
-          <Zap className="w-2.5 h-2.5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0 space-y-1.5">
+      <div className="space-y-1.5">
           {/* Thinking indicator */}
           {(streaming?.isThinking || streaming?.thinking) && (
             <div className="flex items-center gap-2">
@@ -119,7 +115,6 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
               </div>
             </div>
           )}
-        </div>
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.Store, hub *Hub, agentMgr *agent.Manager) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandlers(s, agentMgr)
 
@@ -40,6 +40,8 @@ func NewRouter(s *store.Store, hub *Hub, agentMgr *agent.Manager) http.Handler {
 		r.Get("/{id}/sessions/{sessionId}", h.GetSession)
 		r.Patch("/{id}/sessions/{sessionId}", h.UpdateSession)
 		r.Delete("/{id}/sessions/{sessionId}", h.DeleteSession)
+		r.Get("/{id}/sessions/{sessionId}/changes", h.GetSessionChanges)
+		r.Get("/{id}/sessions/{sessionId}/diff", h.GetSessionFileDiff)
 		r.Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)
 		// Conversation endpoints nested under sessions
 		r.Get("/{id}/sessions/{sessionId}/conversations", h.ListConversations)

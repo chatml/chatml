@@ -66,6 +66,74 @@ func (rm *RepoManager) GetChangedFiles(repoPath, baseRef string) ([]string, erro
 	return files, nil
 }
 
+// FileChange represents a changed file with stats
+type FileChange struct {
+	Path      string `json:"path"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Status    string `json:"status"` // "added", "modified", "deleted"
+}
+
+// GetChangedFilesWithStats returns files changed compared to a base ref with addition/deletion counts
+func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]FileChange, error) {
+	// First get the diff stats
+	cmd := exec.Command("git", "diff", "--numstat", baseRef)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var changes []FileChange
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			continue
+		}
+
+		additions := 0
+		deletions := 0
+		// Handle binary files (shown as "-")
+		if parts[0] != "-" {
+			fmt.Sscanf(parts[0], "%d", &additions)
+		}
+		if parts[1] != "-" {
+			fmt.Sscanf(parts[1], "%d", &deletions)
+		}
+
+		// Reconstruct file path (may contain spaces)
+		filePath := strings.Join(parts[2:], " ")
+
+		status := "modified"
+		if additions > 0 && deletions == 0 {
+			// Check if it's a new file
+			checkCmd := exec.Command("git", "ls-tree", baseRef, "--", filePath)
+			checkCmd.Dir = repoPath
+			if checkOut, _ := checkCmd.Output(); len(checkOut) == 0 {
+				status = "added"
+			}
+		} else if deletions > 0 && additions == 0 {
+			// Check if file still exists
+			if _, err := os.Stat(filepath.Join(repoPath, filePath)); os.IsNotExist(err) {
+				status = "deleted"
+			}
+		}
+
+		changes = append(changes, FileChange{
+			Path:      filePath,
+			Additions: additions,
+			Deletions: deletions,
+			Status:    status,
+		})
+	}
+
+	return changes, nil
+}
+
 // HasMergeConflicts checks if there are any merge conflicts in the repo
 func (rm *RepoManager) HasMergeConflicts(repoPath string) (bool, error) {
 	cmd := exec.Command("git", "diff", "--check")

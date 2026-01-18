@@ -20,7 +20,7 @@ type ConversationEventHandler func(conversationID string, event *AgentEvent)
 type ConversationStatusHandler func(conversationID string, status string)
 
 type Manager struct {
-	store           *store.Store
+	store           *store.SQLiteStore
 	worktreeManager *git.WorktreeManager
 	processes       map[string]*Process // keyed by agentID (legacy)
 	convProcesses   map[string]*Process // keyed by conversationID
@@ -35,7 +35,7 @@ type Manager struct {
 	onConversationStatus ConversationStatusHandler
 }
 
-func NewManager(s *store.Store, wm *git.WorktreeManager) *Manager {
+func NewManager(s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
 	return &Manager{
 		store:           s,
 		worktreeManager: wm,

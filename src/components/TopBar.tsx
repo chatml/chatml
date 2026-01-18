@@ -39,7 +39,7 @@ export function TopBar() {
 
   if (!selectedWorkspace || !selectedSession) {
     return (
-      <div className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
+      <div data-tauri-drag-region className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
         <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -54,7 +54,7 @@ export function TopBar() {
   }
 
   return (
-    <div className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
+    <div data-tauri-drag-region className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
       {/* Navigation */}
       <Button variant="ghost" size="icon" className="h-7 w-7">
         <ChevronLeft className="h-4 w-4" />

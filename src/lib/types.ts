@@ -72,12 +72,22 @@ export interface ToolUsage {
   durationMs?: number;
 }
 
+// Setup info for system messages
+export interface SetupInfo {
+  sessionName: string;
+  branchName: string;
+  originBranch: string;
+  fileCount?: number;
+}
+
 // Message = Individual message in a conversation
 export interface Message {
   id: string;
   conversationId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  // For system messages, can include setup info
+  setupInfo?: SetupInfo;
   // For assistant messages, can include structured content
   verificationResults?: VerificationResult[];
   fileChanges?: FileChange[];
@@ -170,4 +180,11 @@ export interface FileTab {
   content?: string;
   isLoading?: boolean;
   isDirty?: boolean;
+  viewMode?: 'file' | 'diff';
+  diff?: {
+    oldContent: string;
+    newContent: string;
+  };
+  isBinary?: boolean;
+  isTooLarge?: boolean;
 }

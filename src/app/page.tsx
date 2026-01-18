@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { listRepos, listSessions, type RepoDTO, type SessionDTO } from '@/lib/api';
+import { listRepos, listSessions, listConversations, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { ActivityBar, type ActivityView } from '@/components/ActivityBar';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { SearchPanel } from '@/components/SearchPanel';
@@ -34,6 +34,7 @@ export default function Home() {
     selectedConversationId,
     setWorkspaces,
     setSessions,
+    setConversations,
     addConversation,
     selectWorkspace,
     selectSession,
@@ -71,6 +72,33 @@ export default function Home() {
     updatedAt: session.updatedAt,
   }), []);
 
+  // Map backend MessageDTO to frontend Message
+  const messageToMessage = useCallback((msg: MessageDTO, conversationId: string) => ({
+    id: msg.id,
+    conversationId,
+    role: msg.role as 'user' | 'assistant' | 'system',
+    content: msg.content,
+    timestamp: msg.timestamp,
+  }), []);
+
+  // Map backend ConversationDTO to frontend Conversation
+  const conversationToConversation = useCallback((conv: ConversationDTO) => ({
+    id: conv.id,
+    sessionId: conv.sessionId,
+    type: conv.type,
+    name: conv.name,
+    status: conv.status,
+    messages: conv.messages.map(m => messageToMessage(m, conv.id)),
+    toolSummary: conv.toolSummary.map(t => ({
+      id: t.id,
+      tool: t.tool,
+      target: t.target,
+      success: t.success,
+    })),
+    createdAt: conv.createdAt,
+    updatedAt: conv.updatedAt,
+  }), [messageToMessage]);
+
   // Load data from backend
   useEffect(() => {
     async function loadData() {
@@ -88,26 +116,40 @@ export default function Home() {
         }
         setSessions(allSessions);
 
+        // Fetch conversations for each session
+        const allConversations = [];
+        for (const session of allSessions) {
+          const convs = await listConversations(session.workspaceId, session.id);
+          allConversations.push(...convs.map(conversationToConversation));
+        }
+        setConversations(allConversations);
+
         // Select first workspace and session if available
         if (mappedWorkspaces.length > 0) {
           selectWorkspace(mappedWorkspaces[0].id);
           const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id);
           if (firstSession) {
             selectSession(firstSession.id);
-            // Create a conversation for this session if none exists
-            const convId = `conv-${firstSession.id}`;
-            addConversation({
-              id: convId,
-              sessionId: firstSession.id,
-              type: 'task',
-              name: firstSession.task || 'Task #1',
-              status: 'idle',
-              messages: [],
-              toolSummary: [],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-            selectConversation(convId);
+            // Select existing conversation or create a new one if none exists
+            const sessionConvs = allConversations.filter(c => c.sessionId === firstSession.id);
+            if (sessionConvs.length > 0) {
+              selectConversation(sessionConvs[0].id);
+            } else {
+              // Create a placeholder conversation only if none exist
+              const convId = `conv-${firstSession.id}`;
+              addConversation({
+                id: convId,
+                sessionId: firstSession.id,
+                type: 'task',
+                name: firstSession.task || 'Task #1',
+                status: 'idle',
+                messages: [],
+                toolSummary: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+              selectConversation(convId);
+            }
           }
         }
       } catch (error) {
@@ -116,7 +158,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [repoToWorkspace, sessionToWorktreeSession, setWorkspaces, setSessions, selectWorkspace, selectSession, addConversation, selectConversation]);
+  }, [repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation, selectConversation]);
 
   // Keyboard shortcuts
   useEffect(() => {

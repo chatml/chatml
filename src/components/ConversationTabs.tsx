@@ -2,13 +2,9 @@
 
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Plus,
   X,
-  MessageSquare,
-  ClipboardCheck,
-  MessagesSquare,
   Loader2,
   Circle,
   CheckCircle2,
@@ -35,10 +31,6 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
   const sessionConversations = conversations.filter((c) => c.sessionId === sessionId);
   const isFileActive = selectedFileTabId !== null;
 
-  // Check if a conversation is currently streaming
-  const isConversationStreaming = (convId: string) =>
-    streamingState[convId]?.isStreaming || false;
-
   const handleSelectConversation = (id: string) => {
     selectConversation(id);
     selectFileTab(null);
@@ -49,29 +41,17 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
     removeConversation(id);
   };
 
-  const getTypeIcon = (type: Conversation['type']) => {
-    switch (type) {
-      case 'task':
-        return MessageSquare;
-      case 'review':
-        return ClipboardCheck;
-      case 'chat':
-        return MessagesSquare;
-      default:
-        return MessageSquare;
-    }
-  };
-
   const getStatusIndicator = (conv: Conversation) => {
-    // Check streaming state first (more immediate)
-    if (isConversationStreaming(conv.id)) {
+    // Check streaming state first (more immediate UI feedback)
+    const streaming = streamingState[conv.id];
+    if (streaming?.isStreaming) {
       return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
     }
     // Check for errors
-    if (streamingState[conv.id]?.error) {
-      return <Circle className="w-2.5 h-2.5 text-destructive" />;
+    if (streaming?.error) {
+      return <Circle className="w-2.5 h-2.5 text-destructive fill-destructive" />;
     }
-    // Fallback to conversation status
+    // Use conversation status as source of truth
     switch (conv.status) {
       case 'active':
         return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
@@ -86,7 +66,6 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
   return (
     <div className="flex items-center gap-0.5">
       {sessionConversations.map((conv) => {
-        const Icon = getTypeIcon(conv.type);
         const isSelected = !isFileActive && selectedConversationId === conv.id;
 
         return (
@@ -101,18 +80,9 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
             onClick={() => handleSelectConversation(conv.id)}
           >
             {getStatusIndicator(conv)}
-            <Icon className="w-3 h-3" />
-            <span className="max-w-[100px] truncate font-medium">{conv.name}</span>
-            {conv.type !== 'task' && (
-              <Badge
-                variant="secondary"
-                className="h-4 px-1 text-[9px] font-medium capitalize"
-              >
-                {conv.type}
-              </Badge>
-            )}
+            <span className="max-w-[120px] truncate font-medium">{conv.name}</span>
             <button
-              className="hover:text-destructive ml-0.5"
+              className="hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={(e) => handleRemoveConversation(conv.id, e)}
             >
               <X className="h-3 w-3" />

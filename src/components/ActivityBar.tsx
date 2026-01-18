@@ -33,8 +33,8 @@ const activities: { id: ActivityView; icon: React.ElementType; label: string; sh
 export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
   return (
     <div className="flex flex-col h-full w-12 bg-sidebar border-r border-sidebar-border">
-      {/* Top activities */}
-      <div className="flex-1 flex flex-col items-center py-2 gap-1">
+      {/* Top activities - pt-10 adds space for macOS traffic lights */}
+      <div className="flex-1 flex flex-col items-center pt-10 pb-2 gap-1">
         {activities.map((activity) => {
           const Icon = activity.icon;
           const isActive = activeView === activity.id;

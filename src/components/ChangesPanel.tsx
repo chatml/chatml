@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { listRepoFiles, getRepoFileContent, type FileNodeDTO } from '@/lib/api';
+import { listRepoFiles, getRepoFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
 import { FileTree, type FileNode } from '@/components/FileTree';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,15 +28,44 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { FileChange, FileTab } from '@/lib/types';
+import type { FileTab } from '@/lib/types';
+
+// Common binary file extensions
+const BINARY_EXTENSIONS = new Set([
+  // Images
+  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'svg', 'tiff', 'tif', 'avif',
+  // Videos
+  'mp4', 'webm', 'avi', 'mov', 'mkv', 'flv', 'wmv',
+  // Audio
+  'mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a',
+  // Archives
+  'zip', 'tar', 'gz', 'rar', '7z', 'bz2', 'xz',
+  // Documents
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  // Executables/Binaries
+  'exe', 'dll', 'so', 'dylib', 'bin', 'app', 'dmg', 'pkg', 'deb', 'rpm',
+  // Fonts
+  'ttf', 'otf', 'woff', 'woff2', 'eot',
+  // Other
+  'sqlite', 'db', 'dat', 'class', 'pyc', 'pyo', 'o', 'a',
+]);
+
+function isBinaryFile(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  return BINARY_EXTENSIONS.has(ext);
+}
+
+// Maximum file size for diff viewing (500KB)
+const MAX_DIFF_SIZE = 500 * 1024;
 
 export function ChangesPanel() {
-  const { fileChanges, selectedWorkspaceId, selectedSessionId, sessions, openFileTab, updateFileTab } = useAppStore();
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const { selectedWorkspaceId, selectedSessionId, sessions, openFileTab, updateFileTab } = useAppStore();
   const [selectedTab, setSelectedTab] = useState('files');
   const [terminalTab, setTerminalTab] = useState('terminal');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [changes, setChanges] = useState<FileChangeDTO[]>([]);
+  const [changesLoading, setChangesLoading] = useState(false);
 
   // Handle file selection from file tree
   const handleFileSelect = async (path: string) => {
@@ -52,6 +81,7 @@ export function ChangesPanel() {
       path,
       name: filename,
       isLoading: true,
+      viewMode: 'file',
     };
 
     openFileTab(newTab);
@@ -67,6 +97,70 @@ export function ChangesPanel() {
       console.error('Failed to load file:', error);
       updateFileTab(tabId, {
         content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isLoading: false,
+      });
+    }
+  };
+
+  // Handle changed file selection - shows diff view
+  const handleChangedFileSelect = async (path: string) => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    const filename = path.split('/').pop() || path;
+    const tabId = `${selectedWorkspaceId}-diff-${path}`;
+
+    // Check if it's a binary file
+    if (isBinaryFile(filename)) {
+      const newTab: FileTab = {
+        id: tabId,
+        workspaceId: selectedWorkspaceId,
+        path,
+        name: filename,
+        isLoading: false,
+        viewMode: 'diff',
+        isBinary: true,
+      };
+      openFileTab(newTab);
+      return;
+    }
+
+    // Create tab with loading state for text files
+    const newTab: FileTab = {
+      id: tabId,
+      workspaceId: selectedWorkspaceId,
+      path,
+      name: filename,
+      isLoading: true,
+      viewMode: 'diff',
+    };
+
+    openFileTab(newTab);
+
+    // Fetch diff
+    try {
+      const diffData = await getSessionFileDiff(selectedWorkspaceId, selectedSessionId, path);
+
+      // Check if file is too large
+      const totalSize = (diffData.oldContent?.length || 0) + (diffData.newContent?.length || 0);
+      if (totalSize > MAX_DIFF_SIZE) {
+        updateFileTab(tabId, {
+          isLoading: false,
+          isTooLarge: true,
+        });
+        return;
+      }
+
+      updateFileTab(tabId, {
+        diff: {
+          oldContent: diffData.oldContent,
+          newContent: diffData.newContent,
+        },
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to load diff:', error);
+      updateFileTab(tabId, {
+        content: `// Error loading diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
         isLoading: false,
       });
     }
@@ -93,27 +187,18 @@ export function ChangesPanel() {
     }
   }, [selectedTab, selectedWorkspaceId]);
 
-  // Group files by directory
-  const groupedChanges = fileChanges.reduce((acc, change) => {
-    const parts = change.path.split('/');
-    const dir = parts.slice(0, -1).join('/') || '.';
-    if (!acc[dir]) acc[dir] = [];
-    acc[dir].push(change);
-    return acc;
-  }, {} as Record<string, FileChange[]>);
-
-  const toggleDir = (dir: string) => {
-    const newExpanded = new Set(expandedDirs);
-    if (newExpanded.has(dir)) {
-      newExpanded.delete(dir);
-    } else {
-      newExpanded.add(dir);
+  // Fetch changes when session changes or tab switches to changes
+  useEffect(() => {
+    if (selectedTab === 'changes' && selectedWorkspaceId && selectedSessionId) {
+      setChangesLoading(true);
+      getSessionChanges(selectedWorkspaceId, selectedSessionId)
+        .then((data) => {
+          setChanges(data);
+        })
+        .catch(console.error)
+        .finally(() => setChangesLoading(false));
     }
-    setExpandedDirs(newExpanded);
-  };
-
-  const totalAdditions = fileChanges.reduce((sum, c) => sum + c.additions, 0);
-  const totalDeletions = fileChanges.reduce((sum, c) => sum + c.deletions, 0);
+  }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
   return (
     <div className="flex flex-col h-full border-l">
@@ -195,9 +280,9 @@ export function ChangesPanel() {
           onClick={() => setSelectedTab('changes')}
         >
           Changes
-          {fileChanges.length > 0 && (
+          {changes.length > 0 && (
             <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
-              {fileChanges.length}
+              {changes.length}
             </span>
           )}
         </Button>
@@ -240,38 +325,30 @@ export function ChangesPanel() {
               <FileTree files={files} onFileSelect={handleFileSelect} />
             )
           ) : selectedTab === 'changes' ? (
-            <ScrollArea className="h-full">
-              <div className="py-1">
-                {fileChanges.length === 0 ? (
-                  <div className="px-3 py-8 text-center text-muted-foreground">
-                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No changes yet</p>
-                  </div>
-                ) : (
-                  Object.entries(groupedChanges).map(([dir, changedFiles]) => (
-                    <div key={dir}>
-                      {dir !== '.' && (
-                        <div
-                          className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground cursor-pointer hover:bg-accent/50"
-                          onClick={() => toggleDir(dir)}
-                        >
-                          {expandedDirs.has(dir) ? (
-                            <ChevronDown className="w-3 h-3" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3" />
-                          )}
-                          <span className="truncate">{dir}</span>
-                        </div>
-                      )}
-                      {(dir === '.' || expandedDirs.has(dir)) &&
-                        changedFiles.map((file) => (
-                          <FileChangeRow key={file.path} change={file} />
-                        ))}
-                    </div>
-                  ))
-                )}
+            changesLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-            </ScrollArea>
+            ) : changes.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No changes yet</p>
+                </div>
+              </div>
+            ) : (
+              <ScrollArea className="h-full">
+                <div className="py-1">
+                  {changes.map((change) => (
+                    <FileChangeRow
+                      key={change.path}
+                      change={change}
+                      onSelect={() => handleChangedFileSelect(change.path)}
+                    />
+                  ))}
+                </div>
+              </ScrollArea>
+            )
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
@@ -332,20 +409,27 @@ export function ChangesPanel() {
   );
 }
 
-function FileChangeRow({ change }: { change: FileChange }) {
-  const fileName = change.path.split('/').pop() || change.path;
-  const fileIcon = change.path.includes('package.json')
-    ? '📦'
-    : change.path.includes('tsconfig')
-    ? '⚙️'
-    : '📄';
+function FileChangeRow({ change, onSelect }: { change: FileChangeDTO; onSelect: () => void }) {
+  const parts = change.path.split('/');
+  const fileName = parts.pop() || change.path;
+  const dirPath = parts.join('/');
+
+  // Truncate directory path from the left if too long
+  const truncateDir = (dir: string, maxLen: number = 25) => {
+    if (dir.length <= maxLen) return dir;
+    return '...' + dir.slice(-(maxLen - 3));
+  };
 
   return (
-    <div className="group flex items-center gap-2 px-2 py-1 hover:bg-accent/50 cursor-pointer">
-      <Checkbox className="h-3.5 w-3.5" />
-      <span className="text-sm">{fileIcon}</span>
-      <span className="flex-1 text-sm truncate">{fileName}</span>
-      <span className="text-xs">
+    <div
+      className="group flex items-center gap-1.5 px-2 py-1.5 hover:bg-accent/50 cursor-pointer"
+      onClick={onSelect}
+    >
+      <span className="text-xs text-muted-foreground truncate shrink-0 max-w-[120px]">
+        {truncateDir(dirPath)}
+      </span>
+      <span className="flex-1 text-xs font-medium truncate">{fileName}</span>
+      <span className="text-[10px] shrink-0">
         {change.additions > 0 && (
           <span className="text-green-500">+{change.additions}</span>
         )}
@@ -353,7 +437,7 @@ function FileChangeRow({ change }: { change: FileChange }) {
           <span className="text-red-500 ml-1">-{change.deletions}</span>
         )}
       </span>
-      <Checkbox className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100" />
+      <Checkbox className="h-3.5 w-3.5 shrink-0" />
     </div>
   );
 }

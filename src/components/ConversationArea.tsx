@@ -25,12 +25,12 @@ import {
   FileCode,
   Terminal,
   Clock,
-  Zap,
   MessageSquare,
   Circle,
   SquareCheck,
   Square,
   GitBranch,
+  FileQuestion,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CodeViewer } from '@/components/CodeViewer';
@@ -39,6 +39,8 @@ import { ConversationTabs } from '@/components/ConversationTabs';
 import { StreamingMessage } from '@/components/StreamingMessage';
 import { RunSummaryBlock } from '@/components/RunSummaryBlock';
 import { ToolUsageHistory } from '@/components/ToolUsageHistory';
+import { DiffViewer } from '@/components/DiffViewer';
+import { SystemInfoCard } from '@/components/SystemInfoCard';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 
 interface ConversationAreaProps {
@@ -216,11 +218,40 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       {isFileActive && currentFileTab ? (
         <>
           <div className="flex-1 min-h-0">
-            <CodeViewer
-              content={currentFileTab.content || ''}
-              filename={currentFileTab.name}
-              isLoading={currentFileTab.isLoading}
-            />
+            {currentFileTab.isBinary ? (
+              // Binary file placeholder
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
+                  <p className="text-xs text-muted-foreground">Binary file cannot be displayed</p>
+                </div>
+              </div>
+            ) : currentFileTab.isTooLarge ? (
+              // Large file placeholder
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
+                  <p className="text-xs text-muted-foreground">File is too large to display</p>
+                </div>
+              </div>
+            ) : currentFileTab.viewMode === 'diff' && currentFileTab.diff ? (
+              // Diff view
+              <DiffViewer
+                oldContent={currentFileTab.diff.oldContent}
+                newContent={currentFileTab.diff.newContent}
+                oldFilename={currentFileTab.name}
+                newFilename={currentFileTab.name}
+              />
+            ) : (
+              // Regular file view
+              <CodeViewer
+                content={currentFileTab.content || ''}
+                filename={currentFileTab.name}
+                isLoading={currentFileTab.isLoading}
+              />
+            )}
           </div>
           {/* No chat input when viewing files */}
         </>
@@ -305,6 +336,23 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
     if (minutes > 0) return `${minutes}m ${remainingSeconds}s`;
     return `${seconds}s`;
   };
+
+  // System messages (setup info, etc.)
+  if (message.role === 'system') {
+    if (message.setupInfo) {
+      return (
+        <div className={cn('py-3', !isFirst && 'pt-4')}>
+          <SystemInfoCard setupInfo={message.setupInfo} />
+        </div>
+      );
+    }
+    // Fallback for system messages without setup info
+    return (
+      <div className={cn('py-2', !isFirst && 'pt-3')}>
+        <div className="text-xs text-muted-foreground italic">{message.content}</div>
+      </div>
+    );
+  }
 
   if (message.role === 'user') {
     return (

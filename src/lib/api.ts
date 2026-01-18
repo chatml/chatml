@@ -98,6 +98,21 @@ export async function getFileDiff(repoId: string, filePath: string, baseBranch?:
   return res.json();
 }
 
+export async function getSessionFileDiff(
+  workspaceId: string,
+  sessionId: string,
+  filePath: string
+): Promise<FileDiffDTO> {
+  const params = new URLSearchParams({ path: filePath });
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`
+  );
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
 // Session DTOs and functions
 export interface SessionDTO {
   id: string;
@@ -156,6 +171,19 @@ export async function updateSession(
 
 export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
   await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
+export interface FileChangeDTO {
+  path: string;
+  additions: number;
+  deletions: number;
+  status: 'added' | 'modified' | 'deleted';
+}
+
+export async function getSessionChanges(workspaceId: string, sessionId: string): Promise<FileChangeDTO[]> {
+  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/changes`);
+  if (!res.ok) return [];
+  return res.json();
 }
 
 export async function sendSessionMessage(
@@ -226,10 +254,18 @@ export interface ConversationDTO {
   updatedAt: string;
 }
 
+export interface SetupInfoDTO {
+  sessionName: string;
+  branchName: string;
+  originBranch: string;
+  fileCount?: number;
+}
+
 export interface MessageDTO {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
+  setupInfo?: SetupInfoDTO;
   timestamp: string;
 }
 
