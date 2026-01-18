@@ -515,29 +515,25 @@ function SortableWorkspaceItem({
                           </span>
                         )}
                         {/* Actions - shown on hover */}
-                        <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 hover:bg-sidebar-accent"
+                        <div className="hidden group-hover:flex items-center shrink-0">
+                          <button
+                            className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               // TODO: Pin session
                             }}
                           >
-                            <Pin className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 hover:bg-sidebar-accent"
+                            <Pin className="h-2.5 w-2.5" />
+                          </button>
+                          <button
+                            className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               onArchiveSession(session.id);
                             }}
                           >
-                            <Archive className="h-3 w-3" />
-                          </Button>
+                            <Archive className="h-2.5 w-2.5" />
+                          </button>
                         </div>
                       </div>
                       {/* Second line: session name · PR info · status */}
