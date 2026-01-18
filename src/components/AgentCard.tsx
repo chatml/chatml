@@ -13,9 +13,16 @@ interface AgentCardProps {
 
 const statusColors = {
   pending: 'bg-yellow-500',
-  running: 'bg-blue-500',
+  running: 'bg-blue-500 animate-pulse',
   done: 'bg-green-500',
   error: 'bg-red-500',
+};
+
+const statusLabels = {
+  pending: 'Pending',
+  running: 'Working...',
+  done: 'Completed',
+  error: 'Failed',
 };
 
 export function AgentCard({ agent, onRefresh }: AgentCardProps) {
@@ -52,9 +59,16 @@ export function AgentCard({ agent, onRefresh }: AgentCardProps) {
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${statusColors[agent.status]}`} />
+            <span className={`w-3 h-3 rounded-full ${statusColors[agent.status]}`} />
             <span className="font-medium">Agent {agent.id.slice(0, 8)}</span>
-            <span className="text-gray-400 text-sm">{agent.status}</span>
+            <span className={`text-sm px-2 py-0.5 rounded ${
+              agent.status === 'running' ? 'bg-blue-900 text-blue-300' :
+              agent.status === 'done' ? 'bg-green-900 text-green-300' :
+              agent.status === 'error' ? 'bg-red-900 text-red-300' :
+              'bg-gray-700 text-gray-300'
+            }`}>
+              {statusLabels[agent.status]}
+            </span>
           </div>
           <div className="text-sm text-gray-400 mt-1">{agent.task}</div>
         </div>
