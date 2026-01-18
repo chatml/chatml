@@ -19,6 +19,13 @@ export interface AgentDTO {
   createdAt: string;
 }
 
+export interface FileNodeDTO {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileNodeDTO[];
+}
+
 export async function listRepos(): Promise<RepoDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos`);
   if (!res.ok) return [];
@@ -37,6 +44,12 @@ export async function addRepo(path: string): Promise<RepoDTO> {
 
 export async function deleteRepo(id: string): Promise<void> {
   await fetch(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
+}
+
+export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
+  const res = await fetch(`${API_BASE}/api/repos/${repoId}/files?depth=${depth}`);
+  if (!res.ok) return [];
+  return res.json();
 }
 
 export async function listAgents(repoId: string): Promise<AgentDTO[]> {

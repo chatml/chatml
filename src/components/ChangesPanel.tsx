@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { listRepoFiles, type FileNodeDTO } from '@/lib/api';
+import { FileTree, type FileNode } from '@/components/FileTree';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,15 +19,34 @@ import {
   ChevronRight,
   FileText,
   Plus,
+  Search,
+  SplitSquareHorizontal,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileChange } from '@/lib/types';
 
 export function ChangesPanel() {
-  const { fileChanges } = useAppStore();
+  const { fileChanges, selectedWorkspaceId } = useAppStore();
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const [selectedTab, setSelectedTab] = useState('changes');
+  const [selectedTab, setSelectedTab] = useState('files');
   const [terminalTab, setTerminalTab] = useState('terminal');
+  const [files, setFiles] = useState<FileNode[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+
+  // Fetch files when workspace changes or tab switches to files
+  useEffect(() => {
+    if (selectedTab === 'files' && selectedWorkspaceId) {
+      setFilesLoading(true);
+      listRepoFiles(selectedWorkspaceId, 'all')
+        .then((data) => {
+          // Convert FileNodeDTO to FileNode (they're the same shape)
+          setFiles(data as FileNode[]);
+        })
+        .catch(console.error)
+        .finally(() => setFilesLoading(false));
+    }
+  }, [selectedTab, selectedWorkspaceId]);
 
   // Group files by directory
   const groupedChanges = fileChanges.reduce((acc, change) => {
@@ -53,12 +74,8 @@ export function ChangesPanel() {
     <div className="flex flex-col h-full border-l">
       {/* Top Bar - matches main TopBar */}
       <div className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
-        <span className="text-sm font-medium">Changes</span>
+        <span className="text-sm font-medium text-muted-foreground">Working...</span>
         <div className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary border border-transparent hover:border-primary/50 hover:bg-primary/10 transition-colors">
-          <Eye className="h-3 w-3" />
-          Review
-        </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <MoreVertical className="h-3.5 w-3.5" />
         </Button>
@@ -82,7 +99,7 @@ export function ChangesPanel() {
         >
           Changes
           {fileChanges.length > 0 && (
-            <span className="bg-primary text-primary-foreground px-1.5 rounded text-[10px]">
+            <span className="bg-muted-foreground/20 text-foreground px-1.5 rounded text-[10px] ml-1">
               {fileChanges.length}
             </span>
           )}
@@ -95,44 +112,79 @@ export function ChangesPanel() {
         >
           Checks
         </Button>
+        <div className="flex-1" />
+        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground">
+          <Eye className="h-3 w-3" />
+          Review
+        </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7">
+          <SplitSquareHorizontal className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-7 w-7">
+          <Search className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* Resizable content area */}
       <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0">
         {/* File List */}
         <ResizablePanel id="file-list" defaultSize="65%" minSize="20%">
-          <ScrollArea className="h-full">
-            <div className="py-1">
-              {fileChanges.length === 0 ? (
-                <div className="px-3 py-8 text-center text-muted-foreground">
+          {selectedTab === 'files' ? (
+            filesLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : files.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
                   <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No changes yet</p>
+                  <p className="text-sm">No workspace selected</p>
                 </div>
-              ) : (
-                Object.entries(groupedChanges).map(([dir, files]) => (
-                  <div key={dir}>
-                    {dir !== '.' && (
-                      <div
-                        className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground cursor-pointer hover:bg-accent/50"
-                        onClick={() => toggleDir(dir)}
-                      >
-                        {expandedDirs.has(dir) ? (
-                          <ChevronDown className="w-3 h-3" />
-                        ) : (
-                          <ChevronRight className="w-3 h-3" />
-                        )}
-                        <span className="truncate">{dir}</span>
-                      </div>
-                    )}
-                    {(dir === '.' || expandedDirs.has(dir)) &&
-                      files.map((file) => (
-                        <FileChangeRow key={file.path} change={file} />
-                      ))}
+              </div>
+            ) : (
+              <FileTree files={files} onFileSelect={(path) => console.log('Selected:', path)} />
+            )
+          ) : selectedTab === 'changes' ? (
+            <ScrollArea className="h-full">
+              <div className="py-1">
+                {fileChanges.length === 0 ? (
+                  <div className="px-3 py-8 text-center text-muted-foreground">
+                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No changes yet</p>
                   </div>
-                ))
-              )}
+                ) : (
+                  Object.entries(groupedChanges).map(([dir, changedFiles]) => (
+                    <div key={dir}>
+                      {dir !== '.' && (
+                        <div
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground cursor-pointer hover:bg-accent/50"
+                          onClick={() => toggleDir(dir)}
+                        >
+                          {expandedDirs.has(dir) ? (
+                            <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3" />
+                          )}
+                          <span className="truncate">{dir}</span>
+                        </div>
+                      )}
+                      {(dir === '.' || expandedDirs.has(dir)) &&
+                        changedFiles.map((file) => (
+                          <FileChangeRow key={file.path} change={file} />
+                        ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No checks configured</p>
+              </div>
             </div>
-          </ScrollArea>
+          )}
         </ResizablePanel>
 
         <ResizableHandle />

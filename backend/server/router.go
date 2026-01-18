@@ -32,6 +32,7 @@ func NewRouter(s *store.Store, hub *Hub, agentMgr *agent.Manager) http.Handler {
 		r.Post("/", h.AddRepo)
 		r.Get("/{id}", h.GetRepo)
 		r.Delete("/{id}", h.DeleteRepo)
+		r.Get("/{id}/files", h.ListRepoFiles)
 		r.Get("/{id}/agents", h.ListAgents)
 		r.Post("/{id}/agents", h.SpawnAgent)
 	})
