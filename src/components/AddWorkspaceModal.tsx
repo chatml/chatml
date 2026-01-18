@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { addRepo } from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -38,15 +39,16 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
     setLoading(true);
 
     try {
-      // For now, create workspace locally
-      // TODO: Call backend API to validate and add workspace
-      const name = path.split('/').pop() || 'Workspace';
+      // Call backend API to validate and add repo
+      const repo = await addRepo(path);
+
+      // Map to workspace and add to store
       const workspace = {
-        id: crypto.randomUUID(),
-        name,
-        path,
-        defaultBranch: 'main',
-        createdAt: new Date().toISOString(),
+        id: repo.id,
+        name: repo.name,
+        path: repo.path,
+        defaultBranch: repo.branch,
+        createdAt: repo.createdAt,
       };
       addWorkspace(workspace);
       selectWorkspace(workspace.id);

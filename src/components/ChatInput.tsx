@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { spawnAgent } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -31,7 +32,14 @@ export function ChatInput() {
   const [isLoading, setIsLoading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { selectedConversationId, addMessage } = useAppStore();
+  const {
+    selectedConversationId,
+    selectedWorkspaceId,
+    sessions,
+    addMessage,
+    addSession,
+    conversations,
+  } = useAppStore();
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -41,13 +49,15 @@ export function ChatInput() {
   }, [message]);
 
   const handleSubmit = async () => {
-    if (!message.trim() || !selectedConversationId || isLoading) return;
+    if (!message.trim() || !selectedConversationId || !selectedWorkspaceId || isLoading) return;
+
+    const task = message.trim();
 
     const userMessage = {
       id: crypto.randomUUID(),
       conversationId: selectedConversationId,
       role: 'user' as const,
-      content: message.trim(),
+      content: task,
       timestamp: new Date().toISOString(),
     };
 
@@ -55,20 +65,37 @@ export function ChatInput() {
     setMessage('');
     setIsLoading(true);
 
-    // TODO: Send to backend and stream response
-    // For now, simulate a response
-    setTimeout(() => {
-      const assistantMessage = {
+    try {
+      // Spawn agent via backend API
+      const agent = await spawnAgent(selectedWorkspaceId, task);
+
+      // Add as a new session
+      addSession({
+        id: agent.id,
+        workspaceId: agent.repoId,
+        name: agent.branch,
+        branch: agent.branch,
+        worktreePath: agent.worktree,
+        task: agent.task,
+        status: agent.status === 'running' ? 'active' : 'idle',
+        createdAt: agent.createdAt,
+        updatedAt: agent.createdAt,
+      });
+
+      // The response will stream via WebSocket
+      // WebSocket hook will add assistant messages as output arrives
+    } catch (error) {
+      console.error('Failed to spawn agent:', error);
+      addMessage({
         id: crypto.randomUUID(),
         conversationId: selectedConversationId,
         role: 'assistant' as const,
-        content: 'I understand. Let me help you with that.',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to spawn agent'}`,
         timestamp: new Date().toISOString(),
-        durationMs: 2500,
-      };
-      addMessage(assistantMessage);
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {

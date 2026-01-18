@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { listRepos, listAgents, type RepoDTO, type AgentDTO } from '@/lib/api';
 import { ActivityBar, type ActivityView } from '@/components/ActivityBar';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { SearchPanel } from '@/components/SearchPanel';
@@ -29,105 +31,82 @@ export default function Home() {
     conversations,
     selectedSessionId,
     selectedConversationId,
-    addWorkspace,
-    addSession,
+    setWorkspaces,
+    setSessions,
     addConversation,
     selectWorkspace,
     selectSession,
     selectConversation,
-    setFileChanges,
   } = useAppStore();
 
-  // Initialize with demo data for development
+  // Connect WebSocket for real-time updates
+  useWebSocket();
+
+  // Map backend Repo to frontend Workspace
+  const repoToWorkspace = useCallback((repo: RepoDTO) => ({
+    id: repo.id,
+    name: repo.name,
+    path: repo.path,
+    defaultBranch: repo.branch,
+    createdAt: repo.createdAt,
+  }), []);
+
+  // Map backend Agent to frontend WorktreeSession
+  const agentToSession = useCallback((agent: AgentDTO) => ({
+    id: agent.id,
+    workspaceId: agent.repoId,
+    name: agent.branch,
+    branch: agent.branch,
+    worktreePath: agent.worktree,
+    task: agent.task,
+    status: agent.status === 'running' ? 'active' as const : agent.status as 'idle' | 'done' | 'error',
+    createdAt: agent.createdAt,
+    updatedAt: agent.createdAt,
+  }), []);
+
+  // Load data from backend
   useEffect(() => {
-    if (workspaces.length === 0) {
-      // Demo workspaces
-      const workspace1 = {
-        id: 'ws-1',
-        name: 'readingminds-next',
-        path: '/Users/dev/readingminds-next',
-        defaultBranch: 'origin/main',
-        createdAt: new Date().toISOString(),
-      };
-      const workspace2 = {
-        id: 'ws-2',
-        name: 'opensummary',
-        path: '/Users/dev/opensummary',
-        defaultBranch: 'origin/main',
-        createdAt: new Date().toISOString(),
-      };
-      const workspace3 = {
-        id: 'ws-3',
-        name: 'maisonkelly',
-        path: '/Users/dev/maisonkelly',
-        defaultBranch: 'origin/main',
-        createdAt: new Date().toISOString(),
-      };
-      addWorkspace(workspace1);
-      addWorkspace(workspace2);
-      addWorkspace(workspace3);
+    async function loadData() {
+      try {
+        // Fetch repos from backend
+        const repos = await listRepos();
+        const mappedWorkspaces = repos.map(repoToWorkspace);
+        setWorkspaces(mappedWorkspaces);
 
-      // Demo sessions for workspace 1
-      const session1 = {
-        id: 'sess-1',
-        workspaceId: 'ws-1',
-        name: 'zagreb-v1',
-        branch: 'zagreb-v1',
-        worktreePath: '/Users/dev/readingminds-next/.worktrees/zagreb-v1',
-        task: 'Answer question',
-        status: 'active' as const,
-        stats: { additions: 10, deletions: 5 },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      const session2 = {
-        id: 'sess-2',
-        workspaceId: 'ws-1',
-        name: 'dakar-v2',
-        branch: 'dakar-v2',
-        worktreePath: '/Users/dev/readingminds-next/.worktrees/dakar-v2',
-        task: 'Monorepo reorganization',
-        status: 'active' as const,
-        stats: { additions: 106, deletions: 126 },
-        createdAt: new Date(Date.now() - 600000).toISOString(),
-        updatedAt: new Date(Date.now() - 600000).toISOString(),
-      };
-      addSession(session1);
-      addSession(session2);
+        // Fetch agents for each repo
+        const allSessions = [];
+        for (const repo of repos) {
+          const agents = await listAgents(repo.id);
+          allSessions.push(...agents.map(agentToSession));
+        }
+        setSessions(allSessions);
 
-      // Demo conversation
-      const conversation = {
-        id: 'conv-1',
-        sessionId: 'sess-2',
-        title: 'Continuing the conversation',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      addConversation(conversation);
-
-      // Demo file changes
-      setFileChanges([
-        { path: 'apps/admin/package.json', additions: 1, deletions: 0, status: 'modified' },
-        { path: 'apps/admin/tsconfig.json', additions: 1, deletions: 18, status: 'modified' },
-        { path: 'apps/docs/package.json', additions: 1, deletions: 0, status: 'modified' },
-        { path: 'apps/docs/tsconfig.json', additions: 2, deletions: 26, status: 'modified' },
-        { path: 'apps/emma/package.json', additions: 1, deletions: 0, status: 'modified' },
-        { path: 'apps/emma/tsconfig.json', additions: 2, deletions: 26, status: 'modified' },
-        { path: 'apps/web/package.json', additions: 1, deletions: 0, status: 'modified' },
-        { path: 'apps/web/tsconfig.json', additions: 1, deletions: 18, status: 'modified' },
-        { path: 'e2e/package.json', additions: 1, deletions: 0, status: 'modified' },
-        { path: 'e2e/tsconfig.json', additions: 1, deletions: 7, status: 'modified' },
-        { path: 'packages/ui/package.json', additions: 1, deletions: 0, status: 'modified' },
-        { path: 'packages/ui/tsconfig.json', additions: 1, deletions: 16, status: 'modified' },
-      ]);
-
-      // Select the second session and conversation by default
-      selectWorkspace('ws-1');
-      selectSession('sess-2');
-      selectConversation('conv-1');
+        // Select first workspace and session if available
+        if (mappedWorkspaces.length > 0) {
+          selectWorkspace(mappedWorkspaces[0].id);
+          const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id);
+          if (firstSession) {
+            selectSession(firstSession.id);
+            // Create a conversation for this session if none exists
+            const convId = `conv-${firstSession.id}`;
+            addConversation({
+              id: convId,
+              sessionId: firstSession.id,
+              title: firstSession.task || 'New conversation',
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            selectConversation(convId);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load data from backend:', error);
+      }
     }
-  }, []);
+
+    loadData();
+  }, [repoToWorkspace, agentToSession, setWorkspaces, setSessions, selectWorkspace, selectSession, addConversation, selectConversation]);
 
   // Keyboard shortcuts
   useEffect(() => {
