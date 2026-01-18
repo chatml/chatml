@@ -82,11 +82,11 @@ export function ChangesPanel() {
       </div>
 
       {/* Tabs Row */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b shrink-0">
+      <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 overflow-hidden min-w-0">
         <Button
           variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-7 text-xs"
+          className="h-6 text-xs px-2 shrink-0"
           onClick={() => setSelectedTab('files')}
         >
           All files
@@ -94,12 +94,12 @@ export function ChangesPanel() {
         <Button
           variant={selectedTab === 'changes' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-7 text-xs gap-1"
+          className="h-6 text-xs px-2 gap-1 shrink-0"
           onClick={() => setSelectedTab('changes')}
         >
           Changes
           {fileChanges.length > 0 && (
-            <span className="bg-muted-foreground/20 text-foreground px-1.5 rounded text-[10px] ml-1">
+            <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
               {fileChanges.length}
             </span>
           )}
@@ -107,22 +107,24 @@ export function ChangesPanel() {
         <Button
           variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-7 text-xs"
+          className="h-6 text-xs px-2 shrink-0"
           onClick={() => setSelectedTab('checks')}
         >
           Checks
         </Button>
-        <div className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground">
-          <Eye className="h-3 w-3" />
-          Review
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <SplitSquareHorizontal className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <Search className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex-1 min-w-0" />
+        <div className="flex items-center shrink-0">
+          <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 px-1.5 text-muted-foreground hover:text-foreground">
+            <Eye className="h-3 w-3" />
+            <span className="hidden xl:inline">Review</span>
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6">
+            <SplitSquareHorizontal className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6">
+            <Search className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
 
       {/* Resizable content area */}
