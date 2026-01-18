@@ -16,7 +16,7 @@ export function useWebSocket() {
     const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      // Connected successfully
     };
 
     ws.onmessage = (event) => {
@@ -34,12 +34,12 @@ export function useWebSocket() {
     };
 
     ws.onclose = () => {
-      console.log('WebSocket disconnected, reconnecting...');
-      setTimeout(connect, 2000);
+      // Reconnect after delay
+      setTimeout(connect, 3000);
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    ws.onerror = () => {
+      // Silently handle - will reconnect via onclose
       ws.close();
     };
 
