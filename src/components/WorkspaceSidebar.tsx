@@ -453,7 +453,7 @@ function SortableWorkspaceItem({
 
         {/* Sessions */}
         <CollapsibleContent>
-          <div className="ml-1">
+          <div className="ml-5">
             {sessions.length === 0 ? (
               <div className="py-2 px-2 text-xs text-muted-foreground/70">
                 No active sessions
