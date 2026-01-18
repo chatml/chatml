@@ -192,25 +192,29 @@ export const useAppStore = create<AppState>((set) => ({
     };
   }),
   archiveSession: (id) => set((state) => {
-    // Archive the session
-    const updatedSessions = state.sessions.map((s) =>
-      s.id === id ? { ...s, archived: true } : s
-    );
+    const session = state.sessions.find((s) => s.id === id);
 
-    // If this was the selected session, select another non-archived session
+    // Remove the session entirely
+    const updatedSessions = state.sessions.filter((s) => s.id !== id);
+
+    // Remove conversations and messages for this session
+    const updatedConversations = state.conversations.filter((c) => c.sessionId !== id);
+    const sessionConvIds = state.conversations.filter((c) => c.sessionId === id).map((c) => c.id);
+    const updatedMessages = state.messages.filter((m) => !sessionConvIds.includes(m.conversationId));
+
+    // If this was the selected session, select another session in the same workspace
     let newSelectedSessionId = state.selectedSessionId;
     let newSelectedConversationId = state.selectedConversationId;
 
     if (state.selectedSessionId === id) {
-      const session = state.sessions.find((s) => s.id === id);
       const otherSessions = updatedSessions.filter(
-        (s) => s.workspaceId === session?.workspaceId && !s.archived && s.id !== id
+        (s) => s.workspaceId === session?.workspaceId
       );
       newSelectedSessionId = otherSessions[0]?.id || null;
 
       // Find first conversation for new session
       if (newSelectedSessionId) {
-        const sessionConvs = state.conversations.filter(c => c.sessionId === newSelectedSessionId);
+        const sessionConvs = updatedConversations.filter(c => c.sessionId === newSelectedSessionId);
         newSelectedConversationId = sessionConvs[0]?.id || null;
       } else {
         newSelectedConversationId = null;
@@ -219,6 +223,8 @@ export const useAppStore = create<AppState>((set) => ({
 
     return {
       sessions: updatedSessions,
+      conversations: updatedConversations,
+      messages: updatedMessages,
       selectedSessionId: newSelectedSessionId,
       selectedConversationId: newSelectedConversationId,
       selectedFileTabId: null,
@@ -229,7 +235,9 @@ export const useAppStore = create<AppState>((set) => ({
   // Conversation actions
   setConversations: (conversations) => set({ conversations }),
   addConversation: (conversation) => set((state) => ({
-    conversations: [...state.conversations, conversation]
+    conversations: [...state.conversations, conversation],
+    // Also add the conversation's messages to the messages array
+    messages: [...state.messages, ...conversation.messages]
   })),
   updateConversation: (id, updates) => set((state) => ({
     conversations: state.conversations.map((c) =>

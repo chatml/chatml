@@ -39,7 +39,6 @@ import { ConversationTabs } from '@/components/ConversationTabs';
 import { StreamingMessage } from '@/components/StreamingMessage';
 import { RunSummaryBlock } from '@/components/RunSummaryBlock';
 import { ToolUsageHistory } from '@/components/ToolUsageHistory';
-import { DiffViewer } from '@/components/DiffViewer';
 import { SystemInfoCard } from '@/components/SystemInfoCard';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 
@@ -123,13 +122,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedSessionId) return;
-    const existingConvs = conversations.filter(c => c.sessionId === selectedSessionId && c.type === type);
-    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
     const newConversation = {
       id: crypto.randomUUID(),
       sessionId: selectedSessionId,
       type,
-      name: `${typeLabel} #${existingConvs.length + 1}`,
+      name: 'Untitled',
       status: 'idle' as const,
       messages: [],
       toolSummary: [],
@@ -183,13 +180,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           <>
             <div
               className={cn(
-                'group flex items-center gap-1.5 px-2.5 py-1 rounded cursor-pointer text-xs font-medium transition-colors shrink-0',
+                'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs font-medium transition-colors shrink-0',
                 selectedFileTabId === fileTabs[0].id
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
               )}
               onClick={() => handleSelectFileTab(fileTabs[0].id)}
             >
+              {/* Selected indicator - purple underline */}
+              {selectedFileTabId === fileTabs[0].id && (
+                <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500/60 rounded-full" />
+              )}
               <FileTabIcon filename={fileTabs[0].name} className="w-3 h-3" />
               <span className="max-w-[120px] truncate">{fileTabs[0].name}</span>
               {fileTabs[0].isDirty && (
@@ -237,12 +238,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 </div>
               </div>
             ) : currentFileTab.viewMode === 'diff' && currentFileTab.diff ? (
-              // Diff view
-              <DiffViewer
+              // Diff view - uses CodeViewer with oldContent for diff mode
+              <CodeViewer
+                content={currentFileTab.diff.newContent}
                 oldContent={currentFileTab.diff.oldContent}
-                newContent={currentFileTab.diff.newContent}
-                oldFilename={currentFileTab.name}
-                newFilename={currentFileTab.name}
+                filename={currentFileTab.name}
+                isLoading={currentFileTab.isLoading}
               />
             ) : (
               // Regular file view

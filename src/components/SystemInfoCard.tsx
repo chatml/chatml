@@ -21,7 +21,7 @@ export function SystemInfoCard({ setupInfo, className }: SystemInfoCardProps) {
   return (
     <div
       className={cn(
-        'rounded-lg border bg-muted/30 p-4 text-sm',
+        'rounded-lg border border-purple-400/20 bg-purple-500/10 dark:border-purple-400/20 dark:bg-purple-500/10 px-3 py-2 text-sm',
         className
       )}
     >

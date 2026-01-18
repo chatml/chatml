@@ -152,8 +152,9 @@ export function ChangesPanel() {
 
       updateFileTab(tabId, {
         diff: {
-          oldContent: diffData.oldContent,
-          newContent: diffData.newContent,
+          // Ensure strings even if API returns undefined
+          oldContent: diffData.oldContent ?? '',
+          newContent: diffData.newContent ?? '',
         },
         isLoading: false,
       });

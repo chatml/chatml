@@ -274,8 +274,14 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		baseBranch = "main"
 	}
 
+	// Use worktree path if set, otherwise fall back to repo path
+	workingPath := session.WorktreePath
+	if workingPath == "" {
+		workingPath = repo.Path
+	}
+
 	// Get changed files in the session's worktree compared to base branch
-	changes, err := h.repoManager.GetChangedFilesWithStats(session.WorktreePath, baseBranch)
+	changes, err := h.repoManager.GetChangedFilesWithStats(workingPath, baseBranch)
 	if err != nil {
 		// If there's no diff (e.g., new worktree with no changes), return empty list
 		changes = []git.FileChange{}
@@ -320,16 +326,22 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		baseBranch = "main"
 	}
 
+	// Use worktree path if set, otherwise fall back to repo path
+	workingPath := session.WorktreePath
+	if workingPath == "" {
+		workingPath = repo.Path
+	}
+
 	// Read current file content from the worktree
-	fullPath := filepath.Join(session.WorktreePath, cleanPath)
+	fullPath := filepath.Join(workingPath, cleanPath)
 	newContent, err := os.ReadFile(fullPath)
 	if err != nil && !os.IsNotExist(err) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Get base branch version using git show (from the worktree)
-	oldContent, err := h.repoManager.GetFileAtRef(session.WorktreePath, baseBranch, cleanPath)
+	// Get base branch version using git show
+	oldContent, err := h.repoManager.GetFileAtRef(workingPath, baseBranch, cleanPath)
 	if err != nil {
 		// File might not exist in base branch (new file)
 		oldContent = ""

@@ -59,7 +59,8 @@ export function DiffViewer({
 
   // Generate diff file when content changes
   useEffect(() => {
-    if (isLoading || !oldContent || !newContent) {
+    // Check for undefined/null but allow empty strings (new files have empty oldContent)
+    if (isLoading || typeof oldContent !== 'string' || typeof newContent !== 'string') {
       setDiffFile(null);
       return;
     }

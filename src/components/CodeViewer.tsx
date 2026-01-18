@@ -6,6 +6,7 @@ import { useTheme } from 'next-themes';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import { createTwoFilesPatch } from 'diff';
 import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye } from 'lucide-react';
@@ -15,6 +16,8 @@ interface CodeViewerProps {
   content: string;
   filename: string;
   isLoading?: boolean;
+  /** If provided, shows a diff view comparing oldContent to content */
+  oldContent?: string;
 }
 
 // Map file extensions to shiki language identifiers
@@ -91,7 +94,7 @@ function isMarkdownFile(filename: string): boolean {
   return ext === 'md' || ext === 'mdx';
 }
 
-export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
+export function CodeViewer({ content, filename, isLoading, oldContent }: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
   const [highlightedHtml, setHighlightedHtml] = useState<string>('');
   const [isHighlighting, setIsHighlighting] = useState(true);
@@ -101,37 +104,70 @@ export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isMarkdown = isMarkdownFile(filename);
+  const isDiffMode = typeof oldContent === 'string';
 
   useEffect(() => {
-    if (!content || isLoading) {
+    if (isLoading) {
+      setHighlightedHtml('');
+      setIsHighlighting(false);
+      return;
+    }
+
+    // In diff mode, allow empty content (deleted file) or empty oldContent (new file)
+    if (!isDiffMode && !content) {
       setHighlightedHtml('');
       setIsHighlighting(false);
       return;
     }
 
     setIsHighlighting(true);
-    const language = getLanguage(filename);
-    const lines = content.split('\n').length;
-    setLineCount(lines);
+
+    let codeToHighlight: string;
+    let language: string;
+
+    if (isDiffMode) {
+      // Generate unified diff
+      const diffText = createTwoFilesPatch(
+        filename,
+        filename,
+        oldContent || '',
+        content || '',
+        'original',
+        'modified'
+      );
+      // Remove the header lines (first 4 lines) for cleaner display
+      const lines = diffText.split('\n');
+      codeToHighlight = lines.slice(4).join('\n');
+      language = 'diff';
+      setLineCount(lines.length - 4);
+    } else {
+      codeToHighlight = content;
+      language = getLanguage(filename);
+      setLineCount(content.split('\n').length);
+    }
 
     // Use the appropriate theme based on current app theme
     const theme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light';
 
-    codeToHtml(content, {
+    codeToHtml(codeToHighlight, {
       lang: language,
       theme: theme,
     })
       .then((html) => {
+        // For diff mode, add line-level styling for additions/deletions
+        if (isDiffMode) {
+          html = addDiffLineStyles(html);
+        }
         setHighlightedHtml(html);
         setIsHighlighting(false);
       })
       .catch((err) => {
         console.error('Syntax highlighting failed:', err);
         // Fallback to plain text
-        setHighlightedHtml(`<pre class="shiki"><code>${escapeHtml(content)}</code></pre>`);
+        setHighlightedHtml(`<pre class="shiki"><code>${escapeHtml(codeToHighlight)}</code></pre>`);
         setIsHighlighting(false);
       });
-  }, [content, filename, isLoading, resolvedTheme]);
+  }, [content, oldContent, filename, isLoading, resolvedTheme, isDiffMode]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -150,7 +186,17 @@ export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
     );
   }
 
-  if (!content) {
+  // In diff mode with no content at all (both old and new empty), show no changes
+  if (isDiffMode && !content && !oldContent) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <span className="text-sm text-muted-foreground">No changes to display</span>
+      </div>
+    );
+  }
+
+  // Show empty file only if not in diff mode and content is empty
+  if (!isDiffMode && !content) {
     return (
       <div className="h-full flex items-center justify-center">
         <span className="text-sm text-muted-foreground">Empty file</span>
@@ -165,7 +211,7 @@ export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
           <span className="font-mono">{lineCount} lines</span>
           <span>|</span>
-          <span className="font-mono">{getLanguage(filename)}</span>
+          <span className="font-mono">{isDiffMode ? 'diff' : getLanguage(filename)}</span>
         </div>
         <div className="flex items-center gap-0.5">
           {isMarkdown && (
@@ -233,7 +279,11 @@ export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
                 '[&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4',
                 '[&_pre]:!bg-transparent [&_pre]:m-0',
                 '[&_code]:block',
-                '[&_.line]:leading-[18px]'
+                '[&_.line]:leading-[18px] [&_.line]:min-h-[18px]',
+                // Diff line backgrounds - full width with padding
+                isDiffMode && '[&_.diff-add]:bg-green-500/15 [&_.diff-add]:pl-1 [&_.diff-add]:-ml-1 [&_.diff-add]:mr-0',
+                isDiffMode && '[&_.diff-remove]:bg-red-500/15 [&_.diff-remove]:pl-1 [&_.diff-remove]:-ml-1 [&_.diff-remove]:mr-0',
+                isDiffMode && '[&_.diff-hunk]:bg-blue-500/10 [&_.diff-hunk]:text-muted-foreground [&_.diff-hunk]:pl-1 [&_.diff-hunk]:-ml-1'
               )}
               dangerouslySetInnerHTML={{ __html: highlightedHtml }}
             />
@@ -251,4 +301,23 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Add background colors to diff lines based on their content
+function addDiffLineStyles(html: string): string {
+  // Shiki wraps each line in a span with class "line"
+  // We need to detect if the line starts with +, -, or @@ and add appropriate styling
+  return html.replace(/<span class="line">(.*?)<\/span>/g, (match, content) => {
+    // Get the text content by stripping HTML tags
+    const textContent = content.replace(/<[^>]*>/g, '');
+
+    if (textContent.startsWith('+')) {
+      return `<span class="line diff-add">${content}</span>`;
+    } else if (textContent.startsWith('-')) {
+      return `<span class="line diff-remove">${content}</span>`;
+    } else if (textContent.startsWith('@@')) {
+      return `<span class="line diff-hunk">${content}</span>`;
+    }
+    return match;
+  });
 }

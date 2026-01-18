@@ -8,6 +8,7 @@ import {
   Loader2,
   Circle,
   CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Conversation } from '@/lib/types';
@@ -20,6 +21,7 @@ interface ConversationTabsProps {
 export function ConversationTabs({ sessionId, onNewConversation }: ConversationTabsProps) {
   const {
     conversations,
+    messages,
     selectedConversationId,
     selectConversation,
     removeConversation,
@@ -30,6 +32,13 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
 
   const sessionConversations = conversations.filter((c) => c.sessionId === sessionId);
   const isFileActive = selectedFileTabId !== null;
+
+  // Check if a conversation is fresh (no user messages yet)
+  const isFreshConversation = (convId: string) => {
+    const convMessages = messages.filter((m) => m.conversationId === convId);
+    // Fresh if no user messages (system messages like setup info don't count)
+    return !convMessages.some((m) => m.role === 'user');
+  };
 
   const handleSelectConversation = (id: string) => {
     selectConversation(id);
@@ -50,6 +59,10 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
     // Check for errors
     if (streaming?.error) {
       return <Circle className="w-2.5 h-2.5 text-destructive fill-destructive" />;
+    }
+    // Fresh conversation - show Claude icon in orange
+    if (conv.status === 'idle' && isFreshConversation(conv.id)) {
+      return <Sparkles className="w-2.5 h-2.5 text-orange-500" />;
     }
     // Use conversation status as source of truth
     switch (conv.status) {
@@ -72,13 +85,17 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
           <div
             key={conv.id}
             className={cn(
-              'group flex items-center gap-1.5 px-2.5 py-1 rounded cursor-pointer text-xs transition-colors shrink-0',
+              'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs transition-colors shrink-0',
               isSelected
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
             )}
             onClick={() => handleSelectConversation(conv.id)}
           >
+            {/* Selected indicator - purple underline */}
+            {isSelected && (
+              <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500/60 rounded-full" />
+            )}
             {getStatusIndicator(conv)}
             <span className="max-w-[120px] truncate font-medium">{conv.name}</span>
             <button

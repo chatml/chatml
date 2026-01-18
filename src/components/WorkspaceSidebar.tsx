@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
-import { createSession as createSessionApi, listConversations as listConversationsApi } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -208,6 +208,20 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
     }
   };
 
+  const handleArchiveSession = async (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    try {
+      // Delete from backend
+      await deleteSessionApi(session.workspaceId, sessionId);
+      // Update local store
+      archiveSession(sessionId);
+    } catch (error) {
+      console.error('Failed to archive session:', error);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       {/* Header - pl-20 gives space for macOS traffic lights */}
@@ -260,7 +274,7 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
                       selectWorkspace(workspace.id);
                       selectSession(sessionId);
                     }}
-                    onArchiveSession={archiveSession}
+                    onArchiveSession={handleArchiveSession}
                     getStatusColor={getStatusColor}
                     formatTimeAgo={formatTimeAgo}
                     getInitial={getInitial}

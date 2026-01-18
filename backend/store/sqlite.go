@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/models"
@@ -14,9 +13,10 @@ import (
 )
 
 // SQLiteStore implements data persistence using SQLite
+// Note: We don't use a Go mutex because SQLite with WAL mode handles concurrency.
+// The busy_timeout pragma handles lock contention at the database level.
 type SQLiteStore struct {
 	db     *sql.DB
-	mu     sync.RWMutex
 	dbPath string
 }
 
@@ -42,9 +42,10 @@ func NewSQLiteStore() (*SQLiteStore, error) {
 		return nil, err
 	}
 
-	// SQLite performs best with single writer
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	// Allow multiple connections for nested queries (reading conversations with messages)
+	// SQLite with WAL mode handles concurrent readers well
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(0)
 
 	s := &SQLiteStore{
@@ -212,9 +213,6 @@ func intToBool(i int) bool {
 // ============================================================================
 
 func (s *SQLiteStore) AddRepo(repo *models.Repo) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`
 		INSERT INTO repos (id, name, path, branch, created_at)
 		VALUES (?, ?, ?, ?, ?)
@@ -226,9 +224,6 @@ func (s *SQLiteStore) AddRepo(repo *models.Repo) {
 }
 
 func (s *SQLiteStore) GetRepo(id string) *models.Repo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var repo models.Repo
 	err := s.db.QueryRow(`
 		SELECT id, name, path, branch, created_at
@@ -241,9 +236,6 @@ func (s *SQLiteStore) GetRepo(id string) *models.Repo {
 }
 
 func (s *SQLiteStore) ListRepos() []*models.Repo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	rows, err := s.db.Query(`SELECT id, name, path, branch, created_at FROM repos`)
 	if err != nil {
 		log.Printf("[sqlite] ListRepos error: %v", err)
@@ -264,9 +256,6 @@ func (s *SQLiteStore) ListRepos() []*models.Repo {
 }
 
 func (s *SQLiteStore) GetRepoByPath(path string) *models.Repo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var repo models.Repo
 	err := s.db.QueryRow(`
 		SELECT id, name, path, branch, created_at
@@ -279,9 +268,6 @@ func (s *SQLiteStore) GetRepoByPath(path string) *models.Repo {
 }
 
 func (s *SQLiteStore) DeleteRepo(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`DELETE FROM repos WHERE id = ?`, id)
 	if err != nil {
 		log.Printf("[sqlite] DeleteRepo error: %v", err)
@@ -293,9 +279,6 @@ func (s *SQLiteStore) DeleteRepo(id string) {
 // ============================================================================
 
 func (s *SQLiteStore) AddSession(session *models.Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	statsAdditions, statsDeletions := 0, 0
 	if session.Stats != nil {
 		statsAdditions = session.Stats.Additions
@@ -318,9 +301,6 @@ func (s *SQLiteStore) AddSession(session *models.Session) {
 }
 
 func (s *SQLiteStore) GetSession(id string) *models.Session {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var session models.Session
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions int
 	var agentID sql.NullString
@@ -355,9 +335,6 @@ func (s *SQLiteStore) GetSession(id string) *models.Session {
 }
 
 func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	rows, err := s.db.Query(`
 		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
@@ -403,9 +380,6 @@ func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
 }
 
 func (s *SQLiteStore) UpdateSession(id string, updates func(*models.Session)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Read current state
 	session := s.getSessionNoLock(id)
 	if session == nil {
@@ -475,9 +449,6 @@ func (s *SQLiteStore) getSessionNoLock(id string) *models.Session {
 }
 
 func (s *SQLiteStore) DeleteSession(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
 	if err != nil {
 		log.Printf("[sqlite] DeleteSession error: %v", err)
@@ -489,9 +460,6 @@ func (s *SQLiteStore) DeleteSession(id string) {
 // ============================================================================
 
 func (s *SQLiteStore) AddAgent(agent *models.Agent) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`
 		INSERT INTO agents (id, repo_id, task, status, worktree, branch, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -503,9 +471,6 @@ func (s *SQLiteStore) AddAgent(agent *models.Agent) {
 }
 
 func (s *SQLiteStore) GetAgent(id string) *models.Agent {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var agent models.Agent
 	err := s.db.QueryRow(`
 		SELECT id, repo_id, task, status, worktree, branch, created_at
@@ -519,9 +484,6 @@ func (s *SQLiteStore) GetAgent(id string) *models.Agent {
 }
 
 func (s *SQLiteStore) ListAgents(repoID string) []*models.Agent {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	rows, err := s.db.Query(`
 		SELECT id, repo_id, task, status, worktree, branch, created_at
 		FROM agents WHERE repo_id = ?`, repoID)
@@ -545,9 +507,6 @@ func (s *SQLiteStore) ListAgents(repoID string) []*models.Agent {
 }
 
 func (s *SQLiteStore) UpdateAgentStatus(id string, status models.AgentStatus) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`UPDATE agents SET status = ? WHERE id = ?`, string(status), id)
 	if err != nil {
 		log.Printf("[sqlite] UpdateAgentStatus error: %v", err)
@@ -555,9 +514,6 @@ func (s *SQLiteStore) UpdateAgentStatus(id string, status models.AgentStatus) {
 }
 
 func (s *SQLiteStore) DeleteAgent(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`DELETE FROM agents WHERE id = ?`, id)
 	if err != nil {
 		log.Printf("[sqlite] DeleteAgent error: %v", err)
@@ -569,9 +525,6 @@ func (s *SQLiteStore) DeleteAgent(id string) {
 // ============================================================================
 
 func (s *SQLiteStore) AddConversation(conv *models.Conversation) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`
 		INSERT INTO conversations (id, session_id, type, name, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -583,9 +536,6 @@ func (s *SQLiteStore) AddConversation(conv *models.Conversation) {
 }
 
 func (s *SQLiteStore) GetConversation(id string) *models.Conversation {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var conv models.Conversation
 	err := s.db.QueryRow(`
 		SELECT id, session_id, type, name, status, created_at, updated_at
@@ -645,9 +595,6 @@ func (s *SQLiteStore) GetConversation(id string) *models.Conversation {
 }
 
 func (s *SQLiteStore) ListConversations(sessionID string) []*models.Conversation {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	rows, err := s.db.Query(`
 		SELECT id, session_id, type, name, status, created_at, updated_at
 		FROM conversations WHERE session_id = ?`, sessionID)
@@ -717,9 +664,6 @@ func (s *SQLiteStore) ListConversations(sessionID string) []*models.Conversation
 }
 
 func (s *SQLiteStore) UpdateConversation(id string, updates func(*models.Conversation)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Read current state
 	conv := s.getConversationNoLock(id)
 	if conv == nil {
@@ -801,9 +745,6 @@ func (s *SQLiteStore) getConversationNoLock(id string) *models.Conversation {
 }
 
 func (s *SQLiteStore) DeleteConversation(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := s.db.Exec(`DELETE FROM conversations WHERE id = ?`, id)
 	if err != nil {
 		log.Printf("[sqlite] DeleteConversation error: %v", err)
@@ -811,9 +752,6 @@ func (s *SQLiteStore) DeleteConversation(id string) {
 }
 
 func (s *SQLiteStore) AddMessageToConversation(convID string, msg models.Message) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Get next position
 	var maxPos sql.NullInt64
 	s.db.QueryRow(`SELECT MAX(position) FROM messages WHERE conversation_id = ?`, convID).Scan(&maxPos)
@@ -841,9 +779,6 @@ func (s *SQLiteStore) AddMessageToConversation(convID string, msg models.Message
 }
 
 func (s *SQLiteStore) AddToolActionToConversation(convID string, action models.ToolAction) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Get next position
 	var maxPos sql.NullInt64
 	s.db.QueryRow(`SELECT MAX(position) FROM tool_actions WHERE conversation_id = ?`, convID).Scan(&maxPos)
