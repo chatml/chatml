@@ -14,6 +14,7 @@ import { ConversationArea } from '@/components/ConversationArea';
 import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
+import { UpdateChecker } from '@/components/UpdateChecker';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   ResizableHandle,
@@ -214,6 +215,9 @@ export default function Home() {
           isOpen={showAddWorkspace}
           onClose={() => setShowAddWorkspace(false)}
         />
+
+        {/* Update Checker */}
+        <UpdateChecker />
       </div>
     </TooltipProvider>
   );
