@@ -22,17 +22,28 @@ import {
   Search,
   SplitSquareHorizontal,
   Loader2,
+  GitPullRequest,
+  AlertTriangle,
+  GitMerge,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileChange } from '@/lib/types';
 
 export function ChangesPanel() {
-  const { fileChanges, selectedWorkspaceId } = useAppStore();
+  const { fileChanges, selectedWorkspaceId, selectedSessionId, sessions } = useAppStore();
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedTab, setSelectedTab] = useState('files');
   const [terminalTab, setTerminalTab] = useState('terminal');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+
+  // Get current session for status-based styling
+  const currentSession = sessions.find((s) => s.id === selectedSessionId);
+
+  // Determine top bar state
+  const hasActivePR = currentSession?.prStatus === 'open';
+  const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
 
   // Fetch files when workspace changes or tab switches to files
   useEffect(() => {
@@ -72,11 +83,59 @@ export function ChangesPanel() {
 
   return (
     <div className="flex flex-col h-full border-l">
-      {/* Top Bar - matches main TopBar */}
-      <div className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
-        <span className="text-sm font-medium text-muted-foreground">Working...</span>
+      {/* Top Bar - changes based on session state */}
+      <div
+        className={cn(
+          'h-11 flex items-center gap-2 px-3 border-b shrink-0',
+          hasActivePR && 'bg-green-500/15 border-green-500/30',
+          hasConflictOrFailure && 'bg-red-500/15 border-red-500/30',
+          !hasActivePR && !hasConflictOrFailure && 'bg-muted/30'
+        )}
+      >
+        {hasActivePR ? (
+          <>
+            <GitPullRequest className="h-4 w-4 text-green-500 shrink-0" />
+            <span className="text-sm font-medium text-green-600 dark:text-green-400 truncate">
+              PR #{currentSession?.prNumber}
+            </span>
+            {currentSession?.prUrl && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-green-600 dark:text-green-400 hover:bg-green-500/20"
+                onClick={() => window.open(currentSession.prUrl, '_blank')}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            )}
+          </>
+        ) : hasConflictOrFailure ? (
+          <>
+            <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+            <span className="text-sm font-medium text-red-600 dark:text-red-400 truncate">
+              {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-sm font-medium text-muted-foreground truncate">
+              {currentSession?.status === 'active' ? 'Working...' :
+               currentSession?.status === 'done' ? 'Completed' :
+               currentSession?.status === 'error' ? 'Error' : 'Ready'}
+            </span>
+          </>
+        )}
         <div className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-primary hover:text-primary hover:bg-primary/10">
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            'h-7 text-xs gap-1',
+            hasActivePR && 'text-green-600 dark:text-green-400 hover:bg-green-500/20',
+            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:bg-red-500/20',
+            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:bg-primary/10'
+          )}
+        >
           <Eye className="h-3 w-3" />
           Review
         </Button>

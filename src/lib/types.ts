@@ -20,6 +20,12 @@ export interface WorktreeSession {
     additions: number;
     deletions: number;
   };
+  // PR and merge status
+  prStatus?: 'none' | 'open' | 'merged' | 'closed';
+  prUrl?: string;
+  prNumber?: number;
+  hasMergeConflict?: boolean;
+  hasCheckFailures?: boolean;
   createdAt: string;
   updatedAt: string;
 }
