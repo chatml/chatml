@@ -62,6 +62,101 @@ export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): 
   return res.json();
 }
 
+export interface FileContentDTO {
+  path: string;
+  name: string;
+  content: string;
+  size: number;
+}
+
+export async function getRepoFileContent(repoId: string, filePath: string): Promise<FileContentDTO> {
+  const res = await fetch(`${API_BASE}/api/repos/${repoId}/file?path=${encodeURIComponent(filePath)}`);
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+export interface FileDiffDTO {
+  path: string;
+  oldContent: string;
+  newContent: string;
+  oldFilename: string;
+  newFilename: string;
+  hasConflict: boolean;
+}
+
+export async function getFileDiff(repoId: string, filePath: string, baseBranch?: string): Promise<FileDiffDTO> {
+  const params = new URLSearchParams({ path: filePath });
+  if (baseBranch) {
+    params.append('base', baseBranch);
+  }
+  const res = await fetch(`${API_BASE}/api/repos/${repoId}/diff?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
+
+// Session DTOs and functions
+export interface SessionDTO {
+  id: string;
+  workspaceId: string;
+  name: string;
+  branch: string;
+  worktreePath: string;
+  task?: string;
+  status: 'active' | 'idle' | 'done' | 'error';
+  stats?: {
+    additions: number;
+    deletions: number;
+  };
+  prStatus?: 'none' | 'open' | 'merged' | 'closed';
+  prUrl?: string;
+  prNumber?: number;
+  hasMergeConflict?: boolean;
+  hasCheckFailures?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listSessions(workspaceId: string): Promise<SessionDTO[]> {
+  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createSession(
+  workspaceId: string,
+  data: { name: string; branch: string; worktreePath: string; task?: string }
+): Promise<SessionDTO> {
+  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateSession(
+  workspaceId: string,
+  sessionId: string,
+  updates: Partial<Omit<SessionDTO, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt'>>
+): Promise<SessionDTO> {
+  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
 export async function listAgents(repoId: string): Promise<AgentDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos/${repoId}/agents`);
   if (!res.ok) return [];

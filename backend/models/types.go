@@ -10,6 +10,30 @@ type Repo struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Session represents a worktree session within a workspace
+type Session struct {
+	ID              string         `json:"id"`
+	WorkspaceID     string         `json:"workspaceId"`
+	Name            string         `json:"name"`
+	Branch          string         `json:"branch"`
+	WorktreePath    string         `json:"worktreePath"`
+	Task            string         `json:"task,omitempty"`
+	Status          string         `json:"status"` // active, idle, done, error
+	Stats           *SessionStats  `json:"stats,omitempty"`
+	PRStatus        string         `json:"prStatus,omitempty"`  // none, open, merged, closed
+	PRUrl           string         `json:"prUrl,omitempty"`
+	PRNumber        int            `json:"prNumber,omitempty"`
+	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
+	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
+	CreatedAt       time.Time      `json:"createdAt"`
+	UpdatedAt       time.Time      `json:"updatedAt"`
+}
+
+type SessionStats struct {
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
+}
+
 type Agent struct {
 	ID        string    `json:"id"`
 	RepoID    string    `json:"repoId"`

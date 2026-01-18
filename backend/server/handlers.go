@@ -88,6 +88,132 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Session handlers
+
+func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	sessions := h.store.ListSessions(workspaceID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
+}
+
+type CreateSessionRequest struct {
+	Name         string `json:"name"`
+	Branch       string `json:"branch"`
+	WorktreePath string `json:"worktreePath"`
+	Task         string `json:"task,omitempty"`
+}
+
+func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	repo := h.store.GetRepo(workspaceID)
+	if repo == nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	var req CreateSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	session := &models.Session{
+		ID:           uuid.New().String(),
+		WorkspaceID:  workspaceID,
+		Name:         req.Name,
+		Branch:       req.Branch,
+		WorktreePath: req.WorktreePath,
+		Task:         req.Task,
+		Status:       "idle",
+		PRStatus:     "none",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	h.store.AddSession(session)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(session)
+}
+
+func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "sessionId")
+	session := h.store.GetSession(id)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(session)
+}
+
+type UpdateSessionRequest struct {
+	Name             *string `json:"name,omitempty"`
+	Task             *string `json:"task,omitempty"`
+	Status           *string `json:"status,omitempty"`
+	PRStatus         *string `json:"prStatus,omitempty"`
+	PRUrl            *string `json:"prUrl,omitempty"`
+	PRNumber         *int    `json:"prNumber,omitempty"`
+	HasMergeConflict *bool   `json:"hasMergeConflict,omitempty"`
+	HasCheckFailures *bool   `json:"hasCheckFailures,omitempty"`
+}
+
+func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "sessionId")
+	session := h.store.GetSession(id)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	var req UpdateSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	h.store.UpdateSession(id, func(s *models.Session) {
+		if req.Name != nil {
+			s.Name = *req.Name
+		}
+		if req.Task != nil {
+			s.Task = *req.Task
+		}
+		if req.Status != nil {
+			s.Status = *req.Status
+		}
+		if req.PRStatus != nil {
+			s.PRStatus = *req.PRStatus
+		}
+		if req.PRUrl != nil {
+			s.PRUrl = *req.PRUrl
+		}
+		if req.PRNumber != nil {
+			s.PRNumber = *req.PRNumber
+		}
+		if req.HasMergeConflict != nil {
+			s.HasMergeConflict = *req.HasMergeConflict
+		}
+		if req.HasCheckFailures != nil {
+			s.HasCheckFailures = *req.HasCheckFailures
+		}
+		s.UpdatedAt = time.Now()
+	})
+
+	session = h.store.GetSession(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(session)
+}
+
+func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "sessionId")
+	h.store.DeleteSession(id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Agent handlers
+
 func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "id")
 	agents := h.store.ListAgents(repoID)
@@ -321,4 +447,146 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([
 	}
 
 	return nodes, nil
+}
+
+// FileDiffResponse represents a diff between two versions of a file
+type FileDiffResponse struct {
+	Path        string `json:"path"`
+	OldContent  string `json:"oldContent"`
+	NewContent  string `json:"newContent"`
+	OldFilename string `json:"oldFilename"`
+	NewFilename string `json:"newFilename"`
+	HasConflict bool   `json:"hasConflict"`
+}
+
+// GetFileDiff returns the diff between the base branch and current state for a file
+func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	repo := h.store.GetRepo(id)
+	if repo == nil {
+		http.Error(w, "repo not found", http.StatusNotFound)
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get the base branch (usually main or master)
+	baseBranch := r.URL.Query().Get("base")
+	if baseBranch == "" {
+		baseBranch = repo.Branch // default branch
+	}
+
+	// Clean the path
+	cleanPath := filepath.Clean(filePath)
+	if strings.HasPrefix(cleanPath, "..") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	fullPath := filepath.Join(repo.Path, cleanPath)
+
+	// Read current file content
+	newContent, err := os.ReadFile(fullPath)
+	if err != nil && !os.IsNotExist(err) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get base branch version using git show
+	oldContent, err := h.repoManager.GetFileAtRef(repo.Path, baseBranch, cleanPath)
+	if err != nil {
+		// File might not exist in base branch (new file)
+		oldContent = ""
+	}
+
+	// Check for conflict markers
+	hasConflict := strings.Contains(string(newContent), "<<<<<<<") &&
+		strings.Contains(string(newContent), "=======") &&
+		strings.Contains(string(newContent), ">>>>>>>")
+
+	response := FileDiffResponse{
+		Path:        cleanPath,
+		OldContent:  oldContent,
+		NewContent:  string(newContent),
+		OldFilename: cleanPath + " (base)",
+		NewFilename: cleanPath,
+		HasConflict: hasConflict,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// GetRepoFileContent returns the content of a specific file in the repository
+func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	repo := h.store.GetRepo(id)
+	if repo == nil {
+		http.Error(w, "repo not found", http.StatusNotFound)
+		return
+	}
+
+	// Get file path from query parameter
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Prevent directory traversal attacks
+	cleanPath := filepath.Clean(filePath)
+	if strings.HasPrefix(cleanPath, "..") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	fullPath := filepath.Join(repo.Path, cleanPath)
+
+	// Ensure the path is within the repo directory
+	if !strings.HasPrefix(fullPath, repo.Path) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Check if file exists and is not a directory
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "file not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return as JSON with metadata
+	response := struct {
+		Path    string `json:"path"`
+		Name    string `json:"name"`
+		Content string `json:"content"`
+		Size    int64  `json:"size"`
+	}{
+		Path:    cleanPath,
+		Name:    filepath.Base(cleanPath),
+		Content: string(content),
+		Size:    info.Size(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

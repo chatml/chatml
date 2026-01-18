@@ -5,6 +5,7 @@ import type {
   Conversation,
   Message,
   FileChange,
+  FileTab,
   Repo,
   Agent
 } from '@/lib/types';
@@ -24,6 +25,10 @@ interface AppState {
   selectedWorkspaceId: string | null;
   selectedSessionId: string | null;
   selectedConversationId: string | null;
+
+  // File tabs
+  fileTabs: FileTab[];
+  selectedFileTabId: string | null;
 
   sessionOutputs: SessionOutput;
   totalCost: number;
@@ -57,6 +62,12 @@ interface AppState {
   // File changes
   setFileChanges: (changes: FileChange[]) => void;
 
+  // File tabs actions
+  openFileTab: (tab: FileTab) => void;
+  closeFileTab: (id: string) => void;
+  selectFileTab: (id: string | null) => void;
+  updateFileTab: (id: string, updates: Partial<FileTab>) => void;
+
   // Output
   appendOutput: (sessionId: string, line: string) => void;
   clearOutput: (sessionId: string) => void;
@@ -89,6 +100,8 @@ export const useAppStore = create<AppState>((set) => ({
   selectedWorkspaceId: null,
   selectedSessionId: null,
   selectedConversationId: null,
+  fileTabs: [],
+  selectedFileTabId: null,
   sessionOutputs: {},
   totalCost: 0,
 
@@ -157,6 +170,31 @@ export const useAppStore = create<AppState>((set) => ({
 
   // File changes
   setFileChanges: (fileChanges) => set({ fileChanges }),
+
+  // File tabs - only one file tab allowed, always replaces
+  openFileTab: (tab) => set(() => ({
+    fileTabs: [tab],
+    selectedFileTabId: tab.id,
+  })),
+  closeFileTab: (id) => set((state) => {
+    const newTabs = state.fileTabs.filter((t) => t.id !== id);
+    let newSelectedId = state.selectedFileTabId;
+    if (state.selectedFileTabId === id) {
+      // Select adjacent tab or null
+      const idx = state.fileTabs.findIndex((t) => t.id === id);
+      newSelectedId = newTabs[idx]?.id || newTabs[idx - 1]?.id || null;
+    }
+    return {
+      fileTabs: newTabs,
+      selectedFileTabId: newSelectedId,
+    };
+  }),
+  selectFileTab: (id) => set({ selectedFileTabId: id }),
+  updateFileTab: (id, updates) => set((state) => ({
+    fileTabs: state.fileTabs.map((t) =>
+      t.id === id ? { ...t, ...updates } : t
+    ),
+  })),
 
   // Output
   appendOutput: (sessionId, line) => set((state) => ({

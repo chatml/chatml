@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -33,6 +33,8 @@ import {
   GitBranch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CodeViewer } from '@/components/CodeViewer';
+import { FileTabIcon } from '@/components/FileTabIcon';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 
 interface ConversationAreaProps {
@@ -49,6 +51,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectConversation,
     addConversation,
     removeConversation,
+    fileTabs,
+    selectedFileTabId,
+    selectFileTab,
+    closeFileTab,
   } = useAppStore();
 
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
@@ -58,6 +64,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const conversationMessages = messages.filter(
     (m) => m.conversationId === selectedConversationId
   );
+
+  // Get current file tab
+  const currentFileTab = fileTabs.find((t) => t.id === selectedFileTabId);
+
+  // Determine what's currently active (conversation or file)
+  const isFileActive = selectedFileTabId !== null;
 
   const handleNewConversation = () => {
     if (!selectedSessionId) return;
@@ -71,11 +83,26 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     };
     addConversation(newConversation);
     selectConversation(newConversation.id);
+    selectFileTab(null); // Deselect file tab
+  };
+
+  const handleSelectConversation = (id: string) => {
+    selectConversation(id);
+    selectFileTab(null); // Deselect file tab when selecting conversation
+  };
+
+  const handleSelectFileTab = (id: string) => {
+    selectFileTab(id);
+  };
+
+  const handleCloseFileTab = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    closeFileTab(id);
   };
 
   if (!selectedSessionId) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md px-6">
             <div className="w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center mx-auto mb-4">
@@ -93,19 +120,49 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Conversation Tabs */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b shrink-0">
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* Tabs Row - File tab first, then conversations */}
+      <div className="flex items-center gap-1 px-1.5 py-1 border-b shrink-0 overflow-x-auto">
+        {/* File Tab - always first, only one */}
+        {fileTabs.length > 0 && fileTabs[0] && (
+          <>
+            <div
+              className={cn(
+                'group flex items-center gap-1.5 px-2.5 py-1 rounded cursor-pointer text-xs font-medium transition-colors shrink-0',
+                selectedFileTabId === fileTabs[0].id
+                  ? 'bg-muted text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              )}
+              onClick={() => handleSelectFileTab(fileTabs[0].id)}
+            >
+              <FileTabIcon filename={fileTabs[0].name} className="w-3 h-3" />
+              <span className="max-w-[120px] truncate">{fileTabs[0].name}</span>
+              {fileTabs[0].isDirty && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+              )}
+              <button
+                className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+                onClick={(e) => handleCloseFileTab(fileTabs[0].id, e)}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            {/* Separator between file and conversations */}
+            <div className="h-4 w-px bg-border mx-1 shrink-0" />
+          </>
+        )}
+
+        {/* Conversation Tabs */}
         {sessionConversations.map((conv) => (
           <div
             key={conv.id}
             className={cn(
-              'group flex items-center gap-1.5 px-2.5 py-1 rounded cursor-pointer text-xs font-medium transition-colors',
-              selectedConversationId === conv.id
+              'group flex items-center gap-1.5 px-2.5 py-1 rounded cursor-pointer text-xs font-medium transition-colors shrink-0',
+              !isFileActive && selectedConversationId === conv.id
                 ? 'bg-muted text-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             )}
-            onClick={() => selectConversation(conv.id)}
+            onClick={() => handleSelectConversation(conv.id)}
           >
             <MessageSquare className="w-3 h-3" />
             <span className="max-w-[100px] truncate">{conv.title}</span>
@@ -122,35 +179,52 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             )}
           </div>
         ))}
+
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
           onClick={handleNewConversation}
         >
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-auto min-h-0">
-        <div className="p-4 space-y-1">
-          {conversationMessages.length === 0 ? (
-            <EmptyState sessionName={currentSession?.name} />
-          ) : (
-            conversationMessages.map((message, idx) => (
-              <MessageBlock
-                key={message.id}
-                message={message}
-                isFirst={idx === 0}
-              />
-            ))
-          )}
-        </div>
-      </div>
+      {/* Content Area - Either file viewer or messages */}
+      {isFileActive && currentFileTab ? (
+        <>
+          <div className="flex-1 min-h-0">
+            <CodeViewer
+              content={currentFileTab.content || ''}
+              filename={currentFileTab.name}
+              isLoading={currentFileTab.isLoading}
+            />
+          </div>
+          {/* No chat input when viewing files */}
+        </>
+      ) : (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-auto min-h-0">
+            <div className="p-4 space-y-1">
+              {conversationMessages.length === 0 ? (
+                <EmptyState sessionName={currentSession?.name} />
+              ) : (
+                conversationMessages.map((message, idx) => (
+                  <MessageBlock
+                    key={message.id}
+                    message={message}
+                    isFirst={idx === 0}
+                  />
+                ))
+              )}
+            </div>
+          </div>
 
-      {/* Chat Input */}
-      <div className="shrink-0">{children}</div>
+          {/* Chat Input */}
+          <div className="shrink-0">{children}</div>
+        </>
+      )}
     </div>
   );
 }

@@ -92,3 +92,14 @@ export interface WSEvent {
   conversationId?: string;
   payload: string;
 }
+
+// File tab for the editor
+export interface FileTab {
+  id: string;
+  workspaceId: string;
+  path: string;
+  name: string;
+  content?: string;
+  isLoading?: boolean;
+  isDirty?: boolean;
+}

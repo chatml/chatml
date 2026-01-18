@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { listRepos, listAgents, type RepoDTO, type AgentDTO } from '@/lib/api';
+import { listRepos, listSessions, type RepoDTO, type SessionDTO } from '@/lib/api';
 import { ActivityBar, type ActivityView } from '@/components/ActivityBar';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { SearchPanel } from '@/components/SearchPanel';
@@ -52,17 +52,23 @@ export default function Home() {
     createdAt: repo.createdAt,
   }), []);
 
-  // Map backend Agent to frontend WorktreeSession
-  const agentToSession = useCallback((agent: AgentDTO) => ({
-    id: agent.id,
-    workspaceId: agent.repoId,
-    name: agent.branch,
-    branch: agent.branch,
-    worktreePath: agent.worktree,
-    task: agent.task,
-    status: agent.status === 'running' ? 'active' as const : agent.status as 'idle' | 'done' | 'error',
-    createdAt: agent.createdAt,
-    updatedAt: agent.createdAt,
+  // Map backend Session to frontend WorktreeSession
+  const sessionToWorktreeSession = useCallback((session: SessionDTO) => ({
+    id: session.id,
+    workspaceId: session.workspaceId,
+    name: session.name,
+    branch: session.branch,
+    worktreePath: session.worktreePath,
+    task: session.task,
+    status: session.status,
+    stats: session.stats,
+    prStatus: session.prStatus,
+    prUrl: session.prUrl,
+    prNumber: session.prNumber,
+    hasMergeConflict: session.hasMergeConflict,
+    hasCheckFailures: session.hasCheckFailures,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
   }), []);
 
   // Load data from backend
@@ -74,11 +80,11 @@ export default function Home() {
         const mappedWorkspaces = repos.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
-        // Fetch agents for each repo
+        // Fetch sessions for each workspace
         const allSessions = [];
         for (const repo of repos) {
-          const agents = await listAgents(repo.id);
-          allSessions.push(...agents.map(agentToSession));
+          const sessions = await listSessions(repo.id);
+          allSessions.push(...sessions.map(sessionToWorktreeSession));
         }
         setSessions(allSessions);
 
@@ -107,7 +113,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [repoToWorkspace, agentToSession, setWorkspaces, setSessions, selectWorkspace, selectSession, addConversation, selectConversation]);
+  }, [repoToWorkspace, sessionToWorktreeSession, setWorkspaces, setSessions, selectWorkspace, selectSession, addConversation, selectConversation]);
 
   // Keyboard shortcuts
   useEffect(() => {

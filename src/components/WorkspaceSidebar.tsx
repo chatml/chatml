@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
+import { createSession as createSessionApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -145,41 +146,51 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
     return `${adj}-${noun}-${num}`;
   };
 
-  const handleCreateSession = (workspaceId: string) => {
+  const handleCreateSession = async (workspaceId: string) => {
     const branchName = generateBranchName();
-    const sessionId = `session-${Date.now()}`;
-    const now = new Date().toISOString();
 
-    // Create session in idle state (agent not started yet)
-    addSession({
-      id: sessionId,
-      workspaceId,
-      name: branchName,
-      branch: branchName,
-      worktreePath: '', // Will be set when agent starts
-      status: 'idle',
-      createdAt: now,
-      updatedAt: now,
-    });
+    try {
+      // Create session via backend API
+      const session = await createSessionApi(workspaceId, {
+        name: branchName,
+        branch: branchName,
+        worktreePath: '', // Will be set when agent starts
+      });
 
-    // Create conversation for this session
-    const convId = `conv-${sessionId}`;
-    addConversation({
-      id: convId,
-      sessionId,
-      title: 'New conversation',
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    });
+      // Add to local store
+      addSession({
+        id: session.id,
+        workspaceId: session.workspaceId,
+        name: session.name,
+        branch: session.branch,
+        worktreePath: session.worktreePath,
+        task: session.task,
+        status: session.status,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      });
 
-    // Expand the workspace if not already
-    setExpandedWorkspaces((prev) => new Set([...prev, workspaceId]));
+      // Create conversation for this session
+      const convId = `conv-${session.id}`;
+      addConversation({
+        id: convId,
+        sessionId: session.id,
+        title: 'New conversation',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
 
-    // Select the new session and conversation
-    selectWorkspace(workspaceId);
-    selectSession(sessionId);
-    selectConversation(convId);
+      // Expand the workspace if not already
+      setExpandedWorkspaces((prev) => new Set([...prev, workspaceId]));
+
+      // Select the new session and conversation
+      selectWorkspace(workspaceId);
+      selectSession(session.id);
+      selectConversation(convId);
+    } catch (error) {
+      console.error('Failed to create session:', error);
+    }
   };
 
   return (

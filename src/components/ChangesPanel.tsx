@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { listRepoFiles, type FileNodeDTO } from '@/lib/api';
+import { listRepoFiles, getRepoFileContent, type FileNodeDTO } from '@/lib/api';
 import { FileTree, type FileNode } from '@/components/FileTree';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,15 +28,49 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { FileChange } from '@/lib/types';
+import type { FileChange, FileTab } from '@/lib/types';
 
 export function ChangesPanel() {
-  const { fileChanges, selectedWorkspaceId, selectedSessionId, sessions } = useAppStore();
+  const { fileChanges, selectedWorkspaceId, selectedSessionId, sessions, openFileTab, updateFileTab } = useAppStore();
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedTab, setSelectedTab] = useState('files');
   const [terminalTab, setTerminalTab] = useState('terminal');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+
+  // Handle file selection from file tree
+  const handleFileSelect = async (path: string) => {
+    if (!selectedWorkspaceId) return;
+
+    const filename = path.split('/').pop() || path;
+    const tabId = `${selectedWorkspaceId}-${path}`;
+
+    // Create tab with loading state
+    const newTab: FileTab = {
+      id: tabId,
+      workspaceId: selectedWorkspaceId,
+      path,
+      name: filename,
+      isLoading: true,
+    };
+
+    openFileTab(newTab);
+
+    // Fetch file content
+    try {
+      const fileData = await getRepoFileContent(selectedWorkspaceId, path);
+      updateFileTab(tabId, {
+        content: fileData.content,
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to load file:', error);
+      updateFileTab(tabId, {
+        content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isLoading: false,
+      });
+    }
+  };
 
   // Get current session for status-based styling
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
@@ -203,7 +237,7 @@ export function ChangesPanel() {
                 </div>
               </div>
             ) : (
-              <FileTree files={files} onFileSelect={(path) => console.log('Selected:', path)} />
+              <FileTree files={files} onFileSelect={handleFileSelect} />
             )
           ) : selectedTab === 'changes' ? (
             <ScrollArea className="h-full">
