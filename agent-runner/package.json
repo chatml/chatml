@@ -1,0 +1,19 @@
+{
+  "name": "chatml-agent-runner",
+  "version": "1.0.0",
+  "description": "Node.js agent runner for ChatML using Claude Agent SDK",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}

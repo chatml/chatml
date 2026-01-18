@@ -35,6 +35,8 @@ import {
 import { cn } from '@/lib/utils';
 import { CodeViewer } from '@/components/CodeViewer';
 import { FileTabIcon } from '@/components/FileTabIcon';
+import { ConversationTabs } from '@/components/ConversationTabs';
+import { StreamingMessage } from '@/components/StreamingMessage';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 
 interface ConversationAreaProps {
@@ -71,13 +73,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Determine what's currently active (conversation or file)
   const isFileActive = selectedFileTabId !== null;
 
-  const handleNewConversation = () => {
+  const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedSessionId) return;
+    const existingConvs = conversations.filter(c => c.sessionId === selectedSessionId && c.type === type);
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
     const newConversation = {
       id: crypto.randomUUID(),
       sessionId: selectedSessionId,
-      title: 'New conversation',
-      isActive: true,
+      type,
+      name: `${typeLabel} #${existingConvs.length + 1}`,
+      status: 'idle' as const,
+      messages: [],
+      toolSummary: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -153,41 +160,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         )}
 
         {/* Conversation Tabs */}
-        {sessionConversations.map((conv) => (
-          <div
-            key={conv.id}
-            className={cn(
-              'group flex items-center gap-1.5 px-2.5 py-1 rounded cursor-pointer text-xs font-medium transition-colors shrink-0',
-              !isFileActive && selectedConversationId === conv.id
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            )}
-            onClick={() => handleSelectConversation(conv.id)}
-          >
-            <MessageSquare className="w-3 h-3" />
-            <span className="max-w-[100px] truncate">{conv.title}</span>
-            {sessionConversations.length > 1 && (
-              <button
-                className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeConversation(conv.id);
-                }}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        ))}
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-          onClick={handleNewConversation}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
+        <ConversationTabs
+          sessionId={selectedSessionId}
+          onNewConversation={handleNewConversation}
+        />
       </div>
 
       {/* Content Area - Either file viewer or messages */}
@@ -207,16 +183,22 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           {/* Messages */}
           <div className="flex-1 overflow-auto min-h-0">
             <div className="p-4 space-y-1">
-              {conversationMessages.length === 0 ? (
+              {conversationMessages.length === 0 && !selectedConversationId ? (
                 <EmptyState sessionName={currentSession?.name} />
               ) : (
-                conversationMessages.map((message, idx) => (
-                  <MessageBlock
-                    key={message.id}
-                    message={message}
-                    isFirst={idx === 0}
-                  />
-                ))
+                <>
+                  {conversationMessages.map((message, idx) => (
+                    <MessageBlock
+                      key={message.id}
+                      message={message}
+                      isFirst={idx === 0}
+                    />
+                  ))}
+                  {/* Streaming message */}
+                  {selectedConversationId && (
+                    <StreamingMessage conversationId={selectedConversationId} />
+                  )}
+                </>
               )}
             </div>
           </div>

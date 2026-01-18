@@ -11,25 +11,28 @@ import (
 )
 
 type Store struct {
-	mu       sync.RWMutex
-	repos    map[string]*models.Repo
-	sessions map[string]*models.Session
-	agents   map[string]*models.Agent
-	dataPath string
+	mu            sync.RWMutex
+	repos         map[string]*models.Repo
+	sessions      map[string]*models.Session
+	agents        map[string]*models.Agent
+	conversations map[string]*models.Conversation
+	dataPath      string
 }
 
 // persistedData represents the data structure saved to disk
 type persistedData struct {
-	Repos    []*models.Repo    `json:"repos"`
-	Sessions []*models.Session `json:"sessions"`
-	Agents   []*models.Agent   `json:"agents"`
+	Repos         []*models.Repo         `json:"repos"`
+	Sessions      []*models.Session      `json:"sessions"`
+	Agents        []*models.Agent        `json:"agents"`
+	Conversations []*models.Conversation `json:"conversations"`
 }
 
 func New() *Store {
 	s := &Store{
-		repos:    make(map[string]*models.Repo),
-		sessions: make(map[string]*models.Session),
-		agents:   make(map[string]*models.Agent),
+		repos:         make(map[string]*models.Repo),
+		sessions:      make(map[string]*models.Session),
+		agents:        make(map[string]*models.Agent),
+		conversations: make(map[string]*models.Conversation),
 	}
 
 	// Set up data path in user's home directory
@@ -80,6 +83,9 @@ func (s *Store) load() error {
 	for _, agent := range persisted.Agents {
 		s.agents[agent.ID] = agent
 	}
+	for _, conv := range persisted.Conversations {
+		s.conversations[conv.ID] = conv
+	}
 
 	return nil
 }
@@ -92,9 +98,10 @@ func (s *Store) save() error {
 
 	s.mu.RLock()
 	persisted := persistedData{
-		Repos:    make([]*models.Repo, 0, len(s.repos)),
-		Sessions: make([]*models.Session, 0, len(s.sessions)),
-		Agents:   make([]*models.Agent, 0, len(s.agents)),
+		Repos:         make([]*models.Repo, 0, len(s.repos)),
+		Sessions:      make([]*models.Session, 0, len(s.sessions)),
+		Agents:        make([]*models.Agent, 0, len(s.agents)),
+		Conversations: make([]*models.Conversation, 0, len(s.conversations)),
 	}
 	for _, repo := range s.repos {
 		persisted.Repos = append(persisted.Repos, repo)
@@ -104,6 +111,9 @@ func (s *Store) save() error {
 	}
 	for _, agent := range s.agents {
 		persisted.Agents = append(persisted.Agents, agent)
+	}
+	for _, conv := range s.conversations {
+		persisted.Conversations = append(persisted.Conversations, conv)
 	}
 	s.mu.RUnlock()
 
@@ -140,6 +150,17 @@ func (s *Store) ListRepos() []*models.Repo {
 		repos = append(repos, r)
 	}
 	return repos
+}
+
+func (s *Store) GetRepoByPath(path string) *models.Repo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, r := range s.repos {
+		if r.Path == path {
+			return r
+		}
+	}
+	return nil
 }
 
 func (s *Store) DeleteRepo(id string) {
@@ -239,4 +260,75 @@ func (s *Store) DeleteAgent(id string) {
 	delete(s.agents, id)
 	s.mu.Unlock()
 	s.save()
+}
+
+// Conversation methods
+
+func (s *Store) AddConversation(conv *models.Conversation) {
+	s.mu.Lock()
+	s.conversations[conv.ID] = conv
+	s.mu.Unlock()
+	if err := s.save(); err != nil {
+		log.Printf("[store] Failed to save after AddConversation: %v", err)
+	}
+}
+
+func (s *Store) GetConversation(id string) *models.Conversation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.conversations[id]
+}
+
+func (s *Store) ListConversations(sessionID string) []*models.Conversation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	convs := make([]*models.Conversation, 0)
+	for _, conv := range s.conversations {
+		if conv.SessionID == sessionID {
+			convs = append(convs, conv)
+		}
+	}
+	return convs
+}
+
+func (s *Store) UpdateConversation(id string, updates func(*models.Conversation)) {
+	s.mu.Lock()
+	if conv, ok := s.conversations[id]; ok {
+		updates(conv)
+	}
+	s.mu.Unlock()
+	if err := s.save(); err != nil {
+		log.Printf("[store] Failed to save after UpdateConversation: %v", err)
+	}
+}
+
+func (s *Store) DeleteConversation(id string) {
+	s.mu.Lock()
+	delete(s.conversations, id)
+	s.mu.Unlock()
+	if err := s.save(); err != nil {
+		log.Printf("[store] Failed to save after DeleteConversation: %v", err)
+	}
+}
+
+func (s *Store) AddMessageToConversation(convID string, msg models.Message) {
+	s.mu.Lock()
+	if conv, ok := s.conversations[convID]; ok {
+		conv.Messages = append(conv.Messages, msg)
+	}
+	s.mu.Unlock()
+	if err := s.save(); err != nil {
+		log.Printf("[store] Failed to save after AddMessageToConversation: %v", err)
+	}
+}
+
+func (s *Store) AddToolActionToConversation(convID string, action models.ToolAction) {
+	s.mu.Lock()
+	if conv, ok := s.conversations[convID]; ok {
+		conv.ToolSummary = append(conv.ToolSummary, action)
+	}
+	s.mu.Unlock()
+	if err := s.save(); err != nil {
+		log.Printf("[store] Failed to save after AddToolActionToConversation: %v", err)
+	}
 }

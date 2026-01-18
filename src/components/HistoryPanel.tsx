@@ -43,7 +43,7 @@ export function HistoryPanel() {
     return {
       id: conv.id,
       type: 'conversation',
-      title: conv.title,
+      title: conv.name,
       workspace: workspace?.name || 'Unknown',
       branch: session?.branch,
       date: conv.updatedAt,

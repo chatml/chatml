@@ -34,10 +34,21 @@ export interface WorktreeSession {
 export interface Conversation {
   id: string;
   sessionId: string;
-  title: string;
-  isActive: boolean;
+  type: 'task' | 'review' | 'chat';
+  name: string; // AI-updatable display name
+  status: 'active' | 'idle' | 'completed';
+  messages: Message[];
+  toolSummary: ToolAction[];
   createdAt: string;
   updatedAt: string;
+}
+
+// ToolAction = Record of a tool usage
+export interface ToolAction {
+  id: string;
+  tool: string;
+  target: string;
+  success: boolean;
 }
 
 // Message = Individual message in a conversation
@@ -51,6 +62,21 @@ export interface Message {
   fileChanges?: FileChange[];
   timestamp: string;
   durationMs?: number;
+}
+
+// Agent event from WebSocket
+export interface AgentEvent {
+  type: string;
+  conversationId?: string;
+  content?: string;
+  id?: string;
+  tool?: string;
+  params?: Record<string, unknown>;
+  success?: boolean;
+  summary?: string;
+  duration?: number;
+  name?: string;
+  message?: string;
 }
 
 export interface VerificationResult {
@@ -86,11 +112,11 @@ export interface Agent {
 }
 
 export interface WSEvent {
-  type: 'output' | 'status' | 'message';
+  type: string; // 'output' | 'status' | 'assistant_text' | 'tool_start' | 'tool_end' | 'name_suggestion' | 'conversation_status' | etc.
   agentId?: string;
   sessionId?: string;
   conversationId?: string;
-  payload: string;
+  payload?: string | AgentEvent;
 }
 
 // File tab for the editor

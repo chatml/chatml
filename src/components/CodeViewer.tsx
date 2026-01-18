@@ -3,9 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { codeToHtml } from 'shiki';
 import { useTheme } from 'next-themes';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Loader2 } from 'lucide-react';
+import { Copy, Check, Loader2, Code, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CodeViewerProps {
@@ -83,13 +86,21 @@ function getLanguage(filename: string): string {
   return langMap[ext] || 'text';
 }
 
+function isMarkdownFile(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  return ext === 'md' || ext === 'mdx';
+}
+
 export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
   const [highlightedHtml, setHighlightedHtml] = useState<string>('');
   const [isHighlighting, setIsHighlighting] = useState(true);
   const [copied, setCopied] = useState(false);
   const [lineCount, setLineCount] = useState(0);
+  const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const isMarkdown = isMarkdownFile(filename);
 
   useEffect(() => {
     if (!content || isLoading) {
@@ -150,42 +161,64 @@ export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
           <span className="font-mono">{lineCount} lines</span>
           <span>|</span>
           <span className="font-mono">{getLanguage(filename)}</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 text-xs gap-1"
-          onClick={handleCopy}
-        >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3" />
-              Copied
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" />
-              Copy
-            </>
+        <div className="flex items-center gap-0.5">
+          {isMarkdown && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-5 w-5', viewMode === 'rendered' && 'bg-muted')}
+              onClick={() => setViewMode(viewMode === 'code' ? 'rendered' : 'code')}
+              title={viewMode === 'code' ? 'Show rendered' : 'Show code'}
+            >
+              {viewMode === 'code' ? (
+                <Eye className="w-3 h-3" />
+              ) : (
+                <Code className="w-3 h-3" />
+              )}
+            </Button>
           )}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <Check className="w-3 h-3 text-green-500" />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
+          </Button>
+        </div>
       </div>
 
-      {/* Code content */}
+      {/* Content */}
       <div className="flex-1 overflow-auto min-h-0 overscroll-contain">
-        {isHighlighting ? (
+        {isMarkdown && viewMode === 'rendered' ? (
+          <div
+            className="p-6 min-h-full"
+            data-color-mode={resolvedTheme === 'dark' ? 'dark' : 'light'}
+          >
+            <div className="markdown-body !bg-transparent px-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {content}
+              </ReactMarkdown>
+            </div>
+          </div>
+        ) : isHighlighting ? (
           <div className="p-4 flex items-center justify-center">
             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="flex">
+          <div className="flex min-h-full">
             {/* Line numbers */}
-            <div className="shrink-0 py-3 pl-3 pr-2 text-[11px] font-mono text-muted-foreground/50 text-right select-none border-r border-border/50 sticky left-0 bg-background">
+            <div className="shrink-0 py-3 pl-3 pr-2 text-[11px] font-mono text-muted-foreground/50 text-right select-none border-r border-border/50 sticky left-0 bg-background min-h-full">
               {Array.from({ length: lineCount }, (_, i) => (
                 <div key={i + 1} className="leading-[18px]">
                   {i + 1}
@@ -196,7 +229,7 @@ export function CodeViewer({ content, filename, isLoading }: CodeViewerProps) {
             <div
               ref={contentRef}
               className={cn(
-                'code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto',
+                'code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto min-h-full',
                 '[&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4',
                 '[&_pre]:!bg-transparent [&_pre]:m-0',
                 '[&_code]:block',

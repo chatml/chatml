@@ -107,6 +107,7 @@ export interface SessionDTO {
   worktreePath: string;
   task?: string;
   status: 'active' | 'idle' | 'done' | 'error';
+  agentId?: string;
   stats?: {
     additions: number;
     deletions: number;
@@ -157,6 +158,19 @@ export async function deleteSession(workspaceId: string, sessionId: string): Pro
   await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
 }
 
+export async function sendSessionMessage(
+  workspaceId: string,
+  sessionId: string,
+  content: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function listAgents(repoId: string): Promise<AgentDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos/${repoId}/agents`);
   if (!res.ok) return [];
@@ -197,4 +211,85 @@ export async function checkHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Conversation DTOs and functions
+export interface ConversationDTO {
+  id: string;
+  sessionId: string;
+  type: 'task' | 'review' | 'chat';
+  name: string;
+  status: 'active' | 'idle' | 'completed';
+  messages: MessageDTO[];
+  toolSummary: ToolActionDTO[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessageDTO {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface ToolActionDTO {
+  id: string;
+  tool: string;
+  target: string;
+  success: boolean;
+}
+
+export async function listConversations(
+  workspaceId: string,
+  sessionId: string
+): Promise<ConversationDTO[]> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`
+  );
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createConversation(
+  workspaceId: string,
+  sessionId: string,
+  data: { type?: 'task' | 'review' | 'chat'; message?: string }
+): Promise<ConversationDTO> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getConversation(convId: string): Promise<ConversationDTO> {
+  const res = await fetch(`${API_BASE}/api/conversations/${convId}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function sendConversationMessage(
+  convId: string,
+  content: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/conversations/${convId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function stopConversation(convId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/conversations/${convId}/stop`, { method: 'POST' });
+}
+
+export async function deleteConversation(convId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
 }

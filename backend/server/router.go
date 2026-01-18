@@ -40,8 +40,20 @@ func NewRouter(s *store.Store, hub *Hub, agentMgr *agent.Manager) http.Handler {
 		r.Get("/{id}/sessions/{sessionId}", h.GetSession)
 		r.Patch("/{id}/sessions/{sessionId}", h.UpdateSession)
 		r.Delete("/{id}/sessions/{sessionId}", h.DeleteSession)
+		r.Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)
+		// Conversation endpoints nested under sessions
+		r.Get("/{id}/sessions/{sessionId}/conversations", h.ListConversations)
+		r.Post("/{id}/sessions/{sessionId}/conversations", h.CreateConversation)
 		r.Get("/{id}/agents", h.ListAgents)
 		r.Post("/{id}/agents", h.SpawnAgent)
+	})
+
+	// Conversation endpoints (top-level for direct access)
+	r.Route("/api/conversations", func(r chi.Router) {
+		r.Get("/{convId}", h.GetConversation)
+		r.Post("/{convId}/messages", h.SendConversationMessage)
+		r.Post("/{convId}/stop", h.StopConversation)
+		r.Delete("/{convId}", h.DeleteConversation)
 	})
 
 	// Agent endpoints
@@ -53,7 +65,7 @@ func NewRouter(s *store.Store, hub *Hub, agentMgr *agent.Manager) http.Handler {
 		r.Delete("/{id}", h.DeleteAgent)
 	})
 
-	// Wire up agent manager callbacks
+	// Wire up agent manager callbacks (legacy)
 	agentMgr.SetOutputHandler(func(agentID, line string) {
 		hub.Broadcast(Event{
 			Type:    "output",
@@ -67,6 +79,23 @@ func NewRouter(s *store.Store, hub *Hub, agentMgr *agent.Manager) http.Handler {
 			Type:    "status",
 			AgentID: agentID,
 			Payload: string(status),
+		})
+	})
+
+	// Wire up conversation event handlers
+	agentMgr.SetConversationEventHandler(func(conversationID string, event *agent.AgentEvent) {
+		hub.Broadcast(Event{
+			Type:           event.Type,
+			ConversationID: conversationID,
+			Payload:        event,
+		})
+	})
+
+	agentMgr.SetConversationStatusHandler(func(conversationID string, status string) {
+		hub.Broadcast(Event{
+			Type:           "conversation_status",
+			ConversationID: conversationID,
+			Payload:        status,
 		})
 	})
 

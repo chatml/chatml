@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { spawnAgent } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -17,6 +17,7 @@ import {
   Paperclip,
   Trash2,
   ArrowUp,
+  Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -29,7 +30,7 @@ const MODELS = [
 export function ChatInput() {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -37,14 +38,24 @@ export function ChatInput() {
     selectedWorkspaceId,
     selectedSessionId,
     sessions,
-    addMessage,
-    updateSession,
-    updateConversation,
     conversations,
+    streamingState,
+    addMessage,
+    addConversation,
+    removeConversation,
+    updateConversation,
+    selectConversation,
+    setStreaming,
   } = useAppStore();
 
-  // Get current session to check its status
+  // Get current session and conversation
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
+  const currentConversation = conversations.find((c) => c.id === selectedConversationId);
+
+  // Check if currently streaming
+  const isStreaming = selectedConversationId
+    ? streamingState[selectedConversationId]?.isStreaming
+    : false;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -54,59 +65,103 @@ export function ChatInput() {
   }, [message]);
 
   const handleSubmit = async () => {
-    if (!message.trim() || !selectedConversationId || !selectedWorkspaceId || isLoading) return;
+    if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
-    const task = message.trim();
-
-    const userMessage = {
-      id: crypto.randomUUID(),
-      conversationId: selectedConversationId,
-      role: 'user' as const,
-      content: task,
-      timestamp: new Date().toISOString(),
-    };
-
-    addMessage(userMessage);
+    const content = message.trim();
     setMessage('');
-    setIsLoading(true);
+    setIsSending(true);
 
     try {
-      // Check if this is an idle session (first message spawns the agent)
-      if (currentSession && currentSession.status === 'idle') {
-        // Spawn agent via backend API
-        const agent = await spawnAgent(selectedWorkspaceId, task);
+      // Check if this is a new conversation (no messages yet) or no conversation selected
+      // In either case, we need to create via API since local conversations don't exist on backend
+      const conversationMessages = currentConversation
+        ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
+        : [];
+      const isNewConversation = !selectedConversationId || conversationMessages.length === 0;
 
-        // Update existing session with agent details
-        updateSession(currentSession.id, {
-          id: agent.id, // Update to backend-assigned ID
-          worktreePath: agent.worktree,
-          task: agent.task,
-          status: agent.status === 'running' ? 'active' : 'idle',
-          updatedAt: new Date().toISOString(),
+      if (isNewConversation) {
+        // Create new conversation with initial message via API
+        const convType = currentConversation?.type || 'task';
+        const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
+          type: convType,
+          message: content,
         });
 
-        // Update conversation title based on task
-        updateConversation(selectedConversationId, {
-          title: task.slice(0, 50) + (task.length > 50 ? '...' : ''),
-          updatedAt: new Date().toISOString(),
+        // Remove local placeholder conversation if it exists
+        if (selectedConversationId && selectedConversationId !== conv.id) {
+          removeConversation(selectedConversationId);
+        }
+
+        // Add/update conversation in store with backend ID
+        addConversation({
+          id: conv.id,
+          sessionId: conv.sessionId,
+          type: conv.type,
+          name: conv.name,
+          status: conv.status,
+          messages: [],
+          toolSummary: [],
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
         });
+
+        // Add user message to store
+        addMessage({
+          id: crypto.randomUUID(),
+          conversationId: conv.id,
+          role: 'user',
+          content,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Select the new conversation
+        selectConversation(conv.id);
+
+        // Mark as streaming
+        setStreaming(conv.id, true);
+      } else {
+        // Add user message to store first
+        addMessage({
+          id: crypto.randomUUID(),
+          conversationId: selectedConversationId,
+          role: 'user',
+          content,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Mark as streaming
+        setStreaming(selectedConversationId, true);
+
+        // Send message to existing conversation
+        await sendConversationMessage(selectedConversationId, content);
       }
-      // For active sessions, the message is sent via WebSocket (to be implemented)
-      // For now, we just add the message to the conversation
-
-      // The response will stream via WebSocket
-      // WebSocket hook will add assistant messages as output arrives
     } catch (error) {
-      console.error('Failed to spawn agent:', error);
-      addMessage({
-        id: crypto.randomUUID(),
-        conversationId: selectedConversationId,
-        role: 'assistant' as const,
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to spawn agent'}`,
-        timestamp: new Date().toISOString(),
-      });
+      console.error('Failed to send message:', error);
+      const convId = selectedConversationId;
+      if (convId) {
+        addMessage({
+          id: crypto.randomUUID(),
+          conversationId: convId,
+          role: 'assistant',
+          content: `Error: ${error instanceof Error ? error.message : 'Failed to send message'}`,
+          timestamp: new Date().toISOString(),
+        });
+        setStreaming(convId, false);
+      }
     } finally {
-      setIsLoading(false);
+      setIsSending(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!selectedConversationId || !isStreaming) return;
+
+    try {
+      await stopConversation(selectedConversationId);
+      setStreaming(selectedConversationId, false);
+      updateConversation(selectedConversationId, { status: 'idle' });
+    } catch (error) {
+      console.error('Failed to stop conversation:', error);
     }
   };
 
@@ -126,13 +181,13 @@ export function ChatInput() {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask to make changes, @mention files, run /commands"
+          placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
           className={cn(
             'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
             'bg-transparent dark:bg-transparent',
             'placeholder:text-muted-foreground/60'
           )}
-          disabled={!selectedConversationId || isLoading}
+          disabled={!selectedSessionId || isSending || isStreaming}
         />
 
         {/* Toolbar inside input */}
@@ -172,18 +227,30 @@ export function ChatInput() {
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Send Button */}
-          <Button
-            size="icon"
-            className={cn(
-              'h-8 w-8 rounded-full',
-              (!message.trim() || isLoading) && 'opacity-50'
-            )}
-            onClick={handleSubmit}
-            disabled={!message.trim() || !selectedConversationId || isLoading}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </Button>
+          {/* Stop Button (when streaming) */}
+          {isStreaming ? (
+            <Button
+              size="icon"
+              variant="destructive"
+              className="h-8 w-8 rounded-full"
+              onClick={handleStop}
+            >
+              <Square className="h-4 w-4" />
+            </Button>
+          ) : (
+            /* Send Button */
+            <Button
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-full',
+                (!message.trim() || isSending) && 'opacity-50'
+              )}
+              onClick={handleSubmit}
+              disabled={!message.trim() || !selectedSessionId || isSending}
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

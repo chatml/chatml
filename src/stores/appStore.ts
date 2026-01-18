@@ -14,6 +14,20 @@ interface SessionOutput {
   [sessionId: string]: string[];
 }
 
+// Streaming state for conversations
+interface StreamingState {
+  text: string;
+  isStreaming: boolean;
+  error: string | null;
+}
+
+interface ActiveTool {
+  id: string;
+  tool: string;
+  params?: Record<string, unknown>;
+  startTime: number;
+}
+
 interface AppState {
   // New data model
   workspaces: Workspace[];
@@ -32,6 +46,10 @@ interface AppState {
 
   sessionOutputs: SessionOutput;
   totalCost: number;
+
+  // Conversation streaming state
+  streamingState: { [conversationId: string]: StreamingState };
+  activeTools: { [conversationId: string]: ActiveTool[] };
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -75,6 +93,14 @@ interface AppState {
   // Cost
   addCost: (amount: number) => void;
 
+  // Streaming state actions
+  appendStreamingText: (conversationId: string, text: string) => void;
+  setStreaming: (conversationId: string, isStreaming: boolean) => void;
+  setStreamingError: (conversationId: string, error: string | null) => void;
+  clearStreamingText: (conversationId: string) => void;
+  addActiveTool: (conversationId: string, tool: ActiveTool) => void;
+  completeActiveTool: (conversationId: string, toolId: string) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -104,6 +130,8 @@ export const useAppStore = create<AppState>((set) => ({
   selectedFileTabId: null,
   sessionOutputs: {},
   totalCost: 0,
+  streamingState: {},
+  activeTools: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -213,6 +241,59 @@ export const useAppStore = create<AppState>((set) => ({
   // Cost
   addCost: (amount) => set((state) => ({
     totalCost: state.totalCost + amount
+  })),
+
+  // Streaming state actions
+  appendStreamingText: (conversationId, text) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        text: (state.streamingState[conversationId]?.text || '') + text,
+        isStreaming: true,
+        error: null,
+      },
+    },
+  })),
+  setStreaming: (conversationId, isStreaming) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming,
+        error: state.streamingState[conversationId]?.error || null,
+      },
+    },
+  })),
+  setStreamingError: (conversationId, error) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming: false,
+        error,
+      },
+    },
+  })),
+  clearStreamingText: (conversationId) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: { text: '', isStreaming: false, error: null },
+    },
+  })),
+  addActiveTool: (conversationId, tool) => set((state) => ({
+    activeTools: {
+      ...state.activeTools,
+      [conversationId]: [...(state.activeTools[conversationId] || []), tool],
+    },
+  })),
+  completeActiveTool: (conversationId, toolId) => set((state) => ({
+    activeTools: {
+      ...state.activeTools,
+      [conversationId]: (state.activeTools[conversationId] || []).filter(
+        (t) => t.id !== toolId
+      ),
+    },
   })),
 
   // Legacy support

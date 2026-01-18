@@ -49,6 +49,12 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if repo with same path already exists
+	if existing := h.store.GetRepoByPath(req.Path); existing != nil {
+		http.Error(w, "repository already added", http.StatusConflict)
+		return
+	}
+
 	branch, _ := h.repoManager.GetCurrentBranch(req.Path)
 
 	repo := &models.Repo{
@@ -210,6 +216,45 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "sessionId")
 	h.store.DeleteSession(id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type SendMessageRequest struct {
+	Content string `json:"content"`
+}
+
+func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	session := h.store.GetSession(sessionID)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	var req SendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if there's an active agent for this session
+	if session.AgentID == "" {
+		http.Error(w, "no agent running for this session", http.StatusBadRequest)
+		return
+	}
+
+	// Send message to the agent
+	if err := h.agentManager.SendMessage(session.AgentID, req.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
 }
 
 // Agent handlers
@@ -589,4 +634,119 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// Conversation handlers
+
+func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	convs := h.store.ListConversations(sessionID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(convs)
+}
+
+type CreateConversationRequest struct {
+	Type    string `json:"type"`    // "task", "review", "chat"
+	Message string `json:"message"` // Initial message (optional)
+}
+
+func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	session := h.store.GetSession(sessionID)
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	var req CreateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Default to "task" type if not specified
+	if req.Type == "" {
+		req.Type = "task"
+	}
+
+	conv, err := h.agentManager.StartConversation(sessionID, req.Type, req.Message)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(conv)
+}
+
+func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	conv := h.store.GetConversation(convID)
+	if conv == nil {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(conv)
+}
+
+type SendConversationMessageRequest struct {
+	Content string `json:"content"`
+}
+
+func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	conv := h.store.GetConversation(convID)
+	if conv == nil {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+
+	var req SendConversationMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.agentManager.SendConversationMessage(convID, req.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+}
+
+func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	conv := h.store.GetConversation(convID)
+	if conv == nil {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+
+	h.agentManager.StopConversation(convID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	conv := h.store.GetConversation(convID)
+	if conv == nil {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// Stop the conversation if running
+	h.agentManager.StopConversation(convID)
+
+	// Delete from store
+	h.store.DeleteConversation(convID)
+	w.WriteHeader(http.StatusNoContent)
 }

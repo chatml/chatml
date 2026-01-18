@@ -99,8 +99,11 @@ export default function Home() {
             addConversation({
               id: convId,
               sessionId: firstSession.id,
-              title: firstSession.task || 'New conversation',
-              isActive: true,
+              type: 'task',
+              name: firstSession.task || 'Task #1',
+              status: 'idle',
+              messages: [],
+              toolSummary: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             });

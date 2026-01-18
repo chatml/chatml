@@ -175,8 +175,11 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
       addConversation({
         id: convId,
         sessionId: session.id,
-        title: 'New conversation',
-        isActive: true,
+        type: 'task',
+        name: 'Task #1',
+        status: 'idle',
+        messages: [],
+        toolSummary: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
