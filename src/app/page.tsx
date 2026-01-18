@@ -4,11 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { listRepos, listSessions, listConversations, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
-import { ActivityBar, type ActivityView } from '@/components/ActivityBar';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
-import { SearchPanel } from '@/components/SearchPanel';
-import { AgentsPanel } from '@/components/AgentsPanel';
-import { HistoryPanel } from '@/components/HistoryPanel';
+import { WorkspaceManagement } from '@/components/WorkspaceManagement';
 import { TopBar } from '@/components/TopBar';
 import { ConversationArea } from '@/components/ConversationArea';
 import { ChatInput } from '@/components/ChatInput';
@@ -24,7 +21,7 @@ import {
 
 export default function Home() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
-  const [activeView, setActiveView] = useState<ActivityView>('workspaces');
+  const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
 
   const {
     workspaces,
@@ -173,15 +170,6 @@ export default function Home() {
         e.preventDefault();
         // TODO: Open command palette
       }
-      // Cmd+1-4 to switch activity views
-      if (e.metaKey && !e.shiftKey && e.key >= '1' && e.key <= '4') {
-        e.preventDefault();
-        const views: ActivityView[] = ['workspaces', 'search', 'agents', 'history'];
-        const index = parseInt(e.key) - 1;
-        if (views[index]) {
-          setActiveView(views[index]);
-        }
-      }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
@@ -203,62 +191,72 @@ export default function Home() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [sessions, conversations, selectSession, selectConversation]);
 
-  const renderSidebarContent = () => {
-    switch (activeView) {
-      case 'workspaces':
-        return <WorkspaceSidebar onAddWorkspace={() => setShowAddWorkspace(true)} />;
-      case 'search':
-        return <SearchPanel />;
-      case 'agents':
-        return <AgentsPanel />;
-      case 'history':
-        return <HistoryPanel />;
-      default:
-        return <WorkspaceSidebar onAddWorkspace={() => setShowAddWorkspace(true)} />;
+  // Handle selecting a session from workspace management view
+  const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
+    selectWorkspace(workspaceId);
+    selectSession(sessionId);
+    // Select first conversation for that session
+    const sessionConvs = conversations.filter((c) => c.sessionId === sessionId);
+    if (sessionConvs.length > 0) {
+      selectConversation(sessionConvs[0].id);
     }
-  };
+    // Exit workspace management view
+    setShowWorkspaceManagement(false);
+  }, [conversations, selectWorkspace, selectSession, selectConversation]);
 
   return (
     <TooltipProvider>
       <div className="h-screen overflow-hidden flex">
-        {/* Activity Bar */}
-        <ActivityBar activeView={activeView} onViewChange={setActiveView} />
-
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
-          {/* Left Sidebar - Dynamic based on activeView */}
+          {/* Left Sidebar - Workspaces */}
           <ResizablePanel
             id="left-sidebar"
             defaultSize="18%"
             minSize="200px"
             maxSize="400px"
           >
-            {renderSidebarContent()}
+            <WorkspaceSidebar
+              onAddWorkspace={() => setShowAddWorkspace(true)}
+              onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
+            />
           </ResizablePanel>
 
         <ResizableHandle />
 
-        {/* Main Content */}
-        <ResizablePanel id="main-content" defaultSize="57%" minSize="300px">
-          <div className="flex flex-col h-full">
-            <TopBar />
-            <ConversationArea>
-              <ChatInput />
-            </ConversationArea>
-          </div>
-        </ResizablePanel>
+        {showWorkspaceManagement ? (
+          /* Workspace Management View - Full width */
+          <ResizablePanel id="workspace-management" defaultSize="82%" minSize="300px">
+            <WorkspaceManagement
+              onSelectSession={handleSelectSessionFromManagement}
+              onBack={() => setShowWorkspaceManagement(false)}
+            />
+          </ResizablePanel>
+        ) : (
+          <>
+            {/* Main Content */}
+            <ResizablePanel id="main-content" defaultSize="57%" minSize="300px">
+              <div className="flex flex-col h-full">
+                <TopBar />
+                <ConversationArea>
+                  <ChatInput />
+                </ConversationArea>
+              </div>
+            </ResizablePanel>
 
-        <ResizableHandle />
+            <ResizableHandle />
 
-        {/* Right Sidebar - Changes (full height with own header) */}
-        <ResizablePanel
-          id="right-sidebar"
-          defaultSize="25%"
-          minSize="250px"
-          maxSize="500px"
-        >
-          <ChangesPanel />
-        </ResizablePanel>
+            {/* Right Sidebar - Changes (full height with own header) */}
+            <ResizablePanel
+              id="right-sidebar"
+              defaultSize="25%"
+              minSize="250px"
+              maxSize="500px"
+            >
+              <ChangesPanel />
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
 
       {/* Add Workspace Modal */}

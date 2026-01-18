@@ -52,9 +52,10 @@ import type { Workspace, WorktreeSession } from '@/lib/types';
 
 interface WorkspaceSidebarProps {
   onAddWorkspace: () => void;
+  onShowWorkspaceManagement?: () => void;
 }
 
-export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement }: WorkspaceSidebarProps) {
   const {
     workspaces,
     sessions,
@@ -227,6 +228,16 @@ export function WorkspaceSidebar({ onAddWorkspace }: WorkspaceSidebarProps) {
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center border-b bg-sidebar shrink-0">
         <span className="text-sm font-semibold">ChatML</span>
+      </div>
+
+      {/* Workspaces Section Header */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 border-b cursor-pointer hover:bg-sidebar-accent/50 transition-colors"
+        onClick={onShowWorkspaceManagement}
+      >
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Workspaces</span>
+        <div className="flex-1" />
+        <span className="text-xs text-muted-foreground">{sessions.filter(s => !s.archived).length} sessions</span>
       </div>
 
       {/* Workspace List */}
