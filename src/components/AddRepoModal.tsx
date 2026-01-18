@@ -1,8 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { addRepo } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FolderGit2, AlertCircle } from 'lucide-react';
 
 interface AddRepoModalProps {
   isOpen: boolean;
@@ -15,7 +26,13 @@ export function AddRepoModal({ isOpen, onClose }: AddRepoModalProps) {
   const [loading, setLoading] = useState(false);
   const { addRepo: addRepoToStore } = useAppStore();
 
-  if (!isOpen) return null;
+  // Reset form when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPath('');
+      setError('');
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,42 +52,51 @@ export function AddRepoModal({ isOpen, onClose }: AddRepoModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-96">
-        <h2 className="text-xl font-bold mb-4">Add Repository</h2>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderGit2 className="w-5 h-5" />
+            Add Repository
+          </DialogTitle>
+          <DialogDescription>
+            Enter the path to a local Git repository to start orchestrating agents.
+          </DialogDescription>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-            placeholder="/path/to/repository"
-            className="w-full p-2 bg-gray-700 rounded border border-gray-600 mb-4"
-            autoFocus
-          />
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder="/path/to/your/repository"
+                className="font-mono text-sm"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                The repository must be a valid Git repository with a working tree.
+              </p>
+            </div>
 
-          {error && (
-            <div className="text-red-400 text-sm mb-4">{error}</div>
-          )}
-
-          <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !path}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50"
-            >
-              {loading ? 'Adding...' : 'Add'}
-            </button>
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {error}
+              </div>
+            )}
           </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading || !path.trim()}>
+              {loading ? 'Adding...' : 'Add Repository'}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { spawnAgent } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Bot, Send, Loader2 } from 'lucide-react';
 
 interface AgentSpawnFormProps {
   repoId: string;
@@ -12,7 +15,12 @@ interface AgentSpawnFormProps {
 export function AgentSpawnForm({ repoId, onSpawn }: AgentSpawnFormProps) {
   const [task, setTask] = useState('');
   const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const addAgent = useAppStore((state) => state.addAgent);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,21 +40,37 @@ export function AgentSpawnForm({ repoId, onSpawn }: AgentSpawnFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
-      <input
-        type="text"
-        value={task}
-        onChange={(e) => setTask(e.target.value)}
-        placeholder="Describe the task for the agent..."
-        className="flex-1 p-2 bg-gray-700 rounded border border-gray-600"
-      />
-      <button
-        type="submit"
-        disabled={loading || !task.trim()}
-        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50"
-      >
-        {loading ? 'Spawning...' : 'Spawn Agent'}
-      </button>
+    <form onSubmit={handleSubmit} className="mb-6">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Bot className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            ref={inputRef}
+            type="text"
+            value={task}
+            onChange={(e) => setTask(e.target.value)}
+            placeholder="Describe the task for the agent..."
+            className="pl-10"
+            disabled={loading}
+          />
+        </div>
+        <Button type="submit" disabled={loading || !task.trim()}>
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Spawning
+            </>
+          ) : (
+            <>
+              <Send className="w-4 h-4 mr-2" />
+              Spawn
+            </>
+          )}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">
+        Press Enter to spawn an agent in an isolated worktree
+      </p>
     </form>
   );
 }

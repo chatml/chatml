@@ -2,19 +2,48 @@
 
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import {
+  Lightbulb,
+  Wrench,
+  CheckCircle,
+  Clock,
+  CheckCheck,
+  AlertCircle,
+} from 'lucide-react';
 
 interface OutputLogProps {
   agentId: string;
 }
 
-function getLineStyle(line: string): string {
-  if (line.startsWith('💭')) return 'text-purple-400 italic';
-  if (line.startsWith('🔧')) return 'text-yellow-400 font-medium';
-  if (line.startsWith('✓')) return 'text-green-400';
-  if (line.startsWith('⏳')) return 'text-blue-400';
-  if (line.startsWith('✅')) return 'text-green-500 font-bold';
-  if (line.startsWith('[stderr]')) return 'text-red-400';
-  return 'text-gray-300';
+function getLineConfig(line: string): {
+  icon: typeof Lightbulb | null;
+  className: string;
+} {
+  if (line.startsWith('💭')) {
+    return { icon: Lightbulb, className: 'text-purple-500' };
+  }
+  if (line.startsWith('🔧')) {
+    return { icon: Wrench, className: 'text-yellow-500' };
+  }
+  if (line.startsWith('✓')) {
+    return { icon: CheckCircle, className: 'text-green-500' };
+  }
+  if (line.startsWith('⏳')) {
+    return { icon: Clock, className: 'text-blue-500' };
+  }
+  if (line.startsWith('✅')) {
+    return { icon: CheckCheck, className: 'text-green-600 font-medium' };
+  }
+  if (line.startsWith('[stderr]')) {
+    return { icon: AlertCircle, className: 'text-red-500' };
+  }
+  return { icon: null, className: 'text-muted-foreground' };
+}
+
+function stripEmoji(line: string): string {
+  return line.replace(/^[💭🔧✓⏳✅]\s*/, '').replace(/^\[stderr\]\s*/, '');
 }
 
 export function OutputLog({ agentId }: OutputLogProps) {
@@ -31,20 +60,39 @@ export function OutputLog({ agentId }: OutputLogProps) {
   return (
     <div
       ref={containerRef}
-      className="bg-gray-900 rounded p-3 h-64 overflow-y-auto font-mono text-sm"
+      className="rounded-lg border bg-muted/30 h-64 overflow-hidden"
     >
-      {output.length === 0 ? (
-        <div className="flex items-center gap-2 text-gray-500">
-          <span className="animate-pulse">●</span>
-          Waiting for agent to start...
+      <ScrollArea className="h-full">
+        <div className="p-3 terminal">
+          {output.length === 0 ? (
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-sm">Waiting for output...</span>
+            </div>
+          ) : (
+            output.map((line, i) => {
+              const config = getLineConfig(line);
+              const Icon = config.icon;
+              const cleanLine = Icon ? stripEmoji(line) : line;
+
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    'flex items-start gap-2 py-0.5',
+                    config.className
+                  )}
+                >
+                  {Icon && (
+                    <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  )}
+                  <span className="break-all">{cleanLine}</span>
+                </div>
+              );
+            })
+          )}
         </div>
-      ) : (
-        output.map((line, i) => (
-          <div key={i} className={`py-0.5 ${getLineStyle(line)}`}>
-            {line}
-          </div>
-        ))
-      )}
+      </ScrollArea>
     </div>
   );
 }

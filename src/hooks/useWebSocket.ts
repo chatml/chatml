@@ -23,9 +23,9 @@ export function useWebSocket() {
       try {
         const data: WSEvent = JSON.parse(event.data);
 
-        if (data.type === 'output') {
+        if (data.type === 'output' && data.agentId) {
           appendOutput(data.agentId, data.payload);
-        } else if (data.type === 'status') {
+        } else if (data.type === 'status' && data.agentId) {
           updateAgentStatus(data.agentId, data.payload as Agent['status']);
         }
       } catch (e) {

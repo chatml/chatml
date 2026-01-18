@@ -2,76 +2,203 @@
 
 import { useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useWebSocket } from '@/hooks/useWebSocket';
-import { listRepos, listAgents } from '@/lib/api';
-import { RepoList } from '@/components/RepoList';
-import { AddRepoModal } from '@/components/AddRepoModal';
-import { AgentCard } from '@/components/AgentCard';
-import { AgentSpawnForm } from '@/components/AgentSpawnForm';
+import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
+import { TopBar } from '@/components/TopBar';
+import { ConversationArea } from '@/components/ConversationArea';
+import { ChatInput } from '@/components/ChatInput';
+import { ChangesPanel } from '@/components/ChangesPanel';
+import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable';
 
 export default function Home() {
-  const [showAddRepo, setShowAddRepo] = useState(false);
-  const { repos, selectedRepoId, agents, setRepos, setAgents } = useAppStore();
+  const [showAddWorkspace, setShowAddWorkspace] = useState(false);
 
-  useWebSocket();
+  const {
+    workspaces,
+    sessions,
+    conversations,
+    selectedSessionId,
+    selectedConversationId,
+    addWorkspace,
+    addSession,
+    addConversation,
+    selectWorkspace,
+    selectSession,
+    selectConversation,
+    setFileChanges,
+  } = useAppStore();
 
+  // Initialize with demo data for development
   useEffect(() => {
-    listRepos().then(setRepos).catch(console.error);
-  }, [setRepos]);
+    if (workspaces.length === 0) {
+      // Demo workspaces
+      const workspace1 = {
+        id: 'ws-1',
+        name: 'readingminds-next',
+        path: '/Users/dev/readingminds-next',
+        defaultBranch: 'origin/main',
+        createdAt: new Date().toISOString(),
+      };
+      const workspace2 = {
+        id: 'ws-2',
+        name: 'opensummary',
+        path: '/Users/dev/opensummary',
+        defaultBranch: 'origin/main',
+        createdAt: new Date().toISOString(),
+      };
+      const workspace3 = {
+        id: 'ws-3',
+        name: 'maisonkelly',
+        path: '/Users/dev/maisonkelly',
+        defaultBranch: 'origin/main',
+        createdAt: new Date().toISOString(),
+      };
+      addWorkspace(workspace1);
+      addWorkspace(workspace2);
+      addWorkspace(workspace3);
 
+      // Demo sessions for workspace 1
+      const session1 = {
+        id: 'sess-1',
+        workspaceId: 'ws-1',
+        name: 'zagreb-v1',
+        branch: 'zagreb-v1',
+        worktreePath: '/Users/dev/readingminds-next/.worktrees/zagreb-v1',
+        task: 'Answer question',
+        status: 'active' as const,
+        stats: { additions: 10, deletions: 5 },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const session2 = {
+        id: 'sess-2',
+        workspaceId: 'ws-1',
+        name: 'dakar-v2',
+        branch: 'dakar-v2',
+        worktreePath: '/Users/dev/readingminds-next/.worktrees/dakar-v2',
+        task: 'Monorepo reorganization',
+        status: 'active' as const,
+        stats: { additions: 106, deletions: 126 },
+        createdAt: new Date(Date.now() - 600000).toISOString(),
+        updatedAt: new Date(Date.now() - 600000).toISOString(),
+      };
+      addSession(session1);
+      addSession(session2);
+
+      // Demo conversation
+      const conversation = {
+        id: 'conv-1',
+        sessionId: 'sess-2',
+        title: 'Continuing the conversation',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      addConversation(conversation);
+
+      // Demo file changes
+      setFileChanges([
+        { path: 'apps/admin/package.json', additions: 1, deletions: 0, status: 'modified' },
+        { path: 'apps/admin/tsconfig.json', additions: 1, deletions: 18, status: 'modified' },
+        { path: 'apps/docs/package.json', additions: 1, deletions: 0, status: 'modified' },
+        { path: 'apps/docs/tsconfig.json', additions: 2, deletions: 26, status: 'modified' },
+        { path: 'apps/emma/package.json', additions: 1, deletions: 0, status: 'modified' },
+        { path: 'apps/emma/tsconfig.json', additions: 2, deletions: 26, status: 'modified' },
+        { path: 'apps/web/package.json', additions: 1, deletions: 0, status: 'modified' },
+        { path: 'apps/web/tsconfig.json', additions: 1, deletions: 18, status: 'modified' },
+        { path: 'e2e/package.json', additions: 1, deletions: 0, status: 'modified' },
+        { path: 'e2e/tsconfig.json', additions: 1, deletions: 7, status: 'modified' },
+        { path: 'packages/ui/package.json', additions: 1, deletions: 0, status: 'modified' },
+        { path: 'packages/ui/tsconfig.json', additions: 1, deletions: 16, status: 'modified' },
+      ]);
+
+      // Select the second session and conversation by default
+      selectWorkspace('ws-1');
+      selectSession('sess-2');
+      selectConversation('conv-1');
+    }
+  }, []);
+
+  // Keyboard shortcuts
   useEffect(() => {
-    if (selectedRepoId) {
-      listAgents(selectedRepoId).then(setAgents).catch(console.error);
-    }
-  }, [selectedRepoId, setAgents]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+N to add workspace
+      if (e.key === 'n' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setShowAddWorkspace(true);
+      }
+      // Cmd+K for command palette (future)
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        // TODO: Open command palette
+      }
+      // Cmd+1-9 to switch sessions
+      if (e.metaKey && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const index = parseInt(e.key) - 1;
+        if (sessions[index]) {
+          selectSession(sessions[index].id);
+          // Also select the first conversation for that session
+          const sessionConvs = conversations.filter(
+            (c) => c.sessionId === sessions[index].id
+          );
+          if (sessionConvs.length > 0) {
+            selectConversation(sessionConvs[0].id);
+          }
+        }
+      }
+    };
 
-  const selectedRepo = repos.find((r) => r.id === selectedRepoId);
-  const repoAgents = agents.filter((a) => a.repoId === selectedRepoId);
-
-  const refreshAgents = () => {
-    if (selectedRepoId) {
-      listAgents(selectedRepoId).then(setAgents).catch(console.error);
-    }
-  };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [sessions, conversations, selectSession, selectConversation]);
 
   return (
-    <div className="flex h-screen">
-      <RepoList onAddClick={() => setShowAddRepo(true)} />
+    <div className="h-screen overflow-hidden">
+      <ResizablePanelGroup direction="horizontal" className="h-full">
+        {/* Left Sidebar - Workspaces */}
+        <ResizablePanel
+          id="left-sidebar"
+          defaultSize="18%"
+          minSize="200px"
+          maxSize="400px"
+        >
+          <WorkspaceSidebar onAddWorkspace={() => setShowAddWorkspace(true)} />
+        </ResizablePanel>
 
-      <div className="flex-1 p-6 overflow-y-auto">
-        {selectedRepo ? (
-          <>
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold">{selectedRepo.name}</h2>
-              <div className="text-gray-400">{selectedRepo.path}</div>
-            </div>
+        <ResizableHandle />
 
-            <AgentSpawnForm repoId={selectedRepoId!} onSpawn={refreshAgents} />
-
-            {repoAgents.length === 0 ? (
-              <div className="text-gray-500 text-center py-12">
-                No agents running. Spawn one above!
-              </div>
-            ) : (
-              repoAgents.map((agent) => (
-                <AgentCard
-                  key={agent.id}
-                  agent={agent}
-                  onRefresh={refreshAgents}
-                />
-              ))
-            )}
-          </>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            Select a repository to get started
+        {/* Main Content */}
+        <ResizablePanel id="main-content" defaultSize="57%" minSize="300px">
+          <div className="flex flex-col h-full">
+            <TopBar />
+            <ConversationArea>
+              <ChatInput />
+            </ConversationArea>
           </div>
-        )}
-      </div>
+        </ResizablePanel>
 
-      <AddRepoModal
-        isOpen={showAddRepo}
-        onClose={() => setShowAddRepo(false)}
+        <ResizableHandle />
+
+        {/* Right Sidebar - Changes (full height with own header) */}
+        <ResizablePanel
+          id="right-sidebar"
+          defaultSize="25%"
+          minSize="250px"
+          maxSize="500px"
+        >
+          <ChangesPanel />
+        </ResizablePanel>
+      </ResizablePanelGroup>
+
+      {/* Add Workspace Modal */}
+      <AddWorkspaceModal
+        isOpen={showAddWorkspace}
+        onClose={() => setShowAddWorkspace(false)}
       />
     </div>
   );
