@@ -26,6 +26,7 @@ type AgentEvent struct {
 	Errors         []string               `json:"errors,omitempty"`
 	Cost           float64                `json:"cost,omitempty"`
 	Turns          int                    `json:"turns,omitempty"`
+	Todos          []TodoItem             `json:"todos,omitempty"`
 	Raw            string                 `json:"-"`
 }
 
@@ -37,11 +38,19 @@ const (
 	EventTypeToolStart      = "tool_start"
 	EventTypeToolEnd        = "tool_end"
 	EventTypeNameSuggestion = "name_suggestion"
+	EventTypeTodoUpdate     = "todo_update"
 	EventTypeResult         = "result"
 	EventTypeComplete       = "complete"
 	EventTypeError          = "error"
 	EventTypeShutdown       = "shutdown"
 )
+
+// TodoItem represents a single todo item from the agent's TodoWrite tool
+type TodoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`     // "pending", "in_progress", "completed"
+	ActiveForm string `json:"activeForm"`
+}
 
 // ParseAgentLine parses a line of JSON output from the agent-runner
 func ParseAgentLine(line string) *AgentEvent {

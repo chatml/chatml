@@ -130,6 +130,8 @@ export interface AgentEvent {
   stats?: RunStats;
   subtype?: string;
   errors?: unknown[];
+  // Todo update fields
+  todos?: AgentTodoItem[];
 }
 
 export interface VerificationResult {
@@ -143,6 +145,21 @@ export interface FileChange {
   additions: number;
   deletions: number;
   status: 'added' | 'modified' | 'deleted';
+}
+
+// Agent todo item from TodoWrite tool
+export interface AgentTodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  activeForm: string;
+}
+
+// User-defined custom todo item
+export interface CustomTodoItem {
+  id: string;
+  content: string;
+  completed: boolean;
+  createdAt: string;
 }
 
 // Legacy types for backward compatibility
@@ -188,4 +205,14 @@ export interface FileTab {
   };
   isBinary?: boolean;
   isTooLarge?: boolean;
+}
+
+// Terminal session for interactive PTY
+export interface TerminalSession {
+  id: string;
+  workspaceId: string;
+  sessionId: string;
+  tabType: 'setup' | 'run' | 'terminal';
+  cwd: string;
+  status: 'idle' | 'active' | 'closed';
 }

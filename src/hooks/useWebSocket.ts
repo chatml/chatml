@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem } from '@/lib/types';
 
 const WS_URL = 'ws://localhost:9876/ws';
 
@@ -27,6 +27,7 @@ export function useWebSocket(enabled: boolean = true) {
     completeActiveTool,
     clearActiveTools,
     addMessage,
+    setAgentTodos,
   } = useAppStore();
 
   // Map backend status to frontend session status
@@ -95,6 +96,13 @@ export function useWebSocket(enabled: boolean = true) {
             event.success as boolean | undefined,
             event.summary as string | undefined
           );
+        }
+        break;
+
+      case 'todo_update':
+        // Update agent todos for real-time tracking
+        if (event?.todos) {
+          setAgentTodos(conversationId, event.todos as AgentTodoItem[]);
         }
         break;
 
@@ -189,6 +197,7 @@ export function useWebSocket(enabled: boolean = true) {
     setThinking,
     clearThinking,
     clearActiveTools,
+    setAgentTodos,
   ]);
 
   const connect = useCallback(() => {

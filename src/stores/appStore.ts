@@ -6,8 +6,11 @@ import type {
   Message,
   FileChange,
   FileTab,
+  TerminalSession,
   Repo,
-  Agent
+  Agent,
+  AgentTodoItem,
+  CustomTodoItem
 } from '@/lib/types';
 
 interface SessionOutput {
@@ -51,11 +54,16 @@ interface AppState {
   selectedFileTabId: string | null;
 
   sessionOutputs: SessionOutput;
+  terminalSessions: Record<string, TerminalSession>;
   totalCost: number;
 
   // Conversation streaming state
   streamingState: { [conversationId: string]: StreamingState };
   activeTools: { [conversationId: string]: ActiveTool[] };
+
+  // Todo state
+  agentTodos: { [conversationId: string]: AgentTodoItem[] };
+  customTodos: { [sessionId: string]: CustomTodoItem[] };
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -97,6 +105,11 @@ interface AppState {
   appendOutput: (sessionId: string, line: string) => void;
   clearOutput: (sessionId: string) => void;
 
+  // Terminal sessions
+  createTerminalSession: (session: TerminalSession) => void;
+  updateTerminalSession: (id: string, updates: Partial<TerminalSession>) => void;
+  closeTerminalSession: (id: string) => void;
+
   // Cost
   addCost: (amount: number) => void;
 
@@ -111,6 +124,13 @@ interface AppState {
   addActiveTool: (conversationId: string, tool: ActiveTool) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string) => void;
   clearActiveTools: (conversationId: string) => void;
+
+  // Todo actions
+  setAgentTodos: (conversationId: string, todos: AgentTodoItem[]) => void;
+  clearAgentTodos: (conversationId: string) => void;
+  addCustomTodo: (sessionId: string, content: string) => void;
+  toggleCustomTodo: (sessionId: string, todoId: string) => void;
+  deleteCustomTodo: (sessionId: string, todoId: string) => void;
 
   // Legacy support
   repos: Repo[];
@@ -140,9 +160,12 @@ export const useAppStore = create<AppState>((set) => ({
   fileTabs: [],
   selectedFileTabId: null,
   sessionOutputs: {},
+  terminalSessions: {},
   totalCost: 0,
   streamingState: {},
   activeTools: {},
+  agentTodos: {},
+  customTodos: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -307,6 +330,26 @@ export const useAppStore = create<AppState>((set) => ({
     },
   })),
 
+  // Terminal sessions
+  createTerminalSession: (session) => set((state) => ({
+    terminalSessions: {
+      ...state.terminalSessions,
+      [session.id]: session,
+    },
+  })),
+  updateTerminalSession: (id, updates) => set((state) => ({
+    terminalSessions: {
+      ...state.terminalSessions,
+      [id]: state.terminalSessions[id]
+        ? { ...state.terminalSessions[id], ...updates }
+        : state.terminalSessions[id],
+    },
+  })),
+  closeTerminalSession: (id) => set((state) => {
+    const { [id]: _, ...rest } = state.terminalSessions;
+    return { terminalSessions: rest };
+  }),
+
   // Cost
   addCost: (amount) => set((state) => ({
     totalCost: state.totalCost + amount
@@ -420,6 +463,48 @@ export const useAppStore = create<AppState>((set) => ({
     activeTools: {
       ...state.activeTools,
       [conversationId]: [],
+    },
+  })),
+
+  // Todo actions
+  setAgentTodos: (conversationId, todos) => set((state) => ({
+    agentTodos: {
+      ...state.agentTodos,
+      [conversationId]: todos,
+    },
+  })),
+  clearAgentTodos: (conversationId) => set((state) => ({
+    agentTodos: {
+      ...state.agentTodos,
+      [conversationId]: [],
+    },
+  })),
+  addCustomTodo: (sessionId, content) => set((state) => ({
+    customTodos: {
+      ...state.customTodos,
+      [sessionId]: [
+        ...(state.customTodos[sessionId] || []),
+        {
+          id: `todo-${Date.now()}`,
+          content,
+          completed: false,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    },
+  })),
+  toggleCustomTodo: (sessionId, todoId) => set((state) => ({
+    customTodos: {
+      ...state.customTodos,
+      [sessionId]: (state.customTodos[sessionId] || []).map((todo) =>
+        todo.id === todoId ? { ...todo, completed: !todo.completed } : todo
+      ),
+    },
+  })),
+  deleteCustomTodo: (sessionId, todoId) => set((state) => ({
+    customTodos: {
+      ...state.customTodos,
+      [sessionId]: (state.customTodos[sessionId] || []).filter((todo) => todo.id !== todoId),
     },
   })),
 

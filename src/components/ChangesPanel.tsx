@@ -1,9 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useAppStore } from '@/stores/appStore';
 import { listRepoFiles, getRepoFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
-import { FileTree, type FileNode } from '@/components/FileTree';
+import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
+import { TodoPanel } from '@/components/TodoPanel';
+
+// Dynamic imports for xterm.js components (browser-only)
+const Terminal = dynamic(() => import('@/components/Terminal').then(mod => mod.Terminal), {
+  ssr: false,
+  loading: () => <div className="h-full bg-black/90 flex items-center justify-center"><span className="text-xs text-muted-foreground">Loading terminal...</span></div>,
+});
+
+const TerminalOutput = dynamic(() => import('@/components/TerminalOutput').then(mod => mod.TerminalOutput), {
+  ssr: false,
+  loading: () => <div className="h-full bg-black/90 flex items-center justify-center"><span className="text-xs text-muted-foreground">Loading...</span></div>,
+});
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -59,7 +72,7 @@ function isBinaryFile(filename: string): boolean {
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
-  const { selectedWorkspaceId, selectedSessionId, sessions, workspaces, openFileTab, updateFileTab } = useAppStore();
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
   const [selectedTab, setSelectedTab] = useState('files');
   const [terminalTab, setTerminalTab] = useState('terminal');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -174,6 +187,13 @@ export function ChangesPanel() {
   // Determine top bar state
   const hasActivePR = currentSession?.prStatus === 'open';
   const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
+
+  // Calculate todo counts for badge
+  const currentAgentTodos = selectedConversationId ? agentTodos[selectedConversationId] || [] : [];
+  const currentCustomTodos = selectedSessionId ? customTodos[selectedSessionId] || [] : [];
+  const pendingAgentTodos = currentAgentTodos.filter((t) => t.status !== 'completed').length;
+  const pendingCustomTodos = currentCustomTodos.filter((t) => !t.completed).length;
+  const totalPendingTodos = pendingAgentTodos + pendingCustomTodos;
 
   // Fetch files when workspace changes or tab switches to files
   useEffect(() => {
@@ -296,6 +316,19 @@ export function ChangesPanel() {
         >
           Checks
         </Button>
+        <Button
+          variant={selectedTab === 'todos' ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-6 text-xs px-2 gap-1 shrink-0"
+          onClick={() => setSelectedTab('todos')}
+        >
+          Todos
+          {totalPendingTodos > 0 && (
+            <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
+              {totalPendingTodos}
+            </span>
+          )}
+        </Button>
         <div className="flex-1 min-w-0" />
         <div className="flex items-center shrink-0">
           <Button variant="ghost" size="icon" className="h-6 w-6">
@@ -366,6 +399,8 @@ export function ChangesPanel() {
                 </div>
               </ScrollArea>
             )
+          ) : selectedTab === 'todos' ? (
+            <TodoPanel />
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
@@ -411,13 +446,24 @@ export function ChangesPanel() {
                 <Plus className="h-3 w-3" />
               </Button>
             </div>
-            <div className="flex-1 bg-black/90 p-2 font-mono text-xs text-green-400 overflow-auto">
-              <div className="flex items-center gap-2">
-                <span className="text-blue-400">~/dev/chatml</span>
-                <span className="text-purple-400">dakar-v2</span>
-                <span className="text-muted-foreground">$</span>
-                <span className="animate-pulse">_</span>
-              </div>
+            <div className="flex-1 min-h-0">
+              {terminalTab === 'setup' && selectedSessionId && (
+                <TerminalOutput sessionId={selectedSessionId} type="setup" />
+              )}
+              {terminalTab === 'run' && selectedSessionId && (
+                <TerminalOutput sessionId={selectedSessionId} type="run" />
+              )}
+              {terminalTab === 'terminal' && selectedSessionId && (
+                <Terminal
+                  sessionId={selectedSessionId}
+                  workspacePath={currentWorkspace?.path}
+                />
+              )}
+              {!selectedSessionId && (
+                <div className="h-full bg-black/90 flex items-center justify-center">
+                  <span className="text-xs text-muted-foreground">No session selected</span>
+                </div>
+              )}
             </div>
           </div>
         </ResizablePanel>
@@ -439,9 +485,10 @@ function FileChangeRow({ change, onSelect }: { change: FileChangeDTO; onSelect: 
 
   return (
     <div
-      className="group flex items-center gap-1.5 px-2 py-1.5 hover:bg-accent/50 cursor-pointer"
+      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-accent/50 cursor-pointer"
       onClick={onSelect}
     >
+      <FileIcon filename={fileName} />
       {dirPath && (
         <span className="text-xs text-muted-foreground truncate shrink-0 max-w-[120px]">
           {truncateDir(dirPath)}

@@ -232,6 +232,18 @@ function handleMessage(message: SDKMessage): void {
               tool: block.name,
               params: block.input,
             });
+
+            // Emit TodoWrite events for real-time todo tracking
+            if (block.name === "TodoWrite") {
+              const input = block.input as { todos?: Array<{content: string, status: string, activeForm: string}> };
+              if (input?.todos) {
+                emit({
+                  type: "todo_update",
+                  id: block.id,
+                  todos: input.todos,
+                });
+              }
+            }
           }
         }
       }

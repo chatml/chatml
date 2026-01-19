@@ -31,4 +31,5 @@ tauri-plugin-decorum = "1.1"
 tauri-plugin-window-state = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-pty = "0.1"
 sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }

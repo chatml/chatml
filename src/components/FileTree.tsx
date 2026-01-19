@@ -157,7 +157,7 @@ function FolderOpenIcon({ className }: { className?: string }) {
 }
 
 // File icon component based on file extension
-function FileIcon({ filename }: { filename: string }) {
+export function FileIcon({ filename }: { filename: string }) {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   const name = filename.toLowerCase();
 
