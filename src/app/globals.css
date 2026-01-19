@@ -127,7 +127,7 @@
 /* Terminal output styling */
 .terminal {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -154,20 +154,19 @@
 
 /* Code block styling */
 .prose pre {
-  @apply bg-[#0d1117] border border-border/50 rounded-lg overflow-hidden;
+  @apply bg-muted/50 border border-border rounded-lg overflow-hidden my-3 p-2;
 }
 
 .prose pre code {
-  @apply text-[13px] leading-relaxed;
+  @apply text-[11px] leading-relaxed;
+}
+
+.prose pre code.hljs {
+  @apply bg-transparent;
 }
 
 .prose code:not(pre code) {
-  @apply bg-muted px-1.5 py-0.5 rounded text-[13px] font-medium;
-}
-
-/* Inline code in dark mode */
-.dark .prose code:not(pre code) {
-  @apply bg-muted/50 text-primary;
+  @apply bg-muted/50 px-1.5 py-0.5 rounded text-[13px] font-medium border border-border;
 }
 
 /* Heading styles */
@@ -212,7 +211,7 @@
 }
 
 .prose li::marker {
-  @apply text-muted-foreground;
+  @apply text-primary/70;
 }
 
 /* Nested lists */

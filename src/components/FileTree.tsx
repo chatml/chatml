@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isTauri } from '@/lib/tauri';
 
 export interface FileNode {
   name: string;
@@ -15,22 +16,58 @@ export interface FileNode {
 interface FileTreeProps {
   files: FileNode[];
   onFileSelect?: (path: string) => void;
+  workspacePath?: string;
+  workspaceName?: string;
 }
 
-export function FileTree({ files, onFileSelect }: FileTreeProps) {
+export function FileTree({ files, onFileSelect, workspacePath, workspaceName }: FileTreeProps) {
+  const handleOpenInVSCode = async () => {
+    if (!workspacePath || !isTauri()) return;
+    try {
+      const { Command } = await import('@tauri-apps/plugin-shell');
+      Command.create('code', [workspacePath]).spawn().catch(console.error);
+    } catch (e) {
+      console.error('Failed to open in VS Code:', e);
+    }
+  };
+
+  // Truncate path for display, showing the last part
+  const displayPath = workspacePath
+    ? workspacePath.length > 35
+      ? '...' + workspacePath.slice(-32)
+      : workspacePath
+    : workspaceName || 'Files';
+
   return (
-    <ScrollArea className="h-full">
-      <div className="py-1">
-        {files.map((node) => (
-          <FileTreeNode
-            key={node.path}
-            node={node}
-            depth={0}
-            onFileSelect={onFileSelect}
-          />
-        ))}
+    <div className="h-full flex flex-col">
+      {/* Header bar with path and VS Code link */}
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b bg-muted/30 shrink-0 min-h-[28px]">
+        <span className="text-[10px] text-muted-foreground truncate flex-1" title={workspacePath}>
+          {displayPath}
+        </span>
+        <button
+          onClick={handleOpenInVSCode}
+          className="text-[10px] text-primary/70 hover:text-primary transition-colors shrink-0"
+          title="⌘⇧O"
+        >
+          Open in VSCode
+        </button>
       </div>
-    </ScrollArea>
+
+      {/* File tree content */}
+      <ScrollArea className="flex-1">
+        <div className="py-1">
+          {files.map((node) => (
+            <FileTreeNode
+              key={node.path}
+              node={node}
+              depth={0}
+              onFileSelect={onFileSelect}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
 
@@ -51,12 +88,15 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
     }
   };
 
+  const isHidden = node.name.startsWith('.');
+
   return (
     <div>
       <div
         className={cn(
-          'flex items-center gap-1.5 py-px px-1 hover:bg-accent/50 cursor-pointer text-[11px] font-mono font-light',
-          'transition-colors'
+          'flex items-center gap-1.5 py-px px-1 hover:bg-accent/50 cursor-pointer text-[11px]',
+          'transition-colors',
+          isHidden && 'text-muted-foreground/75'
         )}
         style={{ paddingLeft: `${depth * 8 + 4}px` }}
         onClick={handleClick}
@@ -69,9 +109,9 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
               <ChevronRight className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
             )}
             {isExpanded ? (
-              <FolderOpen className="w-3 h-3 text-amber-500 shrink-0" />
+              <FolderOpenIcon className={cn("w-3 h-3 shrink-0", isHidden ? "text-amber-500/50" : "text-amber-500")} />
             ) : (
-              <Folder className="w-3 h-3 text-amber-500 shrink-0" />
+              <FolderIcon className={cn("w-3 h-3 shrink-0", isHidden ? "text-amber-500/50" : "text-amber-500")} />
             )}
           </>
         ) : (
@@ -95,6 +135,24 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
         </div>
       )}
     </div>
+  );
+}
+
+// Filled folder icons
+function FolderIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z" />
+    </svg>
+  );
+}
+
+function FolderOpenIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M4 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4z" />
+      <path d="M2 10h20v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8z" fillOpacity="0.3" />
+    </svg>
   );
 }
 

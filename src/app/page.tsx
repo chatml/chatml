@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Command } from '@tauri-apps/plugin-shell';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { isTauri, safeListen, closeWindow } from '@/lib/tauri';
+import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { listRepos, listSessions, listConversations, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
 import { SettingsPage } from '@/components/SettingsPage';
@@ -30,7 +32,11 @@ export default function Home() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const leftSidebarRef = useRef<HTMLDivElement>(null);
+
+  const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
@@ -55,13 +61,16 @@ export default function Home() {
     workspaces,
     sessions,
     conversations,
+    messages,
     selectedWorkspaceId,
     selectedSessionId,
     selectedConversationId,
     setWorkspaces,
     setSessions,
     setConversations,
+    addSession,
     addConversation,
+    removeConversation,
     selectWorkspace,
     selectSession,
     selectConversation,
@@ -191,6 +200,138 @@ export default function Home() {
     loadData();
   }, [backendConnected, repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation, selectConversation]);
 
+  // Menu action handlers
+  const handleNewSession = useCallback(async () => {
+    if (!selectedWorkspaceId) return;
+
+    const workspace = workspaces.find((w) => w.id === selectedWorkspaceId);
+    if (!workspace) return;
+
+    try {
+      // Generate a unique session name
+      const workspaceSessions = sessions.filter((s) => s.workspaceId === selectedWorkspaceId);
+      const sessionNumber = workspaceSessions.length + 1;
+      const branchName = `session-${sessionNumber}-${Date.now().toString(36)}`;
+
+      const newSession = await createSession(selectedWorkspaceId, {
+        name: `Session ${sessionNumber}`,
+        branch: branchName,
+        worktreePath: `${workspace.path}/.worktrees/${branchName}`,
+      });
+
+      // Add to store and select
+      addSession({
+        id: newSession.id,
+        workspaceId: newSession.workspaceId,
+        name: newSession.name,
+        branch: newSession.branch,
+        worktreePath: newSession.worktreePath,
+        task: newSession.task,
+        status: newSession.status,
+        stats: newSession.stats,
+        prStatus: newSession.prStatus,
+        prUrl: newSession.prUrl,
+        prNumber: newSession.prNumber,
+        hasMergeConflict: newSession.hasMergeConflict,
+        hasCheckFailures: newSession.hasCheckFailures,
+        pinned: newSession.pinned,
+        createdAt: newSession.createdAt,
+        updatedAt: newSession.updatedAt,
+      });
+      selectSession(newSession.id);
+    } catch (error) {
+      console.error('Failed to create session:', error);
+    }
+  }, [selectedWorkspaceId, workspaces, sessions, addSession, selectSession]);
+
+  const handleNewConversation = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    try {
+      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, {
+        type: 'task',
+      });
+
+      // Add to store and select
+      addConversation({
+        id: newConv.id,
+        sessionId: newConv.sessionId,
+        type: newConv.type,
+        name: newConv.name,
+        status: newConv.status,
+        messages: newConv.messages.map((m) => ({
+          id: m.id,
+          conversationId: newConv.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          setupInfo: m.setupInfo,
+          runSummary: m.runSummary,
+          timestamp: m.timestamp,
+        })),
+        toolSummary: newConv.toolSummary.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          target: t.target,
+          success: t.success,
+        })),
+        createdAt: newConv.createdAt,
+        updatedAt: newConv.updatedAt,
+      });
+      selectConversation(newConv.id);
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation]);
+
+  // Actually perform the close operation
+  const doCloseTab = useCallback(async (convId: string) => {
+    const currentConvs = conversations.filter((c) => c.sessionId === selectedSessionId);
+    const currentIndex = currentConvs.findIndex((c) => c.id === convId);
+
+    try {
+      // Delete from backend
+      await deleteConversation(convId);
+
+      // Remove from store
+      removeConversation(convId);
+
+      // Select adjacent conversation
+      if (currentConvs.length > 1) {
+        const nextConv = currentConvs[currentIndex + 1] || currentConvs[currentIndex - 1];
+        if (nextConv) {
+          selectConversation(nextConv.id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to close tab:', error);
+    }
+  }, [selectedSessionId, conversations, removeConversation, selectConversation]);
+
+  const handleCloseTab = useCallback(async () => {
+    if (!selectedConversationId) return;
+
+    // Check if conversation has messages using the messages store
+    const conversationMessages = messages.filter((m) => m.conversationId === selectedConversationId);
+    const hasMessages = conversationMessages.length > 0;
+
+    // If conversation has messages and setting is enabled, show confirmation
+    if (hasMessages && confirmCloseActiveTab) {
+      setPendingCloseConvId(selectedConversationId);
+      setShowCloseConfirm(true);
+      return;
+    }
+
+    // Otherwise close directly
+    await doCloseTab(selectedConversationId);
+  }, [selectedConversationId, messages, confirmCloseActiveTab, doCloseTab]);
+
+  const handleConfirmClose = useCallback(async () => {
+    if (pendingCloseConvId) {
+      await doCloseTab(pendingCloseConvId);
+      setPendingCloseConvId(null);
+    }
+  }, [pendingCloseConvId, doCloseTab]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -213,8 +354,10 @@ export default function Home() {
       if (e.key === 'o' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         const workspace = workspaces.find((w) => w.id === selectedWorkspaceId);
-        if (workspace?.path) {
-          Command.create('code', [workspace.path]).spawn().catch(console.error);
+        if (workspace?.path && isTauri()) {
+          import('@tauri-apps/plugin-shell').then(({ Command }) => {
+            Command.create('code', [workspace.path]).spawn().catch(console.error);
+          });
         }
       }
       // Cmd+B to toggle left sidebar
@@ -242,11 +385,84 @@ export default function Home() {
           }
         }
       }
+      // Cmd+W to close tab
+      if (e.key === 'w' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault();
+        handleCloseTab();
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation, handleCloseTab]);
+
+  // Handle Tauri menu events
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+
+    safeListen<string>('menu-event', (menuId) => {
+      switch (menuId) {
+        case 'settings':
+          setShowSettings(true);
+          break;
+        case 'new_session':
+          handleNewSession();
+          break;
+        case 'new_conversation':
+          handleNewConversation();
+          break;
+        case 'add_workspace':
+          setShowAddWorkspace(true);
+          break;
+        case 'close_tab':
+          handleCloseTab();
+          break;
+        case 'toggle_left_sidebar':
+          setShowLeftSidebar((prev) => !prev);
+          break;
+        case 'toggle_right_sidebar':
+          setShowRightSidebar((prev) => !prev);
+          break;
+        case 'toggle_thinking':
+          // Emit event for ChatInput to handle
+          window.dispatchEvent(new CustomEvent('toggle-thinking'));
+          break;
+        case 'toggle_plan_mode':
+          // Emit event for ChatInput to handle
+          window.dispatchEvent(new CustomEvent('toggle-plan-mode'));
+          break;
+        case 'focus_input':
+          // Emit event for ChatInput to handle
+          window.dispatchEvent(new CustomEvent('focus-input'));
+          break;
+        default:
+          console.log('Unhandled menu event:', menuId);
+      }
+    }).then((unlisten) => {
+      cleanup = unlisten;
+    });
+
+    return () => {
+      cleanup?.();
+    };
+  }, [handleNewSession, handleNewConversation, handleCloseTab]);
+
+  // Handle window close confirmation
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+
+    safeListen('window-close-requested', () => {
+      // For now, just close the window
+      // In the future, check for unsaved changes and show confirmation
+      closeWindow();
+    }).then((unlisten) => {
+      cleanup = unlisten;
+    });
+
+    return () => {
+      cleanup?.();
+    };
+  }, []);
 
   // Handle selecting a session from workspace management view
   const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
@@ -357,6 +573,14 @@ export default function Home() {
         <AddWorkspaceModal
           isOpen={showAddWorkspace}
           onClose={() => setShowAddWorkspace(false)}
+        />
+
+        {/* Close Tab Confirmation Dialog */}
+        <CloseTabConfirmDialog
+          open={showCloseConfirm}
+          onOpenChange={setShowCloseConfirm}
+          conversationName={conversations.find((c) => c.id === pendingCloseConvId)?.name || 'Conversation'}
+          onConfirm={handleConfirmClose}
         />
 
         {/* Update Checker */}

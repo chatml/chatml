@@ -53,13 +53,28 @@ export function TopBar({
 
   if (!selectedWorkspace || !selectedSession) {
     return (
-      <div data-tauri-drag-region className={`h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
-        <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+      <div data-tauri-drag-region className={`h-11 flex items-center border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
+        {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
+        {!showLeftSidebar && onToggleLeftSidebar && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 ml-1"
+            onClick={onToggleLeftSidebar}
+            title="Show sidebar (⌘B)"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+        )}
+        {/* Navigation buttons - tight together */}
+        <div className={`flex items-center ${!showLeftSidebar ? 'ml-1' : 'ml-0.5'}`}>
+          <Button variant="ghost" size="icon" className="h-6 w-6 p-0" disabled>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 p-0" disabled>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
         <span className="text-sm text-muted-foreground ml-2">
           Select a session to get started
         </span>
@@ -68,13 +83,13 @@ export function TopBar({
   }
 
   return (
-    <div data-tauri-drag-region className={`h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
+    <div data-tauri-drag-region className={`h-11 flex items-center border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
       {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
       {!showLeftSidebar && onToggleLeftSidebar && (
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-7 w-7 ml-1"
           onClick={onToggleLeftSidebar}
           title="Show sidebar (⌘B)"
         >
@@ -82,52 +97,49 @@ export function TopBar({
         </Button>
       )}
 
-      {/* Navigation */}
-      <Button variant="ghost" size="icon" className="h-7 w-7">
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" className="h-7 w-7">
-        <ChevronRight className="h-4 w-4" />
-      </Button>
+      {/* Navigation buttons - tight together, close to divider */}
+      <div className={`flex items-center ${!showLeftSidebar ? 'ml-1' : 'ml-0.5'}`}>
+        <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 ml-2 text-sm">
-        <span className="text-muted-foreground">{selectedWorkspace.name}</span>
+        <span className="text-purple-400 font-medium">{selectedWorkspace.name}</span>
         <ChevronRight className="h-3 w-3 text-muted-foreground" />
-        <div className="flex items-center gap-1.5">
-          <GitBranch className="h-3.5 w-3.5" />
-          <span className="font-medium">{selectedSession.branch}</span>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors">
+              <GitBranch className="h-3 w-3" />
+              <span className="text-xs">{selectedSession.branch}</span>
+              <ChevronDown className="h-2.5 w-2.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem>
+              <Code className="h-4 w-4 mr-2" />
+              VS Code
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Finder
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Terminal className="h-4 w-4 mr-2" />
+              Terminal
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              GitHub
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      {/* Open Dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 gap-1 ml-2 text-xs">
-            Open
-            <ChevronDown className="h-3 w-3" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem>
-            <Code className="h-4 w-4 mr-2" />
-            VS Code
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-            <FolderOpen className="h-4 w-4 mr-2" />
-            Finder
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-            <Terminal className="h-4 w-4 mr-2" />
-            Terminal
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <ExternalLink className="h-4 w-4 mr-2" />
-            GitHub
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
 
       {/* Spacer */}
       <div className="flex-1" />
@@ -138,7 +150,7 @@ export function TopBar({
       </div>
 
       {/* Create PR Button */}
-      <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-primary border border-transparent hover:border-primary/50 hover:bg-primary/10 transition-colors">
+      <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-primary border border-transparent hover:border-primary/50 hover:bg-primary/10 transition-colors mr-1">
         <GitPullRequest className="h-3.5 w-3.5" />
         Create PR
       </Button>
@@ -148,7 +160,7 @@ export function TopBar({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-7 w-7 mr-1"
           onClick={onToggleRightSidebar}
           title="Show sidebar (⌘⌥B)"
         >

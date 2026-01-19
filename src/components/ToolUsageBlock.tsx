@@ -223,9 +223,9 @@ export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) 
 
   return (
     <div className="space-y-0.5">
-      {tools.map((tool) => (
+      {tools.map((tool, index) => (
         <ToolUsageBlock
-          key={tool.id}
+          key={`${tool.id}-${index}`}
           id={tool.id}
           tool={tool.tool}
           params={tool.params}

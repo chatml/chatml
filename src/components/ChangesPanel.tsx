@@ -59,7 +59,7 @@ function isBinaryFile(filename: string): boolean {
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
-  const { selectedWorkspaceId, selectedSessionId, sessions, openFileTab, updateFileTab } = useAppStore();
+  const { selectedWorkspaceId, selectedSessionId, sessions, workspaces, openFileTab, updateFileTab } = useAppStore();
   const [selectedTab, setSelectedTab] = useState('files');
   const [terminalTab, setTerminalTab] = useState('terminal');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -167,8 +167,9 @@ export function ChangesPanel() {
     }
   };
 
-  // Get current session for status-based styling
+  // Get current session and workspace for status-based styling
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
+  const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
 
   // Determine top bar state
   const hasActivePR = currentSession?.prStatus === 'open';
@@ -323,7 +324,12 @@ export function ChangesPanel() {
                 </div>
               </div>
             ) : (
-              <FileTree files={files} onFileSelect={handleFileSelect} />
+              <FileTree
+                files={files}
+                onFileSelect={handleFileSelect}
+                workspacePath={currentWorkspace?.path}
+                workspaceName={currentWorkspace?.name}
+              />
             )
           ) : selectedTab === 'changes' ? (
             changesLoading ? (

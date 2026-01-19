@@ -33,6 +33,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -206,6 +207,9 @@ function SettingsRow({
 
 // Chat Settings
 function ChatSettings() {
+  const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
+  const setConfirmCloseActiveTab = useSettingsStore((s) => s.setConfirmCloseActiveTab);
+
   return (
     <div>
       <h2 className="text-2xl font-semibold mb-6">Chat</h2>
@@ -321,6 +325,16 @@ function ChatSettings() {
         description="Display chat cost in the top bar"
       >
         <Switch defaultChecked />
+      </SettingsRow>
+
+      <SettingsRow
+        title="Confirm before closing active conversations"
+        description="Ask for confirmation when closing a conversation with messages"
+      >
+        <Switch
+          checked={confirmCloseActiveTab}
+          onCheckedChange={setConfirmCloseActiveTab}
+        />
       </SettingsRow>
     </div>
   );

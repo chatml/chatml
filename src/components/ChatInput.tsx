@@ -90,8 +90,22 @@ export function ChatInput() {
         setPlanModeEnabled(prev => !prev);
       }
     };
+
+    // Handle menu events from native Tauri menu
+    const handleFocusInput = () => textareaRef.current?.focus();
+    const handleToggleThinking = () => setThinkingEnabled(prev => !prev);
+    const handleTogglePlanMode = () => setPlanModeEnabled(prev => !prev);
+
     document.addEventListener('keydown', handleGlobalKeyDown);
-    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('focus-input', handleFocusInput);
+    window.addEventListener('toggle-thinking', handleToggleThinking);
+    window.addEventListener('toggle-plan-mode', handleTogglePlanMode);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('focus-input', handleFocusInput);
+      window.removeEventListener('toggle-thinking', handleToggleThinking);
+      window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
+    };
   }, []);
 
   const handleSubmit = async () => {
