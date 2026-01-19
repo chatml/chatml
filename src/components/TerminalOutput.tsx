@@ -6,6 +6,9 @@ import { useAppStore } from '@/stores/appStore';
 import { cn } from '@/lib/utils';
 import '@xterm/xterm/css/xterm.css';
 
+// Stable empty array to avoid infinite re-renders
+const EMPTY_OUTPUT: string[] = [];
+
 export interface TerminalOutputProps {
   sessionId: string;
   type: 'setup' | 'run';
@@ -19,7 +22,7 @@ export function TerminalOutput({ sessionId, type, className }: TerminalOutputPro
 
   // Get output from store based on type
   const outputKey = `${sessionId}-${type}`;
-  const output = useAppStore((state) => state.sessionOutputs[outputKey] || []);
+  const output = useAppStore((state) => state.sessionOutputs[outputKey] ?? EMPTY_OUTPUT);
 
   // Handle container resize
   useEffect(() => {
