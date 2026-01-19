@@ -540,7 +540,7 @@ pub fn run() {
     // Initialize Sentry before anything else
     let _sentry_guard = init_sentry();
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance tries to launch
             if let Some(window) = app.get_webview_window("main") {
@@ -558,7 +558,16 @@ pub fn run() {
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(tauri_plugin_window_state::StateFlags::all())
                 .build(),
-        )
+        );
+
+    // MCP Bridge plugin - development only
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+        log::info!("MCP Bridge plugin enabled (development mode)");
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             mark_app_ready,
             restart_sidecar,
