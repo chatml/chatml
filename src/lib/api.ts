@@ -1,4 +1,30 @@
-const API_BASE = 'http://localhost:9876';
+import { HEALTH_CHECK_REQUEST_TIMEOUT_MS } from '@/lib/constants';
+
+// API base URL - configurable via environment variable for non-Tauri builds
+const API_BASE = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
+  ? 'http://localhost:9876'  // Tauri always uses localhost sidecar
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876');
+
+// Custom error class for API errors
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public response?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// Helper to handle API responses consistently
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+  return res.json();
+}
 
 // Backend DTOs
 export interface RepoDTO {
@@ -28,8 +54,7 @@ export interface FileNodeDTO {
 
 export async function listRepos(): Promise<RepoDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos`);
-  if (!res.ok) return [];
-  return res.json();
+  return handleResponse<RepoDTO[]>(res);
 }
 
 export async function addRepo(path: string): Promise<RepoDTO> {
@@ -39,11 +64,7 @@ export async function addRepo(path: string): Promise<RepoDTO> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
     });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `HTTP ${res.status}`);
-    }
-    return res.json();
+    return handleResponse<RepoDTO>(res);
   } catch (err) {
     if (err instanceof TypeError && err.message === 'Load failed') {
       throw new Error('Cannot connect to backend. Is the server running?');
@@ -58,8 +79,7 @@ export async function deleteRepo(id: string): Promise<void> {
 
 export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos/${repoId}/files?depth=${depth}`);
-  if (!res.ok) return [];
-  return res.json();
+  return handleResponse<FileNodeDTO[]>(res);
 }
 
 export interface FileContentDTO {
@@ -71,10 +91,7 @@ export interface FileContentDTO {
 
 export async function getRepoFileContent(repoId: string, filePath: string): Promise<FileContentDTO> {
   const res = await fetch(`${API_BASE}/api/repos/${repoId}/file?path=${encodeURIComponent(filePath)}`);
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
+  return handleResponse<FileContentDTO>(res);
 }
 
 export interface FileDiffDTO {
@@ -92,10 +109,7 @@ export async function getFileDiff(repoId: string, filePath: string, baseBranch?:
     params.append('base', baseBranch);
   }
   const res = await fetch(`${API_BASE}/api/repos/${repoId}/diff?${params.toString()}`);
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
+  return handleResponse<FileDiffDTO>(res);
 }
 
 export async function getSessionFileDiff(
@@ -107,10 +121,7 @@ export async function getSessionFileDiff(
   const res = await fetch(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`
   );
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
+  return handleResponse<FileDiffDTO>(res);
 }
 
 // Session DTOs and functions
@@ -139,8 +150,7 @@ export interface SessionDTO {
 
 export async function listSessions(workspaceId: string): Promise<SessionDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions`);
-  if (!res.ok) return [];
-  return res.json();
+  return handleResponse<SessionDTO[]>(res);
 }
 
 export async function createSession(
@@ -152,8 +162,7 @@ export async function createSession(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return handleResponse<SessionDTO>(res);
 }
 
 export async function updateSession(
@@ -166,8 +175,7 @@ export async function updateSession(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return handleResponse<SessionDTO>(res);
 }
 
 export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
@@ -183,8 +191,7 @@ export interface FileChangeDTO {
 
 export async function getSessionChanges(workspaceId: string, sessionId: string): Promise<FileChangeDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/changes`);
-  if (!res.ok) return [];
-  return res.json();
+  return handleResponse<FileChangeDTO[]>(res);
 }
 
 export async function sendSessionMessage(
@@ -197,13 +204,15 @@ export async function sendSessionMessage(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
 }
 
 export async function listAgents(repoId: string): Promise<AgentDTO[]> {
   const res = await fetch(`${API_BASE}/api/repos/${repoId}/agents`);
-  if (!res.ok) return [];
-  return res.json();
+  return handleResponse<AgentDTO[]>(res);
 }
 
 export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO> {
@@ -212,8 +221,7 @@ export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ task }),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return handleResponse<AgentDTO>(res);
 }
 
 export async function stopAgent(agentId: string): Promise<void> {
@@ -266,7 +274,7 @@ export async function checkHealthWithRetry(
 
     try {
       const res = await fetch(`${API_BASE}/health`, {
-        signal: AbortSignal.timeout(5000) // 5 second timeout per request
+        signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS)
       });
 
       if (res.ok) {
@@ -353,8 +361,7 @@ export async function listConversations(
   const res = await fetch(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`
   );
-  if (!res.ok) return [];
-  return res.json();
+  return handleResponse<ConversationDTO[]>(res);
 }
 
 export async function createConversation(
@@ -370,14 +377,12 @@ export async function createConversation(
       body: JSON.stringify(data),
     }
   );
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return handleResponse<ConversationDTO>(res);
 }
 
 export async function getConversation(convId: string): Promise<ConversationDTO> {
   const res = await fetch(`${API_BASE}/api/conversations/${convId}`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return handleResponse<ConversationDTO>(res);
 }
 
 export async function sendConversationMessage(
@@ -389,7 +394,10 @@ export async function sendConversationMessage(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
 }
 
 export async function stopConversation(convId: string): Promise<void> {

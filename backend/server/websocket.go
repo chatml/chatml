@@ -11,7 +11,8 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for dev
+		origin := r.Header.Get("Origin")
+		return AllowedOriginsMap[origin]
 	},
 }
 

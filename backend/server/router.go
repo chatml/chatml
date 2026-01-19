@@ -3,12 +3,14 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/rs/cors"
 )
 
@@ -26,6 +28,11 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager) http.Han
 	// WebSocket
 	r.Get("/ws", hub.HandleWebSocket)
 
+	// Rate limiting middleware for sensitive operations
+	agentRateLimiter := httprate.LimitByIP(10, 1*time.Minute)         // 10 agent spawns per minute
+	conversationRateLimiter := httprate.LimitByIP(20, 1*time.Minute)  // 20 conversations per minute
+	messageRateLimiter := httprate.LimitByIP(60, 1*time.Minute)       // 60 messages per minute
+
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {
 		r.Get("/", h.ListRepos)
@@ -42,18 +49,18 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager) http.Han
 		r.Delete("/{id}/sessions/{sessionId}", h.DeleteSession)
 		r.Get("/{id}/sessions/{sessionId}/changes", h.GetSessionChanges)
 		r.Get("/{id}/sessions/{sessionId}/diff", h.GetSessionFileDiff)
-		r.Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)
+		r.With(messageRateLimiter).Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)
 		// Conversation endpoints nested under sessions
 		r.Get("/{id}/sessions/{sessionId}/conversations", h.ListConversations)
-		r.Post("/{id}/sessions/{sessionId}/conversations", h.CreateConversation)
+		r.With(conversationRateLimiter).Post("/{id}/sessions/{sessionId}/conversations", h.CreateConversation)
 		r.Get("/{id}/agents", h.ListAgents)
-		r.Post("/{id}/agents", h.SpawnAgent)
+		r.With(agentRateLimiter).Post("/{id}/agents", h.SpawnAgent)
 	})
 
 	// Conversation endpoints (top-level for direct access)
 	r.Route("/api/conversations", func(r chi.Router) {
 		r.Get("/{convId}", h.GetConversation)
-		r.Post("/{convId}/messages", h.SendConversationMessage)
+		r.With(messageRateLimiter).Post("/{convId}/messages", h.SendConversationMessage)
 		r.Post("/{convId}/stop", h.StopConversation)
 		r.Delete("/{convId}", h.DeleteConversation)
 	})
@@ -102,10 +109,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager) http.Han
 	})
 
 	handler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
+		AllowedOrigins:   AllowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: false, // Not needed for this app
 	}).Handler(r)
 
 	return handler

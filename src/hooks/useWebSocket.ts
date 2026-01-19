@@ -3,8 +3,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import type { WSEvent, AgentEvent, AgentTodoItem } from '@/lib/types';
+import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 
-const WS_URL = 'ws://localhost:9876/ws';
+// WebSocket URL - configurable via environment variable for non-Tauri builds
+const WS_URL = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
+  ? 'ws://localhost:9876/ws'  // Tauri always uses localhost sidecar
+  : (process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9876/ws');
 
 export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -206,13 +210,19 @@ export function useWebSocket(enabled: boolean = true) {
   ]);
 
   const connect = useCallback(() => {
+    // Cancel any pending reconnect to prevent race condition
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
     if (!enabledRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
-      console.log('WebSocket connected');
+      // Connected successfully
     };
 
     ws.onmessage = (event) => {
@@ -240,13 +250,12 @@ export function useWebSocket(enabled: boolean = true) {
     };
 
     ws.onclose = () => {
-      console.log('WebSocket disconnected, reconnecting...');
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       // Only reconnect if still enabled
       if (enabledRef.current && connectRef.current) {
-        reconnectTimeoutRef.current = setTimeout(connectRef.current, 3000);
+        reconnectTimeoutRef.current = setTimeout(connectRef.current, WEBSOCKET_RECONNECT_DELAY_MS);
       }
     };
 

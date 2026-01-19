@@ -34,6 +34,36 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 	}
 }
 
+// validatePath ensures the requested path stays within the base directory
+// Returns the cleaned path if valid, or an error if the path escapes the base
+func validatePath(basePath, requestedPath string) (string, error) {
+	cleanPath := filepath.Clean(requestedPath)
+
+	// Reject absolute paths
+	if filepath.IsAbs(cleanPath) {
+		return "", fmt.Errorf("absolute paths not allowed")
+	}
+
+	fullPath := filepath.Join(basePath, cleanPath)
+
+	// Resolve to absolute and verify it's under basePath
+	absBase, err := filepath.Abs(basePath)
+	if err != nil {
+		return "", err
+	}
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Ensure path is under base (add trailing slash to prevent prefix attacks)
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+		return "", fmt.Errorf("path escapes base directory")
+	}
+
+	return cleanPath, nil
+}
+
 type AddRepoRequest struct {
 	Path string `json:"path"`
 }
@@ -339,13 +369,6 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clean the path
-	cleanPath := filepath.Clean(filePath)
-	if strings.HasPrefix(cleanPath, "..") {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-
 	// Use the base commit SHA if available, otherwise fall back to repo branch for old sessions
 	baseRef := session.BaseCommitSHA
 	if baseRef == "" {
@@ -359,6 +382,13 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	workingPath := session.WorktreePath
 	if workingPath == "" {
 		workingPath = repo.Path
+	}
+
+	// Validate and clean the path
+	cleanPath, err := validatePath(workingPath, filePath)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
 	}
 
 	// Read current file content from the worktree
@@ -701,9 +731,9 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 		baseBranch = repo.Branch // default branch
 	}
 
-	// Clean the path
-	cleanPath := filepath.Clean(filePath)
-	if strings.HasPrefix(cleanPath, "..") {
+	// Validate and clean the path
+	cleanPath, err := validatePath(repo.Path, filePath)
+	if err != nil {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
@@ -758,20 +788,14 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prevent directory traversal attacks
-	cleanPath := filepath.Clean(filePath)
-	if strings.HasPrefix(cleanPath, "..") {
+	// Validate and clean the path to prevent directory traversal attacks
+	cleanPath, err := validatePath(repo.Path, filePath)
+	if err != nil {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
 	fullPath := filepath.Join(repo.Path, cleanPath)
-
-	// Ensure the path is within the repo directory
-	if !strings.HasPrefix(fullPath, repo.Path) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
 
 	// Check if file exists and is not a directory
 	info, err := os.Stat(fullPath)

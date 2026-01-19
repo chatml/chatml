@@ -5,6 +5,7 @@ import { Loader2, AlertCircle, RefreshCw, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { checkHealthWithRetry } from '@/lib/api';
 import { isTauri, safeListen, markAppReady, restartSidecar } from '@/lib/tauri';
+import { SIDECAR_RESTART_DELAY_MS } from '@/lib/constants';
 
 interface BackendStatusProps {
   onConnected: () => void;
@@ -94,7 +95,7 @@ export function BackendStatus({
     const success = await restartSidecar();
     if (success) {
       // Wait a bit for sidecar to start, then try connecting
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, SIDECAR_RESTART_DELAY_MS));
       await connect();
     } else {
       setError('Failed to restart backend. Try restarting the application.');
