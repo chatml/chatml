@@ -7,6 +7,7 @@ import type {
   FileChange,
   FileTab,
   TerminalSession,
+  TerminalInstance,
   Repo,
   Agent,
   AgentTodoItem,
@@ -64,6 +65,10 @@ interface AppState {
   // Todo state
   agentTodos: { [conversationId: string]: AgentTodoItem[] };
   customTodos: { [sessionId: string]: CustomTodoItem[] };
+
+  // Terminal instances (bottom panel terminals per workspace)
+  terminalInstances: Record<string, TerminalInstance[]>; // keyed by workspaceId
+  activeTerminalId: Record<string, string | null>;       // keyed by workspaceId
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -132,6 +137,12 @@ interface AppState {
   toggleCustomTodo: (sessionId: string, todoId: string) => void;
   deleteCustomTodo: (sessionId: string, todoId: string) => void;
 
+  // Terminal instance actions (bottom panel)
+  createTerminal: (workspaceId: string) => TerminalInstance | null;
+  closeTerminal: (workspaceId: string, terminalId: string) => void;
+  setActiveTerminal: (workspaceId: string, terminalId: string) => void;
+  markTerminalExited: (terminalId: string) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -147,7 +158,7 @@ interface AppState {
   removeAgent: (id: string) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // New state
   workspaces: [],
   sessions: [],
@@ -166,6 +177,8 @@ export const useAppStore = create<AppState>((set) => ({
   activeTools: {},
   agentTodos: {},
   customTodos: {},
+  terminalInstances: {},
+  activeTerminalId: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -507,6 +520,88 @@ export const useAppStore = create<AppState>((set) => ({
       [sessionId]: (state.customTodos[sessionId] || []).filter((todo) => todo.id !== todoId),
     },
   })),
+
+  // Terminal instance actions (bottom panel)
+  createTerminal: (workspaceId) => {
+    const state = get();
+    const existing = state.terminalInstances[workspaceId] || [];
+
+    // Max 5 terminals per workspace
+    if (existing.length >= 5) return null;
+
+    // Find lowest available slot (1-5)
+    const usedSlots = new Set(existing.map(t => t.slotNumber));
+    let slot = 1;
+    while (usedSlots.has(slot) && slot <= 5) slot++;
+
+    const terminal: TerminalInstance = {
+      id: `${workspaceId}-term-${slot}`,
+      workspaceId,
+      slotNumber: slot,
+      status: 'active',
+    };
+
+    set({
+      terminalInstances: {
+        ...state.terminalInstances,
+        [workspaceId]: [...existing, terminal],
+      },
+      activeTerminalId: {
+        ...state.activeTerminalId,
+        [workspaceId]: terminal.id,
+      },
+    });
+
+    return terminal;
+  },
+
+  closeTerminal: (workspaceId, terminalId) => {
+    const state = get();
+    const existing = state.terminalInstances[workspaceId] || [];
+    const filtered = existing.filter(t => t.id !== terminalId);
+    const wasActive = state.activeTerminalId[workspaceId] === terminalId;
+
+    let newActiveId = state.activeTerminalId[workspaceId];
+    if (wasActive && filtered.length > 0) {
+      // Select next available or last
+      const closedIndex = existing.findIndex(t => t.id === terminalId);
+      const nextIndex = Math.min(closedIndex, filtered.length - 1);
+      newActiveId = filtered[nextIndex]?.id || null;
+    } else if (filtered.length === 0) {
+      newActiveId = null;
+    }
+
+    set({
+      terminalInstances: {
+        ...state.terminalInstances,
+        [workspaceId]: filtered,
+      },
+      activeTerminalId: {
+        ...state.activeTerminalId,
+        [workspaceId]: newActiveId,
+      },
+    });
+  },
+
+  setActiveTerminal: (workspaceId, terminalId) => {
+    set({
+      activeTerminalId: {
+        ...get().activeTerminalId,
+        [workspaceId]: terminalId,
+      },
+    });
+  },
+
+  markTerminalExited: (terminalId) => {
+    const state = get();
+    const updated = { ...state.terminalInstances };
+    for (const wsId of Object.keys(updated)) {
+      updated[wsId] = updated[wsId].map(t =>
+        t.id === terminalId ? { ...t, status: 'exited' as const } : t
+      );
+    }
+    set({ terminalInstances: updated });
+  },
 
   // Legacy support
   repos: [],

@@ -216,3 +216,11 @@ export interface TerminalSession {
   cwd: string;
   status: 'idle' | 'active' | 'closed';
 }
+
+// Terminal instance for bottom panel terminals (per workspace)
+export interface TerminalInstance {
+  id: string;           // "workspaceId-term-slotNumber"
+  workspaceId: string;
+  slotNumber: number;   // 1-5
+  status: 'active' | 'exited';
+}
