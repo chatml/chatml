@@ -54,7 +54,13 @@ export function BottomTerminal({ workspaceId, workspacePath, onHide }: BottomTer
 
   const handleCloseTerminal = (terminalId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    closeTerminal(workspaceId, terminalId);
+    // If this is the last terminal, hide the panel
+    if (instances.length === 1) {
+      closeTerminal(workspaceId, terminalId);
+      onHide();
+    } else {
+      closeTerminal(workspaceId, terminalId);
+    }
   };
 
   const handleTerminalExit = (terminalId: string) => {

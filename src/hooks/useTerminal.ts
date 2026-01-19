@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -67,9 +67,28 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   // Capture initial workspacePath - we don't want to reinit if it changes
   const initialWorkspacePathRef = useRef(workspacePath);
 
+  // State to trigger retry when container becomes ready
+  const [retryCount, setRetryCount] = useState(0);
+
   // Initialize terminal and PTY (only once per mount)
   useEffect(() => {
-    if (!containerRef.current || isInitializedRef.current) return;
+    const container = containerRef.current;
+    if (!container || isInitializedRef.current) return;
+
+    // Wait for container to have dimensions (needed for xterm to render properly)
+    if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+      // Container not ready yet, retry after a short delay (max 10 retries = 500ms)
+      if (retryCount < 10) {
+        const timeoutId = setTimeout(() => {
+          setRetryCount(c => c + 1);
+        }, 50);
+        return () => clearTimeout(timeoutId);
+      }
+      // Give up after 10 retries - container might be intentionally hidden
+      console.warn('Terminal container has no dimensions after retries');
+      return;
+    }
+
     isInitializedRef.current = true;
 
     // Create xterm.js terminal
@@ -96,7 +115,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     searchAddonRef.current = searchAddon;
 
     // Open terminal in container
-    terminal.open(containerRef.current);
+    terminal.open(container);
 
     // Handle Cmd+K to clear terminal (macOS standard)
     terminal.attachCustomKeyEventHandler((event) => {
@@ -162,8 +181,8 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
       terminal.dispose();
       isInitializedRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount, props stored in refs
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount, props stored in refs, retryCount for dimension check
+  }, [retryCount]);
 
   // Fit terminal to container
   const fit = useCallback(() => {

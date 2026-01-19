@@ -46,6 +46,9 @@ use std::process::Command;
 // Global state for sidecar process management
 static SIDECAR_PID: Mutex<Option<u32>> = Mutex::new(None);
 
+// Global state for speech sidecar process management
+static SPEECH_SIDECAR: Mutex<Option<CommandChild>> = Mutex::new(None);
+
 /// Kill any existing process on port 9876
 fn kill_process_on_port(port: u16) {
     // Use lsof to find process holding the port (macOS/Linux)
@@ -292,6 +295,115 @@ fn is_window_visible(app: tauri::AppHandle) -> bool {
     }
 }
 
+// Tauri command to check if speech recognition is available
+#[tauri::command]
+fn check_speech_availability() -> Result<bool, String> {
+    // Only available on macOS
+    #[cfg(target_os = "macos")]
+    {
+        Ok(true)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(false)
+    }
+}
+
+// Tauri command to start speech recognition
+#[tauri::command]
+fn start_speech_recognition(app: tauri::AppHandle) -> Result<(), String> {
+    // Check if already running
+    if let Ok(guard) = SPEECH_SIDECAR.lock() {
+        if guard.is_some() {
+            return Err("Speech recognition already running".to_string());
+        }
+    }
+
+    let sidecar_command = app
+        .shell()
+        .sidecar("chatml-speech")
+        .map_err(|e| format!("Failed to create speech sidecar command: {}", e))?;
+
+    let (mut rx, child) = sidecar_command
+        .spawn()
+        .map_err(|e| format!("Failed to spawn speech sidecar: {}", e))?;
+
+    // Store the child process
+    if let Ok(mut guard) = SPEECH_SIDECAR.lock() {
+        *guard = Some(child);
+    }
+
+    // Clone app handle for the monitoring task
+    let app_handle = app.clone();
+
+    // Spawn a task to monitor speech sidecar output and forward to frontend
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    let line_str = String::from_utf8_lossy(&line).trim().to_string();
+                    if !line_str.is_empty() {
+                        log::debug!("[speech stdout] {}", line_str);
+                        // Forward to frontend as speech event
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.emit("speech-event", line_str);
+                        }
+                    }
+                }
+                CommandEvent::Stderr(line) => {
+                    log::warn!("[speech stderr] {}", String::from_utf8_lossy(&line));
+                }
+                CommandEvent::Error(err) => {
+                    log::error!("[speech error] {}", err);
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.emit("speech-error", err.clone());
+                    }
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::info!(
+                        "[speech terminated] code: {:?}, signal: {:?}",
+                        payload.code,
+                        payload.signal
+                    );
+                    // Clear the stored sidecar
+                    if let Ok(mut guard) = SPEECH_SIDECAR.lock() {
+                        *guard = None;
+                    }
+                    // Notify frontend
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.emit("speech-terminated", payload.code);
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    log::info!("Speech recognition sidecar started");
+    Ok(())
+}
+
+// Tauri command to stop speech recognition
+#[tauri::command]
+fn stop_speech_recognition() -> Result<(), String> {
+    if let Ok(mut guard) = SPEECH_SIDECAR.lock() {
+        if let Some(mut child) = guard.take() {
+            // Write "stop" to stdin to gracefully stop
+            if let Err(e) = child.write(b"stop\n") {
+                log::warn!("Failed to send stop command: {}", e);
+            }
+            // Kill the process
+            if let Err(e) = child.kill() {
+                log::warn!("Failed to kill speech sidecar: {}", e);
+            }
+            log::info!("Speech recognition stopped");
+        }
+    }
+    Ok(())
+}
+
 /// Create the system tray with menu
 fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let show_hide = MenuItemBuilder::with_id("show_hide", "Show/Hide").build(app)?;
@@ -373,7 +485,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new()
             .with_state_flags(tauri_plugin_window_state::StateFlags::all())
             .build())
-        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar, set_minimize_to_tray, is_window_visible])
+        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar, set_minimize_to_tray, is_window_visible, check_speech_availability, start_speech_recognition, stop_speech_recognition])
         .setup(|app| {
             // Create and set the menu
             let menu = create_menu(app.handle())?;

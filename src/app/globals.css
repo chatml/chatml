@@ -322,3 +322,27 @@
   stroke-linecap: round;
   animation: dash-march 60s linear infinite;
 }
+
+/* Dictation button pulsing animation */
+@keyframes dictation-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(249, 115, 22, 0);
+  }
+}
+
+.dictation-active {
+  animation: dictation-pulse 1.5s ease-in-out infinite;
+  background-color: rgba(249, 115, 22, 0.1);
+}
+
+.dictation-active:hover {
+  background-color: rgba(249, 115, 22, 0.2);
+}
+
+/* Sound level bars animation */
+.sound-bar {
+  transition: height 75ms ease-out;
+}

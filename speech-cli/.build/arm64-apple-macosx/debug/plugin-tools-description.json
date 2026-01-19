@@ -1,0 +1,282 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.chatml-speech-arm64-apple-macosx26.0-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/sources",
+      "importPath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/SpeechRecognizer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "chatml_speech",
+      "moduleOutputPath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/Modules/chatml_speech.swiftmodule",
+      "objects" : [
+        "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/SpeechRecognizer.swift.o",
+        "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx12.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "chatml_speech_main",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "speech_cli"
+      ],
+      "outputFileMapPath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/SpeechRecognizer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/Modules/chatml_speech.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/SpeechRecognizer.swift",
+        "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/main.swift"
+      ],
+      "tempsPath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "chatml_speech" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "chatml_speech",
+      "-package-name",
+      "speech_cli",
+      "-c",
+      "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/SpeechRecognizer.swift",
+      "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/main.swift",
+      "-I",
+      "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx12.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "chatml_speech_main",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "speech_cli",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "chatml_speech" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml-speech-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml-speech-entitlement.plist"
+    },
+    "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml-speech.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/SpeechRecognizer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml-speech.product/Objects.LinkFileList"
+    },
+    "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/SpeechRecognizer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/Sources/SpeechCLI/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/chatml_speech.build/sources"
+    },
+    "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/mcastilho/dev/chatml/chatml/speech-cli/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}

@@ -535,7 +535,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     while (usedSlots.has(slot) && slot <= 5) slot++;
 
     const terminal: TerminalInstance = {
-      id: `${workspaceId}-term-${slot}`,
+      id: `${workspaceId}-term-${slot}-${Date.now()}`,
       workspaceId,
       slotNumber: slot,
       status: 'active',

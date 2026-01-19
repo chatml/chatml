@@ -28,6 +28,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave } from '@/lib/tauri';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { DictationButton } from '@/components/DictationButton';
+import { DictationOverlay } from '@/components/DictationOverlay';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake },
@@ -44,6 +47,17 @@ export function ChatInput() {
   const [droppedFiles, setDroppedFiles] = useState<string[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Speech recognition
+  const {
+    isListening,
+    isAvailable: speechAvailable,
+    interimText,
+    finalText,
+    soundLevel,
+    toggleListening,
+    stopListening,
+  } = useSpeechRecognition();
 
   const {
     selectedConversationId,
@@ -75,6 +89,25 @@ export function ChatInput() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [message]);
+
+  // Insert transcribed text when speech recognition completes
+  useEffect(() => {
+    if (finalText) {
+      setMessage((prev) => {
+        // Insert at cursor position or append
+        const textarea = textareaRef.current;
+        if (textarea) {
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          const before = prev.slice(0, start);
+          const after = prev.slice(end);
+          const separator = before && !before.endsWith(' ') ? ' ' : '';
+          return before + separator + finalText + after;
+        }
+        return prev + (prev ? ' ' : '') + finalText;
+      });
+    }
+  }, [finalText]);
 
   // Listen for drag-drop events from Tauri
   useEffect(() => {
@@ -122,6 +155,13 @@ export function ChatInput() {
         e.preventDefault();
         setPlanModeEnabled(prev => !prev);
       }
+      // Cmd+Shift+D to toggle dictation
+      if (e.code === 'KeyD' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (speechAvailable && !isStreaming) {
+          toggleListening();
+        }
+      }
     };
 
     // Handle menu events from native Tauri menu
@@ -139,7 +179,7 @@ export function ChatInput() {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, []);
+  }, [speechAvailable, isStreaming, toggleListening]);
 
   const handleSubmit = async () => {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
@@ -284,6 +324,15 @@ export function ChatInput() {
         isStreaming && 'border-transparent',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
+        {/* Dictation overlay */}
+        {isListening && (
+          <DictationOverlay
+            interimText={interimText}
+            soundLevel={soundLevel}
+            onStop={stopListening}
+          />
+        )}
+
         {/* Drag overlay */}
         {isDragOver && (
           <div className="absolute inset-0 bg-primary/10 rounded-lg flex items-center justify-center z-10 pointer-events-none">
@@ -419,6 +468,14 @@ export function ChatInput() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Dictation Button */}
+          <DictationButton
+            isListening={isListening}
+            isAvailable={speechAvailable}
+            disabled={isStreaming || !selectedSessionId}
+            onClick={toggleListening}
+          />
 
           {/* Stop Button (when streaming) */}
           {isStreaming ? (
