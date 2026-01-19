@@ -1,7 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{
+    image::Image,
     menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
+    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
     Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_shell::process::CommandChild;
@@ -9,8 +11,78 @@ use tauri_plugin_shell::ShellExt;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
 
+/// Initialize Sentry for crash reporting (only in release builds with DSN set)
+fn init_sentry() -> Option<sentry::ClientInitGuard> {
+    let dsn = std::env::var("SENTRY_DSN").ok()?;
+    if dsn.is_empty() {
+        return None;
+    }
+
+    let guard = sentry::init((
+        dsn,
+        sentry::ClientOptions {
+            release: Some(env!("CARGO_PKG_VERSION").into()),
+            environment: if cfg!(debug_assertions) {
+                Some("development".into())
+            } else {
+                Some("production".into())
+            },
+            ..Default::default()
+        },
+    ));
+
+    log::info!("Sentry initialized for crash reporting");
+    Some(guard)
+}
+
 // Global state for tracking if the app is fully initialized
 static APP_READY: AtomicBool = AtomicBool::new(false);
+// Global state for minimize-to-tray setting
+static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+use std::sync::Mutex;
+use std::process::Command;
+
+// Global state for sidecar process management
+static SIDECAR_PID: Mutex<Option<u32>> = Mutex::new(None);
+
+/// Kill any existing process on port 9876
+fn kill_process_on_port(port: u16) {
+    // Use lsof to find process holding the port (macOS/Linux)
+    #[cfg(unix)]
+    {
+        if let Ok(output) = Command::new("lsof")
+            .args(["-t", "-i", &format!(":{}", port)])
+            .output()
+        {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid_str in pids.lines() {
+                if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                    log::info!("Killing existing process on port {}: PID {}", port, pid);
+                    let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+                }
+            }
+        }
+    }
+}
+
+/// Kill the stored sidecar process if it exists
+fn kill_stored_sidecar() {
+    if let Ok(mut pid_guard) = SIDECAR_PID.lock() {
+        if let Some(pid) = pid_guard.take() {
+            log::info!("Killing stored sidecar process: PID {}", pid);
+            #[cfg(unix)]
+            {
+                // Send SIGTERM first for graceful shutdown
+                let _ = Command::new("kill").args(["-15", &pid.to_string()]).output();
+                // Wait a bit for graceful shutdown
+                std::thread::sleep(Duration::from_millis(500));
+                // Force kill if still running
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            }
+        }
+    }
+}
 
 fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // App menu (macOS only shows this as the app name)
@@ -107,6 +179,13 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 /// Spawn the sidecar and set up monitoring
 fn spawn_sidecar(app: &tauri::AppHandle) -> Result<CommandChild, String> {
+    // Clean up any existing processes before spawning
+    kill_stored_sidecar();
+    kill_process_on_port(9876);
+
+    // Small delay to ensure port is released
+    std::thread::sleep(Duration::from_millis(200));
+
     let sidecar_command = app
         .shell()
         .sidecar("chatml-backend")
@@ -115,6 +194,12 @@ fn spawn_sidecar(app: &tauri::AppHandle) -> Result<CommandChild, String> {
     let (mut rx, child) = sidecar_command
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    // Store the PID for later cleanup
+    if let Ok(mut pid_guard) = SIDECAR_PID.lock() {
+        *pid_guard = Some(child.pid());
+        log::info!("Stored sidecar PID: {}", child.pid());
+    }
 
     // Clone app handle for the monitoring task
     let app_handle = app.clone();
@@ -174,17 +259,109 @@ fn mark_app_ready() {
 fn restart_sidecar(app: tauri::AppHandle) -> Result<(), String> {
     log::info!("Restarting sidecar...");
 
-    // Small delay to allow any cleanup
-    std::thread::sleep(Duration::from_millis(500));
+    // Clean up existing sidecar process
+    kill_stored_sidecar();
+    kill_process_on_port(9876);
 
-    // Spawn new sidecar
+    // Longer delay to ensure port is fully released and resources cleaned up
+    std::thread::sleep(Duration::from_millis(1500));
+
+    // Spawn new sidecar (this will also do cleanup but the process should already be gone)
     spawn_sidecar(&app)?;
+
+    Ok(())
+}
+
+// Tauri command to set minimize-to-tray preference
+#[tauri::command]
+fn set_minimize_to_tray(enabled: bool) {
+    MINIMIZE_TO_TRAY.store(enabled, Ordering::SeqCst);
+    log::info!("Minimize to tray set to: {}", enabled);
+}
+
+// Tauri command to check if window is visible
+#[tauri::command]
+fn is_window_visible(app: tauri::AppHandle) -> bool {
+    if let Some(window) = app.get_webview_window("main") {
+        window.is_visible().unwrap_or(false)
+    } else {
+        false
+    }
+}
+
+// Tauri command to close splash screen and show main window
+// Currently a no-op since splash is handled by the frontend loading state
+#[tauri::command]
+fn close_splash(_app: tauri::AppHandle) {
+    // Splash screen is now handled by the frontend BackendStatus component
+    // This command is kept for API compatibility
+    log::info!("close_splash called (no-op)");
+}
+
+/// Create the system tray with menu
+fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let show_hide = MenuItemBuilder::with_id("show_hide", "Show/Hide").build(app)?;
+    let new_session = MenuItemBuilder::with_id("tray_new_session", "New Session").build(app)?;
+    let quit = MenuItemBuilder::with_id("tray_quit", "Quit ChatML").build(app)?;
+
+    let menu = MenuBuilder::new(app)
+        .item(&show_hide)
+        .item(&new_session)
+        .separator()
+        .item(&quit)
+        .build()?;
+
+    // Load icon from embedded bytes (32x32 PNG)
+    let icon_bytes = include_bytes!("../icons/32x32.png");
+    let icon = Image::from_bytes(icon_bytes)?;
+
+    let _tray = TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&menu)
+        .tooltip("ChatML")
+        .on_menu_event(move |app, event| {
+            match event.id().as_ref() {
+                "show_hide" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                }
+                "tray_new_session" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        let _ = window.emit("menu-event", "new_session");
+                    }
+                }
+                "tray_quit" => {
+                    std::process::exit(0);
+                }
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
 
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize Sentry before anything else
+    let _sentry_guard = init_sentry();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance tries to launch
@@ -193,13 +370,15 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_window_state::Builder::new()
             .with_state_flags(tauri_plugin_window_state::StateFlags::all())
             .build())
-        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar])
+        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar, set_minimize_to_tray, is_window_visible, close_splash])
         .setup(|app| {
             // Create and set the menu
             let menu = create_menu(app.handle())?;
@@ -218,6 +397,11 @@ pub fn run() {
                         .level(log::LevelFilter::Debug)
                         .build(),
                 )?;
+            }
+
+            // Create the system tray
+            if let Err(e) = create_tray(app.handle()) {
+                log::error!("Failed to create system tray: {}", e);
             }
 
             // Spawn the Go backend sidecar with proper error handling
@@ -250,6 +434,14 @@ pub fn run() {
                 if !APP_READY.load(Ordering::SeqCst) {
                     log::info!("Window close during startup - allowing immediate close");
                     return; // Don't prevent close
+                }
+
+                // If minimize-to-tray is enabled, hide the window instead of closing
+                if MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    log::info!("Window hidden to tray");
+                    return;
                 }
 
                 // App is ready - prevent close and let frontend handle confirmation

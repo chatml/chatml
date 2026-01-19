@@ -129,7 +129,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := uuid.New().String()
 
 	// Create git worktree for this session
-	worktreePath, branchName, err := h.worktreeManager.CreateWithBranch(repo.Path, sessionID, req.Branch)
+	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateWithBranch(repo.Path, sessionID, req.Branch)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create worktree: %v", err), http.StatusInternalServerError)
 		return
@@ -137,16 +137,17 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	session := &models.Session{
-		ID:           sessionID,
-		WorkspaceID:  workspaceID,
-		Name:         req.Name,
-		Branch:       branchName,
-		WorktreePath: worktreePath,
-		Task:         req.Task,
-		Status:       "idle",
-		PRStatus:     "none",
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:            sessionID,
+		WorkspaceID:   workspaceID,
+		Name:          req.Name,
+		Branch:        branchName,
+		WorktreePath:  worktreePath,
+		BaseCommitSHA: baseCommitSHA,
+		Task:          req.Task,
+		Status:        "idle",
+		PRStatus:      "none",
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	h.store.AddSession(session)
@@ -290,10 +291,13 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the base branch (the workspace's default branch)
-	baseBranch := repo.Branch
-	if baseBranch == "" {
-		baseBranch = "main"
+	// Use the base commit SHA if available, otherwise fall back to repo branch for old sessions
+	baseRef := session.BaseCommitSHA
+	if baseRef == "" {
+		baseRef = repo.Branch
+		if baseRef == "" {
+			baseRef = "main"
+		}
 	}
 
 	// Use worktree path if set, otherwise fall back to repo path
@@ -302,8 +306,8 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		workingPath = repo.Path
 	}
 
-	// Get changed files in the session's worktree compared to base branch
-	changes, err := h.repoManager.GetChangedFilesWithStats(workingPath, baseBranch)
+	// Get changed files in the session's worktree compared to base ref
+	changes, err := h.repoManager.GetChangedFilesWithStats(workingPath, baseRef)
 	if err != nil {
 		// If there's no diff (e.g., new worktree with no changes), return empty list
 		changes = []git.FileChange{}
@@ -342,10 +346,13 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the base branch (the workspace's default branch)
-	baseBranch := repo.Branch
-	if baseBranch == "" {
-		baseBranch = "main"
+	// Use the base commit SHA if available, otherwise fall back to repo branch for old sessions
+	baseRef := session.BaseCommitSHA
+	if baseRef == "" {
+		baseRef = repo.Branch
+		if baseRef == "" {
+			baseRef = "main"
+		}
 	}
 
 	// Use worktree path if set, otherwise fall back to repo path
@@ -362,8 +369,8 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get base branch version using git show
-	oldContent, err := h.repoManager.GetFileAtRef(workingPath, baseBranch, cleanPath)
+	// Get base ref version using git show
+	oldContent, err := h.repoManager.GetFileAtRef(workingPath, baseRef, cleanPath)
 	if err != nil {
 		// File might not exist in base branch (new file)
 		oldContent = ""

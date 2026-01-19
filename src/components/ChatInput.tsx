@@ -23,8 +23,11 @@ import {
   Plus,
   Link,
   FolderSymlink,
+  FileText,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { listenForFileDrop, listenForDragEnter, listenForDragLeave } from '@/lib/tauri';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake },
@@ -38,6 +41,8 @@ export function ChatInput() {
   const [isSending, setIsSending] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
+  const [droppedFiles, setDroppedFiles] = useState<string[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -70,6 +75,34 @@ export function ChatInput() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [message]);
+
+  // Listen for drag-drop events from Tauri
+  useEffect(() => {
+    let unlistenDrop: (() => void) | undefined;
+    let unlistenEnter: (() => void) | undefined;
+    let unlistenLeave: (() => void) | undefined;
+
+    const setupListeners = async () => {
+      unlistenDrop = await listenForFileDrop((paths) => {
+        setDroppedFiles((prev) => [...prev, ...paths]);
+        setIsDragOver(false);
+      });
+      unlistenEnter = await listenForDragEnter(() => {
+        setIsDragOver(true);
+      });
+      unlistenLeave = await listenForDragLeave(() => {
+        setIsDragOver(false);
+      });
+    };
+
+    setupListeners();
+
+    return () => {
+      unlistenDrop?.();
+      unlistenEnter?.();
+      unlistenLeave?.();
+    };
+  }, []);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -112,8 +145,13 @@ export function ChatInput() {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
     const content = message.trim();
+    const attachedFiles = [...droppedFiles];
     setMessage('');
+    setDroppedFiles([]);
     setIsSending(true);
+
+    // TODO: Include attachedFiles in message when backend supports it
+    console.log('Attached files:', attachedFiles);
 
     try {
       // Check if this is a new conversation (no messages yet) or no conversation selected
@@ -216,6 +254,14 @@ export function ChatInput() {
     }
   };
 
+  const removeDroppedFile = (index: number) => {
+    setDroppedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const getFileName = (path: string) => {
+    return path.split('/').pop() || path;
+  };
+
   return (
     <div className="pt-1 px-4 pb-4">
       <div className={cn(
@@ -235,8 +281,43 @@ export function ChatInput() {
         )}
       <div className={cn(
         'rounded-lg border bg-muted/50',
-        isStreaming && 'border-transparent'
+        isStreaming && 'border-transparent',
+        isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
+        {/* Drag overlay */}
+        {isDragOver && (
+          <div className="absolute inset-0 bg-primary/10 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+            <div className="flex items-center gap-2 text-primary font-medium">
+              <FileText className="w-5 h-5" />
+              Drop files to attach
+            </div>
+          </div>
+        )}
+
+        {/* Dropped files chips */}
+        {droppedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+            {droppedFiles.map((file, index) => (
+              <div
+                key={`${file}-${index}`}
+                className="flex items-center gap-1.5 px-2 py-1 bg-muted rounded-md text-xs"
+              >
+                <FileText className="w-3 h-3 text-muted-foreground" />
+                <span className="max-w-32 truncate" title={file}>
+                  {getFileName(file)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeDroppedFile(index)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Text Input with Cmd+L hint */}
         <div className="relative">
           <Textarea

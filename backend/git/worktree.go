@@ -14,27 +14,37 @@ func NewWorktreeManager() *WorktreeManager {
 	return &WorktreeManager{}
 }
 
-func (wm *WorktreeManager) Create(repoPath, agentID string) (worktreePath string, branchName string, err error) {
+func (wm *WorktreeManager) Create(repoPath, agentID string) (worktreePath string, branchName string, baseCommit string, err error) {
 	branchName = fmt.Sprintf("agent/%s", agentID)
 	return wm.CreateWithBranch(repoPath, agentID, branchName)
 }
 
 // CreateWithBranch creates a worktree with a custom branch name
-func (wm *WorktreeManager) CreateWithBranch(repoPath, worktreeID, branchName string) (worktreePath string, branch string, err error) {
+// Returns the worktree path, branch name, and the base commit SHA that the worktree was created from
+func (wm *WorktreeManager) CreateWithBranch(repoPath, worktreeID, branchName string) (worktreePath string, branch string, baseCommit string, err error) {
+	// Capture current HEAD before creating the worktree - this is the base commit
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
+	}
+	baseCommit = strings.TrimSpace(string(out))
+
 	worktreesDir := filepath.Join(repoPath, ".worktrees")
 	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
-		return "", "", fmt.Errorf("failed to create worktrees dir: %w", err)
+		return "", "", "", fmt.Errorf("failed to create worktrees dir: %w", err)
 	}
 
 	worktreePath = filepath.Join(worktreesDir, worktreeID)
 
-	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
+	cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
 	cmd.Dir = repoPath
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
+		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
 	}
 
-	return worktreePath, branchName, nil
+	return worktreePath, branchName, baseCommit, nil
 }
 
 func (wm *WorktreeManager) Remove(repoPath, agentID string) error {

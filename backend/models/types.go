@@ -17,6 +17,7 @@ type Session struct {
 	Name             string        `json:"name"`
 	Branch           string        `json:"branch"`
 	WorktreePath     string        `json:"worktreePath"`
+	BaseCommitSHA    string        `json:"baseCommitSha,omitempty"` // Commit SHA the session was created from
 	Task             string        `json:"task,omitempty"`
 	Status           string        `json:"status"` // active, idle, done, error
 	AgentID          string        `json:"agentId,omitempty"` // ID of running agent process

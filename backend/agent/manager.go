@@ -344,7 +344,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	agentID := uuid.New().String()[:8]
 	sessionID := uuid.New().String()
 
-	worktreePath, branchName, err := m.worktreeManager.Create(repoPath, agentID)
+	worktreePath, branchName, _, err := m.worktreeManager.Create(repoPath, agentID)
 	if err != nil {
 		return nil, err
 	}

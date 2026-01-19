@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { FolderGit2, AlertCircle } from 'lucide-react';
+import { FolderGit2, AlertCircle, FolderOpen } from 'lucide-react';
+import { openFolderDialog } from '@/lib/tauri';
 
 interface AddWorkspaceModalProps {
   isOpen: boolean;
@@ -77,13 +78,29 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Input
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder="/path/to/your/repository"
-                className="font-mono text-sm"
-                autoFocus
-              />
+              <div className="flex gap-2">
+                <Input
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  placeholder="/path/to/your/repository"
+                  className="font-mono text-sm flex-1"
+                  autoFocus
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={async () => {
+                    const selectedPath = await openFolderDialog('Select Repository');
+                    if (selectedPath) {
+                      setPath(selectedPath);
+                    }
+                  }}
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 The repository must be a valid Git repository.
               </p>

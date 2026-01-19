@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { openFolderDialog, setMinimizeToTray } from '@/lib/tauri';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -728,10 +729,28 @@ function UpdatesSettings() {
 
 function AdvancedSettings() {
   const [rootDirectory, setRootDirectory] = useState('/Users/mcastilho/chatml');
+  const minimizeToTray = useSettingsStore((s) => s.minimizeToTray);
+  const setMinimizeToTraySetting = useSettingsStore((s) => s.setMinimizeToTray);
+
+  const handleMinimizeToTrayChange = (enabled: boolean) => {
+    setMinimizeToTraySetting(enabled);
+    setMinimizeToTray(enabled); // Sync with Tauri backend
+  };
 
   return (
     <div>
       <h2 className="text-2xl font-semibold mb-6">Advanced</h2>
+
+      {/* Minimize to tray */}
+      <SettingsRow
+        title="Minimize to tray"
+        description="Keep the app running in the system tray when you close the window"
+      >
+        <Switch
+          checked={minimizeToTray}
+          onCheckedChange={handleMinimizeToTrayChange}
+        />
+      </SettingsRow>
 
       {/* ChatML root directory */}
       <div className="py-4 border-b border-border/50">
@@ -746,7 +765,17 @@ function AdvancedSettings() {
             onChange={(e) => setRootDirectory(e.target.value)}
             className="flex-1 px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
           />
-          <Button variant="outline" size="sm" className="gap-2 h-9">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 h-9"
+            onClick={async () => {
+              const selectedPath = await openFolderDialog('Select ChatML Root Directory');
+              if (selectedPath) {
+                setRootDirectory(selectedPath);
+              }
+            }}
+          >
             <FolderOpen className="w-4 h-4" />
             Browse
           </Button>

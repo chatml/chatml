@@ -9,6 +9,8 @@ interface SettingsState {
   desktopNotifications: boolean;
   soundEffects: boolean;
   sendWithEnter: boolean;
+  // Window settings
+  minimizeToTray: boolean;
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
@@ -17,6 +19,7 @@ interface SettingsState {
   setDesktopNotifications: (value: boolean) => void;
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
+  setMinimizeToTray: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -29,6 +32,7 @@ export const useSettingsStore = create<SettingsState>()(
       desktopNotifications: true,
       soundEffects: false,
       sendWithEnter: true,
+      minimizeToTray: false,
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -37,6 +41,7 @@ export const useSettingsStore = create<SettingsState>()(
       setDesktopNotifications: (value) => set({ desktopNotifications: value }),
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
+      setMinimizeToTray: (value) => set({ minimizeToTray: value }),
     }),
     {
       name: 'chatml-settings',

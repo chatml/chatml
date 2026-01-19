@@ -31,8 +31,17 @@ import {
   Square,
   GitBranch,
   FileQuestion,
+  RefreshCw,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { CodeViewer } from '@/components/CodeViewer';
 import { FileTabIcon } from '@/components/FileTabIcon';
 import { ConversationTabs } from '@/components/ConversationTabs';
@@ -359,6 +368,17 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyAsMarkdown = () => {
+    navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRegenerate = () => {
+    // TODO: Implement regeneration via API
+    console.log('Regenerate message:', message.id);
+  };
+
   const formatDuration = (ms?: number) => {
     if (!ms) return '';
     const seconds = Math.floor(ms / 1000);
@@ -410,25 +430,48 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
 
           {/* Main Content */}
           {message.content && (
-            <div className="group relative">
-              <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-p:my-1 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-[11px] prose-code:before:content-none prose-code:after:content-none prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                  {message.content}
-                </ReactMarkdown>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={copyContent}
-              >
-                {copied ? (
-                  <Check className="h-2.5 w-2.5 text-green-500" />
-                ) : (
-                  <Copy className="h-2.5 w-2.5" />
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div className="group relative">
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-p:my-1 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-[11px] prose-code:before:content-none prose-code:after:content-none prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={copyContent}
+                  >
+                    {copied ? (
+                      <Check className="h-2.5 w-2.5 text-green-500" />
+                    ) : (
+                      <Copy className="h-2.5 w-2.5" />
+                    )}
+                  </Button>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onClick={copyContent}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy
+                </ContextMenuItem>
+                <ContextMenuItem onClick={copyAsMarkdown}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Copy as Markdown
+                </ContextMenuItem>
+                {message.role === 'assistant' && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem onClick={handleRegenerate}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Regenerate
+                    </ContextMenuItem>
+                  </>
                 )}
-              </Button>
-            </div>
+              </ContextMenuContent>
+            </ContextMenu>
           )}
 
           {/* File Changes */}

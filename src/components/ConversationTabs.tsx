@@ -3,12 +3,21 @@
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import {
   Plus,
   X,
   Loader2,
   Circle,
   CheckCircle2,
   Sparkles,
+  Pencil,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Conversation } from '@/lib/types';
@@ -45,9 +54,23 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
     selectFileTab(null);
   };
 
-  const handleRemoveConversation = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleRemoveConversation = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     removeConversation(id);
+  };
+
+  const handleCloseOthers = (keepId: string) => {
+    sessionConversations
+      .filter((c) => c.id !== keepId)
+      .forEach((c) => removeConversation(c.id));
+  };
+
+  const handleRename = (id: string) => {
+    // TODO: Implement rename dialog
+    const newName = prompt('Enter new name:', conversations.find((c) => c.id === id)?.name);
+    if (newName) {
+      useAppStore.getState().updateConversation(id, { name: newName });
+    }
   };
 
   const getStatusIndicator = (conv: Conversation) => {
@@ -82,29 +105,50 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
         const isSelected = !isFileActive && selectedConversationId === conv.id;
 
         return (
-          <div
-            key={conv.id}
-            className={cn(
-              'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs transition-colors shrink-0',
-              isSelected
-                ? 'text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
-            )}
-            onClick={() => handleSelectConversation(conv.id)}
-          >
-            {/* Selected indicator - purple underline */}
-            {isSelected && (
-              <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500/60 rounded-full" />
-            )}
-            {getStatusIndicator(conv)}
-            <span className="max-w-[120px] truncate font-medium">{conv.name}</span>
-            <button
-              className="hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={(e) => handleRemoveConversation(conv.id, e)}
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
+          <ContextMenu key={conv.id}>
+            <ContextMenuTrigger asChild>
+              <div
+                className={cn(
+                  'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs transition-colors shrink-0',
+                  isSelected
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
+                )}
+                onClick={() => handleSelectConversation(conv.id)}
+              >
+                {/* Selected indicator - purple underline */}
+                {isSelected && (
+                  <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500/60 rounded-full" />
+                )}
+                {getStatusIndicator(conv)}
+                <span className="max-w-[120px] truncate font-medium">{conv.name}</span>
+                <button
+                  className="hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => handleRemoveConversation(conv.id, e)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onClick={() => handleRename(conv.id)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Rename
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => handleRemoveConversation(conv.id)}>
+                <X className="mr-2 h-4 w-4" />
+                Close
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => handleCloseOthers(conv.id)}
+                disabled={sessionConversations.length <= 1}
+              >
+                <XCircle className="mr-2 h-4 w-4" />
+                Close Others
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         );
       })}
 
