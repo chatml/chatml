@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -98,21 +99,11 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
     }
   };
 
-  // Track which workspaces are expanded (default all expanded)
-  const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
-    () => new Set(workspaces.map((w) => w.id))
-  );
+  // Track which workspaces are collapsed (persisted)
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace } = useSettingsStore();
 
-  const toggleWorkspace = (workspaceId: string) => {
-    setExpandedWorkspaces((prev) => {
-      const next = new Set(prev);
-      if (next.has(workspaceId)) {
-        next.delete(workspaceId);
-      } else {
-        next.add(workspaceId);
-      }
-      return next;
-    });
+  const isWorkspaceExpanded = (workspaceId: string) => {
+    return !collapsedWorkspaces.includes(workspaceId);
   };
 
   const getWorkspaceSessions = (workspaceId: string) => {
@@ -206,7 +197,7 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
       });
 
       // Expand the workspace if not already
-      setExpandedWorkspaces((prev) => new Set([...prev, workspaceId]));
+      expandWorkspace(workspaceId);
 
       // Select the new session and first conversation
       selectWorkspace(workspaceId);
@@ -314,9 +305,9 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
                     key={workspace.id}
                     workspace={workspace}
                     sessions={getWorkspaceSessions(workspace.id)}
-                    isExpanded={expandedWorkspaces.has(workspace.id)}
+                    isExpanded={isWorkspaceExpanded(workspace.id)}
                     selectedSessionId={selectedSessionId}
-                    onToggle={() => toggleWorkspace(workspace.id)}
+                    onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
                     onCreateSession={() => handleCreateSession(workspace.id)}
                     onSelectSession={(sessionId) => {
                       selectWorkspace(workspace.id);
