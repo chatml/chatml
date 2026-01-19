@@ -31,7 +31,6 @@ import {
   Square,
   GitBranch,
   FileQuestion,
-  ChevronsDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CodeViewer } from '@/components/CodeViewer';
@@ -269,12 +268,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       ) : (
         <>
           {/* Messages */}
-          <div
-            ref={scrollContainerRef}
-            onScroll={handleScroll}
-            className="flex-1 overflow-auto min-h-0"
-          >
-            <div className="p-4 space-y-1">
+          <div className="relative flex-1 min-h-0">
+            <div
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              className="h-full overflow-auto"
+            >
+              <div className="p-4 space-y-1">
               {conversationMessages.length === 0 && !selectedConversationId ? (
                 <EmptyState sessionName={currentSession?.name} />
               ) : (
@@ -292,25 +292,29 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   )}
                 </>
               )}
+              </div>
             </div>
+            {/* Fade overlay at bottom of messages */}
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
           </div>
 
           {/* Chat Input with floating scroll button */}
           <div className="shrink-0 relative">
             {/* Scroll to bottom button - floating */}
-            {isUserScrolled && (
-              <div className="absolute -top-6 left-4 z-10">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-7 gap-1.5 text-xs shadow-lg border bg-background/95 backdrop-blur-sm hover:bg-background hover:shadow-xl hover:scale-105 transition-all"
-                  onClick={forceScrollToBottom}
-                >
-                  <ChevronsDown className="h-3.5 w-3.5" />
-                  Scroll to bottom
-                </Button>
-              </div>
-            )}
+            <div className={cn(
+              "absolute -top-7 right-4 z-10 transition-opacity duration-200",
+              isUserScrolled ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-6 gap-1 pl-1 pr-2 text-[11px] rounded-full border border-border/50 bg-background/30 backdrop-blur-sm text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/50 transition-colors"
+                onClick={forceScrollToBottom}
+              >
+                <ChevronDown className="h-3 w-3" />
+                Scroll to bottom
+              </Button>
+            </div>
             {children}
           </div>
         </>

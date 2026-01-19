@@ -203,7 +203,7 @@ export function ChatInput() {
   };
 
   return (
-    <div className="p-4">
+    <div className="pt-1 px-4 pb-4">
       <div className={cn(
         'relative',
         isStreaming && 'streaming-border'
