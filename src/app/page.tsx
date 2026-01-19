@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { Command } from '@tauri-apps/plugin-shell';
 import { useAppStore } from '@/stores/appStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { listRepos, listSessions, listConversations, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
@@ -52,6 +53,7 @@ export default function Home() {
     workspaces,
     sessions,
     conversations,
+    selectedWorkspaceId,
     selectedSessionId,
     selectedConversationId,
     setWorkspaces,
@@ -205,6 +207,14 @@ export default function Home() {
         e.preventDefault();
         setShowSettings(true);
       }
+      // Cmd+Shift+O to open workspace in VS Code
+      if (e.key === 'o' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        const workspace = workspaces.find((w) => w.id === selectedWorkspaceId);
+        if (workspace?.path) {
+          Command.create('code', [workspace.path]).spawn().catch(console.error);
+        }
+      }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
@@ -224,7 +234,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, selectSession, selectConversation]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation]);
 
   // Handle selecting a session from workspace management view
   const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {

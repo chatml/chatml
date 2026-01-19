@@ -9,6 +9,16 @@
     "core:default",
     "core:window:allow-start-dragging",
     "shell:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "code",
+          "cmd": "code",
+          "args": true
+        }
+      ]
+    },
     "updater:default",
     "process:allow-restart"
   ]

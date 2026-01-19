@@ -358,7 +358,7 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
   if (message.role === 'user') {
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
-        <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2">
+        <div className="max-w-[85%] border border-purple-400/20 bg-purple-500/10 rounded-2xl rounded-br-md px-4 py-2">
           <p className="text-[13px] leading-relaxed">{message.content}</p>
         </div>
       </div>

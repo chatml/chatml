@@ -6,11 +6,11 @@ import { useTheme } from 'next-themes';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { createTwoFilesPatch } from 'diff';
 import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SplitDiffViewer } from '@/components/SplitDiffViewer';
 
 interface CodeViewerProps {
   content: string;
@@ -105,69 +105,48 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
 
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
+  const language = getLanguage(filename);
 
   useEffect(() => {
+    // Skip highlighting in diff mode - SplitDiffViewer handles it
+    if (isDiffMode) {
+      setIsHighlighting(false);
+      return;
+    }
+
     if (isLoading) {
       setHighlightedHtml('');
       setIsHighlighting(false);
       return;
     }
 
-    // In diff mode, allow empty content (deleted file) or empty oldContent (new file)
-    if (!isDiffMode && !content) {
+    if (!content) {
       setHighlightedHtml('');
       setIsHighlighting(false);
       return;
     }
 
     setIsHighlighting(true);
-
-    let codeToHighlight: string;
-    let language: string;
-
-    if (isDiffMode) {
-      // Generate unified diff
-      const diffText = createTwoFilesPatch(
-        filename,
-        filename,
-        oldContent || '',
-        content || '',
-        'original',
-        'modified'
-      );
-      // Remove the header lines (first 4 lines) for cleaner display
-      const lines = diffText.split('\n');
-      codeToHighlight = lines.slice(4).join('\n');
-      language = 'diff';
-      setLineCount(lines.length - 4);
-    } else {
-      codeToHighlight = content;
-      language = getLanguage(filename);
-      setLineCount(content.split('\n').length);
-    }
+    setLineCount(content.split('\n').length);
 
     // Use the appropriate theme based on current app theme
     const theme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light';
 
-    codeToHtml(codeToHighlight, {
+    codeToHtml(content, {
       lang: language,
       theme: theme,
     })
       .then((html) => {
-        // For diff mode, add line-level styling for additions/deletions
-        if (isDiffMode) {
-          html = addDiffLineStyles(html);
-        }
         setHighlightedHtml(html);
         setIsHighlighting(false);
       })
       .catch((err) => {
         console.error('Syntax highlighting failed:', err);
         // Fallback to plain text
-        setHighlightedHtml(`<pre class="shiki"><code>${escapeHtml(codeToHighlight)}</code></pre>`);
+        setHighlightedHtml(`<pre class="shiki"><code>${escapeHtml(content)}</code></pre>`);
         setIsHighlighting(false);
       });
-  }, [content, oldContent, filename, isLoading, resolvedTheme, isDiffMode]);
+  }, [content, filename, isLoading, resolvedTheme, isDiffMode, language]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -204,6 +183,46 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
     );
   }
 
+  // Render split diff view
+  if (isDiffMode) {
+    return (
+      <div className="h-full flex flex-col">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+            <span className="font-mono shrink-0">{language}</span>
+            <span className="shrink-0">|</span>
+            <span className="font-mono truncate" title={filename}>{filename}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground"
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <Check className="w-1 h-1 text-green-500" />
+              ) : (
+                <Copy className="w-1 h-1" />
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Split Diff View */}
+        <div className="flex-1 min-h-0">
+          <SplitDiffViewer
+            oldContent={oldContent || ''}
+            newContent={content || ''}
+            filename={filename}
+            language={language}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
@@ -211,7 +230,7 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
           <span className="font-mono shrink-0">{lineCount} lines</span>
           <span className="shrink-0">|</span>
-          <span className="font-mono shrink-0">{isDiffMode ? 'diff' : getLanguage(filename)}</span>
+          <span className="font-mono shrink-0">{language}</span>
           <span className="shrink-0">|</span>
           <span className="font-mono truncate" title={filename}>{filename}</span>
         </div>
@@ -276,17 +295,7 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
             {/* Code */}
             <div
               ref={contentRef}
-              className={cn(
-                'code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto min-h-full',
-                '[&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4',
-                '[&_pre]:!bg-transparent [&_pre]:m-0',
-                '[&_code]:block',
-                '[&_.line]:leading-[18px] [&_.line]:min-h-[18px]',
-                // Diff line backgrounds - full width with padding
-                isDiffMode && '[&_.diff-add]:bg-green-500/15 [&_.diff-add]:pl-1 [&_.diff-add]:-ml-1 [&_.diff-add]:mr-0',
-                isDiffMode && '[&_.diff-remove]:bg-red-500/15 [&_.diff-remove]:pl-1 [&_.diff-remove]:-ml-1 [&_.diff-remove]:mr-0',
-                isDiffMode && '[&_.diff-hunk]:bg-blue-500/10 [&_.diff-hunk]:text-muted-foreground [&_.diff-hunk]:pl-1 [&_.diff-hunk]:-ml-1'
-              )}
+              className="code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto min-h-full [&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4 [&_pre]:!bg-transparent [&_pre]:m-0 [&_code]:block [&_.line]:leading-[18px] [&_.line]:min-h-[18px]"
               dangerouslySetInnerHTML={{ __html: highlightedHtml }}
             />
           </div>
@@ -303,23 +312,4 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-}
-
-// Add background colors to diff lines based on their content
-function addDiffLineStyles(html: string): string {
-  // Shiki wraps each line in a span with class "line"
-  // We need to detect if the line starts with +, -, or @@ and add appropriate styling
-  return html.replace(/<span class="line">(.*?)<\/span>/g, (match, content) => {
-    // Get the text content by stripping HTML tags
-    const textContent = content.replace(/<[^>]*>/g, '');
-
-    if (textContent.startsWith('+')) {
-      return `<span class="line diff-add">${content}</span>`;
-    } else if (textContent.startsWith('-')) {
-      return `<span class="line diff-remove">${content}</span>`;
-    } else if (textContent.startsWith('@@')) {
-      return `<span class="line diff-hunk">${content}</span>`;
-    }
-    return match;
-  });
 }
