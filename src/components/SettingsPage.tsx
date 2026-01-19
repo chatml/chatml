@@ -466,12 +466,52 @@ function GitSettings() {
 }
 
 function EnvSettings() {
+  const [envVars, setEnvVars] = useState(`ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_CODE_USE_BEDROCK=1
+AWS_REGION=us-east-1
+AWS_PROFILE=default`);
+
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Environment Variables</h2>
-      <p className="text-sm text-muted-foreground">
-        Configure environment variables for your sessions.
+      <h2 className="text-2xl font-semibold mb-2">Environment variables</h2>
+      <p className="text-sm text-muted-foreground mb-6">
+        Useful for using third-party providers like Bedrock or Vertex.
       </p>
+
+      {/* Claude Code section */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold">Claude Code</h3>
+        <a
+          href="https://docs.anthropic.com/en/docs/claude-code"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+        >
+          View docs
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
+      {/* Environment variables textarea */}
+      <textarea
+        value={envVars}
+        onChange={(e) => setEnvVars(e.target.value)}
+        className="w-full h-64 px-4 py-3 font-mono text-sm bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+        placeholder="VAR_NAME=value"
+      />
+
+      {/* Footer with format hint and save button */}
+      <div className="flex items-center justify-between mt-4">
+        <p className="text-sm text-muted-foreground">
+          One per line, format:{' '}
+          <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">VAR_NAME=value</code>
+          {' '}or{' '}
+          <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">export VAR_NAME=value</code>
+        </p>
+        <Button variant="secondary" size="sm">
+          Save
+        </Button>
+      </div>
     </div>
   );
 }
