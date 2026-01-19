@@ -123,7 +123,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Reset scroll state when conversation changes
   useEffect(() => {
-    setIsUserScrolled(false);
+    queueMicrotask(() => setIsUserScrolled(false));
     // Scroll to bottom immediately when switching conversations
     setTimeout(() => {
       const container = scrollContainerRef.current;

@@ -1,0 +1,513 @@
+package agent
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParseAgentLine_EmptyInput(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"empty string", ""},
+		{"whitespace only", "   "},
+		{"newline only", "\n"},
+		{"tabs and spaces", "  \t  "},
+		{"whitespace with newline", "  \n  "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseAgentLine(tt.input)
+			assert.Nil(t, result)
+		})
+	}
+}
+
+func TestParseAgentLine_StderrPrefix(t *testing.T) {
+	tests := []struct {
+		name            string
+		input           string
+		expectedMessage string
+	}{
+		{"simple error", "[stderr] error msg", "error msg"},
+		{"single char message", "[stderr] x", "x"},
+		{"multiword message", "[stderr] something went wrong here", "something went wrong here"},
+		{"with special chars", "[stderr] Error: file not found!", "Error: file not found!"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseAgentLine(tt.input)
+			require.NotNil(t, result)
+			assert.Equal(t, "stderr", result.Type)
+			assert.Equal(t, tt.expectedMessage, result.Message)
+			assert.Equal(t, tt.input, result.Raw)
+		})
+	}
+}
+
+func TestParseAgentLine_ValidJSON(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		expectedType string
+		checkFields  func(t *testing.T, event *AgentEvent)
+	}{
+		{
+			name:         "assistant_text",
+			input:        `{"type":"assistant_text","content":"Hello world"}`,
+			expectedType: EventTypeAssistantText,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "Hello world", event.Content)
+			},
+		},
+		{
+			name:         "tool_start",
+			input:        `{"type":"tool_start","tool":"read_file","id":"tool-123"}`,
+			expectedType: EventTypeToolStart,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "read_file", event.Tool)
+				assert.Equal(t, "tool-123", event.ID)
+			},
+		},
+		{
+			name:         "tool_end_success",
+			input:        `{"type":"tool_end","success":true,"summary":"File read successfully","duration":150}`,
+			expectedType: EventTypeToolEnd,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.True(t, event.Success)
+				assert.Equal(t, "File read successfully", event.Summary)
+				assert.Equal(t, int64(150), event.Duration)
+			},
+		},
+		{
+			name:         "tool_end_failure",
+			input:        `{"type":"tool_end","success":false,"summary":"File not found"}`,
+			expectedType: EventTypeToolEnd,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.False(t, event.Success)
+				assert.Equal(t, "File not found", event.Summary)
+			},
+		},
+		{
+			name:         "name_suggestion",
+			input:        `{"type":"name_suggestion","name":"Fix authentication bug"}`,
+			expectedType: EventTypeNameSuggestion,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "Fix authentication bug", event.Name)
+			},
+		},
+		{
+			name:         "todo_update",
+			input:        `{"type":"todo_update","todos":[{"content":"Write tests","status":"in_progress","activeForm":"Writing tests"}]}`,
+			expectedType: EventTypeTodoUpdate,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				require.Len(t, event.Todos, 1)
+				assert.Equal(t, "Write tests", event.Todos[0].Content)
+				assert.Equal(t, "in_progress", event.Todos[0].Status)
+				assert.Equal(t, "Writing tests", event.Todos[0].ActiveForm)
+			},
+		},
+		{
+			name:         "complete",
+			input:        `{"type":"complete"}`,
+			expectedType: EventTypeComplete,
+			checkFields:  func(t *testing.T, event *AgentEvent) {},
+		},
+		{
+			name:         "result",
+			input:        `{"type":"result","cost":0.05,"turns":3}`,
+			expectedType: EventTypeResult,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, 0.05, event.Cost)
+				assert.Equal(t, 3, event.Turns)
+			},
+		},
+		{
+			name:         "error",
+			input:        `{"type":"error","message":"Something went wrong"}`,
+			expectedType: EventTypeError,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "Something went wrong", event.Message)
+			},
+		},
+		{
+			name:         "shutdown",
+			input:        `{"type":"shutdown","reason":"user requested"}`,
+			expectedType: EventTypeShutdown,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "user requested", event.Reason)
+			},
+		},
+		{
+			name:         "ready",
+			input:        `{"type":"ready"}`,
+			expectedType: EventTypeReady,
+			checkFields:  func(t *testing.T, event *AgentEvent) {},
+		},
+		{
+			name:         "init",
+			input:        `{"type":"init","model":"claude-3-sonnet","tools":["read","write"],"cwd":"/home/user"}`,
+			expectedType: EventTypeInit,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "claude-3-sonnet", event.Model)
+				assert.Equal(t, []string{"read", "write"}, event.Tools)
+				assert.Equal(t, "/home/user", event.Cwd)
+			},
+		},
+		{
+			name:         "with_conversation_id",
+			input:        `{"type":"assistant_text","conversationId":"conv-123","content":"Hi"}`,
+			expectedType: EventTypeAssistantText,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "conv-123", event.ConversationID)
+				assert.Equal(t, "Hi", event.Content)
+			},
+		},
+		{
+			name:         "tool_with_params",
+			input:        `{"type":"tool_start","tool":"write_file","params":{"path":"test.txt","content":"hello"}}`,
+			expectedType: EventTypeToolStart,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "write_file", event.Tool)
+				require.NotNil(t, event.Params)
+				assert.Equal(t, "test.txt", event.Params["path"])
+				assert.Equal(t, "hello", event.Params["content"])
+			},
+		},
+		{
+			name:         "error_with_errors_array",
+			input:        `{"type":"error","message":"Multiple errors","errors":["err1","err2"]}`,
+			expectedType: EventTypeError,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "Multiple errors", event.Message)
+				assert.Equal(t, []string{"err1", "err2"}, event.Errors)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseAgentLine(tt.input)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expectedType, result.Type)
+			assert.Equal(t, tt.input, result.Raw)
+			tt.checkFields(t, result)
+		})
+	}
+}
+
+func TestParseAgentLine_InvalidJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"plain text", "not json at all"},
+		{"partial json", `{"type":`},
+		{"malformed json", `{"type": "test",}`},
+		{"incomplete object", `{"type": "test"`},
+		{"array instead of object", `["type", "test"]`},
+		{"random text with braces", "some {text} here"},
+		{"stderr without space", "[stderr]msg"}, // Note: requires space after [stderr]
+		{"stderr empty", "[stderr]"},            // No space, treated as text
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseAgentLine(tt.input)
+			require.NotNil(t, result)
+			assert.Equal(t, "text", result.Type)
+			assert.Equal(t, tt.input, result.Content)
+			assert.Equal(t, tt.input, result.Raw)
+		})
+	}
+}
+
+func TestAgentEvent_IsTextEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		expected  bool
+	}{
+		{EventTypeAssistantText, true},
+		{EventTypeToolStart, false},
+		{EventTypeToolEnd, false},
+		{EventTypeComplete, false},
+		{EventTypeError, false},
+		{EventTypeReady, false},
+		{EventTypeInit, false},
+		{EventTypeNameSuggestion, false},
+		{EventTypeTodoUpdate, false},
+		{EventTypeResult, false},
+		{EventTypeShutdown, false},
+		{"text", false},
+		{"stderr", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			event := &AgentEvent{Type: tt.eventType}
+			assert.Equal(t, tt.expected, event.IsTextEvent())
+		})
+	}
+}
+
+func TestAgentEvent_IsToolEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		expected  bool
+	}{
+		{EventTypeToolStart, true},
+		{EventTypeToolEnd, true},
+		{EventTypeAssistantText, false},
+		{EventTypeComplete, false},
+		{EventTypeError, false},
+		{EventTypeReady, false},
+		{EventTypeInit, false},
+		{EventTypeNameSuggestion, false},
+		{EventTypeTodoUpdate, false},
+		{EventTypeResult, false},
+		{EventTypeShutdown, false},
+		{"text", false},
+		{"stderr", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			event := &AgentEvent{Type: tt.eventType}
+			assert.Equal(t, tt.expected, event.IsToolEvent())
+		})
+	}
+}
+
+func TestAgentEvent_IsTerminalEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		expected  bool
+	}{
+		{EventTypeComplete, true},
+		{EventTypeResult, true},
+		{EventTypeError, true},
+		{EventTypeShutdown, true},
+		{EventTypeAssistantText, false},
+		{EventTypeToolStart, false},
+		{EventTypeToolEnd, false},
+		{EventTypeReady, false},
+		{EventTypeInit, false},
+		{EventTypeNameSuggestion, false},
+		{EventTypeTodoUpdate, false},
+		{"text", false},
+		{"stderr", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			event := &AgentEvent{Type: tt.eventType}
+			assert.Equal(t, tt.expected, event.IsTerminalEvent())
+		})
+	}
+}
+
+func TestParseStreamLine_BackwardsCompatibility(t *testing.T) {
+	tests := []struct {
+		name             string
+		input            string
+		expectedType     string
+		expectedMessage  string
+		expectNonEmpty   bool
+	}{
+		{
+			name:           "empty input",
+			input:          "",
+			expectNonEmpty: false,
+		},
+		{
+			name:            "assistant_text converts to text",
+			input:           `{"type":"assistant_text","content":"Hello"}`,
+			expectedType:    "text",
+			expectedMessage: "Hello",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "tool_start keeps type",
+			input:           `{"type":"tool_start","tool":"read_file"}`,
+			expectedType:    "tool_start",
+			expectedMessage: "read_file",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "tool_end converts to tool_result",
+			input:           `{"type":"tool_end","summary":"Done"}`,
+			expectedType:    "tool_result",
+			expectedMessage: "Done",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "name_suggestion keeps type",
+			input:           `{"type":"name_suggestion","name":"Fix bug"}`,
+			expectedType:    "name_suggestion",
+			expectedMessage: "Fix bug",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "complete converts to done",
+			input:           `{"type":"complete"}`,
+			expectedType:    "done",
+			expectedMessage: "Completed",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "result converts to done",
+			input:           `{"type":"result","cost":0.01}`,
+			expectedType:    "done",
+			expectedMessage: "Completed",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "error keeps type",
+			input:           `{"type":"error","message":"oops"}`,
+			expectedType:    "error",
+			expectedMessage: "oops",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "unknown type passes through with content",
+			input:           `{"type":"unknown","content":"data"}`,
+			expectedType:    "unknown",
+			expectedMessage: "data",
+			expectNonEmpty:  true,
+		},
+		{
+			name:            "unknown type with message field",
+			input:           `{"type":"custom","message":"info"}`,
+			expectedType:    "custom",
+			expectedMessage: "info",
+			expectNonEmpty:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseStreamLine(tt.input)
+			if !tt.expectNonEmpty {
+				assert.Empty(t, result.Type)
+				return
+			}
+			assert.Equal(t, tt.expectedType, result.Type)
+			assert.Equal(t, tt.expectedMessage, result.Message)
+		})
+	}
+}
+
+func TestFormatEvent_AllTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		event    StreamEvent
+		expected string
+	}{
+		{
+			name:     "text event",
+			event:    StreamEvent{Type: "text", Message: "Hello world"},
+			expected: "Hello world",
+		},
+		{
+			name:     "tool_start event",
+			event:    StreamEvent{Type: "tool_start", Message: "read_file"},
+			expected: "🔧 Using: read_file",
+		},
+		{
+			name:     "tool_result event",
+			event:    StreamEvent{Type: "tool_result", Message: "success"},
+			expected: "✓ success",
+		},
+		{
+			name:     "name_suggestion event returns empty",
+			event:    StreamEvent{Type: "name_suggestion", Message: "Fix bug"},
+			expected: "",
+		},
+		{
+			name:     "done event",
+			event:    StreamEvent{Type: "done", Message: "Completed"},
+			expected: "✅ Completed",
+		},
+		{
+			name:     "error event",
+			event:    StreamEvent{Type: "error", Message: "Something failed"},
+			expected: "❌ Something failed",
+		},
+		{
+			name:     "unknown type with message",
+			event:    StreamEvent{Type: "custom", Message: "data"},
+			expected: "data",
+		},
+		{
+			name:     "unknown type with json-like message returns empty",
+			event:    StreamEvent{Type: "custom", Message: `{"key":"value"}`},
+			expected: "",
+		},
+		{
+			name:     "unknown type with empty message",
+			event:    StreamEvent{Type: "custom", Message: ""},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FormatEvent(tt.event)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParseAgentLine_WhitespaceHandling(t *testing.T) {
+	// Test that leading/trailing whitespace is properly trimmed
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"leading space", "  " + `{"type":"complete"}`},
+		{"trailing space", `{"type":"complete"}` + "  "},
+		{"both spaces", "  " + `{"type":"complete"}` + "  "},
+		{"leading newline", "\n" + `{"type":"complete"}`},
+		{"trailing newline", `{"type":"complete"}` + "\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseAgentLine(tt.input)
+			require.NotNil(t, result)
+			assert.Equal(t, EventTypeComplete, result.Type)
+		})
+	}
+}
+
+func TestTodoItem_Fields(t *testing.T) {
+	input := `{"type":"todo_update","todos":[
+		{"content":"Task 1","status":"pending","activeForm":"Doing task 1"},
+		{"content":"Task 2","status":"in_progress","activeForm":"Working on task 2"},
+		{"content":"Task 3","status":"completed","activeForm":"Finished task 3"}
+	]}`
+
+	result := ParseAgentLine(input)
+	require.NotNil(t, result)
+	require.Len(t, result.Todos, 3)
+
+	// Check first todo
+	assert.Equal(t, "Task 1", result.Todos[0].Content)
+	assert.Equal(t, "pending", result.Todos[0].Status)
+	assert.Equal(t, "Doing task 1", result.Todos[0].ActiveForm)
+
+	// Check second todo
+	assert.Equal(t, "Task 2", result.Todos[1].Content)
+	assert.Equal(t, "in_progress", result.Todos[1].Status)
+	assert.Equal(t, "Working on task 2", result.Todos[1].ActiveForm)
+
+	// Check third todo
+	assert.Equal(t, "Task 3", result.Todos[2].Content)
+	assert.Equal(t, "completed", result.Todos[2].Status)
+	assert.Equal(t, "Finished task 3", result.Todos[2].ActiveForm)
+}

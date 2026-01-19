@@ -80,7 +80,10 @@ export function BackendStatus({
 
   // Start connection on mount
   useEffect(() => {
-    connect();
+    // Use queueMicrotask to avoid synchronous setState warning
+    queueMicrotask(() => {
+      connect();
+    });
   }, [connect]);
 
   const handleRestart = async () => {

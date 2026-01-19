@@ -112,19 +112,20 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
   useEffect(() => {
     // In split diff mode, SplitDiffViewer handles highlighting
     if (isDiffMode && diffViewMode === 'split') {
-      setIsHighlighting(false);
+      queueMicrotask(() => setIsHighlighting(false));
       return;
     }
 
     if (isLoading) {
-      setHighlightedHtml('');
-      setIsHighlighting(false);
+      queueMicrotask(() => {
+        setHighlightedHtml('');
+        setIsHighlighting(false);
+      });
       return;
     }
 
     // Handle unified diff mode
     if (isDiffMode && diffViewMode === 'unified') {
-      setIsHighlighting(true);
       const diffText = createTwoFilesPatch(
         filename,
         filename,
@@ -135,7 +136,10 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
       );
       const lines = diffText.split('\n');
       const codeToHighlight = lines.slice(4).join('\n');
-      setLineCount(lines.length - 4);
+      queueMicrotask(() => {
+        setIsHighlighting(true);
+        setLineCount(lines.length - 4);
+      });
 
       const theme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light';
       codeToHtml(codeToHighlight, { lang: 'diff', theme })
@@ -152,13 +156,18 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
     }
 
     if (!content) {
-      setHighlightedHtml('');
-      setIsHighlighting(false);
+      queueMicrotask(() => {
+        setHighlightedHtml('');
+        setIsHighlighting(false);
+      });
       return;
     }
 
-    setIsHighlighting(true);
-    setLineCount(content.split('\n').length);
+    const lineCount = content.split('\n').length;
+    queueMicrotask(() => {
+      setIsHighlighting(true);
+      setLineCount(lineCount);
+    });
 
     // Use the appropriate theme based on current app theme
     const theme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light';

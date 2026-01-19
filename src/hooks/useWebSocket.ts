@@ -10,7 +10,12 @@ export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
+  const connectRef = useRef<(() => void) | null>(null);
+
+  // Update enabledRef in effect to satisfy linter
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const {
     appendOutput,
@@ -240,8 +245,8 @@ export function useWebSocket(enabled: boolean = true) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       // Only reconnect if still enabled
-      if (enabledRef.current) {
-        reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      if (enabledRef.current && connectRef.current) {
+        reconnectTimeoutRef.current = setTimeout(connectRef.current, 3000);
       }
     };
 
@@ -251,6 +256,11 @@ export function useWebSocket(enabled: boolean = true) {
 
     wsRef.current = ws;
   }, [appendOutput, updateSession, handleConversationEvent]);
+
+  // Store connect function in ref for self-referential reconnection
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     if (enabled) {
@@ -271,6 +281,4 @@ export function useWebSocket(enabled: boolean = true) {
       wsRef.current?.close();
     };
   }, [enabled, connect]);
-
-  return wsRef.current;
 }

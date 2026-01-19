@@ -189,27 +189,35 @@ export function ChangesPanel() {
   // Fetch files when workspace changes or tab switches to files
   useEffect(() => {
     if (selectedTab === 'files' && selectedWorkspaceId) {
-      setFilesLoading(true);
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setFilesLoading(true);
+      });
       listRepoFiles(selectedWorkspaceId, 'all')
         .then((data) => {
           // Convert FileNodeDTO to FileNode (they're the same shape)
-          setFiles(data as FileNode[]);
+          if (!cancelled) setFiles(data as FileNode[]);
         })
         .catch(console.error)
-        .finally(() => setFilesLoading(false));
+        .finally(() => { if (!cancelled) setFilesLoading(false); });
+      return () => { cancelled = true; };
     }
   }, [selectedTab, selectedWorkspaceId]);
 
   // Fetch changes when session changes or tab switches to changes
   useEffect(() => {
     if (selectedTab === 'changes' && selectedWorkspaceId && selectedSessionId) {
-      setChangesLoading(true);
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setChangesLoading(true);
+      });
       getSessionChanges(selectedWorkspaceId, selectedSessionId)
         .then((data) => {
-          setChanges(data || []);
+          if (!cancelled) setChanges(data || []);
         })
         .catch(console.error)
-        .finally(() => setChangesLoading(false));
+        .finally(() => { if (!cancelled) setChangesLoading(false); });
+      return () => { cancelled = true; };
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
