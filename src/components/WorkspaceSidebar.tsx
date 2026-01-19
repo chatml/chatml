@@ -55,7 +55,7 @@ import {
   PanelLeftClose,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Workspace, WorktreeSession } from '@/lib/types';
+import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 
 // Generate a random branch name - moved outside component to avoid React purity warning
 function generateBranchName(): string {
@@ -188,7 +188,7 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
             conversationId: conv.id,
             role: m.role as 'user' | 'assistant' | 'system',
             content: m.content,
-            setupInfo: (m as { setupInfo?: unknown }).setupInfo,
+            setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
             timestamp: m.timestamp,
           })),
           toolSummary: conv.toolSummary,

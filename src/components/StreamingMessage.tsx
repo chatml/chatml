@@ -28,8 +28,9 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
     }
 
     // Set initial elapsed time
+    const startTime = streaming.startTime;
     queueMicrotask(() => {
-      setElapsedTime(Math.floor((Date.now() - streaming.startTime) / 1000));
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
     });
 
     const interval = setInterval(() => {

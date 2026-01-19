@@ -113,7 +113,7 @@ export function ChatInput() {
   useEffect(() => {
     if (!isListening) return;
 
-    const handleEscape = (e: KeyboardEvent) => {
+    const handleEscape = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         stopListening();

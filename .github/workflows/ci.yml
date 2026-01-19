@@ -99,7 +99,7 @@ jobs:
 
       - name: Build
         working-directory: backend
-        run: go build -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu ./cmd/chatml
+        run: go build -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu .
 
   # Rust/Tauri checks (fmt + clippy + check)
   tauri:
