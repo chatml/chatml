@@ -19,9 +19,23 @@ import {
   Terminal,
   FolderOpen,
   Code,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
 
-export function TopBar() {
+interface TopBarProps {
+  showLeftSidebar?: boolean;
+  showRightSidebar?: boolean;
+  onToggleLeftSidebar?: () => void;
+  onToggleRightSidebar?: () => void;
+}
+
+export function TopBar({
+  showLeftSidebar = true,
+  showRightSidebar = true,
+  onToggleLeftSidebar,
+  onToggleRightSidebar
+}: TopBarProps) {
   const {
     workspaces,
     sessions,
@@ -39,7 +53,7 @@ export function TopBar() {
 
   if (!selectedWorkspace || !selectedSession) {
     return (
-      <div data-tauri-drag-region className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
+      <div data-tauri-drag-region className={`h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
         <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -54,7 +68,20 @@ export function TopBar() {
   }
 
   return (
-    <div data-tauri-drag-region className="h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0">
+    <div data-tauri-drag-region className={`h-11 flex items-center gap-2 px-3 border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
+      {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
+      {!showLeftSidebar && onToggleLeftSidebar && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onToggleLeftSidebar}
+          title="Show sidebar (⌘B)"
+        >
+          <PanelLeft className="h-4 w-4" />
+        </Button>
+      )}
+
       {/* Navigation */}
       <Button variant="ghost" size="icon" className="h-7 w-7">
         <ChevronLeft className="h-4 w-4" />
@@ -115,6 +142,19 @@ export function TopBar() {
         <GitPullRequest className="h-3.5 w-3.5" />
         Create PR
       </Button>
+
+      {/* Toggle Right Sidebar Button - only shown when sidebar is hidden */}
+      {!showRightSidebar && onToggleRightSidebar && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onToggleRightSidebar}
+          title="Show sidebar (⌘⌥B)"
+        >
+          <PanelRight className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 }

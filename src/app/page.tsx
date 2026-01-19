@@ -27,6 +27,8 @@ export default function Home() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLeftSidebar, setShowLeftSidebar] = useState(true);
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
@@ -215,6 +217,16 @@ export default function Home() {
           Command.create('code', [workspace.path]).spawn().catch(console.error);
         }
       }
+      // Cmd+B to toggle left sidebar
+      if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setShowLeftSidebar((prev) => !prev);
+      }
+      // Cmd+Option+B to toggle right sidebar
+      if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        setShowRightSidebar((prev) => !prev);
+      }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
@@ -266,45 +278,59 @@ export default function Home() {
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Left Sidebar - Workspaces */}
-          <ResizablePanel
-            id="left-sidebar"
-            defaultSize={22}
-            minSize="200px"
-            maxSize="400px"
-          >
-            <div ref={leftSidebarRef} className="h-full">
-              <WorkspaceSidebar
-                onAddWorkspace={() => setShowAddWorkspace(true)}
-                onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
-                onSessionSelected={() => setShowWorkspaceManagement(false)}
-                onOpenSettings={() => setShowSettings(true)}
-              />
-            </div>
-          </ResizablePanel>
+          {showLeftSidebar && (
+            <>
+              <ResizablePanel
+                id="left-sidebar"
+                defaultSize={22}
+                minSize="200px"
+                maxSize="400px"
+              >
+                <div ref={leftSidebarRef} className="h-full">
+                  <WorkspaceSidebar
+                    onAddWorkspace={() => setShowAddWorkspace(true)}
+                    onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
+                    onSessionSelected={() => setShowWorkspaceManagement(false)}
+                    onOpenSettings={() => setShowSettings(true)}
+                    onToggleSidebar={() => setShowLeftSidebar(false)}
+                  />
+                </div>
+              </ResizablePanel>
 
-          <ResizableHandle />
+              <ResizableHandle />
+            </>
+          )}
 
           {/* Main Content */}
           <ResizablePanel id="main-content" defaultSize={48} minSize="300px">
             <div className="flex flex-col h-full">
-              <TopBar />
+              <TopBar
+                showLeftSidebar={showLeftSidebar}
+                showRightSidebar={showRightSidebar}
+                onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
+                onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+              />
               <ConversationArea>
                 <ChatInput />
               </ConversationArea>
             </div>
           </ResizablePanel>
 
-          <ResizableHandle />
+          {showRightSidebar && (
+            <>
+              <ResizableHandle />
 
-          {/* Right Sidebar */}
-          <ResizablePanel
-            id="right-sidebar"
-            defaultSize={30}
-            minSize="250px"
-            maxSize="500px"
-          >
-            <ChangesPanel />
-          </ResizablePanel>
+              {/* Right Sidebar */}
+              <ResizablePanel
+                id="right-sidebar"
+                defaultSize={30}
+                minSize="250px"
+                maxSize="500px"
+              >
+                <ChangesPanel />
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
 
         {/* Workspace Management Overlay - covers main content and right sidebar */}

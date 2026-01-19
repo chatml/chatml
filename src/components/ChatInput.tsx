@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, KeyboardEvent, useImperativeHandle, forwardRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -10,14 +10,19 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
   Snowflake,
   ChevronDown,
   Paperclip,
-  Trash2,
   ArrowUp,
   Square,
+  Brain,
+  BookOpen,
+  Plus,
+  Link,
+  FolderSymlink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,6 +36,8 @@ export function ChatInput() {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [isSending, setIsSending] = useState(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -63,6 +70,29 @@ export function ChatInput() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [message]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      // Cmd+L to focus input
+      if (e.code === 'KeyL' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      }
+      // Alt+T to toggle thinking mode
+      if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        setThinkingEnabled(prev => !prev);
+      }
+      // Shift+Tab to toggle plan mode
+      if (e.code === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setPlanModeEnabled(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   const handleSubmit = async () => {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
@@ -193,20 +223,26 @@ export function ChatInput() {
         'rounded-lg border bg-muted/50',
         isStreaming && 'border-transparent'
       )}>
-        {/* Text Input */}
-        <Textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
-          className={cn(
-            'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
-            'bg-transparent dark:bg-transparent',
-            'placeholder:text-muted-foreground/60'
-          )}
-          disabled={!selectedSessionId || isSending || isStreaming}
-        />
+        {/* Text Input with Cmd+L hint */}
+        <div className="relative">
+          <Textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
+            className={cn(
+              'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
+              'bg-transparent dark:bg-transparent',
+              'placeholder:text-muted-foreground/60'
+            )}
+            disabled={!selectedSessionId || isSending || isStreaming}
+          />
+          {/* Cmd+L hint */}
+          <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none">
+            ⌘L to focus
+          </div>
+        </div>
 
         {/* Toolbar inside input */}
         <div className="flex items-center gap-1 px-2 pb-2">
@@ -232,18 +268,62 @@ export function ChatInput() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Attachment Button */}
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Paperclip className="h-3.5 w-3.5" />
+          {/* Extended Thinking Toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-7 w-7',
+              thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+            )}
+            onClick={() => setThinkingEnabled(!thinkingEnabled)}
+            title={`Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`}
+          >
+            <Brain className="h-4 w-4" />
           </Button>
 
-          {/* Clear Button */}
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Trash2 className="h-3.5 w-3.5" />
+          {/* Plan Mode Toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'h-7 w-7',
+              planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+            )}
+            onClick={() => setPlanModeEnabled(!planModeEnabled)}
+            title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
+          >
+            <BookOpen className="h-4 w-4" />
           </Button>
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* Plus Menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>
+                <Paperclip className="h-4 w-4 mr-2" />
+                Add attachment
+                <span className="ml-auto text-xs text-muted-foreground">⌘U</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Link className="h-4 w-4 mr-2" />
+                Link Linear issue
+                <span className="ml-auto text-xs text-muted-foreground">⌘I</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <FolderSymlink className="h-4 w-4 mr-2" />
+                Link workspaces
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Stop Button (when streaming) */}
           {isStreaming ? (

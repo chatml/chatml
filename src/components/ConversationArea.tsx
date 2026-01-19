@@ -31,6 +31,7 @@ import {
   Square,
   GitBranch,
   FileQuestion,
+  ChevronsDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CodeViewer } from '@/components/CodeViewer';
@@ -92,6 +93,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       container.scrollTop = container.scrollHeight;
     }
   }, [isUserScrolled]);
+
+  // Force scroll to bottom (for manual button click)
+  const forceScrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+      setIsUserScrolled(false);
+    }
+  }, []);
 
   // Scroll when messages change or streaming updates
   const streamingText = selectedConversationId
@@ -285,8 +295,24 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             </div>
           </div>
 
-          {/* Chat Input */}
-          <div className="shrink-0">{children}</div>
+          {/* Chat Input with floating scroll button */}
+          <div className="shrink-0 relative">
+            {/* Scroll to bottom button - floating */}
+            {isUserScrolled && (
+              <div className="absolute -top-6 left-4 z-10">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs shadow-lg border bg-background/95 backdrop-blur-sm hover:bg-background hover:shadow-xl hover:scale-105 transition-all"
+                  onClick={forceScrollToBottom}
+                >
+                  <ChevronsDown className="h-3.5 w-3.5" />
+                  Scroll to bottom
+                </Button>
+              </div>
+            )}
+            {children}
+          </div>
         </>
       )}
     </div>

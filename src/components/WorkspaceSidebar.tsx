@@ -51,6 +51,7 @@ import {
   XCircle,
   AlertTriangle,
   Pin,
+  PanelLeftClose,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession } from '@/lib/types';
@@ -60,9 +61,10 @@ interface WorkspaceSidebarProps {
   onShowWorkspaceManagement?: () => void;
   onSessionSelected?: () => void;
   onOpenSettings?: () => void;
+  onToggleSidebar?: () => void;
 }
 
-export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, onSessionSelected, onOpenSettings }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
   const {
     workspaces,
     sessions,
@@ -250,8 +252,19 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center border-b bg-sidebar shrink-0">
+      <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center justify-between border-b bg-sidebar shrink-0">
         <span className="text-sm font-semibold">ChatML</span>
+        {onToggleSidebar && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onToggleSidebar}
+            title="Hide sidebar (⌘B)"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Workspaces Section Header */}

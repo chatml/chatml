@@ -55,8 +55,8 @@ function isBinaryFile(filename: string): boolean {
   return BINARY_EXTENSIONS.has(ext);
 }
 
-// Maximum file size for diff viewing (500KB)
-const MAX_DIFF_SIZE = 500 * 1024;
+// Maximum file size for diff viewing (2MB)
+const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, sessions, openFileTab, updateFileTab } = useAppStore();
@@ -340,13 +340,23 @@ export function ChangesPanel() {
             ) : (
               <ScrollArea className="h-full">
                 <div className="py-1">
-                  {changes.map((change) => (
-                    <FileChangeRow
-                      key={change.path}
-                      change={change}
-                      onSelect={() => handleChangedFileSelect(change.path)}
-                    />
-                  ))}
+                  {[...changes]
+                    .sort((a, b) => {
+                      const aIsRoot = !a.path.includes('/');
+                      const bIsRoot = !b.path.includes('/');
+                      // Root files come first
+                      if (aIsRoot && !bIsRoot) return -1;
+                      if (!aIsRoot && bIsRoot) return 1;
+                      // Then sort alphabetically
+                      return a.path.localeCompare(b.path);
+                    })
+                    .map((change) => (
+                      <FileChangeRow
+                        key={change.path}
+                        change={change}
+                        onSelect={() => handleChangedFileSelect(change.path)}
+                      />
+                    ))}
                 </div>
               </ScrollArea>
             )
@@ -426,9 +436,11 @@ function FileChangeRow({ change, onSelect }: { change: FileChangeDTO; onSelect: 
       className="group flex items-center gap-1.5 px-2 py-1.5 hover:bg-accent/50 cursor-pointer"
       onClick={onSelect}
     >
-      <span className="text-xs text-muted-foreground truncate shrink-0 max-w-[120px]">
-        {truncateDir(dirPath)}
-      </span>
+      {dirPath && (
+        <span className="text-xs text-muted-foreground truncate shrink-0 max-w-[120px]">
+          {truncateDir(dirPath)}
+        </span>
+      )}
       <span className="flex-1 text-xs font-medium truncate">{fileName}</span>
       <span className="text-[10px] shrink-0">
         {change.additions > 0 && (
