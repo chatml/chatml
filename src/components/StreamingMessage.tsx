@@ -23,12 +23,14 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   // Update elapsed time every second while streaming
   useEffect(() => {
     if (!streaming?.isStreaming || !streaming?.startTime) {
-      setElapsedTime(0);
+      queueMicrotask(() => setElapsedTime(0));
       return;
     }
 
     // Set initial elapsed time
-    setElapsedTime(Math.floor((Date.now() - streaming.startTime) / 1000));
+    queueMicrotask(() => {
+      setElapsedTime(Math.floor((Date.now() - streaming.startTime) / 1000));
+    });
 
     const interval = setInterval(() => {
       if (streaming?.startTime) {

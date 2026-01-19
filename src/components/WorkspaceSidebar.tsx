@@ -57,6 +57,16 @@ import {
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession } from '@/lib/types';
 
+// Generate a random branch name - moved outside component to avoid React purity warning
+function generateBranchName(): string {
+  const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
+  const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 100);
+  return `${adj}-${noun}-${num}`;
+}
+
 interface WorkspaceSidebarProps {
   onAddWorkspace: () => void;
   onShowWorkspaceManagement?: () => void;
@@ -140,15 +150,6 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
     }
   };
 
-  const generateBranchName = () => {
-    const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
-    const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
-    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const noun = nouns[Math.floor(Math.random() * nouns.length)];
-    const num = Math.floor(Math.random() * 100);
-    return `${adj}-${noun}-${num}`;
-  };
-
   const handleCreateSession = async (workspaceId: string) => {
     const branchName = generateBranchName();
 
@@ -187,7 +188,7 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
             conversationId: conv.id,
             role: m.role as 'user' | 'assistant' | 'system',
             content: m.content,
-            setupInfo: (m as any).setupInfo,
+            setupInfo: (m as { setupInfo?: unknown }).setupInfo,
             timestamp: m.timestamp,
           })),
           toolSummary: conv.toolSummary,

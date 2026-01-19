@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -19,8 +19,10 @@ import {
   XCircle,
   FolderOpen,
   Circle,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/stores/appStore';
 
 interface ToolUsageBlockProps {
   id: string;
@@ -43,7 +45,7 @@ export function ToolUsageBlock({
 }: ToolUsageBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const getToolIcon = () => {
+  const ToolIcon = useMemo((): LucideIcon => {
     switch (tool) {
       case 'Read':
       case 'read_file':
@@ -70,7 +72,7 @@ export function ToolUsageBlock({
       default:
         return Terminal;
     }
-  };
+  }, [tool]);
 
   const getToolLabel = () => {
     // Shorter, more concise labels
@@ -129,7 +131,6 @@ export function ToolUsageBlock({
     return null;
   };
 
-  const Icon = getToolIcon();
   const target = getTarget();
   const hasDetails = params && Object.keys(params).length > 0;
 
@@ -154,7 +155,7 @@ export function ToolUsageBlock({
         )}
 
         {/* Tool icon and label */}
-        <Icon className="w-3 h-3 text-muted-foreground shrink-0" />
+        <ToolIcon className="w-3 h-3 text-muted-foreground shrink-0" />
         <span className="font-medium text-foreground">{getToolLabel()}</span>
 
         {target && (
@@ -216,7 +217,7 @@ interface ActiveToolType {
 }
 
 export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) {
-  const { activeTools } = require('@/stores/appStore').useAppStore();
+  const { activeTools } = useAppStore();
   const tools: ActiveToolType[] = activeTools[conversationId] || [];
 
   if (tools.length === 0) return null;
