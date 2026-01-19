@@ -91,6 +91,16 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     // Open terminal in container
     terminal.open(containerRef.current);
 
+    // Handle Cmd+K to clear terminal (macOS standard)
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type === 'keydown' && event.key === 'k' && event.metaKey && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        terminal.clear();
+        return false; // Prevent default terminal handling
+      }
+      return true; // Allow other keys through
+    });
+
     // Initial fit
     setTimeout(() => {
       fitAddon.fit();
