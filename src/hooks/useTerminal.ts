@@ -69,7 +69,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     const terminal = new Terminal({
       theme: terminalTheme,
       fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: 11,
       lineHeight: 1.2,
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -213,7 +213,7 @@ export function useTerminalOutput(options: UseTerminalOutputOptions = {}) {
     const terminal = new Terminal({
       theme: terminalTheme,
       fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: 11,
       lineHeight: 1.2,
       cursorBlink: false,
       cursorStyle: 'bar',

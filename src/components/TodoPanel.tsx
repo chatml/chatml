@@ -198,15 +198,15 @@ function CustomTodoRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="group flex items-start gap-2 py-1 pl-3 pr-2 rounded-sm hover:bg-accent/50">
+    <div className="group flex items-center gap-2 py-1 pl-3 pr-2 rounded-sm hover:bg-accent/50">
       <button
         onClick={onToggle}
-        className="shrink-0 mt-0.5 hover:opacity-80 transition-opacity"
+        className="shrink-0 hover:opacity-80 transition-opacity"
       >
         {todo.completed ? (
-          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
         ) : (
-          <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+          <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         )}
       </button>
       <span
