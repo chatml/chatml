@@ -31,6 +31,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [showBottomTerminal, setShowBottomTerminal] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
@@ -370,6 +371,11 @@ export default function Home() {
         e.preventDefault();
         setShowRightSidebar((prev) => !prev);
       }
+      // Cmd+` to toggle bottom terminal
+      if (e.key === '`' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setShowBottomTerminal((prev) => !prev);
+      }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
@@ -422,6 +428,9 @@ export default function Home() {
           break;
         case 'toggle_right_sidebar':
           setShowRightSidebar((prev) => !prev);
+          break;
+        case 'toggle_terminal':
+          setShowBottomTerminal((prev) => !prev);
           break;
         case 'toggle_thinking':
           // Emit event for ChatInput to handle
