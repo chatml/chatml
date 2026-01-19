@@ -342,10 +342,14 @@ export default function Home() {
         e.preventDefault();
         setShowAddWorkspace(true);
       }
-      // Cmd+K for command palette (future)
+      // Cmd+K for command palette (future) - but allow terminal to handle it for clear
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        // TODO: Open command palette
+        // Don't intercept if focus is inside terminal (let terminal handle Cmd+K for clear)
+        const isInTerminal = (e.target as HTMLElement)?.closest('.xterm');
+        if (!isInTerminal) {
+          e.preventDefault();
+          // TODO: Open command palette
+        }
       }
       // Cmd+, to open settings (standard macOS)
       if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
