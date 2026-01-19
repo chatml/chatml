@@ -49,6 +49,7 @@ import { StreamingMessage } from '@/components/StreamingMessage';
 import { RunSummaryBlock } from '@/components/RunSummaryBlock';
 import { ToolUsageHistory } from '@/components/ToolUsageHistory';
 import { SystemInfoCard } from '@/components/SystemInfoCard';
+import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 
 interface ConversationAreaProps {
@@ -434,7 +435,11 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
               <ContextMenuTrigger asChild>
                 <div className="group relative">
                   <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-p:my-1 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-[11px] prose-code:before:content-none prose-code:after:content-none prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeHighlight]}
+                      components={{ pre: MarkdownPre, code: MarkdownCode }}
+                    >
                       {message.content}
                     </ReactMarkdown>
                   </div>
