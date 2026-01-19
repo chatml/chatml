@@ -60,6 +60,10 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   const ptyRef = useRef<IPty | null>(null);
   const isInitializedRef = useRef(false);
 
+  // Use ref for onExit to avoid effect reruns when callback changes
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
+
   // Initialize terminal and PTY
   useEffect(() => {
     if (!containerRef.current || isInitializedRef.current) return;
@@ -129,7 +133,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
         // PTY exit event
         pty.onExit((event: { exitCode: number }) => {
           terminal.write('\r\n[Process exited]\r\n');
-          onExit?.(event.exitCode);
+          onExitRef.current?.(event.exitCode);
         });
 
         // Terminal input -> PTY
@@ -155,7 +159,8 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
       terminal.dispose();
       isInitializedRef.current = false;
     };
-  }, [workspacePath, onExit]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onExit is stored in ref to avoid effect reruns
+  }, [workspacePath]);
 
   // Fit terminal to container
   const fit = useCallback(() => {
