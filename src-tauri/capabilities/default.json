@@ -26,6 +26,11 @@
     "core:tray:default",
     "notification:default",
     "notification:allow-notify",
-    "notification:allow-request-permission"
+    "notification:allow-request-permission",
+    "pty:default",
+    "pty:allow-spawn",
+    "pty:allow-write",
+    "pty:allow-resize",
+    "pty:allow-kill"
   ]
 }

@@ -68,7 +68,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     // Create xterm.js terminal
     const terminal = new Terminal({
       theme: terminalTheme,
-      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,
@@ -212,7 +212,7 @@ export function useTerminalOutput(options: UseTerminalOutputOptions = {}) {
 
     const terminal = new Terminal({
       theme: terminalTheme,
-      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+      fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: false,
