@@ -49,3 +49,4 @@ src-tauri/target/
 
 # Swift
 speech-cli/.build/
+speech-cli/.swiftpm/
