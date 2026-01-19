@@ -13,6 +13,7 @@ interface SettingsState {
   minimizeToTray: boolean;
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
+  showBottomTerminal: boolean;
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
@@ -22,6 +23,7 @@ interface SettingsState {
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
   setMinimizeToTray: (value: boolean) => void;
+  setShowBottomTerminal: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
 }
@@ -38,6 +40,7 @@ export const useSettingsStore = create<SettingsState>()(
       sendWithEnter: true,
       minimizeToTray: false,
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
+      showBottomTerminal: false,
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -47,6 +50,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
+      setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
         set((state) => ({
           collapsedWorkspaces: state.collapsedWorkspaces.includes(workspaceId)
