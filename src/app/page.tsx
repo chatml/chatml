@@ -14,6 +14,7 @@ import { TopBar } from '@/components/TopBar';
 import { ConversationArea } from '@/components/ConversationArea';
 import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
+import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
 import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
@@ -527,18 +528,37 @@ export default function Home() {
           )}
 
           {/* Main Content */}
-          <ResizablePanel id="main-content" defaultSize={48} minSize="300px">
-            <div className="flex flex-col h-full">
-              <TopBar
-                showLeftSidebar={showLeftSidebar}
-                showRightSidebar={showRightSidebar}
-                onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
-                onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
-              />
-              <ConversationArea>
-                <ChatInput />
-              </ConversationArea>
-            </div>
+          <ResizablePanel id="main-content" defaultSize={48} minSize={30}>
+            <ResizablePanelGroup direction="vertical">
+              {/* Conversation Area */}
+              <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={30}>
+                <div className="flex flex-col h-full">
+                  <TopBar
+                    showLeftSidebar={showLeftSidebar}
+                    showRightSidebar={showRightSidebar}
+                    onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
+                    onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+                  />
+                  <ConversationArea>
+                    <ChatInput />
+                  </ConversationArea>
+                </div>
+              </ResizablePanel>
+
+              {/* Bottom Terminal */}
+              {showBottomTerminal && selectedSessionId && (
+                <>
+                  <ResizableHandle />
+                  <ResizablePanel id="bottom-terminal" defaultSize={30} minSize={15} maxSize={70}>
+                    <BottomTerminal
+                      sessionId={selectedSessionId}
+                      workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path}
+                      onClose={() => setShowBottomTerminal(false)}
+                    />
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
           </ResizablePanel>
 
           {showRightSidebar && (
