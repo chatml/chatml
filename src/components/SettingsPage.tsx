@@ -153,8 +153,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       </div>
 
       {/* Settings Content */}
-      <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {/* Drag region for window - matches sidebar header height */}
+        <div data-tauri-drag-region className="h-11 shrink-0 border-b" />
+
+        <ScrollArea className="flex-1">
           <div className="max-w-2xl mx-auto py-8 px-8">
             {selectedCategory === 'chat' && <ChatSettings />}
             {selectedCategory === 'appearance' && <AppearanceSettings />}
