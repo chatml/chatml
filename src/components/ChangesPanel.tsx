@@ -7,12 +7,7 @@ import { listRepoFiles, getRepoFileContent, getSessionChanges, getSessionFileDif
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
 
-// Dynamic imports for xterm.js components (browser-only)
-const Terminal = dynamic(() => import('@/components/Terminal').then(mod => mod.Terminal), {
-  ssr: false,
-  loading: () => <div className="h-full bg-black/90 flex items-center justify-center"><span className="text-xs text-muted-foreground">Loading terminal...</span></div>,
-});
-
+// Dynamic import for TerminalOutput (browser-only)
 const TerminalOutput = dynamic(() => import('@/components/TerminalOutput').then(mod => mod.TerminalOutput), {
   ssr: false,
   loading: () => <div className="h-full bg-black/90 flex items-center justify-center"><span className="text-xs text-muted-foreground">Loading...</span></div>,
@@ -28,16 +23,12 @@ import {
 import {
   Eye,
   MoreVertical,
-  ChevronDown,
-  ChevronRight,
   FileText,
-  Plus,
   Search,
   SplitSquareHorizontal,
   Loader2,
   GitPullRequest,
   AlertTriangle,
-  GitMerge,
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -74,7 +65,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
   const [selectedTab, setSelectedTab] = useState('files');
-  const [terminalTab, setTerminalTab] = useState('terminal');
+  const [outputTab, setOutputTab] = useState<'setup' | 'run'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
@@ -413,56 +404,33 @@ export function ChangesPanel() {
 
         <ResizableHandle />
 
-        {/* Terminal Section */}
+        {/* Setup/Run Output Section */}
         <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-1 px-2 py-1 border-t bg-muted/30 shrink-0">
               <Button
-                variant={terminalTab === 'setup' ? 'secondary' : 'ghost'}
+                variant={outputTab === 'setup' ? 'secondary' : 'ghost'}
                 size="sm"
                 className="h-6 text-xs px-2"
-                onClick={() => setTerminalTab('setup')}
+                onClick={() => setOutputTab('setup')}
               >
                 Setup
               </Button>
               <Button
-                variant={terminalTab === 'run' ? 'secondary' : 'ghost'}
+                variant={outputTab === 'run' ? 'secondary' : 'ghost'}
                 size="sm"
                 className="h-6 text-xs px-2"
-                onClick={() => setTerminalTab('run')}
+                onClick={() => setOutputTab('run')}
               >
                 Run
               </Button>
-              <Button
-                variant={terminalTab === 'terminal' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setTerminalTab('terminal')}
-              >
-                Terminal
-              </Button>
-              <div className="flex-1" />
-              <Button variant="ghost" size="icon" className="h-6 w-6">
-                <Plus className="h-3 w-3" />
-              </Button>
             </div>
             <div className="flex-1 min-h-0">
-              {terminalTab === 'setup' && selectedSessionId && (
+              {outputTab === 'setup' && selectedSessionId && (
                 <TerminalOutput sessionId={selectedSessionId} type="setup" />
               )}
-              {terminalTab === 'run' && selectedSessionId && (
+              {outputTab === 'run' && selectedSessionId && (
                 <TerminalOutput sessionId={selectedSessionId} type="run" />
-              )}
-              {terminalTab === 'terminal' && selectedSessionId && (
-                <Terminal
-                  sessionId={selectedSessionId}
-                  workspacePath={currentWorkspace?.path}
-                />
-              )}
-              {!selectedSessionId && (
-                <div className="h-full bg-black/90 flex items-center justify-center">
-                  <span className="text-xs text-muted-foreground">No session selected</span>
-                </div>
               )}
             </div>
           </div>
