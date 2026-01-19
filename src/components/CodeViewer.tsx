@@ -208,37 +208,39 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span className="font-mono">{lineCount} lines</span>
-          <span>|</span>
-          <span className="font-mono">{isDiffMode ? 'diff' : getLanguage(filename)}</span>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+          <span className="font-mono shrink-0">{lineCount} lines</span>
+          <span className="shrink-0">|</span>
+          <span className="font-mono shrink-0">{isDiffMode ? 'diff' : getLanguage(filename)}</span>
+          <span className="shrink-0">|</span>
+          <span className="font-mono truncate" title={filename}>{filename}</span>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
           {isMarkdown && (
             <Button
               variant="ghost"
               size="icon"
-              className={cn('h-5 w-5', viewMode === 'rendered' && 'bg-muted')}
+              className={cn('h-5 w-5 text-muted-foreground', viewMode === 'rendered' && 'bg-muted')}
               onClick={() => setViewMode(viewMode === 'code' ? 'rendered' : 'code')}
               title={viewMode === 'code' ? 'Show rendered' : 'Show code'}
             >
               {viewMode === 'code' ? (
-                <Eye className="w-3 h-3" />
+                <Eye className="w-1 h-1" />
               ) : (
-                <Code className="w-3 h-3" />
+                <Code className="w-1 h-1" />
               )}
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5"
+            className="h-5 w-5 text-muted-foreground"
             onClick={handleCopy}
           >
             {copied ? (
-              <Check className="w-3 h-3 text-green-500" />
+              <Check className="w-1 h-1 text-green-500" />
             ) : (
-              <Copy className="w-3 h-3" />
+              <Copy className="w-1 h-1" />
             )}
           </Button>
         </div>

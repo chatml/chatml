@@ -102,6 +102,7 @@ export default function Home() {
     role: msg.role as 'user' | 'assistant' | 'system',
     content: msg.content,
     setupInfo: msg.setupInfo,
+    runSummary: msg.runSummary,
     timestamp: msg.timestamp,
   }), []);
 
@@ -198,6 +199,11 @@ export default function Home() {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         // TODO: Open command palette
+      }
+      // Cmd+, to open settings (standard macOS)
+      if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setShowSettings(true);
       }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {

@@ -209,6 +209,21 @@ func (s *SQLiteStore) runMigrations() error {
 		log.Printf("[sqlite] Migration: Added pinned column to sessions")
 	}
 
+	// Migration: Add run_summary column to messages if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'run_summary'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN run_summary TEXT DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		log.Printf("[sqlite] Migration: Added run_summary column to messages")
+	}
+
 	return nil
 }
 
@@ -574,7 +589,7 @@ func (s *SQLiteStore) GetConversation(id string) *models.Conversation {
 
 	// Load messages
 	rows, err := s.db.Query(`
-		SELECT id, role, content, setup_info, timestamp
+		SELECT id, role, content, setup_info, run_summary, timestamp
 		FROM messages
 		WHERE conversation_id = ?
 		ORDER BY position`, id)
@@ -583,11 +598,18 @@ func (s *SQLiteStore) GetConversation(id string) *models.Conversation {
 		for rows.Next() {
 			var msg models.Message
 			var setupInfoJSON sql.NullString
-			if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &msg.Timestamp); err == nil {
+			var runSummaryJSON sql.NullString
+			if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err == nil {
 				if setupInfoJSON.Valid {
 					var setupInfo models.SetupInfo
 					if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
 						msg.SetupInfo = &setupInfo
+					}
+				}
+				if runSummaryJSON.Valid {
+					var runSummary models.RunSummary
+					if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
+						msg.RunSummary = &runSummary
 					}
 				}
 				conv.Messages = append(conv.Messages, msg)
@@ -641,7 +663,7 @@ func (s *SQLiteStore) ListConversations(sessionID string) []*models.Conversation
 
 		// Load messages for this conversation
 		msgRows, err := s.db.Query(`
-			SELECT id, role, content, setup_info, timestamp
+			SELECT id, role, content, setup_info, run_summary, timestamp
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY position`, conv.ID)
@@ -649,11 +671,18 @@ func (s *SQLiteStore) ListConversations(sessionID string) []*models.Conversation
 			for msgRows.Next() {
 				var msg models.Message
 				var setupInfoJSON sql.NullString
-				if err := msgRows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &msg.Timestamp); err == nil {
+				var runSummaryJSON sql.NullString
+				if err := msgRows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err == nil {
 					if setupInfoJSON.Valid {
 						var setupInfo models.SetupInfo
 						if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
 							msg.SetupInfo = &setupInfo
+						}
+					}
+					if runSummaryJSON.Valid {
+						var runSummary models.RunSummary
+						if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
+							msg.RunSummary = &runSummary
 						}
 					}
 					conv.Messages = append(conv.Messages, msg)
@@ -724,7 +753,7 @@ func (s *SQLiteStore) getConversationNoLock(id string) *models.Conversation {
 
 	// Load messages
 	rows, err := s.db.Query(`
-		SELECT id, role, content, setup_info, timestamp
+		SELECT id, role, content, setup_info, run_summary, timestamp
 		FROM messages
 		WHERE conversation_id = ?
 		ORDER BY position`, id)
@@ -733,11 +762,18 @@ func (s *SQLiteStore) getConversationNoLock(id string) *models.Conversation {
 		for rows.Next() {
 			var msg models.Message
 			var setupInfoJSON sql.NullString
-			if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &msg.Timestamp); err == nil {
+			var runSummaryJSON sql.NullString
+			if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err == nil {
 				if setupInfoJSON.Valid {
 					var setupInfo models.SetupInfo
 					if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
 						msg.SetupInfo = &setupInfo
+					}
+				}
+				if runSummaryJSON.Valid {
+					var runSummary models.RunSummary
+					if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
+						msg.RunSummary = &runSummary
 					}
 				}
 				conv.Messages = append(conv.Messages, msg)
@@ -791,10 +827,19 @@ func (s *SQLiteStore) AddMessageToConversation(convID string, msg models.Message
 		}
 	}
 
+	// Serialize runSummary if present
+	var runSummaryJSON sql.NullString
+	if msg.RunSummary != nil {
+		data, err := json.Marshal(msg.RunSummary)
+		if err == nil {
+			runSummaryJSON = sql.NullString{String: string(data), Valid: true}
+		}
+	}
+
 	_, err := s.db.Exec(`
-		INSERT INTO messages (id, conversation_id, role, content, setup_info, timestamp, position)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, msg.Timestamp, nextPos)
+		INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary, timestamp, position)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON, msg.Timestamp, nextPos)
 	if err != nil {
 		log.Printf("[sqlite] AddMessageToConversation error: %v", err)
 	}

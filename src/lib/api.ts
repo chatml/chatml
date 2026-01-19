@@ -310,11 +310,32 @@ export interface SetupInfoDTO {
   fileCount?: number;
 }
 
+export interface RunStatsDTO {
+  toolCalls: number;
+  toolsByType: Record<string, number>;
+  subAgents: number;
+  filesRead: number;
+  filesWritten: number;
+  bashCommands: number;
+  webSearches: number;
+  totalToolDurationMs: number;
+}
+
+export interface RunSummaryDTO {
+  success: boolean;
+  cost?: number;
+  turns?: number;
+  durationMs?: number;
+  stats?: RunStatsDTO;
+  errors?: unknown[];
+}
+
 export interface MessageDTO {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   setupInfo?: SetupInfoDTO;
+  runSummary?: RunSummaryDTO;
   timestamp: string;
 }
 

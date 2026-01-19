@@ -76,13 +76,36 @@ type SetupInfo struct {
 	FileCount    int    `json:"fileCount,omitempty"`
 }
 
+// RunStats contains detailed statistics from an agent run
+type RunStats struct {
+	ToolCalls           int            `json:"toolCalls"`
+	ToolsByType         map[string]int `json:"toolsByType"`
+	SubAgents           int            `json:"subAgents"`
+	FilesRead           int            `json:"filesRead"`
+	FilesWritten        int            `json:"filesWritten"`
+	BashCommands        int            `json:"bashCommands"`
+	WebSearches         int            `json:"webSearches"`
+	TotalToolDurationMs int            `json:"totalToolDurationMs"`
+}
+
+// RunSummary contains summary information displayed at the end of an agent turn
+type RunSummary struct {
+	Success    bool       `json:"success"`
+	Cost       float64    `json:"cost,omitempty"`
+	Turns      int        `json:"turns,omitempty"`
+	DurationMs int        `json:"durationMs,omitempty"`
+	Stats      *RunStats  `json:"stats,omitempty"`
+	Errors     []any      `json:"errors,omitempty"`
+}
+
 // Message represents a single message in a conversation
 type Message struct {
-	ID        string     `json:"id"`
-	Role      string     `json:"role"` // "user", "assistant", "system"
-	Content   string     `json:"content"`
-	SetupInfo *SetupInfo `json:"setupInfo,omitempty"` // For system messages with setup info
-	Timestamp time.Time  `json:"timestamp"`
+	ID         string      `json:"id"`
+	Role       string      `json:"role"` // "user", "assistant", "system"
+	Content    string      `json:"content"`
+	SetupInfo  *SetupInfo  `json:"setupInfo,omitempty"`  // For system messages with setup info
+	RunSummary *RunSummary `json:"runSummary,omitempty"` // For assistant messages with run summary
+	Timestamp  time.Time   `json:"timestamp"`
 }
 
 // ToolAction represents a tool usage record for the summary
