@@ -531,7 +531,7 @@ export default function Home() {
           <ResizablePanel id="main-content" defaultSize={48} minSize={30}>
             <ResizablePanelGroup direction="vertical">
               {/* Conversation Area */}
-              <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={30}>
+              <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
                 <div className="flex flex-col h-full">
                   <TopBar
                     showLeftSidebar={showLeftSidebar}
@@ -545,18 +545,24 @@ export default function Home() {
                 </div>
               </ResizablePanel>
 
-              {/* Bottom Terminal */}
-              {showBottomTerminal && selectedSessionId && (
-                <>
-                  <ResizableHandle />
-                  <ResizablePanel id="bottom-terminal" defaultSize={30} minSize={15} maxSize={70}>
+              {/* Bottom Terminal - always mounted to preserve PTY session */}
+              {showBottomTerminal && <ResizableHandle />}
+              {selectedSessionId && (
+                <ResizablePanel
+                  id="bottom-terminal"
+                  defaultSize={showBottomTerminal ? "150px" : "0px"}
+                  minSize={showBottomTerminal ? "100px" : "0px"}
+                  maxSize={showBottomTerminal ? "500px" : "0px"}
+                  style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
+                >
+                  <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
                     <BottomTerminal
                       sessionId={selectedSessionId}
                       workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path}
                       onClose={() => setShowBottomTerminal(false)}
                     />
-                  </ResizablePanel>
-                </>
+                  </div>
+                </ResizablePanel>
               )}
             </ResizablePanelGroup>
           </ResizablePanel>
