@@ -31,6 +31,7 @@
     "pty:allow-spawn",
     "pty:allow-write",
     "pty:allow-resize",
-    "pty:allow-kill"
+    "pty:allow-kill",
+    "mcp-bridge:default"
   ]
 }
