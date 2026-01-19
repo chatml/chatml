@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, KeyboardEvent, useImperativeHandle, forwardRef } from 'react';
+import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -206,7 +206,7 @@ export function ChatInput() {
     setIsSending(true);
 
     // TODO: Include attachedFiles in message when backend supports it
-    console.log('Attached files:', attachedFiles);
+    void attachedFiles; // Will be used when backend supports file attachments
 
     try {
       // Check if this is a new conversation (no messages yet) or no conversation selected

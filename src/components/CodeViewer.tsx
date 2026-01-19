@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplitDiffViewer } from '@/components/SplitDiffViewer';
+import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 
 interface CodeViewerProps {
   content: string;
@@ -191,7 +192,7 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
   };
 
   if (isLoading) {

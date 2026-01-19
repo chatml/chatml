@@ -33,7 +33,6 @@ export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
 
   // Try to find a code element child
   const childArray = React.Children.toArray(children);
-  console.log('[MarkdownPre] childArray length:', childArray.length);
 
   for (const child of childArray) {
     if (React.isValidElement(child)) {
@@ -42,10 +41,7 @@ export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
       const language = className.replace('language-', '');
       const code = String(childProps?.children || '').replace(/\n$/, '');
 
-      console.log('[MarkdownPre]', { language, className, codePreview: code.substring(0, 80) });
-
       if (isMermaidCode(code, language)) {
-        console.log('[MarkdownPre] Detected mermaid, rendering diagram');
         return <MermaidDiagram code={code} />;
       }
     }

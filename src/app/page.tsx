@@ -18,7 +18,9 @@ import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
 import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -456,7 +458,7 @@ export default function Home() {
           window.dispatchEvent(new CustomEvent('focus-input'));
           break;
         default:
-          console.log('Unhandled menu event:', menuId);
+          // Unhandled menu event
       }
     }).then((unlisten) => {
       cleanup = unlisten;
@@ -502,8 +504,8 @@ export default function Home() {
     return (
       <BackendStatus
         onConnected={() => setBackendConnected(true)}
-        maxRetries={15}
-        initialDelay={300}
+        maxRetries={HEALTH_CHECK_MAX_RETRIES}
+        initialDelay={HEALTH_CHECK_INITIAL_DELAY_MS}
       />
     );
   }
@@ -523,13 +525,15 @@ export default function Home() {
                 maxSize="400px"
               >
                 <div ref={leftSidebarRef} className="h-full">
-                  <WorkspaceSidebar
-                    onAddWorkspace={() => setShowAddWorkspace(true)}
-                    onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
-                    onSessionSelected={() => setShowWorkspaceManagement(false)}
-                    onOpenSettings={() => setShowSettings(true)}
-                    onToggleSidebar={() => setShowLeftSidebar(false)}
-                  />
+                  <ErrorBoundary section="Sidebar">
+                    <WorkspaceSidebar
+                      onAddWorkspace={() => setShowAddWorkspace(true)}
+                      onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
+                      onSessionSelected={() => setShowWorkspaceManagement(false)}
+                      onOpenSettings={() => setShowSettings(true)}
+                      onToggleSidebar={() => setShowLeftSidebar(false)}
+                    />
+                  </ErrorBoundary>
                 </div>
               </ResizablePanel>
 
@@ -549,9 +553,11 @@ export default function Home() {
                     onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
                     onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
                   />
-                  <ConversationArea>
-                    <ChatInput />
-                  </ConversationArea>
+                  <ErrorBoundary section="Conversation">
+                    <ConversationArea>
+                      <ChatInput />
+                    </ConversationArea>
+                  </ErrorBoundary>
                 </div>
               </ResizablePanel>
 
@@ -566,11 +572,13 @@ export default function Home() {
                   style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
                 >
                   <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
-                    <BottomTerminal
-                      workspaceId={selectedWorkspaceId}
-                      workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path || ''}
-                      onHide={() => setShowBottomTerminal(false)}
-                    />
+                    <ErrorBoundary section="Terminal">
+                      <BottomTerminal
+                        workspaceId={selectedWorkspaceId}
+                        workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path || ''}
+                        onHide={() => setShowBottomTerminal(false)}
+                      />
+                    </ErrorBoundary>
                   </div>
                 </ResizablePanel>
               )}
@@ -588,7 +596,9 @@ export default function Home() {
                 minSize="250px"
                 maxSize="500px"
               >
-                <ChangesPanel />
+                <ErrorBoundary section="Changes">
+                  <ChangesPanel />
+                </ErrorBoundary>
               </ResizablePanel>
             </>
           )}

@@ -57,7 +57,6 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
     let cancelled = false;
 
     const renderDiagram = async () => {
-      console.log('[MermaidDiagram] Starting render, code:', code.substring(0, 100));
       setIsLoading(true);
       setError(null);
 
@@ -65,8 +64,6 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
         // Detect dark mode
         const isDark = document.documentElement.classList.contains('dark') ||
           window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-        console.log('[MermaidDiagram] Dark mode:', isDark);
 
         // Initialize mermaid with theme
         mermaid.initialize({
@@ -89,17 +86,13 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
         });
 
         // Render the diagram
-        console.log('[MermaidDiagram] Calling mermaid.render with id:', `mermaid-${uniqueId}`);
         const { svg: renderedSvg } = await mermaid.render(`mermaid-${uniqueId}`, code);
-
-        console.log('[MermaidDiagram] Render successful, svg length:', renderedSvg?.length);
 
         if (!cancelled) {
           setSvg(renderedSvg);
           setIsLoading(false);
         }
       } catch (err) {
-        console.error('[MermaidDiagram] Render error:', err);
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to render diagram');
           setIsLoading(false);

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react';
+import { UPDATE_CHECK_DELAY_MS } from '@/lib/constants';
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
 
@@ -49,7 +50,7 @@ export function UpdateChecker() {
     };
 
     // Check on mount after a short delay
-    const timeout = setTimeout(checkForUpdates, 3000);
+    const timeout = setTimeout(checkForUpdates, UPDATE_CHECK_DELAY_MS);
 
     // Check every 4 hours
     const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);

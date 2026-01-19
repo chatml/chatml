@@ -27,8 +27,6 @@ import {
   Clock,
   MessageSquare,
   Circle,
-  SquareCheck,
-  Square,
   GitBranch,
   FileQuestion,
   RefreshCw,
@@ -51,6 +49,7 @@ import { ToolUsageHistory } from '@/components/ToolUsageHistory';
 import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
+import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -366,18 +365,18 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
   const copyContent = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
   };
 
   const copyAsMarkdown = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
   };
 
   const handleRegenerate = () => {
     // TODO: Implement regeneration via API
-    console.log('Regenerate message:', message.id);
+    void message.id; // Will be used for regeneration
   };
 
   const formatDuration = (ms?: number) => {

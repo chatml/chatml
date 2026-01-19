@@ -80,8 +80,8 @@ fn kill_stored_sidecar() {
                 let _ = Command::new("kill")
                     .args(["-15", &pid.to_string()])
                     .output();
-                // Wait a bit for graceful shutdown
-                std::thread::sleep(Duration::from_millis(500));
+                // Wait for graceful shutdown (2 seconds to allow data flush)
+                std::thread::sleep(Duration::from_millis(2000));
                 // Force kill if still running
                 let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
             }
