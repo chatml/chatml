@@ -199,11 +199,16 @@ function CustomTodoRow({
 }) {
   return (
     <div className="group flex items-start gap-2 py-1 pl-3 pr-2 rounded-sm hover:bg-accent/50">
-      <Checkbox
-        checked={todo.completed}
-        onCheckedChange={onToggle}
-        className="h-3.5 w-3.5 mt-0.5 shrink-0"
-      />
+      <button
+        onClick={onToggle}
+        className="shrink-0 mt-0.5 hover:opacity-80 transition-opacity"
+      >
+        {todo.completed ? (
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+        ) : (
+          <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+      </button>
       <span
         className={cn(
           'text-xs leading-tight flex-1',
