@@ -224,6 +224,21 @@ func (s *SQLiteStore) runMigrations() error {
 		log.Printf("[sqlite] Migration: Added run_summary column to messages")
 	}
 
+	// Migration: Add base_commit_sha column to sessions if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'base_commit_sha'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN base_commit_sha TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		log.Printf("[sqlite] Migration: Added base_commit_sha column to sessions")
+	}
+
 	return nil
 }
 
@@ -317,12 +332,12 @@ func (s *SQLiteStore) AddSession(session *models.Session) {
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, task,
+		INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, task,
 			status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
 			has_check_failures, stats_additions, stats_deletions, pinned, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		session.ID, session.WorkspaceID, session.Name, session.Branch,
-		session.WorktreePath, session.Task, session.Status, session.AgentID,
+		session.WorktreePath, session.BaseCommitSHA, session.Task, session.Status, session.AgentID,
 		session.PRStatus, session.PRUrl, session.PRNumber,
 		boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
 		statsAdditions, statsDeletions, boolToInt(session.Pinned),
@@ -338,12 +353,12 @@ func (s *SQLiteStore) GetSession(id string) *models.Session {
 	var agentID sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
+		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-		&session.WorktreePath, &session.Task, &session.Status, &agentID,
+		&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &session.CreatedAt, &session.UpdatedAt)
@@ -369,7 +384,7 @@ func (s *SQLiteStore) GetSession(id string) *models.Session {
 
 func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
 	rows, err := s.db.Query(`
-		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
+		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, created_at, updated_at
 		FROM sessions WHERE workspace_id = ?
@@ -388,7 +403,7 @@ func (s *SQLiteStore) ListSessions(workspaceID string) []*models.Session {
 
 		if err := rows.Scan(
 			&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-			&session.WorktreePath, &session.Task, &session.Status, &agentID,
+			&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 			&pinned, &session.CreatedAt, &session.UpdatedAt); err != nil {
@@ -456,12 +471,12 @@ func (s *SQLiteStore) getSessionNoLock(id string) *models.Session {
 	var agentID sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, workspace_id, name, branch, worktree_path, task, status, agent_id,
+		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-		&session.WorktreePath, &session.Task, &session.Status, &agentID,
+		&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &session.CreatedAt, &session.UpdatedAt)
