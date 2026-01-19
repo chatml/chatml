@@ -138,7 +138,7 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             .accelerator("CmdOrCtrl+Alt+B")
             .build(app)?)
         .item(&MenuItemBuilder::with_id("toggle_terminal", "Toggle Terminal")
-            .accelerator("CmdOrCtrl+`")
+            .accelerator("Ctrl+`")
             .build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("toggle_thinking", "Toggle Thinking Mode")

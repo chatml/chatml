@@ -372,8 +372,8 @@ export default function Home() {
         e.preventDefault();
         setShowRightSidebar((prev) => !prev);
       }
-      // Cmd+` to toggle bottom terminal
-      if (e.key === '`' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      // Ctrl+` to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
+      if (e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setShowBottomTerminal((prev) => !prev);
       }
