@@ -32,13 +32,19 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
-  const [showBottomTerminal, setShowBottomTerminal] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
+  const { showBottomTerminal, setShowBottomTerminal } = useSettingsStore();
+
+  // Use ref to avoid changing useEffect dependency array sizes
+  const showBottomTerminalRef = useRef(showBottomTerminal);
+  useEffect(() => {
+    showBottomTerminalRef.current = showBottomTerminal;
+  }, [showBottomTerminal]);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
@@ -379,7 +385,7 @@ export default function Home() {
       // Ctrl+` to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
       if (e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        setShowBottomTerminal((prev) => !prev);
+        setShowBottomTerminal(!showBottomTerminalRef.current);
       }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
@@ -405,7 +411,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation, handleCloseTab]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -435,7 +441,7 @@ export default function Home() {
           setShowRightSidebar((prev) => !prev);
           break;
         case 'toggle_terminal':
-          setShowBottomTerminal((prev) => !prev);
+          setShowBottomTerminal(!showBottomTerminalRef.current);
           break;
         case 'toggle_thinking':
           // Emit event for ChatInput to handle
@@ -459,7 +465,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal]);
 
   // Handle window close confirmation
   useEffect(() => {
@@ -551,7 +557,7 @@ export default function Home() {
 
               {/* Bottom Terminal - always mounted to preserve PTY session */}
               {showBottomTerminal && <ResizableHandle />}
-              {selectedSessionId && (
+              {selectedWorkspaceId && (
                 <ResizablePanel
                   id="bottom-terminal"
                   defaultSize={showBottomTerminal ? "150px" : "0px"}
@@ -561,9 +567,9 @@ export default function Home() {
                 >
                   <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
                     <BottomTerminal
-                      sessionId={selectedSessionId}
-                      workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path}
-                      onClose={() => setShowBottomTerminal(false)}
+                      workspaceId={selectedWorkspaceId}
+                      workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path || ''}
+                      onHide={() => setShowBottomTerminal(false)}
                     />
                   </div>
                 </ResizablePanel>
