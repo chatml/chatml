@@ -61,7 +61,7 @@ export function DiffViewer({
   useEffect(() => {
     // Check for undefined/null but allow empty strings (new files have empty oldContent)
     if (isLoading || typeof oldContent !== 'string' || typeof newContent !== 'string') {
-      setDiffFile(null);
+      queueMicrotask(() => setDiffFile(null));
       return;
     }
 
@@ -83,7 +83,7 @@ export function DiffViewer({
         file.buildUnifiedDiffLines();
       }
 
-      setDiffFile(file);
+      queueMicrotask(() => setDiffFile(file));
     } catch (err) {
       console.error('Failed to generate diff:', err);
     }

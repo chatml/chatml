@@ -3,13 +3,13 @@ use std::time::Duration;
 use tauri::{
     image::Image,
     menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
-    tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, WindowEvent,
 };
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
 
 /// Initialize Sentry for crash reporting (only in release builds with DSN set)
 fn init_sentry() -> Option<sentry::ClientInitGuard> {
@@ -40,8 +40,8 @@ static APP_READY: AtomicBool = AtomicBool::new(false);
 // Global state for minimize-to-tray setting
 static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(false);
 
-use std::sync::Mutex;
 use std::process::Command;
+use std::sync::Mutex;
 
 // Global state for sidecar process management
 static SIDECAR_PID: Mutex<Option<u32>> = Mutex::new(None);
@@ -77,7 +77,9 @@ fn kill_stored_sidecar() {
             #[cfg(unix)]
             {
                 // Send SIGTERM first for graceful shutdown
-                let _ = Command::new("kill").args(["-15", &pid.to_string()]).output();
+                let _ = Command::new("kill")
+                    .args(["-15", &pid.to_string()])
+                    .output();
                 // Wait a bit for graceful shutdown
                 std::thread::sleep(Duration::from_millis(500));
                 // Force kill if still running
@@ -92,9 +94,11 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let app_menu = SubmenuBuilder::new(app, "ChatML")
         .item(&PredefinedMenuItem::about(app, Some("About ChatML"), None)?)
         .separator()
-        .item(&MenuItemBuilder::with_id("settings", "Settings...")
-            .accelerator("CmdOrCtrl+,")
-            .build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("settings", "Settings...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?,
+        )
         .separator()
         .item(&PredefinedMenuItem::hide(app, Some("Hide ChatML"))?)
         .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
@@ -105,20 +109,31 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // File menu
     let file_menu = SubmenuBuilder::new(app, "File")
-        .item(&MenuItemBuilder::with_id("new_session", "New Session")
-            .accelerator("CmdOrCtrl+N")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("new_conversation", "New Conversation")
-            .accelerator("CmdOrCtrl+Shift+N")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("add_workspace", "Add Workspace...")
-            .accelerator("CmdOrCtrl+O")
-            .build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("new_session", "New Session")
+                .accelerator("CmdOrCtrl+N")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("new_conversation", "New Conversation")
+                .accelerator("CmdOrCtrl+Shift+N")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("add_workspace", "Add Workspace...")
+                .accelerator("CmdOrCtrl+O")
+                .build(app)?,
+        )
         .separator()
-        .item(&MenuItemBuilder::with_id("close_tab", "Close Tab")
-            .accelerator("CmdOrCtrl+W")
-            .build(app)?)
-        .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
+        .item(
+            &MenuItemBuilder::with_id("close_tab", "Close Tab")
+                .accelerator("CmdOrCtrl+W")
+                .build(app)?,
+        )
+        .item(&PredefinedMenuItem::close_window(
+            app,
+            Some("Close Window"),
+        )?)
         .build()?;
 
     // Edit menu
@@ -134,25 +149,37 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // View menu
     let view_menu = SubmenuBuilder::new(app, "View")
-        .item(&MenuItemBuilder::with_id("toggle_left_sidebar", "Toggle Left Sidebar")
-            .accelerator("CmdOrCtrl+B")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("toggle_right_sidebar", "Toggle Right Sidebar")
-            .accelerator("CmdOrCtrl+Alt+B")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("toggle_terminal", "Toggle Terminal")
-            .accelerator("Ctrl+`")
-            .build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("toggle_left_sidebar", "Toggle Left Sidebar")
+                .accelerator("CmdOrCtrl+B")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("toggle_right_sidebar", "Toggle Right Sidebar")
+                .accelerator("CmdOrCtrl+Alt+B")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("toggle_terminal", "Toggle Terminal")
+                .accelerator("Ctrl+`")
+                .build(app)?,
+        )
         .separator()
-        .item(&MenuItemBuilder::with_id("toggle_thinking", "Toggle Thinking Mode")
-            .accelerator("Alt+T")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("toggle_plan_mode", "Toggle Plan Mode")
-            .accelerator("Shift+Tab")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("focus_input", "Focus Input")
-            .accelerator("CmdOrCtrl+L")
-            .build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("toggle_thinking", "Toggle Thinking Mode")
+                .accelerator("Alt+T")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("toggle_plan_mode", "Toggle Plan Mode")
+                .accelerator("Shift+Tab")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("focus_input", "Focus Input")
+                .accelerator("CmdOrCtrl+L")
+                .build(app)?,
+        )
         .build()?;
 
     // Window menu
@@ -160,14 +187,12 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .item(&PredefinedMenuItem::minimize(app, None)?)
         .item(&PredefinedMenuItem::maximize(app, None)?)
         .separator()
-        .item(&MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front")
-            .build(app)?)
+        .item(&MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front").build(app)?)
         .build()?;
 
     // Help menu
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .item(&MenuItemBuilder::with_id("help", "ChatML Help")
-            .build(app)?)
+        .item(&MenuItemBuilder::with_id("help", "ChatML Help").build(app)?)
         .build()?;
 
     // Build the full menu
@@ -368,23 +393,27 @@ fn start_speech_recognition(app: tauri::AppHandle) -> Result<(), String> {
                         }
 
                         // Try to extract JSON from the line
-                        let json_to_emit: Option<String> = if line_str.starts_with("DATA:") {
-                            // DATA: prefixed JSON line
-                            Some(line_str[5..].trim().to_string())
-                        } else if line_str.starts_with("{") && line_str.ends_with("}") && line_str.contains("\"type\":") {
-                            // Raw JSON without prefix
-                            Some(line_str.to_string())
-                        } else if let Some(idx) = line_str.find("{\"type\":") {
-                            // JSON embedded in a log line - extract it
-                            let json_part = &line_str[idx..];
-                            if json_part.ends_with("}") {
-                                Some(json_part.to_string())
+                        let json_to_emit: Option<String> =
+                            if let Some(stripped) = line_str.strip_prefix("DATA:") {
+                                // DATA: prefixed JSON line
+                                Some(stripped.trim().to_string())
+                            } else if line_str.starts_with("{")
+                                && line_str.ends_with("}")
+                                && line_str.contains("\"type\":")
+                            {
+                                // Raw JSON without prefix
+                                Some(line_str.to_string())
+                            } else if let Some(idx) = line_str.find("{\"type\":") {
+                                // JSON embedded in a log line - extract it
+                                let json_part = &line_str[idx..];
+                                if json_part.ends_with("}") {
+                                    Some(json_part.to_string())
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
-                            }
-                        } else {
-                            None
-                        };
+                            };
 
                         if let Some(json) = json_to_emit {
                             if let Some(window) = app_handle.get_webview_window("main") {
@@ -465,33 +494,36 @@ fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .icon(icon)
         .menu(&menu)
         .tooltip("ChatML")
-        .on_menu_event(move |app, event| {
-            match event.id().as_ref() {
-                "show_hide" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
-                            let _ = window.hide();
-                        } else {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                }
-                "tray_new_session" => {
-                    if let Some(window) = app.get_webview_window("main") {
+        .on_menu_event(move |app, event| match event.id().as_ref() {
+            "show_hide" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
                         let _ = window.show();
                         let _ = window.set_focus();
-                        let _ = window.emit("menu-event", "new_session");
                     }
                 }
-                "tray_quit" => {
-                    std::process::exit(0);
-                }
-                _ => {}
             }
+            "tray_new_session" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    let _ = window.emit("menu-event", "new_session");
+                }
+            }
+            "tray_quit" => {
+                std::process::exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 if let Some(window) = tray.app_handle().get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
@@ -522,9 +554,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_decorum::init())
-        .plugin(tauri_plugin_window_state::Builder::new()
-            .with_state_flags(tauri_plugin_window_state::StateFlags::all())
-            .build());
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::all())
+                .build(),
+        );
 
     // MCP Bridge plugin - development only
     #[cfg(debug_assertions)]
@@ -534,7 +568,15 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar, set_minimize_to_tray, is_window_visible, check_speech_availability, start_speech_recognition, stop_speech_recognition])
+        .invoke_handler(tauri::generate_handler![
+            mark_app_ready,
+            restart_sidecar,
+            set_minimize_to_tray,
+            is_window_visible,
+            check_speech_availability,
+            start_speech_recognition,
+            stop_speech_recognition
+        ])
         .setup(|app| {
             // Create and set the menu
             let menu = create_menu(app.handle())?;
