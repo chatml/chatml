@@ -38,13 +38,19 @@ enum OutputMessage: Encodable {
     }
 }
 
-/// Outputs a JSON line to stdout
+/// Outputs a JSON line to stderr (more reliable with Tauri's shell plugin)
+/// Uses the same stderrQueue as log() since that works from all threads
 func output(_ message: OutputMessage) {
     let encoder = JSONEncoder()
-    if let data = try? encoder.encode(message),
-       let json = String(data: data, encoding: .utf8) {
-        print(json)
-        fflush(stdout)
+    guard let data = try? encoder.encode(message),
+          let json = String(data: data, encoding: .utf8) else {
+        return
+    }
+
+    // Use exact same approach as log() which works from recognition callback
+    stderrQueue.sync {
+        FileHandle.standardError.write("DATA:\(json)\n".data(using: .utf8)!)
+        try? FileHandle.standardError.synchronize()
     }
 }
 
@@ -106,6 +112,7 @@ class SpeechRecognizer {
             output(.ready)
             startSilenceTimer()
         } catch {
+            log("Error starting recognition: \(error.localizedDescription)")
             output(.error(message: error.localizedDescription))
         }
     }
@@ -143,8 +150,11 @@ class SpeechRecognizer {
 
         // Configure for on-device recognition if available (privacy)
         recognitionRequest.shouldReportPartialResults = true
+
+        // Check on-device support
         if #available(macOS 13.0, *) {
-            recognitionRequest.requiresOnDeviceRecognition = speechRecognizer?.supportsOnDeviceRecognition ?? false
+            // Don't require on-device - let it use server if needed
+            recognitionRequest.requiresOnDeviceRecognition = false
         }
 
         // Start recognition task
@@ -165,25 +175,36 @@ class SpeechRecognizer {
             }
 
             if let error = error {
-                // Ignore cancellation errors
                 let nsError = error as NSError
+                // Ignore cancellation errors
                 if nsError.domain != "kAFAssistantErrorDomain" || nsError.code != 216 {
+                    log("Recognition error: \(error.localizedDescription)")
                     output(.error(message: error.localizedDescription))
                 }
                 self.stop()
             }
         }
 
+        if recognitionTask == nil {
+            log("ERROR: Recognition task is nil!")
+        }
+
         // Configure audio input
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
+        var bufferCount = 0
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
 
             // Calculate sound level
             let level = self?.calculateSoundLevel(buffer: buffer) ?? 0
-            output(.soundLevel(level: level))
+
+            // Only output sound level occasionally to avoid flooding
+            bufferCount += 1
+            if bufferCount % 10 == 0 {
+                output(.soundLevel(level: level))
+            }
         }
 
         audioEngine.prepare()

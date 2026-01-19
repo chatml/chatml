@@ -345,15 +345,55 @@ fn start_speech_recognition(app: tauri::AppHandle) -> Result<(), String> {
                 CommandEvent::Stdout(line) => {
                     let line_str = String::from_utf8_lossy(&line).trim().to_string();
                     if !line_str.is_empty() {
-                        log::debug!("[speech stdout] {}", line_str);
+                        log::info!("[speech stdout] {}", line_str);
                         // Forward to frontend as speech event
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.emit("speech-event", line_str);
+                            match window.emit("speech-event", line_str.clone()) {
+                                Ok(_) => log::info!("[speech] Emitted event successfully"),
+                                Err(e) => log::error!("[speech] Failed to emit event: {}", e),
+                            }
+                        } else {
+                            log::error!("[speech] Window not found!");
                         }
                     }
                 }
-                CommandEvent::Stderr(line) => {
-                    log::warn!("[speech stderr] {}", String::from_utf8_lossy(&line));
+                CommandEvent::Stderr(chunk) => {
+                    let raw = String::from_utf8_lossy(&chunk);
+
+                    // Split chunk into lines and process each
+                    for line in raw.lines() {
+                        let line_str = line.trim();
+                        if line_str.is_empty() {
+                            continue;
+                        }
+
+                        // Try to extract JSON from the line
+                        let json_to_emit: Option<String> = if line_str.starts_with("DATA:") {
+                            // DATA: prefixed JSON line
+                            Some(line_str[5..].trim().to_string())
+                        } else if line_str.starts_with("{") && line_str.ends_with("}") && line_str.contains("\"type\":") {
+                            // Raw JSON without prefix
+                            Some(line_str.to_string())
+                        } else if let Some(idx) = line_str.find("{\"type\":") {
+                            // JSON embedded in a log line - extract it
+                            let json_part = &line_str[idx..];
+                            if json_part.ends_with("}") {
+                                Some(json_part.to_string())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        if let Some(json) = json_to_emit {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                if let Err(e) = window.emit("speech-event", json) {
+                                    log::error!("[speech] Failed to emit event: {}", e);
+                                }
+                            }
+                        }
+                    }
                 }
                 CommandEvent::Error(err) => {
                     log::error!("[speech error] {}", err);

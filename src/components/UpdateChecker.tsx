@@ -26,7 +26,7 @@ export function UpdateChecker() {
   // Check for updates on mount and periodically
   useEffect(() => {
     // Only run in Tauri environment
-    if (typeof window === 'undefined' || !('__TAURI__' in window)) {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
       return;
     }
 
@@ -108,7 +108,7 @@ export function UpdateChecker() {
   };
 
   // Don't render anything in non-Tauri environment
-  if (typeof window === 'undefined' || !('__TAURI__' in window)) {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
     return null;
   }
 
