@@ -109,6 +109,21 @@ export function ChatInput() {
     }
   }, [finalText]);
 
+  // Handle ESC key to exit speech mode
+  useEffect(() => {
+    if (!isListening) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        stopListening();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isListening, stopListening]);
+
   // Listen for drag-drop events from Tauri
   useEffect(() => {
     let unlistenDrop: (() => void) | undefined;
@@ -322,12 +337,12 @@ export function ChatInput() {
       <div className={cn(
         'rounded-lg border bg-muted/50',
         isStreaming && 'border-transparent',
-        isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
+        isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary',
+        isListening && 'shadow-[inset_0_4px_8px_-2px_rgba(16,185,129,0.15)]'
       )}>
         {/* Dictation overlay */}
         {isListening && (
           <DictationOverlay
-            interimText={interimText}
             soundLevel={soundLevel}
             onStop={stopListening}
           />
@@ -371,16 +386,18 @@ export function ChatInput() {
         <div className="relative">
           <Textarea
             ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            value={isListening && interimText ? message + (message ? ' ' : '') + interimText : message}
+            onChange={(e) => !isListening && setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
+            placeholder={isStreaming ? "Agent is working..." : isListening ? "Listening..." : "Ask to make changes, @mention files, run /commands"}
             className={cn(
               'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
               'bg-transparent dark:bg-transparent',
-              'placeholder:text-muted-foreground/60'
+              'placeholder:text-muted-foreground/60',
+              isListening && 'text-emerald-600 dark:text-emerald-400'
             )}
             disabled={!selectedSessionId || isSending || isStreaming}
+            readOnly={isListening}
           />
           {/* Cmd+L hint */}
           <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none">

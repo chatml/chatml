@@ -1,68 +1,79 @@
 'use client';
 
-import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { useEffect, useState } from 'react';
+import { Square } from 'lucide-react';
 
 interface DictationOverlayProps {
-  interimText: string;
   soundLevel: number;
   onStop: () => void;
 }
 
 export function DictationOverlay({
-  interimText,
   soundLevel,
   onStop,
 }: DictationOverlayProps) {
-  // Scale sound level to bar heights (0-1 to bar animation)
-  const getBarHeight = (barIndex: number) => {
-    // Each bar responds slightly differently to create wave effect
-    const offset = barIndex * 0.15;
-    const adjustedLevel = Math.max(0, Math.min(1, soundLevel + offset - 0.2));
-    const minHeight = 4;
-    const maxHeight = 16;
-    return minHeight + adjustedLevel * (maxHeight - minHeight);
+  // Animation tick for wave effect
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 80);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Create a dynamic waveform with more bars
+  const getBarHeight = (barIndex: number, totalBars: number) => {
+    const center = (totalBars - 1) / 2;
+    const distanceFromCenter = Math.abs(barIndex - center);
+    const centerWeight = 1 - (distanceFromCenter / center) * 0.4;
+
+    // Add phase offset for wave effect using tick
+    const phase = Math.sin(tick * 0.4 + barIndex * 0.6);
+    const baseLevel = Math.max(0.15, soundLevel) * centerWeight;
+    const animatedLevel = baseLevel + (phase * 0.25 * baseLevel);
+    const clampedLevel = Math.max(0.08, Math.min(1, animatedLevel));
+
+    const minHeight = 8;
+    const maxHeight = 32;
+    return minHeight + clampedLevel * (maxHeight - minHeight);
   };
 
+  const barCount = 12;
+
   return (
-    <div className="absolute -top-12 left-0 right-0 mx-4 z-20">
-      <div className="flex items-center gap-3 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-lg backdrop-blur-sm">
-        {/* Sound level bars */}
-        <div className="flex items-center gap-0.5 h-4">
-          {[0, 1, 2].map((i) => (
+    <div className="absolute -top-14 left-0 right-0 mx-4 z-20">
+      <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 border-b-0 rounded-t-xl backdrop-blur-sm">
+        {/* Status label - left aligned */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+          <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+            Listening
+          </span>
+        </div>
+
+        {/* Waveform - centered, expanded */}
+        <div className="flex-1 flex items-center justify-center gap-0.5 h-8">
+          {Array.from({ length: barCount }).map((_, i) => (
             <div
               key={i}
-              className="sound-bar w-1 bg-orange-500 rounded-full transition-all duration-75"
-              style={{ height: `${getBarHeight(i)}px` }}
+              className="w-1 bg-emerald-500 rounded-full transition-all duration-75 ease-out"
+              style={{
+                height: `${getBarHeight(i, barCount)}px`,
+                opacity: 0.5 + Math.max(0.2, soundLevel) * 0.5,
+              }}
             />
           ))}
         </div>
 
-        {/* Label */}
-        <span className="text-xs text-orange-500 font-medium whitespace-nowrap">
-          Listening...
-        </span>
-
-        {/* Interim text */}
-        <span
-          className={cn(
-            'flex-1 text-sm text-foreground truncate',
-            !interimText && 'text-muted-foreground italic'
-          )}
-        >
-          {interimText || 'Start speaking...'}
-        </span>
-
-        {/* Stop button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+        {/* Stop button - right aligned */}
+        <button
           onClick={onStop}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-medium rounded-full transition-colors shrink-0"
         >
-          <X className="h-3.5 w-3.5" />
-        </Button>
+          <Square className="h-2.5 w-2.5 fill-current" />
+          Stop
+        </button>
       </div>
     </div>
   );

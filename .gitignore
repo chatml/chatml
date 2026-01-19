@@ -46,3 +46,6 @@ backend/chatml-backend
 # Tauri
 src-tauri/target/
 .worktrees/
+
+# Swift
+speech-cli/.build/

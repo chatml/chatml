@@ -32,6 +32,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
 
   const unlistenEventsRef = useRef<(() => void) | null>(null);
   const unlistenErrorsRef = useRef<(() => void) | null>(null);
+  const interimTextRef = useRef('');
 
   // Check availability on mount
   useEffect(() => {
@@ -46,13 +47,16 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
         setError(null);
         setInterimText('');
         setFinalText('');
+        interimTextRef.current = '';
         break;
       case 'interim':
         setInterimText(event.text || '');
+        interimTextRef.current = event.text || '';
         break;
       case 'final':
         setFinalText(event.text || '');
         setInterimText('');
+        interimTextRef.current = '';
         break;
       case 'soundLevel':
         setSoundLevel(event.level || 0);
@@ -108,6 +112,13 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
     unlistenEventsRef.current = null;
     unlistenErrorsRef.current = null;
 
+    // Promote interim text to final text if we have any
+    if (interimTextRef.current) {
+      setFinalText(interimTextRef.current);
+      setInterimText('');
+      interimTextRef.current = '';
+    }
+
     setIsListening(false);
     setSoundLevel(0);
   }, [isListening]);
@@ -121,16 +132,22 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
     }
   }, [isListening, startListening, stopListening]);
 
-  // Cleanup on unmount
+  // Track listening state in a ref for cleanup
+  const isListeningRef = useRef(isListening);
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  // Cleanup on unmount only (not when isListening changes!)
   useEffect(() => {
     return () => {
-      if (isListening) {
+      if (isListeningRef.current) {
         stopSpeechRecognition();
       }
       unlistenEventsRef.current?.();
       unlistenErrorsRef.current?.();
     };
-  }, [isListening]);
+  }, []);
 
   return {
     isListening,
