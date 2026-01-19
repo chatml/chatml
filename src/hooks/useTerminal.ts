@@ -204,7 +204,12 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     return () => {
       cleanupCalled = true;
       resizeObserver?.disconnect();
-      ptyRef.current?.kill();
+      // PTY might already be dead (user typed 'exit'), so wrap in try-catch
+      try {
+        ptyRef.current?.kill();
+      } catch {
+        // Ignore "No such process" errors - PTY already exited
+      }
       ptyRef.current = null;
       if (terminalRef.current) {
         terminalRef.current.dispose();
