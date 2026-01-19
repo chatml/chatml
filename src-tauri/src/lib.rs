@@ -289,15 +289,6 @@ fn is_window_visible(app: tauri::AppHandle) -> bool {
     }
 }
 
-// Tauri command to close splash screen and show main window
-// Currently a no-op since splash is handled by the frontend loading state
-#[tauri::command]
-fn close_splash(_app: tauri::AppHandle) {
-    // Splash screen is now handled by the frontend BackendStatus component
-    // This command is kept for API compatibility
-    log::info!("close_splash called (no-op)");
-}
-
 /// Create the system tray with menu
 fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let show_hide = MenuItemBuilder::with_id("show_hide", "Show/Hide").build(app)?;
@@ -379,7 +370,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new()
             .with_state_flags(tauri_plugin_window_state::StateFlags::all())
             .build())
-        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar, set_minimize_to_tray, is_window_visible, close_splash])
+        .invoke_handler(tauri::generate_handler![mark_app_ready, restart_sidecar, set_minimize_to_tray, is_window_visible])
         .setup(|app| {
             // Create and set the menu
             let menu = create_menu(app.handle())?;

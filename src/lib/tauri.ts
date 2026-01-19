@@ -170,19 +170,6 @@ export async function requestNotificationPermission(): Promise<'granted' | 'deni
 }
 
 /**
- * Close splash screen and show main window
- */
-export async function closeSplash(): Promise<void> {
-  if (!isTauri()) return;
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('close_splash');
-  } catch (e) {
-    console.error('Failed to close splash', e);
-  }
-}
-
-/**
  * Listen for file drop events
  */
 export async function listenForFileDrop(

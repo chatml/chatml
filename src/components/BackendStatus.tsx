@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Loader2, AlertCircle, RefreshCw, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { checkHealthWithRetry } from '@/lib/api';
-import { isTauri, safeListen, markAppReady, restartSidecar, closeSplash } from '@/lib/tauri';
+import { isTauri, safeListen, markAppReady, restartSidecar } from '@/lib/tauri';
 
 interface BackendStatusProps {
   onConnected: () => void;
@@ -38,8 +38,6 @@ export function BackendStatus({
       setState('connected');
       // Mark app as ready so close confirmation can work
       await markAppReady();
-      // Close splash screen and show main window
-      await closeSplash();
       onConnected();
     } else {
       setState('error');
