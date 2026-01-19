@@ -30,6 +30,7 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -712,9 +713,32 @@ function UpdatesSettings() {
 }
 
 function AdvancedSettings() {
+  const [rootDirectory, setRootDirectory] = useState('/Users/mcastilho/chatml');
+
   return (
     <div>
       <h2 className="text-2xl font-semibold mb-6">Advanced</h2>
+
+      {/* ChatML root directory */}
+      <div className="py-4 border-b border-border/50">
+        <h4 className="text-sm font-medium">ChatML root directory</h4>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Where ChatML stores repositories and workspaces. Changing this will delete all your existing repos and workspaces.
+        </p>
+        <div className="flex items-center gap-2 mt-3">
+          <input
+            type="text"
+            value={rootDirectory}
+            onChange={(e) => setRootDirectory(e.target.value)}
+            className="flex-1 px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <Button variant="outline" size="sm" className="gap-2 h-9">
+            <FolderOpen className="w-4 h-4" />
+            Browse
+          </Button>
+        </div>
+      </div>
+
       <SettingsRow
         title="Developer mode"
         description="Show additional debugging information"
