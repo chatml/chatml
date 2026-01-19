@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -67,122 +67,155 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   // Capture initial workspacePath - we don't want to reinit if it changes
   const initialWorkspacePathRef = useRef(workspacePath);
 
-  // State to trigger retry when container becomes ready
-  const [retryCount, setRetryCount] = useState(0);
-
-  // Initialize terminal and PTY (only once per mount)
+  // Initialize terminal and PTY using ResizeObserver to wait for dimensions
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || isInitializedRef.current) return;
+    if (!container) return;
 
-    // Wait for container to have dimensions (needed for xterm to render properly)
-    if (container.offsetWidth === 0 || container.offsetHeight === 0) {
-      // Container not ready yet, retry after a short delay (max 10 retries = 500ms)
-      if (retryCount < 10) {
-        const timeoutId = setTimeout(() => {
-          setRetryCount(c => c + 1);
-        }, 50);
-        return () => clearTimeout(timeoutId);
+    let resizeObserver: ResizeObserver | null = null;
+    let cleanupCalled = false;
+
+    const initTerminal = () => {
+      if (isInitializedRef.current || cleanupCalled) return;
+
+      // Check dimensions
+      if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+        return; // ResizeObserver will call us again when dimensions change
       }
-      // Give up after 10 retries - container might be intentionally hidden
-      console.warn('Terminal container has no dimensions after retries');
-      return;
-    }
 
-    isInitializedRef.current = true;
+      isInitializedRef.current = true;
 
-    // Create xterm.js terminal
-    const terminal = new Terminal({
-      theme: terminalTheme,
-      fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-      fontSize: 11,
-      lineHeight: 1.2,
-      cursorBlink: true,
-      cursorStyle: 'bar',
-      allowTransparency: true,
-      scrollback: 10000,
-    });
+      // Create xterm.js terminal
+      const terminal = new Terminal({
+        theme: terminalTheme,
+        fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+        fontSize: 11,
+        lineHeight: 1.2,
+        cursorBlink: true,
+        cursorStyle: 'bar',
+        allowTransparency: true,
+        scrollback: 10000,
+      });
 
-    // Load addons
-    const fitAddon = new FitAddon();
-    const searchAddon = new SearchAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.loadAddon(searchAddon);
+      // Load addons
+      const fitAddon = new FitAddon();
+      const searchAddon = new SearchAddon();
+      terminal.loadAddon(fitAddon);
+      terminal.loadAddon(searchAddon);
 
-    // Store refs
-    terminalRef.current = terminal;
-    fitAddonRef.current = fitAddon;
-    searchAddonRef.current = searchAddon;
+      // Store refs
+      terminalRef.current = terminal;
+      fitAddonRef.current = fitAddon;
+      searchAddonRef.current = searchAddon;
 
-    // Open terminal in container
-    terminal.open(container);
+      // Open terminal in container
+      terminal.open(container);
 
-    // Handle Cmd+K to clear terminal (macOS standard)
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type === 'keydown' && event.key === 'k' && event.metaKey && !event.shiftKey && !event.altKey) {
-        event.preventDefault();
-        terminal.clear();
-        return false; // Prevent default terminal handling
-      }
-      return true; // Allow other keys through
-    });
+      // Handle Cmd+K to clear terminal (macOS standard)
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (event.type === 'keydown' && event.key === 'k' && event.metaKey && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
+          terminal.clear();
+          return false;
+        }
+        return true;
+      });
 
-    // Initial fit
-    setTimeout(() => {
-      fitAddon.fit();
-    }, 0);
+      // Initial fit after a brief delay to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (!cleanupCalled) {
+          fitAddon.fit();
+        }
+      });
 
-    // Determine shell based on platform
-    const isWindows = navigator.platform.toLowerCase().includes('win');
-    const shell = isWindows ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
+      // Determine shell based on platform
+      const isWindows = navigator.platform.toLowerCase().includes('win');
+      const shell = isWindows ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
 
-    // Spawn PTY
-    const initPty = async () => {
-      try {
-        const pty = await spawn(shell, [], {
-          cols: terminal.cols,
-          rows: terminal.rows,
-          cwd: initialWorkspacePathRef.current || undefined,
-        });
+      // Spawn PTY
+      const initPty = async () => {
+        if (cleanupCalled) return;
 
-        ptyRef.current = pty;
+        try {
+          const pty = await spawn(shell, [], {
+            cols: terminal.cols || 80,
+            rows: terminal.rows || 24,
+            cwd: initialWorkspacePathRef.current || undefined,
+          });
 
-        // PTY output -> Terminal
-        pty.onData((data: string) => {
-          terminal.write(data);
-        });
+          if (cleanupCalled) {
+            pty.kill();
+            return;
+          }
 
-        // PTY exit event
-        pty.onExit((event: { exitCode: number }) => {
-          terminal.write('\r\n[Process exited]\r\n');
-          onExitRef.current?.(event.exitCode);
-        });
+          ptyRef.current = pty;
 
-        // Terminal input -> PTY
-        terminal.onData((data: string) => {
-          pty.write(data);
-        });
+          // PTY output -> Terminal
+          pty.onData((data: string) => {
+            if (!cleanupCalled) {
+              terminal.write(data);
+            }
+          });
 
-        // Handle terminal resize
-        terminal.onResize(({ cols, rows }) => {
-          pty.resize(cols, rows);
-        });
-      } catch (err) {
-        console.error('Failed to spawn PTY:', err);
-        terminal.write(`\r\nError: Failed to spawn terminal: ${err}\r\n`);
-      }
+          // PTY exit event
+          pty.onExit((event: { exitCode: number }) => {
+            if (!cleanupCalled) {
+              terminal.write('\r\n[Process exited]\r\n');
+              onExitRef.current?.(event.exitCode);
+            }
+          });
+
+          // Terminal input -> PTY
+          terminal.onData((data: string) => {
+            if (!cleanupCalled && ptyRef.current) {
+              pty.write(data);
+            }
+          });
+
+          // Handle terminal resize
+          terminal.onResize(({ cols, rows }) => {
+            if (!cleanupCalled && ptyRef.current) {
+              pty.resize(cols, rows);
+            }
+          });
+        } catch (err) {
+          console.error('Failed to spawn PTY:', err);
+          if (!cleanupCalled) {
+            terminal.write(`\r\nError: Failed to spawn terminal: ${err}\r\n`);
+          }
+        }
+      };
+
+      initPty();
     };
 
-    initPty();
+    // Use ResizeObserver to detect when container has dimensions
+    resizeObserver = new ResizeObserver(() => {
+      if (!isInitializedRef.current) {
+        initTerminal();
+      }
+    });
+    resizeObserver.observe(container);
+
+    // Try immediately in case container already has dimensions
+    initTerminal();
 
     // Cleanup
     return () => {
+      cleanupCalled = true;
+      resizeObserver?.disconnect();
       ptyRef.current?.kill();
-      terminal.dispose();
+      ptyRef.current = null;
+      if (terminalRef.current) {
+        terminalRef.current.dispose();
+        terminalRef.current = null;
+      }
+      fitAddonRef.current = null;
+      searchAddonRef.current = null;
       isInitializedRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount, props stored in refs, retryCount for dimension check
-  }, [retryCount]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount, props stored in refs
+  }, []);
 
   // Fit terminal to container
   const fit = useCallback(() => {
