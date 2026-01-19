@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useTerminal } from '@/hooks/useTerminal';
 import { cn } from '@/lib/utils';
 import '@xterm/xterm/css/xterm.css';
@@ -13,12 +13,33 @@ export interface TerminalProps {
 }
 
 export function Terminal({ sessionId, workspacePath, className, onExit }: TerminalProps) {
-  const { containerRef, fit } = useTerminal({
+  const { containerRef, fit, clear } = useTerminal({
     workspacePath,
     onExit,
   });
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  // Handle Cmd+K to clear terminal (capture phase to intercept before global handlers)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'k' && e.metaKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        clear();
+      }
+    };
+
+    // Use capture phase to intercept before document-level handlers
+    container.addEventListener('keydown', handleKeyDown, true);
+
+    return () => {
+      container.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [clear, containerRef]);
 
   // Handle container resize
   useEffect(() => {
