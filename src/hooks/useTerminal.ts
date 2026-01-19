@@ -60,11 +60,14 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   const ptyRef = useRef<IPty | null>(null);
   const isInitializedRef = useRef(false);
 
-  // Use ref for onExit to avoid effect reruns when callback changes
+  // Use refs to avoid effect reruns when props change
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
 
-  // Initialize terminal and PTY
+  // Capture initial workspacePath - we don't want to reinit if it changes
+  const initialWorkspacePathRef = useRef(workspacePath);
+
+  // Initialize terminal and PTY (only once per mount)
   useEffect(() => {
     if (!containerRef.current || isInitializedRef.current) return;
     isInitializedRef.current = true;
@@ -120,7 +123,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
         const pty = await spawn(shell, [], {
           cols: terminal.cols,
           rows: terminal.rows,
-          cwd: workspacePath || undefined,
+          cwd: initialWorkspacePathRef.current || undefined,
         });
 
         ptyRef.current = pty;
@@ -159,8 +162,8 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
       terminal.dispose();
       isInitializedRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- onExit is stored in ref to avoid effect reruns
-  }, [workspacePath]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount, props stored in refs
+  }, []);
 
   // Fit terminal to container
   const fit = useCallback(() => {
