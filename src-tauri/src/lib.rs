@@ -393,26 +393,27 @@ fn start_speech_recognition(app: tauri::AppHandle) -> Result<(), String> {
                         }
 
                         // Try to extract JSON from the line
-                        let json_to_emit: Option<String> = if line_str.starts_with("DATA:") {
-                            // DATA: prefixed JSON line
-                            Some(line_str[5..].trim().to_string())
-                        } else if line_str.starts_with("{")
-                            && line_str.ends_with("}")
-                            && line_str.contains("\"type\":")
-                        {
-                            // Raw JSON without prefix
-                            Some(line_str.to_string())
-                        } else if let Some(idx) = line_str.find("{\"type\":") {
-                            // JSON embedded in a log line - extract it
-                            let json_part = &line_str[idx..];
-                            if json_part.ends_with("}") {
-                                Some(json_part.to_string())
+                        let json_to_emit: Option<String> =
+                            if let Some(stripped) = line_str.strip_prefix("DATA:") {
+                                // DATA: prefixed JSON line
+                                Some(stripped.trim().to_string())
+                            } else if line_str.starts_with("{")
+                                && line_str.ends_with("}")
+                                && line_str.contains("\"type\":")
+                            {
+                                // Raw JSON without prefix
+                                Some(line_str.to_string())
+                            } else if let Some(idx) = line_str.find("{\"type\":") {
+                                // JSON embedded in a log line - extract it
+                                let json_part = &line_str[idx..];
+                                if json_part.ends_with("}") {
+                                    Some(json_part.to_string())
+                                } else {
+                                    None
+                                }
                             } else {
                                 None
-                            }
-                        } else {
-                            None
-                        };
+                            };
 
                         if let Some(json) = json_to_emit {
                             if let Some(window) = app_handle.get_webview_window("main") {
