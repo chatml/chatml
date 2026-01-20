@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 )
 
 // User represents a GitHub user
@@ -38,7 +39,7 @@ func NewClient(clientID, clientSecret string) *Client {
 	return &Client{
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		httpClient:   &http.Client{},
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
 		baseURL:      "https://github.com",
 		apiURL:       "https://api.github.com",
 	}
@@ -134,18 +135,35 @@ func (c *Client) GetToken() string {
 	return c.token
 }
 
-// SetUser stores the user in memory
+// SetUser stores a copy of the user in memory
 func (c *Client) SetUser(user *User) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.user = user
+	if user == nil {
+		c.user = nil
+		return
+	}
+	// Store a copy to avoid external mutations
+	c.user = &User{
+		Login:     user.Login,
+		Name:      user.Name,
+		AvatarURL: user.AvatarURL,
+	}
 }
 
-// GetStoredUser returns the stored user
+// GetStoredUser returns a copy of the stored user
 func (c *Client) GetStoredUser() *User {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.user
+	if c.user == nil {
+		return nil
+	}
+	// Return a copy to avoid external mutations
+	return &User{
+		Login:     c.user.Login,
+		Name:      c.user.Name,
+		AvatarURL: c.user.AvatarURL,
+	}
 }
 
 // ClearAuth clears the stored token and user
