@@ -162,3 +162,16 @@ var ValidPRStatuses = map[string]bool{
 	PRStatusMerged: true,
 	PRStatusClosed: true,
 }
+
+// FileTab represents an open file tab in the editor
+type FileTab struct {
+	ID             string    `json:"id"`
+	WorkspaceID    string    `json:"workspaceId"`
+	SessionID      string    `json:"sessionId,omitempty"` // Optional - null for workspace-scoped tabs
+	Path           string    `json:"path"`
+	ViewMode       string    `json:"viewMode"` // "file" or "diff"
+	IsPinned       bool      `json:"isPinned"`
+	Position       int       `json:"position"`
+	OpenedAt       time.Time `json:"openedAt"`
+	LastAccessedAt time.Time `json:"lastAccessedAt"`
+}

@@ -193,9 +193,11 @@ export interface WSEvent {
 export interface FileTab {
   id: string;
   workspaceId: string;
+  sessionId?: string;         // Optional session scope (null = workspace-scoped)
   path: string;
   name: string;
   content?: string;
+  originalContent?: string;   // Content when loaded/saved (for dirty detection)
   isLoading?: boolean;
   isDirty?: boolean;
   viewMode?: 'file' | 'diff';
@@ -205,6 +207,12 @@ export interface FileTab {
   };
   isBinary?: boolean;
   isTooLarge?: boolean;
+  isPinned?: boolean;         // Pin support - pinned tabs won't auto-close
+  openedAt?: string;          // ISO timestamp for ordering/history
+  lastAccessedAt?: string;    // ISO timestamp for LRU tab closing
+  // Editor state restoration fields
+  scrollPosition?: { top: number; left: number };
+  cursorPosition?: { line: number; column: number };
 }
 
 // Terminal session for interactive PTY
