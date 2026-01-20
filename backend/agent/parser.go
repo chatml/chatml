@@ -36,16 +36,16 @@ type AgentEvent struct {
 	Source    string `json:"source,omitempty"` // For session_started: startup, resume, clear, compact
 
 	// Enhanced init fields
-	McpServers       []McpServerStatus `json:"mcpServers,omitempty"`
-	SlashCommands    []string          `json:"slashCommands,omitempty"`
-	Skills           []string          `json:"skills,omitempty"`
-	Plugins          []PluginInfo      `json:"plugins,omitempty"`
-	Agents           []string          `json:"agents,omitempty"`
-	PermissionMode   string            `json:"permissionMode,omitempty"`
-	ClaudeCodeVer    string            `json:"claudeCodeVersion,omitempty"`
-	ApiKeySource     string            `json:"apiKeySource,omitempty"`
-	Betas            []string          `json:"betas,omitempty"`
-	OutputStyle      string            `json:"outputStyle,omitempty"`
+	McpServers     []McpServerStatus `json:"mcpServers,omitempty"`
+	SlashCommands  []string          `json:"slashCommands,omitempty"`
+	Skills         []string          `json:"skills,omitempty"`
+	Plugins        []PluginInfo      `json:"plugins,omitempty"`
+	Agents         []string          `json:"agents,omitempty"`
+	PermissionMode string            `json:"permissionMode,omitempty"`
+	ClaudeCodeVer  string            `json:"claudeCodeVersion,omitempty"`
+	ApiKeySource   string            `json:"apiKeySource,omitempty"`
+	Betas          []string          `json:"betas,omitempty"`
+	OutputStyle    string            `json:"outputStyle,omitempty"`
 
 	// Result fields
 	DurationMs    int64                  `json:"durationMs,omitempty"`
@@ -66,8 +66,8 @@ type AgentEvent struct {
 	StopHookActive   bool        `json:"stopHookActive,omitempty"`
 
 	// Subagent fields
-	AgentId       string `json:"agentId,omitempty"`
-	AgentType     string `json:"agentType,omitempty"`
+	AgentId        string `json:"agentId,omitempty"`
+	AgentType      string `json:"agentType,omitempty"`
 	TranscriptPath string `json:"transcriptPath,omitempty"`
 
 	// Compact boundary fields
@@ -94,11 +94,11 @@ type AgentEvent struct {
 	Output           []string `json:"output,omitempty"`
 
 	// Query info response fields
-	Models   []ModelInfo   `json:"models,omitempty"`
-	Commands []SlashCmd    `json:"commands,omitempty"`
+	Models   []ModelInfo       `json:"models,omitempty"`
+	Commands []SlashCmd        `json:"commands,omitempty"`
 	Servers  []McpServerStatus `json:"servers,omitempty"`
-	Info     *AccountInfo  `json:"info,omitempty"`
-	Mode     string        `json:"mode,omitempty"`
+	Info     *AccountInfo      `json:"info,omitempty"`
+	Mode     string            `json:"mode,omitempty"`
 
 	// Stderr data
 	Data string `json:"data,omitempty"`
@@ -118,14 +118,14 @@ type PluginInfo struct {
 
 // RunStats represents statistics from the agent run
 type RunStats struct {
-	ToolCalls          int            `json:"toolCalls"`
-	ToolsByType        map[string]int `json:"toolsByType"`
-	SubAgents          int            `json:"subAgents"`
-	FilesRead          int            `json:"filesRead"`
-	FilesWritten       int            `json:"filesWritten"`
-	BashCommands       int            `json:"bashCommands"`
-	WebSearches        int            `json:"webSearches"`
-	TotalToolDurationMs int64         `json:"totalToolDurationMs"`
+	ToolCalls           int            `json:"toolCalls"`
+	ToolsByType         map[string]int `json:"toolsByType"`
+	SubAgents           int            `json:"subAgents"`
+	FilesRead           int            `json:"filesRead"`
+	FilesWritten        int            `json:"filesWritten"`
+	BashCommands        int            `json:"bashCommands"`
+	WebSearches         int            `json:"webSearches"`
+	TotalToolDurationMs int64          `json:"totalToolDurationMs"`
 }
 
 // ModelInfo represents available model information

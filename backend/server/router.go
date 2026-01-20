@@ -39,9 +39,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Get("/ws", hub.HandleWebSocket)
 
 	// Rate limiting middleware for sensitive operations
-	agentRateLimiter := httprate.LimitByIP(10, 1*time.Minute)         // 10 agent spawns per minute
-	conversationRateLimiter := httprate.LimitByIP(20, 1*time.Minute)  // 20 conversations per minute
-	messageRateLimiter := httprate.LimitByIP(60, 1*time.Minute)       // 60 messages per minute
+	agentRateLimiter := httprate.LimitByIP(10, 1*time.Minute)        // 10 agent spawns per minute
+	conversationRateLimiter := httprate.LimitByIP(20, 1*time.Minute) // 20 conversations per minute
+	messageRateLimiter := httprate.LimitByIP(60, 1*time.Minute)      // 60 messages per minute
 
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {

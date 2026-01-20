@@ -18,12 +18,12 @@ var AgentRunnerPath string
 
 // ProcessOptions contains options for creating a new process
 type ProcessOptions struct {
-	ID             string
-	Workdir        string
-	ConversationID string
-	ResumeSession  string // Session ID to resume
-	ForkSession    bool   // Whether to fork the session
-	LinearIssue    string // Linear issue identifier (e.g., "LIN-123")
+	ID                  string
+	Workdir             string
+	ConversationID      string
+	ResumeSession       string // Session ID to resume
+	ForkSession         bool   // Whether to fork the session
+	LinearIssue         string // Linear issue identifier (e.g., "LIN-123")
 	ToolPreset          string // Tool preset: full, read-only, no-bash, safe-edit
 	EnableCheckpointing bool   // Enable file checkpointing for rewind
 }
