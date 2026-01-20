@@ -94,6 +94,20 @@ export async function restartSidecar(): Promise<boolean> {
 }
 
 /**
+ * Get the user's home directory
+ */
+export async function getHomeDir(): Promise<string | null> {
+  if (!isTauri()) return null;
+  try {
+    const { homeDir } = await import('@tauri-apps/api/path');
+    return await homeDir();
+  } catch (e) {
+    console.error('Failed to get home directory', e);
+    return null;
+  }
+}
+
+/**
  * Open native folder picker dialog
  */
 export async function openFolderDialog(title?: string): Promise<string | null> {

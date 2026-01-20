@@ -15,7 +15,6 @@ import {
   GitBranch,
   ChevronDown,
   ExternalLink,
-  GitPullRequest,
   Terminal,
   FolderOpen,
   Code,
@@ -148,12 +147,6 @@ export function TopBar({
       <div className="text-xs text-muted-foreground font-mono px-2">
         {formatCost(totalCost)}
       </div>
-
-      {/* Create PR Button */}
-      <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-primary border border-transparent hover:border-primary/50 hover:bg-primary/10 transition-colors mr-1">
-        <GitPullRequest className="h-3.5 w-3.5" />
-        Create PR
-      </Button>
 
       {/* Toggle Right Sidebar Button - only shown when sidebar is hidden */}
       {!showRightSidebar && onToggleRightSidebar && (
