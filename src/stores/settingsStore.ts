@@ -11,6 +11,8 @@ interface SettingsState {
   sendWithEnter: boolean;
   // Window settings
   minimizeToTray: boolean;
+  // Appearance settings
+  editorTheme: string; // Monaco editor theme (e.g., 'vs-dark', 'monokai', 'dracula')
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   showBottomTerminal: boolean;
@@ -23,6 +25,7 @@ interface SettingsState {
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
   setMinimizeToTray: (value: boolean) => void;
+  setEditorTheme: (value: string) => void;
   setShowBottomTerminal: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
@@ -39,6 +42,7 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffects: false,
       sendWithEnter: true,
       minimizeToTray: false,
+      editorTheme: 'vs-dark',
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       showBottomTerminal: false,
 
@@ -50,6 +54,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
+      setEditorTheme: (value) => set({ editorTheme: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
         set((state) => ({

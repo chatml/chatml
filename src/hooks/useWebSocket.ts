@@ -233,8 +233,7 @@ export function useWebSocket(enabled: boolean = true) {
         setStreaming(conversationId, false);
         clearThinking(conversationId);
         clearActiveTools(conversationId);
-
-        // Update budget status from result event, preserving max values
+// Update budget status from result event, preserving max values
         if (event.cost !== undefined) {
           const existingStatus = useAppStore.getState().budgetStatus;
           const budgetStatus: BudgetStatus = {
@@ -252,6 +251,8 @@ export function useWebSocket(enabled: boolean = true) {
           };
           useAppStore.getState().setBudgetStatus(budgetStatus);
         }
+        // Update conversation status to completed
+        updateConversation(conversationId, { status: 'completed' });
         break;
 
       case 'complete':
@@ -261,6 +262,8 @@ export function useWebSocket(enabled: boolean = true) {
         setStreaming(conversationId, false);
         clearThinking(conversationId);
         clearActiveTools(conversationId);
+        // Update conversation status to idle (ready for new input)
+        updateConversation(conversationId, { status: 'idle' });
         break;
 
       case 'error':

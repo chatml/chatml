@@ -71,25 +71,20 @@ export const TabItem = memo(function TabItem({
           aria-selected={isActive}
           data-tab-id={tab.id}
           className={cn(
-            // Base styles
-            'group relative flex items-center gap-1.5 px-3 py-1.5 cursor-pointer select-none',
+            // Base styles - full height, no vertical padding
+            'group relative flex items-center gap-1.5 px-2 h-[33px] cursor-pointer select-none',
             'text-xs font-medium shrink-0',
             // Animation styles
-            'transition-all',
+            'transition-colors duration-150',
             isClosing && 'tab-closing',
-            // Active state - VS Code style
+            // Active state - VS Code style with top indicator
             isActive && [
               'bg-background text-foreground',
-              'border-t-2 border-t-primary',
-              'border-l border-r border-border',
-              'rounded-t-sm',
-              '-mb-px', // Overlap bottom border for seamless look
             ],
             // Inactive state
             !isActive && [
               'text-muted-foreground',
               'hover:text-foreground hover:bg-muted/50',
-              'border-b border-transparent',
             ],
             // Session tab subtle distinction
             tab.group === 'session' && !isActive && 'opacity-90'
@@ -104,6 +99,11 @@ export const TabItem = memo(function TabItem({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
+          {/* Top indicator line - VS Code style */}
+          {isActive && (
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-primary" />
+          )}
+
           {/* Pin indicator */}
           {tab.isPinned && (
             <Pin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />

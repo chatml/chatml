@@ -547,6 +547,11 @@ export default function Home() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+R to reload the app
+      if (e.key === 'r' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        window.location.reload();
+      }
       // Cmd+N to add workspace
       if (e.key === 'n' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();

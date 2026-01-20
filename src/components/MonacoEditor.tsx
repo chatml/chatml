@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { registerMonacoTheme, getThemeById } from '@/lib/monacoThemes';
 
 // Map file extensions to Monaco language identifiers
 function getMonacoLanguage(filename: string): string {
@@ -99,9 +100,17 @@ export function MonacoEditor({
   initialCursorPosition,
   initialScrollPosition,
 }: MonacoEditorProps) {
-  const { resolvedTheme } = useTheme();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const language = getMonacoLanguage(filename);
+  const editorTheme = useSettingsStore((s) => s.editorTheme);
+  const [activeTheme, setActiveTheme] = useState<string>(editorTheme);
+
+  // Register custom theme when editorTheme changes
+  useEffect(() => {
+    registerMonacoTheme(editorTheme).then((themeId) => {
+      setActiveTheme(themeId);
+    });
+  }, [editorTheme]);
 
   const handleMount: OnMount = useCallback((editor) => {
     editorRef.current = editor;
@@ -161,7 +170,7 @@ export function MonacoEditor({
       value={content}
       onChange={handleChange}
       onMount={handleMount}
-      theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+      theme={activeTheme}
       loading={<EditorLoading />}
       options={{
         readOnly,
@@ -205,6 +214,7 @@ interface MonacoDiffEditorProps {
   newContent: string;
   filename: string;
   readOnly?: boolean;
+  sideBySide?: boolean;
 }
 
 export function MonacoDiffEditor({
@@ -212,9 +222,57 @@ export function MonacoDiffEditor({
   newContent,
   filename,
   readOnly = true,
+  sideBySide = true,
 }: MonacoDiffEditorProps) {
-  const { resolvedTheme } = useTheme();
   const language = getMonacoLanguage(filename);
+  const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const editorTheme = useSettingsStore((s) => s.editorTheme);
+  const [activeTheme, setActiveTheme] = useState<string>(editorTheme);
+
+  // Register custom theme when editorTheme changes
+  useEffect(() => {
+    registerMonacoTheme(editorTheme).then((themeId) => {
+      setActiveTheme(themeId);
+    });
+  }, [editorTheme]);
+
+  // Update sideBySide option when it changes without remounting
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ renderSideBySide: sideBySide });
+    }
+  }, [sideBySide]);
+
+  const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
+    editorRef.current = editor;
+  }, []);
+
+  // Memoize options to prevent unnecessary re-renders
+  const options = useMemo(() => ({
+    readOnly,
+    minimap: { enabled: false },
+    lineNumbers: 'on' as const,
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    fontSize: 12,
+    fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
+    lineHeight: 18,
+    padding: { top: 8, bottom: 8 },
+    renderSideBySide: sideBySide,
+    useInlineViewWhenSpaceIsLimited: false, // Prevent auto-switch to unified based on width
+    enableSplitViewResizing: true,
+    renderIndicators: true,
+    renderOverviewRuler: false,
+    diffWordWrap: 'off' as const,
+    scrollbar: {
+      vertical: 'auto' as const,
+      horizontal: 'auto' as const,
+      verticalScrollbarSize: 10,
+      horizontalScrollbarSize: 10,
+    },
+    overviewRulerBorder: false,
+    contextmenu: false,
+  }), [readOnly, sideBySide]);
 
   return (
     <DiffEditor
@@ -222,30 +280,10 @@ export function MonacoDiffEditor({
       language={language}
       original={oldContent}
       modified={newContent}
-      theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+      theme={activeTheme}
       loading={<EditorLoading />}
-      options={{
-        readOnly,
-        minimap: { enabled: false },
-        lineNumbers: 'on',
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        fontSize: 12,
-        fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
-        lineHeight: 18,
-        padding: { top: 8, bottom: 8 },
-        renderSideBySide: true,
-        renderOverviewRuler: false,
-        diffWordWrap: 'off',
-        scrollbar: {
-          vertical: 'auto',
-          horizontal: 'auto',
-          verticalScrollbarSize: 10,
-          horizontalScrollbarSize: 10,
-        },
-        overviewRulerBorder: false,
-        contextmenu: false,
-      }}
+      onMount={handleMount}
+      options={options}
     />
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/stores/appStore';
 import { listRepoFiles, getRepoFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
@@ -73,6 +73,23 @@ export function ChangesPanel() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(400);
+  const changesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Track container width for dynamic truncation
+  useEffect(() => {
+    const container = changesContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   // Handle file selection from file tree (workspace-scoped tab - no sessionId)
   const handleFileSelect = async (path: string) => {
@@ -402,8 +419,8 @@ export function ChangesPanel() {
                 </div>
               </div>
             ) : (
-              <ScrollArea className="h-full">
-                <div className="py-1">
+              <ScrollArea className="h-full [&>div>div]:!block">
+                <div ref={changesContainerRef} className="py-1 overflow-hidden">
                   {[...changes]
                     .sort((a, b) => {
                       const aIsRoot = !a.path.includes('/');
@@ -419,6 +436,7 @@ export function ChangesPanel() {
                         key={change.path}
                         change={change}
                         onSelect={() => handleChangedFileSelect(change.path)}
+                        containerWidth={containerWidth}
                       />
                     ))}
                 </div>
@@ -497,37 +515,69 @@ export function ChangesPanel() {
   );
 }
 
-function FileChangeRow({ change, onSelect }: { change: FileChangeDTO; onSelect: () => void }) {
+function FileChangeRow({ change, onSelect, containerWidth }: { change: FileChangeDTO; onSelect: () => void; containerWidth: number }) {
   const parts = change.path.split('/');
   const fileName = parts.pop() || change.path;
   const dirPath = parts.join('/');
 
-  // Truncate directory path from the left if too long
-  const truncateDir = (dir: string, maxLen: number = 25) => {
-    if (dir.length <= maxLen) return dir;
-    return '...' + dir.slice(-(maxLen - 3));
-  };
+  // Dynamic truncation based on container width
+  // Wider container = show more path segments
+  const smartTruncateDir = useCallback((dir: string) => {
+    const parts = dir.split('/');
+
+    // Calculate how many segments we can show based on width
+    // ~50px for icon, ~80px for stats+checkbox, rest for path
+    const availableWidth = containerWidth - 130;
+    // Rough estimate: each path segment is ~60-80px on average
+    const maxSegments = Math.max(1, Math.floor(availableWidth / 70));
+
+    if (parts.length <= maxSegments) return dir; // Show full path if it fits
+
+    if (maxSegments <= 1) {
+      // Very narrow: just show last segment
+      return '…/' + parts[parts.length - 1];
+    } else if (maxSegments === 2) {
+      // Show first and last
+      return parts[0] + '/…/' + parts[parts.length - 1];
+    } else if (maxSegments === 3) {
+      // Show first, ellipsis, last two
+      return parts[0] + '/…/' + parts.slice(-2).join('/');
+    } else {
+      // Show first two, ellipsis, last segments to fill
+      const lastCount = maxSegments - 2;
+      return parts.slice(0, 2).join('/') + '/…/' + parts.slice(-lastCount).join('/');
+    }
+  }, [containerWidth]);
+
+  const hasStats = change.additions > 0 || change.deletions > 0;
 
   return (
     <div
-      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-accent/50 cursor-pointer"
+      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-accent/50 cursor-pointer w-full max-w-full"
       onClick={onSelect}
+      title={change.path}
     >
-      <FileIcon filename={fileName} />
-      {dirPath && (
-        <span className="text-xs text-muted-foreground truncate shrink-0 max-w-[120px]">
-          {truncateDir(dirPath)}
+      <FileIcon filename={fileName} className="shrink-0" />
+      {/* Path section - truncates to fit available space */}
+      <div className="flex items-center min-w-0 flex-1 overflow-hidden">
+        {dirPath && (
+          <span className="text-xs text-muted-foreground shrink-0">
+            {smartTruncateDir(dirPath)}/
+          </span>
+        )}
+        <span className="text-xs font-medium truncate">{fileName}</span>
+      </div>
+      {/* Stats - always visible */}
+      {hasStats && (
+        <span className="text-[10px] shrink-0 tabular-nums whitespace-nowrap">
+          {change.additions > 0 && (
+            <span className="text-green-500">+{change.additions}</span>
+          )}
+          {change.deletions > 0 && (
+            <span className="text-red-500 ml-1">-{change.deletions}</span>
+          )}
         </span>
       )}
-      <span className="flex-1 text-xs font-medium truncate">{fileName}</span>
-      <span className="text-[10px] shrink-0">
-        {change.additions > 0 && (
-          <span className="text-green-500">+{change.additions}</span>
-        )}
-        {change.deletions > 0 && (
-          <span className="text-red-500 ml-1">-{change.deletions}</span>
-        )}
-      </span>
       <Checkbox className="h-3.5 w-3.5 shrink-0" />
     </div>
   );

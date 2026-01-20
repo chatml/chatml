@@ -6,7 +6,6 @@ import { useTheme } from 'next-themes';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { createTwoFilesPatch } from 'diff';
 import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows } from 'lucide-react';
@@ -122,15 +121,15 @@ export function CodeViewer({
   const [copied, setCopied] = useState(false);
   const [lineCount, setLineCount] = useState(0);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
-  const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
+  const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('split');
 
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
   const language = getLanguage(filename);
 
   useEffect(() => {
-    // In split diff mode, SplitDiffViewer handles highlighting
-    if (isDiffMode && diffViewMode === 'split') {
+    // Monaco handles diff mode highlighting
+    if (isDiffMode) {
       queueMicrotask(() => setIsHighlighting(false));
       return;
     }
@@ -140,37 +139,6 @@ export function CodeViewer({
         setHighlightedHtml('');
         setIsHighlighting(false);
       });
-      return;
-    }
-
-    // Handle unified diff mode
-    if (isDiffMode && diffViewMode === 'unified') {
-      const diffText = createTwoFilesPatch(
-        filename,
-        filename,
-        oldContent || '',
-        content || '',
-        'original',
-        'modified'
-      );
-      const lines = diffText.split('\n');
-      const codeToHighlight = lines.slice(4).join('\n');
-      queueMicrotask(() => {
-        setIsHighlighting(true);
-        setLineCount(lines.length - 4);
-      });
-
-      const theme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light';
-      codeToHtml(codeToHighlight, { lang: 'diff', theme })
-        .then((html) => {
-          setHighlightedHtml(addDiffLineStyles(html));
-          setIsHighlighting(false);
-        })
-        .catch((err) => {
-          console.error('Syntax highlighting failed:', err);
-          setHighlightedHtml(`<pre class="shiki"><code>${escapeHtml(codeToHighlight)}</code></pre>`);
-          setIsHighlighting(false);
-        });
       return;
     }
 
@@ -288,36 +256,15 @@ export function CodeViewer({
           </div>
         </div>
 
-        {/* Diff content */}
+        {/* Diff content - Monaco for both split and unified views */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          {diffViewMode === 'split' ? (
-            <MonacoDiffEditor
-              oldContent={oldContent || ''}
-              newContent={content || ''}
-              filename={filename}
-              readOnly={true}
-            />
-          ) : isHighlighting ? (
-            <div className="p-4 flex items-center justify-center">
-              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="flex min-h-full">
-              {/* Line numbers */}
-              <div className="shrink-0 py-3 pl-3 pr-2 text-[11px] font-mono text-muted-foreground/50 text-right select-none border-r border-border/50 sticky left-0 bg-background min-h-full">
-                {Array.from({ length: lineCount }, (_, i) => (
-                  <div key={i + 1} className="leading-[18px]">
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
-              {/* Code */}
-              <div
-                className="code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto min-h-full [&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4 [&_pre]:!bg-transparent [&_pre]:m-0 [&_code]:block [&_.line]:leading-[18px] [&_.line]:min-h-[18px] [&_.diff-add]:bg-green-500/15 [&_.diff-add]:pl-1 [&_.diff-add]:-ml-1 [&_.diff-remove]:bg-red-500/15 [&_.diff-remove]:pl-1 [&_.diff-remove]:-ml-1 [&_.diff-hunk]:bg-blue-500/10 [&_.diff-hunk]:text-muted-foreground [&_.diff-hunk]:pl-1 [&_.diff-hunk]:-ml-1"
-                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-              />
-            </div>
-          )}
+          <MonacoDiffEditor
+            oldContent={oldContent || ''}
+            newContent={content || ''}
+            filename={filename}
+            readOnly={true}
+            sideBySide={diffViewMode === 'split'}
+          />
         </div>
       </div>
     );
@@ -413,17 +360,3 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-// Add background colors to diff lines based on their content
-function addDiffLineStyles(html: string): string {
-  return html.replace(/<span class="line">(.*?)<\/span>/g, (match, content) => {
-    const textContent = content.replace(/<[^>]*>/g, '');
-    if (textContent.startsWith('+')) {
-      return `<span class="line diff-add">${content}</span>`;
-    } else if (textContent.startsWith('-')) {
-      return `<span class="line diff-remove">${content}</span>`;
-    } else if (textContent.startsWith('@@')) {
-      return `<span class="line diff-hunk">${content}</span>`;
-    }
-    return match;
-  });
-}

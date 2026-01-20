@@ -154,6 +154,8 @@
   html, body {
     @apply bg-background text-foreground;
     overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
