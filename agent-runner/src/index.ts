@@ -56,6 +56,8 @@ const toolPresetIndex = args.indexOf("--tool-preset");
 
 const linearIssue = linearIssueIndex !== -1 ? args[linearIssueIndex + 1] : undefined;
 const toolPreset = toolPresetIndex !== -1 ? args[toolPresetIndex + 1] as "full" | "read-only" | "no-bash" | "safe-edit" : "full";
+const enableCheckpointingIndex = args.indexOf("--enable-checkpointing");
+const enableCheckpointing = enableCheckpointingIndex !== -1;
 
 // Output event types for Go backend
 interface OutputEvent {
@@ -465,6 +467,8 @@ async function main(): Promise<void> {
         // Tool preset configuration
         allowedTools: presetConfig.allowedTools,
         disallowedTools: presetConfig.disallowedTools,
+        // File checkpointing
+        enableFileCheckpointing: enableCheckpointing,
         // stderr callback for debugging
         stderr: (data: string) => {
           emit({ type: "agent_stderr", data });
