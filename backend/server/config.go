@@ -1,5 +1,7 @@
 package server
 
+import "os"
+
 // AllowedOrigins defines the allowed origins for CORS and WebSocket connections.
 // These must be kept in sync to prevent security misconfigurations.
 var AllowedOrigins = []string{
@@ -16,3 +18,17 @@ var AllowedOriginsMap = func() map[string]bool {
 	}
 	return m
 }()
+
+// GitHubConfig holds GitHub OAuth configuration
+type GitHubConfig struct {
+	ClientID     string
+	ClientSecret string
+}
+
+// LoadGitHubConfig loads GitHub OAuth config from environment variables
+func LoadGitHubConfig() GitHubConfig {
+	return GitHubConfig{
+		ClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		ClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+	}
+}
