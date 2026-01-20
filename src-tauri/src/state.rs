@@ -65,17 +65,6 @@ impl AppState {
         }
     }
 
-    /// Get the current sidecar PID
-    pub fn get_sidecar_pid(&self) -> Option<u32> {
-        match self.sidecar_pid.lock() {
-            Ok(guard) => *guard,
-            Err(e) => {
-                log::warn!("sidecar_pid mutex poisoned: {}", e);
-                None
-            }
-        }
-    }
-
     /// Take the sidecar PID (removes it from state)
     pub fn take_sidecar_pid(&self) -> Option<u32> {
         match self.sidecar_pid.lock() {
