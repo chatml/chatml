@@ -313,11 +313,11 @@ func TestAgentEvent_IsTerminalEvent(t *testing.T) {
 
 func TestParseStreamLine_BackwardsCompatibility(t *testing.T) {
 	tests := []struct {
-		name             string
-		input            string
-		expectedType     string
-		expectedMessage  string
-		expectNonEmpty   bool
+		name            string
+		input           string
+		expectedType    string
+		expectedMessage string
+		expectNonEmpty  bool
 	}{
 		{
 			name:           "empty input",
