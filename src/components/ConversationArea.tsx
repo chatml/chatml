@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -70,12 +70,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     streamingState,
   } = useAppStore();
 
-  const currentSession = sessions.find((s) => s.id === selectedSessionId);
-  const sessionConversations = conversations.filter(
-    (c) => c.sessionId === selectedSessionId
+  const currentSession = useMemo(
+    () => sessions.find((s) => s.id === selectedSessionId),
+    [sessions, selectedSessionId]
   );
-  const conversationMessages = messages.filter(
-    (m) => m.conversationId === selectedConversationId
+  const sessionConversations = useMemo(
+    () => conversations.filter((c) => c.sessionId === selectedSessionId),
+    [conversations, selectedSessionId]
+  );
+  const conversationMessages = useMemo(
+    () => messages.filter((m) => m.conversationId === selectedConversationId),
+    [messages, selectedConversationId]
   );
 
   // Auto-scroll management
@@ -110,9 +115,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }, []);
 
   // Scroll when messages change or streaming updates
-  const streamingText = selectedConversationId
-    ? streamingState[selectedConversationId]?.text
-    : null;
+  const streamingText = useMemo(
+    () => selectedConversationId ? streamingState[selectedConversationId]?.text : null,
+    [selectedConversationId, streamingState]
+  );
 
   useEffect(() => {
     scrollToBottom();
@@ -357,10 +363,10 @@ function EmptyState({ sessionName }: { sessionName?: string }) {
   );
 }
 
-function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean }) {
+const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean }) {
   const [copied, setCopied] = useState(false);
 
-  const copyContent = async () => {
+  const copyContent = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
@@ -368,27 +374,7 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
     }
-  };
-
-  const copyAsMarkdown = async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
-  };
-
-
-  const formatDuration = (ms?: number) => {
-    if (!ms) return '';
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    if (minutes > 0) return `${minutes}m ${remainingSeconds}s`;
-    return `${seconds}s`;
-  };
+  }, [message.content]);
 
   // System messages (setup info, etc.)
   if (message.role === 'system') {
@@ -463,7 +449,7 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
                   <Copy className="mr-2 h-4 w-4" />
                   Copy
                 </ContextMenuItem>
-                <ContextMenuItem onClick={copyAsMarkdown}>
+                <ContextMenuItem onClick={copyContent}>
                   <FileText className="mr-2 h-4 w-4" />
                   Copy as Markdown
                 </ContextMenuItem>
@@ -483,7 +469,13 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if message content/id changed or isFirst changed
+  return prevProps.message.id === nextProps.message.id &&
+         prevProps.message.content === nextProps.message.content &&
+         prevProps.message.timestamp === nextProps.message.timestamp &&
+         prevProps.isFirst === nextProps.isFirst;
+});
 
 function VerificationBlock({ results }: { results: VerificationResult[] }) {
   const [isOpen, setIsOpen] = useState(true);
