@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -38,6 +39,7 @@ func newTestStore(t *testing.T) *SQLiteStore {
 // createTestRepo creates a test repo with sensible defaults
 func createTestRepo(t *testing.T, s *SQLiteStore, id string) *models.Repo {
 	t.Helper()
+	ctx := context.Background()
 	repo := &models.Repo{
 		ID:        id,
 		Name:      "test-repo-" + id,
@@ -45,13 +47,14 @@ func createTestRepo(t *testing.T, s *SQLiteStore, id string) *models.Repo {
 		Branch:    "main",
 		CreatedAt: time.Now(),
 	}
-	s.AddRepo(repo)
+	require.NoError(t, s.AddRepo(ctx, repo))
 	return repo
 }
 
 // createTestSession creates a test session with sensible defaults
 func createTestSession(t *testing.T, s *SQLiteStore, id, workspaceID string) *models.Session {
 	t.Helper()
+	ctx := context.Background()
 	session := &models.Session{
 		ID:          id,
 		WorkspaceID: workspaceID,
@@ -62,13 +65,14 @@ func createTestSession(t *testing.T, s *SQLiteStore, id, workspaceID string) *mo
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	s.AddSession(session)
+	require.NoError(t, s.AddSession(ctx, session))
 	return session
 }
 
 // createTestConversation creates a test conversation with sensible defaults
 func createTestConversation(t *testing.T, s *SQLiteStore, id, sessionID string) *models.Conversation {
 	t.Helper()
+	ctx := context.Background()
 	conv := &models.Conversation{
 		ID:        id,
 		SessionID: sessionID,
@@ -78,13 +82,14 @@ func createTestConversation(t *testing.T, s *SQLiteStore, id, sessionID string) 
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	s.AddConversation(conv)
+	require.NoError(t, s.AddConversation(ctx, conv))
 	return conv
 }
 
 // createTestAgent creates a test agent with sensible defaults
 func createTestAgent(t *testing.T, s *SQLiteStore, id, repoID string) *models.Agent {
 	t.Helper()
+	ctx := context.Background()
 	agent := &models.Agent{
 		ID:        id,
 		RepoID:    repoID,
@@ -94,7 +99,7 @@ func createTestAgent(t *testing.T, s *SQLiteStore, id, repoID string) *models.Ag
 		Branch:    "agent/" + id,
 		CreatedAt: time.Now(),
 	}
-	s.AddAgent(agent)
+	require.NoError(t, s.AddAgent(ctx, agent))
 	return agent
 }
 

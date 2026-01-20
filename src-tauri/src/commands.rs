@@ -5,6 +5,7 @@ use crate::error::AppResult;
 use crate::sidecar;
 use crate::speech;
 use crate::state::AppState;
+use crate::watcher;
 
 /// Mark the app as ready (called from frontend when connected)
 #[tauri::command]
@@ -56,4 +57,20 @@ pub fn start_speech_recognition(
 #[tauri::command]
 pub fn stop_speech_recognition(state: State<'_, Arc<AppState>>) -> AppResult<()> {
     speech::stop_speech_recognition(&state)
+}
+
+/// Start watching a workspace directory for file changes
+#[tauri::command]
+pub fn watch_workspace(
+    app: tauri::AppHandle,
+    workspace_id: String,
+    workspace_path: String,
+) -> Result<(), String> {
+    watcher::watch_workspace(&app, workspace_id, workspace_path)
+}
+
+/// Stop watching a workspace directory
+#[tauri::command]
+pub fn unwatch_workspace(workspace_id: String) -> Result<(), String> {
+    watcher::unwatch_workspace(&workspace_id)
 }

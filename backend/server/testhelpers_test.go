@@ -106,6 +106,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 // createTestRepo adds a test repo to the store
 func createTestRepo(t *testing.T, s *store.SQLiteStore, id, path string) *models.Repo {
 	t.Helper()
+	ctx := context.Background()
 
 	repo := &models.Repo{
 		ID:        id,
@@ -114,13 +115,14 @@ func createTestRepo(t *testing.T, s *store.SQLiteStore, id, path string) *models
 		Branch:    "main",
 		CreatedAt: time.Now(),
 	}
-	s.AddRepo(repo)
+	require.NoError(t, s.AddRepo(ctx, repo))
 	return repo
 }
 
 // createTestSession adds a test session to the store
 func createTestSession(t *testing.T, s *store.SQLiteStore, id, workspaceID string) *models.Session {
 	t.Helper()
+	ctx := context.Background()
 
 	session := &models.Session{
 		ID:          id,
@@ -130,13 +132,14 @@ func createTestSession(t *testing.T, s *store.SQLiteStore, id, workspaceID strin
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	s.AddSession(session)
+	require.NoError(t, s.AddSession(ctx, session))
 	return session
 }
 
 // createTestConversation adds a test conversation to the store
 func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID string) *models.Conversation {
 	t.Helper()
+	ctx := context.Background()
 
 	conv := &models.Conversation{
 		ID:        id,
@@ -146,7 +149,7 @@ func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID st
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	s.AddConversation(conv)
+	require.NoError(t, s.AddConversation(ctx, conv))
 	return conv
 }
 

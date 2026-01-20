@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -34,6 +35,28 @@ func NewRepoManager() *RepoManager {
 	return &RepoManager{}
 }
 
+// validateGitRef validates a git reference (branch, tag, commit SHA) to prevent command injection.
+// Valid refs contain only alphanumeric characters, hyphens, underscores, forward slashes, dots, and tildes.
+// Rejects refs starting with hyphen (could be interpreted as flags) or containing shell metacharacters.
+var validGitRefPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.\-/~^@{}]*$`)
+
+func validateGitRef(ref string) error {
+	if ref == "" {
+		return fmt.Errorf("empty git ref")
+	}
+	// Reject refs starting with hyphen (could be interpreted as git flags)
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("invalid git ref: cannot start with hyphen")
+	}
+	// Reject shell metacharacters and other dangerous patterns
+	if !validGitRefPattern.MatchString(ref) {
+		return fmt.Errorf("invalid git ref: contains invalid characters")
+	}
+	// Note: ".." is allowed as it's valid git range syntax (e.g., "main..feature")
+	// The regex already rejects shell metacharacters, so no additional check needed
+	return nil
+}
+
 func (rm *RepoManager) ValidateRepo(path string) error {
 	gitDir := filepath.Join(path, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -58,6 +81,9 @@ func (rm *RepoManager) GetRepoName(path string) string {
 
 // GetFileAtRef returns the content of a file at a specific git ref (branch, tag, or commit)
 func (rm *RepoManager) GetFileAtRef(repoPath, ref, filePath string) (string, error) {
+	if err := validateGitRef(ref); err != nil {
+		return "", fmt.Errorf("invalid ref: %w", err)
+	}
 	cmd, cancel := gitCmd(repoPath, "show", fmt.Sprintf("%s:%s", ref, filePath))
 	defer cancel()
 	out, err := cmd.Output()
@@ -69,6 +95,9 @@ func (rm *RepoManager) GetFileAtRef(repoPath, ref, filePath string) (string, err
 
 // GetChangedFiles returns a list of files that have changed compared to a base ref
 func (rm *RepoManager) GetChangedFiles(repoPath, baseRef string) ([]string, error) {
+	if err := validateGitRef(baseRef); err != nil {
+		return nil, fmt.Errorf("invalid base ref: %w", err)
+	}
 	cmd, cancel := gitCmd(repoPath, "diff", "--name-only", baseRef)
 	defer cancel()
 	out, err := cmd.Output()
@@ -96,6 +125,9 @@ type FileChange struct {
 
 // GetChangedFilesWithStats returns files changed compared to a base ref with addition/deletion counts
 func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]FileChange, error) {
+	if err := validateGitRef(baseRef); err != nil {
+		return nil, fmt.Errorf("invalid base ref: %w", err)
+	}
 	// First get the diff stats
 	cmd, cancel := gitCmd(repoPath, "diff", "--numstat", baseRef)
 	defer cancel()

@@ -5,6 +5,7 @@ mod sidecar;
 mod speech;
 mod state;
 mod tray;
+mod watcher;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager, WindowEvent};
@@ -87,7 +88,9 @@ pub fn run() {
             commands::is_window_visible,
             commands::check_speech_availability,
             commands::start_speech_recognition,
-            commands::stop_speech_recognition
+            commands::stop_speech_recognition,
+            commands::watch_workspace,
+            commands::unwatch_workspace
         ])
         .setup(move |app| {
             // Create and set the menu

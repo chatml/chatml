@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -64,7 +66,11 @@ func (m *Manager) SetConversationStatusHandler(handler ConversationStatusHandler
 
 // StartConversation creates and starts a new conversation within a session
 func (m *Manager) StartConversation(sessionID, conversationType, initialMessage string) (*models.Conversation, error) {
-	session := m.store.GetSession(sessionID)
+	ctx := context.Background()
+	session, err := m.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
 	if session == nil {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
@@ -72,7 +78,10 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 	convID := uuid.New().String()[:8]
 
 	// Count existing conversations of this type to generate name
-	existingConvs := m.store.ListConversations(sessionID)
+	existingConvs, err := m.store.ListConversations(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list conversations: %w", err)
+	}
 	typeCount := 1
 	for _, c := range existingConvs {
 		if c.Type == conversationType {
@@ -106,7 +115,9 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 		UpdatedAt:   now,
 	}
 
-	m.store.AddConversation(conv)
+	if err := m.store.AddConversation(ctx, conv); err != nil {
+		return nil, fmt.Errorf("failed to add conversation: %w", err)
+	}
 
 	// Create and start process
 	proc := NewProcess(convID, session.WorktreePath, convID)
@@ -116,9 +127,11 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 	m.mu.Unlock()
 
 	if err := proc.Start(); err != nil {
-		m.store.UpdateConversation(convID, func(c *models.Conversation) {
+		if updateErr := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 			c.Status = models.ConversationStatusIdle
-		})
+		}); updateErr != nil {
+			log.Printf("[manager] failed to update conversation status on start error: %v", updateErr)
+		}
 		if m.onConversationStatus != nil {
 			m.onConversationStatus(convID, models.ConversationStatusIdle)
 		}
@@ -134,12 +147,14 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 	// Send the initial message if provided
 	if initialMessage != "" {
 		// Store user message
-		m.store.AddMessageToConversation(convID, models.Message{
+		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 			ID:        uuid.New().String()[:8],
 			Role:      "user",
 			Content:   initialMessage,
 			Timestamp: time.Now(),
-		})
+		}); err != nil {
+			log.Printf("[manager] failed to store initial user message: %v", err)
+		}
 
 		if err := proc.SendMessage(initialMessage); err != nil {
 			return conv, fmt.Errorf("failed to send initial message: %w", err)
@@ -149,8 +164,11 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 	return conv, nil
 }
 
-// handleConversationOutput processes output from the agent process
+// handleConversationOutput processes output from the agent process.
+// Note: Uses context.Background() as this runs in a background goroutine.
+// Store errors are logged but not propagated since this is async processing.
 func (m *Manager) handleConversationOutput(convID string, proc *Process) {
+	ctx := context.Background()
 	var currentAssistantMessage string
 
 	for line := range proc.Output() {
@@ -169,29 +187,35 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 
 		case EventTypeToolEnd:
 			// Store tool action in summary
-			m.store.AddToolActionToConversation(convID, models.ToolAction{
+			if err := m.store.AddToolActionToConversation(ctx, convID, models.ToolAction{
 				ID:      event.ID,
 				Tool:    event.Tool,
 				Target:  event.Summary,
 				Success: event.Success,
-			})
+			}); err != nil {
+				log.Printf("[manager] failed to store tool action for conv %s: %v", convID, err)
+			}
 
 		case EventTypeNameSuggestion:
 			// Update conversation name
-			m.store.UpdateConversation(convID, func(c *models.Conversation) {
+			if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 				c.Name = event.Name
 				c.UpdatedAt = time.Now()
-			})
+			}); err != nil {
+				log.Printf("[manager] failed to update conversation name for %s: %v", convID, err)
+			}
 
 		case EventTypeComplete, EventTypeResult:
 			// Store accumulated assistant message
 			if currentAssistantMessage != "" {
-				m.store.AddMessageToConversation(convID, models.Message{
+				if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 					ID:        uuid.New().String()[:8],
 					Role:      "assistant",
 					Content:   currentAssistantMessage,
 					Timestamp: time.Now(),
-				})
+				}); err != nil {
+					log.Printf("[manager] failed to store assistant message for conv %s: %v", convID, err)
+				}
 				currentAssistantMessage = ""
 			}
 		}
@@ -213,17 +237,21 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 
 	// Store any remaining assistant message
 	if currentAssistantMessage != "" {
-		m.store.AddMessageToConversation(convID, models.Message{
+		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 			ID:        uuid.New().String()[:8],
 			Role:      "assistant",
 			Content:   currentAssistantMessage,
 			Timestamp: time.Now(),
-		})
+		}); err != nil {
+			log.Printf("[manager] failed to store final assistant message for conv %s: %v", convID, err)
+		}
 	}
 }
 
-// handleConversationCompletion handles process completion
+// handleConversationCompletion handles process completion.
+// Note: Uses context.Background() as this runs in a background goroutine.
 func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
+	ctx := context.Background()
 	<-proc.Done()
 
 	var newStatus string
@@ -233,10 +261,12 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 		newStatus = models.ConversationStatusIdle // Completed turn, waiting for next message
 	}
 
-	m.store.UpdateConversation(convID, func(c *models.Conversation) {
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 		c.Status = newStatus
 		c.UpdatedAt = time.Now()
-	})
+	}); err != nil {
+		log.Printf("[manager] failed to update conversation status on completion for %s: %v", convID, err)
+	}
 
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, newStatus)
@@ -245,18 +275,25 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 
 // SendConversationMessage sends a follow-up message to an existing conversation
 func (m *Manager) SendConversationMessage(convID, message string) error {
+	ctx := context.Background()
 	m.mu.RLock()
 	proc, ok := m.convProcesses[convID]
 	m.mu.RUnlock()
 
 	if !ok || !proc.IsRunning() {
 		// Process not running, need to restart it
-		conv := m.store.GetConversation(convID)
+		conv, err := m.store.GetConversation(ctx, convID)
+		if err != nil {
+			return fmt.Errorf("failed to get conversation: %w", err)
+		}
 		if conv == nil {
 			return fmt.Errorf("conversation not found: %s", convID)
 		}
 
-		session := m.store.GetSession(conv.SessionID)
+		session, err := m.store.GetSession(ctx, conv.SessionID)
+		if err != nil {
+			return fmt.Errorf("failed to get session: %w", err)
+		}
 		if session == nil {
 			return fmt.Errorf("session not found: %s", conv.SessionID)
 		}
@@ -277,22 +314,26 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 		go m.handleConversationCompletion(convID, proc)
 
 		// Update status
-		m.store.UpdateConversation(convID, func(c *models.Conversation) {
+		if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 			c.Status = models.ConversationStatusActive
 			c.UpdatedAt = time.Now()
-		})
+		}); err != nil {
+			log.Printf("[manager] failed to update conversation status to active: %v", err)
+		}
 		if m.onConversationStatus != nil {
 			m.onConversationStatus(convID, models.ConversationStatusActive)
 		}
 	}
 
 	// Store user message
-	m.store.AddMessageToConversation(convID, models.Message{
+	if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 		ID:        uuid.New().String()[:8],
 		Role:      "user",
 		Content:   message,
 		Timestamp: time.Now(),
-	})
+	}); err != nil {
+		log.Printf("[manager] failed to store user message for conv %s: %v", convID, err)
+	}
 
 	// Send to process
 	return proc.SendMessage(message)
@@ -300,6 +341,7 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 
 // StopConversation stops a running conversation
 func (m *Manager) StopConversation(convID string) {
+	ctx := context.Background()
 	m.mu.Lock()
 	proc, ok := m.convProcesses[convID]
 	if !ok || !proc.IsRunning() {
@@ -314,10 +356,12 @@ func (m *Manager) StopConversation(convID string) {
 	proc.SendStop()
 	proc.Stop()
 
-	m.store.UpdateConversation(convID, func(c *models.Conversation) {
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 		c.Status = models.ConversationStatusIdle
 		c.UpdatedAt = time.Now()
-	})
+	}); err != nil {
+		log.Printf("[manager] failed to update conversation status on stop: %v", err)
+	}
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, models.ConversationStatusIdle)
 	}
@@ -325,12 +369,15 @@ func (m *Manager) StopConversation(convID string) {
 
 // CompleteConversation marks a conversation as completed
 func (m *Manager) CompleteConversation(convID string) {
+	ctx := context.Background()
 	m.StopConversation(convID)
 
-	m.store.UpdateConversation(convID, func(c *models.Conversation) {
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 		c.Status = models.ConversationStatusCompleted
 		c.UpdatedAt = time.Now()
-	})
+	}); err != nil {
+		log.Printf("[manager] failed to update conversation status to completed: %v", err)
+	}
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, models.ConversationStatusCompleted)
 	}
@@ -346,6 +393,7 @@ func (m *Manager) GetConversationProcess(convID string) *Process {
 // ========== Legacy Agent Methods (for backwards compatibility) ==========
 
 func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, error) {
+	ctx := context.Background()
 	agentID := uuid.New().String()[:8]
 	sessionID := uuid.New().String()
 
@@ -364,7 +412,9 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 		CreatedAt: time.Now(),
 	}
 
-	m.store.AddAgent(agent)
+	if err := m.store.AddAgent(ctx, agent); err != nil {
+		return nil, fmt.Errorf("failed to add agent: %w", err)
+	}
 
 	proc := NewProcess(agentID, worktreePath, sessionID)
 
@@ -373,14 +423,18 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	m.mu.Unlock()
 
 	if err := proc.Start(); err != nil {
-		m.store.UpdateAgentStatus(agentID, models.StatusError)
+		if updateErr := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); updateErr != nil {
+			log.Printf("[manager] failed to update agent status on start error: %v", updateErr)
+		}
 		if m.onStatus != nil {
 			m.onStatus(agentID, models.StatusError)
 		}
 		return agent, err
 	}
 
-	m.store.UpdateAgentStatus(agentID, models.StatusRunning)
+	if err := m.store.UpdateAgentStatus(ctx, agentID, models.StatusRunning); err != nil {
+		log.Printf("[manager] failed to update agent status to running: %v", err)
+	}
 	if m.onStatus != nil {
 		m.onStatus(agentID, models.StatusRunning)
 	}
@@ -398,14 +452,19 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	}()
 
 	go func() {
+		bgCtx := context.Background()
 		<-proc.Done()
 		if proc.ExitError() != nil {
-			m.store.UpdateAgentStatus(agentID, models.StatusError)
+			if err := m.store.UpdateAgentStatus(bgCtx, agentID, models.StatusError); err != nil {
+				log.Printf("[manager] failed to update agent status on error exit: %v", err)
+			}
 			if m.onStatus != nil {
 				m.onStatus(agentID, models.StatusError)
 			}
 		} else {
-			m.store.UpdateAgentStatus(agentID, models.StatusDone)
+			if err := m.store.UpdateAgentStatus(bgCtx, agentID, models.StatusDone); err != nil {
+				log.Printf("[manager] failed to update agent status to done: %v", err)
+			}
 			if m.onStatus != nil {
 				m.onStatus(agentID, models.StatusDone)
 			}
@@ -413,7 +472,9 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	}()
 
 	if err := proc.SendMessage(task); err != nil {
-		m.store.UpdateAgentStatus(agentID, models.StatusError)
+		if updateErr := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); updateErr != nil {
+			log.Printf("[manager] failed to update agent status on send error: %v", updateErr)
+		}
 		if m.onStatus != nil {
 			m.onStatus(agentID, models.StatusError)
 		}
@@ -424,6 +485,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 }
 
 func (m *Manager) StopAgent(agentID string) {
+	ctx := context.Background()
 	m.mu.Lock()
 	proc, ok := m.processes[agentID]
 	if !ok {
@@ -436,7 +498,9 @@ func (m *Manager) StopAgent(agentID string) {
 
 	// Now safe to stop without holding lock
 	proc.Stop()
-	m.store.UpdateAgentStatus(agentID, models.StatusError)
+	if err := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); err != nil {
+		log.Printf("[manager] failed to update agent status on stop: %v", err)
+	}
 	if m.onStatus != nil {
 		m.onStatus(agentID, models.StatusError)
 	}
