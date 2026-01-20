@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,7 +129,7 @@ func (p *Process) Start() error {
 			select {
 			case p.output <- scanner.Text():
 			default:
-				// Drop if buffer full
+				log.Printf("[process:%s] Output buffer full, dropping stdout message", p.ID)
 			}
 		}
 	}()
@@ -141,6 +142,7 @@ func (p *Process) Start() error {
 			select {
 			case p.output <- "[stderr] " + scanner.Text():
 			default:
+				log.Printf("[process:%s] Output buffer full, dropping stderr message", p.ID)
 			}
 		}
 	}()
