@@ -621,12 +621,31 @@ function handleMessage(message: SDKMessage): void {
           }
         }
       }
+
+      // Check for checkpoint_uuid in user messages (present when checkpointing is enabled)
+      if ((message as any).checkpoint_uuid) {
+        emit({
+          type: "checkpoint_created",
+          checkpointUuid: (message as any).checkpoint_uuid,
+          messageIndex: (message as any).message_index || 0,
+        });
+      }
       break;
     }
 
     case "result": {
       flushBlockBuffer();
       const resultMsg = message as SDKResultMessage;
+
+      // Check for checkpoint_uuid in result messages (present when checkpointing is enabled)
+      if ((message as any).checkpoint_uuid) {
+        emit({
+          type: "checkpoint_created",
+          checkpointUuid: (message as any).checkpoint_uuid,
+          messageIndex: (message as any).message_index || 0,
+          isResult: true,
+        });
+      }
 
       if (resultMsg.subtype === "success") {
         emit({
