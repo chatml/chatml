@@ -55,7 +55,8 @@ pub fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 }
             }
             "tray_quit" => {
-                std::process::exit(0);
+                // Use Tauri's exit to run cleanup handlers (e.g., sidecar termination)
+                app.exit(0);
             }
             _ => {}
         })

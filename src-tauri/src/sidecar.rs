@@ -8,7 +8,10 @@ use tauri_plugin_shell::ShellExt;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-/// Kill any existing process on port 9876
+/// Port used by the ChatML backend sidecar
+pub const SIDECAR_PORT: u16 = 9876;
+
+/// Kill any existing process on the specified port
 pub fn kill_process_on_port(port: u16) {
     #[cfg(unix)]
     {
@@ -49,7 +52,7 @@ pub fn kill_stored_sidecar(state: &AppState) {
 pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult<CommandChild> {
     // Clean up any existing processes before spawning
     kill_stored_sidecar(state);
-    kill_process_on_port(9876);
+    kill_process_on_port(SIDECAR_PORT);
 
     // Small delay to ensure port is released
     std::thread::sleep(Duration::from_millis(200));
@@ -133,7 +136,7 @@ pub async fn restart_sidecar_async(
 
     // Clean up existing sidecar process
     kill_stored_sidecar(&state);
-    kill_process_on_port(9876);
+    kill_process_on_port(SIDECAR_PORT);
 
     // Use async sleep instead of blocking (spawn blocking to avoid blocking the async runtime)
     tauri::async_runtime::spawn_blocking(|| {

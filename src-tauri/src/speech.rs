@@ -116,7 +116,10 @@ pub fn start_speech_recognition(app: &tauri::AppHandle, state: &Arc<AppState>) -
                                 // Raw JSON without prefix - validate it
                                 validate_speech_json(line_str)
                             } else if let Some(idx) = line_str.find("{\"type\":") {
-                                // JSON embedded in a log line - extract and validate
+                                // JSON embedded in a log line - extract from the start marker to end of line.
+                                // This extraction is intentionally simple: it assumes JSON ends at line end.
+                                // If the extraction is incorrect (truncated or malformed), validate_speech_json
+                                // will catch it via proper JSON parsing and reject invalid payloads.
                                 let json_part = &line_str[idx..];
                                 if json_part.ends_with("}") {
                                     validate_speech_json(json_part)

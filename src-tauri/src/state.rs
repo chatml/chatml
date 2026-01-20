@@ -54,45 +54,66 @@ impl AppState {
 
     /// Store the sidecar PID
     pub fn set_sidecar_pid(&self, pid: Option<u32>) {
-        if let Ok(mut guard) = self.sidecar_pid.lock() {
-            if let Some(p) = pid {
-                log::info!("Stored sidecar PID: {}", p);
+        match self.sidecar_pid.lock() {
+            Ok(mut guard) => {
+                if let Some(p) = pid {
+                    log::info!("Stored sidecar PID: {}", p);
+                }
+                *guard = pid;
             }
-            *guard = pid;
+            Err(e) => log::warn!("sidecar_pid mutex poisoned: {}", e),
         }
     }
 
     /// Get the current sidecar PID
     pub fn get_sidecar_pid(&self) -> Option<u32> {
-        self.sidecar_pid.lock().ok().and_then(|guard| *guard)
+        match self.sidecar_pid.lock() {
+            Ok(guard) => *guard,
+            Err(e) => {
+                log::warn!("sidecar_pid mutex poisoned: {}", e);
+                None
+            }
+        }
     }
 
     /// Take the sidecar PID (removes it from state)
     pub fn take_sidecar_pid(&self) -> Option<u32> {
-        self.sidecar_pid.lock().ok().and_then(|mut guard| guard.take())
+        match self.sidecar_pid.lock() {
+            Ok(mut guard) => guard.take(),
+            Err(e) => {
+                log::warn!("sidecar_pid mutex poisoned: {}", e);
+                None
+            }
+        }
     }
 
     /// Check if speech sidecar is running
     pub fn is_speech_running(&self) -> bool {
-        self.speech_sidecar
-            .lock()
-            .ok()
-            .map(|guard| guard.is_some())
-            .unwrap_or(false)
+        match self.speech_sidecar.lock() {
+            Ok(guard) => guard.is_some(),
+            Err(e) => {
+                log::warn!("speech_sidecar mutex poisoned: {}", e);
+                false
+            }
+        }
     }
 
     /// Store the speech sidecar child process
     pub fn set_speech_sidecar(&self, child: Option<CommandChild>) {
-        if let Ok(mut guard) = self.speech_sidecar.lock() {
-            *guard = child;
+        match self.speech_sidecar.lock() {
+            Ok(mut guard) => *guard = child,
+            Err(e) => log::warn!("speech_sidecar mutex poisoned: {}", e),
         }
     }
 
     /// Take the speech sidecar (removes it from state)
     pub fn take_speech_sidecar(&self) -> Option<CommandChild> {
-        self.speech_sidecar
-            .lock()
-            .ok()
-            .and_then(|mut guard| guard.take())
+        match self.speech_sidecar.lock() {
+            Ok(mut guard) => guard.take(),
+            Err(e) => {
+                log::warn!("speech_sidecar mutex poisoned: {}", e);
+                None
+            }
+        }
     }
 }
