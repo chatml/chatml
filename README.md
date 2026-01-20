@@ -1,129 +1,227 @@
 # ChatML
 
-A desktop application for AI-powered conversations built with Tauri, Next.js, and Claude Agent SDK.
+A native desktop application for AI-assisted software development using Claude. ChatML provides isolated git worktree sessions for each task, enabling parallel development workflows with full conversation context.
+
+## Overview
+
+ChatML combines a modern React frontend with a Go backend and Claude Agent SDK integration to create an intelligent development environment. Each coding session runs in an isolated git worktree, allowing you to work on multiple features simultaneously without branch conflicts.
+
+```mermaid
+graph TB
+    subgraph Desktop["Desktop App (Tauri)"]
+        UI[Next.js Frontend]
+        Tauri[Tauri Shell]
+    end
+
+    subgraph Backend["Go Backend :9876"]
+        API[REST API]
+        WS[WebSocket Hub]
+        Store[(SQLite)]
+        Git[Git/Worktree Manager]
+    end
+
+    subgraph Agent["Agent Runner"]
+        SDK[Claude Agent SDK]
+        Tools[Tool Execution]
+    end
+
+    UI <-->|HTTP/WS| API
+    UI <-->|Events| WS
+    API --> Store
+    API --> Git
+    API <-->|Spawn/Stream| SDK
+    SDK --> Tools
+    Tools -->|File Ops| Git
+```
 
 ## Features
 
-- Conversational AI interface with Claude Agent SDK integration
-- File viewer with syntax highlighting
-- Session persistence across restarts
-- Dynamic action sidebar with drag-and-drop support
-- Git diff visualization
-- Dark mode support
-- Real-time chat with WebSocket connections
+- **Worktree Sessions** - Each task runs in an isolated git worktree for parallel development
+- **Claude Integration** - Native Claude Agent SDK with streaming responses and tool use
+- **Real-time Updates** - WebSocket-powered live updates for agent activity
+- **Git Diff Visualization** - Side-by-side and inline diff views for code changes
+- **File Browser** - Navigate and edit files with syntax highlighting
+- **Session Management** - Pin, archive, and track progress across sessions
+- **PR Workflow** - Create and track pull requests directly from sessions
+
+## Architecture
+
+### Data Model
+
+```mermaid
+erDiagram
+    Workspace ||--o{ Session : contains
+    Session ||--o{ Conversation : has
+    Conversation ||--o{ Message : contains
+    Session ||--o{ FileChange : tracks
+
+    Workspace {
+        string id PK
+        string name
+        string path
+        string defaultBranch
+    }
+
+    Session {
+        string id PK
+        string workspaceId FK
+        string branch
+        string worktreePath
+        string status
+        json stats
+    }
+
+    Conversation {
+        string id PK
+        string sessionId FK
+        string type
+        string status
+    }
+
+    Message {
+        string id PK
+        string conversationId FK
+        string role
+        string content
+    }
+```
+
+### Component Architecture
+
+```mermaid
+graph LR
+    subgraph Frontend
+        App[page.tsx]
+        Sidebar[WorkspaceSidebar]
+        Conv[ConversationArea]
+        Changes[ChangesPanel]
+        Input[ChatInput]
+    end
+
+    subgraph State["State (Zustand)"]
+        Store[appStore]
+    end
+
+    subgraph Hooks
+        WS[useWebSocket]
+    end
+
+    App --> Sidebar
+    App --> Conv
+    App --> Changes
+    App --> Input
+
+    Sidebar --> Store
+    Conv --> Store
+    Changes --> Store
+    Input --> Store
+
+    Store <--> WS
+    WS <-->|Events| Backend
+```
 
 ## Tech Stack
 
 ### Frontend
-- [Next.js 16](https://nextjs.org) - React framework with Turbopack
-- [React 19](https://react.dev) - UI library
-- [Tailwind CSS 4](https://tailwindcss.com) - Styling
-- [Radix UI](https://www.radix-ui.com) - Accessible component primitives
-- [Zustand](https://github.com/pmndrs/zustand) - State management
-- [Shiki](https://shiki.style) - Syntax highlighting
+- **[Next.js 15](https://nextjs.org)** - React framework with App Router
+- **[React 19](https://react.dev)** - UI library
+- **[Tailwind CSS 4](https://tailwindcss.com)** - Utility-first styling
+- **[Radix UI](https://www.radix-ui.com)** - Accessible component primitives
+- **[Zustand](https://github.com/pmndrs/zustand)** - Lightweight state management
+- **[Shiki](https://shiki.style)** - Syntax highlighting
 
 ### Backend
-- [Tauri 2](https://tauri.app) - Desktop application framework
-- [Rust](https://www.rust-lang.org) - Backend runtime
+- **[Go](https://go.dev)** - Backend API server
+- **[SQLite](https://sqlite.org)** - Local data persistence
+- **[Gorilla WebSocket](https://github.com/gorilla/websocket)** - Real-time communication
 
-### Key Libraries
-- `@dnd-kit` - Drag and drop functionality
-- `react-markdown` with `remark-gfm` - Markdown rendering
-- `@git-diff-view` - Git diff visualization
-- `lucide-react` - Icons
+### Desktop
+- **[Tauri 2](https://tauri.app)** - Native desktop wrapper
+- **[Rust](https://www.rust-lang.org)** - Tauri runtime
+
+### Agent
+- **[Claude Agent SDK](https://docs.anthropic.com)** - AI agent framework
+- **[Node.js](https://nodejs.org)** - Agent runner runtime
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
-
-- [Node.js](https://nodejs.org) (v20 or higher)
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri CLI prerequisites](https://tauri.app/start/prerequisites/)
+- [Node.js](https://nodejs.org) v20+
+- [Go](https://go.dev) 1.22+
+- [Rust](https://www.rust-lang.org/tools/install) (for Tauri)
+- [Tauri CLI](https://tauri.app/start/prerequisites/)
 
 ## Getting Started
 
-1. Clone the repository:
-```bash
-git clone <your-repo-url>
-cd chatml
-```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/chatml/chatml.git
+   cd chatml
+   ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+2. **Install dependencies**
+   ```bash
+   npm install
+   cd agent-runner && npm install && cd ..
+   ```
 
-3. Run the development server:
-```bash
-npm run tauri:dev
-```
+3. **Build the backend**
+   ```bash
+   cd backend && go build -o chatml-backend && cd ..
+   ```
 
-This will start both the Next.js frontend and the Tauri backend in development mode.
-
-For frontend-only development:
-```bash
-npm run dev
-```
-
-Then open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## Available Scripts
-
-- `npm run dev` - Start Next.js development server with Turbopack
-- `npm run tauri:dev` - Start Tauri development mode (frontend + backend)
-- `npm run tauri:build` - Build the production desktop application
-- `npm run build` - Build Next.js for production
-- `npm run start` - Start Next.js production server
-- `npm run lint` - Run ESLint
-
-## Building for Production
-
-To create a production build of the desktop application:
-
-```bash
-npm run tauri:build
-```
-
-The built application will be available in `src-tauri/target/release/bundle/`.
+4. **Run in development**
+   ```bash
+   npm run tauri:dev
+   ```
 
 ## Project Structure
 
 ```
 chatml/
-├── src/                    # Next.js frontend source
-│   ├── app/               # Next.js app directory
-│   ├── components/        # React components
-│   ├── hooks/            # Custom React hooks
-│   ├── lib/              # Utility functions and types
-│   └── stores/           # Zustand state stores
-├── src-tauri/            # Tauri backend
-│   ├── src/             # Rust source code
-│   └── tauri.conf.json  # Tauri configuration
-├── agent-runner/         # Claude Agent SDK integration
-└── public/              # Static assets
+├── src/                      # Next.js frontend
+│   ├── app/                  # App router pages
+│   ├── components/           # React components
+│   │   ├── WorkspaceSidebar  # Session navigation
+│   │   ├── ConversationArea  # Chat interface
+│   │   ├── ChangesPanel      # Git diff viewer
+│   │   └── ChatInput         # Message composer
+│   ├── hooks/                # Custom React hooks
+│   ├── lib/                  # Utilities & API client
+│   └── stores/               # Zustand state stores
+├── backend/                  # Go backend server
+│   ├── agent/                # Agent process management
+│   ├── git/                  # Git & worktree operations
+│   ├── server/               # HTTP handlers & WebSocket
+│   └── store/                # SQLite persistence
+├── agent-runner/             # Claude Agent SDK runner
+│   └── src/                  # TypeScript agent code
+├── src-tauri/                # Tauri desktop wrapper
+│   ├── src/                  # Rust source
+│   └── tauri.conf.json       # Tauri configuration
+└── public/                   # Static assets
 ```
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Next.js dev server |
+| `npm run tauri:dev` | Start full Tauri development |
+| `npm run tauri:build` | Build production desktop app |
+| `npm run build` | Build Next.js for production |
+| `npm run lint` | Run ESLint |
 
 ## Development
 
-### Frontend Development
+### Frontend
+The frontend uses Next.js App Router with React Server Components where appropriate. State is managed with Zustand, and real-time updates flow through WebSocket connections.
 
-The frontend is built with Next.js and uses:
-- App Router for routing
-- Server and Client Components
-- Tailwind CSS for styling
-- Radix UI for accessible components
+### Backend
+The Go backend provides REST APIs for CRUD operations and WebSocket connections for streaming agent responses. Data is persisted in SQLite.
 
-### Backend Development
+### Agent Runner
+The agent runner spawns Claude Agent SDK processes for each conversation, streaming tool calls and responses back through the backend.
 
-The Tauri backend is written in Rust and handles:
-- Native system integration
-- File system operations
-- Process management
-- WebSocket connections
+## License
 
-## Learn More
-
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Tauri Documentation](https://tauri.app)
-- [React Documentation](https://react.dev)
-- [Rust Documentation](https://doc.rust-lang.org)
+MIT
