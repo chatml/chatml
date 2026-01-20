@@ -64,7 +64,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
-  const [selectedTab, setSelectedTab] = useState('files');
+  const [selectedTab, setSelectedTab] = useState('changes');
   const [outputTab, setOutputTab] = useState<'setup' | 'run'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -287,14 +287,6 @@ export function ChangesPanel() {
       {/* Tabs Row */}
       <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 overflow-hidden min-w-0">
         <Button
-          variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
-          size="sm"
-          className="h-6 text-xs px-2 shrink-0"
-          onClick={() => setSelectedTab('files')}
-        >
-          All files
-        </Button>
-        <Button
           variant={selectedTab === 'changes' ? 'secondary' : 'ghost'}
           size="sm"
           className="h-6 text-xs px-2 gap-1 shrink-0"
@@ -327,6 +319,14 @@ export function ChangesPanel() {
               {totalPendingTodos}
             </span>
           )}
+        </Button>
+        <Button
+          variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-6 text-xs px-2 shrink-0"
+          onClick={() => setSelectedTab('files')}
+        >
+          All files
         </Button>
         <div className="flex-1 min-w-0" />
         <div className="flex items-center shrink-0">
