@@ -32,6 +32,8 @@
     "pty:allow-write",
     "pty:allow-resize",
     "pty:allow-kill",
-    "mcp-bridge:default"
+    "mcp-bridge:default",
+    "deep-link:default",
+    "stronghold:default"
   ]
 }
