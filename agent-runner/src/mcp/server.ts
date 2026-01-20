@@ -2,6 +2,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { WorkspaceContext } from "./context.js";
+import { createLinearTools } from "./tools/linear.js";
 
 export interface McpServerOptions {
   context: WorkspaceContext;
@@ -101,6 +102,9 @@ export function createConductorMcpServer(options: McpServerOptions) {
           }
         }
       ),
+
+      // Linear integration tools
+      ...createLinearTools(context),
     ],
   });
 }
