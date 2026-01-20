@@ -209,6 +209,11 @@ export interface AgentEvent {
 
   // Stderr data
   data?: string;
+
+  // Checkpoint fields
+  checkpointUuid?: string;
+  messageIndex?: number;
+  isResult?: boolean;
 }
 
 // MCP server status
@@ -298,6 +303,10 @@ export const AgentEventTypes = {
   THINKING: 'thinking',
   THINKING_DELTA: 'thinking_delta',
   THINKING_START: 'thinking_start',
+
+  // Checkpoint events
+  CHECKPOINT_CREATED: 'checkpoint_created',
+  FILES_REWOUND: 'files_rewound',
 } as const;
 
 export interface VerificationResult {
@@ -318,6 +327,25 @@ export interface AgentTodoItem {
   content: string;
   status: "pending" | "in_progress" | "completed";
   activeForm: string;
+}
+
+// File checkpoint for rewind support
+export interface CheckpointInfo {
+  uuid: string;
+  timestamp: string;
+  messageIndex: number;
+  isResult?: boolean;
+}
+
+// Budget and limits status
+export interface BudgetStatus {
+  maxBudgetUsd?: number;
+  currentCostUsd: number;
+  maxTurns?: number;
+  currentTurns: number;
+  maxThinkingTokens?: number;
+  currentThinkingTokens: number;
+  limitExceeded?: 'budget' | 'turns' | 'thinking_tokens';
 }
 
 // User-defined custom todo item

@@ -12,7 +12,9 @@ import type {
   Agent,
   AgentTodoItem,
   CustomTodoItem,
-  McpServerStatus
+  McpServerStatus,
+  CheckpointInfo,
+  BudgetStatus
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -77,6 +79,10 @@ interface AppState {
 
   // MCP servers state
   mcpServers: McpServerStatus[];
+
+  // Checkpoint timeline state
+  checkpoints: CheckpointInfo[];
+  budgetStatus: BudgetStatus | null;
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -163,6 +169,12 @@ interface AppState {
   // MCP servers actions
   setMcpServers: (servers: McpServerStatus[]) => void;
 
+  // Checkpoint actions
+  setCheckpoints: (checkpoints: CheckpointInfo[]) => void;
+  addCheckpoint: (checkpoint: CheckpointInfo) => void;
+  clearCheckpoints: () => void;
+  setBudgetStatus: (status: BudgetStatus | null) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -201,6 +213,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   terminalInstances: {},
   activeTerminalId: {},
   mcpServers: [],
+  checkpoints: [],
+  budgetStatus: null,
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -896,6 +910,14 @@ updateFileTabContent: (id, content) => set((state) => ({
 
   // MCP servers actions
   setMcpServers: (servers) => set({ mcpServers: servers }),
+
+  // Checkpoint actions
+  setCheckpoints: (checkpoints) => set({ checkpoints }),
+  addCheckpoint: (checkpoint) => set((state) => ({
+    checkpoints: [...state.checkpoints, checkpoint]
+  })),
+  clearCheckpoints: () => set({ checkpoints: [] }),
+  setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
 
   // Legacy support
   repos: [],
