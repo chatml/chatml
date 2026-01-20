@@ -1,5 +1,20 @@
 import { query, } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
+import { WorkspaceContext } from "./mcp/context.js";
+import { createConductorMcpServer } from "./mcp/server.js";
+function resolveToolPreset(preset) {
+    switch (preset) {
+        case "read-only":
+            return { allowedTools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"] };
+        case "no-bash":
+            return { disallowedTools: ["Bash"] };
+        case "safe-edit":
+            return { allowedTools: ["Read", "Glob", "Grep", "Edit", "WebFetch", "WebSearch"] };
+        case "full":
+        default:
+            return {};
+    }
+}
 // CLI arguments
 const args = process.argv.slice(2);
 const cwdIndex = args.indexOf("--cwd");
@@ -10,6 +25,10 @@ const cwd = cwdIndex !== -1 ? args[cwdIndex + 1] : process.cwd();
 const conversationId = conversationIdIndex !== -1 ? args[conversationIdIndex + 1] : "default";
 const resumeSessionId = resumeIndex !== -1 ? args[resumeIndex + 1] : undefined;
 const forkSession = forkIndex !== -1;
+const linearIssueIndex = args.indexOf("--linear-issue");
+const toolPresetIndex = args.indexOf("--tool-preset");
+const linearIssue = linearIssueIndex !== -1 ? args[linearIssueIndex + 1] : undefined;
+const toolPreset = toolPresetIndex !== -1 ? args[toolPresetIndex + 1] : "full";
 function emit(event) {
     console.log(JSON.stringify(event));
 }
@@ -320,12 +339,24 @@ async function main() {
         forking: forkSession,
     });
     try {
+        // Create workspace context for MCP tools
+        const workspaceContext = new WorkspaceContext({
+            cwd,
+            workspaceId: conversationId, // Use conversation ID as workspace ID for now
+            sessionId: currentSessionId || "pending",
+            linearIssue,
+        });
+        // Create conductor MCP server
+        const conductorMcp = createConductorMcpServer({ context: workspaceContext });
+        // Resolve tool preset to allowedTools/disallowedTools
+        const presetConfig = resolveToolPreset(toolPreset);
         const result = query({
             prompt: createMessageStream(),
             options: {
                 cwd,
                 permissionMode: "bypassPermissions",
                 allowDangerouslySkipPermissions: true,
+                mcpServers: { conductor: conductorMcp },
                 includePartialMessages: true,
                 tools: { type: "preset", preset: "claude_code" },
                 systemPrompt: { type: "preset", preset: "claude_code" },
@@ -334,6 +365,9 @@ async function main() {
                 // Session management
                 resume: resumeSessionId,
                 forkSession: forkSession && !!resumeSessionId,
+                // Tool preset configuration
+                allowedTools: presetConfig.allowedTools,
+                disallowedTools: presetConfig.disallowedTools,
                 // stderr callback for debugging
                 stderr: (data) => {
                     emit({ type: "agent_stderr", data });
