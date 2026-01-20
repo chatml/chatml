@@ -23,6 +23,8 @@ type ProcessOptions struct {
 	ConversationID string
 	ResumeSession  string // Session ID to resume
 	ForkSession    bool   // Whether to fork the session
+	LinearIssue    string // Linear issue identifier (e.g., "LIN-123")
+	ToolPreset     string // Tool preset: full, read-only, no-bash, safe-edit
 }
 
 type Process struct {
@@ -107,6 +109,16 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	// Add fork flag if specified
 	if opts.ForkSession && opts.ResumeSession != "" {
 		args = append(args, "--fork")
+	}
+
+	// Add Linear issue if specified
+	if opts.LinearIssue != "" {
+		args = append(args, "--linear-issue", opts.LinearIssue)
+	}
+
+	// Add tool preset if specified
+	if opts.ToolPreset != "" {
+		args = append(args, "--tool-preset", opts.ToolPreset)
 	}
 
 	// Spawn the Node agent runner
