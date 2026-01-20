@@ -3,10 +3,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { isTauri, safeListen, closeWindow } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
 import { SettingsPage } from '@/components/SettingsPage';
@@ -16,6 +16,8 @@ import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
 import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
+import { CloneFromUrlDialog } from '@/components/CloneFromUrlDialog';
+import { QuickStartDialog } from '@/components/QuickStartDialog';
 import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -37,6 +39,8 @@ export default function Home() {
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
+  const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
+  const [showQuickStart, setShowQuickStart] = useState(false);
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
@@ -342,6 +346,32 @@ export default function Home() {
     }
   }, [pendingCloseConvId, doCloseTab]);
 
+  // Handle opening a project - directly opens folder dialog and adds the workspace
+  const handleOpenProject = useCallback(async () => {
+    const selectedPath = await openFolderDialog('Select Repository');
+    if (!selectedPath) return;
+
+    try {
+      // Call backend API to validate and add repo
+      const repo = await addRepo(selectedPath);
+
+      // Map to workspace and add to store
+      const workspace = {
+        id: repo.id,
+        name: repo.name,
+        path: repo.path,
+        defaultBranch: repo.branch,
+        createdAt: repo.createdAt,
+      };
+      useAppStore.getState().addWorkspace(workspace);
+      selectWorkspace(workspace.id);
+    } catch (error) {
+      // If it fails, fall back to showing the modal where user can see the error
+      console.error('Failed to add workspace directly:', error);
+      setShowAddWorkspace(true);
+    }
+  }, [selectWorkspace]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -527,7 +557,9 @@ export default function Home() {
                 <div ref={leftSidebarRef} className="h-full">
                   <ErrorBoundary section="Sidebar">
                     <WorkspaceSidebar
-                      onAddWorkspace={() => setShowAddWorkspace(true)}
+                      onOpenProject={handleOpenProject}
+                      onCloneFromUrl={() => setShowCloneFromUrl(true)}
+                      onQuickStart={() => setShowQuickStart(true)}
                       onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
                       onSessionSelected={() => setShowWorkspaceManagement(false)}
                       onOpenSettings={() => setShowSettings(true)}
@@ -628,6 +660,18 @@ export default function Home() {
         <AddWorkspaceModal
           isOpen={showAddWorkspace}
           onClose={() => setShowAddWorkspace(false)}
+        />
+
+        {/* Clone from URL Dialog */}
+        <CloneFromUrlDialog
+          isOpen={showCloneFromUrl}
+          onClose={() => setShowCloneFromUrl(false)}
+        />
+
+        {/* Quick Start Dialog */}
+        <QuickStartDialog
+          isOpen={showQuickStart}
+          onClose={() => setShowQuickStart(false)}
         />
 
         {/* Close Tab Confirmation Dialog */}
