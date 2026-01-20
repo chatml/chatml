@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/tauri';
+import { getFileIcon, getFolderIcon, getIconifyName } from '@/lib/vscodeIcons';
 
 export interface FileNode {
   name: string;
@@ -98,26 +100,25 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
           'transition-colors',
           isHidden && 'text-muted-foreground/75'
         )}
-        style={{ paddingLeft: `${depth * 8 + 4}px` }}
+        style={{ paddingLeft: `${depth * 12 + 4}px` }}
         onClick={handleClick}
       >
         {node.isDir ? (
           <>
             {isExpanded ? (
-              <ChevronDown className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+              <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
             ) : (
-              <ChevronRight className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+              <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
             )}
-            {isExpanded ? (
-              <FolderOpenIcon className={cn("w-3 h-3 shrink-0", isHidden ? "text-amber-500/50" : "text-amber-500")} />
-            ) : (
-              <FolderIcon className={cn("w-3 h-3 shrink-0", isHidden ? "text-amber-500/50" : "text-amber-500")} />
-            )}
+            <Icon
+              icon={getIconifyName(getFolderIcon(node.name, isExpanded))}
+              className={cn('w-4 h-4 shrink-0', isHidden && 'opacity-50')}
+            />
           </>
         ) : (
           <>
-            <span className="w-2.5" /> {/* Spacer for alignment */}
-            <FileIcon filename={node.name} />
+            <span className="w-3" /> {/* Spacer for alignment with folder chevrons */}
+            <FileIcon filename={node.name} className={isHidden ? 'opacity-50' : undefined} />
           </>
         )}
         <span className="truncate">{node.name}</span>
@@ -138,174 +139,14 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
   );
 }
 
-// Filled folder icons
-function FolderIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z" />
-    </svg>
-  );
-}
-
-function FolderOpenIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M4 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4z" />
-      <path d="M2 10h20v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8z" fillOpacity="0.3" />
-    </svg>
-  );
-}
-
-// File icon component based on file extension
+// File icon component using VS Code icons
 export function FileIcon({ filename, className }: { filename: string; className?: string }) {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const name = filename.toLowerCase();
-
-  // Get icon color and text based on file type
-  const getIconStyle = (): { color: string; text: string } => {
-    // Special files
-    if (name === '.gitignore') return { color: 'text-orange-500', text: '' };
-    if (name === '.dockerignore') return { color: 'text-blue-400', text: '' };
-    if (name === '.env' || name.startsWith('.env.')) return { color: 'text-yellow-500', text: '' };
-    if (name === 'dockerfile' || name.endsWith('.dockerfile')) return { color: 'text-blue-500', text: '' };
-    if (name === 'makefile') return { color: 'text-orange-400', text: '' };
-    if (name === 'readme.md') return { color: 'text-blue-400', text: '' };
-    if (name === 'license' || name === 'license.md') return { color: 'text-yellow-400', text: '' };
-
-    // By extension
-    switch (ext) {
-      // JavaScript/TypeScript
-      case 'js':
-        return { color: 'text-yellow-400', text: 'JS' };
-      case 'jsx':
-        return { color: 'text-cyan-400', text: 'JSX' };
-      case 'ts':
-        return { color: 'text-blue-500', text: 'TS' };
-      case 'tsx':
-        return { color: 'text-blue-400', text: 'TSX' };
-      case 'mjs':
-      case 'cjs':
-        return { color: 'text-yellow-500', text: 'JS' };
-
-      // Web
-      case 'html':
-        return { color: 'text-orange-500', text: '' };
-      case 'css':
-        return { color: 'text-blue-500', text: '' };
-      case 'scss':
-      case 'sass':
-        return { color: 'text-pink-500', text: '' };
-      case 'less':
-        return { color: 'text-indigo-400', text: '' };
-
-      // Data/Config
-      case 'json':
-        return { color: 'text-yellow-500', text: '{}' };
-      case 'yaml':
-      case 'yml':
-        return { color: 'text-red-400', text: '' };
-      case 'toml':
-        return { color: 'text-gray-400', text: '' };
-      case 'xml':
-        return { color: 'text-orange-400', text: '' };
-      case 'env':
-        return { color: 'text-yellow-500', text: '' };
-
-      // Documentation
-      case 'md':
-      case 'mdx':
-        return { color: 'text-blue-400', text: '' };
-      case 'txt':
-        return { color: 'text-gray-400', text: '' };
-      case 'pdf':
-        return { color: 'text-red-500', text: '' };
-
-      // Programming languages
-      case 'go':
-        return { color: 'text-cyan-500', text: 'GO' };
-      case 'py':
-        return { color: 'text-yellow-500', text: '' };
-      case 'rb':
-        return { color: 'text-red-500', text: '' };
-      case 'rs':
-        return { color: 'text-orange-500', text: '' };
-      case 'java':
-        return { color: 'text-red-400', text: '' };
-      case 'kt':
-      case 'kts':
-        return { color: 'text-purple-400', text: '' };
-      case 'swift':
-        return { color: 'text-orange-500', text: '' };
-      case 'c':
-      case 'h':
-        return { color: 'text-blue-500', text: 'C' };
-      case 'cpp':
-      case 'cc':
-      case 'hpp':
-        return { color: 'text-blue-400', text: 'C++' };
-      case 'cs':
-        return { color: 'text-purple-500', text: 'C#' };
-      case 'php':
-        return { color: 'text-indigo-400', text: '' };
-
-      // Shell
-      case 'sh':
-      case 'bash':
-      case 'zsh':
-        return { color: 'text-green-500', text: '' };
-      case 'ps1':
-        return { color: 'text-blue-500', text: '' };
-
-      // Images
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'gif':
-      case 'svg':
-      case 'ico':
-      case 'webp':
-        return { color: 'text-purple-400', text: '' };
-
-      // Fonts
-      case 'ttf':
-      case 'otf':
-      case 'woff':
-      case 'woff2':
-        return { color: 'text-red-300', text: '' };
-
-      // Lock files
-      case 'lock':
-        return { color: 'text-gray-500', text: '' };
-
-      // Git
-      case 'gitignore':
-        return { color: 'text-orange-500', text: '' };
-
-      default:
-        return { color: 'text-gray-400', text: '' };
-    }
-  };
-
-  const style = getIconStyle();
+  const iconName = getFileIcon(filename);
 
   return (
-    <div className={cn('w-3 h-3 flex items-center justify-center shrink-0', style.color, className)}>
-      {style.text ? (
-        <span className="text-[6px] font-semibold">{style.text}</span>
-      ) : (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-3 h-3"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-      )}
-    </div>
+    <Icon
+      icon={getIconifyName(iconName)}
+      className={cn('w-4 h-4 shrink-0', className)}
+    />
   );
 }
