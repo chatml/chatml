@@ -572,40 +572,43 @@ function SortableWorkspaceItem({
                         <span className="text-sm font-medium truncate flex-1">
                           {session.branch || session.name}
                         </span>
-                        {/* Pinned indicator - hidden on hover */}
+                        {/* Pinned indicator - fade out on hover */}
                         {session.pinned && (
-                          <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:hidden" />
+                          <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
                         )}
-                        {/* Stats - hidden on hover */}
-                        {hasStats && (
-                          <span className="text-[10px] shrink-0 group-hover:hidden">
-                            <span className="text-green-500">+{session.stats!.additions}</span>
-                            <span className="text-red-500 ml-1">-{session.stats!.deletions}</span>
-                          </span>
-                        )}
-                        {/* Actions - shown on hover */}
-                        <div className="hidden group-hover:flex items-center gap-1 shrink-0">
-                          <button
-                            className={cn(
-                              "p-0.5 rounded hover:bg-sidebar-accent hover:text-foreground",
-                              session.pinned ? "text-primary" : "text-muted-foreground"
-                            )}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPinSession(session.id);
-                            }}
-                          >
-                            <Pin className="h-2.5 w-2.5" />
-                          </button>
-                          <button
-                            className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onArchiveSession(session.id);
-                            }}
-                          >
-                            <Archive className="h-2.5 w-2.5" />
-                          </button>
+                        {/* Git line stats badge and actions container */}
+                        <div className="relative shrink-0 flex items-center">
+                          {/* Stats - fade out on hover */}
+                          {hasStats && (
+                            <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity">
+                              <span className="text-emerald-400">+{session.stats!.additions}</span>
+                              <span className="text-red-400 ml-1">-{session.stats!.deletions}</span>
+                            </span>
+                          )}
+                          {/* Actions - positioned absolutely to avoid layout shift */}
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              className={cn(
+                                "p-0.5 rounded hover:bg-sidebar-accent hover:text-foreground",
+                                session.pinned ? "text-primary" : "text-muted-foreground"
+                              )}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPinSession(session.id);
+                              }}
+                            >
+                              <Pin className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onArchiveSession(session.id);
+                              }}
+                            >
+                              <Archive className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                       {/* Second line: session name · PR info · status */}
