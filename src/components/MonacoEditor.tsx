@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { registerMonacoTheme, getThemeById } from '@/lib/monacoThemes';
 
 // Map file extensions to Monaco language identifiers
 function getMonacoLanguage(filename: string): string {
@@ -99,9 +100,17 @@ export function MonacoEditor({
   initialCursorPosition,
   initialScrollPosition,
 }: MonacoEditorProps) {
-  const { resolvedTheme } = useTheme();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const language = getMonacoLanguage(filename);
+  const editorTheme = useSettingsStore((s) => s.editorTheme);
+  const [activeTheme, setActiveTheme] = useState<string>(editorTheme);
+
+  // Register custom theme when editorTheme changes
+  useEffect(() => {
+    registerMonacoTheme(editorTheme).then((themeId) => {
+      setActiveTheme(themeId);
+    });
+  }, [editorTheme]);
 
   const handleMount: OnMount = useCallback((editor) => {
     editorRef.current = editor;
@@ -161,7 +170,7 @@ export function MonacoEditor({
       value={content}
       onChange={handleChange}
       onMount={handleMount}
-      theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+      theme={activeTheme}
       loading={<EditorLoading />}
       options={{
         readOnly,
@@ -215,9 +224,17 @@ export function MonacoDiffEditor({
   readOnly = true,
   sideBySide = true,
 }: MonacoDiffEditorProps) {
-  const { resolvedTheme } = useTheme();
   const language = getMonacoLanguage(filename);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const editorTheme = useSettingsStore((s) => s.editorTheme);
+  const [activeTheme, setActiveTheme] = useState<string>(editorTheme);
+
+  // Register custom theme when editorTheme changes
+  useEffect(() => {
+    registerMonacoTheme(editorTheme).then((themeId) => {
+      setActiveTheme(themeId);
+    });
+  }, [editorTheme]);
 
   // Update sideBySide option when it changes without remounting
   useEffect(() => {
@@ -263,7 +280,7 @@ export function MonacoDiffEditor({
       language={language}
       original={oldContent}
       modified={newContent}
-      theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
+      theme={activeTheme}
       loading={<EditorLoading />}
       onMount={handleMount}
       options={options}

@@ -157,7 +157,7 @@ function FolderOpenIcon({ className }: { className?: string }) {
 }
 
 // File icon component based on file extension
-export function FileIcon({ filename }: { filename: string }) {
+export function FileIcon({ filename, className }: { filename: string; className?: string }) {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   const name = filename.toLowerCase();
 
@@ -289,7 +289,7 @@ export function FileIcon({ filename }: { filename: string }) {
   const style = getIconStyle();
 
   return (
-    <div className={cn('w-3 h-3 flex items-center justify-center shrink-0', style.color)}>
+    <div className={cn('w-3 h-3 flex items-center justify-center shrink-0', style.color, className)}>
       {style.text ? (
         <span className="text-[6px] font-semibold">{style.text}</span>
       ) : (

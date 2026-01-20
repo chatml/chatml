@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openFolderDialog, setMinimizeToTray } from '@/lib/tauri';
+import { EDITOR_THEMES } from '@/lib/monacoThemes';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -341,8 +342,15 @@ function ChatSettings() {
   );
 }
 
-// Placeholder settings components
+// Appearance settings
 function AppearanceSettings() {
+  const editorTheme = useSettingsStore((s) => s.editorTheme);
+  const setEditorTheme = useSettingsStore((s) => s.setEditorTheme);
+
+  // Group themes by light/dark
+  const darkThemes = EDITOR_THEMES.filter((t) => t.isDark);
+  const lightThemes = EDITOR_THEMES.filter((t) => !t.isDark);
+
   return (
     <div>
       <h2 className="text-2xl font-semibold mb-6">Appearance</h2>
@@ -355,6 +363,27 @@ function AppearanceSettings() {
             <SelectItem value="system">System</SelectItem>
             <SelectItem value="light">Light</SelectItem>
             <SelectItem value="dark">Dark</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+      <SettingsRow title="Editor theme" description="Syntax highlighting theme for code editors">
+        <Select value={editorTheme} onValueChange={setEditorTheme}>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Dark</div>
+            {darkThemes.map((theme) => (
+              <SelectItem key={theme.id} value={theme.id}>
+                {theme.name}
+              </SelectItem>
+            ))}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-t mt-1 pt-2">Light</div>
+            {lightThemes.map((theme) => (
+              <SelectItem key={theme.id} value={theme.id}>
+                {theme.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </SettingsRow>
