@@ -16,7 +16,7 @@ import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
 import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
-import { UpdateChecker } from '@/components/UpdateChecker';
+// import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -638,8 +638,9 @@ export default function Home() {
           onConfirm={handleConfirmClose}
         />
 
-        {/* Update Checker */}
+        {/* Update Checker - disabled until remote URL is configured
         <UpdateChecker />
+        */}
       </div>
     </TooltipProvider>
   );
