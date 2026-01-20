@@ -14,7 +14,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
-import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
 import { SettingsPage } from '@/components/SettingsPage';
@@ -302,7 +302,29 @@ export default function Home() {
         const allSessions = sessionResults.flatMap(sessions =>
           sessions.map(s => sessionToWorktreeSession(s))
         );
-        setSessions(allSessions);
+
+        // Fetch file changes for all sessions to compute stats
+        const sessionsWithStats = await Promise.all(
+          allSessions.map(async (session) => {
+            try {
+              const changes = await getSessionChanges(session.workspaceId, session.id);
+              if (changes && changes.length > 0) {
+                const stats = changes.reduce(
+                  (acc, change) => ({
+                    additions: acc.additions + change.additions,
+                    deletions: acc.deletions + change.deletions,
+                  }),
+                  { additions: 0, deletions: 0 }
+                );
+                return { ...session, stats };
+              }
+            } catch {
+              // Ignore errors fetching changes
+            }
+            return session;
+          })
+        );
+        setSessions(sessionsWithStats);
 
         // Fetch conversations for all sessions in parallel
         const conversationResults = await Promise.all(
