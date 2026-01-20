@@ -26,6 +26,20 @@ import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
 import { createConductorMcpServer } from "./mcp/server.js";
 
+function resolveToolPreset(preset: string): { allowedTools?: string[]; disallowedTools?: string[] } {
+  switch (preset) {
+    case "read-only":
+      return { allowedTools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"] };
+    case "no-bash":
+      return { disallowedTools: ["Bash"] };
+    case "safe-edit":
+      return { allowedTools: ["Read", "Glob", "Grep", "Edit", "WebFetch", "WebSearch"] };
+    case "full":
+    default:
+      return {};
+  }
+}
+
 // CLI arguments
 const args = process.argv.slice(2);
 const cwdIndex = args.indexOf("--cwd");
@@ -430,6 +444,9 @@ async function main(): Promise<void> {
     // Create conductor MCP server
     const conductorMcp = createConductorMcpServer({ context: workspaceContext });
 
+    // Resolve tool preset to allowedTools/disallowedTools
+    const presetConfig = resolveToolPreset(toolPreset);
+
     const result = query({
       prompt: createMessageStream(),
       options: {
@@ -445,6 +462,9 @@ async function main(): Promise<void> {
         // Session management
         resume: resumeSessionId,
         forkSession: forkSession && !!resumeSessionId,
+        // Tool preset configuration
+        allowedTools: presetConfig.allowedTools,
+        disallowedTools: presetConfig.disallowedTools,
         // stderr callback for debugging
         stderr: (data: string) => {
           emit({ type: "agent_stderr", data });
