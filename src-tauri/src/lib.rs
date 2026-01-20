@@ -596,7 +596,9 @@ pub fn run() {
                         log::warn!("Failed to set traffic lights inset: {}", e);
                     }
                 } else {
-                    log::warn!("Main window not found during setup - traffic lights position not set");
+                    log::warn!(
+                        "Main window not found during setup - traffic lights position not set"
+                    );
                 }
             }
 

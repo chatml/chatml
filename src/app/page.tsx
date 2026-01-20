@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { isTauri, safeListen, closeWindow } from '@/lib/tauri';
@@ -29,14 +29,11 @@ import {
 } from '@/components/ui/resizable';
 import { Loader2 } from 'lucide-react';
 
+// Pre-computed skeleton widths (avoids Math.random() during render)
+const SKELETON_WIDTHS = [72, 88, 65, 81];
+
 // Loading skeleton for conversation area
 function ConversationSkeleton() {
-  // Pre-compute random widths to avoid calling Math.random() during render
-  const skeletonWidths = useMemo(
-    () => Array.from({ length: 4 }, () => 60 + Math.random() * 35),
-    []
-  );
-
   return (
     <div className="flex flex-col h-full" aria-busy="true" aria-label="Loading conversations">
       {/* Skeleton TopBar */}
@@ -72,7 +69,7 @@ function ConversationSkeleton() {
           <div className="flex-1 space-y-2">
             <div className="h-3 w-20 bg-muted-foreground/20 rounded animate-pulse" />
             <div className="space-y-1.5">
-              {skeletonWidths.map((width, i) => (
+              {SKELETON_WIDTHS.map((width, i) => (
                 <div
                   key={i}
                   className="h-4 bg-muted-foreground/10 rounded animate-pulse"

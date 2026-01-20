@@ -18,6 +18,9 @@ import {
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 
+// Pre-computed skeleton widths (avoids Math.random() during render)
+const DIFF_SKELETON_WIDTHS = [52, 78, 45, 89, 63, 71, 48, 85, 56, 74, 42, 82];
+
 export interface DiffComment {
   id: string;
   lineNumber: number;
@@ -182,12 +185,6 @@ export function DiffViewer({
     []
   );
 
-  // Pre-compute random widths for loading skeleton to avoid calling Math.random() during render
-  const skeletonWidths = useMemo(
-    () => Array.from({ length: 12 }, () => 40 + Math.random() * 50),
-    []
-  );
-
   if (isLoading) {
     return (
       <div className="h-full flex flex-col" aria-busy="true" aria-label="Loading diff">
@@ -205,7 +202,7 @@ export function DiffViewer({
         </div>
         {/* Skeleton diff lines */}
         <div className="flex-1 overflow-hidden p-2 space-y-1">
-          {skeletonWidths.map((width, i) => (
+          {DIFF_SKELETON_WIDTHS.map((width, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className="h-4 w-8 bg-muted-foreground/10 rounded animate-pulse" />
               <div
