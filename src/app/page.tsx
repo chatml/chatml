@@ -22,15 +22,86 @@ import { QuickStartDialog } from '@/components/QuickStartDialog';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ToastProvider } from '@/components/ui/toast';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
+import { Loader2 } from 'lucide-react';
+
+// Pre-computed skeleton widths (avoids Math.random() during render)
+const SKELETON_WIDTHS = [72, 88, 65, 81];
+
+// Loading skeleton for conversation area
+function ConversationSkeleton() {
+  return (
+    <div className="flex flex-col h-full" aria-busy="true" aria-label="Loading conversations">
+      {/* Skeleton TopBar */}
+      <div className="h-10 border-b flex items-center px-3 gap-2">
+        <div className="h-5 w-5 bg-muted-foreground/20 rounded animate-pulse" />
+        <div className="h-4 w-32 bg-muted-foreground/20 rounded animate-pulse" />
+        <div className="flex-1" />
+        <div className="h-6 w-16 bg-muted-foreground/20 rounded animate-pulse" />
+      </div>
+
+      {/* Skeleton messages area */}
+      <div className="flex-1 overflow-hidden p-4 space-y-4">
+        {/* System message skeleton */}
+        <div className="flex gap-3">
+          <div className="w-8 h-8 rounded-full bg-muted-foreground/20 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-24 bg-muted-foreground/20 rounded animate-pulse" />
+            <div className="h-16 w-full bg-muted-foreground/10 rounded-lg animate-pulse" />
+          </div>
+        </div>
+
+        {/* User message skeleton */}
+        <div className="flex gap-3 justify-end">
+          <div className="flex-1 max-w-[80%] space-y-2">
+            <div className="h-3 w-16 bg-muted-foreground/20 rounded animate-pulse ml-auto" />
+            <div className="h-12 w-full bg-primary/10 rounded-lg animate-pulse" />
+          </div>
+        </div>
+
+        {/* Assistant message skeleton */}
+        <div className="flex gap-3">
+          <div className="w-8 h-8 rounded-full bg-muted-foreground/20 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-20 bg-muted-foreground/20 rounded animate-pulse" />
+            <div className="space-y-1.5">
+              {SKELETON_WIDTHS.map((width, i) => (
+                <div
+                  key={i}
+                  className="h-4 bg-muted-foreground/10 rounded animate-pulse"
+                  style={{ width: `${width}%`, animationDelay: `${i * 100}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Loading indicator */}
+        <div className="flex items-center justify-center py-6">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Loading workspace data...</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Skeleton input area */}
+      <div className="px-4 pb-4">
+        <div className="h-28 rounded-lg border bg-muted/50 animate-pulse" />
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [backendConnected, setBackendConnected] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -156,6 +227,7 @@ export default function Home() {
     if (!backendConnected) return;
 
     async function loadData() {
+      setIsLoadingData(true);
       try {
         // Fetch repos from backend
         const repos = await listRepos();
@@ -208,6 +280,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Failed to load data from backend:', error);
+      } finally {
+        setIsLoadingData(false);
       }
     }
 
@@ -541,8 +615,9 @@ export default function Home() {
   }
 
   return (
-    <TooltipProvider>
-      <div className="h-screen overflow-hidden flex relative">
+    <ToastProvider>
+      <TooltipProvider>
+        <div className="h-screen overflow-hidden flex relative">
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Left Sidebar - Workspaces */}
@@ -578,19 +653,23 @@ export default function Home() {
             <ResizablePanelGroup direction="vertical">
               {/* Conversation Area */}
               <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
-                <div className="flex flex-col h-full">
-                  <TopBar
-                    showLeftSidebar={showLeftSidebar}
-                    showRightSidebar={showRightSidebar}
-                    onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
-                    onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
-                  />
-                  <ErrorBoundary section="Conversation">
-                    <ConversationArea>
-                      <ChatInput />
-                    </ConversationArea>
-                  </ErrorBoundary>
-                </div>
+                {isLoadingData ? (
+                  <ConversationSkeleton />
+                ) : (
+                  <div className="flex flex-col h-full">
+                    <TopBar
+                      showLeftSidebar={showLeftSidebar}
+                      showRightSidebar={showRightSidebar}
+                      onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
+                      onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+                    />
+                    <ErrorBoundary section="Conversation">
+                      <ConversationArea>
+                        <ChatInput />
+                      </ConversationArea>
+                    </ErrorBoundary>
+                  </div>
+                )}
               </ResizablePanel>
 
               {/* Bottom Terminal - always mounted to preserve PTY session */}
@@ -685,7 +764,8 @@ export default function Home() {
         {/* Update Checker - disabled until remote URL is configured
         <UpdateChecker />
         */}
-      </div>
-    </TooltipProvider>
+        </div>
+      </TooltipProvider>
+    </ToastProvider>
   );
 }

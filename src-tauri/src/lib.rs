@@ -217,10 +217,16 @@ fn spawn_sidecar(app: &tauri::AppHandle) -> Result<CommandChild, String> {
     // Small delay to ensure port is released
     std::thread::sleep(Duration::from_millis(200));
 
-    let sidecar_command = app
+    let mut sidecar_command = app
         .shell()
         .sidecar("chatml-backend")
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?;
+
+    // In development, allow localhost:3000 for CORS
+    #[cfg(debug_assertions)]
+    {
+        sidecar_command = sidecar_command.env("CHATML_DEV_ORIGIN", "http://localhost:3000");
+    }
 
     let (mut rx, child) = sidecar_command
         .spawn()
@@ -585,8 +591,15 @@ pub fn run() {
             // Set macOS traffic light position
             #[cfg(target_os = "macos")]
             {
-                let main_window = app.get_webview_window("main").unwrap();
-                main_window.set_traffic_lights_inset(16.0, 16.0).unwrap();
+                if let Some(main_window) = app.get_webview_window("main") {
+                    if let Err(e) = main_window.set_traffic_lights_inset(16.0, 16.0) {
+                        log::warn!("Failed to set traffic lights inset: {}", e);
+                    }
+                } else {
+                    log::warn!(
+                        "Main window not found during setup - traffic lights position not set"
+                    );
+                }
             }
 
             if cfg!(debug_assertions) {

@@ -25,6 +25,15 @@ type Handlers struct {
 	agentManager    *agent.Manager
 }
 
+// writeJSON writes data as JSON response, logging any encoding errors
+func writeJSON(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		// Log the error - response headers may already be sent
+		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+	}
+}
+
 func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 	return &Handlers{
 		store:           s,
@@ -98,14 +107,12 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 
 	h.store.AddRepo(repo)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repo)
+	writeJSON(w, repo)
 }
 
 func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 	repos := h.store.ListRepos()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repos)
+	writeJSON(w, repos)
 }
 
 func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
@@ -115,8 +122,7 @@ func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repo)
+	writeJSON(w, repo)
 }
 
 func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
@@ -130,8 +136,7 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "id")
 	sessions := h.store.ListSessions(workspaceID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(sessions)
+	writeJSON(w, sessions)
 }
 
 type CreateSessionRequest struct {
@@ -215,8 +220,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	h.store.AddMessageToConversation(convID, setupMsg)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(session)
+	writeJSON(w, session)
 }
 
 func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
@@ -226,8 +230,7 @@ func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(session)
+	writeJSON(w, session)
 }
 
 type UpdateSessionRequest struct {
@@ -252,6 +255,16 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	var req UpdateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate status values before updating
+	if req.Status != nil && !models.ValidSessionStatuses[*req.Status] {
+		http.Error(w, "invalid status value", http.StatusBadRequest)
+		return
+	}
+	if req.PRStatus != nil && !models.ValidPRStatuses[*req.PRStatus] {
+		http.Error(w, "invalid prStatus value", http.StatusBadRequest)
 		return
 	}
 
@@ -284,8 +297,7 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	})
 
 	session = h.store.GetSession(id)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(session)
+	writeJSON(w, session)
 }
 
 func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
@@ -343,8 +355,7 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		changes = []git.FileChange{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(changes)
+	writeJSON(w, changes)
 }
 
 // GetSessionFileDiff returns the diff for a specific file in a session's worktree
@@ -420,8 +431,7 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		HasConflict: hasConflict,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 type SendMessageRequest struct {
@@ -460,7 +470,7 @@ func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	writeJSON(w, map[string]string{"status": "sent"})
 }
 
 // Agent handlers
@@ -468,8 +478,7 @@ func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "id")
 	agents := h.store.ListAgents(repoID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agents)
+	writeJSON(w, agents)
 }
 
 type SpawnAgentRequest struct {
@@ -496,8 +505,7 @@ func (h *Handlers) SpawnAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
+	writeJSON(w, agent)
 }
 
 func (h *Handlers) StopAgent(w http.ResponseWriter, r *http.Request) {
@@ -513,8 +521,7 @@ func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
+	writeJSON(w, agent)
 }
 
 func (h *Handlers) GetAgentDiff(w http.ResponseWriter, r *http.Request) {
@@ -610,8 +617,7 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tree)
+	writeJSON(w, tree)
 }
 
 // buildFileTree recursively builds the file tree
@@ -768,8 +774,7 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 		HasConflict: hasConflict,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // GetRepoFileContent returns the content of a specific file in the repository
@@ -832,8 +837,7 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 		Size:    info.Size(),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // Conversation handlers
@@ -841,8 +845,7 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	convs := h.store.ListConversations(sessionID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(convs)
+	writeJSON(w, convs)
 }
 
 type CreateConversationRequest struct {
@@ -877,7 +880,9 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(conv)
+	if err := json.NewEncoder(w).Encode(conv); err != nil {
+		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+	}
 }
 
 func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
@@ -887,8 +892,7 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(conv)
+	writeJSON(w, conv)
 }
 
 type SendConversationMessageRequest struct {
@@ -920,7 +924,7 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	writeJSON(w, map[string]string{"status": "sent"})
 }
 
 func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {

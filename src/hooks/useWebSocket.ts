@@ -5,6 +5,49 @@ import { useAppStore } from '@/stores/appStore';
 import type { WSEvent, AgentEvent, AgentTodoItem } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 
+// Type guards for WebSocket payload validation
+function isAgentEvent(payload: unknown): payload is AgentEvent {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+  const obj = payload as Record<string, unknown>;
+  // AgentEvent must have at least a type field (string) or be a valid event object
+  // Allow objects that have any of the known AgentEvent fields
+  return (
+    typeof obj.type === 'string' ||
+    typeof obj.content === 'string' ||
+    typeof obj.id === 'string' ||
+    typeof obj.tool === 'string' ||
+    typeof obj.name === 'string' ||
+    typeof obj.message === 'string' ||
+    Array.isArray(obj.todos)
+  );
+}
+
+function isAgentTodoItem(item: unknown): item is AgentTodoItem {
+  if (typeof item !== 'object' || item === null) {
+    return false;
+  }
+  const obj = item as Record<string, unknown>;
+  return (
+    typeof obj.content === 'string' &&
+    typeof obj.status === 'string' &&
+    (obj.status === 'pending' || obj.status === 'in_progress' || obj.status === 'completed') &&
+    typeof obj.activeForm === 'string'
+  );
+}
+
+function isAgentTodoItemArray(payload: unknown): payload is AgentTodoItem[] {
+  return Array.isArray(payload) && payload.every(isAgentTodoItem);
+}
+
+const VALID_CONVERSATION_STATUSES = ['active', 'idle', 'completed'] as const;
+type ConversationStatus = typeof VALID_CONVERSATION_STATUSES[number];
+
+function isValidConversationStatus(value: unknown): value is ConversationStatus {
+  return typeof value === 'string' && VALID_CONVERSATION_STATUSES.includes(value as ConversationStatus);
+}
+
 // WebSocket URL - configurable via environment variable for non-Tauri builds
 const WS_URL = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
   ? 'ws://localhost:9876/ws'  // Tauri always uses localhost sidecar
@@ -54,7 +97,22 @@ export function useWebSocket(enabled: boolean = true) {
     const conversationId = data.conversationId;
     if (!conversationId) return;
 
-    const event = data.payload as AgentEvent;
+    // Handle conversation_status separately - it uses a string payload
+    if (data.type === 'conversation_status') {
+      if (typeof data.payload === 'string' && isValidConversationStatus(data.payload)) {
+        updateConversation(conversationId, { status: data.payload });
+      } else {
+        console.warn('Invalid conversation status payload:', data.payload);
+      }
+      return;
+    }
+
+    // For all other events, validate payload is an AgentEvent object
+    if (!isAgentEvent(data.payload)) {
+      console.warn('Invalid WebSocket payload for conversation event:', data.type);
+      return;
+    }
+    const event = data.payload;
 
     switch (data.type) {
       case 'assistant_text':
@@ -99,19 +157,14 @@ export function useWebSocket(enabled: boolean = true) {
       case 'tool_end':
         // Complete active tool with success/summary info
         if (event?.id) {
-          completeActiveTool(
-            conversationId,
-            event.id,
-            event.success as boolean | undefined,
-            event.summary as string | undefined
-          );
+          completeActiveTool(conversationId, event.id, event.success, event.summary);
         }
         break;
 
       case 'todo_update':
         // Update agent todos for real-time tracking
-        if (event?.todos) {
-          setAgentTodos(conversationId, event.todos as AgentTodoItem[]);
+        if (event?.todos && isAgentTodoItemArray(event.todos)) {
+          setAgentTodos(conversationId, event.todos);
         }
         break;
 
@@ -174,16 +227,6 @@ export function useWebSocket(enabled: boolean = true) {
         clearActiveTools(conversationId);
         break;
 
-      case 'conversation_status':
-        // Update conversation status
-        const statusPayload = data.payload as string;
-        if (statusPayload) {
-          updateConversation(conversationId, {
-            status: statusPayload as 'active' | 'idle' | 'completed',
-          });
-        }
-        break;
-
       case 'error':
         // Handle error - capture the error message and stop streaming
         const errorMessage = event?.message || 'An unknown error occurred';
@@ -235,12 +278,12 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
-        // Legacy agent events
-        if (data.type === 'output' && data.agentId) {
-          appendOutput(data.agentId, data.payload as string);
-        } else if (data.type === 'status' && data.agentId) {
+        // Legacy agent events - validate string payloads
+        if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
+          appendOutput(data.agentId, data.payload);
+        } else if (data.type === 'status' && data.agentId && typeof data.payload === 'string') {
           updateSession(data.agentId, {
-            status: mapStatus(data.payload as string),
+            status: mapStatus(data.payload),
             updatedAt: new Date().toISOString(),
           });
         }

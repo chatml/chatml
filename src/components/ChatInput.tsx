@@ -44,7 +44,6 @@ export function ChatInput() {
   const [isSending, setIsSending] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
-  const [droppedFiles, setDroppedFiles] = useState<string[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -131,8 +130,8 @@ export function ChatInput() {
     let unlistenLeave: (() => void) | undefined;
 
     const setupListeners = async () => {
-      unlistenDrop = await listenForFileDrop((paths) => {
-        setDroppedFiles((prev) => [...prev, ...paths]);
+      unlistenDrop = await listenForFileDrop(() => {
+        // File attachments not yet implemented - just clear drag state
         setIsDragOver(false);
       });
       unlistenEnter = await listenForDragEnter(() => {
@@ -200,13 +199,8 @@ export function ChatInput() {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
     const content = message.trim();
-    const attachedFiles = [...droppedFiles];
     setMessage('');
-    setDroppedFiles([]);
     setIsSending(true);
-
-    // TODO: Include attachedFiles in message when backend supports it
-    void attachedFiles; // Will be used when backend supports file attachments
 
     try {
       // Check if this is a new conversation (no messages yet) or no conversation selected
@@ -309,14 +303,6 @@ export function ChatInput() {
     }
   };
 
-  const removeDroppedFile = (index: number) => {
-    setDroppedFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const getFileName = (path: string) => {
-    return path.split('/').pop() || path;
-  };
-
   return (
     <div className="pt-1 px-4 pb-4">
       <div className={cn(
@@ -348,37 +334,13 @@ export function ChatInput() {
           />
         )}
 
-        {/* Drag overlay */}
+        {/* Drag overlay - file attachments coming soon */}
         {isDragOver && (
           <div className="absolute inset-0 bg-primary/10 rounded-lg flex items-center justify-center z-10 pointer-events-none">
-            <div className="flex items-center gap-2 text-primary font-medium">
+            <div className="flex items-center gap-2 text-muted-foreground font-medium">
               <FileText className="w-5 h-5" />
-              Drop files to attach
+              File attachments coming soon
             </div>
-          </div>
-        )}
-
-        {/* Dropped files chips */}
-        {droppedFiles.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-3 pt-3">
-            {droppedFiles.map((file, index) => (
-              <div
-                key={`${file}-${index}`}
-                className="flex items-center gap-1.5 px-2 py-1 bg-muted rounded-md text-xs"
-              >
-                <FileText className="w-3 h-3 text-muted-foreground" />
-                <span className="max-w-32 truncate" title={file}>
-                  {getFileName(file)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeDroppedFile(index)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
           </div>
         )}
 
@@ -439,6 +401,8 @@ export function ChatInput() {
             )}
             onClick={() => setThinkingEnabled(!thinkingEnabled)}
             title={`Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`}
+            aria-label={`Extended thinking ${thinkingEnabled ? 'on' : 'off'}`}
+            aria-pressed={thinkingEnabled}
           >
             <Brain className="h-4 w-4" />
           </Button>
@@ -453,6 +417,8 @@ export function ChatInput() {
             )}
             onClick={() => setPlanModeEnabled(!planModeEnabled)}
             title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
+            aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
+            aria-pressed={planModeEnabled}
           >
             <BookOpen className="h-4 w-4" />
           </Button>
@@ -463,7 +429,7 @@ export function ChatInput() {
           {/* Plus Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Add attachment or link">
                 <Plus className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -501,6 +467,7 @@ export function ChatInput() {
               variant="destructive"
               className="h-8 w-8 rounded-full"
               onClick={handleStop}
+              aria-label="Stop agent"
             >
               <Square className="h-4 w-4" />
             </Button>
@@ -514,6 +481,7 @@ export function ChatInput() {
               )}
               onClick={handleSubmit}
               disabled={!message.trim() || !selectedSessionId || isSending}
+              aria-label="Send message"
             >
               <ArrowUp className="h-4 w-4" />
             </Button>

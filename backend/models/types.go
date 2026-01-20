@@ -130,3 +130,35 @@ const (
 	ConversationStatusIdle      = "idle"
 	ConversationStatusCompleted = "completed"
 )
+
+// SessionStatus constants
+const (
+	SessionStatusActive = "active"
+	SessionStatusIdle   = "idle"
+	SessionStatusDone   = "done"
+	SessionStatusError  = "error"
+)
+
+// ValidSessionStatuses is the set of valid session status values
+var ValidSessionStatuses = map[string]bool{
+	SessionStatusActive: true,
+	SessionStatusIdle:   true,
+	SessionStatusDone:   true,
+	SessionStatusError:  true,
+}
+
+// PRStatus constants
+const (
+	PRStatusNone   = "none"
+	PRStatusOpen   = "open"
+	PRStatusMerged = "merged"
+	PRStatusClosed = "closed"
+)
+
+// ValidPRStatuses is the set of valid PR status values
+var ValidPRStatuses = map[string]bool{
+	PRStatusNone:   true,
+	PRStatusOpen:   true,
+	PRStatusMerged: true,
+	PRStatusClosed: true,
+}

@@ -29,7 +29,6 @@ import {
   Circle,
   GitBranch,
   FileQuestion,
-  RefreshCw,
   FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,7 +36,6 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { CodeViewer } from '@/components/CodeViewer';
@@ -362,22 +360,26 @@ function EmptyState({ sessionName }: { sessionName?: string }) {
 function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean }) {
   const [copied, setCopied] = useState(false);
 
-  const copyContent = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+  const copyContent = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
   };
 
-  const copyAsMarkdown = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+  const copyAsMarkdown = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
   };
 
-  const handleRegenerate = () => {
-    // TODO: Implement regeneration via API
-    void message.id; // Will be used for regeneration
-  };
 
   const formatDuration = (ms?: number) => {
     if (!ms) return '';
@@ -465,15 +467,6 @@ function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean
                   <FileText className="mr-2 h-4 w-4" />
                   Copy as Markdown
                 </ContextMenuItem>
-                {message.role === 'assistant' && (
-                  <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem onClick={handleRegenerate}>
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Regenerate
-                    </ContextMenuItem>
-                  </>
-                )}
               </ContextMenuContent>
             </ContextMenu>
           )}

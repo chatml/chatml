@@ -1,7 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -28,6 +37,10 @@ interface ConversationTabsProps {
 }
 
 export function ConversationTabs({ sessionId, onNewConversation }: ConversationTabsProps) {
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameConvId, setRenameConvId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
   const {
     conversations,
     messages,
@@ -37,6 +50,7 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
     selectFileTab,
     selectedFileTabId,
     streamingState,
+    updateConversation,
   } = useAppStore();
 
   const sessionConversations = conversations.filter((c) => c.sessionId === sessionId);
@@ -66,11 +80,21 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
   };
 
   const handleRename = (id: string) => {
-    // TODO: Implement rename dialog
-    const newName = prompt('Enter new name:', conversations.find((c) => c.id === id)?.name);
-    if (newName) {
-      useAppStore.getState().updateConversation(id, { name: newName });
+    const conv = conversations.find((c) => c.id === id);
+    if (conv) {
+      setRenameConvId(id);
+      setRenameValue(conv.name);
+      setRenameDialogOpen(true);
     }
+  };
+
+  const handleRenameSubmit = () => {
+    if (renameConvId && renameValue.trim()) {
+      updateConversation(renameConvId, { name: renameValue.trim() });
+    }
+    setRenameDialogOpen(false);
+    setRenameConvId(null);
+    setRenameValue('');
   };
 
   const getStatusIndicator = (conv: Conversation) => {
@@ -100,16 +124,20 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
   };
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5" role="tablist" aria-label="Conversations">
       {sessionConversations.map((conv) => {
         const isSelected = !isFileActive && selectedConversationId === conv.id;
 
         return (
           <ContextMenu key={conv.id}>
             <ContextMenuTrigger asChild>
-              <div
+              <button
+                role="tab"
+                aria-selected={isSelected}
+                aria-controls={`conversation-panel-${conv.id}`}
+                id={`conversation-tab-${conv.id}`}
                 className={cn(
-                  'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs transition-colors shrink-0',
+                  'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs transition-colors shrink-0 border-0 bg-transparent',
                   isSelected
                     ? 'text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
@@ -122,13 +150,22 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
                 )}
                 {getStatusIndicator(conv)}
                 <span className="max-w-[120px] truncate font-medium">{conv.name}</span>
-                <button
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Close ${conv.name}`}
                   className="hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={(e) => handleRemoveConversation(conv.id, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleRemoveConversation(conv.id);
+                    }
+                  }}
                 >
                   <X className="h-3 w-3" />
-                </button>
-              </div>
+                </span>
+              </button>
             </ContextMenuTrigger>
             <ContextMenuContent>
               <ContextMenuItem onClick={() => handleRename(conv.id)}>
@@ -158,9 +195,36 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
         className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
         onClick={() => onNewConversation('task')}
         title="New conversation"
+        aria-label="New conversation"
       >
         <Plus className="h-3.5 w-3.5" />
       </Button>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent className="sm:max-w-[300px]">
+          <DialogHeader>
+            <DialogTitle>Rename Conversation</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleRenameSubmit();
+              }
+            }}
+            placeholder="Enter new name"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameSubmit}>Rename</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
