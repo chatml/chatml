@@ -18,7 +18,7 @@ import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
 import { CloneFromUrlDialog } from '@/components/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/QuickStartDialog';
-import { UpdateChecker } from '@/components/UpdateChecker';
+// import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -682,8 +682,9 @@ export default function Home() {
           onConfirm={handleConfirmClose}
         />
 
-        {/* Update Checker */}
+        {/* Update Checker - disabled until remote URL is configured
         <UpdateChecker />
+        */}
       </div>
     </TooltipProvider>
   );
