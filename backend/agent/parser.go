@@ -192,6 +192,8 @@ const (
 	EventTypeThinking          = "thinking"
 	EventTypeThinkingDelta     = "thinking_delta"
 	EventTypeThinkingStart     = "thinking_start"
+	EventTypeCheckpointCreated = "checkpoint_created"
+	EventTypeFilesRewound      = "files_rewound"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

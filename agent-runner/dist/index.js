@@ -564,11 +564,13 @@ function handleMessage(message) {
                 }
             }
             // Check for checkpoint_uuid in user messages (present when checkpointing is enabled)
-            if (message.checkpoint_uuid) {
+            // Type guard for SDK messages with checkpoint fields
+            const msgWithCheckpoint = message;
+            if (msgWithCheckpoint.checkpoint_uuid) {
                 emit({
                     type: "checkpoint_created",
-                    checkpointUuid: message.checkpoint_uuid,
-                    messageIndex: message.message_index || 0,
+                    checkpointUuid: msgWithCheckpoint.checkpoint_uuid,
+                    messageIndex: msgWithCheckpoint.message_index || 0,
                 });
             }
             break;
@@ -577,11 +579,13 @@ function handleMessage(message) {
             flushBlockBuffer();
             const resultMsg = message;
             // Check for checkpoint_uuid in result messages (present when checkpointing is enabled)
-            if (message.checkpoint_uuid) {
+            // Type guard for SDK messages with checkpoint fields
+            const resultWithCheckpoint = message;
+            if (resultWithCheckpoint.checkpoint_uuid) {
                 emit({
                     type: "checkpoint_created",
-                    checkpointUuid: message.checkpoint_uuid,
-                    messageIndex: message.message_index || 0,
+                    checkpointUuid: resultWithCheckpoint.checkpoint_uuid,
+                    messageIndex: resultWithCheckpoint.message_index || 0,
                     isResult: true,
                 });
             }
@@ -660,6 +664,12 @@ function handleMessage(message) {
                     outputStyle: initMsg.output_style,
                     sessionId: initMsg.session_id,
                     cwd: initMsg.cwd,
+                    // Budget configuration passed from CLI args
+                    budgetConfig: {
+                        maxBudgetUsd,
+                        maxTurns,
+                        maxThinkingTokens,
+                    },
                 });
                 currentSessionId = initMsg.session_id;
             }

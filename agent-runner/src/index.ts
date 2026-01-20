@@ -677,11 +677,13 @@ function handleMessage(message: SDKMessage): void {
       }
 
       // Check for checkpoint_uuid in user messages (present when checkpointing is enabled)
-      if ((message as any).checkpoint_uuid) {
+      // Type guard for SDK messages with checkpoint fields
+      const msgWithCheckpoint = message as SDKMessage & { checkpoint_uuid?: string; message_index?: number };
+      if (msgWithCheckpoint.checkpoint_uuid) {
         emit({
           type: "checkpoint_created",
-          checkpointUuid: (message as any).checkpoint_uuid,
-          messageIndex: (message as any).message_index || 0,
+          checkpointUuid: msgWithCheckpoint.checkpoint_uuid,
+          messageIndex: msgWithCheckpoint.message_index || 0,
         });
       }
       break;
@@ -692,11 +694,13 @@ function handleMessage(message: SDKMessage): void {
       const resultMsg = message as SDKResultMessage;
 
       // Check for checkpoint_uuid in result messages (present when checkpointing is enabled)
-      if ((message as any).checkpoint_uuid) {
+      // Type guard for SDK messages with checkpoint fields
+      const resultWithCheckpoint = message as SDKResultMessage & { checkpoint_uuid?: string; message_index?: number };
+      if (resultWithCheckpoint.checkpoint_uuid) {
         emit({
           type: "checkpoint_created",
-          checkpointUuid: (message as any).checkpoint_uuid,
-          messageIndex: (message as any).message_index || 0,
+          checkpointUuid: resultWithCheckpoint.checkpoint_uuid,
+          messageIndex: resultWithCheckpoint.message_index || 0,
           isResult: true,
         });
       }
@@ -777,6 +781,12 @@ function handleMessage(message: SDKMessage): void {
           outputStyle: initMsg.output_style,
           sessionId: initMsg.session_id,
           cwd: initMsg.cwd,
+          // Budget configuration passed from CLI args
+          budgetConfig: {
+            maxBudgetUsd,
+            maxTurns,
+            maxThinkingTokens,
+          },
         });
         currentSessionId = initMsg.session_id;
       } else if (sysMsg.subtype === "compact_boundary") {

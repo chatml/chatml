@@ -115,6 +115,23 @@ export function useWebSocket(enabled: boolean = true) {
     const event = data.payload;
 
     switch (data.type) {
+      case 'init':
+        // Capture budget configuration from init event
+        if (event?.budgetConfig) {
+          const config = event.budgetConfig as { maxBudgetUsd?: number; maxTurns?: number; maxThinkingTokens?: number };
+          // Initialize budget status with max values from config
+          const existingStatus = useAppStore.getState().budgetStatus;
+          useAppStore.getState().setBudgetStatus({
+            maxBudgetUsd: config.maxBudgetUsd,
+            maxTurns: config.maxTurns,
+            maxThinkingTokens: config.maxThinkingTokens,
+            currentCostUsd: existingStatus?.currentCostUsd || 0,
+            currentTurns: existingStatus?.currentTurns || 0,
+            currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
+          });
+        }
+        break;
+
       case 'assistant_text':
         // Append streaming text - clear thinking when regular text starts
         if (event?.content) {
@@ -217,12 +234,18 @@ export function useWebSocket(enabled: boolean = true) {
         clearThinking(conversationId);
         clearActiveTools(conversationId);
 
-        // Update budget status from result event
+        // Update budget status from result event, preserving max values
         if (event.cost !== undefined) {
+          const existingStatus = useAppStore.getState().budgetStatus;
           const budgetStatus: BudgetStatus = {
+            // Preserve max values from init event
+            maxBudgetUsd: existingStatus?.maxBudgetUsd,
+            maxTurns: existingStatus?.maxTurns,
+            maxThinkingTokens: existingStatus?.maxThinkingTokens,
+            // Update current values from result
             currentCostUsd: (event.cost as number) || 0,
             currentTurns: (event.turns as number) || 0,
-            currentThinkingTokens: 0,
+            currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
             limitExceeded: event.subtype === 'error_max_budget_usd' ? 'budget'
                          : event.subtype === 'error_max_turns' ? 'turns'
                          : undefined,

@@ -57,6 +57,7 @@ type InputMessage struct {
 	Content        string `json:"content,omitempty"`
 	Model          string `json:"model,omitempty"`
 	PermissionMode string `json:"permissionMode,omitempty"`
+	CheckpointUuid string `json:"checkpointUuid,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -318,6 +319,14 @@ func (p *Process) GetMcpStatus() error {
 func (p *Process) GetAccountInfo() error {
 	return p.sendInput(InputMessage{
 		Type: "get_account_info",
+	})
+}
+
+// RewindFiles rewinds file changes to a specific checkpoint
+func (p *Process) RewindFiles(checkpointUuid string) error {
+	return p.sendInput(InputMessage{
+		Type:           "rewind_files",
+		CheckpointUuid: checkpointUuid,
 	})
 }
 

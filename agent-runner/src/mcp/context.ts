@@ -102,8 +102,9 @@ export class WorkspaceContext {
   }
 
   private resolveLinearIssue(identifier: string): LinearIssue | null {
-    // Placeholder - will be implemented with Linear MCP integration
-    // For now, return a minimal issue structure
+    // TODO: Implement actual Linear API resolution when MCP Linear server is integrated.
+    // This placeholder returns a minimal structure so the context can be populated.
+    // When implementing, consider using the Linear SDK or MCP Linear server's get_issue tool.
     return {
       id: identifier,
       identifier,

@@ -1207,6 +1207,38 @@ func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type RewindConversationRequest struct {
+	CheckpointUuid string `json:"checkpointUuid"`
+}
+
+func (h *Handlers) RewindConversation(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	conv := h.store.GetConversation(convID)
+	if conv == nil {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+
+	var req RewindConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.CheckpointUuid == "" {
+		http.Error(w, "checkpointUuid is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.agentManager.RewindConversationFiles(convID, req.CheckpointUuid); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	writeJSON(w, map[string]string{"status": "rewinding"})
+}
+
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")

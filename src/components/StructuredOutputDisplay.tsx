@@ -16,9 +16,13 @@ export function StructuredOutputDisplay({ data, className }: StructuredOutputDis
   const [expanded, setExpanded] = useState(true);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
   };
 
   const formattedJson = JSON.stringify(data, null, 2);
