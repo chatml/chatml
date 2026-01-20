@@ -1212,8 +1212,13 @@ type RewindConversationRequest struct {
 }
 
 func (h *Handlers) RewindConversation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv := h.store.GetConversation(convID)
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if conv == nil {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
