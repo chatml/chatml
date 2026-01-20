@@ -1,7 +1,7 @@
 // agent-runner/src/mcp/tools/linear.ts
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { WorkspaceContext, LinearIssue } from "../context.js";
+import type { WorkspaceContext } from "../context.js";
 
 export function createLinearTools(context: WorkspaceContext) {
   return [
