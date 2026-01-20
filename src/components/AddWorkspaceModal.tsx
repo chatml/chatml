@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { addRepo } from '@/lib/api';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi } from '@/lib/api';
+import type { SetupInfo } from '@/lib/types';
 import {
   Dialog,
   DialogContent,
@@ -21,11 +23,22 @@ interface AddWorkspaceModalProps {
   onClose: () => void;
 }
 
+// Generate a random branch name for new sessions
+function generateBranchName(): string {
+  const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
+  const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 100);
+  return `${adj}-${noun}-${num}`;
+}
+
 export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { addWorkspace, selectWorkspace } = useAppStore();
+  const { addWorkspace, selectWorkspace, addSession, selectSession, addConversation, selectConversation } = useAppStore();
+  const { expandWorkspace } = useSettingsStore();
 
   useEffect(() => {
     if (isOpen) {
@@ -53,6 +66,56 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
       };
       addWorkspace(workspace);
       selectWorkspace(workspace.id);
+
+      // Auto-create first session for the new workspace
+      const branchName = generateBranchName();
+      const session = await createSessionApi(workspace.id, {
+        name: branchName,
+        branch: branchName,
+        worktreePath: '',
+      });
+
+      addSession({
+        id: session.id,
+        workspaceId: session.workspaceId,
+        name: session.name,
+        branch: session.branch,
+        worktreePath: session.worktreePath,
+        task: session.task,
+        status: session.status,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      });
+
+      // Fetch conversations created by backend (includes "Untitled" with setup info)
+      const conversations = await listConversationsApi(workspace.id, session.id);
+      conversations.forEach((conv) => {
+        addConversation({
+          id: conv.id,
+          sessionId: conv.sessionId,
+          type: conv.type,
+          name: conv.name,
+          status: conv.status,
+          messages: conv.messages.map((m) => ({
+            id: m.id,
+            conversationId: conv.id,
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+            setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
+            timestamp: m.timestamp,
+          })),
+          toolSummary: conv.toolSummary,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+        });
+      });
+
+      expandWorkspace(workspace.id);
+      selectSession(session.id);
+      if (conversations.length > 0) {
+        selectConversation(conversations[0].id);
+      }
+
       setPath('');
       onClose();
     } catch (err) {

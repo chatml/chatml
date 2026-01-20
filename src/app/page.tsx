@@ -15,6 +15,7 @@ import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
 import { SettingsPage } from '@/components/SettingsPage';
@@ -40,6 +41,16 @@ import {
 
 // Pre-computed skeleton widths (avoids Math.random() during render)
 const SKELETON_WIDTHS = [72, 88, 65, 81];
+
+// Generate a random branch name for new sessions
+function generateBranchName(): string {
+  const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
+  const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 100);
+  return `${adj}-${noun}-${num}`;
+}
 
 // Loading skeleton for conversation area
 function ConversationSkeleton() {
@@ -212,6 +223,8 @@ export default function Home() {
     pendingCloseFileTabId,
     setPendingCloseFileTabId,
   } = useAppStore();
+
+  const { expandWorkspace } = useSettingsStore();
 
   // Connect WebSocket for real-time updates (only when backend is connected)
   useWebSocket(backendConnected);
@@ -526,12 +539,61 @@ export default function Home() {
       };
       useAppStore.getState().addWorkspace(workspace);
       selectWorkspace(workspace.id);
+
+      // Auto-create first session for the new workspace
+      const branchName = generateBranchName();
+      const session = await createSession(workspace.id, {
+        name: branchName,
+        branch: branchName,
+        worktreePath: '',
+      });
+
+      addSession({
+        id: session.id,
+        workspaceId: session.workspaceId,
+        name: session.name,
+        branch: session.branch,
+        worktreePath: session.worktreePath,
+        task: session.task,
+        status: session.status,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      });
+
+      // Fetch conversations created by backend (includes "Untitled" with setup info)
+      const convs = await listConversations(workspace.id, session.id);
+      convs.forEach((conv) => {
+        addConversation({
+          id: conv.id,
+          sessionId: conv.sessionId,
+          type: conv.type,
+          name: conv.name,
+          status: conv.status,
+          messages: conv.messages.map((m) => ({
+            id: m.id,
+            conversationId: conv.id,
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+            setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
+            timestamp: m.timestamp,
+          })),
+          toolSummary: conv.toolSummary,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+        });
+      });
+
+      expandWorkspace(workspace.id);
+      selectSession(session.id);
+      if (convs.length > 0) {
+        selectConversation(convs[0].id);
+      }
     } catch (error) {
       // If it fails, fall back to showing the modal where user can see the error
       console.error('Failed to add workspace directly:', error);
       setShowAddWorkspace(true);
     }
-  }, [selectWorkspace]);
+  }, [selectWorkspace, addSession, addConversation, expandWorkspace, selectSession, selectConversation]);
 
   // Handle closing a file tab (with dirty check)
   const handleCloseFileTab = useCallback((tabId: string) => {
