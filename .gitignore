@@ -46,6 +46,7 @@ backend/chatml-backend
 
 # Tauri
 src-tauri/target/
+src-tauri/binaries/
 .worktrees/
 
 # Swift
