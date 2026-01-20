@@ -12,6 +12,7 @@ const TerminalOutput = dynamic(() => import('@/components/TerminalOutput').then(
   ssr: false,
   loading: () => <div className="h-full bg-black/90 flex items-center justify-center"><span className="text-xs text-muted-foreground">Loading...</span></div>,
 });
+import { McpServersPanel } from '@/components/McpServersPanel';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -65,7 +66,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
   const [selectedTab, setSelectedTab] = useState('changes');
-  const [outputTab, setOutputTab] = useState<'setup' | 'run'>('setup');
+  const [outputTab, setOutputTab] = useState<'setup' | 'run' | 'mcp'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
@@ -455,6 +456,14 @@ export function ChangesPanel() {
               >
                 Run
               </Button>
+              <Button
+                variant={outputTab === 'mcp' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 text-xs px-2"
+                onClick={() => setOutputTab('mcp')}
+              >
+                MCP
+              </Button>
             </div>
             <div className="flex-1 min-h-0">
               {outputTab === 'setup' && selectedSessionId && (
@@ -462,6 +471,9 @@ export function ChangesPanel() {
               )}
               {outputTab === 'run' && selectedSessionId && (
                 <TerminalOutput sessionId={selectedSessionId} type="run" />
+              )}
+              {outputTab === 'mcp' && (
+                <McpServersPanel />
               )}
             </div>
           </div>

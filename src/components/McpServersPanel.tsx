@@ -1,0 +1,78 @@
+'use client';
+
+import { useAppStore } from '@/stores/appStore';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Server, CheckCircle2, XCircle, AlertCircle, Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { McpServerStatus } from '@/lib/types';
+
+const STATUS_CONFIG = {
+  connected: {
+    icon: CheckCircle2,
+    color: 'text-green-500',
+    bgColor: 'bg-green-500/10',
+    label: 'Connected',
+  },
+  failed: {
+    icon: XCircle,
+    color: 'text-red-500',
+    bgColor: 'bg-red-500/10',
+    label: 'Failed',
+  },
+  'needs-auth': {
+    icon: AlertCircle,
+    color: 'text-yellow-500',
+    bgColor: 'bg-yellow-500/10',
+    label: 'Needs Auth',
+  },
+  pending: {
+    icon: Clock,
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/50',
+    label: 'Connecting...',
+  },
+} as const;
+
+export function McpServersPanel() {
+  const { mcpServers } = useAppStore();
+
+  if (!mcpServers || mcpServers.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <Server className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">No MCP servers</p>
+          <p className="text-xs mt-1">Servers will appear when agent starts</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="p-2 space-y-1">
+        {mcpServers.map((server) => (
+          <McpServerRow key={server.name} server={server} />
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+function McpServerRow({ server }: { server: McpServerStatus }) {
+  const config = STATUS_CONFIG[server.status] || STATUS_CONFIG.pending;
+  const Icon = config.icon;
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-2 py-1.5 rounded-md',
+        config.bgColor
+      )}
+    >
+      <Icon className={cn('w-3.5 h-3.5 shrink-0', config.color)} />
+      <span className="text-sm font-medium flex-1 truncate">{server.name}</span>
+      <span className={cn('text-xs', config.color)}>{config.label}</span>
+    </div>
+  );
+}
