@@ -71,10 +71,11 @@ function emit(event: OutputEvent): void {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files";
   content?: string;
   model?: string;
   permissionMode?: string;
+  checkpointUuid?: string; // For rewind_files
 }
 
 // Track if we've suggested a name yet
@@ -157,6 +158,16 @@ async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
         if (input.type === "get_account_info" && queryRef) {
           const info = await queryRef.accountInfo();
           emit({ type: "account_info", info });
+          continue;
+        }
+
+        if (input.type === "rewind_files" && input.checkpointUuid && queryRef) {
+          try {
+            await queryRef.rewindFiles(input.checkpointUuid);
+            emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: true });
+          } catch (error) {
+            emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: false, error: String(error) });
+          }
           continue;
         }
 
