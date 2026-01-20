@@ -180,3 +180,13 @@ func (c *Client) IsAuthenticated() bool {
 	defer c.mu.RUnlock()
 	return c.token != ""
 }
+
+// SetBaseURL sets the OAuth base URL (for testing)
+func (c *Client) SetBaseURL(url string) {
+	c.baseURL = url
+}
+
+// SetAPIURL sets the API base URL (for testing)
+func (c *Client) SetAPIURL(url string) {
+	c.apiURL = url
+}
