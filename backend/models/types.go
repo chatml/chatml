@@ -19,7 +19,7 @@ type Session struct {
 	WorktreePath     string        `json:"worktreePath"`
 	BaseCommitSHA    string        `json:"baseCommitSha,omitempty"` // Commit SHA the session was created from
 	Task             string        `json:"task,omitempty"`
-	Status           string        `json:"status"` // active, idle, done, error
+	Status           string        `json:"status"`            // active, idle, done, error
 	AgentID          string        `json:"agentId,omitempty"` // ID of running agent process
 	Stats            *SessionStats `json:"stats,omitempty"`
 	PRStatus         string        `json:"prStatus,omitempty"` // none, open, merged, closed
@@ -91,12 +91,12 @@ type RunStats struct {
 
 // RunSummary contains summary information displayed at the end of an agent turn
 type RunSummary struct {
-	Success    bool       `json:"success"`
-	Cost       float64    `json:"cost,omitempty"`
-	Turns      int        `json:"turns,omitempty"`
-	DurationMs int        `json:"durationMs,omitempty"`
-	Stats      *RunStats  `json:"stats,omitempty"`
-	Errors     []any      `json:"errors,omitempty"`
+	Success    bool      `json:"success"`
+	Cost       float64   `json:"cost,omitempty"`
+	Turns      int       `json:"turns,omitempty"`
+	DurationMs int       `json:"durationMs,omitempty"`
+	Stats      *RunStats `json:"stats,omitempty"`
+	Errors     []any     `json:"errors,omitempty"`
 }
 
 // Message represents a single message in a conversation

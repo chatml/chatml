@@ -339,6 +339,19 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 	return proc.SendMessage(message)
 }
 
+// RewindConversationFiles rewinds file changes in a conversation to a checkpoint
+func (m *Manager) RewindConversationFiles(convID, checkpointUuid string) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("conversation process not running: %s", convID)
+	}
+
+	return proc.RewindFiles(checkpointUuid)
+}
+
 // StopConversation stops a running conversation
 func (m *Manager) StopConversation(convID string) {
 	ctx := context.Background()

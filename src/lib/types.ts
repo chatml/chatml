@@ -132,7 +132,187 @@ export interface AgentEvent {
   errors?: unknown[];
   // Todo update fields
   todos?: AgentTodoItem[];
+
+  // Session management fields
+  sessionId?: string;
+  resuming?: boolean;
+  forking?: boolean;
+  source?: 'startup' | 'resume' | 'clear' | 'compact';
+  reason?: string;
+
+  // Enhanced init fields
+  model?: string;
+  tools?: string[];
+  mcpServers?: McpServerStatus[];
+  slashCommands?: string[];
+  skills?: string[];
+  plugins?: PluginInfo[];
+  agents?: string[];
+  permissionMode?: string;
+  claudeCodeVersion?: string;
+  apiKeySource?: string;
+  betas?: string[];
+  outputStyle?: string;
+  cwd?: string;
+  budgetConfig?: {
+    maxBudgetUsd?: number;
+    maxTurns?: number;
+    maxThinkingTokens?: number;
+  };
+
+  // Extended result fields
+  durationMs?: number;
+  durationApiMs?: number;
+  usage?: Record<string, unknown>;
+  modelUsage?: Record<string, unknown>;
+  structuredOutput?: unknown;
+
+  // Hook event fields
+  toolUseId?: string;
+  input?: unknown;
+  response?: unknown;
+  title?: string;
+  notificationType?: string;
+  error?: string;
+  isInterrupt?: boolean;
+  stopHookActive?: boolean;
+
+  // Subagent fields
+  agentId?: string;
+  agentType?: string;
+  transcriptPath?: string;
+
+  // Compact boundary fields
+  trigger?: 'manual' | 'auto';
+  preTokens?: number;
+
+  // Status fields
+  status?: string | null;
+
+  // Hook response fields
+  hookName?: string;
+  hookEvent?: string;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+
+  // Tool progress fields
+  toolName?: string;
+  elapsedTimeSeconds?: number;
+  parentToolUseId?: string;
+
+  // Auth status fields
+  isAuthenticating?: boolean;
+  output?: string[];
+
+  // Query info response fields
+  models?: ModelInfo[];
+  commands?: SlashCommand[];
+  servers?: McpServerStatus[];
+  info?: AccountInfo;
+  mode?: string;
+
+  // Stderr data
+  data?: string;
+
+  // Checkpoint fields
+  checkpointUuid?: string;
+  messageIndex?: number;
+  isResult?: boolean;
 }
+
+// MCP server status
+export interface McpServerStatus {
+  name: string;
+  status: 'connected' | 'failed' | 'needs-auth' | 'pending';
+}
+
+// Plugin information
+export interface PluginInfo {
+  name: string;
+  path: string;
+}
+
+// Model information
+export interface ModelInfo {
+  value: string;
+  displayName: string;
+  description: string;
+}
+
+// Slash command information
+export interface SlashCommand {
+  name: string;
+  description: string;
+  argumentHint: string;
+}
+
+// Account information
+export interface AccountInfo {
+  email?: string;
+  organization?: string;
+  subscriptionType?: string;
+  tokenSource?: string;
+  apiKeySource?: string;
+}
+
+// Event type constants for type safety
+export const AgentEventTypes = {
+  // Core events
+  READY: 'ready',
+  INIT: 'init',
+  ASSISTANT_TEXT: 'assistant_text',
+  TOOL_START: 'tool_start',
+  TOOL_END: 'tool_end',
+  NAME_SUGGESTION: 'name_suggestion',
+  TODO_UPDATE: 'todo_update',
+  RESULT: 'result',
+  COMPLETE: 'complete',
+  ERROR: 'error',
+  SHUTDOWN: 'shutdown',
+
+  // Session events
+  SESSION_STARTED: 'session_started',
+  SESSION_ENDED: 'session_ended',
+  SESSION_ID_UPDATE: 'session_id_update',
+
+  // Hook events
+  HOOK_PRE_TOOL: 'hook_pre_tool',
+  HOOK_POST_TOOL: 'hook_post_tool',
+  HOOK_TOOL_FAILURE: 'hook_tool_failure',
+  AGENT_NOTIFICATION: 'agent_notification',
+  AGENT_STOP: 'agent_stop',
+  HOOK_RESPONSE: 'hook_response',
+
+  // Subagent events
+  SUBAGENT_STARTED: 'subagent_started',
+  SUBAGENT_STOPPED: 'subagent_stopped',
+
+  // System events
+  COMPACT_BOUNDARY: 'compact_boundary',
+  STATUS_UPDATE: 'status_update',
+  TOOL_PROGRESS: 'tool_progress',
+  AUTH_STATUS: 'auth_status',
+  AGENT_STDERR: 'agent_stderr',
+
+  // Control events
+  INTERRUPTED: 'interrupted',
+  MODEL_CHANGED: 'model_changed',
+  PERMISSION_MODE_CHANGED: 'permission_mode_changed',
+  SUPPORTED_MODELS: 'supported_models',
+  SUPPORTED_COMMANDS: 'supported_commands',
+  MCP_STATUS: 'mcp_status',
+  ACCOUNT_INFO: 'account_info',
+
+  // Thinking events
+  THINKING: 'thinking',
+  THINKING_DELTA: 'thinking_delta',
+  THINKING_START: 'thinking_start',
+
+  // Checkpoint events
+  CHECKPOINT_CREATED: 'checkpoint_created',
+  FILES_REWOUND: 'files_rewound',
+} as const;
 
 export interface VerificationResult {
   name: string;
@@ -152,6 +332,25 @@ export interface AgentTodoItem {
   content: string;
   status: "pending" | "in_progress" | "completed";
   activeForm: string;
+}
+
+// File checkpoint for rewind support
+export interface CheckpointInfo {
+  uuid: string;
+  timestamp: string;
+  messageIndex: number;
+  isResult?: boolean;
+}
+
+// Budget and limits status
+export interface BudgetStatus {
+  maxBudgetUsd?: number;
+  currentCostUsd: number;
+  maxTurns?: number;
+  currentTurns: number;
+  maxThinkingTokens?: number;
+  currentThinkingTokens: number;
+  limitExceeded?: 'budget' | 'turns' | 'thinking_tokens';
 }
 
 // User-defined custom todo item

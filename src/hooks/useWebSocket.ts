@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 
 // Type guards for WebSocket payload validation
@@ -115,6 +115,23 @@ export function useWebSocket(enabled: boolean = true) {
     const event = data.payload;
 
     switch (data.type) {
+      case 'init':
+        // Capture budget configuration from init event
+        if (event?.budgetConfig) {
+          const config = event.budgetConfig as { maxBudgetUsd?: number; maxTurns?: number; maxThinkingTokens?: number };
+          // Initialize budget status with max values from config
+          const existingStatus = useAppStore.getState().budgetStatus;
+          useAppStore.getState().setBudgetStatus({
+            maxBudgetUsd: config.maxBudgetUsd,
+            maxTurns: config.maxTurns,
+            maxThinkingTokens: config.maxThinkingTokens,
+            currentCostUsd: existingStatus?.currentCostUsd || 0,
+            currentTurns: existingStatus?.currentTurns || 0,
+            currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
+          });
+        }
+        break;
+
       case 'assistant_text':
         // Append streaming text - clear thinking when regular text starts
         if (event?.content) {
@@ -216,6 +233,24 @@ export function useWebSocket(enabled: boolean = true) {
         setStreaming(conversationId, false);
         clearThinking(conversationId);
         clearActiveTools(conversationId);
+// Update budget status from result event, preserving max values
+        if (event.cost !== undefined) {
+          const existingStatus = useAppStore.getState().budgetStatus;
+          const budgetStatus: BudgetStatus = {
+            // Preserve max values from init event
+            maxBudgetUsd: existingStatus?.maxBudgetUsd,
+            maxTurns: existingStatus?.maxTurns,
+            maxThinkingTokens: existingStatus?.maxThinkingTokens,
+            // Update current values from result
+            currentCostUsd: (event.cost as number) || 0,
+            currentTurns: (event.turns as number) || 0,
+            currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
+            limitExceeded: event.subtype === 'error_max_budget_usd' ? 'budget'
+                         : event.subtype === 'error_max_turns' ? 'turns'
+                         : undefined,
+          };
+          useAppStore.getState().setBudgetStatus(budgetStatus);
+        }
         // Update conversation status to completed
         updateConversation(conversationId, { status: 'completed' });
         break;
@@ -279,6 +314,35 @@ export function useWebSocket(enabled: boolean = true) {
         // Handle conversation events
         if (data.conversationId) {
           handleConversationEvent(data);
+          return;
+        }
+
+        // Handle init event for MCP server status
+        if (data.type === 'init') {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload?.mcpServers && Array.isArray(payload.mcpServers)) {
+            useAppStore.getState().setMcpServers(payload.mcpServers);
+          }
+          return;
+        }
+
+        // Handle checkpoint events
+        if (data.type === 'checkpoint_created') {
+          const eventData = data as WSEvent & Record<string, unknown>;
+          const checkpoint: CheckpointInfo = {
+            uuid: eventData.checkpointUuid as string,
+            timestamp: new Date().toISOString(),
+            messageIndex: (eventData.messageIndex as number) || 0,
+            isResult: eventData.isResult as boolean | undefined,
+          };
+          useAppStore.getState().addCheckpoint(checkpoint);
+          return;
+        }
+
+        // Handle files rewound event
+        if (data.type === 'files_rewound') {
+          const eventData = data as WSEvent & Record<string, unknown>;
+          console.log('Files rewound to checkpoint:', eventData.checkpointUuid);
           return;
         }
 

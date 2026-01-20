@@ -11,7 +11,10 @@ import type {
   Repo,
   Agent,
   AgentTodoItem,
-  CustomTodoItem
+  CustomTodoItem,
+  McpServerStatus,
+  CheckpointInfo,
+  BudgetStatus
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -73,6 +76,13 @@ interface AppState {
   // Terminal instances (bottom panel terminals per workspace)
   terminalInstances: Record<string, TerminalInstance[]>; // keyed by workspaceId
   activeTerminalId: Record<string, string | null>;       // keyed by workspaceId
+
+  // MCP servers state
+  mcpServers: McpServerStatus[];
+
+  // Checkpoint timeline state
+  checkpoints: CheckpointInfo[];
+  budgetStatus: BudgetStatus | null;
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -156,6 +166,15 @@ interface AppState {
   setActiveTerminal: (workspaceId: string, terminalId: string) => void;
   markTerminalExited: (terminalId: string) => void;
 
+  // MCP servers actions
+  setMcpServers: (servers: McpServerStatus[]) => void;
+
+  // Checkpoint actions
+  setCheckpoints: (checkpoints: CheckpointInfo[]) => void;
+  addCheckpoint: (checkpoint: CheckpointInfo) => void;
+  clearCheckpoints: () => void;
+  setBudgetStatus: (status: BudgetStatus | null) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -193,6 +212,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   customTodos: {},
   terminalInstances: {},
   activeTerminalId: {},
+  mcpServers: [],
+  checkpoints: [],
+  budgetStatus: null,
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -885,6 +907,17 @@ updateFileTabContent: (id, content) => set((state) => ({
     }
     set({ terminalInstances: updated });
   },
+
+  // MCP servers actions
+  setMcpServers: (servers) => set({ mcpServers: servers }),
+
+  // Checkpoint actions
+  setCheckpoints: (checkpoints) => set({ checkpoints }),
+  addCheckpoint: (checkpoint) => set((state) => ({
+    checkpoints: [...state.checkpoints, checkpoint]
+  })),
+  clearCheckpoints: () => set({ checkpoints: [] }),
+  setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
 
   // Legacy support
   repos: [],
