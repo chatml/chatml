@@ -154,6 +154,11 @@ export interface AgentEvent {
   betas?: string[];
   outputStyle?: string;
   cwd?: string;
+  budgetConfig?: {
+    maxBudgetUsd?: number;
+    maxTurns?: number;
+    maxThinkingTokens?: number;
+  };
 
   // Extended result fields
   durationMs?: number;
