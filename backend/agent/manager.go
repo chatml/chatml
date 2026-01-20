@@ -300,21 +300,26 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 
 // StopConversation stops a running conversation
 func (m *Manager) StopConversation(convID string) {
-	m.mu.RLock()
+	m.mu.Lock()
 	proc, ok := m.convProcesses[convID]
-	m.mu.RUnlock()
+	if !ok || !proc.IsRunning() {
+		m.mu.Unlock()
+		return
+	}
+	// Remove from map to prevent concurrent stop attempts
+	delete(m.convProcesses, convID)
+	m.mu.Unlock()
 
-	if ok && proc.IsRunning() {
-		proc.SendStop()
-		proc.Stop()
+	// Now safe to stop without holding lock
+	proc.SendStop()
+	proc.Stop()
 
-		m.store.UpdateConversation(convID, func(c *models.Conversation) {
-			c.Status = models.ConversationStatusIdle
-			c.UpdatedAt = time.Now()
-		})
-		if m.onConversationStatus != nil {
-			m.onConversationStatus(convID, models.ConversationStatusIdle)
-		}
+	m.store.UpdateConversation(convID, func(c *models.Conversation) {
+		c.Status = models.ConversationStatusIdle
+		c.UpdatedAt = time.Now()
+	})
+	if m.onConversationStatus != nil {
+		m.onConversationStatus(convID, models.ConversationStatusIdle)
 	}
 }
 
@@ -419,16 +424,21 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 }
 
 func (m *Manager) StopAgent(agentID string) {
-	m.mu.RLock()
+	m.mu.Lock()
 	proc, ok := m.processes[agentID]
-	m.mu.RUnlock()
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	// Remove from map to prevent concurrent stop attempts
+	delete(m.processes, agentID)
+	m.mu.Unlock()
 
-	if ok {
-		proc.Stop()
-		m.store.UpdateAgentStatus(agentID, models.StatusError)
-		if m.onStatus != nil {
-			m.onStatus(agentID, models.StatusError)
-		}
+	// Now safe to stop without holding lock
+	proc.Stop()
+	m.store.UpdateAgentStatus(agentID, models.StatusError)
+	if m.onStatus != nil {
+		m.onStatus(agentID, models.StatusError)
 	}
 }
 

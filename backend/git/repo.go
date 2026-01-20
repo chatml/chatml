@@ -1,12 +1,32 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// Default timeout for git commands
+const gitCommandTimeout = 30 * time.Second
+
+// gitCmdContext creates a git command with the given context
+func gitCmdContext(ctx context.Context, repoPath string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+	return cmd
+}
+
+// gitCmd creates a git command with a timeout context.
+// Returns the command and a cancel function that MUST be called when done.
+func gitCmd(repoPath string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout)
+	cmd := gitCmdContext(ctx, repoPath, args...)
+	return cmd, cancel
+}
 
 type RepoManager struct{}
 
@@ -23,8 +43,8 @@ func (rm *RepoManager) ValidateRepo(path string) error {
 }
 
 func (rm *RepoManager) GetCurrentBranch(repoPath string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmd(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -38,8 +58,8 @@ func (rm *RepoManager) GetRepoName(path string) string {
 
 // GetFileAtRef returns the content of a file at a specific git ref (branch, tag, or commit)
 func (rm *RepoManager) GetFileAtRef(repoPath, ref, filePath string) (string, error) {
-	cmd := exec.Command("git", "show", fmt.Sprintf("%s:%s", ref, filePath))
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmd(repoPath, "show", fmt.Sprintf("%s:%s", ref, filePath))
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -49,8 +69,8 @@ func (rm *RepoManager) GetFileAtRef(repoPath, ref, filePath string) (string, err
 
 // GetChangedFiles returns a list of files that have changed compared to a base ref
 func (rm *RepoManager) GetChangedFiles(repoPath, baseRef string) ([]string, error) {
-	cmd := exec.Command("git", "diff", "--name-only", baseRef)
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmd(repoPath, "diff", "--name-only", baseRef)
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -77,8 +97,8 @@ type FileChange struct {
 // GetChangedFilesWithStats returns files changed compared to a base ref with addition/deletion counts
 func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]FileChange, error) {
 	// First get the diff stats
-	cmd := exec.Command("git", "diff", "--numstat", baseRef)
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmd(repoPath, "diff", "--numstat", baseRef)
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -111,9 +131,10 @@ func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]Fil
 		status := "modified"
 		if additions > 0 && deletions == 0 {
 			// Check if it's a new file
-			checkCmd := exec.Command("git", "ls-tree", baseRef, "--", filePath)
-			checkCmd.Dir = repoPath
-			if checkOut, _ := checkCmd.Output(); len(checkOut) == 0 {
+			checkCmd, checkCancel := gitCmd(repoPath, "ls-tree", baseRef, "--", filePath)
+			checkOut, _ := checkCmd.Output()
+			checkCancel()
+			if len(checkOut) == 0 {
 				status = "added"
 			}
 		} else if deletions > 0 && additions == 0 {
@@ -136,8 +157,8 @@ func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]Fil
 
 // HasMergeConflicts checks if there are any merge conflicts in the repo
 func (rm *RepoManager) HasMergeConflicts(repoPath string) (bool, error) {
-	cmd := exec.Command("git", "diff", "--check")
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmd(repoPath, "diff", "--check")
+	defer cancel()
 	out, err := cmd.CombinedOutput()
 	// git diff --check returns exit code 2 if there are conflict markers
 	if err != nil {

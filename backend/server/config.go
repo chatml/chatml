@@ -1,12 +1,21 @@
 package server
 
+import "os"
+
 // AllowedOrigins defines the allowed origins for CORS and WebSocket connections.
 // These must be kept in sync to prevent security misconfigurations.
-var AllowedOrigins = []string{
-	"tauri://localhost",
-	"https://tauri.localhost",
-	"http://localhost:3000", // Dev only - consider removing in production builds
-}
+// Additional dev origins can be added via CHATML_DEV_ORIGINS environment variable.
+var AllowedOrigins = func() []string {
+	origins := []string{
+		"tauri://localhost",
+		"https://tauri.localhost",
+	}
+	// Add dev origin if specified via environment variable
+	if devOrigin := os.Getenv("CHATML_DEV_ORIGIN"); devOrigin != "" {
+		origins = append(origins, devOrigin)
+	}
+	return origins
+}()
 
 // AllowedOriginsMap provides O(1) lookup for WebSocket origin validation.
 var AllowedOriginsMap = func() map[string]bool {

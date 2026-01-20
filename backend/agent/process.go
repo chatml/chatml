@@ -113,8 +113,13 @@ func (p *Process) Start() error {
 
 	p.running = true
 
+	// WaitGroup to track when stdout/stderr goroutines complete
+	var outputWg sync.WaitGroup
+	outputWg.Add(2)
+
 	// Stream stdout
 	go func() {
+		defer outputWg.Done()
 		scanner := bufio.NewScanner(stdout)
 		// Increase buffer for large JSON events
 		buf := make([]byte, 0, 1024*1024)
@@ -130,6 +135,7 @@ func (p *Process) Start() error {
 
 	// Stream stderr
 	go func() {
+		defer outputWg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			select {
@@ -146,6 +152,11 @@ func (p *Process) Start() error {
 		p.running = false
 		p.exitErr = err
 		p.mu.Unlock()
+
+		// Wait for stdout/stderr goroutines to finish before closing output channel
+		outputWg.Wait()
+		close(p.output)
+
 		close(p.done)
 	}()
 

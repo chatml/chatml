@@ -29,36 +29,51 @@ interface InputMessage {
 let hasEmittedNameSuggestion = false;
 let accumulatedText = "";
 
+// Module-level readline interface for proper cleanup
+let rl: readline.Interface | null = null;
+
+// Close readline interface if it exists
+function closeReadline(): void {
+  if (rl) {
+    rl.close();
+    rl = null;
+  }
+}
+
 // Create async generator for streaming input mode
 async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
-  const rl = readline.createInterface({
+  rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: false,
   });
 
-  for await (const line of rl) {
-    if (!line.trim()) continue;
+  try {
+    for await (const line of rl) {
+      if (!line.trim()) continue;
 
-    try {
-      const input: InputMessage = JSON.parse(line);
+      try {
+        const input: InputMessage = JSON.parse(line);
 
-      if (input.type === "stop") {
-        break;
+        if (input.type === "stop") {
+          break;
+        }
+
+        if (input.type === "message" && input.content) {
+          yield {
+            type: "user",
+            message: {
+              role: "user",
+              content: input.content,
+            },
+          } as SDKUserMessage;
+        }
+      } catch (err) {
+        emit({ type: "error", message: `Failed to parse input: ${err}` });
       }
-
-      if (input.type === "message" && input.content) {
-        yield {
-          type: "user",
-          message: {
-            role: "user",
-            content: input.content,
-          },
-        } as SDKUserMessage;
-      }
-    } catch (err) {
-      emit({ type: "error", message: `Failed to parse input: ${err}` });
     }
+  } finally {
+    closeReadline();
   }
 }
 
@@ -373,16 +388,19 @@ function handleMessage(message: SDKMessage): void {
 
 // Handle graceful shutdown
 process.on("SIGTERM", () => {
+  closeReadline();
   emit({ type: "shutdown", reason: "SIGTERM" });
   process.exit(0);
 });
 
 process.on("SIGINT", () => {
+  closeReadline();
   emit({ type: "shutdown", reason: "SIGINT" });
   process.exit(0);
 });
 
 main().catch((err) => {
+  closeReadline();
   emit({ type: "error", message: `Unhandled error: ${err}` });
   process.exit(1);
 });

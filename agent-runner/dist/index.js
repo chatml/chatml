@@ -12,34 +12,48 @@ function emit(event) {
 // Track if we've suggested a name yet
 let hasEmittedNameSuggestion = false;
 let accumulatedText = "";
+// Module-level readline interface for proper cleanup
+let rl = null;
+// Close readline interface if it exists
+function closeReadline() {
+    if (rl) {
+        rl.close();
+        rl = null;
+    }
+}
 // Create async generator for streaming input mode
 async function* createMessageStream() {
-    const rl = readline.createInterface({
+    rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
         terminal: false,
     });
-    for await (const line of rl) {
-        if (!line.trim())
-            continue;
-        try {
-            const input = JSON.parse(line);
-            if (input.type === "stop") {
-                break;
+    try {
+        for await (const line of rl) {
+            if (!line.trim())
+                continue;
+            try {
+                const input = JSON.parse(line);
+                if (input.type === "stop") {
+                    break;
+                }
+                if (input.type === "message" && input.content) {
+                    yield {
+                        type: "user",
+                        message: {
+                            role: "user",
+                            content: input.content,
+                        },
+                    };
+                }
             }
-            if (input.type === "message" && input.content) {
-                yield {
-                    type: "user",
-                    message: {
-                        role: "user",
-                        content: input.content,
-                    },
-                };
+            catch (err) {
+                emit({ type: "error", message: `Failed to parse input: ${err}` });
             }
         }
-        catch (err) {
-            emit({ type: "error", message: `Failed to parse input: ${err}` });
-        }
+    }
+    finally {
+        closeReadline();
     }
 }
 // Extract a suggested name from the first meaningful response
@@ -187,6 +201,17 @@ function handleMessage(message) {
                             tool: block.name,
                             params: block.input,
                         });
+                        // Emit TodoWrite events for real-time todo tracking
+                        if (block.name === "TodoWrite") {
+                            const input = block.input;
+                            if (input?.todos) {
+                                emit({
+                                    type: "todo_update",
+                                    id: block.id,
+                                    todos: input.todos,
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -310,14 +335,17 @@ function handleMessage(message) {
 }
 // Handle graceful shutdown
 process.on("SIGTERM", () => {
+    closeReadline();
     emit({ type: "shutdown", reason: "SIGTERM" });
     process.exit(0);
 });
 process.on("SIGINT", () => {
+    closeReadline();
     emit({ type: "shutdown", reason: "SIGINT" });
     process.exit(0);
 });
 main().catch((err) => {
+    closeReadline();
     emit({ type: "error", message: `Unhandled error: ${err}` });
     process.exit(1);
 });

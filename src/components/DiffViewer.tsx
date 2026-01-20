@@ -182,12 +182,49 @@ export function DiffViewer({
     []
   );
 
+  // Pre-compute random widths for loading skeleton to avoid calling Math.random() during render
+  const skeletonWidths = useMemo(
+    () => Array.from({ length: 12 }, () => 40 + Math.random() * 50),
+    []
+  );
+
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading diff...</span>
+      <div className="h-full flex flex-col" aria-busy="true" aria-label="Loading diff">
+        {/* Skeleton toolbar */}
+        <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-24 bg-muted-foreground/20 rounded animate-pulse" />
+            <span className="text-muted-foreground/30">→</span>
+            <div className="h-3 w-24 bg-muted-foreground/20 rounded animate-pulse" />
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="h-6 w-14 bg-muted-foreground/20 rounded animate-pulse" />
+            <div className="h-6 w-16 bg-muted-foreground/20 rounded animate-pulse" />
+          </div>
+        </div>
+        {/* Skeleton diff lines */}
+        <div className="flex-1 overflow-hidden p-2 space-y-1">
+          {skeletonWidths.map((width, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="h-4 w-8 bg-muted-foreground/10 rounded animate-pulse" />
+              <div
+                className="h-4 rounded animate-pulse"
+                style={{
+                  width: `${width}%`,
+                  backgroundColor: i % 4 === 0 ? 'rgba(34, 197, 94, 0.1)' : i % 4 === 2 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(128, 128, 128, 0.1)',
+                  animationDelay: `${i * 50}ms`,
+                }}
+              />
+            </div>
+          ))}
+        </div>
+        {/* Loading indicator */}
+        <div className="flex items-center justify-center py-4 border-t bg-muted/20">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            <span className="text-sm">Loading diff...</span>
+          </div>
         </div>
       </div>
     );
