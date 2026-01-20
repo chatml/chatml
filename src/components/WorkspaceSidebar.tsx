@@ -45,7 +45,6 @@ import {
   Terminal,
   Trash2,
   Copy,
-  GripVertical,
   Archive,
   Settings,
   CheckCircle2,
@@ -450,14 +449,11 @@ function SortableWorkspaceItem({
             )}
           >
             <div
-              className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+              className="w-6 h-6 rounded-md bg-primary/15 flex items-center justify-center text-[11px] font-semibold text-primary shrink-0 cursor-grab active:cursor-grabbing"
               {...attributes}
               {...listeners}
               onClick={(e) => e.stopPropagation()}
             >
-              <GripVertical className="w-3.5 h-3.5" />
-            </div>
-            <div className="w-6 h-6 rounded-md bg-primary/15 flex items-center justify-center text-[11px] font-semibold text-primary shrink-0">
               {getInitial(workspace.name)}
             </div>
             <span className="text-sm font-medium truncate">
