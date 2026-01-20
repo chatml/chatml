@@ -31,6 +31,10 @@ type ProcessOptions struct {
 	MaxTurns            int
 	MaxThinkingTokens   int
 	StructuredOutput    string
+	SettingSources      string // Comma-separated: project,user,local
+	Betas               string // Comma-separated beta features
+	Model               string // Model name override
+	FallbackModel       string // Fallback model name
 }
 
 type Process struct {
@@ -146,6 +150,18 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	// Add structured output schema if provided
 	if opts.StructuredOutput != "" {
 		args = append(args, "--structured-output", opts.StructuredOutput)
+	}
+	if opts.SettingSources != "" {
+		args = append(args, "--setting-sources", opts.SettingSources)
+	}
+	if opts.Betas != "" {
+		args = append(args, "--betas", opts.Betas)
+	}
+	if opts.Model != "" {
+		args = append(args, "--model", opts.Model)
+	}
+	if opts.FallbackModel != "" {
+		args = append(args, "--fallback-model", opts.FallbackModel)
 	}
 
 	// Spawn the Node agent runner
