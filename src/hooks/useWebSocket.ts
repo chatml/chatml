@@ -278,6 +278,15 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle init event for MCP server status
+        if (data.type === 'init') {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload?.mcpServers && Array.isArray(payload.mcpServers)) {
+            useAppStore.getState().setMcpServers(payload.mcpServers);
+          }
+          return;
+        }
+
         // Legacy agent events - validate string payloads
         if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
           appendOutput(data.agentId, data.payload);

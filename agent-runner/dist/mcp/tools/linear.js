@@ -30,6 +30,10 @@ export function createLinearTools(context) {
         tool("start_linear_issue", "Start working on a Linear issue. Creates a git branch and associates the issue with this session. Note: Actual Linear API integration requires the Linear MCP server.", {
             issueId: z.string().describe("Issue identifier like 'LIN-123'"),
         }, async ({ issueId }) => {
+            // Validate issueId format to prevent command injection
+            if (!/^[A-Za-z]+-\d+$/.test(issueId)) {
+                return { content: [{ type: "text", text: `Invalid issue ID format: ${issueId}. Expected format: PREFIX-123` }] };
+            }
             const { execSync } = await import("child_process");
             // Create branch name from issue ID
             const branchName = `feat/${issueId.toLowerCase()}`;
