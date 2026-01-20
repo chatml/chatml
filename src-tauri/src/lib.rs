@@ -1,3 +1,4 @@
+use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,7 +9,6 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, WindowEvent,
 };
-use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 #[cfg(target_os = "macos")]
 use tauri_plugin_decorum::WebviewWindowExt;
 use tauri_plugin_shell::process::CommandChild;
@@ -502,13 +502,19 @@ fn stop_speech_recognition() -> Result<(), String> {
 
 // Tauri command to start watching a workspace directory for file changes
 #[tauri::command]
-fn watch_workspace(app: tauri::AppHandle, workspace_id: String, workspace_path: String) -> Result<(), String> {
+fn watch_workspace(
+    app: tauri::AppHandle,
+    workspace_id: String,
+    workspace_path: String,
+) -> Result<(), String> {
     use notify::RecursiveMode;
     use std::sync::mpsc::channel;
 
     // Initialize the watchers map if needed
     {
-        let mut watchers = FILE_WATCHERS.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut watchers = FILE_WATCHERS
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
         if watchers.is_none() {
             *watchers = Some(HashMap::new());
         }
@@ -516,7 +522,9 @@ fn watch_workspace(app: tauri::AppHandle, workspace_id: String, workspace_path: 
 
     // Check if already watching this workspace
     {
-        let watchers = FILE_WATCHERS.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let watchers = FILE_WATCHERS
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
         if let Some(map) = watchers.as_ref() {
             if map.contains_key(&workspace_id) {
                 log::info!("Already watching workspace: {}", workspace_id);
@@ -553,7 +561,11 @@ fn watch_workspace(app: tauri::AppHandle, workspace_id: String, workspace_path: 
     // channel, causing rx.recv() to return Err and the thread to exit gracefully.
     // Note: We don't track the JoinHandle because the channel-based shutdown is sufficient.
     std::thread::spawn(move || {
-        log::info!("File watcher started for workspace: {} at {}", ws_id, ws_path);
+        log::info!(
+            "File watcher started for workspace: {} at {}",
+            ws_id,
+            ws_path
+        );
 
         loop {
             match rx.recv() {
@@ -567,7 +579,8 @@ fn watch_workspace(app: tauri::AppHandle, workspace_id: String, workspace_path: 
                             let should_skip = IGNORED_DIRECTORIES.iter().any(|dir| {
                                 let unix_pattern = format!("/{}/", dir);
                                 let windows_pattern = format!("\\{}\\", dir);
-                                event_path.contains(&unix_pattern) || event_path.contains(&windows_pattern)
+                                event_path.contains(&unix_pattern)
+                                    || event_path.contains(&windows_pattern)
                             });
                             if should_skip {
                                 continue;
@@ -610,20 +623,28 @@ fn watch_workspace(app: tauri::AppHandle, workspace_id: String, workspace_path: 
 
     // Store the debouncer handle
     {
-        let mut watchers = FILE_WATCHERS.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut watchers = FILE_WATCHERS
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
         if let Some(map) = watchers.as_mut() {
             map.insert(workspace_id.clone(), debouncer);
         }
     }
 
-    log::info!("Started watching workspace: {} at {}", workspace_id, workspace_path);
+    log::info!(
+        "Started watching workspace: {} at {}",
+        workspace_id,
+        workspace_path
+    );
     Ok(())
 }
 
 // Tauri command to stop watching a workspace directory
 #[tauri::command]
 fn unwatch_workspace(workspace_id: String) -> Result<(), String> {
-    let mut watchers = FILE_WATCHERS.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut watchers = FILE_WATCHERS
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
 
     if let Some(map) = watchers.as_mut() {
         if map.remove(&workspace_id).is_some() {
