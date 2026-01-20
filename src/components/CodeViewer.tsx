@@ -369,10 +369,10 @@ export function CodeViewer({
       <div className="flex-1 overflow-hidden min-h-0">
         {isMarkdown && viewMode === 'rendered' ? (
           <div
-            className="p-6 min-h-full overflow-auto overscroll-contain"
+            className="h-full overflow-auto overscroll-contain"
             data-color-mode={resolvedTheme === 'dark' ? 'dark' : 'light'}
           >
-            <div className="markdown-body !bg-transparent px-4">
+            <div className="markdown-body !bg-transparent px-6 py-5">
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                 {content}
               </ReactMarkdown>

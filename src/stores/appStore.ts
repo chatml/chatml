@@ -456,10 +456,17 @@ streamingState: cleanedStreamingState,
     const existing = state.fileTabs.find((t) => t.id === tab.id);
 
     if (existing) {
-      // Tab already open - just select it and update lastAccessedAt
+      // Tab already open - select it, update lastAccessedAt, and merge new properties
+      // This allows setting isLoading: true when re-opening a tab that needs content loaded
       return {
         fileTabs: state.fileTabs.map((t) =>
-          t.id === tab.id ? { ...t, lastAccessedAt: now } : t
+          t.id === tab.id
+            ? {
+                ...t,
+                ...tab, // Merge incoming properties (e.g., isLoading: true)
+                lastAccessedAt: now,
+              }
+            : t
         ),
         selectedFileTabId: tab.id,
       };

@@ -90,6 +90,9 @@ export function ChangesPanel() {
 
     openFileTab(newTab);
 
+    // Always set loading state for existing tabs (e.g., restored from persistence without content)
+    updateFileTab(tabId, { isLoading: true });
+
     // Fetch file content
     try {
       const fileData = await getRepoFileContent(selectedWorkspaceId, path);
@@ -143,6 +146,9 @@ export function ChangesPanel() {
     };
 
     openFileTab(newTab);
+
+    // Always set loading state for existing tabs (e.g., restored from persistence without content)
+    updateFileTab(tabId, { isLoading: true });
 
     // Fetch diff
     try {
