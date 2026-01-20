@@ -64,21 +64,21 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
-  const [selectedTab, setSelectedTab] = useState('files');
+  const [selectedTab, setSelectedTab] = useState('changes');
   const [outputTab, setOutputTab] = useState<'setup' | 'run'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
 
-  // Handle file selection from file tree
+  // Handle file selection from file tree (workspace-scoped tab - no sessionId)
   const handleFileSelect = async (path: string) => {
     if (!selectedWorkspaceId) return;
 
     const filename = path.split('/').pop() || path;
     const tabId = `${selectedWorkspaceId}-${path}`;
 
-    // Create tab with loading state
+    // Create tab with loading state (no sessionId = workspace-scoped)
     const newTab: FileTab = {
       id: tabId,
       workspaceId: selectedWorkspaceId,
@@ -95,6 +95,7 @@ export function ChangesPanel() {
       const fileData = await getRepoFileContent(selectedWorkspaceId, path);
       updateFileTab(tabId, {
         content: fileData.content,
+        originalContent: fileData.content, // Store original for dirty detection
         isLoading: false,
       });
     } catch (error) {
@@ -106,18 +107,20 @@ export function ChangesPanel() {
     }
   };
 
-  // Handle changed file selection - shows diff view
+  // Handle changed file selection - shows diff view (session-scoped tab)
   const handleChangedFileSelect = async (path: string) => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
     const filename = path.split('/').pop() || path;
-    const tabId = `${selectedWorkspaceId}-diff-${path}`;
+    // Include sessionId in tab ID to allow same file open in different sessions
+    const tabId = `${selectedWorkspaceId}-${selectedSessionId}-diff-${path}`;
 
     // Check if it's a binary file
     if (isBinaryFile(filename)) {
       const newTab: FileTab = {
         id: tabId,
         workspaceId: selectedWorkspaceId,
+        sessionId: selectedSessionId, // Session-scoped tab
         path,
         name: filename,
         isLoading: false,
@@ -128,10 +131,11 @@ export function ChangesPanel() {
       return;
     }
 
-    // Create tab with loading state for text files
+    // Create tab with loading state for text files (session-scoped)
     const newTab: FileTab = {
       id: tabId,
       workspaceId: selectedWorkspaceId,
+      sessionId: selectedSessionId, // Session-scoped tab
       path,
       name: filename,
       isLoading: true,
@@ -279,6 +283,19 @@ export function ChangesPanel() {
           <Eye className="h-3.5 w-3.5" />
           Review
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            'h-7 text-xs gap-1.5 border border-transparent transition-colors',
+            hasActivePR && 'text-green-600 dark:text-green-400 hover:border-green-500/50 hover:bg-green-500/10',
+            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:border-red-500/50 hover:bg-red-500/10',
+            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:border-primary/50 hover:bg-primary/10'
+          )}
+        >
+          <GitPullRequest className="h-3.5 w-3.5" />
+          Create PR
+        </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <MoreVertical className="h-3.5 w-3.5" />
         </Button>
@@ -286,14 +303,6 @@ export function ChangesPanel() {
 
       {/* Tabs Row */}
       <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 overflow-hidden min-w-0">
-        <Button
-          variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
-          size="sm"
-          className="h-6 text-xs px-2 shrink-0"
-          onClick={() => setSelectedTab('files')}
-        >
-          All files
-        </Button>
         <Button
           variant={selectedTab === 'changes' ? 'secondary' : 'ghost'}
           size="sm"
@@ -327,6 +336,14 @@ export function ChangesPanel() {
               {totalPendingTodos}
             </span>
           )}
+        </Button>
+        <Button
+          variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-6 text-xs px-2 shrink-0"
+          onClick={() => setSelectedTab('files')}
+        >
+          All files
         </Button>
         <div className="flex-1 min-w-0" />
         <div className="flex items-center shrink-0">

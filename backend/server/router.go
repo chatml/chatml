@@ -51,6 +51,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Delete("/{id}", h.DeleteRepo)
 		r.Get("/{id}/files", h.ListRepoFiles)
 		r.Get("/{id}/file", h.GetRepoFileContent)
+		r.Post("/{id}/file/save", h.SaveFile)
 		r.Get("/{id}/diff", h.GetFileDiff)
 		r.Get("/{id}/sessions", h.ListSessions)
 		r.Post("/{id}/sessions", h.CreateSession)
@@ -65,6 +66,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.With(conversationRateLimiter).Post("/{id}/sessions/{sessionId}/conversations", h.CreateConversation)
 		r.Get("/{id}/agents", h.ListAgents)
 		r.With(agentRateLimiter).Post("/{id}/agents", h.SpawnAgent)
+		// File tabs
+		r.Get("/{id}/tabs", h.ListFileTabs)
+		r.Post("/{id}/tabs", h.SaveFileTabs)
+		r.Delete("/{id}/tabs/{tabId}", h.DeleteFileTab)
 	})
 
 	// Conversation endpoints (top-level for direct access)

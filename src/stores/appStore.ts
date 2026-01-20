@@ -14,6 +14,9 @@ import type {
   CustomTodoItem
 } from '@/lib/types';
 
+// Maximum number of file tabs before LRU eviction kicks in
+const MAX_FILE_TABS = 10;
+
 interface SessionOutput {
   [sessionId: string]: string[];
 }
@@ -53,6 +56,7 @@ interface AppState {
   // File tabs
   fileTabs: FileTab[];
   selectedFileTabId: string | null;
+  pendingCloseFileTabId: string | null; // For close confirmation dialog
 
   sessionOutputs: SessionOutput;
   terminalSessions: Record<string, TerminalSession>;
@@ -101,10 +105,19 @@ interface AppState {
   setFileChanges: (changes: FileChange[]) => void;
 
   // File tabs actions
+  setFileTabs: (tabs: FileTab[]) => void;
   openFileTab: (tab: FileTab) => void;
   closeFileTab: (id: string) => void;
   selectFileTab: (id: string | null) => void;
   updateFileTab: (id: string, updates: Partial<FileTab>) => void;
+  updateFileTabContent: (id: string, content: string) => void;
+  reorderFileTabs: (activeId: string, overId: string) => void;
+  pinFileTab: (id: string, pinned: boolean) => void;
+  closeOtherTabs: (id: string) => void;
+  closeTabsToRight: (id: string) => void;
+  selectNextTab: () => void;
+  selectPreviousTab: () => void;
+  setPendingCloseFileTabId: (id: string | null) => void;
 
   // Output
   appendOutput: (sessionId: string, line: string) => void;
@@ -170,6 +183,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedConversationId: null,
   fileTabs: [],
   selectedFileTabId: null,
+  pendingCloseFileTabId: null,
   sessionOutputs: {},
   terminalSessions: {},
   totalCost: 0,
@@ -185,10 +199,61 @@ export const useAppStore = create<AppState>((set, get) => ({
   addWorkspace: (workspace) => set((state) => ({
     workspaces: [...state.workspaces, workspace]
   })),
-  removeWorkspace: (id) => set((state) => ({
-    workspaces: state.workspaces.filter((w) => w.id !== id),
-    selectedWorkspaceId: state.selectedWorkspaceId === id ? null : state.selectedWorkspaceId,
-  })),
+  removeWorkspace: (id) => set((state) => {
+    // Get all sessions for this workspace
+    const workspaceSessions = state.sessions.filter((s) => s.workspaceId === id);
+    const workspaceSessionIds = workspaceSessions.map((s) => s.id);
+
+    // Get all conversation IDs for these sessions
+    const workspaceConvIds = state.conversations
+      .filter((c) => workspaceSessionIds.includes(c.sessionId))
+      .map((c) => c.id);
+
+    // Clean up streaming state, active tools, and agent todos
+    const cleanedStreamingState = { ...state.streamingState };
+    const cleanedActiveTools = { ...state.activeTools };
+    const cleanedAgentTodos = { ...state.agentTodos };
+    for (const convId of workspaceConvIds) {
+      delete cleanedStreamingState[convId];
+      delete cleanedActiveTools[convId];
+      delete cleanedAgentTodos[convId];
+    }
+
+    // Clean up custom todos and session outputs for all sessions
+    const cleanedCustomTodos = { ...state.customTodos };
+    const cleanedSessionOutputs = { ...state.sessionOutputs };
+    for (const sessionId of workspaceSessionIds) {
+      delete cleanedCustomTodos[sessionId];
+      delete cleanedSessionOutputs[sessionId];
+    }
+
+    // Clean up terminal instances
+    const { [id]: _terminals, ...remainingTerminalInstances } = state.terminalInstances;
+    const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
+
+    return {
+      workspaces: state.workspaces.filter((w) => w.id !== id),
+      sessions: state.sessions.filter((s) => s.workspaceId !== id),
+      conversations: state.conversations.filter((c) => !workspaceSessionIds.includes(c.sessionId)),
+      messages: state.messages.filter((m) => !workspaceConvIds.includes(m.conversationId)),
+      selectedWorkspaceId: state.selectedWorkspaceId === id ? null : state.selectedWorkspaceId,
+      selectedSessionId: workspaceSessionIds.includes(state.selectedSessionId || '')
+        ? null
+        : state.selectedSessionId,
+      selectedConversationId: workspaceConvIds.includes(state.selectedConversationId || '')
+        ? null
+        : state.selectedConversationId,
+      streamingState: cleanedStreamingState,
+      activeTools: cleanedActiveTools,
+      agentTodos: cleanedAgentTodos,
+      customTodos: cleanedCustomTodos,
+      sessionOutputs: cleanedSessionOutputs,
+      terminalInstances: remainingTerminalInstances,
+      activeTerminalId: remainingActiveTerminalId,
+      selectedFileTabId: null,
+      fileTabs: [],
+    };
+  }),
   selectWorkspace: (id) => set({ selectedWorkspaceId: id }),
   reorderWorkspaces: (activeId, overId) => set((state) => {
     const oldIndex = state.workspaces.findIndex((w) => w.id === activeId);
@@ -210,21 +275,61 @@ export const useAppStore = create<AppState>((set, get) => ({
       s.id === id ? { ...s, ...updates } : s
     ),
   })),
-  removeSession: (id) => set((state) => ({
-    sessions: state.sessions.filter((s) => s.id !== id),
-    selectedSessionId: state.selectedSessionId === id ? null : state.selectedSessionId,
-  })),
+  removeSession: (id) => set((state) => {
+    // Get all conversation IDs for this session to clean up related state
+    const sessionConvIds = state.conversations
+      .filter((c) => c.sessionId === id)
+      .map((c) => c.id);
+
+    // Clean up streaming state, active tools, and agent todos for all session conversations
+    const cleanedStreamingState = { ...state.streamingState };
+    const cleanedActiveTools = { ...state.activeTools };
+    const cleanedAgentTodos = { ...state.agentTodos };
+    for (const convId of sessionConvIds) {
+      delete cleanedStreamingState[convId];
+      delete cleanedActiveTools[convId];
+      delete cleanedAgentTodos[convId];
+    }
+
+    // Clean up custom todos and session outputs
+    const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
+    const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
+
+    return {
+      sessions: state.sessions.filter((s) => s.id !== id),
+      conversations: state.conversations.filter((c) => c.sessionId !== id),
+      messages: state.messages.filter((m) => !sessionConvIds.includes(m.conversationId)),
+      selectedSessionId: state.selectedSessionId === id ? null : state.selectedSessionId,
+      selectedConversationId: sessionConvIds.includes(state.selectedConversationId || '')
+        ? null
+        : state.selectedConversationId,
+      streamingState: cleanedStreamingState,
+      activeTools: cleanedActiveTools,
+      agentTodos: cleanedAgentTodos,
+      customTodos: remainingCustomTodos,
+      sessionOutputs: remainingSessionOutputs,
+      selectedFileTabId: null,
+      fileTabs: [],
+    };
+  }),
   selectSession: (id) => set((state) => {
-    // When switching sessions, reset conversation and file tabs
-    // Find the first conversation for this session to auto-select
+    // When switching sessions, find the first conversation for this session
+    // DON'T clear file tabs - they persist and are filtered by visibility in UI
     const sessionConversations = state.conversations.filter(c => c.sessionId === id);
     const firstConversation = sessionConversations[0];
+
+    // Find a visible tab to select (workspace tabs or tabs for the new session)
+    const visibleTabs = state.fileTabs.filter(t => !t.sessionId || t.sessionId === id);
+    const currentTabVisible = visibleTabs.some(t => t.id === state.selectedFileTabId);
+    const newSelectedTabId = currentTabVisible
+      ? state.selectedFileTabId
+      : visibleTabs[0]?.id || null;
 
     return {
       selectedSessionId: id,
       selectedConversationId: firstConversation?.id || null,
-      selectedFileTabId: null,
-      fileTabs: [], // Close all file tabs when switching sessions
+      selectedFileTabId: newSelectedTabId,
+      // fileTabs remain unchanged - UI filters by visibility
     };
   }),
   archiveSession: (id) => set((state) => {
@@ -238,9 +343,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sessionConvIds = state.conversations.filter((c) => c.sessionId === id).map((c) => c.id);
     const updatedMessages = state.messages.filter((m) => !sessionConvIds.includes(m.conversationId));
 
+// Clean up streaming state, active tools, and agent todos for all session conversations
+    const cleanedStreamingState = { ...state.streamingState };
+    const cleanedActiveTools = { ...state.activeTools };
+    const cleanedAgentTodos = { ...state.agentTodos };
+    for (const convId of sessionConvIds) {
+      delete cleanedStreamingState[convId];
+      delete cleanedActiveTools[convId];
+      delete cleanedAgentTodos[convId];
+    }
+
+    // Clean up custom todos and session outputs
+    const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
+    const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
+
+    // Close only tabs that belong to this session (keep workspace tabs)
+    const updatedFileTabs = state.fileTabs.filter((t) => t.sessionId !== id);
+
     // If this was the selected session, select another session in the same workspace
     let newSelectedSessionId = state.selectedSessionId;
     let newSelectedConversationId = state.selectedConversationId;
+    let newSelectedFileTabId = state.selectedFileTabId;
 
     if (state.selectedSessionId === id) {
       const otherSessions = updatedSessions.filter(
@@ -255,16 +378,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         newSelectedConversationId = null;
       }
+
+      // Update selected file tab if it was closed
+      if (!updatedFileTabs.some(t => t.id === state.selectedFileTabId)) {
+        newSelectedFileTabId = updatedFileTabs[0]?.id || null;
+      }
     }
 
     return {
       sessions: updatedSessions,
       conversations: updatedConversations,
       messages: updatedMessages,
+      fileTabs: updatedFileTabs,
       selectedSessionId: newSelectedSessionId,
       selectedConversationId: newSelectedConversationId,
-      selectedFileTabId: null,
-      fileTabs: [],
+streamingState: cleanedStreamingState,
+      activeTools: cleanedActiveTools,
+      agentTodos: cleanedAgentTodos,
+      customTodos: remainingCustomTodos,
+      sessionOutputs: remainingSessionOutputs,
+      selectedFileTabId: newSelectedFileTabId,
     };
   }),
 
@@ -284,10 +417,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       c.id === id ? { ...c, ...updates } : c
     ),
   })),
-  removeConversation: (id) => set((state) => ({
-    conversations: state.conversations.filter((c) => c.id !== id),
-    selectedConversationId: state.selectedConversationId === id ? null : state.selectedConversationId,
-  })),
+  removeConversation: (id) => set((state) => {
+    // Clean up orphaned state for the removed conversation
+    const { [id]: _streaming, ...remainingStreamingState } = state.streamingState;
+    const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
+    const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
+
+    return {
+      conversations: state.conversations.filter((c) => c.id !== id),
+      messages: state.messages.filter((m) => m.conversationId !== id),
+      selectedConversationId: state.selectedConversationId === id ? null : state.selectedConversationId,
+      streamingState: remainingStreamingState,
+      activeTools: remainingActiveTools,
+      agentTodos: remainingAgentTodos,
+    };
+  }),
   selectConversation: (id) => set({ selectedConversationId: id }),
 
   // Message actions
@@ -304,11 +448,57 @@ export const useAppStore = create<AppState>((set, get) => ({
   // File changes
   setFileChanges: (fileChanges) => set({ fileChanges }),
 
-  // File tabs - only one file tab allowed, always replaces
-  openFileTab: (tab) => set(() => ({
-    fileTabs: [tab],
-    selectedFileTabId: tab.id,
-  })),
+  // File tabs - supports multiple tabs with LRU eviction
+  setFileTabs: (tabs) => set({ fileTabs: tabs }),
+
+  openFileTab: (tab) => set((state) => {
+    const now = new Date().toISOString();
+    const existing = state.fileTabs.find((t) => t.id === tab.id);
+
+    if (existing) {
+      // Tab already open - just select it and update lastAccessedAt
+      return {
+        fileTabs: state.fileTabs.map((t) =>
+          t.id === tab.id ? { ...t, lastAccessedAt: now } : t
+        ),
+        selectedFileTabId: tab.id,
+      };
+    }
+
+    // Add timestamp fields to new tab
+    const newTab = {
+      ...tab,
+      openedAt: tab.openedAt || now,
+      lastAccessedAt: now,
+    };
+
+    let newTabs = [...state.fileTabs, newTab];
+
+    // If over limit, close oldest unpinned AND non-dirty tab.
+    // Never auto-close tabs with unsaved changes (safety) or pinned tabs (user intent).
+    // Note: If all tabs are pinned or dirty, no eviction occurs and tabs can exceed
+    // MAX_FILE_TABS. This is intentional - we prioritize user data safety over the limit.
+    // Users can manually close tabs or save files to free up space.
+    if (newTabs.length > MAX_FILE_TABS) {
+      const evictableTabs = newTabs.filter(
+        (t) => !t.isPinned && !t.isDirty && t.id !== newTab.id
+      );
+      if (evictableTabs.length > 0) {
+        // Sort by lastAccessedAt (oldest first) and remove the oldest
+        evictableTabs.sort((a, b) =>
+          (a.lastAccessedAt || '').localeCompare(b.lastAccessedAt || '')
+        );
+        const tabToClose = evictableTabs[0];
+        newTabs = newTabs.filter((t) => t.id !== tabToClose.id);
+      }
+    }
+
+    return {
+      fileTabs: newTabs,
+      selectedFileTabId: newTab.id,
+    };
+  }),
+
   closeFileTab: (id) => set((state) => {
     const newTabs = state.fileTabs.filter((t) => t.id !== id);
     let newSelectedId = state.selectedFileTabId;
@@ -322,20 +512,106 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedFileTabId: newSelectedId,
     };
   }),
-  selectFileTab: (id) => set({ selectedFileTabId: id }),
+
+  selectFileTab: (id) => set((state) => {
+    const now = new Date().toISOString();
+    return {
+      selectedFileTabId: id,
+      fileTabs: state.fileTabs.map((t) =>
+        t.id === id ? { ...t, lastAccessedAt: now } : t
+      ),
+    };
+  }),
+
   updateFileTab: (id, updates) => set((state) => ({
     fileTabs: state.fileTabs.map((t) =>
       t.id === id ? { ...t, ...updates } : t
     ),
   })),
 
-  // Output
-  appendOutput: (sessionId, line) => set((state) => ({
-    sessionOutputs: {
-      ...state.sessionOutputs,
-      [sessionId]: [...(state.sessionOutputs[sessionId] || []), line],
-    },
+updateFileTabContent: (id, content) => set((state) => ({
+    fileTabs: state.fileTabs.map((t) =>
+      t.id === id
+        ? {
+            ...t,
+            content,
+            isDirty: content !== t.originalContent,
+          }
+        : t
+    ),
   })),
+
+  reorderFileTabs: (activeId, overId) => set((state) => {
+    const oldIndex = state.fileTabs.findIndex((t) => t.id === activeId);
+    const newIndex = state.fileTabs.findIndex((t) => t.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return state;
+    const newTabs = [...state.fileTabs];
+    const [removed] = newTabs.splice(oldIndex, 1);
+    newTabs.splice(newIndex, 0, removed);
+    return { fileTabs: newTabs };
+  }),
+
+  pinFileTab: (id, pinned) => set((state) => ({
+    fileTabs: state.fileTabs.map((t) =>
+      t.id === id ? { ...t, isPinned: pinned } : t
+    ),
+  })),
+
+  closeOtherTabs: (id) => set((state) => ({
+    fileTabs: state.fileTabs.filter((t) => t.id === id),
+    selectedFileTabId: id,
+  })),
+
+  closeTabsToRight: (id) => set((state) => {
+    const idx = state.fileTabs.findIndex((t) => t.id === id);
+    if (idx === -1) return state;
+    const newTabs = state.fileTabs.slice(0, idx + 1);
+    const newSelectedId = newTabs.some((t) => t.id === state.selectedFileTabId)
+      ? state.selectedFileTabId
+      : id;
+    return {
+      fileTabs: newTabs,
+      selectedFileTabId: newSelectedId,
+    };
+  }),
+
+  selectNextTab: () => set((state) => {
+    if (state.fileTabs.length === 0) return state;
+    const currentIdx = state.fileTabs.findIndex(
+      (t) => t.id === state.selectedFileTabId
+    );
+    const nextIdx = (currentIdx + 1) % state.fileTabs.length;
+    return { selectedFileTabId: state.fileTabs[nextIdx].id };
+  }),
+
+  selectPreviousTab: () => set((state) => {
+    if (state.fileTabs.length === 0) return state;
+    const currentIdx = state.fileTabs.findIndex(
+      (t) => t.id === state.selectedFileTabId
+    );
+    const prevIdx =
+      currentIdx <= 0 ? state.fileTabs.length - 1 : currentIdx - 1;
+    return { selectedFileTabId: state.fileTabs[prevIdx].id };
+  }),
+
+  setPendingCloseFileTabId: (id) => set({ pendingCloseFileTabId: id }),
+
+  // Output - max 10,000 lines per session to prevent memory leaks
+  appendOutput: (sessionId, line) => set((state) => {
+    const MAX_OUTPUT_LINES = 10000;
+    const existing = state.sessionOutputs[sessionId] || [];
+    const updated = [...existing, line];
+    // Keep only the last MAX_OUTPUT_LINES lines (ring buffer behavior)
+    const trimmed = updated.length > MAX_OUTPUT_LINES
+      ? updated.slice(-MAX_OUTPUT_LINES)
+      : updated;
+    return {
+      sessionOutputs: {
+        ...state.sessionOutputs,
+        [sessionId]: trimmed,
+      },
+    };
+  }),
   clearOutput: (sessionId) => set((state) => ({
     sessionOutputs: {
       ...state.sessionOutputs,

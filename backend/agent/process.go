@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,8 +114,13 @@ func (p *Process) Start() error {
 
 	p.running = true
 
+	// WaitGroup to track when stdout/stderr goroutines complete
+	var outputWg sync.WaitGroup
+	outputWg.Add(2)
+
 	// Stream stdout
 	go func() {
+		defer outputWg.Done()
 		scanner := bufio.NewScanner(stdout)
 		// Increase buffer for large JSON events
 		buf := make([]byte, 0, 1024*1024)
@@ -123,18 +129,20 @@ func (p *Process) Start() error {
 			select {
 			case p.output <- scanner.Text():
 			default:
-				// Drop if buffer full
+				log.Printf("[process:%s] Output buffer full, dropping stdout message", p.ID)
 			}
 		}
 	}()
 
 	// Stream stderr
 	go func() {
+		defer outputWg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			select {
 			case p.output <- "[stderr] " + scanner.Text():
 			default:
+				log.Printf("[process:%s] Output buffer full, dropping stderr message", p.ID)
 			}
 		}
 	}()
@@ -146,6 +154,11 @@ func (p *Process) Start() error {
 		p.running = false
 		p.exitErr = err
 		p.mu.Unlock()
+
+		// Wait for stdout/stderr goroutines to finish before closing output channel
+		outputWg.Wait()
+		close(p.output)
+
 		close(p.done)
 	}()
 

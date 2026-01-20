@@ -94,6 +94,20 @@ export async function restartSidecar(): Promise<boolean> {
 }
 
 /**
+ * Get the user's home directory
+ */
+export async function getHomeDir(): Promise<string | null> {
+  if (!isTauri()) return null;
+  try {
+    const { homeDir } = await import('@tauri-apps/api/path');
+    return await homeDir();
+  } catch (e) {
+    console.error('Failed to get home directory', e);
+    return null;
+  }
+}
+
+/**
  * Open native folder picker dialog
  */
 export async function openFolderDialog(title?: string): Promise<string | null> {
@@ -314,6 +328,63 @@ export async function listenForSpeechErrors(
     return unlisten;
   } catch (e) {
     console.error('Failed to listen for speech errors', e);
+    return () => {};
+  }
+}
+
+// ============================================
+// File Watcher Functions
+// ============================================
+
+export interface FileChangedEvent {
+  workspaceId: string;
+  path: string;
+  fullPath: string;
+}
+
+/**
+ * Start watching a workspace directory for file changes
+ */
+export async function watchWorkspace(workspaceId: string, workspacePath: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('watch_workspace', { workspaceId, workspacePath });
+    return true;
+  } catch (e) {
+    console.error('Failed to watch workspace', e);
+    return false;
+  }
+}
+
+/**
+ * Stop watching a workspace directory
+ */
+export async function unwatchWorkspace(workspaceId: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('unwatch_workspace', { workspaceId });
+  } catch (e) {
+    console.error('Failed to unwatch workspace', e);
+  }
+}
+
+/**
+ * Listen for file change events
+ */
+export async function listenForFileChanges(
+  handler: (event: FileChangedEvent) => void
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    const unlisten = await listen<FileChangedEvent>('file-changed', (e) => {
+      handler(e.payload);
+    });
+    return unlisten;
+  } catch (e) {
+    console.error('Failed to listen for file changes', e);
     return () => {};
   }
 }

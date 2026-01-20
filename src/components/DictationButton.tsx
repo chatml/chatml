@@ -19,6 +19,12 @@ export function DictationButton({
 }: DictationButtonProps) {
   const isDisabled = disabled || !isAvailable;
 
+  const label = !isAvailable
+    ? 'Speech recognition not available'
+    : isListening
+    ? 'Stop dictation'
+    : 'Start dictation';
+
   return (
     <Button
       variant="ghost"
@@ -30,13 +36,9 @@ export function DictationButton({
       )}
       onClick={onClick}
       disabled={isDisabled}
-      title={
-        !isAvailable
-          ? 'Speech recognition not available'
-          : isListening
-          ? 'Stop dictation'
-          : 'Start dictation (Cmd+Shift+D)'
-      }
+      title={isAvailable && !isListening ? `${label} (Cmd+Shift+D)` : label}
+      aria-label={label}
+      aria-pressed={isListening}
     >
       {isAvailable ? (
         <Mic className={cn('h-4 w-4', isListening && 'animate-pulse')} />

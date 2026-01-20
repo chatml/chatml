@@ -59,14 +59,28 @@ func (h *Hub) Run() {
 			log.Printf("Client disconnected, total: %d", len(h.clients))
 
 		case event := <-h.broadcast:
+			data, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("Error marshaling event: %v", err)
+				continue
+			}
+
+			// Collect failed clients to remove after iteration
+			var failedClients []*websocket.Conn
+
 			h.mu.RLock()
 			for client := range h.clients {
-				data, _ := json.Marshal(event)
 				if err := client.WriteMessage(websocket.TextMessage, data); err != nil {
 					log.Printf("Error sending to client: %v", err)
+					failedClients = append(failedClients, client)
 				}
 			}
 			h.mu.RUnlock()
+
+			// Remove failed clients
+			for _, client := range failedClients {
+				h.unregister <- client
+			}
 		}
 	}
 }

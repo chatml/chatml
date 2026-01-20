@@ -130,3 +130,48 @@ const (
 	ConversationStatusIdle      = "idle"
 	ConversationStatusCompleted = "completed"
 )
+
+// SessionStatus constants
+const (
+	SessionStatusActive = "active"
+	SessionStatusIdle   = "idle"
+	SessionStatusDone   = "done"
+	SessionStatusError  = "error"
+)
+
+// ValidSessionStatuses is the set of valid session status values
+var ValidSessionStatuses = map[string]bool{
+	SessionStatusActive: true,
+	SessionStatusIdle:   true,
+	SessionStatusDone:   true,
+	SessionStatusError:  true,
+}
+
+// PRStatus constants
+const (
+	PRStatusNone   = "none"
+	PRStatusOpen   = "open"
+	PRStatusMerged = "merged"
+	PRStatusClosed = "closed"
+)
+
+// ValidPRStatuses is the set of valid PR status values
+var ValidPRStatuses = map[string]bool{
+	PRStatusNone:   true,
+	PRStatusOpen:   true,
+	PRStatusMerged: true,
+	PRStatusClosed: true,
+}
+
+// FileTab represents an open file tab in the editor
+type FileTab struct {
+	ID             string    `json:"id"`
+	WorkspaceID    string    `json:"workspaceId"`
+	SessionID      string    `json:"sessionId,omitempty"` // Optional - null for workspace-scoped tabs
+	Path           string    `json:"path"`
+	ViewMode       string    `json:"viewMode"` // "file" or "diff"
+	IsPinned       bool      `json:"isPinned"`
+	Position       int       `json:"position"`
+	OpenedAt       time.Time `json:"openedAt"`
+	LastAccessedAt time.Time `json:"lastAccessedAt"`
+}

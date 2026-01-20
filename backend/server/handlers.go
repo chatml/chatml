@@ -25,6 +25,15 @@ type Handlers struct {
 	agentManager    *agent.Manager
 }
 
+// writeJSON writes data as JSON response, logging any encoding errors
+func writeJSON(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		// Log the error - response headers may already be sent
+		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+	}
+}
+
 func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 	return &Handlers{
 		store:           s,
@@ -69,6 +78,7 @@ type AddRepoRequest struct {
 }
 
 func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req AddRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -81,7 +91,12 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if repo with same path already exists
-	if existing := h.store.GetRepoByPath(req.Path); existing != nil {
+	existing, err := h.store.GetRepoByPath(ctx, req.Path)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if existing != nil {
 		http.Error(w, "repository already added", http.StatusConflict)
 		return
 	}
@@ -96,42 +111,60 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	h.store.AddRepo(repo)
+	if err := h.store.AddRepo(ctx, repo); err != nil {
+		http.Error(w, fmt.Sprintf("failed to add repo: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repo)
+	writeJSON(w, repo)
 }
 
 func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
-	repos := h.store.ListRepos()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repos)
+	ctx := r.Context()
+	repos, err := h.store.ListRepos(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, repos)
 }
 
 func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	repo := h.store.GetRepo(id)
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repo)
+	writeJSON(w, repo)
 }
 
 func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	h.store.DeleteRepo(id)
+	if err := h.store.DeleteRepo(ctx, id); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete repo: %v", err), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // Session handlers
 
 func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	workspaceID := chi.URLParam(r, "id")
-	sessions := h.store.ListSessions(workspaceID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(sessions)
+	sessions, err := h.store.ListSessions(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, sessions)
 }
 
 type CreateSessionRequest struct {
@@ -142,8 +175,13 @@ type CreateSessionRequest struct {
 }
 
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	workspaceID := chi.URLParam(r, "id")
-	repo := h.store.GetRepo(workspaceID)
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
@@ -180,7 +218,10 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     now,
 	}
 
-	h.store.AddSession(session)
+	if err := h.store.AddSession(ctx, session); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create session: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// Create initial "Untitled" conversation with setup info
 	convID := uuid.New().String()[:8]
@@ -195,7 +236,10 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	h.store.AddConversation(conv)
+	if err := h.store.AddConversation(ctx, conv); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create conversation: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// Add system message with setup info
 	originBranch := repo.Branch
@@ -213,21 +257,27 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		},
 		Timestamp: now,
 	}
-	h.store.AddMessageToConversation(convID, setupMsg)
+	if err := h.store.AddMessageToConversation(ctx, convID, setupMsg); err != nil {
+		http.Error(w, fmt.Sprintf("failed to add setup message: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(session)
+	writeJSON(w, session)
 }
 
 func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "sessionId")
-	session := h.store.GetSession(id)
+	session, err := h.store.GetSession(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(session)
+	writeJSON(w, session)
 }
 
 type UpdateSessionRequest struct {
@@ -242,8 +292,13 @@ type UpdateSessionRequest struct {
 }
 
 func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "sessionId")
-	session := h.store.GetSession(id)
+	session, err := h.store.GetSession(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
@@ -255,7 +310,17 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.store.UpdateSession(id, func(s *models.Session) {
+// Validate status values before updating
+	if req.Status != nil && !models.ValidSessionStatuses[*req.Status] {
+		http.Error(w, "invalid status value", http.StatusBadRequest)
+		return
+	}
+	if req.PRStatus != nil && !models.ValidPRStatuses[*req.PRStatus] {
+		http.Error(w, "invalid prStatus value", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
 		if req.Name != nil {
 			s.Name = *req.Name
 		}
@@ -281,41 +346,68 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 			s.HasCheckFailures = *req.HasCheckFailures
 		}
 		s.UpdatedAt = time.Now()
-	})
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to update session: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	session = h.store.GetSession(id)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(session)
+session, err = h.store.GetSession(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, session)
 }
 
 func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
 
 	// Get session to find workspace and worktree path
-	session := h.store.GetSession(sessionID)
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session != nil {
-		repo := h.store.GetRepo(session.WorkspaceID)
+		repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+			return
+		}
 		if repo != nil && session.WorktreePath != "" {
 			// Remove the git worktree
 			h.worktreeManager.RemoveByPath(repo.Path, sessionID, session.Branch)
 		}
 	}
 
-	h.store.DeleteSession(sessionID)
+	if err := h.store.DeleteSession(ctx, sessionID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete session: %v", err), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetSessionChanges returns the list of changed files in a session's worktree
 func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session := h.store.GetSession(sessionID)
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
 
 	// Get the workspace to find the base branch
-	repo := h.store.GetRepo(session.WorkspaceID)
+	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
@@ -343,21 +435,29 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		changes = []git.FileChange{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(changes)
+	writeJSON(w, changes)
 }
 
 // GetSessionFileDiff returns the diff for a specific file in a session's worktree
 func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session := h.store.GetSession(sessionID)
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
 
 	// Get the workspace to find the base branch
-	repo := h.store.GetRepo(session.WorkspaceID)
+	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "workspace not found", http.StatusNotFound)
 		return
@@ -420,8 +520,7 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		HasConflict: hasConflict,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 type SendMessageRequest struct {
@@ -429,8 +528,13 @@ type SendMessageRequest struct {
 }
 
 func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session := h.store.GetSession(sessionID)
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
@@ -460,16 +564,20 @@ func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	writeJSON(w, map[string]string{"status": "sent"})
 }
 
 // Agent handlers
 
 func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	repoID := chi.URLParam(r, "id")
-	agents := h.store.ListAgents(repoID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agents)
+agents, err := h.store.ListAgents(ctx, repoID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, agents)
 }
 
 type SpawnAgentRequest struct {
@@ -477,8 +585,13 @@ type SpawnAgentRequest struct {
 }
 
 func (h *Handlers) SpawnAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	repoID := chi.URLParam(r, "id")
-	repo := h.store.GetRepo(repoID)
+	repo, err := h.store.GetRepo(ctx, repoID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
@@ -496,8 +609,7 @@ func (h *Handlers) SpawnAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
+	writeJSON(w, agent)
 }
 
 func (h *Handlers) StopAgent(w http.ResponseWriter, r *http.Request) {
@@ -507,25 +619,38 @@ func (h *Handlers) StopAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	agent := h.store.GetAgent(id)
+	agent, err := h.store.GetAgent(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if agent == nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
+	writeJSON(w, agent)
 }
 
 func (h *Handlers) GetAgentDiff(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	agentID := chi.URLParam(r, "id")
-	agent := h.store.GetAgent(agentID)
+	agent, err := h.store.GetAgent(ctx, agentID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if agent == nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
 
-	repo := h.store.GetRepo(agent.RepoID)
+	repo, err := h.store.GetRepo(ctx, agent.RepoID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
@@ -542,14 +667,23 @@ func (h *Handlers) GetAgentDiff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) MergeAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	agentID := chi.URLParam(r, "id")
-	agent := h.store.GetAgent(agentID)
+	agent, err := h.store.GetAgent(ctx, agentID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if agent == nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
 
-	repo := h.store.GetRepo(agent.RepoID)
+	repo, err := h.store.GetRepo(ctx, agent.RepoID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
@@ -564,19 +698,31 @@ func (h *Handlers) MergeAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	agentID := chi.URLParam(r, "id")
-	agent := h.store.GetAgent(agentID)
+	agent, err := h.store.GetAgent(ctx, agentID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if agent == nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
 
-	repo := h.store.GetRepo(agent.RepoID)
+	repo, err := h.store.GetRepo(ctx, agent.RepoID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo != nil {
 		h.worktreeManager.Remove(repo.Path, agentID)
 	}
 
-	h.store.DeleteAgent(agentID)
+	if err := h.store.DeleteAgent(ctx, agentID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete agent: %v", err), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -590,8 +736,13 @@ type FileNode struct {
 
 // ListRepoFiles returns the file tree for a repository
 func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	repo := h.store.GetRepo(id)
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
@@ -610,8 +761,7 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tree)
+	writeJSON(w, tree)
 }
 
 // buildFileTree recursively builds the file tree
@@ -712,8 +862,13 @@ type FileDiffResponse struct {
 
 // GetFileDiff returns the diff between the base branch and current state for a file
 func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	repo := h.store.GetRepo(id)
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
@@ -768,14 +923,18 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 		HasConflict: hasConflict,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // GetRepoFileContent returns the content of a specific file in the repository
 func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	repo := h.store.GetRepo(id)
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if repo == nil {
 		http.Error(w, "repo not found", http.StatusNotFound)
 		return
@@ -832,17 +991,109 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 		Size:    info.Size(),
 	}
 
+	writeJSON(w, response)
+}
+
+// SaveFileRequest represents a request to save file content
+type SaveFileRequest struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+// SaveFile saves content to a specific file in the repository or session worktree.
+// Design decision: Only allows saving to existing files, not creating new ones.
+// This is intentional to prevent accidental file creation through the save API.
+// File creation should be done through agent actions or explicit "create file" endpoints.
+func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if repo == nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	var req SaveFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Path == "" {
+		http.Error(w, "path is required", http.StatusBadRequest)
+		return
+	}
+
+	// Determine the base path - check if this is a session-scoped save
+	basePath := repo.Path
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID != "" {
+		session, err := h.store.GetSession(ctx, sessionID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if session == nil {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		if session.WorktreePath != "" {
+			basePath = session.WorktreePath
+		}
+	}
+
+	// Validate and clean the path to prevent directory traversal attacks
+	cleanPath, err := validatePath(basePath, req.Path)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	fullPath := filepath.Join(basePath, cleanPath)
+
+	// Check if file exists (we only allow saving existing files, not creating new ones)
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "file not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	// Preserve file permissions
+	mode := info.Mode()
+
+	// Write file content
+	if err := os.WriteFile(fullPath, []byte(req.Content), mode); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
 // Conversation handlers
 
 func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	convs := h.store.ListConversations(sessionID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(convs)
+	convs, err := h.store.ListConversations(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, convs)
 }
 
 type CreateConversationRequest struct {
@@ -851,8 +1102,13 @@ type CreateConversationRequest struct {
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session := h.store.GetSession(sessionID)
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if session == nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
@@ -877,18 +1133,24 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(conv)
+	if err := json.NewEncoder(w).Encode(conv); err != nil {
+		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+	}
 }
 
 func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv := h.store.GetConversation(convID)
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if conv == nil {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(conv)
+	writeJSON(w, conv)
 }
 
 type SendConversationMessageRequest struct {
@@ -896,8 +1158,13 @@ type SendConversationMessageRequest struct {
 }
 
 func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv := h.store.GetConversation(convID)
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if conv == nil {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
@@ -920,12 +1187,17 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	writeJSON(w, map[string]string{"status": "sent"})
 }
 
 func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv := h.store.GetConversation(convID)
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if conv == nil {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
@@ -936,8 +1208,13 @@ func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv := h.store.GetConversation(convID)
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
 	if conv == nil {
 		http.Error(w, "conversation not found", http.StatusNotFound)
 		return
@@ -947,6 +1224,102 @@ func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	h.agentManager.StopConversation(convID)
 
 	// Delete from store
-	h.store.DeleteConversation(convID)
+	if err := h.store.DeleteConversation(ctx, convID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete conversation: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// File tab handlers
+
+func (h *Handlers) ListFileTabs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+	tabs, err := h.store.ListFileTabs(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tabs)
+}
+
+type SaveFileTabsRequest struct {
+	Tabs []FileTabRequest `json:"tabs"`
+}
+
+type FileTabRequest struct {
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspaceId"`
+	SessionID      string `json:"sessionId,omitempty"`
+	Path           string `json:"path"`
+	ViewMode       string `json:"viewMode"`
+	IsPinned       bool   `json:"isPinned"`
+	Position       int    `json:"position"`
+	OpenedAt       string `json:"openedAt"`
+	LastAccessedAt string `json:"lastAccessedAt"`
+}
+
+func (h *Handlers) SaveFileTabs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if repo == nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	var req SaveFileTabsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Convert request to models
+	tabs := make([]*models.FileTab, len(req.Tabs))
+	for i, t := range req.Tabs {
+		openedAt, err := time.Parse(time.RFC3339, t.OpenedAt)
+		if err != nil {
+			openedAt = time.Now()
+		}
+		lastAccessedAt, err := time.Parse(time.RFC3339, t.LastAccessedAt)
+		if err != nil {
+			lastAccessedAt = time.Now()
+		}
+
+		tabs[i] = &models.FileTab{
+			ID:             t.ID,
+			WorkspaceID:    workspaceID,
+			SessionID:      t.SessionID,
+			Path:           t.Path,
+			ViewMode:       t.ViewMode,
+			IsPinned:       t.IsPinned,
+			Position:       i,
+			OpenedAt:       openedAt,
+			LastAccessedAt: lastAccessedAt,
+		}
+	}
+
+	if err := h.store.SaveFileTabs(ctx, workspaceID, tabs); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save file tabs: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+func (h *Handlers) DeleteFileTab(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tabID := chi.URLParam(r, "tabId")
+	if err := h.store.DeleteFileTab(ctx, tabID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete file tab: %v", err), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

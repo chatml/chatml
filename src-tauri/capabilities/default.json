@@ -15,7 +15,12 @@
         {
           "name": "code",
           "cmd": "code",
-          "args": true
+          "args": [
+            {
+              "validator": "regex",
+              "value": "^[/~.][-\\w\\s./~]+$"
+            }
+          ]
         }
       ]
     },

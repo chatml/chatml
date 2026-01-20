@@ -61,12 +61,12 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   };
 
   return (
-    <div className="py-2 border-t border-border/50">
+    <div className="py-2 border-t border-border/50" role="status" aria-live="polite" aria-atomic="false">
       <div className="space-y-1.5">
           {/* Thinking indicator */}
           {(streaming?.isThinking || streaming?.thinking) && (
-            <div className="flex items-center gap-2">
-              <Brain className="w-3.5 h-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-2" aria-label="Agent is thinking">
+              <Brain className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
               <span className="text-xs font-medium text-muted-foreground">Thinking</span>
               {streaming.thinking && (
                 <code className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]">
@@ -74,7 +74,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
                 </code>
               )}
               {streaming.isThinking && !streaming.thinking && (
-                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" aria-hidden="true" />
               )}
             </div>
           )}
@@ -97,8 +97,11 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
 
           {/* Error display */}
           {streaming?.error && (
-            <div className="flex items-start gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
-              <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+            <div
+              role="alert"
+              className="flex items-start gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-destructive">Error</p>
                 <p className="text-[11px] text-destructive/80 mt-0.5">{streaming.error}</p>
@@ -106,6 +109,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
               <button
                 onClick={() => clearStreamingText(conversationId)}
                 className="text-[10px] text-muted-foreground hover:text-foreground"
+                aria-label="Dismiss error"
               >
                 Dismiss
               </button>
@@ -114,10 +118,13 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
 
           {/* Persistent working indicator with elapsed time */}
           {streaming?.isStreaming && !streaming?.error && (
-            <div className="flex items-center gap-2 pt-2 mt-2 border-t border-border/30">
-              <Loader2 className="w-3 h-3 animate-spin text-primary" />
+            <div
+              className="flex items-center gap-2 pt-2 mt-2 border-t border-border/30"
+              aria-label={`Agent is working, elapsed time: ${formatElapsedTime(elapsedTime)}`}
+            >
+              <Loader2 className="w-3 h-3 animate-spin text-primary" aria-hidden="true" />
               <span className="text-[11px] text-muted-foreground">Agent is working</span>
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground/70" aria-hidden="true">
                 <Clock className="w-3 h-3" />
                 <span className="font-mono">{formatElapsedTime(elapsedTime)}</span>
               </div>

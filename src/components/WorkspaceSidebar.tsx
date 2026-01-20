@@ -53,6 +53,9 @@ import {
   AlertTriangle,
   Pin,
   PanelLeftClose,
+  Folder,
+  Globe,
+  SquarePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
@@ -68,14 +71,29 @@ function generateBranchName(): string {
 }
 
 interface WorkspaceSidebarProps {
-  onAddWorkspace: () => void;
+  onOpenProject: () => void;
+  onCloneFromUrl: () => void;
+  onQuickStart: () => void;
   onShowWorkspaceManagement?: () => void;
   onSessionSelected?: () => void;
   onOpenSettings?: () => void;
   onToggleSidebar?: () => void;
 }
 
-export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
+// Shared menu items for "Add repository" dropdown
+const ADD_REPO_MENU_ITEMS = [
+  { icon: Folder, label: 'Open project', key: 'open' },
+  { icon: Globe, label: 'Clone from URL', key: 'clone' },
+  { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
+] as const;
+
+export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
+  const menuHandlers = {
+    open: onOpenProject,
+    clone: onCloneFromUrl,
+    quickstart: onQuickStart,
+  };
+
   const {
     workspaces,
     sessions,
@@ -281,15 +299,26 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
               <p className="text-xs text-muted-foreground/70 mt-1 mb-4">
                 Add a repository to get started
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={onAddWorkspace}
-              >
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
-                Add repository
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Add repository
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-48">
+                  {ADD_REPO_MENU_ITEMS.map((item) => (
+                    <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ) : (
             <DndContext
@@ -330,15 +359,26 @@ export function WorkspaceSidebar({ onAddWorkspace, onShowWorkspaceManagement, on
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
-          onClick={onAddWorkspace}
-        >
-          <Plus className="w-4 h-4" />
-          <span className="text-sm">Add repository</span>
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-sm">Add repository</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-48">
+            {ADD_REPO_MENU_ITEMS.map((item) => (
+              <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="ghost"
           size="icon"

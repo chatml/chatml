@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -41,6 +42,7 @@ func setupTestManager(t *testing.T) (*Manager, *store.SQLiteStore) {
 
 func createTestRepo(t *testing.T, s *store.SQLiteStore, id string) *models.Repo {
 	t.Helper()
+	ctx := context.Background()
 	repo := &models.Repo{
 		ID:        id,
 		Name:      "test-repo-" + id,
@@ -48,12 +50,13 @@ func createTestRepo(t *testing.T, s *store.SQLiteStore, id string) *models.Repo 
 		Branch:    "main",
 		CreatedAt: time.Now(),
 	}
-	s.AddRepo(repo)
+	require.NoError(t, s.AddRepo(ctx, repo))
 	return repo
 }
 
 func createTestSession(t *testing.T, s *store.SQLiteStore, id, workspaceID string) *models.Session {
 	t.Helper()
+	ctx := context.Background()
 	session := &models.Session{
 		ID:           id,
 		WorkspaceID:  workspaceID,
@@ -65,12 +68,13 @@ func createTestSession(t *testing.T, s *store.SQLiteStore, id, workspaceID strin
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
-	s.AddSession(session)
+	require.NoError(t, s.AddSession(ctx, session))
 	return session
 }
 
 func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID string) *models.Conversation {
 	t.Helper()
+	ctx := context.Background()
 	conv := &models.Conversation{
 		ID:        id,
 		SessionID: sessionID,
@@ -80,7 +84,7 @@ func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID st
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	s.AddConversation(conv)
+	require.NoError(t, s.AddConversation(ctx, conv))
 	return conv
 }
 
@@ -230,6 +234,7 @@ func TestManager_StopConversation_Nonexistent(t *testing.T) {
 
 func TestManager_CompleteConversation_UpdatesStatus(t *testing.T) {
 	manager, s := setupTestManager(t)
+	ctx := context.Background()
 
 	createTestRepo(t, s, "repo-1")
 	createTestSession(t, s, "sess-1", "repo-1")
@@ -244,7 +249,8 @@ func TestManager_CompleteConversation_UpdatesStatus(t *testing.T) {
 	manager.CompleteConversation("conv-1")
 
 	// Verify status was updated in store
-	conv := s.GetConversation("conv-1")
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, conv)
 	assert.Equal(t, models.ConversationStatusCompleted, conv.Status)
 

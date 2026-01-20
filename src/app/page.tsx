@@ -7,10 +7,14 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/OnboardingScreen';
 import { initAuth, listenForOAuthCallback } from '@/lib/auth';
-import { isTauri, safeListen, closeWindow } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
+import { CloseFileConfirmDialog } from '@/components/CloseFileConfirmDialog';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { useTabPersistence } from '@/hooks/useTabPersistence';
+import { useAutoSave } from '@/hooks/useAutoSave';
+import { useFileWatcher } from '@/hooks/useFileWatcher';
+import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
 import { SettingsPage } from '@/components/SettingsPage';
@@ -20,10 +24,13 @@ import { ChatInput } from '@/components/ChatInput';
 import { ChangesPanel } from '@/components/ChangesPanel';
 import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
-import { UpdateChecker } from '@/components/UpdateChecker';
+import { CloneFromUrlDialog } from '@/components/CloneFromUrlDialog';
+import { QuickStartDialog } from '@/components/QuickStartDialog';
+// import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ToastProvider } from '@/components/ui/toast';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import {
   ResizableHandle,
@@ -31,8 +38,77 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
 
+// Pre-computed skeleton widths (avoids Math.random() during render)
+const SKELETON_WIDTHS = [72, 88, 65, 81];
+
+// Loading skeleton for conversation area
+function ConversationSkeleton() {
+  return (
+    <div className="flex flex-col h-full" aria-busy="true" aria-label="Loading conversations">
+      {/* Skeleton TopBar */}
+      <div className="h-10 border-b flex items-center px-3 gap-2">
+        <div className="h-5 w-5 bg-muted-foreground/20 rounded animate-pulse" />
+        <div className="h-4 w-32 bg-muted-foreground/20 rounded animate-pulse" />
+        <div className="flex-1" />
+        <div className="h-6 w-16 bg-muted-foreground/20 rounded animate-pulse" />
+      </div>
+
+      {/* Skeleton messages area */}
+      <div className="flex-1 overflow-hidden p-4 space-y-4">
+        {/* System message skeleton */}
+        <div className="flex gap-3">
+          <div className="w-8 h-8 rounded-full bg-muted-foreground/20 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-24 bg-muted-foreground/20 rounded animate-pulse" />
+            <div className="h-16 w-full bg-muted-foreground/10 rounded-lg animate-pulse" />
+          </div>
+        </div>
+
+        {/* User message skeleton */}
+        <div className="flex gap-3 justify-end">
+          <div className="flex-1 max-w-[80%] space-y-2">
+            <div className="h-3 w-16 bg-muted-foreground/20 rounded animate-pulse ml-auto" />
+            <div className="h-12 w-full bg-primary/10 rounded-lg animate-pulse" />
+          </div>
+        </div>
+
+        {/* Assistant message skeleton */}
+        <div className="flex gap-3">
+          <div className="w-8 h-8 rounded-full bg-muted-foreground/20 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-20 bg-muted-foreground/20 rounded animate-pulse" />
+            <div className="space-y-1.5">
+              {SKELETON_WIDTHS.map((width, i) => (
+                <div
+                  key={i}
+                  className="h-4 bg-muted-foreground/10 rounded animate-pulse"
+                  style={{ width: `${width}%`, animationDelay: `${i * 100}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Loading indicator */}
+        <div className="flex items-center justify-center py-6">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Loading workspace data...</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Skeleton input area */}
+      <div className="px-4 pb-4">
+        <div className="h-28 rounded-lg border bg-muted/50 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [backendConnected, setBackendConnected] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -41,6 +117,8 @@ export default function Home() {
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
+  const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
+  const [showQuickStart, setShowQuickStart] = useState(false);
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
@@ -116,6 +194,8 @@ export default function Home() {
     selectedWorkspaceId,
     selectedSessionId,
     selectedConversationId,
+    selectedFileTabId,
+    fileTabs,
     setWorkspaces,
     setSessions,
     setConversations,
@@ -125,10 +205,25 @@ export default function Home() {
     selectWorkspace,
     selectSession,
     selectConversation,
+    closeFileTab,
+    selectNextTab,
+    selectPreviousTab,
+    selectFileTab,
+    pendingCloseFileTabId,
+    setPendingCloseFileTabId,
   } = useAppStore();
 
   // Connect WebSocket for real-time updates (only when backend is connected)
   useWebSocket(backendConnected);
+
+  // Persist file tabs to backend
+  useTabPersistence();
+
+  // Auto-save dirty file tabs
+  const { saveCurrentTab, saveTab } = useAutoSave();
+
+  // Watch for external file changes
+  useFileWatcher();
 
   // Map backend Repo to frontend Workspace
   const repoToWorkspace = useCallback((repo: RepoDTO) => ({
@@ -193,26 +288,31 @@ export default function Home() {
     if (!backendConnected) return;
 
     async function loadData() {
+      setIsLoadingData(true);
       try {
         // Fetch repos from backend
         const repos = await listRepos();
         const mappedWorkspaces = repos.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
-        // Fetch sessions for each workspace
-        const allSessions = [];
-        for (const repo of repos) {
-          const sessions = await listSessions(repo.id);
-          allSessions.push(...sessions.map(sessionToWorktreeSession));
-        }
+        // Fetch sessions for all workspaces in parallel
+        const sessionResults = await Promise.all(
+          repos.map(repo => listSessions(repo.id))
+        );
+        const allSessions = sessionResults.flatMap(sessions =>
+          sessions.map(s => sessionToWorktreeSession(s))
+        );
         setSessions(allSessions);
 
-        // Fetch conversations for each session
-        const allConversations = [];
-        for (const session of allSessions) {
-          const convs = await listConversations(session.workspaceId, session.id);
-          allConversations.push(...convs.map(conversationToConversation));
-        }
+        // Fetch conversations for all sessions in parallel
+        const conversationResults = await Promise.all(
+          allSessions.map(session =>
+            listConversations(session.workspaceId, session.id)
+          )
+        );
+        const allConversations = conversationResults.flatMap(convs =>
+          convs.map(conversationToConversation)
+        );
         setConversations(allConversations);
 
         // Select first workspace and session if available
@@ -245,6 +345,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Failed to load data from backend:', error);
+      } finally {
+        setIsLoadingData(false);
       }
     }
 
@@ -383,6 +485,65 @@ export default function Home() {
     }
   }, [pendingCloseConvId, doCloseTab]);
 
+// Handle opening a project - directly opens folder dialog and adds the workspace
+  const handleOpenProject = useCallback(async () => {
+    const selectedPath = await openFolderDialog('Select Repository');
+    if (!selectedPath) return;
+
+    try {
+      // Call backend API to validate and add repo
+      const repo = await addRepo(selectedPath);
+
+      // Map to workspace and add to store
+      const workspace = {
+        id: repo.id,
+        name: repo.name,
+        path: repo.path,
+        defaultBranch: repo.branch,
+        createdAt: repo.createdAt,
+      };
+      useAppStore.getState().addWorkspace(workspace);
+      selectWorkspace(workspace.id);
+    } catch (error) {
+      // If it fails, fall back to showing the modal where user can see the error
+      console.error('Failed to add workspace directly:', error);
+      setShowAddWorkspace(true);
+    }
+  }, [selectWorkspace]);
+
+  // Handle closing a file tab (with dirty check)
+  const handleCloseFileTab = useCallback((tabId: string) => {
+    const tab = fileTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    // If tab is dirty, set pending close ID to show confirmation dialog
+    if (tab.isDirty) {
+      setPendingCloseFileTabId(tabId);
+      return;
+    }
+
+    // Otherwise close directly
+    closeFileTab(tabId);
+  }, [fileTabs, closeFileTab, setPendingCloseFileTabId]);
+
+  // Save dirty file and close
+  const handleSaveAndCloseFile = useCallback(async () => {
+    if (!pendingCloseFileTabId) return;
+    const tab = fileTabs.find((t) => t.id === pendingCloseFileTabId);
+    if (tab) {
+      await saveTab(tab);
+      closeFileTab(pendingCloseFileTabId);
+    }
+    setPendingCloseFileTabId(null);
+  }, [pendingCloseFileTabId, fileTabs, saveTab, closeFileTab]);
+
+  // Close dirty file without saving
+  const handleDontSaveAndCloseFile = useCallback(() => {
+    if (!pendingCloseFileTabId) return;
+    closeFileTab(pendingCloseFileTabId);
+    setPendingCloseFileTabId(null);
+  }, [pendingCloseFileTabId, closeFileTab]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -445,16 +606,40 @@ export default function Home() {
           }
         }
       }
-      // Cmd+W to close tab
+      // Tab switching shortcuts (multiple options for cross-platform compatibility)
+      // Cmd+Option+] or Ctrl+Tab for next tab
+      if ((e.key === ']' && e.metaKey && e.altKey && !e.shiftKey) ||
+          (e.key === 'Tab' && e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey)) {
+        e.preventDefault();
+        selectNextTab();
+      }
+      // Cmd+Option+[ or Ctrl+Shift+Tab for previous tab
+      if ((e.key === '[' && e.metaKey && e.altKey && !e.shiftKey) ||
+          (e.key === 'Tab' && e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey)) {
+        e.preventDefault();
+        selectPreviousTab();
+      }
+      // Cmd+W to close tab (file tab first, then conversation)
       if (e.key === 'w' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
-        handleCloseTab();
+        // If a file tab is selected, close it first
+        if (selectedFileTabId) {
+          handleCloseFileTab(selectedFileTabId);
+        } else {
+          // Otherwise close the conversation
+          handleCloseTab();
+        }
+      }
+      // Cmd+S to save current file tab
+      if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault();
+        saveCurrentTab();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -476,6 +661,9 @@ export default function Home() {
           break;
         case 'close_tab':
           handleCloseTab();
+          break;
+        case 'save_file':
+          saveCurrentTab();
           break;
         case 'toggle_left_sidebar':
           setShowLeftSidebar((prev) => !prev);
@@ -508,7 +696,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal, saveCurrentTab]);
 
   // Handle window close confirmation
   useEffect(() => {
@@ -526,6 +714,7 @@ export default function Home() {
       cleanup?.();
     };
   }, []);
+
 
   // Handle selecting a session from workspace management view
   const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
@@ -566,8 +755,9 @@ export default function Home() {
   }
 
   return (
-    <TooltipProvider>
-      <div className="h-screen overflow-hidden flex relative">
+    <ToastProvider>
+      <TooltipProvider>
+        <div className="h-screen overflow-hidden flex relative">
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Left Sidebar - Workspaces */}
@@ -582,7 +772,9 @@ export default function Home() {
                 <div ref={leftSidebarRef} className="h-full">
                   <ErrorBoundary section="Sidebar">
                     <WorkspaceSidebar
-                      onAddWorkspace={() => setShowAddWorkspace(true)}
+                      onOpenProject={handleOpenProject}
+                      onCloneFromUrl={() => setShowCloneFromUrl(true)}
+                      onQuickStart={() => setShowQuickStart(true)}
                       onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
                       onSessionSelected={() => setShowWorkspaceManagement(false)}
                       onOpenSettings={() => setShowSettings(true)}
@@ -601,19 +793,23 @@ export default function Home() {
             <ResizablePanelGroup direction="vertical">
               {/* Conversation Area */}
               <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
-                <div className="flex flex-col h-full">
-                  <TopBar
-                    showLeftSidebar={showLeftSidebar}
-                    showRightSidebar={showRightSidebar}
-                    onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
-                    onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
-                  />
-                  <ErrorBoundary section="Conversation">
-                    <ConversationArea>
-                      <ChatInput />
-                    </ConversationArea>
-                  </ErrorBoundary>
-                </div>
+                {isLoadingData ? (
+                  <ConversationSkeleton />
+                ) : (
+                  <div className="flex flex-col h-full">
+                    <TopBar
+                      showLeftSidebar={showLeftSidebar}
+                      showRightSidebar={showRightSidebar}
+                      onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
+                      onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+                    />
+                    <ErrorBoundary section="Conversation">
+                      <ConversationArea>
+                        <ChatInput />
+                      </ConversationArea>
+                    </ErrorBoundary>
+                  </div>
+                )}
               </ResizablePanel>
 
               {/* Bottom Terminal - always mounted to preserve PTY session */}
@@ -685,6 +881,18 @@ export default function Home() {
           onClose={() => setShowAddWorkspace(false)}
         />
 
+        {/* Clone from URL Dialog */}
+        <CloneFromUrlDialog
+          isOpen={showCloneFromUrl}
+          onClose={() => setShowCloneFromUrl(false)}
+        />
+
+        {/* Quick Start Dialog */}
+        <QuickStartDialog
+          isOpen={showQuickStart}
+          onClose={() => setShowQuickStart(false)}
+        />
+
         {/* Close Tab Confirmation Dialog */}
         <CloseTabConfirmDialog
           open={showCloseConfirm}
@@ -693,9 +901,22 @@ export default function Home() {
           onConfirm={handleConfirmClose}
         />
 
-        {/* Update Checker */}
+{/* Close Dirty File Confirmation Dialog */}
+        <CloseFileConfirmDialog
+          open={pendingCloseFileTabId !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingCloseFileTabId(null);
+          }}
+          fileName={fileTabs.find((t) => t.id === pendingCloseFileTabId)?.name || 'file'}
+          onSave={handleSaveAndCloseFile}
+          onDontSave={handleDontSaveAndCloseFile}
+        />
+
+        {/* Update Checker - disabled until remote URL is configured
         <UpdateChecker />
-      </div>
-    </TooltipProvider>
+        */}
+        </div>
+      </TooltipProvider>
+    </ToastProvider>
   );
 }
