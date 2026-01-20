@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { useTheme } from 'next-themes';
@@ -205,6 +205,7 @@ interface MonacoDiffEditorProps {
   newContent: string;
   filename: string;
   readOnly?: boolean;
+  sideBySide?: boolean;
 }
 
 export function MonacoDiffEditor({
@@ -212,9 +213,49 @@ export function MonacoDiffEditor({
   newContent,
   filename,
   readOnly = true,
+  sideBySide = true,
 }: MonacoDiffEditorProps) {
   const { resolvedTheme } = useTheme();
   const language = getMonacoLanguage(filename);
+  const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+
+  // Update sideBySide option when it changes without remounting
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ renderSideBySide: sideBySide });
+    }
+  }, [sideBySide]);
+
+  const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
+    editorRef.current = editor;
+  }, []);
+
+  // Memoize options to prevent unnecessary re-renders
+  const options = useMemo(() => ({
+    readOnly,
+    minimap: { enabled: false },
+    lineNumbers: 'on' as const,
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    fontSize: 12,
+    fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
+    lineHeight: 18,
+    padding: { top: 8, bottom: 8 },
+    renderSideBySide: sideBySide,
+    useInlineViewWhenSpaceIsLimited: false, // Prevent auto-switch to unified based on width
+    enableSplitViewResizing: true,
+    renderIndicators: true,
+    renderOverviewRuler: false,
+    diffWordWrap: 'off' as const,
+    scrollbar: {
+      vertical: 'auto' as const,
+      horizontal: 'auto' as const,
+      verticalScrollbarSize: 10,
+      horizontalScrollbarSize: 10,
+    },
+    overviewRulerBorder: false,
+    contextmenu: false,
+  }), [readOnly, sideBySide]);
 
   return (
     <DiffEditor
@@ -224,28 +265,8 @@ export function MonacoDiffEditor({
       modified={newContent}
       theme={resolvedTheme === 'dark' ? 'vs-dark' : 'light'}
       loading={<EditorLoading />}
-      options={{
-        readOnly,
-        minimap: { enabled: false },
-        lineNumbers: 'on',
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        fontSize: 12,
-        fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
-        lineHeight: 18,
-        padding: { top: 8, bottom: 8 },
-        renderSideBySide: true,
-        renderOverviewRuler: false,
-        diffWordWrap: 'off',
-        scrollbar: {
-          vertical: 'auto',
-          horizontal: 'auto',
-          verticalScrollbarSize: 10,
-          horizontalScrollbarSize: 10,
-        },
-        overviewRulerBorder: false,
-        contextmenu: false,
-      }}
+      onMount={handleMount}
+      options={options}
     />
   );
 }

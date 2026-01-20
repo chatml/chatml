@@ -86,12 +86,6 @@ function SortableTabItem({
   );
 }
 
-/**
- * Group separator between different tab groups
- */
-function TabSeparator() {
-  return <div className="h-4 w-px bg-border mx-1 shrink-0" />;
-}
 
 /**
  * Main TabBar component with VS Code-style behavior
@@ -211,15 +205,11 @@ export function TabBar({
     ]
   );
 
-  const hasWorkspaceTabs = workspaceTabs.length > 0;
-  const hasSessionTabs = sessionTabs.length > 0;
-  const hasConversationTabs = conversationTabs.length > 0;
-  const hasFileTabs = hasWorkspaceTabs || hasSessionTabs;
 
   return (
     <div
       className={cn(
-        'flex items-stretch border-b shrink-0',
+        'flex items-stretch h-[33px] border-b shrink-0',
         'bg-muted/30' // Slight background for tab bar area
       )}
       role="tablist"
@@ -238,19 +228,13 @@ export function TabBar({
             canScrollRight={canScrollRight}
             onScrollLeft={scrollLeft}
             onScrollRight={scrollRight}
-            className="px-1 py-1"
+            className=""
           >
             {/* Workspace file tabs */}
             {workspaceTabs.map((tab) => renderTab(tab))}
 
-            {/* Separator between workspace and session tabs */}
-            {hasWorkspaceTabs && hasSessionTabs && <TabSeparator />}
-
             {/* Session file tabs */}
             {sessionTabs.map((tab) => renderTab(tab))}
-
-            {/* Separator between file tabs and conversations */}
-            {hasFileTabs && hasConversationTabs && <TabSeparator />}
 
             {/* Conversation tabs */}
             {conversationTabs.map((tab) => renderTab(tab, tab.icon))}

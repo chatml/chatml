@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 export function OnboardingScreen() {
   const [isConnecting, setIsConnecting] = useState(false);
-  const { error, setError } = useAuthStore();
+  const { error, setError, setAuthenticated } = useAuthStore();
 
   const handleSignIn = async () => {
     setIsConnecting(true);
@@ -22,6 +22,15 @@ export function OnboardingScreen() {
       setError(err instanceof Error ? err.message : 'Failed to start sign in');
       setIsConnecting(false);
     }
+  };
+
+  const handleSkip = () => {
+    // Skip authentication for development - sets a placeholder user
+    setAuthenticated(true, {
+      login: 'local-dev',
+      name: 'Local Developer',
+      avatar_url: '',
+    });
   };
 
   return (
@@ -58,6 +67,16 @@ export function OnboardingScreen() {
               Sign in with GitHub
             </>
           )}
+        </Button>
+
+        {/* Skip button for development */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleSkip}
+          className="text-muted-foreground"
+        >
+          Skip for now
         </Button>
 
         {/* Error message */}

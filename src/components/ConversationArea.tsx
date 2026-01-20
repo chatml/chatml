@@ -277,6 +277,57 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // File is active only if selected tab is visible
   const isFileActive = selectedFileTabId !== null && currentFileTab !== undefined;
 
+  // Load content for selected file tab on mount/restore (e.g., after refresh)
+  useEffect(() => {
+    if (!currentFileTab || currentFileTab.isLoading) return;
+
+    // For regular file view without content, load it
+    if (currentFileTab.viewMode !== 'diff' && !currentFileTab.content && !currentFileTab.isBinary && !currentFileTab.isTooLarge) {
+      const loadContent = async () => {
+        updateFileTab(currentFileTab.id, { isLoading: true });
+        try {
+          const fileData = await getRepoFileContent(currentFileTab.workspaceId, currentFileTab.path);
+          updateFileTab(currentFileTab.id, {
+            content: fileData.content,
+            originalContent: fileData.content,
+            isLoading: false,
+          });
+        } catch (error) {
+          console.error('Failed to load file:', error);
+          updateFileTab(currentFileTab.id, {
+            content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            isLoading: false,
+          });
+        }
+      };
+      loadContent();
+    }
+
+    // For diff view without diff content, load it
+    if (currentFileTab.viewMode === 'diff' && !currentFileTab.diff && !currentFileTab.isBinary && !currentFileTab.isTooLarge && currentFileTab.sessionId) {
+      const loadDiff = async () => {
+        updateFileTab(currentFileTab.id, { isLoading: true });
+        try {
+          const diffData = await getSessionFileDiff(currentFileTab.workspaceId, currentFileTab.sessionId!, currentFileTab.path);
+          updateFileTab(currentFileTab.id, {
+            diff: {
+              oldContent: diffData.oldContent ?? '',
+              newContent: diffData.newContent ?? '',
+            },
+            isLoading: false,
+          });
+        } catch (error) {
+          console.error('Failed to load diff:', error);
+          updateFileTab(currentFileTab.id, {
+            content: `// Error loading diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            isLoading: false,
+          });
+        }
+      };
+      loadDiff();
+    }
+  }, [currentFileTab?.id, currentFileTab?.content, currentFileTab?.diff, currentFileTab?.isLoading, updateFileTab]);
+
   const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedSessionId) return;
     const newConversation = {

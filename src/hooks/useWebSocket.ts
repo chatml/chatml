@@ -216,6 +216,8 @@ export function useWebSocket(enabled: boolean = true) {
         setStreaming(conversationId, false);
         clearThinking(conversationId);
         clearActiveTools(conversationId);
+        // Update conversation status to completed
+        updateConversation(conversationId, { status: 'completed' });
         break;
 
       case 'complete':
@@ -225,6 +227,8 @@ export function useWebSocket(enabled: boolean = true) {
         setStreaming(conversationId, false);
         clearThinking(conversationId);
         clearActiveTools(conversationId);
+        // Update conversation status to idle (ready for new input)
+        updateConversation(conversationId, { status: 'idle' });
         break;
 
       case 'error':
