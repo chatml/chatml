@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 )
 
@@ -26,6 +27,10 @@ type ProcessOptions struct {
 	LinearIssue         string // Linear issue identifier (e.g., "LIN-123")
 	ToolPreset          string // Tool preset: full, read-only, no-bash, safe-edit
 	EnableCheckpointing bool   // Enable file checkpointing for rewind
+	MaxBudgetUsd        float64
+	MaxTurns            int
+	MaxThinkingTokens   int
+	StructuredOutput    string
 }
 
 type Process struct {
@@ -125,6 +130,22 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	// Add file checkpointing if enabled
 	if opts.EnableCheckpointing {
 		args = append(args, "--enable-checkpointing")
+	}
+
+	// Add budget controls
+	if opts.MaxBudgetUsd > 0 {
+		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", opts.MaxBudgetUsd))
+	}
+	if opts.MaxTurns > 0 {
+		args = append(args, "--max-turns", strconv.Itoa(opts.MaxTurns))
+	}
+	if opts.MaxThinkingTokens > 0 {
+		args = append(args, "--max-thinking-tokens", strconv.Itoa(opts.MaxThinkingTokens))
+	}
+
+	// Add structured output schema if provided
+	if opts.StructuredOutput != "" {
+		args = append(args, "--structured-output", opts.StructuredOutput)
 	}
 
 	// Spawn the Node agent runner

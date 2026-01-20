@@ -31,6 +31,41 @@ const linearIssue = linearIssueIndex !== -1 ? args[linearIssueIndex + 1] : undef
 const toolPreset = toolPresetIndex !== -1 ? args[toolPresetIndex + 1] : "full";
 const enableCheckpointingIndex = args.indexOf("--enable-checkpointing");
 const enableCheckpointing = enableCheckpointingIndex !== -1;
+// Task 4: Structured Output Support
+const structuredOutputIndex = args.indexOf("--structured-output");
+const structuredOutputSchema = structuredOutputIndex !== -1 ? args[structuredOutputIndex + 1] : undefined;
+// Parse schema if provided
+let outputFormat;
+if (structuredOutputSchema) {
+    try {
+        outputFormat = { type: 'json_schema', schema: JSON.parse(structuredOutputSchema) };
+    }
+    catch (e) {
+        emit({ type: "warning", message: `Invalid structured output schema: ${e}` });
+    }
+}
+// Task 5: Budget Controls
+const maxBudgetIndex = args.indexOf("--max-budget-usd");
+const maxTurnsIndex = args.indexOf("--max-turns");
+const maxThinkingTokensIndex = args.indexOf("--max-thinking-tokens");
+const maxBudgetUsd = maxBudgetIndex !== -1 ? parseFloat(args[maxBudgetIndex + 1]) : undefined;
+const maxTurns = maxTurnsIndex !== -1 ? parseInt(args[maxTurnsIndex + 1], 10) : undefined;
+const maxThinkingTokens = maxThinkingTokensIndex !== -1 ? parseInt(args[maxThinkingTokensIndex + 1], 10) : undefined;
+// Task 6: Settings Sources Configuration
+const settingSourcesIndex = args.indexOf("--setting-sources");
+const settingSourcesArg = settingSourcesIndex !== -1 ? args[settingSourcesIndex + 1] : undefined;
+const settingSources = settingSourcesArg
+    ? settingSourcesArg.split(',').map(s => s.trim())
+    : undefined;
+// Task 7: Beta Features Flag
+const betasIndex = args.indexOf("--betas");
+const betasArg = betasIndex !== -1 ? args[betasIndex + 1] : undefined;
+const betas = betasArg ? betasArg.split(',').map(s => s.trim()) : undefined;
+// Task 8: Model Configuration
+const modelIndex = args.indexOf("--model");
+const fallbackModelIndex = args.indexOf("--fallback-model");
+const model = modelIndex !== -1 ? args[modelIndex + 1] : undefined;
+const fallbackModel = fallbackModelIndex !== -1 ? args[fallbackModelIndex + 1] : undefined;
 function emit(event) {
     console.log(JSON.stringify(event));
 }
@@ -100,6 +135,16 @@ async function* createMessageStream() {
                 if (input.type === "get_account_info" && queryRef) {
                     const info = await queryRef.accountInfo();
                     emit({ type: "account_info", info });
+                    continue;
+                }
+                if (input.type === "rewind_files" && input.checkpointUuid && queryRef) {
+                    try {
+                        await queryRef.rewindFiles(input.checkpointUuid);
+                        emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: true });
+                    }
+                    catch (error) {
+                        emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: false, error: String(error) });
+                    }
                     continue;
                 }
                 if (input.type === "message" && input.content) {
@@ -372,6 +417,19 @@ async function main() {
                 disallowedTools: presetConfig.disallowedTools,
                 // File checkpointing
                 enableFileCheckpointing: enableCheckpointing,
+                // Task 4: Structured output
+                outputFormat,
+                // Task 5: Budget controls
+                maxBudgetUsd,
+                maxTurns,
+                maxThinkingTokens,
+                // Task 6: Settings sources
+                settingSources,
+                // Task 7: Beta features
+                betas,
+                // Task 8: Model configuration
+                model,
+                fallbackModel,
                 // stderr callback for debugging
                 stderr: (data) => {
                     emit({ type: "agent_stderr", data });
@@ -505,11 +563,28 @@ function handleMessage(message) {
                     }
                 }
             }
+            // Check for checkpoint_uuid in user messages (present when checkpointing is enabled)
+            if (message.checkpoint_uuid) {
+                emit({
+                    type: "checkpoint_created",
+                    checkpointUuid: message.checkpoint_uuid,
+                    messageIndex: message.message_index || 0,
+                });
+            }
             break;
         }
         case "result": {
             flushBlockBuffer();
             const resultMsg = message;
+            // Check for checkpoint_uuid in result messages (present when checkpointing is enabled)
+            if (message.checkpoint_uuid) {
+                emit({
+                    type: "checkpoint_created",
+                    checkpointUuid: message.checkpoint_uuid,
+                    messageIndex: message.message_index || 0,
+                    isResult: true,
+                });
+            }
             if (resultMsg.subtype === "success") {
                 emit({
                     type: "result",
