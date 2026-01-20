@@ -1,11 +1,15 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 // CLI arguments
 const args = process.argv.slice(2);
 const cwdIndex = args.indexOf("--cwd");
 const conversationIdIndex = args.indexOf("--conversation-id");
+const resumeIndex = args.indexOf("--resume");
+const forkIndex = args.indexOf("--fork");
 const cwd = cwdIndex !== -1 ? args[cwdIndex + 1] : process.cwd();
 const conversationId = conversationIdIndex !== -1 ? args[conversationIdIndex + 1] : "default";
+const resumeSessionId = resumeIndex !== -1 ? args[resumeIndex + 1] : undefined;
+const forkSession = forkIndex !== -1;
 function emit(event) {
     console.log(JSON.stringify(event));
 }
@@ -14,6 +18,10 @@ let hasEmittedNameSuggestion = false;
 let accumulatedText = "";
 // Module-level readline interface for proper cleanup
 let rl = null;
+// Module-level query reference for runtime control
+let queryRef = null;
+// Track current session ID
+let currentSessionId = undefined;
 // Close readline interface if it exists
 function closeReadline() {
     if (rl) {
@@ -37,6 +45,42 @@ async function* createMessageStream() {
                 if (input.type === "stop") {
                     break;
                 }
+                // Handle runtime control commands
+                if (input.type === "interrupt" && queryRef) {
+                    await queryRef.interrupt();
+                    emit({ type: "interrupted" });
+                    continue;
+                }
+                if (input.type === "set_model" && queryRef && input.model) {
+                    await queryRef.setModel(input.model);
+                    emit({ type: "model_changed", model: input.model });
+                    continue;
+                }
+                if (input.type === "set_permission_mode" && queryRef && input.permissionMode) {
+                    await queryRef.setPermissionMode(input.permissionMode);
+                    emit({ type: "permission_mode_changed", mode: input.permissionMode });
+                    continue;
+                }
+                if (input.type === "get_supported_models" && queryRef) {
+                    const models = await queryRef.supportedModels();
+                    emit({ type: "supported_models", models });
+                    continue;
+                }
+                if (input.type === "get_supported_commands" && queryRef) {
+                    const commands = await queryRef.supportedCommands();
+                    emit({ type: "supported_commands", commands });
+                    continue;
+                }
+                if (input.type === "get_mcp_status" && queryRef) {
+                    const status = await queryRef.mcpServerStatus();
+                    emit({ type: "mcp_status", servers: status });
+                    continue;
+                }
+                if (input.type === "get_account_info" && queryRef) {
+                    const info = await queryRef.accountInfo();
+                    emit({ type: "account_info", info });
+                    continue;
+                }
                 if (input.type === "message" && input.content) {
                     yield {
                         type: "user",
@@ -44,6 +88,8 @@ async function* createMessageStream() {
                             role: "user",
                             content: input.content,
                         },
+                        parent_tool_use_id: null,
+                        session_id: currentSessionId || "",
                     };
                 }
             }
@@ -146,8 +192,133 @@ function trackToolStart(toolName) {
 function trackToolEnd(durationMs) {
     runStats.totalToolDurationMs += durationMs;
 }
+// ============================================================================
+// HOOKS - All hooks are always enabled for comprehensive logging/tracking
+// ============================================================================
+const preToolUseHook = async (input, toolUseId) => {
+    const hookInput = input;
+    emit({
+        type: "hook_pre_tool",
+        toolUseId,
+        tool: hookInput.tool_name,
+        input: hookInput.tool_input,
+        sessionId: hookInput.session_id,
+    });
+    return {}; // Allow all tools (no blocking)
+};
+const postToolUseHook = async (input, toolUseId) => {
+    const hookInput = input;
+    // Summarize tool response (truncate if too long)
+    let responseSummary = hookInput.tool_response;
+    if (typeof responseSummary === "string" && responseSummary.length > 200) {
+        responseSummary = responseSummary.slice(0, 197) + "...";
+    }
+    emit({
+        type: "hook_post_tool",
+        toolUseId,
+        tool: hookInput.tool_name,
+        response: responseSummary,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+const postToolUseFailureHook = async (input, toolUseId) => {
+    const hookInput = input;
+    emit({
+        type: "hook_tool_failure",
+        toolUseId,
+        tool: hookInput.tool_name,
+        error: hookInput.error,
+        isInterrupt: hookInput.is_interrupt,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+const notificationHook = async (input) => {
+    const hookInput = input;
+    emit({
+        type: "agent_notification",
+        title: hookInput.title,
+        message: hookInput.message,
+        notificationType: hookInput.notification_type,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+const sessionStartHook = async (input) => {
+    const hookInput = input;
+    currentSessionId = hookInput.session_id;
+    emit({
+        type: "session_started",
+        sessionId: hookInput.session_id,
+        source: hookInput.source,
+        cwd: hookInput.cwd,
+    });
+    return {};
+};
+const sessionEndHook = async (input) => {
+    const hookInput = input;
+    emit({
+        type: "session_ended",
+        reason: hookInput.reason,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+const stopHook = async (input) => {
+    const hookInput = input;
+    emit({
+        type: "agent_stop",
+        stopHookActive: hookInput.stop_hook_active,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+const subagentStartHook = async (input) => {
+    const hookInput = input;
+    emit({
+        type: "subagent_started",
+        agentId: hookInput.agent_id,
+        agentType: hookInput.agent_type,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+const subagentStopHook = async (input) => {
+    const hookInput = input;
+    emit({
+        type: "subagent_stopped",
+        agentId: hookInput.agent_id,
+        stopHookActive: hookInput.stop_hook_active,
+        transcriptPath: hookInput.agent_transcript_path,
+        sessionId: hookInput.session_id,
+    });
+    return {};
+};
+// Hooks configuration - all always enabled
+const hooks = {
+    PreToolUse: [{ hooks: [preToolUseHook] }],
+    PostToolUse: [{ hooks: [postToolUseHook] }],
+    PostToolUseFailure: [{ hooks: [postToolUseFailureHook] }],
+    Notification: [{ hooks: [notificationHook] }],
+    SessionStart: [{ hooks: [sessionStartHook] }],
+    SessionEnd: [{ hooks: [sessionEndHook] }],
+    Stop: [{ hooks: [stopHook] }],
+    SubagentStart: [{ hooks: [subagentStartHook] }],
+    SubagentStop: [{ hooks: [subagentStopHook] }],
+};
+// ============================================================================
+// MAIN
+// ============================================================================
 async function main() {
-    emit({ type: "ready", conversationId, cwd });
+    const abortController = new AbortController();
+    emit({
+        type: "ready",
+        conversationId,
+        cwd,
+        resuming: !!resumeSessionId,
+        forking: forkSession,
+    });
     try {
         const result = query({
             prompt: createMessageStream(),
@@ -158,13 +329,24 @@ async function main() {
                 includePartialMessages: true,
                 tools: { type: "preset", preset: "claude_code" },
                 systemPrompt: { type: "preset", preset: "claude_code" },
+                abortController,
+                hooks,
+                // Session management
+                resume: resumeSessionId,
+                forkSession: forkSession && !!resumeSessionId,
+                // stderr callback for debugging
+                stderr: (data) => {
+                    emit({ type: "agent_stderr", data });
+                },
             },
         });
+        // Store query reference for runtime control
+        queryRef = result;
         for await (const message of result) {
             handleMessage(message);
         }
         flushBlockBuffer();
-        emit({ type: "complete" });
+        emit({ type: "complete", sessionId: currentSessionId });
     }
     catch (err) {
         emit({ type: "error", message: `${err}` });
@@ -172,6 +354,13 @@ async function main() {
     }
 }
 function handleMessage(message) {
+    // Extract session_id from any message that has it
+    if ("session_id" in message && message.session_id) {
+        if (!currentSessionId || currentSessionId !== message.session_id) {
+            currentSessionId = message.session_id;
+            emit({ type: "session_id_update", sessionId: currentSessionId });
+        }
+    }
     switch (message.type) {
         case "assistant": {
             // Full assistant message - extract content blocks
@@ -282,13 +471,21 @@ function handleMessage(message) {
         }
         case "result": {
             flushBlockBuffer();
-            if (message.subtype === "success") {
+            const resultMsg = message;
+            if (resultMsg.subtype === "success") {
                 emit({
                     type: "result",
                     success: true,
-                    summary: message.result,
-                    cost: message.total_cost_usd,
-                    turns: message.num_turns,
+                    subtype: "success",
+                    summary: resultMsg.result,
+                    cost: resultMsg.total_cost_usd,
+                    turns: resultMsg.num_turns,
+                    durationMs: resultMsg.duration_ms,
+                    durationApiMs: resultMsg.duration_api_ms,
+                    usage: resultMsg.usage,
+                    modelUsage: resultMsg.modelUsage,
+                    structuredOutput: resultMsg.structured_output,
+                    sessionId: resultMsg.session_id,
                     stats: {
                         toolCalls: runStats.toolCalls,
                         toolsByType: runStats.toolsByType,
@@ -302,11 +499,20 @@ function handleMessage(message) {
                 });
             }
             else {
+                // Handle all error subtypes: error_during_execution, error_max_turns,
+                // error_max_budget_usd, error_max_structured_output_retries
                 emit({
                     type: "result",
                     success: false,
-                    subtype: message.subtype,
-                    errors: "errors" in message ? message.errors : [],
+                    subtype: resultMsg.subtype,
+                    errors: "errors" in resultMsg ? resultMsg.errors : [],
+                    cost: resultMsg.total_cost_usd,
+                    turns: resultMsg.num_turns,
+                    durationMs: resultMsg.duration_ms,
+                    durationApiMs: resultMsg.duration_api_ms,
+                    usage: resultMsg.usage,
+                    modelUsage: resultMsg.modelUsage,
+                    sessionId: resultMsg.session_id,
                     stats: {
                         toolCalls: runStats.toolCalls,
                         toolsByType: runStats.toolsByType,
@@ -322,13 +528,80 @@ function handleMessage(message) {
             break;
         }
         case "system": {
-            if (message.subtype === "init") {
+            const sysMsg = message;
+            if (sysMsg.subtype === "init") {
+                const initMsg = sysMsg;
                 emit({
                     type: "init",
-                    model: message.model,
-                    tools: message.tools,
+                    model: initMsg.model,
+                    tools: initMsg.tools,
+                    mcpServers: initMsg.mcp_servers,
+                    slashCommands: initMsg.slash_commands,
+                    skills: initMsg.skills,
+                    plugins: initMsg.plugins,
+                    agents: initMsg.agents,
+                    permissionMode: initMsg.permissionMode,
+                    claudeCodeVersion: initMsg.claude_code_version,
+                    apiKeySource: initMsg.apiKeySource,
+                    betas: initMsg.betas,
+                    outputStyle: initMsg.output_style,
+                    sessionId: initMsg.session_id,
+                    cwd: initMsg.cwd,
+                });
+                currentSessionId = initMsg.session_id;
+            }
+            else if (sysMsg.subtype === "compact_boundary") {
+                const compactMsg = sysMsg;
+                emit({
+                    type: "compact_boundary",
+                    trigger: compactMsg.compact_metadata.trigger,
+                    preTokens: compactMsg.compact_metadata.pre_tokens,
+                    sessionId: compactMsg.session_id,
                 });
             }
+            else if (sysMsg.subtype === "status") {
+                const statusMsg = sysMsg;
+                emit({
+                    type: "status_update",
+                    status: statusMsg.status,
+                    sessionId: statusMsg.session_id,
+                });
+            }
+            else if (sysMsg.subtype === "hook_response") {
+                const hookMsg = sysMsg;
+                emit({
+                    type: "hook_response",
+                    hookName: hookMsg.hook_name,
+                    hookEvent: hookMsg.hook_event,
+                    stdout: hookMsg.stdout,
+                    stderr: hookMsg.stderr,
+                    exitCode: hookMsg.exit_code,
+                    sessionId: hookMsg.session_id,
+                });
+            }
+            break;
+        }
+        case "tool_progress": {
+            const progressMsg = message;
+            emit({
+                type: "tool_progress",
+                toolUseId: progressMsg.tool_use_id,
+                toolName: progressMsg.tool_name,
+                elapsedTimeSeconds: progressMsg.elapsed_time_seconds,
+                parentToolUseId: progressMsg.parent_tool_use_id,
+                sessionId: progressMsg.session_id,
+            });
+            break;
+        }
+        case "auth_status": {
+            const authMsg = message;
+            emit({
+                type: "auth_status",
+                isAuthenticating: authMsg.isAuthenticating,
+                output: authMsg.output,
+                error: authMsg.error,
+                sessionId: authMsg.session_id,
+            });
             break;
         }
     }
