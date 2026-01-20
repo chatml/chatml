@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAuthStore } from '@/stores/authStore';
+import { OnboardingScreen } from '@/components/OnboardingScreen';
+import { initAuth, listenForOAuthCallback } from '@/lib/auth';
 import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/CloseFileConfirmDialog';
@@ -33,7 +37,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
-import { Loader2 } from 'lucide-react';
 
 // Pre-computed skeleton widths (avoids Math.random() during render)
 const SKELETON_WIDTHS = [72, 88, 65, 81];
@@ -120,6 +123,43 @@ export default function Home() {
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const { showBottomTerminal, setShowBottomTerminal } = useSettingsStore();
+
+  const { isLoading: authLoading, isAuthenticated, setAuthenticated, setError } = useAuthStore();
+
+  // Initialize auth on mount
+  useEffect(() => {
+    let unlistenOAuth: (() => void) | null = null;
+
+    const init = async () => {
+      // Set up OAuth callback listener first
+      try {
+        unlistenOAuth = await listenForOAuthCallback(
+          (result) => {
+            setAuthenticated(true, result.user);
+          },
+          (error) => {
+            setError(error.message);
+          }
+        );
+      } catch {
+        // Listener setup failed (not in Tauri), continue anyway
+      }
+
+      // Check for existing auth
+      try {
+        const status = await initAuth();
+        setAuthenticated(status.authenticated, status.user);
+      } catch {
+        setAuthenticated(false);
+      }
+    };
+
+    init();
+
+    return () => {
+      if (unlistenOAuth) unlistenOAuth();
+    };
+  }, [setAuthenticated, setError]);
 
   // Use ref to avoid changing useEffect dependency array sizes
   const showBottomTerminalRef = useRef(showBottomTerminal);
@@ -688,6 +728,20 @@ export default function Home() {
     // Exit workspace management view
     setShowWorkspaceManagement(false);
   }, [conversations, selectWorkspace, selectSession, selectConversation]);
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Show onboarding if not authenticated
+  if (!isAuthenticated) {
+    return <OnboardingScreen />;
+  }
 
   // Show connection screen until backend is ready
   if (!backendConnected) {

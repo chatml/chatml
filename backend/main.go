@@ -7,6 +7,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/server"
 	"github.com/chatml/chatml-backend/store"
 )
@@ -27,9 +28,13 @@ func main() {
 	wm := git.NewWorktreeManager()
 	agentMgr := agent.NewManager(s, wm)
 
+	// GitHub OAuth client
+	ghConfig := server.LoadGitHubConfig()
+	ghClient := github.NewClient(ghConfig.ClientID, ghConfig.ClientSecret)
+
 	go hub.Run()
 
-	router := server.NewRouter(s, hub, agentMgr)
+	router := server.NewRouter(s, hub, agentMgr, ghClient)
 
 	log.Printf("ChatML backend starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, router); err != nil {

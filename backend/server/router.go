@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
@@ -14,15 +15,24 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandlers(s, agentMgr)
+	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	// Auth endpoints (no rate limiting - they're naturally rate limited by OAuth)
+	r.Route("/api/auth", func(r chi.Router) {
+		r.Post("/github/callback", auth.GitHubCallback)
+		r.Post("/token", auth.SetToken)
+		r.Get("/status", auth.GetStatus)
+		r.Post("/logout", auth.Logout)
 	})
 
 	// WebSocket

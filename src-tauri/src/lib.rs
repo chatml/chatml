@@ -66,6 +66,20 @@ pub fn run() {
                 .with_state_flags(tauri_plugin_window_state::StateFlags::all())
                 .build(),
         )
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(
+            tauri_plugin_stronghold::Builder::new(|password| {
+                // Simple password hashing for the stronghold vault
+                // In production, this could use argon2 with a proper salt
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                password.hash(&mut hasher);
+                let hash = hasher.finish();
+                hash.to_le_bytes().to_vec()
+            })
+            .build(),
+        )
         // Register shared state
         .manage(Arc::clone(&app_state));
 
@@ -138,6 +152,26 @@ pub fn run() {
                         }
                     }
                 }
+            }
+
+            // Register deep link handler for OAuth callback
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let app_handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    let urls = event.urls();
+                    for url in urls {
+                        if url.scheme() == "chatml" && url.host_str() == Some("oauth") {
+                            log::info!("Received OAuth callback URL: {}", url);
+                            // Emit to frontend for handling
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("oauth-callback", url.to_string());
+                            }
+                        }
+                    }
+                });
+                log::info!("Deep link handler registered for chatml:// URLs");
             }
 
             Ok(())
