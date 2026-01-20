@@ -52,6 +52,7 @@ import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import { getRepoFileContent, getSessionFileDiff } from '@/lib/api';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -198,9 +199,53 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectFileTab(null); // Deselect file tab when selecting conversation
   };
 
-  const handleSelectFileTab = (id: string) => {
+  const handleSelectFileTab = useCallback(async (id: string) => {
     selectFileTab(id);
-  };
+
+    // Find the tab and check if it needs content loaded
+    const tab = fileTabs.find((t) => t.id === id);
+    if (!tab || tab.isLoading) return;
+
+    // For regular file view without content, load it
+    if (tab.viewMode !== 'diff' && !tab.content && !tab.isBinary && !tab.isTooLarge) {
+      updateFileTab(id, { isLoading: true });
+      try {
+        const fileData = await getRepoFileContent(tab.workspaceId, tab.path);
+        updateFileTab(id, {
+          content: fileData.content,
+          originalContent: fileData.content,
+          isLoading: false,
+        });
+      } catch (error) {
+        console.error('Failed to load file:', error);
+        updateFileTab(id, {
+          content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          isLoading: false,
+        });
+      }
+    }
+
+    // For diff view without diff content, load it
+    if (tab.viewMode === 'diff' && !tab.diff && !tab.isBinary && !tab.isTooLarge && tab.sessionId) {
+      updateFileTab(id, { isLoading: true });
+      try {
+        const diffData = await getSessionFileDiff(tab.workspaceId, tab.sessionId, tab.path);
+        updateFileTab(id, {
+          diff: {
+            oldContent: diffData.oldContent ?? '',
+            newContent: diffData.newContent ?? '',
+          },
+          isLoading: false,
+        });
+      } catch (error) {
+        console.error('Failed to load diff:', error);
+        updateFileTab(id, {
+          content: `// Error loading diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          isLoading: false,
+        });
+      }
+    }
+  }, [fileTabs, selectFileTab, updateFileTab]);
 
   const handleCloseFileTab = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();

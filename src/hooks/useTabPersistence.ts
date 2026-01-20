@@ -58,8 +58,10 @@ export function useTabPersistence() {
             tabs.map(tabToDTO).sort((a, b) => a.id.localeCompare(b.id))
           );
 
-          // Select the first tab if none is selected
-          if (!selectedFileTabId && tabs.length > 0) {
+          // Only auto-select the first tab on initial workspace load
+          // Use useAppStore.getState() to get current value without stale closure
+          const currentSelectedTabId = useAppStore.getState().selectedFileTabId;
+          if (currentSelectedTabId === null && tabs.length > 0) {
             selectFileTab(tabs[0].id);
           }
         }
@@ -71,7 +73,9 @@ export function useTabPersistence() {
     };
 
     loadTabs();
-  }, [selectedWorkspaceId, setFileTabs, selectFileTab, selectedFileTabId]);
+    // Note: Only depend on selectedWorkspaceId - we don't want to re-run this effect
+    // when selectedFileTabId changes (e.g., when user clicks a conversation tab)
+  }, [selectedWorkspaceId, setFileTabs, selectFileTab]);
 
   // Save tabs when they change (debounced)
   const saveTabs = useCallback(async () => {
