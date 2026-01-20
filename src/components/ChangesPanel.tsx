@@ -6,6 +6,8 @@ import { useAppStore } from '@/stores/appStore';
 import { listRepoFiles, getRepoFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
+import { CheckpointTimeline } from '@/components/CheckpointTimeline';
+import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 
 // Dynamic import for TerminalOutput (browser-only)
 const TerminalOutput = dynamic(() => import('@/components/TerminalOutput').then(mod => mod.TerminalOutput), {
@@ -66,7 +68,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
   const [selectedTab, setSelectedTab] = useState('changes');
-  const [outputTab, setOutputTab] = useState<'setup' | 'run' | 'mcp'>('setup');
+  const [outputTab, setOutputTab] = useState<'setup' | 'run' | 'mcp' | 'checkpoints'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
@@ -464,7 +466,16 @@ export function ChangesPanel() {
               >
                 MCP
               </Button>
+              <Button
+                variant={outputTab === 'checkpoints' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 text-xs px-2"
+                onClick={() => setOutputTab('checkpoints')}
+              >
+                History
+              </Button>
             </div>
+            <BudgetStatusPanel />
             <div className="flex-1 min-h-0">
               {outputTab === 'setup' && selectedSessionId && (
                 <TerminalOutput sessionId={selectedSessionId} type="setup" />
@@ -474,6 +485,9 @@ export function ChangesPanel() {
               )}
               {outputTab === 'mcp' && (
                 <McpServersPanel />
+              )}
+              {outputTab === 'checkpoints' && (
+                <CheckpointTimeline />
               )}
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 
 // Type guards for WebSocket payload validation
@@ -216,6 +216,19 @@ export function useWebSocket(enabled: boolean = true) {
         setStreaming(conversationId, false);
         clearThinking(conversationId);
         clearActiveTools(conversationId);
+
+        // Update budget status from result event
+        if (event.cost !== undefined) {
+          const budgetStatus: BudgetStatus = {
+            currentCostUsd: (event.cost as number) || 0,
+            currentTurns: (event.turns as number) || 0,
+            currentThinkingTokens: 0,
+            limitExceeded: event.subtype === 'error_max_budget_usd' ? 'budget'
+                         : event.subtype === 'error_max_turns' ? 'turns'
+                         : undefined,
+          };
+          useAppStore.getState().setBudgetStatus(budgetStatus);
+        }
         break;
 
       case 'complete':
@@ -284,6 +297,26 @@ export function useWebSocket(enabled: boolean = true) {
           if (payload?.mcpServers && Array.isArray(payload.mcpServers)) {
             useAppStore.getState().setMcpServers(payload.mcpServers);
           }
+          return;
+        }
+
+        // Handle checkpoint events
+        if (data.type === 'checkpoint_created') {
+          const eventData = data as WSEvent & Record<string, unknown>;
+          const checkpoint: CheckpointInfo = {
+            uuid: eventData.checkpointUuid as string,
+            timestamp: new Date().toISOString(),
+            messageIndex: (eventData.messageIndex as number) || 0,
+            isResult: eventData.isResult as boolean | undefined,
+          };
+          useAppStore.getState().addCheckpoint(checkpoint);
+          return;
+        }
+
+        // Handle files rewound event
+        if (data.type === 'files_rewound') {
+          const eventData = data as WSEvent & Record<string, unknown>;
+          console.log('Files rewound to checkpoint:', eventData.checkpointUuid);
           return;
         }
 
