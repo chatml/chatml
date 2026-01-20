@@ -346,3 +346,47 @@
 .sound-bar {
   transition: height 75ms ease-out;
 }
+
+/* Tab bar animations */
+.tab-closing {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden;
+  transition: all 150ms ease-in;
+}
+
+.tab-opening {
+  animation: tab-expand 150ms ease-out forwards;
+}
+
+@keyframes tab-expand {
+  from {
+    width: 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    opacity: 0;
+  }
+  to {
+    width: auto;
+    min-width: 120px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    opacity: 1;
+  }
+}
+
+/* Hide scrollbar for tab bar but allow scrolling */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
