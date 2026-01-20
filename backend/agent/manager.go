@@ -243,59 +243,81 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	}
 }
 
-// SendConversationMessage sends a follow-up message to an existing conversation
-func (m *Manager) SendConversationMessage(convID, message string) error {
-	m.mu.RLock()
-	proc, ok := m.convProcesses[convID]
-	m.mu.RUnlock()
-
-	if !ok || !proc.IsRunning() {
-		// Process not running, need to restart it
-		conv := m.store.GetConversation(convID)
-		if conv == nil {
-			return fmt.Errorf("conversation not found: %s", convID)
-		}
-
-		session := m.store.GetSession(conv.SessionID)
-		if session == nil {
-			return fmt.Errorf("session not found: %s", conv.SessionID)
-		}
-
-		// Create new process
-		proc = NewProcess(convID, session.WorktreePath, convID)
-
-		m.mu.Lock()
-		m.convProcesses[convID] = proc
-		m.mu.Unlock()
-
-		if err := proc.Start(); err != nil {
-			return fmt.Errorf("failed to restart agent process: %w", err)
-		}
-
-		// Set up handlers for the new process
-		go m.handleConversationOutput(convID, proc)
-		go m.handleConversationCompletion(convID, proc)
-
-		// Update status
-		m.store.UpdateConversation(convID, func(c *models.Conversation) {
-			c.Status = models.ConversationStatusActive
-			c.UpdatedAt = time.Now()
-		})
-		if m.onConversationStatus != nil {
-			m.onConversationStatus(convID, models.ConversationStatusActive)
-		}
-	}
-
-	// Store user message
+// addUserMessageAndSend stores a user message and sends it to the process
+func (m *Manager) addUserMessageAndSend(convID, message string, proc *Process) error {
 	m.store.AddMessageToConversation(convID, models.Message{
 		ID:        uuid.New().String()[:8],
 		Role:      "user",
 		Content:   message,
 		Timestamp: time.Now(),
 	})
-
-	// Send to process
 	return proc.SendMessage(message)
+}
+
+// SendConversationMessage sends a follow-up message to an existing conversation
+func (m *Manager) SendConversationMessage(convID, message string) error {
+	// First, try to get existing running process with read lock
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	if ok && proc.IsRunning() {
+		m.mu.RUnlock()
+		// Process exists and is running, just send the message
+		return m.addUserMessageAndSend(convID, message, proc)
+	}
+	m.mu.RUnlock()
+
+	// Process not running, need to restart it
+	// Use double-check locking to prevent race conditions
+	m.mu.Lock()
+	// Re-check under exclusive lock - another goroutine may have started the process
+	proc, ok = m.convProcesses[convID]
+	if ok && proc.IsRunning() {
+		m.mu.Unlock()
+		// Another goroutine started the process, just send the message
+		return m.addUserMessageAndSend(convID, message, proc)
+	}
+
+	// Still no running process, we need to create one
+	conv := m.store.GetConversation(convID)
+	if conv == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("conversation not found: %s", convID)
+	}
+
+	session := m.store.GetSession(conv.SessionID)
+	if session == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("session not found: %s", conv.SessionID)
+	}
+
+	// Create new process
+	proc = NewProcess(convID, session.WorktreePath, convID)
+	m.convProcesses[convID] = proc
+	m.mu.Unlock()
+
+	if err := proc.Start(); err != nil {
+		// Clean up the stale map entry on failure
+		m.mu.Lock()
+		delete(m.convProcesses, convID)
+		m.mu.Unlock()
+		return fmt.Errorf("failed to restart agent process: %w", err)
+	}
+
+	// Set up handlers for the new process
+	go m.handleConversationOutput(convID, proc)
+	go m.handleConversationCompletion(convID, proc)
+
+	// Update status
+	m.store.UpdateConversation(convID, func(c *models.Conversation) {
+		c.Status = models.ConversationStatusActive
+		c.UpdatedAt = time.Now()
+	})
+	if m.onConversationStatus != nil {
+		m.onConversationStatus(convID, models.ConversationStatusActive)
+	}
+
+	// Store user message and send to process
+	return m.addUserMessageAndSend(convID, message, proc)
 }
 
 // StopConversation stops a running conversation
