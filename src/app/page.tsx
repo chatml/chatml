@@ -234,20 +234,24 @@ export default function Home() {
         const mappedWorkspaces = repos.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
-        // Fetch sessions for each workspace
-        const allSessions = [];
-        for (const repo of repos) {
-          const sessions = await listSessions(repo.id);
-          allSessions.push(...sessions.map(sessionToWorktreeSession));
-        }
+        // Fetch sessions for all workspaces in parallel
+        const sessionResults = await Promise.all(
+          repos.map(repo => listSessions(repo.id))
+        );
+        const allSessions = sessionResults.flatMap(sessions =>
+          sessions.map(s => sessionToWorktreeSession(s))
+        );
         setSessions(allSessions);
 
-        // Fetch conversations for each session
-        const allConversations = [];
-        for (const session of allSessions) {
-          const convs = await listConversations(session.workspaceId, session.id);
-          allConversations.push(...convs.map(conversationToConversation));
-        }
+        // Fetch conversations for all sessions in parallel
+        const conversationResults = await Promise.all(
+          allSessions.map(session =>
+            listConversations(session.workspaceId, session.id)
+          )
+        );
+        const allConversations = conversationResults.flatMap(convs =>
+          convs.map(conversationToConversation)
+        );
         setConversations(allConversations);
 
         // Select first workspace and session if available
