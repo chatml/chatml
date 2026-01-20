@@ -1,12 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/tauri';
-import { getFileIcon, getFolderIcon, getIconifyName } from '@/lib/vscodeIcons';
+import { getFileIcon, getFolderIcon, getIconifyName, preloadFolderIcons } from '@/lib/vscodeIcons';
+
+// Preload folder icons on module load to prevent flicker
+let iconsPreloaded = false;
+function ensureIconsPreloaded() {
+  if (!iconsPreloaded) {
+    iconsPreloaded = true;
+    preloadFolderIcons().catch(console.error);
+  }
+}
 
 export interface FileNode {
   name: string;
@@ -23,6 +32,11 @@ interface FileTreeProps {
 }
 
 export function FileTree({ files, onFileSelect, workspacePath, workspaceName }: FileTreeProps) {
+  // Preload folder icons on first render
+  useEffect(() => {
+    ensureIconsPreloaded();
+  }, []);
+
   const handleOpenInVSCode = async () => {
     if (!workspacePath || !isTauri()) return;
     try {

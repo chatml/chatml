@@ -398,3 +398,39 @@ export function getFolderIcon(folderName: string, isOpen: boolean = false): stri
 export function getIconifyName(iconName: string): string {
   return `vscode-icons:${iconName}`;
 }
+
+/**
+ * Get all unique folder icons (both closed and opened variants) for preloading
+ */
+function getAllFolderIcons(): string[] {
+  const icons: string[] = [
+    // Default folder icons
+    'vscode-icons:default-folder',
+    'vscode-icons:default-folder-opened',
+  ];
+
+  // Add all mapped folder icons with their opened variants
+  const uniqueIcons = new Set(Object.values(FOLDER_ICONS));
+  uniqueIcons.forEach((icon) => {
+    icons.push(`vscode-icons:${icon}`);
+    icons.push(`vscode-icons:${icon}-opened`);
+  });
+
+  return icons;
+}
+
+/**
+ * Preload folder icons to prevent flicker when expanding folders.
+ * Call this once when the app initializes.
+ */
+export async function preloadFolderIcons(): Promise<void> {
+  // Dynamic import to avoid SSR issues
+  const { loadIcons } = await import('@iconify/react');
+  const icons = getAllFolderIcons();
+
+  return new Promise((resolve) => {
+    loadIcons(icons, () => {
+      resolve();
+    });
+  });
+}
