@@ -128,10 +128,7 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
 }
 
 /// Restart the sidecar process (async version)
-pub async fn restart_sidecar_async(
-    app: tauri::AppHandle,
-    state: Arc<AppState>,
-) -> AppResult<()> {
+pub async fn restart_sidecar_async(app: tauri::AppHandle, state: Arc<AppState>) -> AppResult<()> {
     log::info!("Restarting sidecar...");
 
     // Clean up existing sidecar process

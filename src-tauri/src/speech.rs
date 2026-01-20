@@ -54,7 +54,9 @@ pub fn check_availability() -> bool {
 pub fn start_speech_recognition(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult<()> {
     // Check if already running
     if state.is_speech_running() {
-        return Err(AppError::Speech("Speech recognition already running".to_string()));
+        return Err(AppError::Speech(
+            "Speech recognition already running".to_string(),
+        ));
     }
 
     let sidecar_command = app
