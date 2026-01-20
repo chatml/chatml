@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 // ============================================================================
 
 func TestAddRepo_Success(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
 	repo := &models.Repo{
@@ -24,9 +26,10 @@ func TestAddRepo_Success(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	s.AddRepo(repo)
+	require.NoError(t, s.AddRepo(ctx, repo))
 
-	got := s.GetRepo("repo-123")
+	got, err := s.GetRepo(ctx, "repo-123")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, repo.ID, got.ID)
 	assert.Equal(t, repo.Name, got.Name)
@@ -35,6 +38,7 @@ func TestAddRepo_Success(t *testing.T) {
 }
 
 func TestAddRepo_Upsert(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
 	// Add initial repo
@@ -45,7 +49,7 @@ func TestAddRepo_Upsert(t *testing.T) {
 		Branch:    "main",
 		CreatedAt: time.Now(),
 	}
-	s.AddRepo(repo)
+	require.NoError(t, s.AddRepo(ctx, repo))
 
 	// Add again with same ID but different data (upsert)
 	repo2 := &models.Repo{
@@ -55,68 +59,82 @@ func TestAddRepo_Upsert(t *testing.T) {
 		Branch:    "develop",
 		CreatedAt: time.Now(),
 	}
-	s.AddRepo(repo2)
+	require.NoError(t, s.AddRepo(ctx, repo2))
 
 	// Should have updated values
-	got := s.GetRepo("repo-123")
+	got, err := s.GetRepo(ctx, "repo-123")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "updated-name", got.Name)
 	assert.Equal(t, "/updated/path", got.Path)
 	assert.Equal(t, "develop", got.Branch)
 
 	// Should still be only one repo
-	repos := s.ListRepos()
+	repos, err := s.ListRepos(ctx)
+	require.NoError(t, err)
 	assert.Len(t, repos, 1)
 }
 
 func TestGetRepo_Exists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 
-	got := s.GetRepo("repo-1")
+	got, err := s.GetRepo(ctx, "repo-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "repo-1", got.ID)
 }
 
 func TestGetRepo_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	got := s.GetRepo("nonexistent")
+	got, err := s.GetRepo(ctx, "nonexistent")
+	require.NoError(t, err)
 	assert.Nil(t, got)
 }
 
 func TestGetRepoByPath_Exists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	repo := createTestRepo(t, s, "repo-1")
 
-	got := s.GetRepoByPath(repo.Path)
+	got, err := s.GetRepoByPath(ctx, repo.Path)
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "repo-1", got.ID)
 }
 
 func TestGetRepoByPath_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	got := s.GetRepoByPath("/nonexistent/path")
+	got, err := s.GetRepoByPath(ctx, "/nonexistent/path")
+	require.NoError(t, err)
 	assert.Nil(t, got)
 }
 
 func TestListRepos_Empty(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	repos := s.ListRepos()
+	repos, err := s.ListRepos(ctx)
+	require.NoError(t, err)
 	assert.NotNil(t, repos)
 	assert.Empty(t, repos)
 }
 
 func TestListRepos_Multiple(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
 	createTestRepo(t, s, "repo-1")
 	createTestRepo(t, s, "repo-2")
 	createTestRepo(t, s, "repo-3")
 
-	repos := s.ListRepos()
+	repos, err := s.ListRepos(ctx)
+	require.NoError(t, err)
 	assert.Len(t, repos, 3)
 
 	// Collect IDs
@@ -130,26 +148,33 @@ func TestListRepos_Multiple(t *testing.T) {
 }
 
 func TestDeleteRepo_Exists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 
 	// Verify exists
-	require.NotNil(t, s.GetRepo("repo-1"))
+	got, err := s.GetRepo(ctx, "repo-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
-	s.DeleteRepo("repo-1")
+	require.NoError(t, s.DeleteRepo(ctx, "repo-1"))
 
 	// Verify deleted
-	assert.Nil(t, s.GetRepo("repo-1"))
+	got, err = s.GetRepo(ctx, "repo-1")
+	require.NoError(t, err)
+	assert.Nil(t, got)
 }
 
 func TestDeleteRepo_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
 	// Should not panic or error
-	s.DeleteRepo("nonexistent")
+	require.NoError(t, s.DeleteRepo(ctx, "nonexistent"))
 }
 
 func TestDeleteRepo_CascadesSessions(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
 	// Create repo and session
@@ -157,13 +182,17 @@ func TestDeleteRepo_CascadesSessions(t *testing.T) {
 	createTestSession(t, s, "session-1", "repo-1")
 
 	// Verify session exists
-	require.NotNil(t, s.GetSession("session-1"))
+	got, err := s.GetSession(ctx, "session-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
 	// Delete repo
-	s.DeleteRepo("repo-1")
+	require.NoError(t, s.DeleteRepo(ctx, "repo-1"))
 
 	// Session should be cascade deleted
-	assert.Nil(t, s.GetSession("session-1"))
+	got, err = s.GetSession(ctx, "session-1")
+	require.NoError(t, err)
+	assert.Nil(t, got)
 }
 
 // ============================================================================
@@ -171,6 +200,7 @@ func TestDeleteRepo_CascadesSessions(t *testing.T) {
 // ============================================================================
 
 func TestAddSession_Success(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 
@@ -198,9 +228,10 @@ func TestAddSession_Success(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	s.AddSession(session)
+	require.NoError(t, s.AddSession(ctx, session))
 
-	got := s.GetSession("sess-1")
+	got, err := s.GetSession(ctx, "sess-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "sess-1", got.ID)
 	assert.Equal(t, "ws-1", got.WorkspaceID)
@@ -223,6 +254,7 @@ func TestAddSession_Success(t *testing.T) {
 }
 
 func TestAddSession_NilStats(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 
@@ -236,32 +268,38 @@ func TestAddSession_NilStats(t *testing.T) {
 		UpdatedAt:   time.Now(),
 	}
 
-	s.AddSession(session)
+	require.NoError(t, s.AddSession(ctx, session))
 
-	got := s.GetSession("sess-1")
+	got, err := s.GetSession(ctx, "sess-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	// Stats should be nil when additions and deletions are both 0
 	assert.Nil(t, got.Stats)
 }
 
 func TestGetSession_Exists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 
-	got := s.GetSession("sess-1")
+	got, err := s.GetSession(ctx, "sess-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "sess-1", got.ID)
 }
 
 func TestGetSession_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	got := s.GetSession("nonexistent")
+	got, err := s.GetSession(ctx, "nonexistent")
+	require.NoError(t, err)
 	assert.Nil(t, got)
 }
 
 func TestListSessions_ByWorkspace(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestRepo(t, s, "ws-2")
@@ -270,7 +308,8 @@ func TestListSessions_ByWorkspace(t *testing.T) {
 	createTestSession(t, s, "s2", "ws-1")
 	createTestSession(t, s, "s3", "ws-2") // Different workspace
 
-	sessions := s.ListSessions("ws-1")
+	sessions, err := s.ListSessions(ctx, "ws-1")
+	require.NoError(t, err)
 	assert.Len(t, sessions, 2)
 
 	ids := make(map[string]bool)
@@ -283,6 +322,7 @@ func TestListSessions_ByWorkspace(t *testing.T) {
 }
 
 func TestListSessions_PinnedFirst(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 
@@ -296,7 +336,7 @@ func TestListSessions_PinnedFirst(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	s.AddSession(s1)
+	require.NoError(t, s.AddSession(ctx, s1))
 
 	// Create pinned session second (should appear first)
 	s2 := &models.Session{
@@ -308,9 +348,10 @@ func TestListSessions_PinnedFirst(t *testing.T) {
 		CreatedAt:   time.Now().Add(-1 * time.Hour), // Older but pinned
 		UpdatedAt:   time.Now(),
 	}
-	s.AddSession(s2)
+	require.NoError(t, s.AddSession(ctx, s2))
 
-	sessions := s.ListSessions("ws-1")
+	sessions, err := s.ListSessions(ctx, "ws-1")
+	require.NoError(t, err)
 	require.Len(t, sessions, 2)
 
 	// Pinned session should be first regardless of creation time
@@ -321,25 +362,29 @@ func TestListSessions_PinnedFirst(t *testing.T) {
 }
 
 func TestListSessions_Empty(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 
-	sessions := s.ListSessions("ws-1")
+	sessions, err := s.ListSessions(ctx, "ws-1")
+	require.NoError(t, err)
 	assert.NotNil(t, sessions)
 	assert.Empty(t, sessions)
 }
 
 func TestUpdateSession_PartialUpdate(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 
 	// Update only name
-	s.UpdateSession("sess-1", func(sess *models.Session) {
+	require.NoError(t, s.UpdateSession(ctx, "sess-1", func(sess *models.Session) {
 		sess.Name = "Updated Name"
-	})
+	}))
 
-	got := s.GetSession("sess-1")
+	got, err := s.GetSession(ctx, "sess-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "Updated Name", got.Name)
 	// Other fields should be unchanged
@@ -347,28 +392,36 @@ func TestUpdateSession_PartialUpdate(t *testing.T) {
 }
 
 func TestUpdateSession_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	// Should not panic
-	s.UpdateSession("nonexistent", func(sess *models.Session) {
+	// Should not error
+	require.NoError(t, s.UpdateSession(ctx, "nonexistent", func(sess *models.Session) {
 		sess.Name = "Updated"
-	})
+	}))
 }
 
 func TestDeleteSession_Cascades(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
 	// Verify conversation exists
-	require.NotNil(t, s.GetConversation("conv-1"))
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
-	s.DeleteSession("sess-1")
+	require.NoError(t, s.DeleteSession(ctx, "sess-1"))
 
 	// Session and conversation should be deleted
-	assert.Nil(t, s.GetSession("sess-1"))
-	assert.Nil(t, s.GetConversation("conv-1"))
+	sess, err := s.GetSession(ctx, "sess-1")
+	require.NoError(t, err)
+	assert.Nil(t, sess)
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Nil(t, conv)
 }
 
 // ============================================================================
@@ -376,6 +429,7 @@ func TestDeleteSession_Cascades(t *testing.T) {
 // ============================================================================
 
 func TestAddAgent_Success(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 
@@ -389,9 +443,10 @@ func TestAddAgent_Success(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	s.AddAgent(agent)
+	require.NoError(t, s.AddAgent(ctx, agent))
 
-	got := s.GetAgent("agent-1")
+	got, err := s.GetAgent(ctx, "agent-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "agent-1", got.ID)
 	assert.Equal(t, "repo-1", got.RepoID)
@@ -402,13 +457,16 @@ func TestAddAgent_Success(t *testing.T) {
 }
 
 func TestGetAgent_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	got := s.GetAgent("nonexistent")
+	got, err := s.GetAgent(ctx, "nonexistent")
+	require.NoError(t, err)
 	assert.Nil(t, got)
 }
 
 func TestListAgents_ByRepo(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 	createTestRepo(t, s, "repo-2")
@@ -417,7 +475,8 @@ func TestListAgents_ByRepo(t *testing.T) {
 	createTestAgent(t, s, "a2", "repo-1")
 	createTestAgent(t, s, "a3", "repo-2") // Different repo
 
-	agents := s.ListAgents("repo-1")
+	agents, err := s.ListAgents(ctx, "repo-1")
+	require.NoError(t, err)
 	assert.Len(t, agents, 2)
 
 	ids := make(map[string]bool)
@@ -430,47 +489,58 @@ func TestListAgents_ByRepo(t *testing.T) {
 }
 
 func TestListAgents_Empty(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 
-	agents := s.ListAgents("repo-1")
+	agents, err := s.ListAgents(ctx, "repo-1")
+	require.NoError(t, err)
 	assert.NotNil(t, agents)
 	assert.Empty(t, agents)
 }
 
 func TestUpdateAgentStatus(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 	createTestAgent(t, s, "agent-1", "repo-1")
 
 	// Initial status is pending
-	got := s.GetAgent("agent-1")
+	got, err := s.GetAgent(ctx, "agent-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, string(models.StatusPending), got.Status)
 
 	// Update to running
-	s.UpdateAgentStatus("agent-1", models.StatusRunning)
-	got = s.GetAgent("agent-1")
+	require.NoError(t, s.UpdateAgentStatus(ctx, "agent-1", models.StatusRunning))
+	got, err = s.GetAgent(ctx, "agent-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, string(models.StatusRunning), got.Status)
 
 	// Update to done
-	s.UpdateAgentStatus("agent-1", models.StatusDone)
-	got = s.GetAgent("agent-1")
+	require.NoError(t, s.UpdateAgentStatus(ctx, "agent-1", models.StatusDone))
+	got, err = s.GetAgent(ctx, "agent-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, string(models.StatusDone), got.Status)
 }
 
 func TestDeleteAgent(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "repo-1")
 	createTestAgent(t, s, "agent-1", "repo-1")
 
-	require.NotNil(t, s.GetAgent("agent-1"))
+	got, err := s.GetAgent(ctx, "agent-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
-	s.DeleteAgent("agent-1")
+	require.NoError(t, s.DeleteAgent(ctx, "agent-1"))
 
-	assert.Nil(t, s.GetAgent("agent-1"))
+	got, err = s.GetAgent(ctx, "agent-1")
+	require.NoError(t, err)
+	assert.Nil(t, got)
 }
 
 // ============================================================================
@@ -478,6 +548,7 @@ func TestDeleteAgent(t *testing.T) {
 // ============================================================================
 
 func TestAddConversation_Success(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -492,9 +563,10 @@ func TestAddConversation_Success(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	s.AddConversation(conv)
+	require.NoError(t, s.AddConversation(ctx, conv))
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "conv-1", got.ID)
 	assert.Equal(t, "sess-1", got.SessionID)
@@ -509,13 +581,16 @@ func TestAddConversation_Success(t *testing.T) {
 }
 
 func TestGetConversation_NotExists(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 
-	got := s.GetConversation("nonexistent")
+	got, err := s.GetConversation(ctx, "nonexistent")
+	require.NoError(t, err)
 	assert.Nil(t, got)
 }
 
 func TestGetConversation_WithMessages(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -524,10 +599,11 @@ func TestGetConversation_WithMessages(t *testing.T) {
 	// Add messages
 	msg1 := createTestMessage("m1", "user", "Hello")
 	msg2 := createTestMessage("m2", "assistant", "Hi there!")
-	s.AddMessageToConversation("conv-1", msg1)
-	s.AddMessageToConversation("conv-1", msg2)
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg1))
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg2))
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.Messages, 2)
 	assert.Equal(t, "Hello", got.Messages[0].Content)
@@ -537,12 +613,14 @@ func TestGetConversation_WithMessages(t *testing.T) {
 }
 
 func TestGetConversation_EmptyMessages(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	// Should be empty slice, not nil (important for JSON serialization)
 	assert.NotNil(t, got.Messages)
@@ -552,6 +630,7 @@ func TestGetConversation_EmptyMessages(t *testing.T) {
 }
 
 func TestListConversations_BySession(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -561,7 +640,8 @@ func TestListConversations_BySession(t *testing.T) {
 	createTestConversation(t, s, "c2", "sess-1")
 	createTestConversation(t, s, "c3", "sess-2") // Different session
 
-	convs := s.ListConversations("sess-1")
+	convs, err := s.ListConversations(ctx, "sess-1")
+	require.NoError(t, err)
 	assert.Len(t, convs, 2)
 
 	ids := make(map[string]bool)
@@ -574,21 +654,24 @@ func TestListConversations_BySession(t *testing.T) {
 }
 
 func TestListConversations_WithMessages(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "c1", "sess-1")
 
 	// Add messages to conversation
-	s.AddMessageToConversation("c1", createTestMessage("m1", "user", "Hello"))
-	s.AddMessageToConversation("c1", createTestMessage("m2", "assistant", "Hi"))
+	require.NoError(t, s.AddMessageToConversation(ctx, "c1", createTestMessage("m1", "user", "Hello")))
+	require.NoError(t, s.AddMessageToConversation(ctx, "c1", createTestMessage("m2", "assistant", "Hi")))
 
-	convs := s.ListConversations("sess-1")
+	convs, err := s.ListConversations(ctx, "sess-1")
+	require.NoError(t, err)
 	require.Len(t, convs, 1)
 
 	// Verify messages were added (use GetConversation for full message loading)
 	// Note: ListConversations should also load messages but checking via GetConversation
-	conv := s.GetConversation("c1")
+	conv, err := s.GetConversation(ctx, "c1")
+	require.NoError(t, err)
 	require.NotNil(t, conv)
 	require.Len(t, conv.Messages, 2)
 	assert.Equal(t, "Hello", conv.Messages[0].Content)
@@ -596,22 +679,26 @@ func TestListConversations_WithMessages(t *testing.T) {
 }
 
 func TestUpdateConversation_NameChange(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
-	originalUpdatedAt := s.GetConversation("conv-1").UpdatedAt
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	originalUpdatedAt := conv.UpdatedAt
 
 	// Small delay to ensure UpdatedAt changes
 	time.Sleep(10 * time.Millisecond)
 
-	s.UpdateConversation("conv-1", func(conv *models.Conversation) {
+	require.NoError(t, s.UpdateConversation(ctx, "conv-1", func(conv *models.Conversation) {
 		conv.Name = "New Name"
 		conv.Status = models.ConversationStatusCompleted
-	})
+	}))
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "New Name", got.Name)
 	assert.Equal(t, models.ConversationStatusCompleted, got.Status)
@@ -619,16 +706,21 @@ func TestUpdateConversation_NameChange(t *testing.T) {
 }
 
 func TestDeleteConversation(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
-	require.NotNil(t, s.GetConversation("conv-1"))
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
 
-	s.DeleteConversation("conv-1")
+	require.NoError(t, s.DeleteConversation(ctx, "conv-1"))
 
-	assert.Nil(t, s.GetConversation("conv-1"))
+	got, err = s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Nil(t, got)
 }
 
 // ============================================================================
@@ -636,6 +728,7 @@ func TestDeleteConversation(t *testing.T) {
 // ============================================================================
 
 func TestAddMessageToConversation_Ordering(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -649,10 +742,11 @@ func TestAddMessageToConversation_Ordering(t *testing.T) {
 	}
 
 	for _, msg := range messages {
-		s.AddMessageToConversation("conv-1", msg)
+		require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 	}
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.Messages, 3)
 
@@ -663,6 +757,7 @@ func TestAddMessageToConversation_Ordering(t *testing.T) {
 }
 
 func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -681,9 +776,10 @@ func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
 		},
 	}
 
-	s.AddMessageToConversation("conv-1", msg)
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.Messages, 1)
 	require.NotNil(t, got.Messages[0].SetupInfo)
@@ -694,6 +790,7 @@ func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
 }
 
 func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -712,9 +809,10 @@ func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
 		},
 	}
 
-	s.AddMessageToConversation("conv-1", msg)
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.Messages, 1)
 	require.NotNil(t, got.Messages[0].RunSummary)
@@ -729,6 +827,7 @@ func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
 // ============================================================================
 
 func TestAddToolActionToConversation_Ordering(t *testing.T) {
+	ctx := context.Background()
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 	createTestSession(t, s, "sess-1", "ws-1")
@@ -741,10 +840,11 @@ func TestAddToolActionToConversation_Ordering(t *testing.T) {
 	}
 
 	for _, action := range actions {
-		s.AddToolActionToConversation("conv-1", action)
+		require.NoError(t, s.AddToolActionToConversation(ctx, "conv-1", action))
 	}
 
-	got := s.GetConversation("conv-1")
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
 	require.NotNil(t, got)
 	require.Len(t, got.ToolSummary, 3)
 

@@ -71,14 +71,14 @@ export function ChangesPanel() {
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
 
-  // Handle file selection from file tree
+  // Handle file selection from file tree (workspace-scoped tab - no sessionId)
   const handleFileSelect = async (path: string) => {
     if (!selectedWorkspaceId) return;
 
     const filename = path.split('/').pop() || path;
     const tabId = `${selectedWorkspaceId}-${path}`;
 
-    // Create tab with loading state
+    // Create tab with loading state (no sessionId = workspace-scoped)
     const newTab: FileTab = {
       id: tabId,
       workspaceId: selectedWorkspaceId,
@@ -95,6 +95,7 @@ export function ChangesPanel() {
       const fileData = await getRepoFileContent(selectedWorkspaceId, path);
       updateFileTab(tabId, {
         content: fileData.content,
+        originalContent: fileData.content, // Store original for dirty detection
         isLoading: false,
       });
     } catch (error) {
@@ -106,18 +107,20 @@ export function ChangesPanel() {
     }
   };
 
-  // Handle changed file selection - shows diff view
+  // Handle changed file selection - shows diff view (session-scoped tab)
   const handleChangedFileSelect = async (path: string) => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
     const filename = path.split('/').pop() || path;
-    const tabId = `${selectedWorkspaceId}-diff-${path}`;
+    // Include sessionId in tab ID to allow same file open in different sessions
+    const tabId = `${selectedWorkspaceId}-${selectedSessionId}-diff-${path}`;
 
     // Check if it's a binary file
     if (isBinaryFile(filename)) {
       const newTab: FileTab = {
         id: tabId,
         workspaceId: selectedWorkspaceId,
+        sessionId: selectedSessionId, // Session-scoped tab
         path,
         name: filename,
         isLoading: false,
@@ -128,10 +131,11 @@ export function ChangesPanel() {
       return;
     }
 
-    // Create tab with loading state for text files
+    // Create tab with loading state for text files (session-scoped)
     const newTab: FileTab = {
       id: tabId,
       workspaceId: selectedWorkspaceId,
+      sessionId: selectedSessionId, // Session-scoped tab
       path,
       name: filename,
       isLoading: true,

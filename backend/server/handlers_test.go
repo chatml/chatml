@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -158,6 +159,7 @@ func TestGetRepo_NotFound(t *testing.T) {
 
 func TestDeleteRepo_Success(t *testing.T) {
 	h, s := setupTestHandlers(t)
+	ctx := context.Background()
 
 	createTestRepo(t, s, "repo-1", "/path/to/repo")
 
@@ -170,7 +172,9 @@ func TestDeleteRepo_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
 	// Verify deleted
-	assert.Nil(t, s.GetRepo("repo-1"))
+	repo, err := s.GetRepo(ctx, "repo-1")
+	require.NoError(t, err)
+	assert.Nil(t, repo)
 }
 
 // ============================================================================
@@ -332,13 +336,16 @@ func TestGetConversation_NotFound(t *testing.T) {
 
 func TestDeleteConversation_Success(t *testing.T) {
 	h, s, _ := setupTestHandlersWithAgentManager(t)
+	ctx := context.Background()
 
 	createTestRepo(t, s, "ws-1", "/path/to/repo")
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
 	// Verify conversation exists before delete
-	assert.NotNil(t, s.GetConversation("conv-1"))
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.NotNil(t, conv)
 
 	req := httptest.NewRequest("DELETE", "/api/conversations/conv-1", nil)
 	req = withChiContext(req, map[string]string{"convId": "conv-1"})
@@ -349,7 +356,9 @@ func TestDeleteConversation_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
 	// Verify conversation was deleted
-	assert.Nil(t, s.GetConversation("conv-1"))
+	conv, err = s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Nil(t, conv)
 }
 
 func TestDeleteConversation_NotFound(t *testing.T) {

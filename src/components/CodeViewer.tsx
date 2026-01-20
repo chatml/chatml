@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { codeToHtml } from 'shiki';
 import { useTheme } from 'next-themes';
 import ReactMarkdown from 'react-markdown';
@@ -11,8 +11,13 @@ import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { SplitDiffViewer } from '@/components/SplitDiffViewer';
+import { MonacoEditor, MonacoDiffEditor } from '@/components/MonacoEditor';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+
+interface EditorState {
+  cursorPosition?: { line: number; column: number };
+  scrollPosition?: { top: number; left: number };
+}
 
 interface CodeViewerProps {
   content: string;
@@ -20,6 +25,12 @@ interface CodeViewerProps {
   isLoading?: boolean;
   /** If provided, shows a diff view comparing oldContent to content */
   oldContent?: string;
+  /** Callback when editor state changes (cursor/scroll position) */
+  onStateChange?: (state: EditorState) => void;
+  /** Initial cursor position to restore */
+  initialCursorPosition?: { line: number; column: number };
+  /** Initial scroll position to restore */
+  initialScrollPosition?: { top: number; left: number };
 }
 
 // Map file extensions to shiki language identifiers
@@ -96,7 +107,15 @@ function isMarkdownFile(filename: string): boolean {
   return ext === 'md' || ext === 'mdx';
 }
 
-export function CodeViewer({ content, filename, isLoading, oldContent }: CodeViewerProps) {
+export function CodeViewer({
+  content,
+  filename,
+  isLoading,
+  oldContent,
+  onStateChange,
+  initialCursorPosition,
+  initialScrollPosition,
+}: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
   const [highlightedHtml, setHighlightedHtml] = useState<string>('');
   const [isHighlighting, setIsHighlighting] = useState(true);
@@ -104,7 +123,6 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
   const [lineCount, setLineCount] = useState(0);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
-  const contentRef = useRef<HTMLDivElement>(null);
 
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
@@ -271,13 +289,13 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
         </div>
 
         {/* Diff content */}
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {diffViewMode === 'split' ? (
-            <SplitDiffViewer
+            <MonacoDiffEditor
               oldContent={oldContent || ''}
               newContent={content || ''}
               filename={filename}
-              language={language}
+              readOnly={true}
             />
           ) : isHighlighting ? (
             <div className="p-4 flex items-center justify-center">
@@ -295,7 +313,6 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
               </div>
               {/* Code */}
               <div
-                ref={contentRef}
                 className="code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto min-h-full [&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4 [&_pre]:!bg-transparent [&_pre]:m-0 [&_code]:block [&_.line]:leading-[18px] [&_.line]:min-h-[18px] [&_.diff-add]:bg-green-500/15 [&_.diff-add]:pl-1 [&_.diff-add]:-ml-1 [&_.diff-remove]:bg-red-500/15 [&_.diff-remove]:pl-1 [&_.diff-remove]:-ml-1 [&_.diff-hunk]:bg-blue-500/10 [&_.diff-hunk]:text-muted-foreground [&_.diff-hunk]:pl-1 [&_.diff-hunk]:-ml-1"
                 dangerouslySetInnerHTML={{ __html: highlightedHtml }}
               />
@@ -311,7 +328,7 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
-          <span className="font-mono shrink-0">{lineCount} lines</span>
+          <span className="font-mono shrink-0">{content.split('\n').length} lines</span>
           <span className="shrink-0">|</span>
           <span className="font-mono shrink-0">{language}</span>
           <span className="shrink-0">|</span>
@@ -349,10 +366,10 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto min-h-0 overscroll-contain">
+      <div className="flex-1 overflow-hidden min-h-0">
         {isMarkdown && viewMode === 'rendered' ? (
           <div
-            className="p-6 min-h-full"
+            className="p-6 min-h-full overflow-auto overscroll-contain"
             data-color-mode={resolvedTheme === 'dark' ? 'dark' : 'light'}
           >
             <div className="markdown-body !bg-transparent px-4">
@@ -361,27 +378,26 @@ export function CodeViewer({ content, filename, isLoading, oldContent }: CodeVie
               </ReactMarkdown>
             </div>
           </div>
-        ) : isHighlighting ? (
-          <div className="p-4 flex items-center justify-center">
-            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-          </div>
+        ) : isMarkdown && viewMode === 'code' ? (
+          // For markdown in code view, use Monaco
+          <MonacoEditor
+            content={content}
+            filename={filename}
+            readOnly={true}
+            onStateChange={onStateChange}
+            initialCursorPosition={initialCursorPosition}
+            initialScrollPosition={initialScrollPosition}
+          />
         ) : (
-          <div className="flex min-h-full">
-            {/* Line numbers */}
-            <div className="shrink-0 py-3 pl-3 pr-2 text-[11px] font-mono text-muted-foreground/50 text-right select-none border-r border-border/50 sticky left-0 bg-background min-h-full">
-              {Array.from({ length: lineCount }, (_, i) => (
-                <div key={i + 1} className="leading-[18px]">
-                  {i + 1}
-                </div>
-              ))}
-            </div>
-            {/* Code */}
-            <div
-              ref={contentRef}
-              className="code-viewer text-[11px] font-mono flex-1 min-w-0 overflow-x-auto min-h-full [&_.shiki]:!bg-transparent [&_.shiki]:py-3 [&_.shiki]:pl-3 [&_.shiki]:pr-4 [&_pre]:!bg-transparent [&_pre]:m-0 [&_code]:block [&_.line]:leading-[18px] [&_.line]:min-h-[18px]"
-              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-            />
-          </div>
+          // For all other code files, use Monaco
+          <MonacoEditor
+            content={content}
+            filename={filename}
+            readOnly={true}
+            onStateChange={onStateChange}
+            initialCursorPosition={initialCursorPosition}
+            initialScrollPosition={initialScrollPosition}
+          />
         )}
       </div>
     </div>

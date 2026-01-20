@@ -5,7 +5,11 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
+import { CloseFileConfirmDialog } from '@/components/CloseFileConfirmDialog';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useTabPersistence } from '@/hooks/useTabPersistence';
+import { useAutoSave } from '@/hooks/useAutoSave';
+import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
@@ -150,6 +154,8 @@ export default function Home() {
     selectedWorkspaceId,
     selectedSessionId,
     selectedConversationId,
+    selectedFileTabId,
+    fileTabs,
     setWorkspaces,
     setSessions,
     setConversations,
@@ -159,10 +165,25 @@ export default function Home() {
     selectWorkspace,
     selectSession,
     selectConversation,
+    closeFileTab,
+    selectNextTab,
+    selectPreviousTab,
+    selectFileTab,
+    pendingCloseFileTabId,
+    setPendingCloseFileTabId,
   } = useAppStore();
 
   // Connect WebSocket for real-time updates (only when backend is connected)
   useWebSocket(backendConnected);
+
+  // Persist file tabs to backend
+  useTabPersistence();
+
+  // Auto-save dirty file tabs
+  const { saveCurrentTab, saveTab } = useAutoSave();
+
+  // Watch for external file changes
+  useFileWatcher();
 
   // Map backend Repo to frontend Workspace
   const repoToWorkspace = useCallback((repo: RepoDTO) => ({
@@ -424,7 +445,7 @@ export default function Home() {
     }
   }, [pendingCloseConvId, doCloseTab]);
 
-  // Handle opening a project - directly opens folder dialog and adds the workspace
+// Handle opening a project - directly opens folder dialog and adds the workspace
   const handleOpenProject = useCallback(async () => {
     const selectedPath = await openFolderDialog('Select Repository');
     if (!selectedPath) return;
@@ -449,6 +470,39 @@ export default function Home() {
       setShowAddWorkspace(true);
     }
   }, [selectWorkspace]);
+
+  // Handle closing a file tab (with dirty check)
+  const handleCloseFileTab = useCallback((tabId: string) => {
+    const tab = fileTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    // If tab is dirty, set pending close ID to show confirmation dialog
+    if (tab.isDirty) {
+      setPendingCloseFileTabId(tabId);
+      return;
+    }
+
+    // Otherwise close directly
+    closeFileTab(tabId);
+  }, [fileTabs, closeFileTab, setPendingCloseFileTabId]);
+
+  // Save dirty file and close
+  const handleSaveAndCloseFile = useCallback(async () => {
+    if (!pendingCloseFileTabId) return;
+    const tab = fileTabs.find((t) => t.id === pendingCloseFileTabId);
+    if (tab) {
+      await saveTab(tab);
+      closeFileTab(pendingCloseFileTabId);
+    }
+    setPendingCloseFileTabId(null);
+  }, [pendingCloseFileTabId, fileTabs, saveTab, closeFileTab]);
+
+  // Close dirty file without saving
+  const handleDontSaveAndCloseFile = useCallback(() => {
+    if (!pendingCloseFileTabId) return;
+    closeFileTab(pendingCloseFileTabId);
+    setPendingCloseFileTabId(null);
+  }, [pendingCloseFileTabId, closeFileTab]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -512,16 +566,40 @@ export default function Home() {
           }
         }
       }
-      // Cmd+W to close tab
+      // Tab switching shortcuts (multiple options for cross-platform compatibility)
+      // Cmd+Option+] or Ctrl+Tab for next tab
+      if ((e.key === ']' && e.metaKey && e.altKey && !e.shiftKey) ||
+          (e.key === 'Tab' && e.ctrlKey && !e.shiftKey && !e.metaKey && !e.altKey)) {
+        e.preventDefault();
+        selectNextTab();
+      }
+      // Cmd+Option+[ or Ctrl+Shift+Tab for previous tab
+      if ((e.key === '[' && e.metaKey && e.altKey && !e.shiftKey) ||
+          (e.key === 'Tab' && e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey)) {
+        e.preventDefault();
+        selectPreviousTab();
+      }
+      // Cmd+W to close tab (file tab first, then conversation)
       if (e.key === 'w' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
-        handleCloseTab();
+        // If a file tab is selected, close it first
+        if (selectedFileTabId) {
+          handleCloseFileTab(selectedFileTabId);
+        } else {
+          // Otherwise close the conversation
+          handleCloseTab();
+        }
+      }
+      // Cmd+S to save current file tab
+      if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault();
+        saveCurrentTab();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -543,6 +621,9 @@ export default function Home() {
           break;
         case 'close_tab':
           handleCloseTab();
+          break;
+        case 'save_file':
+          saveCurrentTab();
           break;
         case 'toggle_left_sidebar':
           setShowLeftSidebar((prev) => !prev);
@@ -575,7 +656,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal, saveCurrentTab]);
 
   // Handle window close confirmation
   useEffect(() => {
@@ -593,6 +674,7 @@ export default function Home() {
       cleanup?.();
     };
   }, []);
+
 
   // Handle selecting a session from workspace management view
   const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
@@ -763,6 +845,17 @@ export default function Home() {
           onOpenChange={setShowCloseConfirm}
           conversationName={conversations.find((c) => c.id === pendingCloseConvId)?.name || 'Conversation'}
           onConfirm={handleConfirmClose}
+        />
+
+{/* Close Dirty File Confirmation Dialog */}
+        <CloseFileConfirmDialog
+          open={pendingCloseFileTabId !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingCloseFileTabId(null);
+          }}
+          fileName={fileTabs.find((t) => t.id === pendingCloseFileTabId)?.name || 'file'}
+          onSave={handleSaveAndCloseFile}
+          onDontSave={handleDontSaveAndCloseFile}
         />
 
         {/* Update Checker - disabled until remote URL is configured

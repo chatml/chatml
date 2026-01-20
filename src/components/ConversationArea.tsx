@@ -30,14 +30,18 @@ import {
   GitBranch,
   FileQuestion,
   FileText,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import type { FileTab } from '@/lib/types';
 import { CodeViewer } from '@/components/CodeViewer';
 import { FileTabIcon } from '@/components/FileTabIcon';
 import { ConversationTabs } from '@/components/ConversationTabs';
@@ -67,8 +71,36 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectedFileTabId,
     selectFileTab,
     closeFileTab,
+    pinFileTab,
+    closeOtherTabs,
+    closeTabsToRight,
+    updateFileTab,
     streamingState,
+    setPendingCloseFileTabId,
   } = useAppStore();
+
+// Filter and separate tabs in a single pass for efficiency
+  // Returns visibleTabs (all visible), workspaceTabs (no session), sessionTabs (current session only)
+  const { visibleTabs, workspaceTabs, sessionTabs } = useMemo(() => {
+    const visible: FileTab[] = [];
+    const workspace: FileTab[] = [];
+    const session: FileTab[] = [];
+
+    for (const tab of fileTabs) {
+      if (!tab.sessionId) {
+        // Workspace-scoped tabs always visible
+        visible.push(tab);
+        workspace.push(tab);
+      } else if (tab.sessionId === selectedSessionId) {
+        // Session-scoped tabs for current session
+        visible.push(tab);
+        session.push(tab);
+      }
+      // Skip tabs from other sessions
+    }
+
+    return { visibleTabs: visible, workspaceTabs: workspace, sessionTabs: session };
+  }, [fileTabs, selectedSessionId]);
 
   const currentSession = useMemo(
     () => sessions.find((s) => s.id === selectedSessionId),
@@ -136,11 +168,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }, 0);
   }, [selectedConversationId]);
 
-  // Get current file tab
-  const currentFileTab = fileTabs.find((t) => t.id === selectedFileTabId);
+  // Get current file tab from visible tabs
+  const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);
 
   // Determine what's currently active (conversation or file)
-  const isFileActive = selectedFileTabId !== null;
+  // File is active only if selected tab is visible
+  const isFileActive = selectedFileTabId !== null && currentFileTab !== undefined;
 
   const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedSessionId) return;
@@ -171,8 +204,27 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   const handleCloseFileTab = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const tab = fileTabs.find((t) => t.id === id);
+    // If tab is dirty, set pending close ID to show confirmation dialog
+    if (tab?.isDirty) {
+      setPendingCloseFileTabId(id);
+      return;
+    }
     closeFileTab(id);
   };
+
+  // Save editor state (cursor/scroll position) when switching tabs
+  const handleEditorStateChange = useCallback((state: {
+    cursorPosition?: { line: number; column: number };
+    scrollPosition?: { top: number; left: number };
+  }) => {
+    if (selectedFileTabId) {
+      updateFileTab(selectedFileTabId, {
+        cursorPosition: state.cursorPosition,
+        scrollPosition: state.scrollPosition,
+      });
+    }
+  }, [selectedFileTabId, updateFileTab]);
 
   if (!selectedSessionId) {
     return (
@@ -195,39 +247,45 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {/* Tabs Row - File tab first, then conversations */}
+      {/* Tabs Row - File tabs first (workspace then session), then conversations */}
       <div className="flex items-center gap-1 px-1.5 py-1 border-b shrink-0 overflow-x-auto">
-        {/* File Tab - always first, only one */}
-        {fileTabs.length > 0 && fileTabs[0] && (
-          <>
-            <div
-              className={cn(
-                'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs font-medium transition-colors shrink-0',
-                selectedFileTabId === fileTabs[0].id
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
-              )}
-              onClick={() => handleSelectFileTab(fileTabs[0].id)}
-            >
-              {/* Selected indicator - purple underline */}
-              {selectedFileTabId === fileTabs[0].id && (
-                <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500/60 rounded-full" />
-              )}
-              <FileTabIcon filename={fileTabs[0].name} className="w-3 h-3" />
-              <span className="max-w-[120px] truncate">{fileTabs[0].name}</span>
-              {fileTabs[0].isDirty && (
-                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-              )}
-              <button
-                className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
-                onClick={(e) => handleCloseFileTab(fileTabs[0].id, e)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-            {/* Separator between file and conversations */}
-            <div className="h-4 w-px bg-border mx-1 shrink-0" />
-          </>
+        {/* Workspace File Tabs */}
+        {workspaceTabs.map((tab) => (
+          <FileTabItem
+            key={tab.id}
+            tab={tab}
+            isSelected={selectedFileTabId === tab.id}
+            onSelect={() => handleSelectFileTab(tab.id)}
+            onClose={(e) => handleCloseFileTab(tab.id, e)}
+            onPin={(pinned) => pinFileTab(tab.id, pinned)}
+            onCloseOthers={() => closeOtherTabs(tab.id)}
+            onCloseToRight={() => closeTabsToRight(tab.id)}
+          />
+        ))}
+
+        {/* Separator between workspace and session tabs */}
+        {workspaceTabs.length > 0 && sessionTabs.length > 0 && (
+          <div className="h-4 w-px bg-border mx-1 shrink-0" />
+        )}
+
+        {/* Session File Tabs */}
+        {sessionTabs.map((tab) => (
+          <FileTabItem
+            key={tab.id}
+            tab={tab}
+            isSelected={selectedFileTabId === tab.id}
+            onSelect={() => handleSelectFileTab(tab.id)}
+            onClose={(e) => handleCloseFileTab(tab.id, e)}
+            onPin={(pinned) => pinFileTab(tab.id, pinned)}
+            onCloseOthers={() => closeOtherTabs(tab.id)}
+            onCloseToRight={() => closeTabsToRight(tab.id)}
+            isSessionTab
+          />
+        ))}
+
+        {/* Separator between file tabs and conversations */}
+        {visibleTabs.length > 0 && (
+          <div className="h-4 w-px bg-border mx-1 shrink-0" />
         )}
 
         {/* Conversation Tabs */}
@@ -266,6 +324,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 oldContent={currentFileTab.diff.oldContent}
                 filename={currentFileTab.name}
                 isLoading={currentFileTab.isLoading}
+                onStateChange={handleEditorStateChange}
+                initialCursorPosition={currentFileTab.cursorPosition}
+                initialScrollPosition={currentFileTab.scrollPosition}
               />
             ) : (
               // Regular file view
@@ -273,6 +334,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 content={currentFileTab.content || ''}
                 filename={currentFileTab.name}
                 isLoading={currentFileTab.isLoading}
+                onStateChange={handleEditorStateChange}
+                initialCursorPosition={currentFileTab.cursorPosition}
+                initialScrollPosition={currentFileTab.scrollPosition}
               />
             )}
           </div>
@@ -567,5 +631,95 @@ function FileChangesBlock({ changes }: { changes: FileChange[] }) {
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+interface FileTabItemProps {
+  tab: FileTab;
+  isSelected: boolean;
+  onSelect: () => void;
+  onClose: (e: React.MouseEvent) => void;
+  onPin: (pinned: boolean) => void;
+  onCloseOthers: () => void;
+  onCloseToRight: () => void;
+  isSessionTab?: boolean;
+}
+
+function FileTabItem({
+  tab,
+  isSelected,
+  onSelect,
+  onClose,
+  onPin,
+  onCloseOthers,
+  onCloseToRight,
+  isSessionTab,
+}: FileTabItemProps) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={cn(
+            'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs font-medium transition-colors shrink-0',
+            isSelected
+              ? 'text-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded',
+            isSessionTab && 'opacity-90'
+          )}
+          onClick={onSelect}
+        >
+          {/* Selected indicator - purple underline */}
+          {isSelected && (
+            <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-purple-500/60 rounded-full" />
+          )}
+          {/* Pin indicator */}
+          {tab.isPinned && (
+            <Pin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+          )}
+          <FileTabIcon filename={tab.name} className="w-3 h-3" />
+          <span className="max-w-[120px] truncate">{tab.name}</span>
+          {tab.isDirty && (
+            <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+          )}
+          <button
+            className={cn(
+              'transition-opacity hover:text-destructive',
+              tab.isDirty
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100'
+            )}
+            onClick={onClose}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={onClose}>
+          <X className="mr-2 h-4 w-4" />
+          Close
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onCloseOthers}>
+          Close Others
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onCloseToRight}>
+          Close to the Right
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onPin(!tab.isPinned)}>
+          {tab.isPinned ? (
+            <>
+              <PinOff className="mr-2 h-4 w-4" />
+              Unpin
+            </>
+          ) : (
+            <>
+              <Pin className="mr-2 h-4 w-4" />
+              Pin
+            </>
+          )}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
