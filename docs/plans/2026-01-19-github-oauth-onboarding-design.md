@@ -233,3 +233,60 @@ Frontend mounts, check secure storage for existing token
 2. **Client secret**: Stored only in backend env vars, never exposed to frontend
 3. **CSRF protection**: State parameter validated on OAuth callback
 4. **Token in memory**: Backend keeps token in memory only, not persisted to disk
+
+---
+
+## Implementation Notes
+
+*Added after implementation on 2026-01-19*
+
+### Files Created
+
+**Backend (Go):**
+- `backend/github/client.go` - GitHub API client with OAuth token exchange, user fetch, thread-safe token storage
+- `backend/github/client_test.go` - Comprehensive tests including error cases
+- `backend/server/auth_handlers.go` - HTTP handlers for auth endpoints
+- `backend/server/auth_handlers_test.go` - Tests with mock GitHub server
+
+**Frontend (TypeScript):**
+- `src/lib/auth.ts` - Auth API functions with Stronghold/localStorage fallback
+- `src/stores/authStore.ts` - Zustand store for auth state
+- `src/components/OnboardingScreen.tsx` - Login UI component
+
+### Files Modified
+
+**Backend:**
+- `backend/go.mod` - Added oauth2 dependency
+- `backend/server/config.go` - Added GitHubConfig struct and loader
+- `backend/server/router.go` - Added auth routes, updated NewRouter signature
+- `backend/main.go` - Creates GitHub client and passes to router
+
+**Tauri:**
+- `src-tauri/Cargo.toml` - Added deep-link and stronghold plugins
+- `src-tauri/capabilities/default.json` - Added plugin permissions
+- `src-tauri/src/lib.rs` - Plugin initialization and deep link handler
+
+**Frontend:**
+- `src/app/page.tsx` - Auth flow integration with conditional rendering
+- `package.json` - Added @tauri-apps/plugin-stronghold dependency
+
+### Implementation Deviations
+
+1. **Stronghold API**: Used `@tauri-apps/plugin-stronghold` package (official Tauri plugin) with proper vault/store API
+2. **GitHub client testability**: Added `SetBaseURL()` and `SetAPIURL()` methods for test server injection
+3. **Auth handlers tests**: Created mock GitHub server for full integration testing
+4. **Token storage fallback**: Implemented localStorage fallback for non-Tauri development environments
+
+### Testing
+
+Backend tests: 15 tests total
+- GitHub client: 5 tests (including error cases)
+- Auth handlers: 10 tests (including validation, error cases)
+
+### Setup Required
+
+1. Create GitHub OAuth App at https://github.com/settings/developers
+2. Set callback URL to `chatml://oauth/callback`
+3. Copy `.env.example` to `.env` and fill in credentials
+4. For backend: set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`
+5. For frontend: set `NEXT_PUBLIC_GITHUB_CLIENT_ID`
