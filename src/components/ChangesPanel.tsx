@@ -232,6 +232,9 @@ export function ChangesPanel() {
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
   const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
 
+  // Track branch for refetching changes when branch is renamed
+  const currentBranch = currentSession?.branch;
+
   // Determine top bar state
   const hasActivePR = currentSession?.prStatus === 'open';
   const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
@@ -266,7 +269,7 @@ export function ChangesPanel() {
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
-  // Fetch changes when session changes or tab switches to changes
+  // Fetch changes when session changes, tab switches to changes, or branch is renamed
   useEffect(() => {
     if (selectedTab === 'changes' && selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
@@ -281,7 +284,7 @@ export function ChangesPanel() {
         .finally(() => { if (!cancelled) setChangesLoading(false); });
       return () => { cancelled = true; };
     }
-  }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
+  }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch]);
 
   // Listen for file change events and auto-refresh changes
   useEffect(() => {

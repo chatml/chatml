@@ -510,8 +510,8 @@ func TestFormatSessionName(t *testing.T) {
 		},
 		{
 			name:     "already lowercase",
-			input:    "add session renaming feature",
-			expected: "session-renaming-feature",
+			input:    "add branch renaming logic",
+			expected: "branch-renaming-logic",
 		},
 		{
 			name:     "with punctuation",

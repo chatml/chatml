@@ -11,6 +11,7 @@ import (
 
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/google/uuid"
 )
@@ -468,10 +469,23 @@ func (m *Manager) GetConversationProcess(convID string) *Process {
 }
 
 // formatSessionName converts a human-readable name into a branch-friendly format.
-// Example: "Fix the login bug" -> "fix-login-bug"
+// Example: "Fix the login bug" -> "login-bug"
+// Returns empty string for generic/non-specific names that shouldn't be used.
 func formatSessionName(name string) string {
 	// Convert to lowercase
 	name = strings.ToLower(name)
+
+	// Remove generic phrases first (before word-level filtering)
+	genericPhrases := []string{
+		"explore session", "explore codebase", "explore the codebase",
+		"understand how", "understand the", "learn about", "look at",
+		"investigate the", "investigate how", "check out", "review the",
+		"examine the", "analyze the", "study the", "research the",
+		"get familiar", "familiarize with", "dive into",
+	}
+	for _, phrase := range genericPhrases {
+		name = strings.ReplaceAll(name, phrase, " ")
+	}
 
 	// Remove common filler words
 	fillerWords := []string{
@@ -479,6 +493,9 @@ func formatSessionName(name string) string {
 		"help", "implement", "create", "add", "update", "fix", "make", "build",
 		"i'll", "i will", "let me", "going to", "need to", "want to",
 		"you", "me", "your", "my", "this", "that", "some", "new",
+		"explore", "understand", "how", "works", "work", "does",
+		"codebase", "code", "base", "project", "repo", "repository",
+		"session", "task", "feature", "thing", "stuff",
 	}
 
 	// First pass: remove filler phrases
@@ -516,24 +533,35 @@ func formatSessionName(name string) string {
 		return ""
 	}
 
+	// Reject overly generic results
+	genericResults := map[string]bool{
+		"explore": true, "session": true, "codebase": true,
+		"understand": true, "how": true, "works": true,
+		"investigate": true, "analyze": true, "review": true,
+	}
+	if genericResults[result] {
+		return ""
+	}
+
 	return result
 }
 
 // tryAutoNameSession attempts to auto-name a session based on the first conversation's name suggestion.
 // It only updates the session name if the session hasn't been auto-named yet.
 // The name is formatted like a branch name (lowercase, hyphenated).
+// This also renames the git branch and updates the .session.json metadata file.
 func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedName string) {
-	session, err := m.store.GetSession(ctx, sessionID)
+	sess, err := m.store.GetSession(ctx, sessionID)
 	if err != nil {
 		log.Printf("[manager] failed to get session %s for auto-naming: %v", sessionID, err)
 		return
 	}
-	if session == nil {
+	if sess == nil {
 		return
 	}
 
 	// Skip if session has already been auto-named
-	if session.AutoNamed {
+	if sess.AutoNamed {
 		return
 	}
 
@@ -544,10 +572,22 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		return
 	}
 
-	// Update session name and mark as auto-named
+	// Rename the git branch
+	oldBranchName := sess.Branch
+	newBranchName := fmt.Sprintf("session/%s", formattedName)
+
+	if err := m.worktreeManager.RenameBranch(sess.WorktreePath, oldBranchName, newBranchName); err != nil {
+		log.Printf("[manager] failed to rename branch for session %s: %v", sessionID, err)
+		// Continue anyway - the session name update is still useful
+	} else {
+		log.Printf("[manager] renamed branch for session %s: %q -> %q", sessionID, oldBranchName, newBranchName)
+	}
+
+	// Update session name, branch, and mark as auto-named
 	now := time.Now()
 	if err := m.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
 		s.Name = formattedName
+		s.Branch = newBranchName
 		s.AutoNamed = true
 		s.UpdatedAt = now
 	}); err != nil {
@@ -555,13 +595,23 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		return
 	}
 
+	// Update the .session.json metadata file
+	if meta, err := session.ReadMetadata(sess.WorktreePath); err == nil {
+		meta.Name = formattedName
+		meta.Branch = newBranchName
+		if err := session.WriteMetadata(sess.WorktreePath, meta); err != nil {
+			log.Printf("[manager] failed to update session metadata for %s: %v", sessionID, err)
+		}
+	}
+
 	log.Printf("[manager] auto-named session %s: %q (from %q)", sessionID, formattedName, suggestedName)
 
 	// Emit session event for WebSocket broadcast
 	if m.onSessionEvent != nil {
 		m.onSessionEvent(sessionID, map[string]interface{}{
-			"type": "session_name_update",
-			"name": formattedName,
+			"type":   "session_name_update",
+			"name":   formattedName,
+			"branch": newBranchName,
 		})
 	}
 }
