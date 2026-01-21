@@ -1,6 +1,7 @@
+use std::net::TcpListener;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
@@ -10,6 +11,41 @@ use crate::state::AppState;
 
 /// Port used by the ChatML backend sidecar
 pub const SIDECAR_PORT: u16 = 9876;
+
+/// Maximum time to wait for port to become available (in milliseconds)
+const PORT_WAIT_TIMEOUT_MS: u64 = 5000;
+/// Interval between port availability checks (in milliseconds)
+const PORT_CHECK_INTERVAL_MS: u64 = 100;
+
+/// Check if a port is available for binding
+fn is_port_available(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Wait for a port to become available, with timeout
+/// Returns Ok(()) if port becomes available, Err if timeout exceeded
+fn wait_for_port_available(port: u16) -> AppResult<()> {
+    let start = Instant::now();
+    let timeout = Duration::from_millis(PORT_WAIT_TIMEOUT_MS);
+    let check_interval = Duration::from_millis(PORT_CHECK_INTERVAL_MS);
+
+    while start.elapsed() < timeout {
+        if is_port_available(port) {
+            log::debug!(
+                "Port {} is now available (waited {:?})",
+                port,
+                start.elapsed()
+            );
+            return Ok(());
+        }
+        std::thread::sleep(check_interval);
+    }
+
+    Err(AppError::Sidecar(format!(
+        "Timeout waiting for port {} to become available after {:?}",
+        port, timeout
+    )))
+}
 
 /// Kill any existing process on the specified port
 pub fn kill_process_on_port(port: u16) {
@@ -54,8 +90,8 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     kill_stored_sidecar(state);
     kill_process_on_port(SIDECAR_PORT);
 
-    // Small delay to ensure port is released
-    std::thread::sleep(Duration::from_millis(200));
+    // Wait for port to become available instead of fixed delay
+    wait_for_port_available(SIDECAR_PORT)?;
 
     let mut sidecar_command = app
         .shell()
@@ -135,12 +171,13 @@ pub async fn restart_sidecar_async(app: tauri::AppHandle, state: Arc<AppState>) 
     kill_stored_sidecar(&state);
     kill_process_on_port(SIDECAR_PORT);
 
-    // Use async sleep instead of blocking (spawn blocking to avoid blocking the async runtime)
-    tauri::async_runtime::spawn_blocking(|| {
-        std::thread::sleep(Duration::from_millis(1500));
-    })
-    .await
-    .map_err(|e| AppError::Sidecar(format!("Failed during restart delay: {}", e)))?;
+    // Wait for port in blocking context (can't use TcpListener in async directly).
+    // Note: The double `?` below handles two error types:
+    //   - First `?` propagates JoinError from spawn_blocking
+    //   - Second `?` propagates AppError from wait_for_port_available
+    tauri::async_runtime::spawn_blocking(|| wait_for_port_available(SIDECAR_PORT))
+        .await
+        .map_err(|e| AppError::Sidecar(format!("Failed during port wait: {}", e)))??;
 
     // Spawn new sidecar
     spawn_sidecar(&app, &state)?;

@@ -6,6 +6,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
+use crate::error::{AppError, AppResult};
+
 /// Type alias for file watcher handle
 type FileWatcherHandle = notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>;
 
@@ -31,14 +33,14 @@ pub fn watch_workspace(
     app: &tauri::AppHandle,
     workspace_id: String,
     workspace_path: String,
-) -> Result<(), String> {
+) -> AppResult<()> {
     use std::sync::mpsc::channel;
 
     // Initialize the watchers map if needed
     {
         let mut watchers = FILE_WATCHERS
             .lock()
-            .map_err(|e| format!("Lock error: {}", e))?;
+            .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
         if watchers.is_none() {
             *watchers = Some(HashMap::new());
         }
@@ -48,7 +50,7 @@ pub fn watch_workspace(
     {
         let watchers = FILE_WATCHERS
             .lock()
-            .map_err(|e| format!("Lock error: {}", e))?;
+            .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
         if let Some(map) = watchers.as_ref() {
             if map.contains_key(&workspace_id) {
                 log::info!("Already watching workspace: {}", workspace_id);
@@ -59,7 +61,10 @@ pub fn watch_workspace(
 
     let path = PathBuf::from(&workspace_path);
     if !path.exists() {
-        return Err(format!("Workspace path does not exist: {}", workspace_path));
+        return Err(AppError::Watcher(format!(
+            "Workspace path does not exist: {}",
+            workspace_path
+        )));
     }
 
     let app_handle = app.clone();
@@ -71,13 +76,13 @@ pub fn watch_workspace(
 
     // Create a debounced watcher with 2 second delay
     let mut debouncer = new_debouncer(Duration::from_secs(2), tx)
-        .map_err(|e| format!("Failed to create file watcher: {}", e))?;
+        .map_err(|e| AppError::Watcher(format!("Failed to create file watcher: {}", e)))?;
 
     // Start watching the workspace directory
     debouncer
         .watcher()
         .watch(&path, RecursiveMode::Recursive)
-        .map_err(|e| format!("Failed to watch directory: {}", e))?;
+        .map_err(|e| AppError::Watcher(format!("Failed to watch directory: {}", e)))?;
 
     // Spawn a thread to handle file change events.
     // Lifecycle: The thread runs until the channel closes. When unwatch_workspace() removes
@@ -149,7 +154,7 @@ pub fn watch_workspace(
     {
         let mut watchers = FILE_WATCHERS
             .lock()
-            .map_err(|e| format!("Lock error: {}", e))?;
+            .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
         if let Some(map) = watchers.as_mut() {
             map.insert(workspace_id.clone(), debouncer);
         }
@@ -164,10 +169,10 @@ pub fn watch_workspace(
 }
 
 /// Stop watching a workspace directory
-pub fn unwatch_workspace(workspace_id: &str) -> Result<(), String> {
+pub fn unwatch_workspace(workspace_id: &str) -> AppResult<()> {
     let mut watchers = FILE_WATCHERS
         .lock()
-        .map_err(|e| format!("Lock error: {}", e))?;
+        .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
 
     if let Some(map) = watchers.as_mut() {
         if map.remove(workspace_id).is_some() {
