@@ -552,6 +552,127 @@ func TestGetSessionFileContent_PathTraversalPrevented(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "invalid path")
 }
 
+func TestValidatePath(t *testing.T) {
+	basePath := "/home/user/workspace"
+
+	tests := []struct {
+		name        string
+		path        string
+		wantErr     bool
+		errContains string
+		wantPath    string
+	}{
+		// Valid paths
+		{
+			name:     "simple relative path",
+			path:     "foo/bar.txt",
+			wantErr:  false,
+			wantPath: "foo/bar.txt",
+		},
+		{
+			name:     "deeply nested path",
+			path:     "src/components/ui/Button.tsx",
+			wantErr:  false,
+			wantPath: "src/components/ui/Button.tsx",
+		},
+		{
+			name:     "current directory",
+			path:     ".",
+			wantErr:  false,
+			wantPath: ".",
+		},
+		{
+			name:     "explicit current directory prefix",
+			path:     "./foo/bar",
+			wantErr:  false,
+			wantPath: "foo/bar",
+		},
+		{
+			name:     "path with dots in filename",
+			path:     "file.test.js",
+			wantErr:  false,
+			wantPath: "file.test.js",
+		},
+		{
+			name:     "normalized path stays within base",
+			path:     "foo/bar/../baz",
+			wantErr:  false,
+			wantPath: "foo/baz",
+		},
+
+		// Directory traversal attacks
+		{
+			name:        "parent directory escape",
+			path:        "../secret",
+			wantErr:     true,
+			errContains: "path escapes base directory",
+		},
+		{
+			name:        "multi-level traversal",
+			path:        "../../etc/passwd",
+			wantErr:     true,
+			errContains: "path escapes base directory",
+		},
+		{
+			name:        "embedded traversal that escapes",
+			path:        "foo/../../../etc/passwd",
+			wantErr:     true,
+			errContains: "path escapes base directory",
+		},
+		{
+			name:        "deep traversal attack",
+			path:        "a/b/c/../../../../etc/passwd",
+			wantErr:     true,
+			errContains: "path escapes base directory",
+		},
+
+		// Absolute path rejection
+		{
+			name:        "absolute unix path",
+			path:        "/etc/passwd",
+			wantErr:     true,
+			errContains: "absolute paths not allowed",
+		},
+		{
+			name:        "absolute path to sensitive file",
+			path:        "/root/.ssh/id_rsa",
+			wantErr:     true,
+			errContains: "absolute paths not allowed",
+		},
+
+		// Edge cases
+		{
+			name:     "empty path",
+			path:     "",
+			wantErr:  false,
+			wantPath: ".",
+		},
+		{
+			name:     "whitespace only path",
+			path:     "   ",
+			wantErr:  false,
+			wantPath: "   ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := validatePath(basePath, tt.path)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Empty(t, result, "result should be empty on error")
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantPath, result)
+			}
+		})
+	}
+}
+
 func TestListSessionFiles_Success(t *testing.T) {
 	h, s := setupTestHandlers(t)
 
