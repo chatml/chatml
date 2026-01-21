@@ -19,6 +19,7 @@ var upgrader = websocket.Upgrader{
 type Event struct {
 	Type           string      `json:"type"`
 	AgentID        string      `json:"agentId,omitempty"`
+	SessionID      string      `json:"sessionId,omitempty"`
 	ConversationID string      `json:"conversationId,omitempty"`
 	Payload        interface{} `json:"payload,omitempty"`
 }

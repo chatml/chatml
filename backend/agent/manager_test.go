@@ -360,3 +360,75 @@ func TestConversationStatusHandler_Type(t *testing.T) {
 	}
 	assert.NotNil(t, handler)
 }
+
+func TestSessionEventHandler_Type(t *testing.T) {
+	var handler SessionEventHandler = func(sessionID string, event map[string]interface{}) {
+		// Handler implementation
+	}
+	assert.NotNil(t, handler)
+}
+
+// ============================================================================
+// formatSessionName Tests
+// ============================================================================
+
+func TestFormatSessionName(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple phrase",
+			input:    "Fix the login bug",
+			expected: "login-bug",
+		},
+		{
+			name:     "with implement",
+			input:    "Implement user authentication",
+			expected: "user-authentication",
+		},
+		{
+			name:     "with I'll help",
+			input:    "I'll help you add a dark mode toggle",
+			expected: "dark-mode-toggle",
+		},
+		{
+			name:     "already lowercase",
+			input:    "add session renaming feature",
+			expected: "session-renaming-feature",
+		},
+		{
+			name:     "with punctuation",
+			input:    "Fix bug: users can't log in!",
+			expected: "bug-users-can-t-log",
+		},
+		{
+			name:     "long name gets truncated",
+			input:    "Implement a comprehensive user authentication system with OAuth and JWT tokens",
+			expected: "comprehensive-user-authentication-system",
+		},
+		{
+			name:     "mixed case",
+			input:    "Add TypeScript Types For API Response",
+			expected: "typescript-types-api-response",
+		},
+		{
+			name:     "too short after filtering returns empty",
+			input:    "fix the a",
+			expected: "",
+		},
+		{
+			name:     "numbers preserved",
+			input:    "Fix bug #123 in login",
+			expected: "bug-123-login",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatSessionName(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
