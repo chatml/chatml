@@ -365,8 +365,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         }}
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
-                        onOpenProject={onOpenProject}
-                        onCloneFromUrl={onCloneFromUrl}
                         getStatusColor={getStatusColor}
                         formatTimeAgo={formatTimeAgo}
                         getInitial={getInitial}
@@ -374,6 +372,37 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     ))}
                   </SortableContext>
                 </DndContext>
+              )}
+              {/* Fill remaining space with context menu for adding sessions */}
+              {workspaces.length > 0 && (
+                <ContextMenu>
+                  <ContextMenuTrigger asChild>
+                    <div className="flex-1 min-h-4" />
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onClick={() => handleCreateSession(selectedWorkspaceId || workspaces[0].id)}>
+                      <Plus className="h-4 w-4" />
+                      Add session
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuSub>
+                      <ContextMenuSubTrigger>
+                        <FolderPlus className="h-4 w-4" />
+                        Add repository
+                      </ContextMenuSubTrigger>
+                      <ContextMenuSubContent>
+                        <ContextMenuItem onClick={onOpenProject}>
+                          <Folder className="h-4 w-4" />
+                          Open project
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={onCloneFromUrl}>
+                          <Globe className="h-4 w-4" />
+                          Clone from URL
+                        </ContextMenuItem>
+                      </ContextMenuSubContent>
+                    </ContextMenuSub>
+                  </ContextMenuContent>
+                </ContextMenu>
               )}
             </div>
           </ScrollArea>
@@ -427,8 +456,6 @@ interface SortableWorkspaceItemProps {
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
-  onOpenProject: () => void;
-  onCloneFromUrl: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -444,8 +471,6 @@ function SortableWorkspaceItem({
   onSelectSession,
   onArchiveSession,
   onPinSession,
-  onOpenProject,
-  onCloneFromUrl,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -680,35 +705,6 @@ function SortableWorkspaceItem({
               })
             )}
           </div>
-          {/* Empty space area for right-click to add session */}
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <div className="ml-5 min-h-4" />
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              <ContextMenuItem onClick={onCreateSession}>
-                <Plus className="h-4 w-4" />
-                Add session
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuSub>
-                <ContextMenuSubTrigger>
-                  <FolderPlus className="h-4 w-4" />
-                  Add repository
-                </ContextMenuSubTrigger>
-                <ContextMenuSubContent>
-                  <ContextMenuItem onClick={onOpenProject}>
-                    <Folder className="h-4 w-4" />
-                    Open project
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={onCloneFromUrl}>
-                    <Globe className="h-4 w-4" />
-                    Clone from URL
-                  </ContextMenuItem>
-                </ContextMenuSubContent>
-              </ContextMenuSub>
-            </ContextMenuContent>
-          </ContextMenu>
         </CollapsibleContent>
       </Collapsible>
     </div>
