@@ -147,6 +147,16 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		})
 	})
 
+	// Wire up session event handler
+	agentMgr.SetSessionEventHandler(func(sessionID string, event map[string]interface{}) {
+		eventType, _ := event["type"].(string)
+		hub.Broadcast(Event{
+			Type:      eventType,
+			SessionID: sessionID,
+			Payload:   event,
+		})
+	})
+
 	handler := cors.New(cors.Options{
 		AllowedOrigins:   AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +23,9 @@ type StatusHandler func(agentID string, status models.AgentStatus)
 type ConversationEventHandler func(conversationID string, event *AgentEvent)
 type ConversationStatusHandler func(conversationID string, status string)
 
+// Session event handler for session-level updates
+type SessionEventHandler func(sessionID string, event map[string]interface{})
+
 type Manager struct {
 	store           *store.SQLiteStore
 	worktreeManager *git.WorktreeManager
@@ -35,6 +40,9 @@ type Manager struct {
 	// New conversation handlers
 	onConversationEvent  ConversationEventHandler
 	onConversationStatus ConversationStatusHandler
+
+	// Session event handler
+	onSessionEvent SessionEventHandler
 }
 
 func NewManager(s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
@@ -62,6 +70,10 @@ func (m *Manager) SetConversationEventHandler(handler ConversationEventHandler) 
 
 func (m *Manager) SetConversationStatusHandler(handler ConversationStatusHandler) {
 	m.onConversationStatus = handler
+}
+
+func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
+	m.onSessionEvent = handler
 }
 
 // StartConversationOptions contains optional parameters for starting a conversation
@@ -215,11 +227,18 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 
 		case EventTypeNameSuggestion:
 			// Update conversation name
+			var sessionID string
 			if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 				c.Name = event.Name
 				c.UpdatedAt = time.Now()
+				sessionID = c.SessionID
 			}); err != nil {
 				log.Printf("[manager] failed to update conversation name for %s: %v", convID, err)
+			}
+
+			// Also update session name if it hasn't been auto-named yet
+			if sessionID != "" && event.Name != "" {
+				m.tryAutoNameSession(ctx, sessionID, event.Name)
 			}
 
 		case EventTypeComplete, EventTypeResult:
@@ -437,6 +456,105 @@ func (m *Manager) GetConversationProcess(convID string) *Process {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.convProcesses[convID]
+}
+
+// formatSessionName converts a human-readable name into a branch-friendly format.
+// Example: "Fix the login bug" -> "fix-login-bug"
+func formatSessionName(name string) string {
+	// Convert to lowercase
+	name = strings.ToLower(name)
+
+	// Remove common filler words
+	fillerWords := []string{
+		"the", "a", "an", "to", "for", "with", "and", "or", "in", "on", "at",
+		"help", "implement", "create", "add", "update", "fix", "make", "build",
+		"i'll", "i will", "let me", "going to", "need to", "want to",
+		"you", "me", "your", "my", "this", "that", "some", "new",
+	}
+
+	// First pass: remove filler phrases
+	for _, word := range fillerWords {
+		// Remove as whole word with word boundaries
+		pattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(word) + `\b`)
+		name = pattern.ReplaceAllString(name, " ")
+	}
+
+	// Replace non-alphanumeric characters with spaces
+	nonAlphaNum := regexp.MustCompile(`[^a-z0-9]+`)
+	name = nonAlphaNum.ReplaceAllString(name, " ")
+
+	// Split into words and filter empty ones
+	words := strings.Fields(name)
+
+	// Limit to first 4-5 meaningful words
+	maxWords := 5
+	if len(words) > maxWords {
+		words = words[:maxWords]
+	}
+
+	// Join with hyphens
+	result := strings.Join(words, "-")
+
+	// Truncate if still too long (max 40 chars for branch names)
+	if len(result) > 40 {
+		result = result[:40]
+		// Clean up trailing hyphen if we cut mid-word
+		result = strings.TrimSuffix(result, "-")
+	}
+
+	// If we ended up with nothing meaningful, return empty to skip
+	if len(result) < 3 {
+		return ""
+	}
+
+	return result
+}
+
+// tryAutoNameSession attempts to auto-name a session based on the first conversation's name suggestion.
+// It only updates the session name if the session hasn't been auto-named yet.
+// The name is formatted like a branch name (lowercase, hyphenated).
+func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedName string) {
+	session, err := m.store.GetSession(ctx, sessionID)
+	if err != nil {
+		log.Printf("[manager] failed to get session %s for auto-naming: %v", sessionID, err)
+		return
+	}
+	if session == nil {
+		return
+	}
+
+	// Skip if session has already been auto-named
+	if session.AutoNamed {
+		return
+	}
+
+	// Format the name like a branch name
+	formattedName := formatSessionName(suggestedName)
+	if formattedName == "" {
+		log.Printf("[manager] skipping auto-name for session %s: could not extract meaningful name from %q", sessionID, suggestedName)
+		return
+	}
+
+	// Update session name and mark as auto-named
+	now := time.Now()
+	if err := m.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+		s.Name = formattedName
+		s.AutoNamed = true
+		s.UpdatedAt = now
+	}); err != nil {
+		log.Printf("[manager] failed to auto-name session %s: %v", sessionID, err)
+		return
+	}
+
+	log.Printf("[manager] auto-named session %s: %q (from %q)", sessionID, formattedName, suggestedName)
+
+	// Emit session event for WebSocket broadcast
+	if m.onSessionEvent != nil {
+		m.onSessionEvent(sessionID, map[string]interface{}{
+			"type": "session_name_update",
+			"name": formattedName,
+		})
+	}
 }
 
 // ========== Legacy Agent Methods (for backwards compatibility) ==========

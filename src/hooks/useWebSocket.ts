@@ -352,6 +352,15 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle session name update (auto-naming based on conversation context)
+        if (data.type === 'session_name_update' && data.sessionId) {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload?.name && typeof payload.name === 'string') {
+            updateSession(data.sessionId, { name: payload.name });
+          }
+          return;
+        }
+
         // Legacy agent events - validate string payloads
         if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
           appendOutput(data.agentId, data.payload);
