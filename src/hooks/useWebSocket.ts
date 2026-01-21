@@ -76,6 +76,7 @@ export function useWebSocket(enabled: boolean = true) {
     setThinking,
     clearThinking,
     setPlanModeActive,
+    setAwaitingPlanApproval,
     addActiveTool,
     completeActiveTool,
     clearActiveTools,
@@ -169,6 +170,11 @@ export function useWebSocket(enabled: boolean = true) {
             params: event.params,
             startTime: Date.now(),
           });
+
+          // Detect ExitPlanMode tool - this means Claude wants plan approval
+          if (event.tool === 'ExitPlanMode') {
+            setAwaitingPlanApproval(conversationId, true);
+          }
         }
         break;
 
@@ -176,9 +182,18 @@ export function useWebSocket(enabled: boolean = true) {
         // Complete active tool with success/summary info
         // For Bash tools, also capture stdout/stderr
         if (event?.id) {
+          // Check tool name BEFORE completing (to avoid race condition with state update)
+          const activeTool = useAppStore.getState().activeTools[conversationId]?.find(t => t.id === event.id);
+          const isExitPlanMode = activeTool?.tool === 'ExitPlanMode';
+
           const stdout = event.stdout as string | undefined;
           const stderr = event.stderr as string | undefined;
           completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+
+          // Clear awaiting plan approval when ExitPlanMode completes
+          if (isExitPlanMode) {
+            setAwaitingPlanApproval(conversationId, false);
+          }
         }
         break;
 
@@ -292,6 +307,7 @@ export function useWebSocket(enabled: boolean = true) {
     setThinking,
     clearThinking,
     setPlanModeActive,
+    setAwaitingPlanApproval,
     clearActiveTools,
     setAgentTodos,
     finalizeStreamingMessage,

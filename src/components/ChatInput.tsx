@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, KeyboardEvent } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -25,6 +25,8 @@ import {
   FolderSymlink,
   FileText,
   X,
+  EyeOff,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave } from '@/lib/tauri';
@@ -45,6 +47,8 @@ export function ChatInput() {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [isSending, setIsSending] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -74,6 +78,7 @@ export function ChatInput() {
     updateConversation,
     selectConversation,
     setStreaming,
+    setAwaitingPlanApproval,
   } = useAppStore();
 
   // Get current session and conversation
@@ -83,6 +88,11 @@ export function ChatInput() {
   // Check if currently streaming
   const isStreaming = selectedConversationId
     ? streamingState[selectedConversationId]?.isStreaming
+    : false;
+
+  // Check if awaiting plan approval
+  const awaitingPlanApproval = selectedConversationId
+    ? streamingState[selectedConversationId]?.awaitingPlanApproval
     : false;
 
   useEffect(() => {
@@ -171,6 +181,32 @@ export function ChatInput() {
     }
   }, [planModeEnabled, selectedConversationId, isStreaming]);
 
+  // Handle plan approval
+  const handleApprovePlan = useCallback(async () => {
+    if (!selectedConversationId || !awaitingPlanApproval || isApproving) return;
+
+    setIsApproving(true);
+    setApprovalError(null);
+    try {
+      await approvePlan(selectedConversationId);
+      // The WebSocket will clear awaitingPlanApproval when tool_end is received
+    } catch (error) {
+      console.error('Failed to approve plan:', error);
+      setApprovalError(error instanceof Error ? error.message : 'Failed to approve plan');
+    } finally {
+      setIsApproving(false);
+    }
+  }, [selectedConversationId, awaitingPlanApproval, isApproving]);
+
+  // Handle hand off - dismisses the approval UI locally without approving.
+  // The agent continues waiting; user can still send feedback via the input.
+  // This allows the user to hide the approval bar while composing a longer response.
+  const handleHandOff = useCallback(() => {
+    if (!selectedConversationId) return;
+    setAwaitingPlanApproval(selectedConversationId, false);
+    setApprovalError(null);
+  }, [selectedConversationId, setAwaitingPlanApproval]);
+
   // Global keyboard shortcuts
 
   useEffect(() => {
@@ -197,6 +233,7 @@ export function ChatInput() {
           toggleListening();
         }
       }
+      // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
     };
 
     // Handle menu events from native Tauri menu
@@ -320,6 +357,13 @@ export function ChatInput() {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // ⌘⇧↵ to approve plan
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && awaitingPlanApproval) {
+      e.preventDefault();
+      handleApprovePlan();
+      return;
+    }
+    // Regular Enter to submit (or send feedback when awaiting approval)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -328,11 +372,54 @@ export function ChatInput() {
 
   return (
     <div className="pt-1 px-4 pb-4">
+      {/* Plan Approval Bar */}
+      {awaitingPlanApproval && (
+        <div className="space-y-1.5 mb-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Approve the plan (<kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">⌘⇧↵</kbd>) or tell the AI what to do differently <kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">↵</kbd>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={handleHandOff}
+                disabled={isApproving}
+              >
+                <EyeOff className="h-3.5 w-3.5" />
+                Hand off
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-7 gap-1.5 text-xs bg-background hover:bg-muted"
+                onClick={handleApprovePlan}
+                disabled={isApproving}
+              >
+                {isApproving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    Approve
+                    <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">⌘⇧↵</kbd>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          {approvalError && (
+            <div className="text-xs text-destructive">{approvalError}</div>
+          )}
+        </div>
+      )}
+
       <div className={cn(
         'relative',
-        isStreaming && 'streaming-border'
+        isStreaming && !awaitingPlanApproval && 'streaming-border',
+        awaitingPlanApproval && 'plan-approval-border'
       )}>
-        {isStreaming && (
+        {isStreaming && !awaitingPlanApproval && (
           <svg className="streaming-border-svg">
             <rect
               x="1"
@@ -345,7 +432,8 @@ export function ChatInput() {
         )}
       <div className={cn(
         'rounded-lg border bg-muted/50',
-        isStreaming && 'border-transparent',
+        isStreaming && !awaitingPlanApproval && 'border-transparent',
+        awaitingPlanApproval && 'border-transparent',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary',
         isListening && 'shadow-[inset_0_4px_8px_-2px_rgba(16,185,129,0.15)]'
       )}>

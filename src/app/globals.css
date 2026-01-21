@@ -392,3 +392,22 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* Plan approval border styling */
+.plan-approval-border {
+  position: relative;
+}
+
+.plan-approval-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 0.5rem;
+  border: 2px dashed #e8a89b;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.dark .plan-approval-border::before {
+  border-color: #c47d6d;
+}
