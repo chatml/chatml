@@ -576,7 +576,7 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 	oldBranchName := sess.Branch
 	newBranchName := fmt.Sprintf("session/%s", formattedName)
 
-	if err := m.worktreeManager.RenameBranch(sess.WorktreePath, oldBranchName, newBranchName); err != nil {
+	if err := m.worktreeManager.RenameBranch(ctx, sess.WorktreePath, oldBranchName, newBranchName); err != nil {
 		log.Printf("[manager] failed to rename branch for session %s: %v", sessionID, err)
 		// Continue anyway - the session name update is still useful
 	} else {
@@ -623,7 +623,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	agentID := uuid.New().String()[:8]
 	sessionID := uuid.New().String()
 
-	worktreePath, branchName, _, err := m.worktreeManager.Create(repoPath, agentID)
+	worktreePath, branchName, _, err := m.worktreeManager.Create(ctx, repoPath, agentID)
 	if err != nil {
 		return nil, err
 	}

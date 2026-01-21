@@ -14,19 +14,22 @@ import (
 // Default timeout for git commands
 const gitCommandTimeout = 30 * time.Second
 
-// gitCmdContext creates a git command with the given context
-func gitCmdContext(ctx context.Context, repoPath string, args ...string) *exec.Cmd {
+// gitCmdWithContext creates a git command with the given context and an additional timeout.
+// The timeout is layered on top of the parent context, so the command will be cancelled
+// if either the parent context is cancelled or the timeout expires.
+// Returns the command and a cancel function that MUST be called when done.
+func gitCmdWithContext(ctx context.Context, repoPath string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(ctx, gitCommandTimeout)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
-	return cmd
+	return cmd, cancel
 }
 
-// gitCmd creates a git command with a timeout context.
+// gitCmd creates a git command with a timeout context using context.Background().
 // Returns the command and a cancel function that MUST be called when done.
+// Deprecated: Use gitCmdWithContext for better context propagation.
 func gitCmd(repoPath string, args ...string) (*exec.Cmd, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout)
-	cmd := gitCmdContext(ctx, repoPath, args...)
-	return cmd, cancel
+	return gitCmdWithContext(context.Background(), repoPath, args...)
 }
 
 type RepoManager struct{}
@@ -65,8 +68,8 @@ func (rm *RepoManager) ValidateRepo(path string) error {
 	return nil
 }
 
-func (rm *RepoManager) GetCurrentBranch(repoPath string) (string, error) {
-	cmd, cancel := gitCmd(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+func (rm *RepoManager) GetCurrentBranch(ctx context.Context, repoPath string) (string, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -80,11 +83,11 @@ func (rm *RepoManager) GetRepoName(path string) string {
 }
 
 // GetFileAtRef returns the content of a file at a specific git ref (branch, tag, or commit)
-func (rm *RepoManager) GetFileAtRef(repoPath, ref, filePath string) (string, error) {
+func (rm *RepoManager) GetFileAtRef(ctx context.Context, repoPath, ref, filePath string) (string, error) {
 	if err := validateGitRef(ref); err != nil {
 		return "", fmt.Errorf("invalid ref: %w", err)
 	}
-	cmd, cancel := gitCmd(repoPath, "show", fmt.Sprintf("%s:%s", ref, filePath))
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "show", fmt.Sprintf("%s:%s", ref, filePath))
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -94,11 +97,11 @@ func (rm *RepoManager) GetFileAtRef(repoPath, ref, filePath string) (string, err
 }
 
 // GetChangedFiles returns a list of files that have changed compared to a base ref
-func (rm *RepoManager) GetChangedFiles(repoPath, baseRef string) ([]string, error) {
+func (rm *RepoManager) GetChangedFiles(ctx context.Context, repoPath, baseRef string) ([]string, error) {
 	if err := validateGitRef(baseRef); err != nil {
 		return nil, fmt.Errorf("invalid base ref: %w", err)
 	}
-	cmd, cancel := gitCmd(repoPath, "diff", "--name-only", baseRef)
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--name-only", baseRef)
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -124,12 +127,12 @@ type FileChange struct {
 }
 
 // GetChangedFilesWithStats returns files changed compared to a base ref with addition/deletion counts
-func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]FileChange, error) {
+func (rm *RepoManager) GetChangedFilesWithStats(ctx context.Context, repoPath, baseRef string) ([]FileChange, error) {
 	if err := validateGitRef(baseRef); err != nil {
 		return nil, fmt.Errorf("invalid base ref: %w", err)
 	}
 	// First get the diff stats
-	cmd, cancel := gitCmd(repoPath, "diff", "--numstat", baseRef)
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--numstat", baseRef)
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -163,7 +166,7 @@ func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]Fil
 		status := "modified"
 		if additions > 0 && deletions == 0 {
 			// Check if it's a new file
-			checkCmd, checkCancel := gitCmd(repoPath, "ls-tree", baseRef, "--", filePath)
+			checkCmd, checkCancel := gitCmdWithContext(ctx, repoPath, "ls-tree", baseRef, "--", filePath)
 			checkOut, _ := checkCmd.Output()
 			checkCancel()
 			if len(checkOut) == 0 {
@@ -188,9 +191,9 @@ func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]Fil
 }
 
 // GetUntrackedFiles returns files that are not tracked by git
-func (rm *RepoManager) GetUntrackedFiles(repoPath string) ([]FileChange, error) {
+func (rm *RepoManager) GetUntrackedFiles(ctx context.Context, repoPath string) ([]FileChange, error) {
 	// Use -uall to show individual files inside untracked directories
-	cmd, cancel := gitCmd(repoPath, "status", "--porcelain", "-uall")
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "status", "--porcelain", "-uall")
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -223,8 +226,8 @@ func (rm *RepoManager) GetUntrackedFiles(repoPath string) ([]FileChange, error) 
 }
 
 // HasMergeConflicts checks if there are any merge conflicts in the repo
-func (rm *RepoManager) HasMergeConflicts(repoPath string) (bool, error) {
-	cmd, cancel := gitCmd(repoPath, "diff", "--check")
+func (rm *RepoManager) HasMergeConflicts(ctx context.Context, repoPath string) (bool, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--check")
 	defer cancel()
 	out, err := cmd.CombinedOutput()
 	// git diff --check returns exit code 2 if there are conflict markers
@@ -284,21 +287,21 @@ type StashStatus struct {
 }
 
 // GetStatus returns comprehensive git status for a worktree
-func (rm *RepoManager) GetStatus(worktreePath, baseBranch string) (*GitStatus, error) {
+func (rm *RepoManager) GetStatus(ctx context.Context, worktreePath, baseBranch string) (*GitStatus, error) {
 	status := &GitStatus{
 		InProgress: InProgressStatus{Type: "none"},
 		Conflicts:  ConflictStatus{Files: []string{}},
 	}
 
 	// Get working directory status
-	wdStatus, err := rm.getWorkingDirectoryStatus(worktreePath)
+	wdStatus, err := rm.getWorkingDirectoryStatus(ctx, worktreePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get working directory status: %w", err)
 	}
 	status.WorkingDirectory = *wdStatus
 
 	// Get sync status
-	syncStatus, err := rm.getSyncStatus(worktreePath, baseBranch)
+	syncStatus, err := rm.getSyncStatus(ctx, worktreePath, baseBranch)
 	if err != nil {
 		// Don't fail completely if sync status fails
 		status.Sync = SyncStatus{BaseBranch: baseBranch}
@@ -307,19 +310,19 @@ func (rm *RepoManager) GetStatus(worktreePath, baseBranch string) (*GitStatus, e
 	}
 
 	// Get in-progress operation status
-	inProgress, err := rm.getInProgressStatus(worktreePath)
+	inProgress, err := rm.getInProgressStatus(ctx, worktreePath)
 	if err == nil {
 		status.InProgress = *inProgress
 	}
 
 	// Get conflict status
-	conflicts, err := rm.getConflictStatus(worktreePath)
+	conflicts, err := rm.getConflictStatus(ctx, worktreePath)
 	if err == nil {
 		status.Conflicts = *conflicts
 	}
 
 	// Get stash count
-	stashCount, err := rm.getStashCount(worktreePath)
+	stashCount, err := rm.getStashCount(ctx, worktreePath)
 	if err == nil {
 		status.Stash = StashStatus{Count: stashCount}
 	}
@@ -332,8 +335,8 @@ func (rm *RepoManager) GetStatus(worktreePath, baseBranch string) (*GitStatus, e
 // and will be counted in both StagedCount and UnstagedCount. TotalUncommitted
 // is the sum of all counts, representing the total number of status entries,
 // not unique files.
-func (rm *RepoManager) getWorkingDirectoryStatus(repoPath string) (*WorkingDirectoryStatus, error) {
-	cmd, cancel := gitCmd(repoPath, "status", "--porcelain")
+func (rm *RepoManager) getWorkingDirectoryStatus(ctx context.Context, repoPath string) (*WorkingDirectoryStatus, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "status", "--porcelain")
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -373,7 +376,7 @@ func (rm *RepoManager) getWorkingDirectoryStatus(repoPath string) (*WorkingDirec
 }
 
 // getSyncStatus gets ahead/behind counts relative to base branch
-func (rm *RepoManager) getSyncStatus(repoPath, baseBranch string) (*SyncStatus, error) {
+func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch string) (*SyncStatus, error) {
 	status := &SyncStatus{
 		BaseBranch: baseBranch,
 	}
@@ -384,7 +387,7 @@ func (rm *RepoManager) getSyncStatus(repoPath, baseBranch string) (*SyncStatus, 
 	}
 
 	// Check if remote tracking branch exists
-	cmd, cancel := gitCmd(repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
 	defer cancel()
 	remoteOut, _ := cmd.Output()
 	remoteBranch := strings.TrimSpace(string(remoteOut))
@@ -395,12 +398,12 @@ func (rm *RepoManager) getSyncStatus(repoPath, baseBranch string) (*SyncStatus, 
 
 	// Get ahead/behind compared to base branch (origin/main or similar)
 	remoteBase := "origin/" + baseBranch
-	cmd, cancel = gitCmd(repoPath, "rev-list", "--left-right", "--count", remoteBase+"...HEAD")
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-list", "--left-right", "--count", remoteBase+"...HEAD")
 	defer cancel()
 	countOut, err := cmd.Output()
 	if err != nil {
 		// Try without origin prefix
-		cmd, cancel = gitCmd(repoPath, "rev-list", "--left-right", "--count", baseBranch+"...HEAD")
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-list", "--left-right", "--count", baseBranch+"...HEAD")
 		defer cancel()
 		countOut, err = cmd.Output()
 		if err != nil {
@@ -418,7 +421,7 @@ func (rm *RepoManager) getSyncStatus(repoPath, baseBranch string) (*SyncStatus, 
 
 	// Get unpushed commits (if we have a remote tracking branch)
 	if status.HasRemote {
-		cmd, cancel = gitCmd(repoPath, "rev-list", "@{u}..HEAD", "--count")
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-list", "@{u}..HEAD", "--count")
 		defer cancel()
 		unpushedOut, err := cmd.Output()
 		if err == nil {
@@ -433,11 +436,11 @@ func (rm *RepoManager) getSyncStatus(repoPath, baseBranch string) (*SyncStatus, 
 }
 
 // getInProgressStatus checks for in-progress git operations
-func (rm *RepoManager) getInProgressStatus(repoPath string) (*InProgressStatus, error) {
+func (rm *RepoManager) getInProgressStatus(ctx context.Context, repoPath string) (*InProgressStatus, error) {
 	status := &InProgressStatus{Type: "none"}
 
 	// Get the git directory for this worktree
-	cmd, cancel := gitCmd(repoPath, "rev-parse", "--git-dir")
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--git-dir")
 	defer cancel()
 	gitDirOut, err := cmd.Output()
 	if err != nil {
@@ -496,10 +499,10 @@ func (rm *RepoManager) getInProgressStatus(repoPath string) (*InProgressStatus, 
 }
 
 // getConflictStatus gets list of files with conflicts
-func (rm *RepoManager) getConflictStatus(repoPath string) (*ConflictStatus, error) {
+func (rm *RepoManager) getConflictStatus(ctx context.Context, repoPath string) (*ConflictStatus, error) {
 	status := &ConflictStatus{Files: []string{}}
 
-	cmd, cancel := gitCmd(repoPath, "diff", "--name-only", "--diff-filter=U")
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--name-only", "--diff-filter=U")
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
@@ -520,8 +523,8 @@ func (rm *RepoManager) getConflictStatus(repoPath string) (*ConflictStatus, erro
 }
 
 // getStashCount returns the number of stashed changes
-func (rm *RepoManager) getStashCount(repoPath string) (int, error) {
-	cmd, cancel := gitCmd(repoPath, "stash", "list")
+func (rm *RepoManager) getStashCount(ctx context.Context, repoPath string) (int, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "stash", "list")
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
