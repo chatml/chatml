@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -189,6 +190,83 @@ func TestProcess_Stop(t *testing.T) {
 
 	// Stop should not panic even when not running
 	p.Stop()
+}
+
+func TestProcess_Stop_Idempotent(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Multiple Stop calls should not panic
+	p.Stop()
+	p.Stop()
+	p.Stop()
+
+	assert.True(t, p.IsStopped())
+}
+
+func TestProcess_TryStop(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// First TryStop should succeed
+	result1 := p.TryStop()
+	assert.True(t, result1)
+	assert.True(t, p.IsStopped())
+
+	// Second TryStop should return false
+	result2 := p.TryStop()
+	assert.False(t, result2)
+}
+
+func TestProcess_IsStopped(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	assert.False(t, p.IsStopped())
+
+	p.Stop()
+
+	assert.True(t, p.IsStopped())
+}
+
+func TestProcess_ConcurrentStop(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Concurrent Stop calls should not panic or cause race conditions
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p.Stop()
+		}()
+	}
+	wg.Wait()
+
+	assert.True(t, p.IsStopped())
+}
+
+func TestProcess_ConcurrentTryStop(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Only one TryStop should succeed
+	var wg sync.WaitGroup
+	successCount := 0
+	var mu sync.Mutex
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if p.TryStop() {
+				mu.Lock()
+				successCount++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Exactly one goroutine should have succeeded
+	assert.Equal(t, 1, successCount)
+	assert.True(t, p.IsStopped())
 }
 
 func TestInputMessage_Marshal(t *testing.T) {
