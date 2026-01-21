@@ -209,7 +209,7 @@ export interface FileChangeDTO {
   path: string;
   additions: number;
   deletions: number;
-  status: 'added' | 'modified' | 'deleted';
+  status: 'added' | 'modified' | 'deleted' | 'untracked';
 }
 
 export async function getSessionChanges(workspaceId: string, sessionId: string): Promise<FileChangeDTO[]> {

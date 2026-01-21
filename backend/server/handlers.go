@@ -482,7 +482,16 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		changes = []git.FileChange{}
 	}
 
-	writeJSON(w, changes)
+	// Get untracked files
+	untracked, err := h.repoManager.GetUntrackedFiles(workingPath)
+	if err != nil {
+		untracked = []git.FileChange{}
+	}
+
+	// Combine untracked files first, then tracked changes
+	allChanges := append(untracked, changes...)
+
+	writeJSON(w, allChanges)
 }
 
 // GetSessionFileDiff returns the diff for a specific file in a session's worktree

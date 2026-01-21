@@ -53,7 +53,7 @@ export function CodeViewer({
   const [copied, setCopied] = useState(false);
   const [lineCount, setLineCount] = useState(0);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
-  const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('split');
+  const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
   const [wordWrap, setWordWrap] = useState(false);
 
   const isMarkdown = isMarkdownFile(filename);

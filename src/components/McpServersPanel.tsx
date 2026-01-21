@@ -2,6 +2,7 @@
 
 import { useAppStore } from '@/stores/appStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Server, CheckCircle2, XCircle, AlertCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { McpServerStatus } from '@/lib/types';
@@ -38,13 +39,11 @@ export function McpServersPanel() {
 
   if (!mcpServers || mcpServers.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          <Server className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">No MCP servers</p>
-          <p className="text-xs mt-1">Servers will appear when agent starts</p>
-        </div>
-      </div>
+      <EmptyState
+        icon={Server}
+        title="No MCP servers"
+        description="Servers will appear when agent starts"
+      />
     );
   }
 

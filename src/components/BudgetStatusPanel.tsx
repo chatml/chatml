@@ -21,6 +21,12 @@ export function BudgetStatusPanel() {
     limitExceeded,
   } = budgetStatus;
 
+  // Don't render anything if there's no content to show
+  const hasContent = limitExceeded || maxBudgetUsd !== undefined || maxTurns !== undefined || maxThinkingTokens !== undefined;
+  if (!hasContent) {
+    return null;
+  }
+
   const budgetPercent = maxBudgetUsd ? (currentCostUsd / maxBudgetUsd) * 100 : 0;
   const turnsPercent = maxTurns ? (currentTurns / maxTurns) * 100 : 0;
   const thinkingPercent = maxThinkingTokens ? (currentThinkingTokens / maxThinkingTokens) * 100 : 0;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { EmptyState } from '@/components/ui/empty-state';
 import { History, RotateCcw, Loader2 } from 'lucide-react';
 
 // API base URL - configurable via environment variable
@@ -37,11 +38,11 @@ export function CheckpointTimeline() {
 
   if (checkpoints.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4">
-        <History className="w-8 h-8 mb-2 opacity-50" />
-        <p>No checkpoints yet</p>
-        <p className="text-xs mt-1">Checkpoints are created at message boundaries</p>
-      </div>
+      <EmptyState
+        icon={History}
+        title="No checkpoints yet"
+        description="Checkpoints are created at message boundaries"
+      />
     );
   }
 

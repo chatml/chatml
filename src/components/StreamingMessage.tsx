@@ -82,7 +82,11 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   const streaming = useStreamingState(conversationId);
   const tools = useActiveTools(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
+  const budgetStatus = useAppStore((s) => s.budgetStatus);
   const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Check if extended thinking is enabled for this conversation
+  const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
 
   // Update elapsed time every second while streaming
   useEffect(() => {
@@ -135,6 +139,14 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   return (
     <div className="py-2 border-t border-border/50" role="status" aria-live="polite" aria-atomic="false">
       <div className="space-y-1.5">
+          {/* Extended thinking mode indicator - shows when thinking is enabled but no content yet */}
+          {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && (
+            <div className="flex items-center gap-2" aria-label="Extended thinking enabled">
+              <Brain className="w-3.5 h-3.5 text-purple-500 shrink-0" aria-hidden="true" />
+              <span className="text-xs text-purple-500">Extended thinking active</span>
+            </div>
+          )}
+
           {/* Thinking indicator with expandable content */}
           {(streaming?.isThinking || streaming?.thinking) && (
             <div className="flex flex-col gap-1" aria-label="Agent is thinking">
