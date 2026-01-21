@@ -77,9 +77,9 @@ interface AppState {
   agentTodos: { [conversationId: string]: AgentTodoItem[] };
   customTodos: { [sessionId: string]: CustomTodoItem[] };
 
-  // Terminal instances (bottom panel terminals per workspace)
-  terminalInstances: Record<string, TerminalInstance[]>; // keyed by workspaceId
-  activeTerminalId: Record<string, string | null>;       // keyed by workspaceId
+  // Terminal instances (bottom panel terminals per session)
+  terminalInstances: Record<string, TerminalInstance[]>; // keyed by sessionId
+  activeTerminalId: Record<string, string | null>;       // keyed by sessionId
 
   // MCP servers state
   mcpServers: McpServerStatus[];
@@ -175,9 +175,9 @@ interface AppState {
   deleteCustomTodo: (sessionId: string, todoId: string) => void;
 
   // Terminal instance actions (bottom panel)
-  createTerminal: (workspaceId: string) => TerminalInstance | null;
-  closeTerminal: (workspaceId: string, terminalId: string) => void;
-  setActiveTerminal: (workspaceId: string, terminalId: string) => void;
+  createTerminal: (sessionId: string) => TerminalInstance | null;
+  closeTerminal: (sessionId: string, terminalId: string) => void;
+  setActiveTerminal: (sessionId: string, terminalId: string) => void;
   markTerminalExited: (terminalId: string) => void;
 
   // MCP servers actions
@@ -255,17 +255,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedAgentTodos[convId];
     }
 
-    // Clean up custom todos and session outputs for all sessions
+    // Clean up custom todos, session outputs, and terminal instances for all sessions
     const cleanedCustomTodos = { ...state.customTodos };
     const cleanedSessionOutputs = { ...state.sessionOutputs };
+    const cleanedTerminalInstances = { ...state.terminalInstances };
+    const cleanedActiveTerminalId = { ...state.activeTerminalId };
     for (const sessionId of workspaceSessionIds) {
       delete cleanedCustomTodos[sessionId];
       delete cleanedSessionOutputs[sessionId];
+      delete cleanedTerminalInstances[sessionId];
+      delete cleanedActiveTerminalId[sessionId];
     }
-
-    // Clean up terminal instances
-    const { [id]: _terminals, ...remainingTerminalInstances } = state.terminalInstances;
-    const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
 
     return {
       workspaces: state.workspaces.filter((w) => w.id !== id),
@@ -284,8 +284,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       agentTodos: cleanedAgentTodos,
       customTodos: cleanedCustomTodos,
       sessionOutputs: cleanedSessionOutputs,
-      terminalInstances: remainingTerminalInstances,
-      activeTerminalId: remainingActiveTerminalId,
+      terminalInstances: cleanedTerminalInstances,
+      activeTerminalId: cleanedActiveTerminalId,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -895,11 +895,11 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
 
   // Terminal instance actions (bottom panel)
-  createTerminal: (workspaceId) => {
+  createTerminal: (sessionId) => {
     const state = get();
-    const existing = state.terminalInstances[workspaceId] || [];
+    const existing = state.terminalInstances[sessionId] || [];
 
-    // Max 5 terminals per workspace
+    // Max 5 terminals per session
     if (existing.length >= 5) return null;
 
     // Find lowest available slot (1-5)
@@ -908,8 +908,8 @@ updateFileTabContent: (id, content) => set((state) => ({
     while (usedSlots.has(slot) && slot <= 5) slot++;
 
     const terminal: TerminalInstance = {
-      id: `${workspaceId}-term-${slot}-${Date.now()}`,
-      workspaceId,
+      id: `${sessionId}-term-${slot}-${Date.now()}`,
+      sessionId,
       slotNumber: slot,
       status: 'active',
     };
@@ -917,24 +917,24 @@ updateFileTabContent: (id, content) => set((state) => ({
     set({
       terminalInstances: {
         ...state.terminalInstances,
-        [workspaceId]: [...existing, terminal],
+        [sessionId]: [...existing, terminal],
       },
       activeTerminalId: {
         ...state.activeTerminalId,
-        [workspaceId]: terminal.id,
+        [sessionId]: terminal.id,
       },
     });
 
     return terminal;
   },
 
-  closeTerminal: (workspaceId, terminalId) => {
+  closeTerminal: (sessionId, terminalId) => {
     const state = get();
-    const existing = state.terminalInstances[workspaceId] || [];
+    const existing = state.terminalInstances[sessionId] || [];
     const filtered = existing.filter(t => t.id !== terminalId);
-    const wasActive = state.activeTerminalId[workspaceId] === terminalId;
+    const wasActive = state.activeTerminalId[sessionId] === terminalId;
 
-    let newActiveId = state.activeTerminalId[workspaceId];
+    let newActiveId = state.activeTerminalId[sessionId];
     if (wasActive && filtered.length > 0) {
       // Select next available or last
       const closedIndex = existing.findIndex(t => t.id === terminalId);
@@ -947,20 +947,20 @@ updateFileTabContent: (id, content) => set((state) => ({
     set({
       terminalInstances: {
         ...state.terminalInstances,
-        [workspaceId]: filtered,
+        [sessionId]: filtered,
       },
       activeTerminalId: {
         ...state.activeTerminalId,
-        [workspaceId]: newActiveId,
+        [sessionId]: newActiveId,
       },
     });
   },
 
-  setActiveTerminal: (workspaceId, terminalId) => {
+  setActiveTerminal: (sessionId, terminalId) => {
     set({
       activeTerminalId: {
         ...get().activeTerminalId,
-        [workspaceId]: terminalId,
+        [sessionId]: terminalId,
       },
     });
   },

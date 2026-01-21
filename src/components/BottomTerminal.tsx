@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -20,13 +20,13 @@ const Terminal = dynamic(
 );
 
 interface BottomTerminalProps {
-  workspaceId: string;
+  sessionId: string;
   workspacePath: string;
   onHide: () => void;
 }
 
-export function BottomTerminal({ workspaceId, workspacePath, onHide }: BottomTerminalProps) {
-  // Use optimized selector scoped to this workspace
+export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTerminalProps) {
+  // Use optimized selector scoped to this session
   const {
     instances,
     activeId,
@@ -34,19 +34,24 @@ export function BottomTerminal({ workspaceId, workspacePath, onHide }: BottomTer
     closeTerminal,
     setActiveTerminal,
     markTerminalExited,
-  } = useTerminalState(workspaceId);
+  } = useTerminalState(sessionId);
   const canCreateMore = instances.length < 5;
+
+  // Ref to track if we've already created a terminal for this session
+  // Prevents React Strict Mode from creating duplicate terminals
+  const createdRef = useRef<string | null>(null);
 
   // Auto-create first terminal when panel is shown and no terminals exist
   useEffect(() => {
-    if (instances.length === 0) {
-      createTerminal(workspaceId);
+    if (instances.length === 0 && createdRef.current !== sessionId) {
+      createdRef.current = sessionId;
+      createTerminal(sessionId);
     }
-  }, [workspaceId, instances.length, createTerminal]);
+  }, [sessionId, instances.length, createTerminal]);
 
   const handleCreateTerminal = () => {
     if (canCreateMore) {
-      createTerminal(workspaceId);
+      createTerminal(sessionId);
     }
   };
 
@@ -54,10 +59,10 @@ export function BottomTerminal({ workspaceId, workspacePath, onHide }: BottomTer
     e.stopPropagation();
     // If this is the last terminal, hide the panel
     if (instances.length === 1) {
-      closeTerminal(workspaceId, terminalId);
+      closeTerminal(sessionId, terminalId);
       onHide();
     } else {
-      closeTerminal(workspaceId, terminalId);
+      closeTerminal(sessionId, terminalId);
     }
   };
 
@@ -74,7 +79,7 @@ export function BottomTerminal({ workspaceId, workspacePath, onHide }: BottomTer
           {instances.map((terminal) => (
             <button
               key={terminal.id}
-              onClick={() => setActiveTerminal(workspaceId, terminal.id)}
+              onClick={() => setActiveTerminal(sessionId, terminal.id)}
               className={cn(
                 'flex items-center gap-1 px-2 py-1 text-xs rounded-sm shrink-0',
                 'hover:bg-accent/50 transition-colors',

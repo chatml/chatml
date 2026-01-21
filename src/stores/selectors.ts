@@ -17,7 +17,7 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
-import type { Message, AgentTodoItem, CustomTodoItem } from '@/lib/types';
+import type { Message, AgentTodoItem, CustomTodoItem, TerminalInstance } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -25,7 +25,7 @@ const EMPTY_MESSAGES: readonly Message[] = [];
 const EMPTY_TOOLS: readonly unknown[] = []; // ActiveTool is internal to appStore
 const EMPTY_AGENT_TODOS: readonly AgentTodoItem[] = [];
 const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
-const EMPTY_TERMINAL_INSTANCES: readonly unknown[] = [];
+const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
 
 // ============================================================================
 // Conversation State
@@ -188,14 +188,14 @@ export const useSelectedIds = () =>
 // ============================================================================
 
 /**
- * Terminal instances for a specific workspace.
+ * Terminal instances for a specific session.
  * Use in: BottomTerminal
  */
-export const useTerminalState = (workspaceId: string | null) =>
+export const useTerminalState = (sessionId: string | null) =>
   useAppStore(
     useShallow((s) => ({
-      instances: workspaceId ? s.terminalInstances[workspaceId] ?? EMPTY_TERMINAL_INSTANCES : EMPTY_TERMINAL_INSTANCES,
-      activeId: workspaceId ? s.activeTerminalId[workspaceId] : null,
+      instances: sessionId ? s.terminalInstances[sessionId] ?? EMPTY_TERMINAL_INSTANCES : EMPTY_TERMINAL_INSTANCES,
+      activeId: sessionId ? s.activeTerminalId[sessionId] : null,
       createTerminal: s.createTerminal,
       closeTerminal: s.closeTerminal,
       setActiveTerminal: s.setActiveTerminal,
