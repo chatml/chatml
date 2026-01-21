@@ -188,6 +188,16 @@ func TestParseAgentLine_ValidJSON(t *testing.T) {
 				assert.Equal(t, []string{"err1", "err2"}, event.Errors)
 			},
 		},
+		{
+			name:         "json_parse_error",
+			input:        `{"type":"json_parse_error","message":"Failed to parse input: Unexpected token","rawInput":"{invalid json}","errorDetails":"Unexpected token"}`,
+			expectedType: EventTypeJsonParseError,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, "Failed to parse input: Unexpected token", event.Message)
+				assert.Equal(t, "{invalid json}", event.RawInput)
+				assert.Equal(t, "Unexpected token", event.ErrorDetails)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -299,6 +309,7 @@ func TestAgentEvent_IsTerminalEvent(t *testing.T) {
 		{EventTypeInit, false},
 		{EventTypeNameSuggestion, false},
 		{EventTypeTodoUpdate, false},
+		{EventTypeJsonParseError, false}, // json_parse_error is NOT terminal - agent continues
 		{"text", false},
 		{"stderr", false},
 	}
