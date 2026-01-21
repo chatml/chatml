@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
-import { listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
+import { watchWorkspace, unwatchWorkspace, listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
 import { CheckpointTimeline } from '@/components/CheckpointTimeline';
@@ -283,16 +283,19 @@ export function ChangesPanel() {
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
-  // Listen for file change events and auto-refresh changes
+  // Watch session worktree for file changes and auto-refresh
   useEffect(() => {
-    if (!selectedWorkspaceId || !selectedSessionId) return;
+    if (!selectedSessionId || !currentSession?.worktreePath) return;
 
     const cleanupRef = { current: null as (() => void) | null };
     let isMounted = true;
 
+    // Start watching the session's worktree directory (using session ID as the key)
+    watchWorkspace(selectedSessionId, currentSession.worktreePath);
+
     const handleFileChange = (event: FileChangedEvent) => {
-      // Only refetch if the file change is for this workspace
-      if (event.workspaceId === selectedWorkspaceId) {
+      // Only refetch if the file change is for this session's worktree
+      if (event.workspaceId === selectedSessionId) {
         debouncedFetchChanges();
       }
     };
@@ -308,12 +311,14 @@ export function ChangesPanel() {
     return () => {
       isMounted = false;
       cleanupRef.current?.();
+      // Stop watching this session's worktree
+      unwatchWorkspace(selectedSessionId);
       // Clear any pending debounce timeout
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
+  }, [selectedSessionId, currentSession?.worktreePath, debouncedFetchChanges]);
 
   return (
     <div className="flex flex-col h-full border-l">
