@@ -259,16 +259,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedAgentTodos[convId];
     }
 
-    // Clean up custom todos, session outputs, and terminal instances for all sessions
+    // Clean up custom todos, session outputs, terminal instances, and terminal sessions for all sessions
     const cleanedCustomTodos = { ...state.customTodos };
     const cleanedSessionOutputs = { ...state.sessionOutputs };
     const cleanedTerminalInstances = { ...state.terminalInstances };
     const cleanedActiveTerminalId = { ...state.activeTerminalId };
+    const cleanedTerminalSessions = { ...state.terminalSessions };
     for (const sessionId of workspaceSessionIds) {
       delete cleanedCustomTodos[sessionId];
       delete cleanedSessionOutputs[sessionId];
       delete cleanedTerminalInstances[sessionId];
       delete cleanedActiveTerminalId[sessionId];
+      delete cleanedTerminalSessions[sessionId];
     }
 
     return {
@@ -290,6 +292,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessionOutputs: cleanedSessionOutputs,
       terminalInstances: cleanedTerminalInstances,
       activeTerminalId: cleanedActiveTerminalId,
+      terminalSessions: cleanedTerminalSessions,
       selectedFileTabId: null,
       fileTabs: [],
     };
