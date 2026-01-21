@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
+import "@fontsource/instrument-serif/400.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 

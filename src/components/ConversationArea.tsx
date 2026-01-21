@@ -614,7 +614,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             >
               <div className="p-4 space-y-1">
               {conversationMessages.length === 0 && !selectedConversationId ? (
-                <EmptyState sessionName={currentSession?.name} />
+                <ConversationEmptyState sessionName={currentSession?.name} />
               ) : (
                 <>
                   {conversationMessages.map((message, idx) => (
@@ -687,23 +687,23 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   );
 }
 
-function EmptyState({ sessionName }: { sessionName?: string }) {
+function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
   return (
-    <div className="py-12 px-4">
+    <div className="py-12 px-4 animate-fade-in">
       <div className="max-w-lg mx-auto text-center">
         {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
             <GitBranch className="w-4 h-4" />
             {sessionName}
           </div>
         )}
-        <h2 className="text-lg font-semibold mb-2">New Session</h2>
+        <h2 className="font-display text-display-sm tracking-display mb-2">New Session</h2>
         <p className="text-sm text-muted-foreground mb-6">
           Describe your task below. An AI agent will work on it in an isolated git branch.
         </p>
-        <div className="text-left bg-muted/50 rounded-lg p-4 space-y-3">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Example tasks</p>
-          <div className="space-y-2 text-sm">
+        <div className="text-left bg-surface-1/50 backdrop-blur-sm rounded-lg p-4 space-y-3 border border-border/50">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Example tasks</p>
+          <div className="space-y-2 text-sm stagger-children">
             <p className="text-muted-foreground">&quot;Add user authentication with JWT tokens&quot;</p>
             <p className="text-muted-foreground">&quot;Write unit tests for the payment service&quot;</p>
             <p className="text-muted-foreground">&quot;Refactor the API to use async/await&quot;</p>
@@ -748,7 +748,7 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
         <div className="max-w-[85%] border border-purple-400/20 bg-purple-500/10 rounded-2xl rounded-br-md px-4 py-2">
-          <p className="text-[13px] leading-relaxed">{message.content}</p>
+          <p className="text-sm leading-relaxed">{message.content}</p>
         </div>
       </div>
     );
@@ -772,7 +772,7 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
             <ContextMenu>
               <ContextMenuTrigger asChild>
                 <div className="group relative">
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-p:my-1 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-[11px] prose-code:before:content-none prose-code:after:content-none prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeHighlight]}

@@ -46,7 +46,7 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    'h-10 w-10 relative',
+                    'h-10 w-10 relative group transition-all duration-200',
                     isActive
                       ? 'text-foreground bg-sidebar-accent'
                       : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50'
@@ -54,9 +54,12 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
                   onClick={() => onViewChange(activity.id)}
                 >
                   {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-primary rounded-r" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-gradient-to-b from-primary to-purple-500 rounded-r" />
                   )}
-                  <Icon className="h-5 w-5" />
+                  <Icon className={cn(
+                    "h-5 w-5 transition-transform duration-200",
+                    !isActive && "group-hover:scale-110"
+                  )} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right" className="flex items-center gap-2">

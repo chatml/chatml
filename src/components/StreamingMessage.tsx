@@ -40,7 +40,7 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
           <p className="text-xs font-medium text-destructive">Error</p>
           <p
             className={cn(
-              'text-[11px] text-destructive/80 mt-0.5',
+              'text-xs text-destructive/80 mt-0.5',
               hasStackTrace && isExpanded && 'font-mono whitespace-pre-wrap'
             )}
           >
@@ -49,7 +49,7 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
           {needsTruncation && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="mt-1 text-[10px] text-destructive/60 hover:text-destructive flex items-center gap-0.5"
+              className="mt-1 text-xs text-destructive/60 hover:text-destructive flex items-center gap-0.5"
             >
               {isExpanded ? (
                 <>
@@ -67,7 +67,7 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
         </div>
         <button
           onClick={onDismiss}
-          className="text-[10px] text-muted-foreground hover:text-foreground shrink-0"
+          className="text-xs text-muted-foreground hover:text-foreground shrink-0"
           aria-label="Dismiss error"
         >
           Dismiss
@@ -141,25 +141,28 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
       <div className="space-y-1.5">
           {/* Extended thinking mode indicator - shows when thinking is enabled but no content yet */}
           {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && (
-            <div className="flex items-center gap-2" aria-label="Extended thinking enabled">
-              <Brain className="w-3.5 h-3.5 text-purple-500 shrink-0" aria-hidden="true" />
-              <span className="text-xs text-purple-500">Extended thinking active</span>
+            <div className="flex items-center gap-2 animate-fade-in" aria-label="Extended thinking enabled">
+              <Brain className="w-3.5 h-3.5 text-ai-thinking shrink-0 animate-thinking-pulse" aria-hidden="true" />
+              <span className="text-xs text-ai-thinking">Extended thinking active</span>
             </div>
           )}
 
           {/* Thinking indicator with expandable content */}
           {(streaming?.isThinking || streaming?.thinking) && (
-            <div className="flex flex-col gap-1" aria-label="Agent is thinking">
+            <div className="flex flex-col gap-1 animate-slide-up-fade" aria-label="Agent is thinking">
               <div className="flex items-center gap-2">
-                <Brain className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
-                <span className="text-xs font-medium text-muted-foreground">Thinking</span>
+                <Brain className={cn(
+                  "w-3.5 h-3.5 shrink-0 text-ai-thinking",
+                  streaming.isThinking && "animate-thinking-pulse"
+                )} aria-hidden="true" />
+                <span className="text-xs font-medium text-ai-thinking">Thinking</span>
                 {streaming.isThinking && (
-                  <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" aria-hidden="true" />
+                  <Loader2 className="w-3 h-3 animate-spin text-ai-thinking" aria-hidden="true" />
                 )}
                 {thinkingNeedsTruncation && (
                   <button
                     onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-                    className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80"
+                    className="flex items-center gap-0.5 text-xs text-primary hover:text-primary/80 transition-colors"
                   >
                     {isThinkingExpanded ? (
                       <>
@@ -178,8 +181,8 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
               {streaming.thinking && (
                 <div
                   className={cn(
-                    'ml-5 text-[11px] px-2 py-1.5 rounded bg-muted/50 text-muted-foreground font-mono',
-                    'border border-border/30',
+                    'ml-5 text-xs px-2 py-1.5 rounded bg-ai-thinking/10 text-muted-foreground font-mono',
+                    'border border-ai-thinking/20',
                     isThinkingExpanded ? 'whitespace-pre-wrap max-h-[200px] overflow-y-auto' : 'truncate max-w-full'
                   )}
                 >
@@ -194,7 +197,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
 
           {/* Streaming Text */}
           {streaming?.text && (
-            <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] leading-relaxed prose-p:my-1 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-[11px] prose-code:before:content-none prose-code:after:content-none prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+            <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
@@ -216,14 +219,14 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
           {/* Persistent working indicator with elapsed time */}
           {streaming?.isStreaming && !streaming?.error && (
             <div
-              className="flex items-center gap-2 pt-2 mt-2 border-t border-border/30"
+              className="flex items-center gap-2 pt-2 mt-2 border-t border-border/30 animate-fade-in"
               aria-label={`Agent is working, elapsed time: ${formatElapsedTime(elapsedTime)}`}
             >
-              <Loader2 className="w-3 h-3 animate-spin text-primary" aria-hidden="true" />
-              <span className="text-[11px] text-muted-foreground">Agent is working</span>
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground/70" aria-hidden="true">
+              <Loader2 className="w-3 h-3 animate-spin text-ai-active" aria-hidden="true" />
+              <span className="text-xs text-muted-foreground">Agent is working</span>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground/70" aria-hidden="true">
                 <Clock className="w-3 h-3" />
-                <span className="font-mono">{formatElapsedTime(elapsedTime)}</span>
+                <span className="font-mono tabular-nums">{formatElapsedTime(elapsedTime)}</span>
               </div>
             </div>
           )}

@@ -12,7 +12,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 import { FileIcon } from '@/components/FileTree';
-import { Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { FileTab } from '@/lib/types';
 
 interface FlatFile {
@@ -176,8 +176,14 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
       <CommandInput placeholder="Search files..." />
       <CommandList className="max-h-[400px]">
         {isLoading ? (
-          <div className="flex items-center justify-center py-6">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <div className="p-2 space-y-1">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded">
+                <Skeleton variant="default" className="w-4 h-4" />
+                <Skeleton variant="text" className="h-4 flex-1" />
+                <Skeleton variant="text" className="h-3 w-24" />
+              </div>
+            ))}
           </div>
         ) : error ? (
           <div className="py-6 text-center text-sm text-destructive">

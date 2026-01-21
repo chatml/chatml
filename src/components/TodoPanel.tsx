@@ -21,10 +21,10 @@ export function TodoPanel() {
     <ScrollArea className="h-full">
       <div className="py-1 px-2">
         {/* Header */}
-        <div className="flex items-center gap-1 py-1.5 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide">
+        <div className="flex items-center gap-1 py-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide">
           <span>Agent Tasks</span>
           {agentTotal > 0 && (
-            <span className="ml-auto text-[10px] font-normal normal-case tracking-normal text-muted-foreground">
+            <span className="ml-auto text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
               {agentCompleted}/{agentTotal}
             </span>
           )}

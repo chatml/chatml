@@ -580,10 +580,10 @@ function SortableWorkspaceItem({
                     <ContextMenuTrigger asChild>
                       <div
                         className={cn(
-                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5',
+                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5 hover-lift',
                           isSessionSelected
-                            ? 'bg-sidebar-accent'
-                            : 'hover:bg-sidebar-accent/50 transition-colors'
+                            ? 'bg-sidebar-accent shadow-sm'
+                            : 'hover:bg-sidebar-accent/50'
                         )}
                         onClick={() => onSelectSession(session.id)}
                       >

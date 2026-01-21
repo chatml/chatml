@@ -416,24 +416,17 @@ export function ChatInput() {
 
       <div className={cn(
         'relative',
-        isStreaming && !awaitingPlanApproval && 'streaming-border',
         awaitingPlanApproval && 'plan-approval-border'
       )}>
+        {/* Animated gradient border for streaming state */}
         {isStreaming && !awaitingPlanApproval && (
-          <svg className="streaming-border-svg">
-            <rect
-              x="1"
-              y="1"
-              rx="8"
-              ry="8"
-              style={{ width: 'calc(100% - 2px)', height: 'calc(100% - 2px)' }}
-            />
-          </svg>
+          <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 animate-gradient-shift opacity-70" style={{ backgroundSize: '200% 200%' }} />
         )}
       <div className={cn(
-        'rounded-lg border bg-muted/50',
+        'relative rounded-lg border backdrop-blur-sm bg-surface-1/50 transition-all duration-200',
         isStreaming && !awaitingPlanApproval && 'border-transparent',
         awaitingPlanApproval && 'border-transparent',
+        !isStreaming && !awaitingPlanApproval && 'hover:bg-surface-2/50 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary',
         isListening && 'shadow-[inset_0_4px_8px_-2px_rgba(16,185,129,0.15)]'
       )}>
@@ -576,7 +569,7 @@ export function ChatInput() {
             <Button
               size="icon"
               variant="destructive"
-              className="h-8 w-8 rounded-full"
+              className="h-8 w-8 rounded-full animate-glow-pulse-destructive"
               onClick={handleStop}
               aria-label="Stop agent"
             >
