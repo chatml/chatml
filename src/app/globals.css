@@ -189,36 +189,36 @@
 
 /* Code block styling */
 .prose pre {
-  @apply bg-muted/50 border border-border rounded-lg overflow-hidden my-3 p-2;
+  @apply bg-muted/50 border border-border rounded-lg overflow-hidden my-3 px-2 py-1.5;
 }
 
 .prose pre code {
-  @apply text-[11px] leading-relaxed;
+  @apply text-[11px] leading-relaxed p-0;
 }
 
 .prose pre code.hljs {
-  @apply bg-transparent;
+  @apply bg-transparent p-0;
 }
 
 .prose code:not(pre code) {
-  @apply bg-muted/50 px-1.5 py-0.5 rounded text-[13px] font-medium border border-border;
+  @apply bg-purple-500/20 px-1 py-0.5 rounded text-[11px] font-medium text-purple-700 dark:text-purple-300;
 }
 
 /* Heading styles */
 .prose h1 {
-  @apply text-lg font-semibold mt-5 mb-2 text-primary;
+  @apply text-lg font-semibold mt-5 mb-2 text-purple-800 dark:text-purple-300/70;
 }
 
 .prose h2 {
-  @apply text-[15px] font-semibold mt-4 mb-2 text-primary;
+  @apply text-[15px] font-semibold mt-4 mb-2 text-purple-800 dark:text-purple-300/70;
 }
 
 .prose h3 {
-  @apply text-[14px] font-semibold mt-3 mb-1.5 text-primary;
+  @apply text-[14px] font-semibold mt-3 mb-1.5 text-purple-800 dark:text-purple-300/70;
 }
 
 .prose h4, .prose h5, .prose h6 {
-  @apply text-[13px] font-semibold mt-2 mb-1 text-primary;
+  @apply text-[13px] font-semibold mt-2 mb-1 text-purple-800 dark:text-purple-300/70;
 }
 
 /* First heading shouldn't have top margin */

@@ -87,7 +87,7 @@ function CommandDialog({
           <DialogPrimitive.Content
             data-slot="dialog-content"
             className={cn(
-              "fixed top-[5%] left-[50%] translate-x-[-50%] z-50",
+              "fixed top-8 inset-x-0 mx-auto z-50",
               "w-full max-w-xl",
               "bg-popover/95 backdrop-blur-xl",
               "border rounded-lg shadow-2xl",

@@ -53,7 +53,7 @@ export function DiffViewer({
 }: DiffViewerProps) {
   const { resolvedTheme } = useTheme();
   const [diffFile, setDiffFile] = useState<DiffFile | null>(null);
-  const [viewMode, setViewMode] = useState<'split' | 'unified'>('split');
+  const [viewMode, setViewMode] = useState<'split' | 'unified'>('unified');
   const [activeCommentLine, setActiveCommentLine] = useState<{
     lineNumber: number;
     side: 'old' | 'new';
