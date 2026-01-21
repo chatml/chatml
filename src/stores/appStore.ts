@@ -34,6 +34,7 @@ interface StreamingState {
   thinking: string | null; // Current thinking content being streamed
   isThinking: boolean;
   startTime?: number; // When streaming started (for elapsed time)
+  planModeActive: boolean; // Whether plan mode is active for this conversation
 }
 
 interface ActiveTool {
@@ -153,6 +154,7 @@ interface AppState {
   appendThinkingText: (conversationId: string, text: string) => void;
   setThinking: (conversationId: string, isThinking: boolean) => void;
   clearThinking: (conversationId: string) => void;
+  setPlanModeActive: (conversationId: string, active: boolean) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   clearActiveTools: (conversationId: string) => void;
@@ -727,13 +729,14 @@ updateFileTabContent: (id, content) => set((state) => ({
         error,
         thinking: null,
         isThinking: false,
+        planModeActive: state.streamingState[conversationId]?.planModeActive || false,
       },
     },
   })),
   clearStreamingText: (conversationId) => set((state) => ({
     streamingState: {
       ...state.streamingState,
-      [conversationId]: { text: '', isStreaming: false, error: null, thinking: null, isThinking: false },
+      [conversationId]: { text: '', isStreaming: false, error: null, thinking: null, isThinking: false, planModeActive: state.streamingState[conversationId]?.planModeActive || false },
     },
   })),
   appendThinkingText: (conversationId, text) => set((state) => ({
@@ -772,6 +775,21 @@ updateFileTabContent: (id, content) => set((state) => ({
         error: state.streamingState[conversationId]?.error || null,
         thinking: null,
         isThinking: false,
+        planModeActive: state.streamingState[conversationId]?.planModeActive || false,
+      },
+    },
+  })),
+  setPlanModeActive: (conversationId, active) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming: state.streamingState[conversationId]?.isStreaming || false,
+        error: state.streamingState[conversationId]?.error || null,
+        thinking: state.streamingState[conversationId]?.thinking || null,
+        isThinking: state.streamingState[conversationId]?.isThinking || false,
+        planModeActive: active,
       },
     },
   })),
@@ -803,13 +821,14 @@ updateFileTabContent: (id, content) => set((state) => ({
   finalizeStreamingMessage: (conversationId, metadata) => set((state) => {
     const streaming = state.streamingState[conversationId];
 
-    // Build cleared streaming state
+    // Build cleared streaming state (preserve planModeActive)
     const clearedStreaming = {
       text: '',
       isStreaming: false,
       error: null,
       thinking: null,
       isThinking: false,
+      planModeActive: streaming?.planModeActive || false,
     };
 
     // If no streaming text, just clear the state

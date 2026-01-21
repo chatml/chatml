@@ -64,8 +64,13 @@ func (m *Manager) SetConversationStatusHandler(handler ConversationStatusHandler
 	m.onConversationStatus = handler
 }
 
+// StartConversationOptions contains optional parameters for starting a conversation
+type StartConversationOptions struct {
+	MaxThinkingTokens int // Enable extended thinking with this token budget
+}
+
 // StartConversation creates and starts a new conversation within a session
-func (m *Manager) StartConversation(sessionID, conversationType, initialMessage string) (*models.Conversation, error) {
+func (m *Manager) StartConversation(sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
 	ctx := context.Background()
 	session, err := m.store.GetSession(ctx, sessionID)
 	if err != nil {
@@ -119,8 +124,20 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 		return nil, fmt.Errorf("failed to add conversation: %w", err)
 	}
 
+	// Build process options
+	procOpts := ProcessOptions{
+		ID:             convID,
+		Workdir:        session.WorktreePath,
+		ConversationID: convID,
+	}
+
+	// Apply optional parameters
+	if opts != nil {
+		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
+	}
+
 	// Create and start process
-	proc := NewProcess(convID, session.WorktreePath, convID)
+	proc := NewProcessWithOptions(procOpts)
 
 	m.mu.Lock()
 	m.convProcesses[convID] = proc
@@ -350,6 +367,25 @@ func (m *Manager) RewindConversationFiles(convID, checkpointUuid string) error {
 	}
 
 	return proc.RewindFiles(checkpointUuid)
+}
+
+// SetConversationPlanMode sets the permission mode for a conversation
+// When enabled=true, sets "plan" mode; when enabled=false, sets "bypassPermissions"
+func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("conversation process not running: %s", convID)
+	}
+
+	mode := "bypassPermissions"
+	if enabled {
+		mode = "plan"
+	}
+
+	return proc.SetPermissionMode(mode)
 }
 
 // StopConversation stops a running conversation
