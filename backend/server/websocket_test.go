@@ -28,15 +28,15 @@ func TestNewHub(t *testing.T) {
 func TestNewHub_ChannelsInitialized(t *testing.T) {
 	hub := NewHub()
 
-	// Verify broadcast channel has buffer of 256
-	// We can verify this by sending 256 pre-serialized messages without blocking
+	// Verify broadcast channel has buffer of 1024
+	// We can verify this by sending 1024 pre-serialized messages without blocking
 	testData, _ := json.Marshal(Event{Type: "test"})
-	for i := 0; i < 256; i++ {
+	for i := 0; i < 1024; i++ {
 		select {
 		case hub.broadcast <- testData:
 			// OK - channel accepted the message
 		default:
-			t.Fatalf("Channel blocked after %d messages, expected buffer of 256", i)
+			t.Fatalf("Channel blocked after %d messages, expected buffer of 1024", i)
 		}
 	}
 }
@@ -74,13 +74,13 @@ func TestHub_Broadcast_Success(t *testing.T) {
 func TestHub_Broadcast_ChannelFull(t *testing.T) {
 	hub := NewHub()
 
-	// Fill the channel to capacity (256)
+	// Fill the channel to capacity (1024)
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 256; i++ {
+	for i := 0; i < 1024; i++ {
 		hub.broadcast <- fillerData
 	}
 
-	// Now broadcast should drop the event (non-blocking)
+	// Now broadcast should timeout and drop the event after 2 seconds
 	done := make(chan bool)
 	go func() {
 		result := hub.Broadcast(Event{Type: "dropped"})
@@ -90,13 +90,13 @@ func TestHub_Broadcast_ChannelFull(t *testing.T) {
 
 	select {
 	case <-done:
-		// Success - broadcast didn't block even with full channel
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Broadcast blocked when channel was full")
+		// Success - broadcast returned (after timeout)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Broadcast did not timeout after 2 seconds")
 	}
 
-	// Verify dropped message was recorded in metrics
-	assert.Equal(t, uint64(1), hub.metrics.messagesDropped.Load())
+	// Verify timed out message was recorded in metrics
+	assert.Equal(t, uint64(1), hub.metrics.messagesTimedOut.Load())
 }
 
 func TestHub_Broadcast_MultipleEvents(t *testing.T) {
@@ -129,9 +129,9 @@ func TestHub_Broadcast_MultipleEvents(t *testing.T) {
 func TestHub_Broadcast_Backpressure(t *testing.T) {
 	hub := NewHub()
 
-	// Fill channel to >75% capacity (193 messages, which is > 192 = 256*3/4) to trigger backpressure
+	// Fill channel to >75% capacity (769 messages, which is > 768 = 1024*3/4) to trigger backpressure
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 193; i++ {
+	for i := 0; i < 769; i++ {
 		hub.broadcast <- fillerData
 	}
 
@@ -317,7 +317,7 @@ func TestHub_GetStats(t *testing.T) {
 	assert.Equal(t, uint64(1), stats["messagesDropped"])
 	assert.Equal(t, int64(3), stats["currentClients"])
 	assert.Equal(t, int64(3), stats["peakClients"])
-	assert.Equal(t, 256, stats["broadcastBufferCapacity"])
+	assert.Equal(t, 1024, stats["broadcastBufferCapacity"])
 }
 
 // ============================================================================
@@ -460,4 +460,60 @@ func TestBroadcastResult_SuccessfulDelivery(t *testing.T) {
 
 	assert.True(t, result.Delivered)
 	assert.False(t, result.Backpressure)
+}
+
+// ============================================================================
+// Timeout Behavior Tests
+// ============================================================================
+
+func TestHub_Broadcast_TimeoutBehavior(t *testing.T) {
+	hub := NewHub()
+
+	// Fill the channel to capacity (1024)
+	fillerData, _ := json.Marshal(Event{Type: "filler"})
+	for i := 0; i < 1024; i++ {
+		hub.broadcast <- fillerData
+	}
+
+	// Measure how long broadcast takes when channel is full
+	start := time.Now()
+	result := hub.Broadcast(Event{Type: "timed_out"})
+	elapsed := time.Since(start)
+
+	// Should take approximately 2 seconds (the timeout duration)
+	assert.False(t, result.Delivered, "Event should not be delivered when channel full")
+	assert.GreaterOrEqual(t, elapsed, 2*time.Second, "Should wait at least 2 seconds before timing out")
+	assert.Less(t, elapsed, 3*time.Second, "Should not wait much longer than 2 seconds")
+
+	// Verify timeout metric was recorded
+	assert.Equal(t, uint64(1), hub.metrics.messagesTimedOut.Load())
+}
+
+func TestHub_Metrics_TimedOut(t *testing.T) {
+	hub := NewHub()
+
+	// Initial state should be zero
+	assert.Equal(t, uint64(0), hub.metrics.messagesTimedOut.Load())
+
+	// Record a timeout
+	hub.metrics.recordTimedOut()
+	assert.Equal(t, uint64(1), hub.metrics.messagesTimedOut.Load())
+
+	// Record another
+	hub.metrics.recordTimedOut()
+	assert.Equal(t, uint64(2), hub.metrics.messagesTimedOut.Load())
+}
+
+func TestHub_GetStats_IncludesTimedOut(t *testing.T) {
+	hub := NewHub()
+
+	// Record a timeout
+	hub.metrics.recordTimedOut()
+
+	stats := hub.GetStats()
+
+	// Verify messagesTimedOut is included in stats
+	timedOut, exists := stats["messagesTimedOut"]
+	assert.True(t, exists, "messagesTimedOut should be in stats")
+	assert.Equal(t, uint64(1), timedOut)
 }
