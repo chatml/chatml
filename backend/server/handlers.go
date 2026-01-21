@@ -245,6 +245,16 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Track rollback state - if any subsequent operation fails, clean up the worktree
+	rollback := true
+	defer func() {
+		if rollback {
+			fmt.Printf("[handlers] Rolling back worktree creation due to failure: %s\n", worktreePath)
+			session.DeleteMetadata(worktreePath)
+			h.worktreeManager.RemoveAtPath(repo.Path, worktreePath, branchName)
+		}
+	}()
+
 	now := time.Now()
 
 	// Write session metadata JSON file for portability
@@ -321,6 +331,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// All operations succeeded - disable rollback
+	rollback = false
 	writeJSON(w, sess)
 }
 

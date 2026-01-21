@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/cleanup"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/orchestrator"
@@ -28,6 +31,16 @@ func main() {
 
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
+
+	// Clean up orphaned worktrees from previous crashes or failed session creations
+	// Use a timeout to prevent startup from hanging indefinitely on git lock issues
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := cleanup.CleanOrphanedWorktrees(cleanupCtx, s, wm); err != nil {
+		log.Printf("Warning: orphan cleanup failed: %v", err)
+		// Non-fatal - continue startup
+	}
+	cleanupCancel()
+
 	agentMgr := agent.NewManager(s, wm)
 
 	// GitHub OAuth client
