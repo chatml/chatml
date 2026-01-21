@@ -85,23 +85,23 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req AddRepoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if err := h.repoManager.ValidateRepo(req.Path); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid repository path")
 		return
 	}
 
 	// Check if repo with same path already exists
 	existing, err := h.store.GetRepoByPath(ctx, req.Path)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if existing != nil {
-		http.Error(w, "repository already added", http.StatusConflict)
+		writeConflict(w, "repository already added")
 		return
 	}
 
@@ -116,7 +116,7 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.AddRepo(ctx, repo); err != nil {
-		http.Error(w, fmt.Sprintf("failed to add repo: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 
@@ -127,7 +127,7 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	repos, err := h.store.ListRepos(ctx)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	writeJSON(w, repos)
@@ -138,11 +138,11 @@ func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 	writeJSON(w, repo)
@@ -152,7 +152,7 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	if err := h.store.DeleteRepo(ctx, id); err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete repo: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -165,7 +165,7 @@ func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "id")
 	sessions, err := h.store.ListSessions(ctx, workspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	writeJSON(w, sessions)
@@ -187,17 +187,17 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, workspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		writeNotFound(w, "workspace")
 		return
 	}
 
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
@@ -207,13 +207,13 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Get workspaces base directory (~/.chatml/workspaces)
 	workspacesDir, err := git.WorkspacesBaseDir()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get workspaces directory: %v", err), http.StatusInternalServerError)
+		writeInternalError(w, "failed to get workspaces directory", err)
 		return
 	}
 
 	// Ensure workspaces base directory exists
 	if err := os.MkdirAll(workspacesDir, 0755); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create workspaces directory: %v", err), http.StatusInternalServerError)
+		writeInternalError(w, "failed to create workspaces directory", err)
 		return
 	}
 
@@ -253,12 +253,12 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Other error - fail the request
-			http.Error(w, fmt.Sprintf("failed to create session directory: %v", err), http.StatusInternalServerError)
+			writeInternalError(w, "failed to create session directory", err)
 			return
 		}
 
 		if sessionName == "" {
-			http.Error(w, "failed to generate unique session name after retries", http.StatusConflict)
+			writeConflict(w, "failed to generate unique session name after retries")
 			return
 		}
 	} else {
@@ -266,10 +266,10 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		path, err := git.CreateSessionDirectoryAtomic(workspacesDir, sessionName)
 		if err != nil {
 			if errors.Is(err, git.ErrDirectoryExists) {
-				http.Error(w, fmt.Sprintf("session name '%s' already exists", sessionName), http.StatusConflict)
+				writeConflict(w, fmt.Sprintf("session name '%s' already exists", sessionName))
 				return
 			}
-			http.Error(w, fmt.Sprintf("failed to create session directory: %v", err), http.StatusInternalServerError)
+			writeInternalError(w, "failed to create session directory", err)
 			return
 		}
 		sessionPath = path
@@ -288,7 +288,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
 			log.Printf("[handlers] Warning: failed to rollback session directory %s: %v", sessionPath, removeErr)
 		}
-		http.Error(w, fmt.Sprintf("failed to create worktree: %v", err), http.StatusInternalServerError)
+		writeInternalError(w, "failed to create worktree", err)
 		return
 	}
 
@@ -325,7 +325,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.AddSession(ctx, sess); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create session: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 
@@ -343,7 +343,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:   now,
 	}
 	if err := h.store.AddConversation(ctx, conv); err != nil {
-		http.Error(w, fmt.Sprintf("failed to create conversation: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 
@@ -364,7 +364,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Timestamp: now,
 	}
 	if err := h.store.AddMessageToConversation(ctx, convID, setupMsg); err != nil {
-		http.Error(w, fmt.Sprintf("failed to add setup message: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 
@@ -376,11 +376,11 @@ func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 	writeJSON(w, session)
@@ -402,27 +402,27 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	var req UpdateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
-// Validate status values before updating
+	// Validate status values before updating
 	if req.Status != nil && !models.ValidSessionStatuses[*req.Status] {
-		http.Error(w, "invalid status value", http.StatusBadRequest)
+		writeValidationError(w, "invalid status value")
 		return
 	}
 	if req.PRStatus != nil && !models.ValidPRStatuses[*req.PRStatus] {
-		http.Error(w, "invalid prStatus value", http.StatusBadRequest)
+		writeValidationError(w, "invalid prStatus value")
 		return
 	}
 
@@ -453,13 +453,13 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		s.UpdatedAt = time.Now()
 	}); err != nil {
-		http.Error(w, fmt.Sprintf("failed to update session: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 
-session, err = h.store.GetSession(ctx, id)
+	session, err = h.store.GetSession(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	writeJSON(w, session)
@@ -472,13 +472,13 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	// Get session to find workspace and worktree path
 	sess, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if sess != nil {
 		repo, err := h.store.GetRepo(ctx, sess.WorkspaceID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+			writeDBError(w, err)
 			return
 		}
 		if repo != nil && sess.WorktreePath != "" {
@@ -491,7 +491,7 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.DeleteSession(ctx, sessionID); err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete session: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -503,22 +503,22 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	// Get the workspace to find the base branch
 	workspace, err := h.store.GetRepo(ctx, session.WorkspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if workspace == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		writeNotFound(w, "workspace")
 		return
 	}
 
@@ -537,7 +537,7 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 	// Get comprehensive git status
 	status, err := h.repoManager.GetStatus(workingPath, baseBranch)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get git status: %v", err), http.StatusInternalServerError)
+		writeInternalError(w, "failed to get git status", err)
 		return
 	}
 
@@ -550,22 +550,22 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	// Get the workspace to find the base branch
 	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		writeNotFound(w, "workspace")
 		return
 	}
 
@@ -609,28 +609,28 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	// Get the workspace to find the base branch
 	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		writeNotFound(w, "workspace")
 		return
 	}
 
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
-		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		writeValidationError(w, "path parameter is required")
 		return
 	}
 
@@ -652,7 +652,7 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	// Validate and clean the path
 	cleanPath, err := validatePath(workingPath, filePath)
 	if err != nil {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		writeValidationError(w, "invalid path")
 		return
 	}
 
@@ -660,7 +660,7 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	fullPath := filepath.Join(workingPath, cleanPath)
 	newContent, err := os.ReadFile(fullPath)
 	if err != nil && !os.IsNotExist(err) {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to read file", err)
 		return
 	}
 
@@ -697,34 +697,34 @@ func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	var req SendMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if req.Content == "" {
-		http.Error(w, "content is required", http.StatusBadRequest)
+		writeValidationError(w, "content is required")
 		return
 	}
 
 	// Check if there's an active agent for this session
 	if session.AgentID == "" {
-		http.Error(w, "no agent running for this session", http.StatusBadRequest)
+		writeValidationError(w, "no agent running for this session")
 		return
 	}
 
 	// Send message to the agent
 	if err := h.agentManager.SendMessage(session.AgentID, req.Content); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to send message", err)
 		return
 	}
 
@@ -737,9 +737,9 @@ func (h *Handlers) SendSessionMessage(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	repoID := chi.URLParam(r, "id")
-agents, err := h.store.ListAgents(ctx, repoID)
+	agents, err := h.store.ListAgents(ctx, repoID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	writeJSON(w, agents)
@@ -754,23 +754,23 @@ func (h *Handlers) SpawnAgent(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, repoID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 
 	var req SpawnAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	agent, err := h.agentManager.SpawnAgent(repo.Path, repoID, req.Task)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to spawn agent", err)
 		return
 	}
 
@@ -788,11 +788,11 @@ func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	agent, err := h.store.GetAgent(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if agent == nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeNotFound(w, "agent")
 		return
 	}
 	writeJSON(w, agent)
@@ -803,27 +803,27 @@ func (h *Handlers) GetAgentDiff(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "id")
 	agent, err := h.store.GetAgent(ctx, agentID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if agent == nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeNotFound(w, "agent")
 		return
 	}
 
 	repo, err := h.store.GetRepo(ctx, agent.RepoID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 
 	diff, err := h.worktreeManager.GetDiff(repo.Path, agentID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to get diff", err)
 		return
 	}
 
@@ -836,26 +836,26 @@ func (h *Handlers) MergeAgent(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "id")
 	agent, err := h.store.GetAgent(ctx, agentID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if agent == nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeNotFound(w, "agent")
 		return
 	}
 
 	repo, err := h.store.GetRepo(ctx, agent.RepoID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 
 	if err := h.worktreeManager.Merge(repo.Path, agentID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to merge agent changes", err)
 		return
 	}
 
@@ -867,17 +867,17 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	agentID := chi.URLParam(r, "id")
 	agent, err := h.store.GetAgent(ctx, agentID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if agent == nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeNotFound(w, "agent")
 		return
 	}
 
 	repo, err := h.store.GetRepo(ctx, agent.RepoID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo != nil {
@@ -885,7 +885,7 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.DeleteAgent(ctx, agentID); err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete agent: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -905,11 +905,11 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 
@@ -922,7 +922,7 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 
 	tree, err := buildFileTree(repo.Path, "", maxDepth, 0)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to list files", err)
 		return
 	}
 
@@ -1039,17 +1039,17 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
-		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		writeValidationError(w, "path parameter is required")
 		return
 	}
 
@@ -1062,7 +1062,7 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 	// Validate and clean the path
 	cleanPath, err := validatePath(repo.Path, filePath)
 	if err != nil {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		writeValidationError(w, "invalid path")
 		return
 	}
 
@@ -1071,7 +1071,7 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 	// Read current file content
 	newContent, err := os.ReadFile(fullPath)
 	if err != nil && !os.IsNotExist(err) {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to read file", err)
 		return
 	}
 
@@ -1105,25 +1105,25 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, id)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		writeNotFound(w, "repo")
 		return
 	}
 
 	// Get file path from query parameter
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
-		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		writeValidationError(w, "path parameter is required")
 		return
 	}
 
 	// Validate and clean the path to prevent directory traversal attacks
 	cleanPath, err := validatePath(repo.Path, filePath)
 	if err != nil {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		writeValidationError(w, "invalid path")
 		return
 	}
 
@@ -1133,21 +1133,21 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "file not found", http.StatusNotFound)
+			writeNotFound(w, "file")
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeInternalError(w, "failed to access file", err)
 		}
 		return
 	}
 	if info.IsDir() {
-		http.Error(w, "path is a directory", http.StatusBadRequest)
+		writeValidationError(w, "path is a directory")
 		return
 	}
 
 	// Read file content
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to read file", err)
 		return
 	}
 
@@ -1167,25 +1167,25 @@ func (h *Handlers) GetSessionFileContent(w http.ResponseWriter, r *http.Request)
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	// Get file path from query parameter
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
-		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		writeValidationError(w, "path parameter is required")
 		return
 	}
 
 	// Validate and clean the path to prevent directory traversal attacks
 	cleanPath, err := validatePath(session.WorktreePath, filePath)
 	if err != nil {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		writeValidationError(w, "invalid path")
 		return
 	}
 
@@ -1195,21 +1195,21 @@ func (h *Handlers) GetSessionFileContent(w http.ResponseWriter, r *http.Request)
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "file not found", http.StatusNotFound)
+			writeNotFound(w, "file")
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeInternalError(w, "failed to access file", err)
 		}
 		return
 	}
 	if info.IsDir() {
-		http.Error(w, "path is a directory", http.StatusBadRequest)
+		writeValidationError(w, "path is a directory")
 		return
 	}
 
 	// Read file content
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to read file", err)
 		return
 	}
 
@@ -1229,11 +1229,11 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
@@ -1249,7 +1249,7 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 	// Build file tree from worktree path
 	tree, err := buildFileTree(session.WorktreePath, "", maxDepth, 0)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list files: %v", err), http.StatusInternalServerError)
+		writeInternalError(w, "failed to list files", err)
 		return
 	}
 
@@ -1271,22 +1271,22 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, workspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		writeNotFound(w, "workspace")
 		return
 	}
 
 	var req SaveFileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if req.Path == "" {
-		http.Error(w, "path is required", http.StatusBadRequest)
+		writeValidationError(w, "path is required")
 		return
 	}
 
@@ -1296,11 +1296,11 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 	if sessionID != "" {
 		session, err := h.store.GetSession(ctx, sessionID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+			writeDBError(w, err)
 			return
 		}
 		if session == nil {
-			http.Error(w, "session not found", http.StatusNotFound)
+			writeNotFound(w, "session")
 			return
 		}
 		if session.WorktreePath != "" {
@@ -1311,7 +1311,7 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 	// Validate and clean the path to prevent directory traversal attacks
 	cleanPath, err := validatePath(basePath, req.Path)
 	if err != nil {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		writeValidationError(w, "invalid path")
 		return
 	}
 
@@ -1321,14 +1321,14 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "file not found", http.StatusNotFound)
+			writeNotFound(w, "file")
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeInternalError(w, "failed to access file", err)
 		}
 		return
 	}
 	if info.IsDir() {
-		http.Error(w, "path is a directory", http.StatusBadRequest)
+		writeValidationError(w, "path is a directory")
 		return
 	}
 
@@ -1337,7 +1337,7 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 
 	// Write file content
 	if err := os.WriteFile(fullPath, []byte(req.Content), mode); err != nil {
-		http.Error(w, fmt.Sprintf("failed to save file: %v", err), http.StatusInternalServerError)
+		writeInternalError(w, "failed to save file", err)
 		return
 	}
 
@@ -1352,7 +1352,7 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	convs, err := h.store.ListConversations(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	writeJSON(w, convs)
@@ -1369,17 +1369,17 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if session == nil {
-		http.Error(w, "session not found", http.StatusNotFound)
+		writeNotFound(w, "session")
 		return
 	}
 
 	var req CreateConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
@@ -1398,7 +1398,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	conv, err := h.agentManager.StartConversation(sessionID, req.Type, req.Message, opts)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to start conversation", err)
 		return
 	}
 
@@ -1414,11 +1414,11 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 	convID := chi.URLParam(r, "convId")
 	conv, err := h.store.GetConversation(ctx, convID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if conv == nil {
-		http.Error(w, "conversation not found", http.StatusNotFound)
+		writeNotFound(w, "conversation")
 		return
 	}
 	writeJSON(w, conv)
@@ -1433,27 +1433,27 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 	convID := chi.URLParam(r, "convId")
 	conv, err := h.store.GetConversation(ctx, convID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if conv == nil {
-		http.Error(w, "conversation not found", http.StatusNotFound)
+		writeNotFound(w, "conversation")
 		return
 	}
 
 	var req SendConversationMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if req.Content == "" {
-		http.Error(w, "content is required", http.StatusBadRequest)
+		writeValidationError(w, "content is required")
 		return
 	}
 
 	if err := h.agentManager.SendConversationMessage(convID, req.Content); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to send message", err)
 		return
 	}
 
@@ -1466,11 +1466,11 @@ func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 	convID := chi.URLParam(r, "convId")
 	conv, err := h.store.GetConversation(ctx, convID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if conv == nil {
-		http.Error(w, "conversation not found", http.StatusNotFound)
+		writeNotFound(w, "conversation")
 		return
 	}
 
@@ -1487,27 +1487,27 @@ func (h *Handlers) RewindConversation(w http.ResponseWriter, r *http.Request) {
 	convID := chi.URLParam(r, "convId")
 	conv, err := h.store.GetConversation(ctx, convID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if conv == nil {
-		http.Error(w, "conversation not found", http.StatusNotFound)
+		writeNotFound(w, "conversation")
 		return
 	}
 
 	var req RewindConversationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if req.CheckpointUuid == "" {
-		http.Error(w, "checkpointUuid is required", http.StatusBadRequest)
+		writeValidationError(w, "checkpointUuid is required")
 		return
 	}
 
 	if err := h.agentManager.RewindConversationFiles(convID, req.CheckpointUuid); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to rewind conversation", err)
 		return
 	}
 
@@ -1520,11 +1520,11 @@ func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	convID := chi.URLParam(r, "convId")
 	conv, err := h.store.GetConversation(ctx, convID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if conv == nil {
-		http.Error(w, "conversation not found", http.StatusNotFound)
+		writeNotFound(w, "conversation")
 		return
 	}
 
@@ -1533,7 +1533,7 @@ func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Delete from store
 	if err := h.store.DeleteConversation(ctx, convID); err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete conversation: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1548,22 +1548,22 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	convID := chi.URLParam(r, "convId")
 	conv, err := h.store.GetConversation(ctx, convID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if conv == nil {
-		http.Error(w, "conversation not found", http.StatusNotFound)
+		writeNotFound(w, "conversation")
 		return
 	}
 
 	var req SetPlanModeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if err := h.agentManager.SetConversationPlanMode(convID, req.Enabled); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to set plan mode", err)
 		return
 	}
 
@@ -1577,11 +1577,10 @@ func (h *Handlers) ListFileTabs(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "id")
 	tabs, err := h.store.ListFileTabs(ctx, workspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tabs)
+	writeJSON(w, tabs)
 }
 
 type SaveFileTabsRequest struct {
@@ -1605,17 +1604,17 @@ func (h *Handlers) SaveFileTabs(w http.ResponseWriter, r *http.Request) {
 	workspaceID := chi.URLParam(r, "id")
 	repo, err := h.store.GetRepo(ctx, workspaceID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	if repo == nil {
-		http.Error(w, "workspace not found", http.StatusNotFound)
+		writeNotFound(w, "workspace")
 		return
 	}
 
 	var req SaveFileTabsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
@@ -1645,19 +1644,18 @@ func (h *Handlers) SaveFileTabs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.SaveFileTabs(ctx, workspaceID, tabs); err != nil {
-		http.Error(w, fmt.Sprintf("failed to save file tabs: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	writeJSON(w, map[string]bool{"success": true})
 }
 
 func (h *Handlers) DeleteFileTab(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tabID := chi.URLParam(r, "tabId")
 	if err := h.store.DeleteFileTab(ctx, tabID); err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete file tab: %v", err), http.StatusInternalServerError)
+		writeDBError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -45,26 +45,26 @@ type AuthStatusResponse struct {
 func (h *AuthHandlers) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 	var req GitHubCallbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if req.Code == "" {
-		http.Error(w, "code is required", http.StatusBadRequest)
+		writeValidationError(w, "code is required")
 		return
 	}
 
 	// Exchange code for token
 	token, err := h.ghClient.ExchangeCode(r.Context(), req.Code)
 	if err != nil {
-		http.Error(w, "failed to exchange code: "+err.Error(), http.StatusBadGateway)
+		writeBadGateway(w, "failed to exchange code", err)
 		return
 	}
 
 	// Fetch user info
 	user, err := h.ghClient.GetUser(r.Context(), token)
 	if err != nil {
-		http.Error(w, "failed to fetch user: "+err.Error(), http.StatusBadGateway)
+		writeBadGateway(w, "failed to fetch user", err)
 		return
 	}
 
@@ -84,19 +84,19 @@ func (h *AuthHandlers) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandlers) SetToken(w http.ResponseWriter, r *http.Request) {
 	var req SetTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
 	if req.Token == "" {
-		http.Error(w, "token is required", http.StatusBadRequest)
+		writeValidationError(w, "token is required")
 		return
 	}
 
 	// Validate token by fetching user
 	user, err := h.ghClient.GetUser(r.Context(), req.Token)
 	if err != nil {
-		http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, ErrCodeUnauthorized, "invalid token", err)
 		return
 	}
 

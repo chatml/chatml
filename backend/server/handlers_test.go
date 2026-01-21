@@ -70,7 +70,12 @@ func TestAddRepo_NotGitRepo(t *testing.T) {
 	h.AddRepo(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "not a git repository")
+	// Verify JSON error format
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeValidation, apiErr.Code)
+	assert.Equal(t, "invalid repository path", apiErr.Error)
 }
 
 func TestAddRepo_AlreadyExists(t *testing.T) {
@@ -428,7 +433,13 @@ func TestSetConversationPlanMode_ProcessNotRunning(t *testing.T) {
 	h.SetConversationPlanMode(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Contains(t, w.Body.String(), "conversation process not running")
+
+	// Verify JSON error format
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeInternal, apiErr.Code)
+	assert.Equal(t, "failed to set plan mode", apiErr.Error)
 }
 
 // ============================================================================

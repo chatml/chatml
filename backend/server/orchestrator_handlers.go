@@ -56,12 +56,11 @@ func (h *OrchestratorHandlers) ListAgents(w http.ResponseWriter, r *http.Request
 // POST /api/orchestrator/agents/reload
 func (h *OrchestratorHandlers) ReloadAgents(w http.ResponseWriter, r *http.Request) {
 	if err := h.orch.ReloadAgents(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to reload agents", err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"success": true,
 		"count":   len(h.orch.ListAgents()),
 	})
@@ -74,7 +73,7 @@ func (h *OrchestratorHandlers) GetAgent(w http.ResponseWriter, r *http.Request) 
 
 	agent, ok := h.orch.GetAgent(agentID)
 	if !ok {
-		http.Error(w, "Agent not found", http.StatusNotFound)
+		writeNotFound(w, "agent")
 		return
 	}
 
@@ -111,7 +110,7 @@ func (h *OrchestratorHandlers) UpdateAgentState(w http.ResponseWriter, r *http.R
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
@@ -119,12 +118,12 @@ func (h *OrchestratorHandlers) UpdateAgentState(w http.ResponseWriter, r *http.R
 	if req.Enabled != nil {
 		if *req.Enabled {
 			if err := h.orch.EnableAgent(agentID); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				writeInternalError(w, "failed to enable agent", err)
 				return
 			}
 		} else {
 			if err := h.orch.DisableAgent(agentID); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				writeInternalError(w, "failed to disable agent", err)
 				return
 			}
 		}
@@ -133,7 +132,7 @@ func (h *OrchestratorHandlers) UpdateAgentState(w http.ResponseWriter, r *http.R
 	// Update polling interval
 	if req.PollingIntervalMs != nil {
 		if err := h.orch.UpdateAgentInterval(agentID, *req.PollingIntervalMs); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeInternalError(w, "failed to update polling interval", err)
 			return
 		}
 	}
@@ -141,12 +140,11 @@ func (h *OrchestratorHandlers) UpdateAgentState(w http.ResponseWriter, r *http.R
 	// Return updated agent
 	agent, ok := h.orch.GetAgent(agentID)
 	if !ok {
-		http.Error(w, "Agent not found", http.StatusNotFound)
+		writeNotFound(w, "agent")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agent)
+	writeJSON(w, agent)
 }
 
 // TriggerAgentRun manually triggers an agent run
@@ -156,7 +154,7 @@ func (h *OrchestratorHandlers) TriggerAgentRun(w http.ResponseWriter, r *http.Re
 
 	run, err := h.orch.TriggerAgentRun(agentID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to trigger agent run", err)
 		return
 	}
 
@@ -179,12 +177,11 @@ func (h *OrchestratorHandlers) ListAgentRuns(w http.ResponseWriter, r *http.Requ
 
 	runs, err := h.orch.GetAgentRuns(agentID, limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to get agent runs", err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(runs)
+	writeJSON(w, runs)
 }
 
 // GetAgentRun returns a specific agent run
@@ -194,16 +191,15 @@ func (h *OrchestratorHandlers) GetAgentRun(w http.ResponseWriter, r *http.Reques
 
 	run, err := h.orch.GetAgentRun(runID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to get agent run", err)
 		return
 	}
 	if run == nil {
-		http.Error(w, "Run not found", http.StatusNotFound)
+		writeNotFound(w, "run")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(run)
+	writeJSON(w, run)
 }
 
 // StopAgentRun stops a running agent run
@@ -212,10 +208,9 @@ func (h *OrchestratorHandlers) StopAgentRun(w http.ResponseWriter, r *http.Reque
 	runID := chi.URLParam(r, "runId")
 
 	if err := h.orch.StopAgentRun(runID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "failed to stop agent run", err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	writeJSON(w, map[string]bool{"success": true})
 }
