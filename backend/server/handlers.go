@@ -356,7 +356,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if rollback {
 			fmt.Printf("[handlers] Rolling back worktree creation due to failure: %s\n", worktreePath)
-			session.DeleteMetadata(worktreePath)
+			session.DeleteMetadata(sessionID)
 			// Use background context for cleanup - the original request context may be cancelled
 			h.worktreeManager.RemoveAtPath(context.Background(), repo.Path, worktreePath, branchName)
 		}
@@ -370,12 +370,13 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Name:          sessionName,
 		WorkspaceID:   workspaceID,
 		WorkspacePath: repo.Path,
+		WorktreePath:  worktreePath,
 		Branch:        branchName,
 		BaseCommitSHA: baseCommitSHA,
 		CreatedAt:     now,
 		Task:          req.Task,
 	}
-	if err := session.WriteMetadata(worktreePath, meta); err != nil {
+	if err := session.WriteMetadata(meta); err != nil {
 		// Log but don't fail - metadata is supplementary
 		fmt.Printf("[handlers] Warning: failed to write session metadata: %v\n", err)
 	}
@@ -569,7 +570,7 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if repo != nil && sess.WorktreePath != "" {
 			// Delete session metadata file (if exists)
-			session.DeleteMetadata(sess.WorktreePath)
+			session.DeleteMetadata(sessionID)
 
 			// Remove the git worktree using absolute path
 			h.worktreeManager.RemoveAtPath(ctx, repo.Path, sess.WorktreePath, sess.Branch)

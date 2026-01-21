@@ -595,11 +595,11 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		return
 	}
 
-	// Update the .session.json metadata file
-	if meta, err := session.ReadMetadata(sess.WorktreePath); err == nil {
+	// Update the session metadata file
+	if meta, err := session.ReadMetadata(sessionID); err == nil {
 		meta.Name = formattedName
 		meta.Branch = newBranchName
-		if err := session.WriteMetadata(sess.WorktreePath, meta); err != nil {
+		if err := session.WriteMetadata(meta); err != nil {
 			log.Printf("[manager] failed to update session metadata for %s: %v", sessionID, err)
 		}
 	}

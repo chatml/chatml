@@ -16,6 +16,7 @@ import (
 type Store interface {
 	ListRepos(ctx context.Context) ([]*models.Repo, error)
 	ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error)
+	GetSession(ctx context.Context, sessionID string) (*models.Session, error)
 }
 
 // WorktreeManager defines the minimal interface for worktree operations.
@@ -58,8 +59,10 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 		for _, orphan := range orphans {
 			log.Printf("[cleanup] Removing orphaned worktree: %s", orphan.path)
 
-			// Delete session metadata file if it exists
-			session.DeleteMetadata(orphan.path)
+			// Delete session metadata file if it exists and we have the sessionID
+			if orphan.sessionID != "" {
+				session.DeleteMetadata(orphan.sessionID)
+			}
 
 			// Remove the worktree and branch
 			if err := wm.RemoveAtPath(ctx, repo.Path, orphan.path, orphan.branch); err != nil {
@@ -75,12 +78,24 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 		log.Printf("[cleanup] Removed %d orphaned worktree(s)", totalOrphans)
 	}
 
+	// Also clean up stale session metadata files
+	staleCount, err := session.CleanupStaleMetadata(func(sessionID string) bool {
+		_, err := store.GetSession(ctx, sessionID)
+		return err == nil
+	})
+	if err != nil {
+		log.Printf("[cleanup] Warning: failed to clean stale metadata: %v", err)
+	} else if staleCount > 0 {
+		log.Printf("[cleanup] Removed %d stale session metadata file(s)", staleCount)
+	}
+
 	return nil
 }
 
 type orphanInfo struct {
-	path   string
-	branch string
+	path      string
+	branch    string
+	sessionID string
 }
 
 func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, repo *models.Repo, workspacesDir string) ([]orphanInfo, error) {
@@ -118,15 +133,12 @@ func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, re
 		}
 
 		if !trackedPaths[worktreePath] {
-			// Try to read branch name from session metadata, fallback to guessing
-			branch := ""
-			if meta, err := session.ReadMetadata(worktreePath); err == nil && meta != nil {
-				branch = meta.Branch
-			}
-
+			// Orphaned worktree - we don't know the session ID since it's not in the DB.
+			// Stale metadata cleanup happens separately via CleanupStaleMetadata.
 			orphans = append(orphans, orphanInfo{
-				path:   worktreePath,
-				branch: branch,
+				path:      worktreePath,
+				branch:    "", // git worktree remove handles branch deletion
+				sessionID: "", // Unknown for orphaned worktrees
 			})
 		}
 	}

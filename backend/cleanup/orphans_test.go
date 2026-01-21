@@ -12,9 +12,11 @@ import (
 
 // mockStore implements the Store interface for testing
 type mockStore struct {
-	repos    []*models.Repo
-	sessions map[string][]*models.Session // keyed by workspace ID
-	listErr  error
+	repos         []*models.Repo
+	sessions      map[string][]*models.Session // keyed by workspace ID
+	sessionsByID  map[string]*models.Session   // keyed by session ID
+	listErr       error
+	getSessionErr error
 }
 
 func (m *mockStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
@@ -26,6 +28,26 @@ func (m *mockStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
 
 func (m *mockStore) ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error) {
 	return m.sessions[workspaceID], nil
+}
+
+func (m *mockStore) GetSession(ctx context.Context, sessionID string) (*models.Session, error) {
+	if m.getSessionErr != nil {
+		return nil, m.getSessionErr
+	}
+	if m.sessionsByID != nil {
+		if sess, ok := m.sessionsByID[sessionID]; ok {
+			return sess, nil
+		}
+	}
+	// Also check in the sessions map for backward compatibility with existing tests
+	for _, sessions := range m.sessions {
+		for _, sess := range sessions {
+			if sess.ID == sessionID {
+				return sess, nil
+			}
+		}
+	}
+	return nil, errors.New("session not found")
 }
 
 // mockWorktreeManager implements the WorktreeManager interface for testing
