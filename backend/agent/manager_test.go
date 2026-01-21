@@ -288,7 +288,7 @@ func TestManager_StopAgent_NoProcess(t *testing.T) {
 func TestManager_StartConversation_SessionNotFound(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
-	conv, err := manager.StartConversation("nonexistent", "task", "hello")
+	conv, err := manager.StartConversation("nonexistent", "task", "hello", nil)
 	assert.Error(t, err)
 	assert.Nil(t, conv)
 	assert.Contains(t, err.Error(), "session not found")
