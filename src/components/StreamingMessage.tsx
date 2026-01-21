@@ -106,14 +106,9 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   }, [streaming?.isStreaming, streaming?.startTime]);
 
   // Thinking expansion state (must be before early return to satisfy Rules of Hooks)
+  // Note: We don't need to reset this when thinking becomes null because the
+  // expansion UI only renders when there's thinking content to show
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
-
-  // Reset thinking expansion when thinking content changes significantly
-  useEffect(() => {
-    if (!streaming?.thinking) {
-      setIsThinkingExpanded(false);
-    }
-  }, [streaming?.thinking]);
 
   // Format elapsed time as mm:ss
   const formatElapsedTime = (seconds: number) => {

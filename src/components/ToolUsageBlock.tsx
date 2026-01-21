@@ -157,7 +157,7 @@ export function ToolUsageBlock({
       return target.slice(0, limit - 3) + '...';
     }
     return target;
-  }, [target, tool]);
+  }, [target, isBashTool]);
 
   const isTargetTruncated = target && truncatedTarget && target !== truncatedTarget;
 
