@@ -12,6 +12,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
+)
+
+const (
+	// processOutputTimeout is how long to wait for buffer space before dropping
+	// a message from stdout/stderr. This gives slow consumers time to catch up.
+	processOutputTimeout = 5 * time.Second
 )
 
 // AgentRunnerPath can be set to override the default agent-runner location
@@ -226,8 +233,10 @@ func (p *Process) Start() error {
 		for scanner.Scan() {
 			select {
 			case p.output <- scanner.Text():
-			default:
-				log.Printf("[process:%s] Output buffer full, dropping stdout message", p.ID)
+				// Successfully queued
+			case <-time.After(processOutputTimeout):
+				// Buffer full after timeout - downstream reader is persistently slow
+				log.Printf("[process:%s] Output buffer full after %v timeout, dropping stdout message (slow reader)", p.ID, processOutputTimeout)
 			}
 		}
 	}()
@@ -239,8 +248,10 @@ func (p *Process) Start() error {
 		for scanner.Scan() {
 			select {
 			case p.output <- "[stderr] " + scanner.Text():
-			default:
-				log.Printf("[process:%s] Output buffer full, dropping stderr message", p.ID)
+				// Successfully queued
+			case <-time.After(processOutputTimeout):
+				// Buffer full after timeout - downstream reader is persistently slow
+				log.Printf("[process:%s] Output buffer full after %v timeout, dropping stderr message (slow reader)", p.ID, processOutputTimeout)
 			}
 		}
 	}()

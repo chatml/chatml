@@ -23,6 +23,10 @@ const (
 
 	// Send pings to client with this period (must be less than pongWait)
 	pingPeriod = (pongWait * 9) / 10
+
+	// broadcastTimeout is how long to wait for buffer space before dropping
+	// a broadcast message. This gives Hub.Run() time to catch up.
+	broadcastTimeout = 2 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
@@ -53,6 +57,7 @@ type Client struct {
 type HubMetrics struct {
 	messagesDelivered     atomic.Uint64
 	messagesDropped       atomic.Uint64
+	messagesTimedOut      atomic.Uint64 // Messages dropped after timeout waiting for buffer space
 	clientsDropped        atomic.Uint64 // Clients disconnected due to slow consumption
 	broadcastBackpressure atomic.Uint64 // Times broadcast channel was near full
 	peakClients           atomic.Int64
@@ -65,6 +70,10 @@ func (m *HubMetrics) recordDelivered() {
 
 func (m *HubMetrics) recordDropped() {
 	m.messagesDropped.Add(1)
+}
+
+func (m *HubMetrics) recordTimedOut() {
+	m.messagesTimedOut.Add(1)
 }
 
 func (m *HubMetrics) recordClientDropped() {
@@ -104,7 +113,7 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		clients:   make(map[*Client]bool),
-		broadcast: make(chan []byte, 256),
+		broadcast: make(chan []byte, 1024),
 		register:  make(chan *Client),
 		// Buffered to prevent eviction goroutines from blocking during
 		// high-churn scenarios or if the Hub is slow to process unregisters
@@ -187,14 +196,16 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 		log.Printf("Broadcast channel high utilization: %d/%d", bufferUsage, bufferCapacity)
 	}
 
+	// Try to send with timeout to allow Hub.Run() to catch up
+	// This handles transient slowdowns gracefully instead of dropping immediately
 	select {
 	case h.broadcast <- data:
 		// Successfully queued
-	default:
-		// Channel full - this should now be rare with per-client buffers
+	case <-time.After(broadcastTimeout):
+		// Channel still full after timeout - reader is persistently slow
 		result.Delivered = false
-		h.metrics.recordDropped()
-		log.Printf("WARN: Broadcast channel full, event dropped: type=%s", event.Type)
+		h.metrics.recordTimedOut()
+		log.Printf("WARN: Broadcast channel full after %v timeout, event dropped: type=%s", broadcastTimeout, event.Type)
 	}
 
 	return result
@@ -304,6 +315,7 @@ func (h *Hub) GetStats() map[string]interface{} {
 	return map[string]interface{}{
 		"messagesDelivered":       h.metrics.messagesDelivered.Load(),
 		"messagesDropped":         h.metrics.messagesDropped.Load(),
+		"messagesTimedOut":        h.metrics.messagesTimedOut.Load(),
 		"clientsDropped":          h.metrics.clientsDropped.Load(),
 		"backpressureEvents":      h.metrics.broadcastBackpressure.Load(),
 		"currentClients":          h.metrics.currentClients.Load(),
