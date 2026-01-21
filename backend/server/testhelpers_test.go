@@ -136,6 +136,27 @@ func createTestSession(t *testing.T, s *store.SQLiteStore, id, workspaceID strin
 	return session
 }
 
+// createTestSessionWithWorktree adds a test session with a real worktree directory
+func createTestSessionWithWorktree(t *testing.T, s *store.SQLiteStore, id, workspaceID string) (*models.Session, string) {
+	t.Helper()
+	ctx := context.Background()
+
+	// Create a temp directory to act as the worktree
+	worktreePath := t.TempDir()
+
+	session := &models.Session{
+		ID:           id,
+		WorkspaceID:  workspaceID,
+		Name:         "Test Session",
+		Status:       "idle",
+		WorktreePath: worktreePath,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+	return session, worktreePath
+}
+
 // createTestConversation adds a test conversation to the store
 func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID string) *models.Conversation {
 	t.Helper()

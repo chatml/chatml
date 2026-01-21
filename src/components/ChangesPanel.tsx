@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/stores/appStore';
-import { listRepoFiles, getRepoFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
 import { CheckpointTimeline } from '@/components/CheckpointTimeline';
@@ -91,17 +91,19 @@ export function ChangesPanel() {
     return () => observer.disconnect();
   }, []);
 
-  // Handle file selection from file tree (workspace-scoped tab - no sessionId)
+  // Handle file selection from file tree (session-scoped tab)
   const handleFileSelect = async (path: string) => {
-    if (!selectedWorkspaceId) return;
+    if (!selectedWorkspaceId || !selectedSessionId) return;
 
     const filename = path.split('/').pop() || path;
-    const tabId = `${selectedWorkspaceId}-${path}`;
+    // Include sessionId in tab ID to allow same file open in different sessions
+    const tabId = `${selectedWorkspaceId}-${selectedSessionId}-${path}`;
 
-    // Create tab with loading state (no sessionId = workspace-scoped)
+    // Create tab with loading state (session-scoped for complete isolation)
     const newTab: FileTab = {
       id: tabId,
       workspaceId: selectedWorkspaceId,
+      sessionId: selectedSessionId,
       path,
       name: filename,
       isLoading: true,
@@ -113,9 +115,9 @@ export function ChangesPanel() {
     // Always set loading state for existing tabs (e.g., restored from persistence without content)
     updateFileTab(tabId, { isLoading: true });
 
-    // Fetch file content
+    // Fetch file content from session's worktree (not main repo)
     try {
-      const fileData = await getRepoFileContent(selectedWorkspaceId, path);
+      const fileData = await getSessionFileContent(selectedWorkspaceId, selectedSessionId, path);
       updateFileTab(tabId, {
         content: fileData.content,
         originalContent: fileData.content, // Store original for dirty detection
@@ -216,14 +218,14 @@ export function ChangesPanel() {
   const pendingCustomTodos = currentCustomTodos.filter((t) => !t.completed).length;
   const totalPendingTodos = pendingAgentTodos + pendingCustomTodos;
 
-  // Fetch files when workspace changes or tab switches to files
+  // Fetch files from session's worktree when session changes or tab switches to files
   useEffect(() => {
-    if (selectedTab === 'files' && selectedWorkspaceId) {
+    if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
       queueMicrotask(() => {
         if (!cancelled) setFilesLoading(true);
       });
-      listRepoFiles(selectedWorkspaceId, 'all')
+      listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
         .then((data) => {
           // Convert FileNodeDTO to FileNode (they're the same shape)
           if (!cancelled) setFiles(data as FileNode[]);
@@ -232,7 +234,7 @@ export function ChangesPanel() {
         .finally(() => { if (!cancelled) setFilesLoading(false); });
       return () => { cancelled = true; };
     }
-  }, [selectedTab, selectedWorkspaceId]);
+  }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
   // Fetch changes when session changes or tab switches to changes
   useEffect(() => {

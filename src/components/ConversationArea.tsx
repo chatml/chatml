@@ -57,7 +57,7 @@ import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
-import { getRepoFileContent, getSessionFileDiff } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff } from '@/lib/api';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -92,27 +92,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const [renameConvId, setRenameConvId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-// Filter and separate tabs in a single pass for efficiency
-  // Returns visibleTabs (all visible), workspaceTabs (no session), sessionTabs (current session only)
-  const { visibleTabs, workspaceTabs, sessionTabs } = useMemo(() => {
-    const visible: FileTab[] = [];
-    const workspace: FileTab[] = [];
+// Filter tabs for current session only (strict session isolation)
+  // All tabs are now session-scoped - no more workspace-level tabs
+  const { visibleTabs, sessionTabs } = useMemo(() => {
     const session: FileTab[] = [];
 
     for (const tab of fileTabs) {
-      if (!tab.sessionId) {
-        // Workspace-scoped tabs always visible
-        visible.push(tab);
-        workspace.push(tab);
-      } else if (tab.sessionId === selectedSessionId) {
-        // Session-scoped tabs for current session
-        visible.push(tab);
+      if (tab.sessionId === selectedSessionId) {
         session.push(tab);
       }
-      // Skip tabs from other sessions
+      // Skip tabs from other sessions (complete isolation)
     }
 
-    return { visibleTabs: visible, workspaceTabs: workspace, sessionTabs: session };
+    return { visibleTabs: session, sessionTabs: session };
   }, [fileTabs, selectedSessionId]);
 
   const currentSession = useMemo(
@@ -165,7 +157,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Convert FileTab to TabItemData
   const fileTabToTabItem = useCallback(
-    (tab: FileTab, group: 'workspace' | 'session'): TabItemData => ({
+    (tab: FileTab, group: 'session'): TabItemData => ({
       id: tab.id,
       type: 'file',
       label: tab.name,
@@ -194,12 +186,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [selectedFileTabId, selectedConversationId]
   );
 
-  // Convert all tabs to TabItemData arrays
-  const workspaceTabItems = useMemo(
-    () => workspaceTabs.map((tab) => fileTabToTabItem(tab, 'workspace')),
-    [workspaceTabs, fileTabToTabItem]
-  );
-
+  // Convert session tabs to TabItemData (all tabs are now session-scoped)
   const sessionTabItems = useMemo(
     () => sessionTabs.map((tab) => fileTabToTabItem(tab, 'session')),
     [sessionTabs, fileTabToTabItem]
@@ -281,12 +268,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   useEffect(() => {
     if (!currentFileTab || currentFileTab.isLoading) return;
 
-    // For regular file view without content, load it
-    if (currentFileTab.viewMode !== 'diff' && !currentFileTab.content && !currentFileTab.isBinary && !currentFileTab.isTooLarge) {
+    // For regular file view without content, load it from session's worktree
+    if (currentFileTab.viewMode !== 'diff' && !currentFileTab.content && !currentFileTab.isBinary && !currentFileTab.isTooLarge && currentFileTab.sessionId) {
       const loadContent = async () => {
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
-          const fileData = await getRepoFileContent(currentFileTab.workspaceId, currentFileTab.path);
+          const fileData = await getSessionFileContent(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
           updateFileTab(currentFileTab.id, {
             content: fileData.content,
             originalContent: fileData.content,
@@ -308,7 +295,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       const loadDiff = async () => {
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
-          const diffData = await getSessionFileDiff(currentFileTab.workspaceId, currentFileTab.sessionId!, currentFileTab.path);
+          const diffData = await getSessionFileDiff(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
           updateFileTab(currentFileTab.id, {
             diff: {
               oldContent: diffData.oldContent ?? '',
@@ -358,11 +345,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     const tab = fileTabs.find((t) => t.id === id);
     if (!tab || tab.isLoading) return;
 
-    // For regular file view without content, load it
-    if (tab.viewMode !== 'diff' && !tab.content && !tab.isBinary && !tab.isTooLarge) {
+    // For regular file view without content, load it from session's worktree
+    if (tab.viewMode !== 'diff' && !tab.content && !tab.isBinary && !tab.isTooLarge && tab.sessionId) {
       updateFileTab(id, { isLoading: true });
       try {
-        const fileData = await getRepoFileContent(tab.workspaceId, tab.path);
+        const fileData = await getSessionFileContent(tab.workspaceId, tab.sessionId, tab.path);
         updateFileTab(id, {
           content: fileData.content,
           originalContent: fileData.content,
@@ -522,7 +509,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     <div className="flex-1 min-h-0 flex flex-col">
       {/* VS Code-style unified TabBar */}
       <TabBar
-        workspaceTabs={workspaceTabItems}
+        workspaceTabs={[]}
         sessionTabs={sessionTabItems}
         conversationTabs={conversationTabItems.map((tab) => ({
           ...tab,

@@ -16,6 +16,7 @@ const SAVE_DEBOUNCE_MS = 2000;
 export function useTabPersistence() {
   const {
     selectedWorkspaceId,
+    selectedSessionId,
     fileTabs,
     setFileTabs,
     selectedFileTabId,
@@ -26,21 +27,26 @@ export function useTabPersistence() {
   const lastSavedRef = useRef<string>('');
   const isLoadingRef = useRef(false);
 
-  // Load tabs when workspace changes
+  // Load tabs when workspace or session changes
+  // Tabs are stored at workspace level but filtered by session on load
   useEffect(() => {
-    if (!selectedWorkspaceId) return;
+    if (!selectedWorkspaceId || !selectedSessionId) return;
 
     const loadTabs = async () => {
       isLoadingRef.current = true;
       try {
         const savedTabs = await listFileTabs(selectedWorkspaceId);
 
-        if (savedTabs.length > 0) {
-          // Convert DTOs to FileTab objects
-          const tabs: FileTab[] = savedTabs.map((dto) => ({
+        // Convert DTOs to FileTab objects, filtering by current session
+        // Per migration decision: tabs without sessionId are auto-closed (filtered out)
+        const sessionTabs: FileTab[] = savedTabs
+          .filter((dto): dto is FileTabDTO & { sessionId: string } =>
+            dto.sessionId === selectedSessionId
+          )
+          .map((dto) => ({
             id: dto.id,
             workspaceId: dto.workspaceId,
-            sessionId: dto.sessionId || undefined,
+            sessionId: dto.sessionId,
             path: dto.path,
             name: dto.path.split('/').pop() || dto.path,
             viewMode: dto.viewMode as 'file' | 'diff',
@@ -51,19 +57,27 @@ export function useTabPersistence() {
             isLoading: false,
           }));
 
-          setFileTabs(tabs);
+        // Preserve tabs from other sessions that may be in memory
+        // This prevents losing unsaved tab state when switching sessions
+        // Use getState() to avoid stale closure issues
+        const currentFileTabs = useAppStore.getState().fileTabs;
+        const otherSessionTabs = currentFileTabs.filter(
+          (t) => t.workspaceId === selectedWorkspaceId && t.sessionId !== selectedSessionId
+        );
 
-          // Update last saved reference to prevent immediate save
-          lastSavedRef.current = JSON.stringify(
-            tabs.map(tabToDTO).sort((a, b) => a.id.localeCompare(b.id))
-          );
+        setFileTabs([...otherSessionTabs, ...sessionTabs]);
 
-          // Only auto-select the first tab on initial workspace load
-          // Use useAppStore.getState() to get current value without stale closure
-          const currentSelectedTabId = useAppStore.getState().selectedFileTabId;
-          if (currentSelectedTabId === null && tabs.length > 0) {
-            selectFileTab(tabs[0].id);
-          }
+        // Update last saved reference to prevent immediate save
+        // Note: We save ALL workspace tabs, but only load session-specific ones
+        lastSavedRef.current = JSON.stringify(
+          savedTabs.sort((a, b) => a.id.localeCompare(b.id))
+        );
+
+        // Only auto-select the first tab on initial session load
+        // Use useAppStore.getState() to get current value without stale closure
+        const currentSelectedTabId = useAppStore.getState().selectedFileTabId;
+        if (currentSelectedTabId === null && sessionTabs.length > 0) {
+          selectFileTab(sessionTabs[0].id);
         }
       } catch (err) {
         console.error('Failed to load tabs:', err);
@@ -73,9 +87,8 @@ export function useTabPersistence() {
     };
 
     loadTabs();
-    // Note: Only depend on selectedWorkspaceId - we don't want to re-run this effect
-    // when selectedFileTabId changes (e.g., when user clicks a conversation tab)
-  }, [selectedWorkspaceId, setFileTabs, selectFileTab]);
+    // Re-run when session changes to load that session's tabs
+  }, [selectedWorkspaceId, selectedSessionId, setFileTabs, selectFileTab]);
 
   // Save tabs when they change (debounced)
   const saveTabs = useCallback(async () => {

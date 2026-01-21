@@ -98,7 +98,7 @@ function SortableTabItem({
  * - VS Code-style visual design
  */
 export function TabBar({
-  workspaceTabs,
+  workspaceTabs = [], // Deprecated: all file tabs are now session-scoped
   sessionTabs,
   conversationTabs,
   activeTabId,

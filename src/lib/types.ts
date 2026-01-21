@@ -389,10 +389,11 @@ export interface WSEvent {
 }
 
 // File tab for the editor
+// All file tabs are now session-scoped (workspace-scoped tabs were deprecated and auto-migrated)
 export interface FileTab {
   id: string;
   workspaceId: string;
-  sessionId?: string;         // Optional session scope (null = workspace-scoped)
+  sessionId: string;          // Required: all tabs belong to a session
   path: string;
   name: string;
   content?: string;
