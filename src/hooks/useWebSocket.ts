@@ -75,6 +75,7 @@ export function useWebSocket(enabled: boolean = true) {
     appendThinkingText,
     setThinking,
     clearThinking,
+    setPlanModeActive,
     addActiveTool,
     completeActiveTool,
     clearActiveTools,
@@ -262,6 +263,14 @@ export function useWebSocket(enabled: boolean = true) {
         updateConversation(conversationId, { status: 'idle' });
         break;
 
+      case 'permission_mode_changed':
+        // Handle plan mode changes from the backend
+        if (event?.mode) {
+          const isPlanMode = event.mode === 'plan';
+          setPlanModeActive(conversationId, isPlanMode);
+        }
+        break;
+
       case 'error':
         // Handle error - capture the error message and stop streaming
         const errorMessage = event?.message || 'An unknown error occurred';
@@ -282,6 +291,7 @@ export function useWebSocket(enabled: boolean = true) {
     appendThinkingText,
     setThinking,
     clearThinking,
+    setPlanModeActive,
     clearActiveTools,
     setAgentTodos,
     finalizeStreamingMessage,

@@ -1241,8 +1241,9 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateConversationRequest struct {
-	Type    string `json:"type"`    // "task", "review", "chat"
-	Message string `json:"message"` // Initial message (optional)
+	Type              string `json:"type"`              // "task", "review", "chat"
+	Message           string `json:"message"`           // Initial message (optional)
+	MaxThinkingTokens int    `json:"maxThinkingTokens"` // Enable extended thinking (optional)
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
@@ -1269,7 +1270,15 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		req.Type = "task"
 	}
 
-	conv, err := h.agentManager.StartConversation(sessionID, req.Type, req.Message)
+	// Build options for starting the conversation
+	var opts *agent.StartConversationOptions
+	if req.MaxThinkingTokens > 0 {
+		opts = &agent.StartConversationOptions{
+			MaxThinkingTokens: req.MaxThinkingTokens,
+		}
+	}
+
+	conv, err := h.agentManager.StartConversation(sessionID, req.Type, req.Message, opts)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1410,6 +1419,37 @@ func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type SetPlanModeRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if conv == nil {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+
+	var req SetPlanModeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.agentManager.SetConversationPlanMode(convID, req.Enabled); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]bool{"enabled": req.Enabled})
 }
 
 // File tab handlers

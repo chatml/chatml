@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, KeyboardEvent } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -37,6 +37,9 @@ const MODELS = [
   { id: 'sonnet-4', name: 'Sonnet 4', icon: Snowflake },
   { id: 'haiku-3.5', name: 'Haiku 3.5', icon: Snowflake },
 ];
+
+// Token budget for extended thinking mode
+const DEFAULT_THINKING_TOKENS = 10000;
 
 export function ChatInput() {
   const [message, setMessage] = useState('');
@@ -151,7 +154,25 @@ export function ChatInput() {
     };
   }, []);
 
+  // Handler for toggling plan mode - also notifies the backend
+  const handlePlanModeToggle = useCallback(async () => {
+    const newValue = !planModeEnabled;
+    setPlanModeEnabled(newValue);
+
+    // If there's an active conversation, notify the backend
+    if (selectedConversationId && isStreaming) {
+      try {
+        await setConversationPlanMode(selectedConversationId, newValue);
+      } catch (error) {
+        console.error('Failed to set plan mode:', error);
+        // Revert UI state on failure so it stays in sync with backend
+        setPlanModeEnabled(!newValue);
+      }
+    }
+  }, [planModeEnabled, selectedConversationId, isStreaming]);
+
   // Global keyboard shortcuts
+
   useEffect(() => {
     const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
       // Cmd+L to focus input
@@ -167,7 +188,7 @@ export function ChatInput() {
       // Shift+Tab to toggle plan mode
       if (e.code === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setPlanModeEnabled(prev => !prev);
+        handlePlanModeToggle();
       }
       // Cmd+Shift+D to toggle dictation
       if (e.code === 'KeyD' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
@@ -181,7 +202,7 @@ export function ChatInput() {
     // Handle menu events from native Tauri menu
     const handleFocusInput = () => textareaRef.current?.focus();
     const handleToggleThinking = () => setThinkingEnabled(prev => !prev);
-    const handleTogglePlanMode = () => setPlanModeEnabled(prev => !prev);
+    const handleTogglePlanMode = () => handlePlanModeToggle();
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('focus-input', handleFocusInput);
@@ -193,7 +214,7 @@ export function ChatInput() {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [speechAvailable, isStreaming, toggleListening]);
+  }, [speechAvailable, isStreaming, toggleListening, handlePlanModeToggle]);
 
   const handleSubmit = async () => {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
@@ -216,6 +237,8 @@ export function ChatInput() {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
           message: content,
+          // Pass thinking tokens when thinking mode is enabled
+          maxThinkingTokens: thinkingEnabled ? DEFAULT_THINKING_TOKENS : undefined,
         });
 
         // Remove local placeholder conversation if it exists
@@ -415,7 +438,7 @@ export function ChatInput() {
               'h-7 w-7',
               planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
             )}
-            onClick={() => setPlanModeEnabled(!planModeEnabled)}
+            onClick={handlePlanModeToggle}
             title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
             aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
             aria-pressed={planModeEnabled}

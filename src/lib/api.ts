@@ -428,7 +428,7 @@ export async function listConversations(
 export async function createConversation(
   workspaceId: string,
   sessionId: string,
-  data: { type?: 'task' | 'review' | 'chat'; message?: string }
+  data: { type?: 'task' | 'review' | 'chat'; message?: string; maxThinkingTokens?: number }
 ): Promise<ConversationDTO> {
   const res = await fetch(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`,
@@ -467,6 +467,18 @@ export async function stopConversation(convId: string): Promise<void> {
 
 export async function deleteConversation(convId: string): Promise<void> {
   await fetch(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
+}
+
+export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/conversations/${convId}/plan-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
 }
 
 // File Tab DTOs and functions

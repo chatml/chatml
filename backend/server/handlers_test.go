@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chatml/chatml-backend/models"
@@ -373,6 +374,60 @@ func TestDeleteConversation_NotFound(t *testing.T) {
 	h.DeleteConversation(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestSetConversationPlanMode_NotFound(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := strings.NewReader(`{"enabled": true}`)
+	req := httptest.NewRequest("POST", "/api/conversations/nonexistent/plan-mode", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.SetConversationPlanMode(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "conversation not found")
+}
+
+func TestSetConversationPlanMode_InvalidRequest(t *testing.T) {
+	h, s, _ := setupTestHandlersWithAgentManager(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Send invalid JSON
+	body := strings.NewReader(`{invalid json}`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/plan-mode", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.SetConversationPlanMode(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSetConversationPlanMode_ProcessNotRunning(t *testing.T) {
+	h, s, _ := setupTestHandlersWithAgentManager(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Conversation exists but no process is running
+	body := strings.NewReader(`{"enabled": true}`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/plan-mode", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.SetConversationPlanMode(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "conversation process not running")
 }
 
 // ============================================================================

@@ -44,6 +44,7 @@ import {
   GitBranch,
   FileQuestion,
   FileText,
+  BookOpen,
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -247,6 +248,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Scroll when messages change or streaming updates
   const streamingText = useMemo(
     () => selectedConversationId ? streamingState[selectedConversationId]?.text : null,
+    [selectedConversationId, streamingState]
+  );
+
+  // Check if plan mode is active for the current conversation
+  const planModeActive = useMemo(
+    () => selectedConversationId ? streamingState[selectedConversationId]?.planModeActive : false,
     [selectedConversationId, streamingState]
   );
 
@@ -585,6 +592,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         </>
       ) : (
         <>
+          {/* Plan Mode Banner */}
+          {planModeActive && (
+            <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
+              <BookOpen className="w-4 h-4 text-amber-500" />
+              <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                Plan Mode Active
+              </span>
+              <span className="text-xs text-amber-500/70">
+                Claude is in read-only planning mode
+              </span>
+            </div>
+          )}
+
           {/* Messages */}
           <div className="relative flex-1 min-h-0">
             <div

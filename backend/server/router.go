@@ -82,6 +82,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.With(messageRateLimiter).Post("/{convId}/messages", h.SendConversationMessage)
 		r.Post("/{convId}/stop", h.StopConversation)
 		r.Post("/{convId}/rewind", h.RewindConversation)
+		r.Post("/{convId}/plan-mode", h.SetConversationPlanMode)
 		r.Delete("/{convId}", h.DeleteConversation)
 	})
 
