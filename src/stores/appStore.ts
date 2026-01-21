@@ -14,7 +14,9 @@ import type {
   CustomTodoItem,
   McpServerStatus,
   CheckpointInfo,
-  BudgetStatus
+  BudgetStatus,
+  ToolUsage,
+  RunSummary,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -154,6 +156,16 @@ interface AppState {
   addActiveTool: (conversationId: string, tool: ActiveTool) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   clearActiveTools: (conversationId: string) => void;
+
+  // Atomic streaming finalization - creates message and clears streaming in one update
+  finalizeStreamingMessage: (
+    conversationId: string,
+    metadata: {
+      durationMs?: number;
+      toolUsage?: ToolUsage[];
+      runSummary?: RunSummary;
+    }
+  ) => void;
 
   // Todo actions
   setAgentTodos: (conversationId: string, todos: AgentTodoItem[]) => void;
@@ -785,6 +797,60 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: [],
     },
   })),
+
+  // Atomic streaming finalization - creates message and clears streaming in one update
+  // This prevents the data loss bug where streaming text could be cleared before message is saved
+  finalizeStreamingMessage: (conversationId, metadata) => set((state) => {
+    const streaming = state.streamingState[conversationId];
+
+    // Build cleared streaming state
+    const clearedStreaming = {
+      text: '',
+      isStreaming: false,
+      error: null,
+      thinking: null,
+      isThinking: false,
+    };
+
+    // If no streaming text, just clear the state
+    if (!streaming?.text) {
+      return {
+        streamingState: {
+          ...state.streamingState,
+          [conversationId]: clearedStreaming,
+        },
+        activeTools: {
+          ...state.activeTools,
+          [conversationId]: [],
+        },
+      };
+    }
+
+    // Create the message from streaming text
+    const newMessage: Message = {
+      id: `msg-${Date.now()}`,
+      conversationId,
+      role: 'assistant',
+      content: streaming.text,
+      timestamp: new Date().toISOString(),
+      durationMs: metadata.durationMs,
+      toolUsage: metadata.toolUsage,
+      runSummary: metadata.runSummary,
+    };
+
+    // Atomically: add message AND clear streaming state
+    return {
+      messages: [...state.messages, newMessage],
+      streamingState: {
+        ...state.streamingState,
+        [conversationId]: clearedStreaming,
+      },
+      activeTools: {
+        ...state.activeTools,
+        [conversationId]: [],
+      },
+    };
+  }),
 
   // Todo actions
   setAgentTodos: (conversationId, todos) => set((state) => ({

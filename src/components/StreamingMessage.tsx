@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useAppStore } from '@/stores/appStore';
+import { useStreamingState, useActiveTools } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ActiveToolsDisplay } from '@/components/ToolUsageBlock';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
@@ -77,11 +78,11 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
 }
 
 export function StreamingMessage({ conversationId }: StreamingMessageProps) {
-  const { streamingState, activeTools, clearStreamingText } = useAppStore();
+  // Use scoped selectors for this conversation only - prevents re-renders from other conversations
+  const streaming = useStreamingState(conversationId);
+  const tools = useActiveTools(conversationId);
+  const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   const [elapsedTime, setElapsedTime] = useState(0);
-
-  const streaming = streamingState[conversationId];
-  const tools = activeTools[conversationId] || [];
 
   // Update elapsed time every second while streaming
   useEffect(() => {

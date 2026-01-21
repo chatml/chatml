@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/stores/appStore';
+import { useSelectedIds, useFileTabState, useTodoState } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
@@ -67,7 +68,12 @@ function isBinaryFile(filename: string): boolean {
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
-  const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, workspaces, openFileTab, updateFileTab, agentTodos, customTodos } = useAppStore();
+  // Use optimized selectors to prevent unnecessary re-renders
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
+  const { openFileTab, updateFileTab } = useFileTabState();
+  const { agentTodos, customTodos } = useTodoState(selectedConversationId, selectedSessionId);
+  const sessions = useAppStore((s) => s.sessions);
+  const workspaces = useAppStore((s) => s.workspaces);
   const [selectedTab, setSelectedTab] = useState('changes');
   const [outputTab, setOutputTab] = useState<'setup' | 'run' | 'mcp' | 'checkpoints'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -213,10 +219,9 @@ export function ChangesPanel() {
   const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
 
   // Calculate todo counts for badge
-  const currentAgentTodos = selectedConversationId ? agentTodos[selectedConversationId] || [] : [];
-  const currentCustomTodos = selectedSessionId ? customTodos[selectedSessionId] || [] : [];
-  const pendingAgentTodos = currentAgentTodos.filter((t) => t.status !== 'completed').length;
-  const pendingCustomTodos = currentCustomTodos.filter((t) => !t.completed).length;
+  // useTodoState already returns arrays scoped to the selected conversation/session
+  const pendingAgentTodos = agentTodos.filter((t) => t.status !== 'completed').length;
+  const pendingCustomTodos = customTodos.filter((t) => !t.completed).length;
   const totalPendingTodos = pendingAgentTodos + pendingCustomTodos;
 
   // Callback for GitStatusSection to send messages to the agent
