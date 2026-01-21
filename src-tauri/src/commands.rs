@@ -65,12 +65,12 @@ pub fn watch_workspace(
     app: tauri::AppHandle,
     workspace_id: String,
     workspace_path: String,
-) -> Result<(), String> {
+) -> AppResult<()> {
     watcher::watch_workspace(&app, workspace_id, workspace_path)
 }
 
 /// Stop watching a workspace directory
 #[tauri::command]
-pub fn unwatch_workspace(workspace_id: String) -> Result<(), String> {
+pub fn unwatch_workspace(workspace_id: String) -> AppResult<()> {
     watcher::unwatch_workspace(&workspace_id)
 }

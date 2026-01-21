@@ -38,3 +38,4 @@ tauri-plugin-stronghold = "2"
 sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
 notify = { version = "6", features = ["serde"] }
 notify-debouncer-mini = "0.4"
+argon2 = "0.5"

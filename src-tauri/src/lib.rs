@@ -47,6 +47,10 @@ pub fn run() {
     // Create shared application state
     let app_state = Arc::new(AppState::new());
 
+    // Note on CSP: tauri.conf.json uses 'unsafe-inline' for script-src and style-src.
+    // This is required for Next.js hydration scripts and CSS-in-JS.
+    // Risk is mitigated by Tauri's isolation - no external content is loaded.
+
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance tries to launch
@@ -69,14 +73,36 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(
             tauri_plugin_stronghold::Builder::new(|password| {
-                // Simple password hashing for the stronghold vault
-                // In production, this could use argon2 with a proper salt
-                use std::collections::hash_map::DefaultHasher;
-                use std::hash::{Hash, Hasher};
-                let mut hasher = DefaultHasher::new();
-                password.hash(&mut hasher);
-                let hash = hasher.finish();
-                hash.to_le_bytes().to_vec()
+                // BREAKING CHANGE: This Argon2id implementation replaces the previous
+                // DefaultHasher-based approach. Existing Stronghold vaults created with
+                // earlier versions will be inaccessible and must be reset/recreated.
+                //
+                // Use Argon2id with OWASP-recommended parameters for password hashing.
+                // This is a proper KDF suitable for deriving encryption keys from passwords.
+                use argon2::{Algorithm, Argon2, Params, Version};
+
+                // Fixed application-specific salt for deterministic key derivation.
+                // Note: Stronghold requires deterministic output for the same password,
+                // so we use a fixed salt. The salt is application-specific to prevent
+                // cross-application attacks. This approach is suitable for local apps
+                // with per-user Stronghold files; if the threat model changes to include
+                // server-side storage, this should be revisited.
+                const APP_SALT: &[u8; 16] = b"chatml-stronghld";
+
+                // Configure Argon2id with OWASP-recommended parameters
+                // - 19 MiB memory (m_cost = 19456 KiB)
+                // - 2 iterations (t_cost)
+                // - 1 degree of parallelism (p_cost)
+                // - 32 bytes output for encryption key
+                let params = Params::new(19456, 2, 1, Some(32)).expect("Invalid Argon2 parameters");
+                let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+                let mut output = [0u8; 32];
+                argon2
+                    .hash_password_into(password.as_bytes(), APP_SALT, &mut output)
+                    .expect("Argon2 hashing failed");
+
+                output.to_vec()
             })
             .build(),
         )

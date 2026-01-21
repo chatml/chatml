@@ -8,6 +8,8 @@ pub enum AppError {
     Sidecar(String),
     /// Speech recognition related errors
     Speech(String),
+    /// File watcher related errors
+    Watcher(String),
     /// General application errors
     Internal(String),
 }
@@ -17,6 +19,7 @@ impl std::fmt::Display for AppError {
         match self {
             AppError::Sidecar(msg) => write!(f, "Sidecar error: {}", msg),
             AppError::Speech(msg) => write!(f, "Speech error: {}", msg),
+            AppError::Watcher(msg) => write!(f, "Watcher error: {}", msg),
             AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
         }
     }
