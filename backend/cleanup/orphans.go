@@ -58,8 +58,10 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 		for _, orphan := range orphans {
 			log.Printf("[cleanup] Removing orphaned worktree: %s", orphan.path)
 
-			// Delete session metadata file if it exists
-			session.DeleteMetadata(orphan.path)
+			// Delete session metadata file if it exists and we have the sessionID
+			if orphan.sessionID != "" {
+				session.DeleteMetadata(orphan.sessionID)
+			}
 
 			// Remove the worktree and branch
 			if err := wm.RemoveAtPath(repo.Path, orphan.path, orphan.branch); err != nil {
@@ -79,8 +81,9 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 }
 
 type orphanInfo struct {
-	path   string
-	branch string
+	path      string
+	branch    string
+	sessionID string
 }
 
 func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, repo *models.Repo, workspacesDir string) ([]orphanInfo, error) {
@@ -118,15 +121,12 @@ func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, re
 		}
 
 		if !trackedPaths[worktreePath] {
-			// Try to read branch name from session metadata, fallback to guessing
-			branch := ""
-			if meta, err := session.ReadMetadata(worktreePath); err == nil && meta != nil {
-				branch = meta.Branch
-			}
-
+			// Orphaned worktree - we don't know the session ID since it's not in the DB
+			// We'll skip metadata cleanup for orphans since we can't look it up
 			orphans = append(orphans, orphanInfo{
-				path:   worktreePath,
-				branch: branch,
+				path:      worktreePath,
+				branch:    "", // Will be extracted by git worktree remove
+				sessionID: "", // Unknown for orphaned worktrees
 			})
 		}
 	}

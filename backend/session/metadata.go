@@ -9,14 +9,11 @@ import (
 )
 
 const (
-	// MetadataFileName is the name of the session metadata file stored in each worktree.
-	// Uses a hidden filename (dot prefix) to avoid accidental git commits.
-	MetadataFileName = ".session.json"
 	// MetadataVersion is the current version of the metadata format
 	MetadataVersion = 1
 )
 
-// Metadata contains session information stored alongside the worktree for portability.
+// Metadata contains session information stored in ~/.chatml/sessions/ for portability.
 // This supplements the SQLite database - the database is authoritative for queries,
 // but this file allows session recovery and provides portable session context.
 type Metadata struct {
@@ -25,19 +22,55 @@ type Metadata struct {
 	Name          string    `json:"name"`
 	WorkspaceID   string    `json:"workspaceId"`
 	WorkspacePath string    `json:"workspacePath"` // Original repo path
+	WorktreePath  string    `json:"worktreePath"`  // Worktree path
 	Branch        string    `json:"branch"`
 	BaseCommitSHA string    `json:"baseCommitSha"`
 	CreatedAt     time.Time `json:"createdAt"`
 	Task          string    `json:"task,omitempty"`
 }
 
-// WriteMetadata writes session metadata to a JSON file in the worktree directory.
-func WriteMetadata(worktreePath string, meta *Metadata) error {
+// SessionsDir returns the directory where session metadata files are stored.
+// Returns ~/.chatml/sessions
+func SessionsDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".chatml", "sessions"), nil
+}
+
+// getMetadataPath returns the full path to a session's metadata file.
+func getMetadataPath(sessionID string) (string, error) {
+	sessionsDir, err := SessionsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(sessionsDir, sessionID+".json"), nil
+}
+
+// WriteMetadata writes session metadata to a JSON file in ~/.chatml/sessions/{sessionID}.json
+func WriteMetadata(meta *Metadata) error {
 	if meta.Version == 0 {
 		meta.Version = MetadataVersion
 	}
 
-	filePath := filepath.Join(worktreePath, MetadataFileName)
+	if meta.ID == "" {
+		return fmt.Errorf("session ID is required")
+	}
+
+	filePath, err := getMetadataPath(meta.ID)
+	if err != nil {
+		return err
+	}
+
+	// Ensure sessions directory exists
+	sessionsDir, err := SessionsDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create sessions directory: %w", err)
+	}
 
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -51,9 +84,16 @@ func WriteMetadata(worktreePath string, meta *Metadata) error {
 	return nil
 }
 
-// ReadMetadata reads session metadata from a JSON file in the worktree directory.
-func ReadMetadata(worktreePath string) (*Metadata, error) {
-	filePath := filepath.Join(worktreePath, MetadataFileName)
+// ReadMetadata reads session metadata from ~/.chatml/sessions/{sessionID}.json
+func ReadMetadata(sessionID string) (*Metadata, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("session ID is required")
+	}
+
+	filePath, err := getMetadataPath(sessionID)
+	if err != nil {
+		return nil, err
+	}
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -68,9 +108,16 @@ func ReadMetadata(worktreePath string) (*Metadata, error) {
 	return &meta, nil
 }
 
-// DeleteMetadata removes the session metadata file from the worktree directory.
-func DeleteMetadata(worktreePath string) error {
-	filePath := filepath.Join(worktreePath, MetadataFileName)
+// DeleteMetadata removes the session metadata file from ~/.chatml/sessions/
+func DeleteMetadata(sessionID string) error {
+	if sessionID == "" {
+		return nil // Nothing to delete
+	}
+
+	filePath, err := getMetadataPath(sessionID)
+	if err != nil {
+		return err
+	}
 
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete session metadata at %s: %w", filePath, err)
@@ -79,9 +126,17 @@ func DeleteMetadata(worktreePath string) error {
 	return nil
 }
 
-// MetadataExists checks if a session metadata file exists in the worktree directory.
-func MetadataExists(worktreePath string) bool {
-	filePath := filepath.Join(worktreePath, MetadataFileName)
-	_, err := os.Stat(filePath)
+// MetadataExists checks if a session metadata file exists in ~/.chatml/sessions/
+func MetadataExists(sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+
+	filePath, err := getMetadataPath(sessionID)
+	if err != nil {
+		return false
+	}
+
+	_, err = os.Stat(filePath)
 	return err == nil
 }
