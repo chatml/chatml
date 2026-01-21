@@ -19,8 +19,17 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { ToolUsage } from '@/lib/types';
+
+// Truncation limits (increased from original)
+const COMMAND_TRUNCATE_LENGTH = 60;
+const PATH_TRUNCATE_LENGTH = 50;
 
 interface ToolUsageHistoryProps {
   tools: ToolUsage[];
@@ -42,29 +51,88 @@ function getToolIcon(toolName: string) {
   return toolIcons[toolName] || Wrench;
 }
 
-function formatToolTarget(tool: string, params?: Record<string, unknown>): string {
-  if (!params) return '';
+interface ToolTargetInfo {
+  display: string;
+  full: string;
+  isTruncated: boolean;
+}
+
+function formatToolTarget(tool: string, params?: Record<string, unknown>): ToolTargetInfo {
+  const empty = { display: '', full: '', isTruncated: false };
+  if (!params) return empty;
+
+  let full = '';
+  let display = '';
 
   switch (tool) {
     case 'Read':
     case 'Write':
-    case 'Edit':
-      return params.file_path ? String(params.file_path).split('/').pop() || '' : '';
+    case 'Edit': {
+      const filePath = params.file_path ? String(params.file_path) : '';
+      full = filePath;
+      // Show more of the path now - last 2 directories + filename
+      const parts = filePath.split('/').filter(Boolean);
+      if (parts.length <= 3) {
+        display = filePath;
+      } else {
+        display = '.../' + parts.slice(-3).join('/');
+      }
+      if (display.length > PATH_TRUNCATE_LENGTH) {
+        display = display.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...';
+      }
+      break;
+    }
     case 'Glob':
-      return params.pattern ? String(params.pattern) : '';
+      full = params.pattern ? String(params.pattern) : '';
+      display = full.length > PATH_TRUNCATE_LENGTH
+        ? full.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...'
+        : full;
+      break;
     case 'Grep':
-      return params.pattern ? String(params.pattern) : '';
-    case 'Bash':
+      full = params.pattern ? String(params.pattern) : '';
+      display = full.length > PATH_TRUNCATE_LENGTH
+        ? full.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...'
+        : full;
+      break;
+    case 'Bash': {
       const cmd = params.command ? String(params.command) : '';
-      return cmd.length > 30 ? cmd.slice(0, 30) + '...' : cmd;
+      full = cmd;
+      // Use description if available (more meaningful)
+      const description = params.description ? String(params.description) : '';
+      if (description) {
+        display = description.length > COMMAND_TRUNCATE_LENGTH
+          ? description.slice(0, COMMAND_TRUNCATE_LENGTH - 3) + '...'
+          : description;
+      } else {
+        display = cmd.length > COMMAND_TRUNCATE_LENGTH
+          ? cmd.slice(0, COMMAND_TRUNCATE_LENGTH - 3) + '...'
+          : cmd;
+      }
+      break;
+    }
     case 'WebSearch':
-    case 'WebFetch':
-      return params.query ? String(params.query) : params.url ? String(params.url) : '';
+    case 'WebFetch': {
+      full = params.query ? String(params.query) : params.url ? String(params.url) : '';
+      display = full.length > PATH_TRUNCATE_LENGTH
+        ? full.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...'
+        : full;
+      break;
+    }
     case 'Task':
-      return params.description ? String(params.description) : '';
+      full = params.description ? String(params.description) : '';
+      display = full.length > PATH_TRUNCATE_LENGTH
+        ? full.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...'
+        : full;
+      break;
     default:
-      return '';
+      return empty;
   }
+
+  return {
+    display,
+    full,
+    isTruncated: display !== full && full.length > 0,
+  };
 }
 
 export function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
@@ -96,7 +164,7 @@ export function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
         <div className="mt-1.5 space-y-0.5">
           {tools.map((tool) => {
             const Icon = getToolIcon(tool.tool);
-            const target = formatToolTarget(tool.tool, tool.params);
+            const targetInfo = formatToolTarget(tool.tool, tool.params);
 
             return (
               <div
@@ -110,13 +178,29 @@ export function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
                 )}
                 <Icon className="w-3 h-3 shrink-0" />
                 <span className="font-medium">{tool.tool}</span>
-                {target && (
-                  <code className="text-[10px] px-1 py-0.5 bg-muted rounded truncate max-w-[200px]">
-                    {target}
-                  </code>
+                {targetInfo.display && (
+                  targetInfo.isTruncated ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <code className="text-[10px] px-1 py-0.5 bg-muted rounded truncate max-w-[250px] cursor-help">
+                          {targetInfo.display}
+                        </code>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        className="max-w-[500px] break-all font-mono text-[11px]"
+                      >
+                        {targetInfo.full}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <code className="text-[10px] px-1 py-0.5 bg-muted rounded truncate max-w-[250px]">
+                      {targetInfo.display}
+                    </code>
+                  )
                 )}
                 {tool.durationMs !== undefined && (
-                  <span className="text-muted-foreground/60 ml-auto">
+                  <span className="text-muted-foreground/60 ml-auto shrink-0">
                     {tool.durationMs < 1000
                       ? `${tool.durationMs}ms`
                       : `${(tool.durationMs / 1000).toFixed(1)}s`}

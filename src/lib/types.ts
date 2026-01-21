@@ -71,6 +71,8 @@ export interface ToolUsage {
   success?: boolean;
   summary?: string;
   durationMs?: number;
+  stdout?: string;
+  stderr?: string;
 }
 
 // Setup info for system messages

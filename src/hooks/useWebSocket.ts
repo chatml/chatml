@@ -173,8 +173,11 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'tool_end':
         // Complete active tool with success/summary info
+        // For Bash tools, also capture stdout/stderr
         if (event?.id) {
-          completeActiveTool(conversationId, event.id, event.success, event.summary);
+          const stdout = event.stdout as string | undefined;
+          const stderr = event.stderr as string | undefined;
+          completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
         }
         break;
 
@@ -208,6 +211,8 @@ export function useWebSocket(enabled: boolean = true) {
           success: t.success,
           summary: t.summary,
           durationMs: t.endTime && t.startTime ? t.endTime - t.startTime : undefined,
+          stdout: t.stdout,
+          stderr: t.stderr,
         }));
 
         if (streamingText) {

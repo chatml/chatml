@@ -7,6 +7,11 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   ChevronRight,
   ChevronDown,
   FileText,
@@ -15,8 +20,6 @@ import {
   Search,
   Globe,
   Loader2,
-  CheckCircle2,
-  XCircle,
   FolderOpen,
   Circle,
   type LucideIcon,
@@ -32,7 +35,15 @@ interface ToolUsageBlockProps {
   success?: boolean;
   summary?: string;
   duration?: number;
+  /** stdout from Bash command execution */
+  stdout?: string;
+  /** stderr from Bash command execution */
+  stderr?: string;
 }
+
+// Truncation limits
+const TARGET_TRUNCATE_LENGTH = 60;
+const COMMAND_TRUNCATE_LENGTH = 80;
 
 export function ToolUsageBlock({
   id,
@@ -42,6 +53,8 @@ export function ToolUsageBlock({
   success,
   summary,
   duration,
+  stdout,
+  stderr,
 }: ToolUsageBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -105,10 +118,16 @@ export function ToolUsageBlock({
     }
   };
 
+  // Extract description from params (Bash tool provides this)
+  const description = params?.description as string | undefined;
+
+  // Check if this is a Bash tool
+  const isBashTool = ['Bash', 'bash', 'execute_command'].includes(tool);
+
   const getTarget = () => {
     if (!params) return null;
 
-    // Common param names for file paths
+    // Common param names for file paths/commands
     const path =
       params.path ||
       params.file_path ||
@@ -121,10 +140,6 @@ export function ToolUsageBlock({
       params.query;
 
     if (typeof path === 'string') {
-      // Truncate long paths/commands
-      if (path.length > 50) {
-        return path.slice(0, 47) + '...';
-      }
       return path;
     }
 
@@ -132,7 +147,37 @@ export function ToolUsageBlock({
   };
 
   const target = getTarget();
+  const fullTarget = target;
+
+  // Truncate target for display
+  const truncatedTarget = useMemo(() => {
+    if (!target) return null;
+    const limit = isBashTool ? COMMAND_TRUNCATE_LENGTH : TARGET_TRUNCATE_LENGTH;
+    if (target.length > limit) {
+      return target.slice(0, limit - 3) + '...';
+    }
+    return target;
+  }, [target, tool]);
+
+  const isTargetTruncated = target && truncatedTarget && target !== truncatedTarget;
+
   const hasDetails = params && Object.keys(params).length > 0;
+  const hasOutput = stdout || stderr;
+
+  // Format params for structured display (exclude certain keys)
+  const formatParams = () => {
+    if (!params) return [];
+    const excludeKeys = ['description', 'command', 'file_path', 'path', 'url', 'pattern', 'query'];
+    return Object.entries(params)
+      .filter(([key]) => !excludeKeys.includes(key))
+      .map(([key, value]) => ({
+        key,
+        value: typeof value === 'string' ? value : JSON.stringify(value),
+      }));
+  };
+
+  const additionalParams = formatParams();
+  const showExpandable = hasDetails || hasOutput;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -158,10 +203,57 @@ export function ToolUsageBlock({
         <ToolIcon className="w-3 h-3 text-muted-foreground shrink-0" />
         <span className="font-medium text-foreground">{getToolLabel()}</span>
 
-        {target && (
-          <code className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[250px]">
-            {target}
-          </code>
+        {/* Description (if available, shows instead of/before target) */}
+        {description && (
+          <span className="text-muted-foreground italic truncate max-w-[200px]">
+            {description}
+          </span>
+        )}
+
+        {/* Target with tooltip for truncated content */}
+        {truncatedTarget && !description && (
+          isTargetTruncated ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <code className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px] cursor-help">
+                  {truncatedTarget}
+                </code>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="max-w-[500px] break-all font-mono text-[11px]"
+              >
+                {fullTarget}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <code className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]">
+              {truncatedTarget}
+            </code>
+          )
+        )}
+
+        {/* Target when description is shown (smaller, secondary) */}
+        {truncatedTarget && description && (
+          isTargetTruncated ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <code className="text-[9px] px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px] cursor-help">
+                  {truncatedTarget}
+                </code>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="max-w-[500px] break-all font-mono text-[11px]"
+              >
+                {fullTarget}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <code className="text-[9px] px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]">
+              {truncatedTarget}
+            </code>
+          )
         )}
 
         {/* Spacer */}
@@ -175,7 +267,7 @@ export function ToolUsageBlock({
         )}
 
         {/* Expand indicator */}
-        {hasDetails && (
+        {showExpandable && (
           <span className="shrink-0 text-muted-foreground">
             {isOpen ? (
               <ChevronDown className="w-2.5 h-2.5" />
@@ -186,15 +278,60 @@ export function ToolUsageBlock({
         )}
       </CollapsibleTrigger>
 
-      {hasDetails && (
+      {showExpandable && (
         <CollapsibleContent>
-          <div className="mt-0.5 ml-4 rounded border bg-muted/30 p-1.5 text-[10px]">
+          <div className="mt-0.5 ml-4 space-y-1.5">
+            {/* Summary */}
             {summary && (
-              <div className="mb-1 text-muted-foreground">{summary}</div>
+              <div className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/30">
+                {summary}
+              </div>
             )}
-            <pre className="font-mono text-[9px] text-muted-foreground overflow-x-auto">
-              {JSON.stringify(params, null, 2)}
-            </pre>
+
+            {/* Full command for Bash tools */}
+            {isBashTool && fullTarget && (
+              <div className="rounded border bg-zinc-900 p-2">
+                <div className="text-[9px] text-muted-foreground/60 mb-1">Command</div>
+                <pre className="font-mono text-[10px] text-green-400 whitespace-pre-wrap break-all">
+                  $ {fullTarget}
+                </pre>
+              </div>
+            )}
+
+            {/* stdout output */}
+            {stdout && (
+              <div className="rounded border bg-zinc-900 p-2">
+                <div className="text-[9px] text-muted-foreground/60 mb-1">Output</div>
+                <pre className="font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                  {stdout}
+                </pre>
+              </div>
+            )}
+
+            {/* stderr output */}
+            {stderr && (
+              <div className="rounded border border-red-900/30 bg-red-950/20 p-2">
+                <div className="text-[9px] text-red-400/60 mb-1">Error Output</div>
+                <pre className="font-mono text-[10px] text-red-400 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                  {stderr}
+                </pre>
+              </div>
+            )}
+
+            {/* Additional parameters (structured display) */}
+            {additionalParams.length > 0 && (
+              <div className="rounded border bg-muted/30 p-2">
+                <div className="text-[9px] text-muted-foreground/60 mb-1">Parameters</div>
+                <div className="space-y-0.5">
+                  {additionalParams.map(({ key, value }) => (
+                    <div key={key} className="flex gap-2 text-[10px]">
+                      <span className="text-muted-foreground font-medium shrink-0">{key}:</span>
+                      <span className="text-foreground/80 font-mono break-all">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </CollapsibleContent>
       )}
@@ -214,6 +351,8 @@ interface ActiveToolType {
   endTime?: number;
   success?: boolean;
   summary?: string;
+  stdout?: string;
+  stderr?: string;
 }
 
 export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) {
@@ -234,6 +373,8 @@ export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) 
           success={tool.success}
           summary={tool.summary}
           duration={tool.endTime ? tool.endTime - tool.startTime : undefined}
+          stdout={tool.stdout}
+          stderr={tool.stderr}
         />
       ))}
     </div>

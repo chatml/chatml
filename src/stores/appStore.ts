@@ -42,6 +42,8 @@ interface ActiveTool {
   endTime?: number;
   success?: boolean;
   summary?: string;
+  stdout?: string;
+  stderr?: string;
 }
 
 interface AppState {
@@ -150,7 +152,7 @@ interface AppState {
   setThinking: (conversationId: string, isThinking: boolean) => void;
   clearThinking: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool) => void;
-  completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string) => void;
+  completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   clearActiveTools: (conversationId: string) => void;
 
   // Todo actions
@@ -767,12 +769,12 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: [...(state.activeTools[conversationId] || []), tool],
     },
   })),
-  completeActiveTool: (conversationId, toolId, success, summary) => set((state) => ({
+  completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr) => set((state) => ({
     activeTools: {
       ...state.activeTools,
       [conversationId]: (state.activeTools[conversationId] || []).map((t) =>
         t.id === toolId
-          ? { ...t, endTime: Date.now(), success, summary }
+          ? { ...t, endTime: Date.now(), success, summary, stdout, stderr }
           : t
       ),
     },
