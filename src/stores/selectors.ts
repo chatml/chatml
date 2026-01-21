@@ -25,6 +25,7 @@ const EMPTY_MESSAGES: readonly Message[] = [];
 const EMPTY_TOOLS: readonly unknown[] = []; // ActiveTool is internal to appStore
 const EMPTY_AGENT_TODOS: readonly AgentTodoItem[] = [];
 const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
+const EMPTY_TERMINAL_INSTANCES: readonly unknown[] = [];
 
 // ============================================================================
 // Conversation State
@@ -50,14 +51,16 @@ export const useConversationState = () =>
  * Messages for a specific conversation.
  * Use in: ConversationArea, MessageList
  *
- * NOTE: This creates a new array on each store update. If referential stability
- * is needed (e.g., as a useEffect dependency), wrap with useMemo in your component.
+ * Uses useShallow to prevent infinite re-render loops by comparing array
+ * elements by reference rather than creating new array references.
  */
 export const useMessages = (conversationId: string | null) =>
-  useAppStore((s) =>
-    conversationId
-      ? s.messages.filter((m) => m.conversationId === conversationId)
-      : EMPTY_MESSAGES
+  useAppStore(
+    useShallow((s) =>
+      conversationId
+        ? s.messages.filter((m) => m.conversationId === conversationId)
+        : EMPTY_MESSAGES
+    )
   );
 
 /**
@@ -191,7 +194,7 @@ export const useSelectedIds = () =>
 export const useTerminalState = (workspaceId: string | null) =>
   useAppStore(
     useShallow((s) => ({
-      instances: workspaceId ? s.terminalInstances[workspaceId] ?? [] : [],
+      instances: workspaceId ? s.terminalInstances[workspaceId] ?? EMPTY_TERMINAL_INSTANCES : EMPTY_TERMINAL_INSTANCES,
       activeId: workspaceId ? s.activeTerminalId[workspaceId] : null,
       createTerminal: s.createTerminal,
       closeTerminal: s.closeTerminal,
