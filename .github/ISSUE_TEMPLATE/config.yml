@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/chatml/chatml/discussions
+    about: Use Discussions for questions, ideas, or general chat
+  - name: Documentation
+    url: https://github.com/chatml/chatml/blob/main/README.md
+    about: Check the docs before opening an issue

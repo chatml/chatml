@@ -1,0 +1,67 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+type: Feature
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature!
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the application does this affect?
+      options:
+        - Frontend/UI
+        - Backend/API
+        - Agent/Claude SDK
+        - Infrastructure
+        - New Area
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Motivation
+      description: What problem does this solve? Why do we need this?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe your ideal solution
+      placeholder: It would be great if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any other approaches you've thought about?
+      placeholder: I also considered...
+
+  - type: textarea
+    id: design
+    attributes:
+      label: Design / Mockups
+      description: Any visual ideas, screenshots, or mockups?
+      placeholder: Drag and drop images here
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature?
+      options:
+        - Low - Nice to have
+        - Medium - Would improve workflow
+        - High - Critical for success
+    validations:
+      required: true

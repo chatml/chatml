@@ -1,0 +1,64 @@
+name: Task
+description: A specific piece of work to be done
+type: Task
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Create a task for tracking work.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the application does this involve?
+      options:
+        - Frontend/UI
+        - Backend/API
+        - Agent/Claude SDK
+        - Infrastructure
+        - Documentation
+        - Testing
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Task Description
+      description: What needs to be done?
+      placeholder: Describe the task...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How do we know when this is done?
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical
+    attributes:
+      label: Technical Notes
+      description: Any implementation details or considerations?
+      placeholder: Files to modify, dependencies, etc.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How urgent is this task?
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
