@@ -1,0 +1,335 @@
+package agent
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewProcess(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	assert.Equal(t, "test-id", p.ID)
+	assert.Equal(t, "conv-123", p.ConversationID)
+	assert.NotNil(t, p.cmd)
+	assert.NotNil(t, p.cancel)
+	assert.NotNil(t, p.output)
+	assert.NotNil(t, p.done)
+	assert.False(t, p.running)
+}
+
+func TestNewProcessWithOptions(t *testing.T) {
+	opts := ProcessOptions{
+		ID:                  "test-id",
+		Workdir:             "/tmp/test",
+		ConversationID:      "conv-456",
+		ResumeSession:       "session-789",
+		ForkSession:         true,
+		LinearIssue:         "LIN-123",
+		ToolPreset:          "read-only",
+		EnableCheckpointing: true,
+		MaxBudgetUsd:        10.0,
+		MaxTurns:            50,
+		MaxThinkingTokens:   1000,
+		StructuredOutput:    `{"type": "object"}`,
+		SettingSources:      "project,user",
+		Betas:               "feature1,feature2",
+		Model:               "claude-opus-4-5-20251101",
+		FallbackModel:       "claude-sonnet-4-20250514",
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	assert.Equal(t, "test-id", p.ID)
+	assert.Equal(t, "conv-456", p.ConversationID)
+	assert.NotNil(t, p.cmd)
+	assert.Equal(t, "/tmp/test", p.cmd.Dir)
+}
+
+func TestProcess_IsRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	assert.False(t, p.IsRunning())
+
+	// Manually set running flag for testing
+	p.mu.Lock()
+	p.running = true
+	p.mu.Unlock()
+
+	assert.True(t, p.IsRunning())
+}
+
+func TestProcess_Output(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	ch := p.Output()
+	assert.NotNil(t, ch)
+
+	// Verify it's a receive-only channel
+	// The method returns a receive-only view of the internal channel
+}
+
+func TestProcess_Done(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	ch := p.Done()
+	assert.NotNil(t, ch)
+
+	// Verify it's a receive-only channel
+	// The method returns a receive-only view of the internal channel
+}
+
+func TestProcess_SessionID(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Initially empty
+	assert.Empty(t, p.GetSessionID())
+
+	// Set and get
+	p.SetSessionID("new-session-id")
+	assert.Equal(t, "new-session-id", p.GetSessionID())
+
+	// Update
+	p.SetSessionID("updated-session-id")
+	assert.Equal(t, "updated-session-id", p.GetSessionID())
+}
+
+func TestProcess_ExitError(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Initially nil
+	assert.Nil(t, p.ExitError())
+}
+
+func TestProcess_SendMessage_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SendMessage("test message")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_SendStop_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SendStop()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_SendInterrupt_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SendInterrupt()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_SetModel_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SetModel("claude-opus-4-5-20251101")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_SetPermissionMode_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SetPermissionMode("auto")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_GetSupportedModels_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.GetSupportedModels()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_GetSupportedCommands_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.GetSupportedCommands()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_GetMcpStatus_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.GetMcpStatus()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_GetAccountInfo_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.GetAccountInfo()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_RewindFiles_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.RewindFiles("checkpoint-uuid")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_Stop(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Stop should not panic even when not running
+	p.Stop()
+}
+
+func TestInputMessage_Marshal(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      InputMessage
+		expected map[string]interface{}
+	}{
+		{
+			name: "message type",
+			msg: InputMessage{
+				Type:    "message",
+				Content: "Hello world",
+			},
+			expected: map[string]interface{}{
+				"type":    "message",
+				"content": "Hello world",
+			},
+		},
+		{
+			name: "stop type",
+			msg: InputMessage{
+				Type: "stop",
+			},
+			expected: map[string]interface{}{
+				"type": "stop",
+			},
+		},
+		{
+			name: "set_model type",
+			msg: InputMessage{
+				Type:  "set_model",
+				Model: "claude-opus-4-5-20251101",
+			},
+			expected: map[string]interface{}{
+				"type":  "set_model",
+				"model": "claude-opus-4-5-20251101",
+			},
+		},
+		{
+			name: "set_permission_mode type",
+			msg: InputMessage{
+				Type:           "set_permission_mode",
+				PermissionMode: "auto",
+			},
+			expected: map[string]interface{}{
+				"type":           "set_permission_mode",
+				"permissionMode": "auto",
+			},
+		},
+		{
+			name: "rewind_files type",
+			msg: InputMessage{
+				Type:           "rewind_files",
+				CheckpointUuid: "checkpoint-123",
+			},
+			expected: map[string]interface{}{
+				"type":           "rewind_files",
+				"checkpointUuid": "checkpoint-123",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.msg)
+			require.NoError(t, err)
+
+			var result map[string]interface{}
+			err = json.Unmarshal(data, &result)
+			require.NoError(t, err)
+
+			// Check expected fields are present
+			for key, expectedValue := range tt.expected {
+				actualValue, ok := result[key]
+				assert.True(t, ok, "Expected key %s to be present", key)
+				assert.Equal(t, expectedValue, actualValue)
+			}
+		})
+	}
+}
+
+func TestFindAgentRunner(t *testing.T) {
+	// Save original values
+	origEnv := os.Getenv("CHATML_AGENT_RUNNER")
+	origPath := AgentRunnerPath
+	defer func() {
+		os.Setenv("CHATML_AGENT_RUNNER", origEnv)
+		AgentRunnerPath = origPath
+	}()
+
+	// Test environment variable takes precedence
+	os.Setenv("CHATML_AGENT_RUNNER", "/custom/path/runner")
+	result := findAgentRunner()
+	assert.Equal(t, "/custom/path/runner", result)
+
+	// Test package-level override
+	os.Unsetenv("CHATML_AGENT_RUNNER")
+	AgentRunnerPath = "/override/path/runner"
+	result = findAgentRunner()
+	assert.Equal(t, "/override/path/runner", result)
+
+	// Test fallback (when no config)
+	AgentRunnerPath = ""
+	result = findAgentRunner()
+	// Should return either a found path or the fallback
+	assert.NotEmpty(t, result)
+}
+
+func TestProcessOptions_Defaults(t *testing.T) {
+	opts := ProcessOptions{}
+
+	assert.Empty(t, opts.ID)
+	assert.Empty(t, opts.Workdir)
+	assert.Empty(t, opts.ConversationID)
+	assert.Empty(t, opts.ResumeSession)
+	assert.False(t, opts.ForkSession)
+	assert.Empty(t, opts.LinearIssue)
+	assert.Empty(t, opts.ToolPreset)
+	assert.False(t, opts.EnableCheckpointing)
+	assert.Zero(t, opts.MaxBudgetUsd)
+	assert.Zero(t, opts.MaxTurns)
+	assert.Zero(t, opts.MaxThinkingTokens)
+	assert.Empty(t, opts.StructuredOutput)
+	assert.Empty(t, opts.SettingSources)
+	assert.Empty(t, opts.Betas)
+	assert.Empty(t, opts.Model)
+	assert.Empty(t, opts.FallbackModel)
+}
+
+func TestNewProcessWithOptions_MinimalOptions(t *testing.T) {
+	// Test with minimal required options
+	opts := ProcessOptions{
+		ID:             "minimal-id",
+		Workdir:        "/tmp",
+		ConversationID: "conv-id",
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	assert.Equal(t, "minimal-id", p.ID)
+	assert.Equal(t, "conv-id", p.ConversationID)
+	assert.NotNil(t, p.cmd)
+}
