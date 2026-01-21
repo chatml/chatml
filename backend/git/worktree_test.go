@@ -1,8 +1,11 @@
 package git
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -363,4 +366,100 @@ func TestWorktreeLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.NoDirExists(t, worktreePath)
 	assert.False(t, branchExists(t, repoPath, branch))
+}
+
+// ============================================================================
+// CreateSessionDirectoryAtomic Tests
+// ============================================================================
+
+func TestCreateSessionDirectoryAtomic_Success(t *testing.T) {
+	baseDir := t.TempDir()
+
+	path, err := CreateSessionDirectoryAtomic(baseDir, "tokyo")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(baseDir, "tokyo"), path)
+
+	// Verify directory exists
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+}
+
+func TestCreateSessionDirectoryAtomic_Collision(t *testing.T) {
+	baseDir := t.TempDir()
+
+	// Create first directory
+	_, err := CreateSessionDirectoryAtomic(baseDir, "tokyo")
+	require.NoError(t, err)
+
+	// Attempt to create same directory should fail with ErrDirectoryExists
+	_, err = CreateSessionDirectoryAtomic(baseDir, "tokyo")
+	assert.ErrorIs(t, err, ErrDirectoryExists)
+}
+
+func TestCreateSessionDirectoryAtomic_Concurrent(t *testing.T) {
+	baseDir := t.TempDir()
+
+	var wg sync.WaitGroup
+	var successes atomic.Int32
+	var collisions atomic.Int32
+
+	// 10 goroutines try to create the same directory
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := CreateSessionDirectoryAtomic(baseDir, "tokyo")
+			if err == nil {
+				successes.Add(1)
+			} else if errors.Is(err, ErrDirectoryExists) {
+				collisions.Add(1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Exactly one should succeed, rest should get collision
+	assert.Equal(t, int32(1), successes.Load(), "exactly one goroutine should succeed")
+	assert.Equal(t, int32(9), collisions.Load(), "9 goroutines should get collision")
+}
+
+func TestCreateSessionDirectoryAtomic_ParentNotExist(t *testing.T) {
+	baseDir := filepath.Join(t.TempDir(), "nonexistent", "nested")
+
+	// Should fail because parent doesn't exist
+	_, err := CreateSessionDirectoryAtomic(baseDir, "tokyo")
+	assert.Error(t, err)
+	assert.False(t, errors.Is(err, ErrDirectoryExists), "error should not be ErrDirectoryExists")
+}
+
+// ============================================================================
+// CreateInExistingDir Tests
+// ============================================================================
+
+func TestCreateInExistingDir_Success(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	// Create directory first (simulating atomic creation)
+	sessionDir := filepath.Join(t.TempDir(), "test-session")
+	require.NoError(t, os.Mkdir(sessionDir, 0755))
+
+	// Create worktree in existing directory
+	worktreePath, branch, baseCommit, err := wm.CreateInExistingDir(repoPath, sessionDir, "session/test-branch")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		wm.RemoveAtPath(repoPath, sessionDir, "session/test-branch")
+	})
+
+	// Verify results
+	assert.Equal(t, sessionDir, worktreePath)
+	assert.Equal(t, "session/test-branch", branch)
+	assert.Len(t, baseCommit, 40, "base commit should be a valid SHA")
+
+	// Verify worktree is functional (has .git file)
+	gitFile := filepath.Join(sessionDir, ".git")
+	assert.FileExists(t, gitFile)
 }

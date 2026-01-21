@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -202,27 +204,75 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Generate session ID
 	sessionID := uuid.New().String()
 
-	// Generate or use provided session name (city-based naming)
+	// Get workspaces base directory (~/.chatml/workspaces)
+	workspacesDir, err := git.WorkspacesBaseDir()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get workspaces directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure workspaces base directory exists
+	if err := os.MkdirAll(workspacesDir, 0755); err != nil {
+		http.Error(w, fmt.Sprintf("failed to create workspaces directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Generate or use provided session name with atomic directory creation
 	sessionName := req.Name
+	var sessionPath string
+
 	if sessionName == "" {
-		// Get workspaces base directory to check for existing directories
-		workspacesDir, err := git.WorkspacesBaseDir()
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to get workspaces directory: %v", err), http.StatusInternalServerError)
+		// Atomic session name generation with retry loop
+		const maxRetries = 5
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			// Scan filesystem for existing session directories
+			existingNames := []string{}
+			entries, err := os.ReadDir(workspacesDir)
+			if err == nil {
+				for _, entry := range entries {
+					if entry.IsDir() {
+						existingNames = append(existingNames, entry.Name())
+					}
+				}
+			}
+
+			// Generate candidate name
+			candidateName := naming.GenerateUniqueSessionName(existingNames)
+
+			// Attempt atomic directory creation
+			path, err := git.CreateSessionDirectoryAtomic(workspacesDir, candidateName)
+			if err == nil {
+				sessionName = candidateName
+				sessionPath = path
+				break
+			}
+
+			if errors.Is(err, git.ErrDirectoryExists) {
+				// Name collision - retry with fresh name
+				continue
+			}
+
+			// Other error - fail the request
+			http.Error(w, fmt.Sprintf("failed to create session directory: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		// Scan filesystem for existing session directories (global collision check)
-		existingNames := []string{}
-		entries, err := os.ReadDir(workspacesDir)
-		if err == nil { // Directory might not exist yet
-			for _, entry := range entries {
-				if entry.IsDir() {
-					existingNames = append(existingNames, entry.Name())
-				}
-			}
+		if sessionName == "" {
+			http.Error(w, "failed to generate unique session name after retries", http.StatusConflict)
+			return
 		}
-		sessionName = naming.GenerateUniqueSessionName(existingNames)
+	} else {
+		// User provided a name - attempt atomic creation
+		path, err := git.CreateSessionDirectoryAtomic(workspacesDir, sessionName)
+		if err != nil {
+			if errors.Is(err, git.ErrDirectoryExists) {
+				http.Error(w, fmt.Sprintf("session name '%s' already exists", sessionName), http.StatusConflict)
+				return
+			}
+			http.Error(w, fmt.Sprintf("failed to create session directory: %v", err), http.StatusInternalServerError)
+			return
+		}
+		sessionPath = path
 	}
 
 	// Generate or use provided branch name
@@ -231,16 +281,13 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		branchName = fmt.Sprintf("session/%s", sessionName)
 	}
 
-	// Get workspaces base directory (~/.chatml/workspaces)
-	workspacesDir, err := git.WorkspacesBaseDir()
+	// Create git worktree in the atomically created directory
+	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(repo.Path, sessionPath, branchName)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get workspaces directory: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Create git worktree at the new location
-	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateAtPath(repo.Path, filepath.Join(workspacesDir, sessionName), branchName)
-	if err != nil {
+		// Rollback: remove the atomically created directory
+		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
+			log.Printf("[handlers] Warning: failed to rollback session directory %s: %v", sessionPath, removeErr)
+		}
 		http.Error(w, fmt.Sprintf("failed to create worktree: %v", err), http.StatusInternalServerError)
 		return
 	}
