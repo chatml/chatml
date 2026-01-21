@@ -48,6 +48,7 @@ type Process struct {
 	done           chan struct{}
 	mu             sync.Mutex
 	running        bool
+	stopped        bool // Prevents double-stop race conditions
 	exitErr        error
 }
 
@@ -357,13 +358,40 @@ func (p *Process) sendInput(msg InputMessage) error {
 	return nil
 }
 
-func (p *Process) Stop() {
-	p.mu.Lock()
+// doStopLocked performs the actual stop cleanup. Must be called with p.mu held.
+func (p *Process) doStopLocked() {
 	if p.stdin != nil {
 		p.stdin.Close()
+		p.stdin = nil
 	}
-	p.mu.Unlock()
 	p.cancel()
+}
+
+// Stop stops the process. Safe to call multiple times (idempotent).
+func (p *Process) Stop() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.stopped {
+		return // Already stopped, no-op
+	}
+	p.stopped = true
+	p.doStopLocked()
+}
+
+// TryStop attempts to stop the process and returns true if this call performed
+// the stop, false if the process was already stopped by another goroutine.
+// Use this when you need to know if you "own" the stop operation.
+func (p *Process) TryStop() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.stopped {
+		return false // Someone else stopped it
+	}
+	p.stopped = true
+	p.doStopLocked()
+	return true
 }
 
 func (p *Process) Output() <-chan string {
@@ -378,6 +406,13 @@ func (p *Process) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.running
+}
+
+// IsStopped returns true if the process has been stopped.
+func (p *Process) IsStopped() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stopped
 }
 
 func (p *Process) ExitError() error {

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -327,6 +328,120 @@ func TestManager_ConcurrentGetProcess(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		<-done
 	}
+}
+
+func TestManager_ConcurrentStopConversation(t *testing.T) {
+	manager, s := setupTestManager(t)
+
+	createTestRepo(t, s, "repo-1")
+	createTestSession(t, s, "sess-1", "repo-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Manually insert a process into the map
+	proc := NewProcess("test", t.TempDir(), "conv-1")
+	manager.mu.Lock()
+	manager.convProcesses["conv-1"] = proc
+	manager.mu.Unlock()
+
+	// Track status updates - should only happen once
+	var statusUpdateCount int
+	var mu sync.Mutex
+	manager.SetConversationStatusHandler(func(convID, status string) {
+		mu.Lock()
+		statusUpdateCount++
+		mu.Unlock()
+	})
+
+	// Concurrent stop calls should not panic and should update status only once
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			manager.StopConversation("conv-1")
+		}()
+	}
+	wg.Wait()
+
+	// Status should be updated exactly once (only one goroutine wins TryStop)
+	mu.Lock()
+	count := statusUpdateCount
+	mu.Unlock()
+	assert.Equal(t, 1, count, "status should be updated exactly once")
+
+	// Process should be removed from map
+	assert.Nil(t, manager.GetConversationProcess("conv-1"))
+}
+
+func TestManager_ConcurrentStopAgent(t *testing.T) {
+	manager, s := setupTestManager(t)
+
+	// Create test data
+	createTestRepo(t, s, "repo-1")
+
+	// Manually insert a process into the legacy processes map
+	proc := NewProcess("agent-1", t.TempDir(), "")
+	manager.mu.Lock()
+	manager.processes["agent-1"] = proc
+	manager.mu.Unlock()
+
+	// Track status updates - should only happen once
+	var statusUpdateCount int
+	var mu sync.Mutex
+	manager.SetStatusHandler(func(agentID string, status models.AgentStatus) {
+		mu.Lock()
+		statusUpdateCount++
+		mu.Unlock()
+	})
+
+	// Concurrent stop calls should not panic and should update status only once
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			manager.StopAgent("agent-1")
+		}()
+	}
+	wg.Wait()
+
+	// Status should be updated exactly once (only one goroutine wins TryStop)
+	mu.Lock()
+	count := statusUpdateCount
+	mu.Unlock()
+	assert.Equal(t, 1, count, "status should be updated exactly once")
+
+	// Process should be removed from map
+	assert.Nil(t, manager.GetProcess("agent-1"))
+}
+
+func TestManager_ConcurrentStopAndGet(t *testing.T) {
+	manager, s := setupTestManager(t)
+
+	createTestRepo(t, s, "repo-1")
+	createTestSession(t, s, "sess-1", "repo-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Manually insert a process
+	proc := NewProcess("test", t.TempDir(), "conv-1")
+	manager.mu.Lock()
+	manager.convProcesses["conv-1"] = proc
+	manager.mu.Unlock()
+
+	// Concurrent reads and stops should not cause race conditions
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			manager.GetConversationProcess("conv-1")
+		}()
+		go func() {
+			defer wg.Done()
+			manager.StopConversation("conv-1")
+		}()
+	}
+	wg.Wait()
 }
 
 // ============================================================================
