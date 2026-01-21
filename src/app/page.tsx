@@ -27,6 +27,7 @@ import { BottomTerminal } from '@/components/BottomTerminal';
 import { AddWorkspaceModal } from '@/components/AddWorkspaceModal';
 import { CloneFromUrlDialog } from '@/components/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/QuickStartDialog';
+import { FilePicker } from '@/components/FilePicker';
 // import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -999,6 +1000,12 @@ export default function Home() {
           fileName={fileTabs.find((t) => t.id === pendingCloseFileTabId)?.name || 'file'}
           onSave={handleSaveAndCloseFile}
           onDontSave={handleDontSaveAndCloseFile}
+        />
+
+        {/* File Picker (Cmd+P) */}
+        <FilePicker
+          workspaceId={selectedWorkspaceId}
+          sessionId={selectedSessionId}
         />
 
         {/* Update Checker - disabled until remote URL is configured
