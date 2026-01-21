@@ -15,11 +15,9 @@ func TestWriteAndReadMetadata(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
 	testHome := tmpDir
-	os.Setenv("HOME", testHome)
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", testHome)
 
 	// Create metadata
 	now := time.Now().Truncate(time.Second) // Truncate for comparison
@@ -92,10 +90,8 @@ func TestWriteMetadata_SetsVersion(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
+	t.Setenv("HOME", tmpDir)
 
 	// Create metadata without version
 	meta := &Metadata{
@@ -124,10 +120,8 @@ func TestReadMetadata_MissingFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
+	t.Setenv("HOME", tmpDir)
 
 	_, err = ReadMetadata("nonexistent-id")
 	if err == nil {
@@ -142,10 +136,8 @@ func TestReadMetadata_CorruptFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
+	t.Setenv("HOME", tmpDir)
 
 	// Create sessions directory and write corrupt JSON
 	sessionsDir := filepath.Join(tmpDir, ".chatml", "sessions")
@@ -170,10 +162,8 @@ func TestDeleteMetadata(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
+	t.Setenv("HOME", tmpDir)
 
 	// Write metadata first
 	meta := &Metadata{ID: "test-delete", Name: "paris"}
@@ -200,10 +190,8 @@ func TestDeleteMetadata_MissingFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
+	t.Setenv("HOME", tmpDir)
 
 	// Should not error when file doesn't exist
 	if err := DeleteMetadata("nonexistent-id"); err != nil {
@@ -218,10 +206,8 @@ func TestMetadataExists(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Temporarily override the home directory
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	// Temporarily override the home directory using t.Setenv (auto-restores after test)
+	t.Setenv("HOME", tmpDir)
 
 	// Should not exist initially
 	if MetadataExists("test-exists") {
@@ -237,5 +223,50 @@ func TestMetadataExists(t *testing.T) {
 	// Should exist now
 	if !MetadataExists("test-exists") {
 		t.Error("MetadataExists should return true after writing")
+	}
+}
+
+func TestValidateSessionID(t *testing.T) {
+	tests := []struct {
+		name      string
+		sessionID string
+		wantErr   bool
+	}{
+		{"valid UUID-like", "abc123-def456-789", false},
+		{"valid alphanumeric", "session123", false},
+		{"valid with underscores", "test_session_id", false},
+		{"valid with hyphens", "test-session-id", false},
+		{"valid mixed", "Test_Session-123", false},
+		{"empty string", "", true},
+		{"contains slash", "session/id", true},
+		{"contains backslash", "session\\id", true},
+		{"contains dot", "session.id", true},
+		{"contains space", "session id", true},
+		{"contains colon", "session:id", true},
+		{"path traversal attempt", "../etc/passwd", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSessionID(tt.sessionID)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateSessionID(%q) error = %v, wantErr %v", tt.sessionID, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestWriteMetadata_InvalidSessionID(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "session-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	t.Setenv("HOME", tmpDir)
+
+	// Try to write with invalid session ID
+	meta := &Metadata{ID: "../malicious", Name: "test"}
+	if err := WriteMetadata(meta); err == nil {
+		t.Error("WriteMetadata should fail for invalid session ID")
 	}
 }

@@ -16,6 +16,7 @@ import (
 type Store interface {
 	ListRepos(ctx context.Context) ([]*models.Repo, error)
 	ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error)
+	GetSession(ctx context.Context, sessionID string) (*models.Session, error)
 }
 
 // WorktreeManager defines the minimal interface for worktree operations.
@@ -77,6 +78,17 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 		log.Printf("[cleanup] Removed %d orphaned worktree(s)", totalOrphans)
 	}
 
+	// Also clean up stale session metadata files
+	staleCount, err := session.CleanupStaleMetadata(func(sessionID string) bool {
+		_, err := store.GetSession(ctx, sessionID)
+		return err == nil
+	})
+	if err != nil {
+		log.Printf("[cleanup] Warning: failed to clean stale metadata: %v", err)
+	} else if staleCount > 0 {
+		log.Printf("[cleanup] Removed %d stale session metadata file(s)", staleCount)
+	}
+
 	return nil
 }
 
@@ -121,11 +133,11 @@ func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, re
 		}
 
 		if !trackedPaths[worktreePath] {
-			// Orphaned worktree - we don't know the session ID since it's not in the DB
-			// We'll skip metadata cleanup for orphans since we can't look it up
+			// Orphaned worktree - we don't know the session ID since it's not in the DB.
+			// Stale metadata cleanup happens separately via CleanupStaleMetadata.
 			orphans = append(orphans, orphanInfo{
 				path:      worktreePath,
-				branch:    "", // Will be extracted by git worktree remove
+				branch:    "", // git worktree remove handles branch deletion
 				sessionID: "", // Unknown for orphaned worktrees
 			})
 		}
