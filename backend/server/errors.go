@@ -14,12 +14,13 @@ type APIError struct {
 
 // Error codes for categorization
 const (
-	ErrCodeValidation   = "VALIDATION_ERROR"
-	ErrCodeNotFound     = "NOT_FOUND"
-	ErrCodeConflict     = "CONFLICT"
-	ErrCodeInternal     = "INTERNAL_ERROR"
-	ErrCodeUnauthorized = "UNAUTHORIZED"
-	ErrCodeBadGateway   = "BAD_GATEWAY"
+	ErrCodeValidation      = "VALIDATION_ERROR"
+	ErrCodeNotFound        = "NOT_FOUND"
+	ErrCodeConflict        = "CONFLICT"
+	ErrCodeInternal        = "INTERNAL_ERROR"
+	ErrCodeUnauthorized    = "UNAUTHORIZED"
+	ErrCodeBadGateway      = "BAD_GATEWAY"
+	ErrCodePayloadTooLarge = "PAYLOAD_TOO_LARGE"
 )
 
 // writeError writes a JSON error response and logs the internal error server-side
@@ -71,4 +72,9 @@ func writeUnauthorized(w http.ResponseWriter, msg string) {
 // writeBadGateway writes a 502 bad gateway error response for external service failures
 func writeBadGateway(w http.ResponseWriter, msg string, err error) {
 	writeError(w, http.StatusBadGateway, ErrCodeBadGateway, msg, err)
+}
+
+// writePayloadTooLarge writes a 413 payload too large error response
+func writePayloadTooLarge(w http.ResponseWriter, msg string) {
+	writeError(w, http.StatusRequestEntityTooLarge, ErrCodePayloadTooLarge, msg, nil)
 }

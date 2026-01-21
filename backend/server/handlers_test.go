@@ -830,3 +830,165 @@ func TestCreateSession_DuplicateUserProvidedName(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 	assert.Contains(t, w.Body.String(), "already exists")
 }
+
+// ============================================================================
+// SaveFile Handler Tests (Issue #77 - File Size Limits)
+// ============================================================================
+
+func TestSaveFile_Success(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Create a test file to save to (SaveFile only allows saving existing files)
+	writeFile(t, repoPath, "test.txt", "original content")
+
+	body, _ := json.Marshal(SaveFileRequest{
+		Path:    "test.txt",
+		Content: "updated content",
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/file/save", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.SaveFile(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify file was updated
+	content, err := os.ReadFile(filepath.Join(repoPath, "test.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "updated content", string(content))
+}
+
+func TestSaveFile_ExceedsMaxSize(t *testing.T) {
+	// Set a small max file size for testing via env var BEFORE creating handlers
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "1") // 1MB limit
+
+	h, s := setupTestHandlers(t)
+
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Create a test file to save to
+	writeFile(t, repoPath, "test.txt", "original content")
+
+	// Create content larger than 1MB
+	largeContent := strings.Repeat("x", 2*1024*1024) // 2MB
+
+	body, _ := json.Marshal(SaveFileRequest{
+		Path:    "test.txt",
+		Content: largeContent,
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/file/save", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.SaveFile(w, req)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodePayloadTooLarge, apiErr.Code)
+	assert.Contains(t, apiErr.Error, "exceeds maximum size")
+}
+
+func TestSaveFile_AtExactLimit(t *testing.T) {
+	// Set a small max file size for testing BEFORE creating handlers
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "1") // 1MB limit
+
+	h, s := setupTestHandlers(t)
+
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Create a test file to save to
+	writeFile(t, repoPath, "test.txt", "original content")
+
+	// Create content exactly at 1MB (should succeed)
+	exactContent := strings.Repeat("x", 1*1024*1024) // exactly 1MB
+
+	body, _ := json.Marshal(SaveFileRequest{
+		Path:    "test.txt",
+		Content: exactContent,
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/file/save", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.SaveFile(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestSaveFile_JustOverLimit(t *testing.T) {
+	// Set a small max file size for testing BEFORE creating handlers
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "1") // 1MB limit
+
+	h, s := setupTestHandlers(t)
+
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Create a test file to save to
+	writeFile(t, repoPath, "test.txt", "original content")
+
+	// Create content just over 1MB (should fail)
+	overContent := strings.Repeat("x", 1*1024*1024+1) // 1MB + 1 byte
+
+	body, _ := json.Marshal(SaveFileRequest{
+		Path:    "test.txt",
+		Content: overContent,
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/file/save", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.SaveFile(w, req)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+}
+
+func TestLoadFileSizeConfig_Default(t *testing.T) {
+	// Clear environment variable - t.Setenv with empty string then unset
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "")
+
+	config := LoadFileSizeConfig()
+
+	// Default is 50MB
+	assert.Equal(t, int64(50*1024*1024), config.MaxFileSizeBytes)
+}
+
+func TestLoadFileSizeConfig_FromEnv(t *testing.T) {
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "100")
+
+	config := LoadFileSizeConfig()
+
+	// Should be 100MB
+	assert.Equal(t, int64(100*1024*1024), config.MaxFileSizeBytes)
+}
+
+func TestLoadFileSizeConfig_InvalidEnv(t *testing.T) {
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "invalid")
+
+	config := LoadFileSizeConfig()
+
+	// Should fall back to default (50MB)
+	assert.Equal(t, int64(50*1024*1024), config.MaxFileSizeBytes)
+}
+
+func TestLoadFileSizeConfig_ZeroValue(t *testing.T) {
+	t.Setenv("CHATML_MAX_FILE_SIZE_MB", "0")
+
+	config := LoadFileSizeConfig()
+
+	// Zero is invalid, should fall back to default (50MB)
+	assert.Equal(t, int64(50*1024*1024), config.MaxFileSizeBytes)
+}
