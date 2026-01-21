@@ -316,7 +316,9 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 	proc, ok := m.convProcesses[convID]
 	m.mu.RUnlock()
 
-	if !ok || !proc.IsRunning() {
+	// Check if process exists, hasn't been stopped, and is running.
+	// IsStopped() catches explicit stops; IsRunning() catches natural exits.
+	if !ok || proc.IsStopped() || !proc.IsRunning() {
 		// Process not running, need to restart it
 		conv, err := m.store.GetConversation(ctx, convID)
 		if err != nil {
@@ -381,7 +383,7 @@ func (m *Manager) RewindConversationFiles(convID, checkpointUuid string) error {
 	proc, ok := m.convProcesses[convID]
 	m.mu.RUnlock()
 
-	if !ok || !proc.IsRunning() {
+	if !ok || proc.IsStopped() || !proc.IsRunning() {
 		return fmt.Errorf("conversation process not running: %s", convID)
 	}
 
@@ -395,7 +397,7 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 	proc, ok := m.convProcesses[convID]
 	m.mu.RUnlock()
 
-	if !ok || !proc.IsRunning() {
+	if !ok || proc.IsStopped() || !proc.IsRunning() {
 		return fmt.Errorf("conversation process not running: %s", convID)
 	}
 
@@ -410,20 +412,27 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 // StopConversation stops a running conversation
 func (m *Manager) StopConversation(convID string) {
 	ctx := context.Background()
+
 	m.mu.Lock()
 	proc, ok := m.convProcesses[convID]
-	if !ok || !proc.IsRunning() {
+	if !ok {
 		m.mu.Unlock()
 		return
 	}
-	// Remove from map to prevent concurrent stop attempts
+	// Remove from map to prevent new lookups finding this process
 	delete(m.convProcesses, convID)
 	m.mu.Unlock()
 
-	// Now safe to stop without holding lock
+	// Send graceful stop signal first (best effort, may fail if process already exited)
 	proc.SendStop()
-	proc.Stop()
 
+	// TryStop atomically claims ownership of the stop operation.
+	// Returns false if another goroutine already stopped this process.
+	if !proc.TryStop() {
+		return // Another goroutine is handling the stop
+	}
+
+	// Update status only if we performed the stop
 	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 		c.Status = models.ConversationStatusIdle
 		c.UpdatedAt = time.Now()
@@ -653,18 +662,24 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 
 func (m *Manager) StopAgent(agentID string) {
 	ctx := context.Background()
+
 	m.mu.Lock()
 	proc, ok := m.processes[agentID]
 	if !ok {
 		m.mu.Unlock()
 		return
 	}
-	// Remove from map to prevent concurrent stop attempts
+	// Remove from map to prevent new lookups finding this process
 	delete(m.processes, agentID)
 	m.mu.Unlock()
 
-	// Now safe to stop without holding lock
-	proc.Stop()
+	// TryStop atomically claims ownership of the stop operation.
+	// Returns false if another goroutine already stopped this process.
+	if !proc.TryStop() {
+		return // Another goroutine is handling the stop
+	}
+
+	// Update status only if we performed the stop
 	if err := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); err != nil {
 		log.Printf("[manager] failed to update agent status on stop: %v", err)
 	}

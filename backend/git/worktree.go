@@ -1,12 +1,16 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+// ErrDirectoryExists indicates a name collision during atomic directory creation
+var ErrDirectoryExists = errors.New("directory already exists")
 
 // WorkspacesBaseDir returns the base directory for session worktrees: ~/.chatml/workspaces
 func WorkspacesBaseDir() (string, error) {
@@ -15,6 +19,20 @@ func WorkspacesBaseDir() (string, error) {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 	return filepath.Join(homeDir, ".chatml", "workspaces"), nil
+}
+
+// CreateSessionDirectoryAtomic attempts to atomically create a session directory.
+// Returns ErrDirectoryExists if the directory already exists (name collision).
+// This uses os.Mkdir which is atomic at the filesystem level.
+func CreateSessionDirectoryAtomic(basePath, sessionName string) (string, error) {
+	sessionPath := filepath.Join(basePath, sessionName)
+	if err := os.Mkdir(sessionPath, 0755); err != nil {
+		if os.IsExist(err) {
+			return "", ErrDirectoryExists
+		}
+		return "", fmt.Errorf("failed to create session directory: %w", err)
+	}
+	return sessionPath, nil
 }
 
 type WorktreeManager struct{}
@@ -55,6 +73,30 @@ func (wm *WorktreeManager) CreateAtPath(repoPath, worktreePath, branchName strin
 		return "", "", "", fmt.Errorf("failed to create parent dir %s: %w", parentDir, err)
 	}
 
+	cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
+	cmd.Dir = repoPath
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
+	}
+
+	return worktreePath, branchName, baseCommit, nil
+}
+
+// CreateInExistingDir creates a git worktree in an existing directory.
+// The directory must already exist (created atomically by caller via CreateSessionDirectoryAtomic).
+// Returns the worktree path, branch name, and the base commit SHA.
+func (wm *WorktreeManager) CreateInExistingDir(repoPath, worktreePath, branchName string) (string, string, string, error) {
+	// Capture current HEAD before creating the worktree - this is the base commit
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
+	}
+	baseCommit := strings.TrimSpace(string(out))
+
+	// Create worktree in the existing directory
+	// git worktree add will work with an existing empty directory
 	cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
 	cmd.Dir = repoPath
 	if out, err := cmd.CombinedOutput(); err != nil {
