@@ -165,7 +165,13 @@ async function* createMessageStream() {
                 }
             }
             catch (err) {
-                emit({ type: "error", message: `Failed to parse input: ${err}` });
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                emit({
+                    type: "json_parse_error",
+                    message: `Failed to parse input: ${errorMessage}`,
+                    rawInput: line.length > 1000 ? line.slice(0, 1000) + "...[truncated]" : line,
+                    errorDetails: errorMessage,
+                });
             }
         }
     }

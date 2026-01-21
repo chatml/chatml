@@ -102,6 +102,10 @@ type AgentEvent struct {
 
 	// Stderr data
 	Data string `json:"data,omitempty"`
+
+	// JSON parse error fields
+	RawInput     string `json:"rawInput,omitempty"`
+	ErrorDetails string `json:"errorDetails,omitempty"`
 }
 
 // McpServerStatus represents MCP server connection status
@@ -194,6 +198,7 @@ const (
 	EventTypeThinkingStart     = "thinking_start"
 	EventTypeCheckpointCreated = "checkpoint_created"
 	EventTypeFilesRewound      = "files_rewound"
+	EventTypeJsonParseError    = "json_parse_error"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
