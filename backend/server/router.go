@@ -18,7 +18,8 @@ import (
 
 func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator) http.Handler {
 	r := chi.NewRouter()
-	h := NewHandlers(s, agentMgr)
+	dirCacheConfig := LoadDirListingCacheConfig()
+	h := NewHandlers(s, agentMgr, dirCacheConfig)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)

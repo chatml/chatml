@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 )
 
 // AllowedOrigins defines the allowed origins for CORS and WebSocket connections.
@@ -64,4 +65,20 @@ func LoadFileSizeConfig() FileSizeConfig {
 		}
 	}
 	return FileSizeConfig{MaxFileSizeBytes: maxSize}
+}
+
+// DirListingCacheConfig holds configuration for directory listing cache
+type DirListingCacheConfig struct {
+	TTL time.Duration
+}
+
+// LoadDirListingCacheConfig loads directory listing cache config from environment variables
+func LoadDirListingCacheConfig() DirListingCacheConfig {
+	ttl := 30 * time.Second // default
+	if ttlStr := os.Getenv("CHATML_DIR_CACHE_TTL"); ttlStr != "" {
+		if parsed, err := time.ParseDuration(ttlStr); err == nil && parsed > 0 {
+			ttl = parsed
+		}
+	}
+	return DirListingCacheConfig{TTL: ttl}
 }
