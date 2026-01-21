@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
@@ -22,11 +23,63 @@ import (
 	"github.com/google/uuid"
 )
 
+// SessionLockManager provides per-path mutex locks to serialize operations on the same session.
+// This prevents race conditions when deleting and recreating sessions with the same name.
+// Uses reference counting to clean up unused locks and prevent memory leaks.
+type SessionLockManager struct {
+	mu    sync.Mutex
+	locks map[string]*lockEntry
+}
+
+type lockEntry struct {
+	mu       *sync.Mutex
+	refCount int
+}
+
+func NewSessionLockManager() *SessionLockManager {
+	return &SessionLockManager{
+		locks: make(map[string]*lockEntry),
+	}
+}
+
+// Lock acquires a mutex for the given path. Creates the mutex if it doesn't exist.
+// Increments the reference count to track active users of the lock.
+func (m *SessionLockManager) Lock(path string) {
+	m.mu.Lock()
+	entry, ok := m.locks[path]
+	if !ok {
+		entry = &lockEntry{mu: &sync.Mutex{}, refCount: 0}
+		m.locks[path] = entry
+	}
+	entry.refCount++
+	m.mu.Unlock()
+	entry.mu.Lock()
+}
+
+// Unlock releases the mutex for the given path and decrements the reference count.
+// When reference count reaches zero, the lock entry is removed from the map.
+func (m *SessionLockManager) Unlock(path string) {
+	m.mu.Lock()
+	entry, ok := m.locks[path]
+	if !ok {
+		m.mu.Unlock()
+		log.Printf("[SessionLockManager] Warning: attempted to unlock non-existent path: %s", path)
+		return
+	}
+	entry.refCount--
+	if entry.refCount == 0 {
+		delete(m.locks, path)
+	}
+	m.mu.Unlock()
+	entry.mu.Unlock()
+}
+
 type Handlers struct {
 	store           *store.SQLiteStore
 	repoManager     *git.RepoManager
 	worktreeManager *git.WorktreeManager
 	agentManager    *agent.Manager
+	sessionLocks    *SessionLockManager
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -44,6 +97,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 		repoManager:     git.NewRepoManager(),
 		worktreeManager: git.NewWorktreeManager(),
 		agentManager:    am,
+		sessionLocks:    NewSessionLockManager(),
 	}
 }
 
@@ -281,6 +335,10 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		branchName = fmt.Sprintf("session/%s", sessionName)
 	}
 
+	// Lock on the session path to prevent race conditions with delete operations
+	h.sessionLocks.Lock(sessionPath)
+	defer h.sessionLocks.Unlock(sessionPath)
+
 	// Create git worktree in the atomically created directory
 	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(repo.Path, sessionPath, branchName)
 	if err != nil {
@@ -487,6 +545,20 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		writeDBError(w, err)
 		return
 	}
+
+	// Track worktree path for locking - we need to hold the lock through DB deletion
+	var worktreePath string
+	if sess != nil && sess.WorktreePath != "" {
+		worktreePath = sess.WorktreePath
+	}
+
+	// Acquire lock before any modifications if we have a worktree path
+	if worktreePath != "" {
+		h.sessionLocks.Lock(worktreePath)
+		defer h.sessionLocks.Unlock(worktreePath)
+	}
+
+	// Clean up worktree if session exists
 	if sess != nil {
 		repo, err := h.store.GetRepo(ctx, sess.WorkspaceID)
 		if err != nil {
@@ -502,6 +574,7 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Delete from DB while still holding the lock (if acquired)
 	if err := h.store.DeleteSession(ctx, sessionID); err != nil {
 		writeDBError(w, err)
 		return
