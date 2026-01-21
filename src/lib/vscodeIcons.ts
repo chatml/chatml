@@ -265,9 +265,9 @@ const SPECIAL_FILE_ICONS: Record<string, string> = {
   'cypress.config.ts': 'file-type-cypress',
 
   // Docs
-  'readme.md': 'file-type-readme',
-  'README.md': 'file-type-readme',
-  'README': 'file-type-readme',
+  'readme.md': 'file-type-markdown',
+  'README.md': 'file-type-markdown',
+  'README': 'file-type-markdown',
   'license': 'file-type-license',
   'LICENSE': 'file-type-license',
   'license.md': 'file-type-license',

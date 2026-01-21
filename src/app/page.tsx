@@ -280,7 +280,8 @@ export default function Home() {
     sessionId: conv.sessionId,
     type: conv.type,
     name: conv.name,
-    status: conv.status,
+    // Reset 'active' status to 'idle' on load - no agent is running when app starts
+    status: conv.status === 'active' ? 'idle' : conv.status,
     messages: conv.messages.map(m => messageToMessage(m, conv.id)),
     toolSummary: conv.toolSummary.map(t => ({
       id: t.id,

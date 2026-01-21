@@ -187,6 +187,41 @@ func (rm *RepoManager) GetChangedFilesWithStats(repoPath, baseRef string) ([]Fil
 	return changes, nil
 }
 
+// GetUntrackedFiles returns files that are not tracked by git
+func (rm *RepoManager) GetUntrackedFiles(repoPath string) ([]FileChange, error) {
+	// Use -uall to show individual files inside untracked directories
+	cmd, cancel := gitCmd(repoPath, "status", "--porcelain", "-uall")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var untracked []FileChange
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		if len(line) < 3 {
+			continue
+		}
+		// Untracked files start with "??"
+		if line[0] == '?' && line[1] == '?' {
+			filePath := strings.TrimSpace(line[3:])
+			// Skip directories (they end with /)
+			if strings.HasSuffix(filePath, "/") {
+				continue
+			}
+			untracked = append(untracked, FileChange{
+				Path:      filePath,
+				Additions: 0,
+				Deletions: 0,
+				Status:    "untracked",
+			})
+		}
+	}
+
+	return untracked, nil
+}
+
 // HasMergeConflicts checks if there are any merge conflicts in the repo
 func (rm *RepoManager) HasMergeConflicts(repoPath string) (bool, error) {
 	cmd, cancel := gitCmd(repoPath, "diff", "--check")

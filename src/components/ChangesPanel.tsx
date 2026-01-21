@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import dynamic from 'next/dynamic';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
@@ -11,11 +10,6 @@ import { CheckpointTimeline } from '@/components/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
 
-// Dynamic import for TerminalOutput (browser-only)
-const TerminalOutput = dynamic(() => import('@/components/TerminalOutput').then(mod => mod.TerminalOutput), {
-  ssr: false,
-  loading: () => <div className="h-full bg-black/90 flex items-center justify-center"><span className="text-xs text-muted-foreground">Loading...</span></div>,
-});
 import { McpServersPanel } from '@/components/McpServersPanel';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -25,6 +19,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Eye,
   MoreVertical,
@@ -71,11 +66,10 @@ export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { openFileTab, updateFileTab } = useFileTabState();
-  const { agentTodos, customTodos } = useTodoState(selectedConversationId, selectedSessionId);
+  const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const [selectedTab, setSelectedTab] = useState('changes');
-  const [outputTab, setOutputTab] = useState<'setup' | 'run' | 'mcp' | 'checkpoints'>('setup');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
@@ -219,10 +213,7 @@ export function ChangesPanel() {
   const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
 
   // Calculate todo counts for badge
-  // useTodoState already returns arrays scoped to the selected conversation/session
-  const pendingAgentTodos = agentTodos.filter((t) => t.status !== 'completed').length;
-  const pendingCustomTodos = customTodos.filter((t) => !t.completed).length;
-  const totalPendingTodos = pendingAgentTodos + pendingCustomTodos;
+  const totalPendingTodos = agentTodos.filter((t) => t.status !== 'completed').length;
 
   // Callback for GitStatusSection to send messages to the agent
   const handleGitActionMessage = useCallback((content: string) => {
@@ -368,19 +359,6 @@ export function ChangesPanel() {
           Checks
         </Button>
         <Button
-          variant={selectedTab === 'todos' ? 'secondary' : 'ghost'}
-          size="sm"
-          className="h-6 text-xs px-2 gap-1 shrink-0"
-          onClick={() => setSelectedTab('todos')}
-        >
-          Todos
-          {totalPendingTodos > 0 && (
-            <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
-              {totalPendingTodos}
-            </span>
-          )}
-        </Button>
-        <Button
           variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
           size="sm"
           className="h-6 text-xs px-2 shrink-0"
@@ -438,29 +416,58 @@ export function ChangesPanel() {
             ) : (
               <ScrollArea className="h-full [&>div>div]:!block">
                 <div ref={changesContainerRef} className="py-1 overflow-hidden">
-                  {[...changes]
-                    .sort((a, b) => {
+                  {(() => {
+                    const sortByPath = (a: FileChangeDTO, b: FileChangeDTO) => {
                       const aIsRoot = !a.path.includes('/');
                       const bIsRoot = !b.path.includes('/');
-                      // Root files come first
                       if (aIsRoot && !bIsRoot) return -1;
                       if (!aIsRoot && bIsRoot) return 1;
-                      // Then sort alphabetically
                       return a.path.localeCompare(b.path);
-                    })
-                    .map((change) => (
-                      <FileChangeRow
-                        key={change.path}
-                        change={change}
-                        onSelect={() => handleChangedFileSelect(change.path)}
-                        containerWidth={containerWidth}
-                      />
-                    ))}
+                    };
+                    const untracked = changes.filter(c => c.status === 'untracked').sort(sortByPath);
+                    const tracked = changes.filter(c => c.status !== 'untracked').sort(sortByPath);
+
+                    return (
+                      <>
+                        {untracked.length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide">
+                              Untracked
+                            </div>
+                            {untracked.map((change) => (
+                              <FileChangeRow
+                                key={change.path}
+                                change={change}
+                                onSelect={() => handleFileSelect(change.path)}
+                                containerWidth={containerWidth}
+                              />
+                            ))}
+                          </>
+                        )}
+                        {tracked.length > 0 && (
+                          <>
+                            <div className={cn(
+                              "px-2 py-1 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide",
+                              untracked.length > 0 && "mt-2"
+                            )}>
+                              Changed
+                            </div>
+                            {tracked.map((change) => (
+                              <FileChangeRow
+                                key={change.path}
+                                change={change}
+                                onSelect={() => handleChangedFileSelect(change.path)}
+                                containerWidth={containerWidth}
+                              />
+                            ))}
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </ScrollArea>
             )
-          ) : selectedTab === 'todos' ? (
-            <TodoPanel />
           ) : selectedTab === 'checks' ? (
             <div className="h-full px-1.5">
               <GitStatusSection onSendMessage={handleGitActionMessage} />
@@ -477,59 +484,38 @@ export function ChangesPanel() {
 
         <ResizableHandle />
 
-        {/* Setup/Run Output Section */}
+        {/* Bottom Panel - Todos/MCP/History */}
         <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-1 px-2 py-1 border-t bg-muted/30 shrink-0">
-              <Button
-                variant={outputTab === 'setup' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setOutputTab('setup')}
-              >
-                Setup
-              </Button>
-              <Button
-                variant={outputTab === 'run' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setOutputTab('run')}
-              >
-                Run
-              </Button>
-              <Button
-                variant={outputTab === 'mcp' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setOutputTab('mcp')}
-              >
-                MCP
-              </Button>
-              <Button
-                variant={outputTab === 'checkpoints' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => setOutputTab('checkpoints')}
-              >
-                History
-              </Button>
+          <Tabs defaultValue="todos" className="flex flex-col h-full">
+            <div className="px-2 py-1.5 border-t shrink-0">
+              <TabsList className="h-7">
+                <TabsTrigger value="todos" className="text-xs px-2 h-6 gap-1">
+                  Todos
+                  {totalPendingTodos > 0 && (
+                    <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
+                      {totalPendingTodos}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="mcp" className="text-xs px-2 h-6">
+                  MCP
+                </TabsTrigger>
+                <TabsTrigger value="history" className="text-xs px-2 h-6">
+                  History
+                </TabsTrigger>
+              </TabsList>
             </div>
             <BudgetStatusPanel />
-            <div className="flex-1 min-h-0">
-              {outputTab === 'setup' && selectedSessionId && (
-                <TerminalOutput sessionId={selectedSessionId} type="setup" />
-              )}
-              {outputTab === 'run' && selectedSessionId && (
-                <TerminalOutput sessionId={selectedSessionId} type="run" />
-              )}
-              {outputTab === 'mcp' && (
-                <McpServersPanel />
-              )}
-              {outputTab === 'checkpoints' && (
-                <CheckpointTimeline />
-              )}
-            </div>
-          </div>
+            <TabsContent value="todos" className="flex-1 min-h-0 mt-0">
+              <TodoPanel />
+            </TabsContent>
+            <TabsContent value="mcp" className="flex-1 min-h-0 mt-0">
+              <McpServersPanel />
+            </TabsContent>
+            <TabsContent value="history" className="flex-1 min-h-0 mt-0">
+              <CheckpointTimeline />
+            </TabsContent>
+          </Tabs>
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
