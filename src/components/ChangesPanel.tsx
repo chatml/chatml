@@ -462,7 +462,9 @@ export function ChangesPanel() {
           ) : selectedTab === 'todos' ? (
             <TodoPanel />
           ) : selectedTab === 'checks' ? (
-            <GitStatusSection onSendMessage={handleGitActionMessage} />
+            <div className="h-full px-2">
+              <GitStatusSection onSendMessage={handleGitActionMessage} />
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
