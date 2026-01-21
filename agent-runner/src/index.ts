@@ -551,6 +551,7 @@ async function main(): Promise<void> {
     flushBlockBuffer();
     emit({ type: "complete", sessionId: currentSessionId });
   } catch (err) {
+    closeReadline();
     emit({ type: "error", message: `${err}` });
     process.exit(1);
   }
