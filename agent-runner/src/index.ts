@@ -565,9 +565,8 @@ async function main(): Promise<void> {
     flushBlockBuffer();
     emit({ type: "complete", sessionId: currentSessionId });
   } catch (err) {
-    closeReadline();
-    emit({ type: "error", message: `${err}` });
-    process.exit(1);
+    // Re-throw to let the top-level handler deal with cleanup and exit
+    throw err;
   }
 }
 
@@ -901,10 +900,24 @@ process.on("SIGINT", () => {
   cleanup("SIGINT").finally(() => process.exit(0));
 });
 
+process.on("unhandledRejection", async (reason) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  await cleanup("unhandledRejection");
+  const errorMessage =
+    reason instanceof Error
+      ? `${reason.message}\n${reason.stack || ""}`
+      : String(reason);
+  emit({ type: "error", message: `Unhandled rejection: ${errorMessage}` });
+  process.exit(1);
+});
+
 main().catch(async (err) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   await cleanup("error");
-  emit({ type: "error", message: `Unhandled error: ${err}` });
+  const errorMessage =
+    err instanceof Error ? `${err.message}\n${err.stack || ""}` : String(err);
+  emit({ type: "error", message: `Unhandled error: ${errorMessage}` });
   process.exit(1);
 });
