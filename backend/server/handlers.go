@@ -850,6 +850,14 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([
 	return nodes, nil
 }
 
+// FileContentResponse represents a file's content and metadata
+type FileContentResponse struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Size    int64  `json:"size"`
+}
+
 // FileDiffResponse represents a diff between two versions of a file
 type FileDiffResponse struct {
 	Path        string `json:"path"`
@@ -979,19 +987,108 @@ func (h *Handlers) GetRepoFileContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return as JSON with metadata
-	response := struct {
-		Path    string `json:"path"`
-		Name    string `json:"name"`
-		Content string `json:"content"`
-		Size    int64  `json:"size"`
-	}{
+	writeJSON(w, FileContentResponse{
 		Path:    cleanPath,
 		Name:    filepath.Base(cleanPath),
 		Content: string(content),
 		Size:    info.Size(),
+	})
+}
+
+// GetSessionFileContent returns file content from a session's worktree
+// This provides complete session isolation - files are read from the worktree, not the main repo
+func (h *Handlers) GetSessionFileContent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
 	}
 
-	writeJSON(w, response)
+	// Get file path from query parameter
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate and clean the path to prevent directory traversal attacks
+	cleanPath, err := validatePath(session.WorktreePath, filePath)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	fullPath := filepath.Join(session.WorktreePath, cleanPath)
+
+	// Check if file exists and is not a directory
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "file not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	if info.IsDir() {
+		http.Error(w, "path is a directory", http.StatusBadRequest)
+		return
+	}
+
+	// Read file content
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return as JSON with metadata
+	writeJSON(w, FileContentResponse{
+		Path:    cleanPath,
+		Name:    filepath.Base(cleanPath),
+		Content: string(content),
+		Size:    info.Size(),
+	})
+}
+
+// ListSessionFiles returns the file tree for a session's worktree
+// This ensures the file tree shows files from the worktree, not the main repo
+func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Parse max depth from query params
+	maxDepth := 10
+	if depthParam := r.URL.Query().Get("maxDepth"); depthParam != "" {
+		var parsedDepth int
+		if _, err := fmt.Sscanf(depthParam, "%d", &parsedDepth); err == nil && parsedDepth > 0 {
+			maxDepth = parsedDepth
+		}
+	}
+
+	// Build file tree from worktree path
+	tree, err := buildFileTree(session.WorktreePath, "", maxDepth, 0)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list files: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, tree)
 }
 
 // SaveFileRequest represents a request to save file content

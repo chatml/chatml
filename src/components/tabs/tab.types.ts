@@ -12,7 +12,7 @@ export interface TabItemData {
   isDirty?: boolean;
   isPinned?: boolean;
   isActive: boolean;
-  group: 'workspace' | 'session' | 'conversation';
+  group: 'session' | 'conversation'; // All file tabs are now session-scoped
   // Original data reference for type-specific operations
   fileTab?: FileTab;
   conversation?: Conversation;
@@ -22,7 +22,11 @@ export interface TabItemData {
  * Props for the main TabBar component
  */
 export interface TabBarProps {
-  workspaceTabs: TabItemData[];
+  /**
+   * @deprecated Workspace-scoped tabs have been removed. All tabs are now session-scoped.
+   * This prop is kept for backward compatibility during migration. Always pass [].
+   */
+  workspaceTabs?: TabItemData[];
   sessionTabs: TabItemData[];
   conversationTabs: TabItemData[];
   activeTabId: string | null;

@@ -124,6 +124,29 @@ export async function getSessionFileDiff(
   return handleResponse<FileDiffDTO>(res);
 }
 
+// Session-aware file APIs (for complete session isolation)
+export async function getSessionFileContent(
+  workspaceId: string,
+  sessionId: string,
+  filePath: string
+): Promise<FileContentDTO> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
+  );
+  return handleResponse<FileContentDTO>(res);
+}
+
+export async function listSessionFiles(
+  workspaceId: string,
+  sessionId: string,
+  depth: number | 'all' = 'all'
+): Promise<FileNodeDTO[]> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/files?maxDepth=${depth}`
+  );
+  return handleResponse<FileNodeDTO[]>(res);
+}
+
 // Session DTOs and functions
 export interface SessionDTO {
   id: string;

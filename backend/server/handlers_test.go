@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/chatml/chatml-backend/models"
@@ -371,6 +373,156 @@ func TestDeleteConversation_NotFound(t *testing.T) {
 	h.DeleteConversation(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ============================================================================
+// Session File Handler Tests
+// ============================================================================
+
+func TestGetSessionFileContent_Success(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	_, worktreePath := createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	// Create a test file in the worktree
+	writeFile(t, worktreePath, "test.txt", "Hello, World!")
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/file?path=test.txt", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionFileContent(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response FileContentResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "test.txt", response.Path)
+	assert.Equal(t, "test.txt", response.Name)
+	assert.Equal(t, "Hello, World!", response.Content)
+	assert.Equal(t, int64(13), response.Size)
+}
+
+func TestGetSessionFileContent_SessionNotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/sessions/nonexistent/file?path=test.txt", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionFileContent(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "session not found")
+}
+
+func TestGetSessionFileContent_FileNotFound(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/file?path=nonexistent.txt", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionFileContent(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "file not found")
+}
+
+func TestGetSessionFileContent_MissingPathParam(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/file", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionFileContent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "path parameter is required")
+}
+
+func TestGetSessionFileContent_DirectoryRejected(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	_, worktreePath := createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	// Create a directory
+	require.NoError(t, os.Mkdir(filepath.Join(worktreePath, "subdir"), 0755))
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/file?path=subdir", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionFileContent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "path is a directory")
+}
+
+func TestGetSessionFileContent_PathTraversalPrevented(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/file?path=../../../etc/passwd", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GetSessionFileContent(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid path")
+}
+
+func TestListSessionFiles_Success(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	_, worktreePath := createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	// Create some test files
+	writeFile(t, worktreePath, "file1.txt", "content1")
+	writeFile(t, worktreePath, "file2.txt", "content2")
+	require.NoError(t, os.Mkdir(filepath.Join(worktreePath, "subdir"), 0755))
+	writeFile(t, worktreePath, "subdir/file3.txt", "content3")
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/files", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.ListSessionFiles(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	// Should have at least the files/directories we created
+	assert.GreaterOrEqual(t, len(response), 2)
+}
+
+func TestListSessionFiles_SessionNotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/sessions/nonexistent/files", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.ListSessionFiles(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "session not found")
 }
 
 // ============================================================================

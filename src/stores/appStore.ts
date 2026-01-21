@@ -336,12 +336,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   selectSession: (id) => set((state) => {
     // When switching sessions, find the first conversation for this session
-    // DON'T clear file tabs - they persist and are filtered by visibility in UI
+    // File tabs persist in store but UI only shows tabs for current session
     const sessionConversations = state.conversations.filter(c => c.sessionId === id);
     const firstConversation = sessionConversations[0];
 
-    // Find a visible tab to select (workspace tabs or tabs for the new session)
-    const visibleTabs = state.fileTabs.filter(t => !t.sessionId || t.sessionId === id);
+    // Only show tabs belonging to this session (strict isolation)
+    const visibleTabs = state.fileTabs.filter(t => t.sessionId === id);
     const currentTabVisible = visibleTabs.some(t => t.id === state.selectedFileTabId);
     const newSelectedTabId = currentTabVisible
       ? state.selectedFileTabId
@@ -351,7 +351,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedSessionId: id,
       selectedConversationId: firstConversation?.id || null,
       selectedFileTabId: newSelectedTabId,
-      // fileTabs remain unchanged - UI filters by visibility
+      // fileTabs remain unchanged - UI filters by session
     };
   }),
   archiveSession: (id) => set((state) => {
