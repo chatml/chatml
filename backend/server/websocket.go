@@ -47,8 +47,9 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
+			count := len(h.clients)
 			h.mu.Unlock()
-			log.Printf("Client connected, total: %d", len(h.clients))
+			log.Printf("Client connected, total: %d", count)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -56,8 +57,9 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				client.Close()
 			}
+			count := len(h.clients)
 			h.mu.Unlock()
-			log.Printf("Client disconnected, total: %d", len(h.clients))
+			log.Printf("Client disconnected, total: %d", count)
 
 		case event := <-h.broadcast:
 			data, err := json.Marshal(event)
