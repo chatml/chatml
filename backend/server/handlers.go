@@ -388,6 +388,53 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetSessionGitStatus returns comprehensive git status for a session's worktree
+func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if session == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Get the workspace to find the base branch
+	workspace, err := h.store.GetRepo(ctx, session.WorkspaceID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if workspace == nil {
+		http.Error(w, "workspace not found", http.StatusNotFound)
+		return
+	}
+
+	// Use worktree path if set, otherwise fall back to workspace path
+	workingPath := session.WorktreePath
+	if workingPath == "" {
+		workingPath = workspace.Path
+	}
+
+	// Determine base branch
+	baseBranch := workspace.Branch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	// Get comprehensive git status
+	status, err := h.repoManager.GetStatus(workingPath, baseBranch)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get git status: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, status)
+}
+
 // GetSessionChanges returns the list of changed files in a session's worktree
 func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

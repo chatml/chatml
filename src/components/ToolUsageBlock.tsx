@@ -45,6 +45,31 @@ interface ToolUsageBlockProps {
 const TARGET_TRUNCATE_LENGTH = 60;
 const COMMAND_TRUNCATE_LENGTH = 80;
 
+// Helper to calculate line stats for Edit tool
+function calculateEditStats(params?: Record<string, unknown>): { additions: number; deletions: number } | null {
+  if (!params) return null;
+
+  const oldString = params.old_string as string | undefined;
+  const newString = params.new_string as string | undefined;
+
+  // Only calculate if we have at least one of the strings
+  if (oldString === undefined && newString === undefined) return null;
+
+  // Count lines in a string (number of newlines + 1 for non-empty, 0 for empty)
+  const countLines = (s: string | undefined) => {
+    if (!s) return 0;
+    return s.split('\n').length;
+  };
+
+  const oldLines = countLines(oldString);
+  const newLines = countLines(newString);
+
+  return {
+    additions: Math.max(0, newLines - oldLines),
+    deletions: Math.max(0, oldLines - newLines),
+  };
+}
+
 export function ToolUsageBlock({
   id,
   tool,
@@ -124,6 +149,13 @@ export function ToolUsageBlock({
   // Check if this is a Bash tool
   const isBashTool = ['Bash', 'bash', 'execute_command'].includes(tool);
 
+  // Check if this is an Edit tool and calculate line stats
+  const isEditTool = ['Edit', 'edit_file'].includes(tool);
+  const editStats = useMemo(() => {
+    if (!isEditTool) return null;
+    return calculateEditStats(params);
+  }, [isEditTool, params]);
+
   const getTarget = () => {
     if (!params) return null;
 
@@ -199,19 +231,33 @@ export function ToolUsageBlock({
           <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50 shrink-0" />
         )}
 
-        {/* Tool icon and label */}
-        <ToolIcon className="w-3 h-3 text-muted-foreground shrink-0" />
-        <span className="font-medium text-foreground">{getToolLabel()}</span>
+        {/* Tool icon and label - show "Error" when tool failed */}
+        {success === false ? (
+          <>
+            <ToolIcon className="w-3 h-3 text-red-400 shrink-0" />
+            <span className="font-medium text-red-400">Error</span>
+            {summary && (
+              <span className="text-red-400/80 text-[10px] truncate max-w-[350px]">
+                {summary}
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <ToolIcon className="w-3 h-3 text-muted-foreground shrink-0" />
+            <span className="font-medium text-foreground">{getToolLabel()}</span>
 
-        {/* Description (if available, shows instead of/before target) */}
-        {description && (
-          <span className="text-muted-foreground italic truncate max-w-[200px]">
-            {description}
-          </span>
+            {/* Description (if available, shows instead of/before target) */}
+            {description && (
+              <span className="text-muted-foreground italic truncate max-w-[200px]">
+                {description}
+              </span>
+            )}
+          </>
         )}
 
-        {/* Target with tooltip for truncated content */}
-        {truncatedTarget && !description && (
+        {/* Target with tooltip for truncated content - hide when error */}
+        {success !== false && truncatedTarget && !description && (
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -233,8 +279,8 @@ export function ToolUsageBlock({
           )
         )}
 
-        {/* Target when description is shown (smaller, secondary) */}
-        {truncatedTarget && description && (
+        {/* Target when description is shown (smaller, secondary) - hide when error */}
+        {success !== false && truncatedTarget && description && (
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -254,6 +300,14 @@ export function ToolUsageBlock({
               {truncatedTarget}
             </code>
           )
+        )}
+
+        {/* Git line stats for Edit tools - hide when error or no net change */}
+        {success !== false && isEditTool && editStats && !isActive && (editStats.additions > 0 || editStats.deletions > 0) && (
+          <span className="flex items-center gap-0.5 text-[10px] font-mono shrink-0">
+            <span className="text-green-500">+{editStats.additions}</span>
+            <span className="text-red-500">-{editStats.deletions}</span>
+          </span>
         )}
 
         {/* Spacer */}
