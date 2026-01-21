@@ -372,7 +372,11 @@ export function useWebSocket(enabled: boolean = true) {
         if (data.type === 'session_name_update' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
           if (payload?.name && typeof payload.name === 'string') {
-            updateSession(data.sessionId, { name: payload.name });
+            const updates: { name: string; branch?: string } = { name: payload.name };
+            if (payload?.branch && typeof payload.branch === 'string') {
+              updates.branch = payload.branch;
+            }
+            updateSession(data.sessionId, updates);
           }
           return;
         }

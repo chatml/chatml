@@ -157,3 +157,14 @@ func (wm *WorktreeManager) Merge(repoPath, agentID string) error {
 
 	return nil
 }
+
+// RenameBranch renames a git branch. The command must be run from within the worktree
+// that has the branch checked out, as you cannot rename a branch from outside.
+func (wm *WorktreeManager) RenameBranch(worktreePath, oldBranchName, newBranchName string) error {
+	cmd := exec.Command("git", "branch", "-m", oldBranchName, newBranchName)
+	cmd.Dir = worktreePath
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to rename branch: %s: %w", string(out), err)
+	}
+	return nil
+}
