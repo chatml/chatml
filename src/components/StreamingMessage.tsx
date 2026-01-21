@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -84,31 +84,41 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   const budgetStatus = useAppStore((s) => s.budgetStatus);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
 
   // Check if extended thinking is enabled for this conversation
   const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
 
   // Update elapsed time every second while streaming
+  // Uses a ref to capture startTime once, preventing resets when streaming state changes
   useEffect(() => {
-    if (!streaming?.isStreaming || !streaming?.startTime) {
+    if (!streaming?.isStreaming) {
+      startTimeRef.current = null;
       queueMicrotask(() => setElapsedTime(0));
       return;
     }
 
+    // Capture startTime once when streaming starts
+    if (startTimeRef.current === null && streaming?.startTime) {
+      startTimeRef.current = streaming.startTime;
+    }
+
     // Set initial elapsed time
-    const startTime = streaming.startTime;
-    queueMicrotask(() => {
-      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-    });
+    const capturedStartTime = startTimeRef.current;
+    if (capturedStartTime) {
+      queueMicrotask(() => {
+        setElapsedTime(Math.floor((Date.now() - capturedStartTime) / 1000));
+      });
+    }
 
     const interval = setInterval(() => {
-      if (streaming?.startTime) {
-        setElapsedTime(Math.floor((Date.now() - streaming.startTime) / 1000));
+      if (startTimeRef.current) {
+        setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [streaming?.isStreaming, streaming?.startTime]);
+  }, [streaming?.isStreaming]);
 
   // Thinking expansion state (must be before early return to satisfy Rules of Hooks)
   // Note: We don't need to reset this when thinking becomes null because the
