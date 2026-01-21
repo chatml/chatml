@@ -132,6 +132,13 @@ let queryRef: Query | null = null;
 // Track current session ID
 let currentSessionId: string | undefined = undefined;
 
+// Module-level references for cleanup
+let abortControllerRef: AbortController | null = null;
+
+// Shutdown state
+let isShuttingDown = false;
+let cleanupCalled = false;
+
 // Close readline interface if it exists
 function closeReadline(): void {
   if (rl) {
@@ -477,6 +484,7 @@ const hooks = {
 
 async function main(): Promise<void> {
   const abortController = new AbortController();
+  abortControllerRef = abortController;
 
   emit({
     type: "ready",
@@ -847,21 +855,50 @@ function handleMessage(message: SDKMessage): void {
   }
 }
 
+// Async cleanup function for graceful shutdown
+async function cleanup(reason: string): Promise<void> {
+  // Idempotency guard - prevent duplicate cleanup
+  if (cleanupCalled) return;
+  cleanupCalled = true;
+
+  // 1. Signal abort to cancel pending operations
+  if (abortControllerRef) {
+    abortControllerRef.abort();
+  }
+
+  // 2. Interrupt the query if active
+  if (queryRef) {
+    try {
+      await queryRef.interrupt();
+    } catch {
+      // Ignore errors during shutdown
+    }
+  }
+
+  // 3. Close readline
+  closeReadline();
+
+  // 4. Emit shutdown event
+  emit({ type: "shutdown", reason });
+}
+
 // Handle graceful shutdown
 process.on("SIGTERM", () => {
-  closeReadline();
-  emit({ type: "shutdown", reason: "SIGTERM" });
-  process.exit(0);
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  cleanup("SIGTERM").finally(() => process.exit(0));
 });
 
 process.on("SIGINT", () => {
-  closeReadline();
-  emit({ type: "shutdown", reason: "SIGINT" });
-  process.exit(0);
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  cleanup("SIGINT").finally(() => process.exit(0));
 });
 
-main().catch((err) => {
-  closeReadline();
+main().catch(async (err) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  await cleanup("error");
   emit({ type: "error", message: `Unhandled error: ${err}` });
   process.exit(1);
 });
