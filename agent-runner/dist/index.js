@@ -445,6 +445,7 @@ async function main() {
         emit({ type: "complete", sessionId: currentSessionId });
     }
     catch (err) {
+        closeReadline();
         emit({ type: "error", message: `${err}` });
         process.exit(1);
     }
