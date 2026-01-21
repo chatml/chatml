@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/chatml/chatml-backend/agents"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/google/uuid"
 )
@@ -26,6 +28,7 @@ type Runner struct {
 	mu       sync.RWMutex
 	store    Store
 	eventBus *EventBus
+	polling  *agents.PollingManager
 	running  map[string]*RunContext // runID -> context
 }
 
@@ -38,10 +41,11 @@ type RunContext struct {
 }
 
 // NewRunner creates a new runner
-func NewRunner(store Store, eventBus *EventBus) *Runner {
+func NewRunner(store Store, eventBus *EventBus, polling *agents.PollingManager) *Runner {
 	return &Runner{
 		store:    store,
 		eventBus: eventBus,
+		polling:  polling,
 		running:  make(map[string]*RunContext),
 	}
 }
@@ -149,7 +153,6 @@ func (r *Runner) executeRun(ctx context.Context, rc *RunContext) {
 }
 
 // runAgent executes the agent logic
-// This is a placeholder that will be expanded to actually run the agent
 func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 	// Check for cancellation
 	select {
@@ -158,23 +161,83 @@ func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 	default:
 	}
 
-	// TODO: In the full implementation, this will:
-	// 1. Poll the configured sources (GitHub, Linear)
-	// 2. Determine if there's work to do
-	// 3. If agent mode is creates-session, spawn the agent-runner
-	// 4. Track progress and report back
+	agent := rc.Agent
 
-	// For now, publish a progress event and return success
-	r.eventBus.PublishAgentRunProgress(rc.Agent.ID, rc.Run.ID, "Checking for updates...")
-
-	// Simulate a brief check
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(100 * time.Millisecond):
+	// Check if agent has polling configuration
+	if agent.Definition == nil || agent.Definition.Polling == nil {
+		r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID, "No polling configuration")
+		return nil
 	}
 
-	r.eventBus.PublishAgentRunProgress(rc.Agent.ID, rc.Run.ID, "No actionable items found")
+	r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID, "Polling for updates...")
+
+	// Execute polling
+	results, err := r.polling.Poll(ctx, agent)
+	if err != nil {
+		return fmt.Errorf("polling failed: %w", err)
+	}
+
+	// Process results
+	var totalItems int
+	var summaryParts []string
+
+	for _, result := range results {
+		if result.Error != nil {
+			log.Printf("[runner] Agent %s: %s polling error: %v", agent.ID, result.Source, result.Error)
+			continue
+		}
+
+		if result.RateLimited {
+			summaryParts = append(summaryParts, fmt.Sprintf("%s: rate limited", result.Source))
+			continue
+		}
+
+		if result.NotModified {
+			summaryParts = append(summaryParts, fmt.Sprintf("%s: no changes", result.Source))
+			continue
+		}
+
+		totalItems += len(result.Items)
+
+		if len(result.Items) > 0 {
+			// Report what was found
+			r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID,
+				fmt.Sprintf("Found %d items from %s", len(result.Items), result.Source))
+
+			// Group items by type
+			issues := 0
+			prs := 0
+			for _, item := range result.Items {
+				if item.Type == "pull_request" {
+					prs++
+				} else {
+					issues++
+				}
+			}
+
+			if issues > 0 && prs > 0 {
+				summaryParts = append(summaryParts, fmt.Sprintf("%s: %d issues, %d PRs", result.Source, issues, prs))
+			} else if issues > 0 {
+				summaryParts = append(summaryParts, fmt.Sprintf("%s: %d issues", result.Source, issues))
+			} else if prs > 0 {
+				summaryParts = append(summaryParts, fmt.Sprintf("%s: %d PRs", result.Source, prs))
+			}
+		} else {
+			summaryParts = append(summaryParts, fmt.Sprintf("%s: no items", result.Source))
+		}
+	}
+
+	// Build final summary
+	if len(summaryParts) > 0 {
+		rc.Run.ResultSummary = strings.Join(summaryParts, "; ")
+	} else {
+		rc.Run.ResultSummary = "No actionable items found"
+	}
+
+	r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID, rc.Run.ResultSummary)
+
+	// TODO: In future phases, if agent.Definition.Execution.Mode == "creates-session"
+	// and there are actionable items, spawn the agent-runner to create sessions
 
 	return nil
 }

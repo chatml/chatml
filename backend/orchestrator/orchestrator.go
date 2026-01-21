@@ -31,6 +31,7 @@ type Orchestrator struct {
 	scheduler *Scheduler
 	runner    *Runner
 	eventBus  *EventBus
+	polling   *agents.PollingManager
 
 	// In-memory cache of agents with their definitions
 	agents map[string]*models.OrchestratorAgent
@@ -49,13 +50,19 @@ func New(store OrchestratorStore, config Config) *Orchestrator {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	eventBus := NewEventBus()
-	runner := NewRunner(store, eventBus)
+
+	// Load polling configuration
+	pollingConfig := agents.LoadConfig()
+	pollingManager := agents.NewPollingManager(pollingConfig)
+
+	runner := NewRunner(store, eventBus, pollingManager)
 
 	o := &Orchestrator{
 		store:    store,
 		loader:   agents.NewLoader(config.AgentsDir),
 		eventBus: eventBus,
 		runner:   runner,
+		polling:  pollingManager,
 		agents:   make(map[string]*models.OrchestratorAgent),
 		ctx:      ctx,
 		cancel:   cancel,
