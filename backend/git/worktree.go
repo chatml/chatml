@@ -60,8 +60,8 @@ func (wm *WorktreeManager) CreateWithBranch(ctx context.Context, repoPath, workt
 func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreePath, branchName string) (string, string, string, error) {
 	// Capture current HEAD before creating the worktree - this is the base commit
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
-	defer cancel()
 	out, err := cmd.Output()
+	cancel()
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
 	}
@@ -88,8 +88,8 @@ func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreeP
 func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, worktreePath, branchName string) (string, string, string, error) {
 	// Capture current HEAD before creating the worktree - this is the base commit
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
-	defer cancel()
 	out, err := cmd.Output()
+	cancel()
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
 	}
@@ -123,16 +123,17 @@ func (wm *WorktreeManager) RemoveByPath(ctx context.Context, repoPath, worktreeI
 func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreePath, branchName string) error {
 	// Remove the worktree
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "remove", worktreePath, "--force")
-	defer cancel()
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	cancel()
+	if err != nil {
 		return fmt.Errorf("failed to remove worktree: %s: %w", string(out), err)
 	}
 
 	// Delete the branch if specified
 	if branchName != "" {
 		cmd, cancel = gitCmdWithContext(ctx, repoPath, "branch", "-D", branchName)
-		defer cancel()
 		cmd.CombinedOutput() // Ignore error, branch might not exist
+		cancel()
 	}
 
 	return nil
@@ -167,8 +168,8 @@ func (wm *WorktreeManager) GetDiff(ctx context.Context, repoPath, agentID string
 
 	// Get the base branch
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
-	defer cancel()
 	baseOut, err := cmd.Output()
+	cancel()
 	if err != nil {
 		return "", err
 	}
@@ -176,13 +177,13 @@ func (wm *WorktreeManager) GetDiff(ctx context.Context, repoPath, agentID string
 
 	// Get diff
 	cmd, cancel = gitCmdWithContext(ctx, repoPath, "diff", baseBranch+"..."+branchName)
-	defer cancel()
 	out, err := cmd.Output()
+	cancel()
 	if err != nil {
 		// If diff fails, try without the three-dot syntax
 		cmd, cancel = gitCmdWithContext(ctx, repoPath, "diff", baseBranch, branchName)
-		defer cancel()
 		out, err = cmd.Output()
+		cancel()
 		if err != nil {
 			return "", err
 		}

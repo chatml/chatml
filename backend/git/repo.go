@@ -388,8 +388,8 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 
 	// Check if remote tracking branch exists
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-	defer cancel()
 	remoteOut, _ := cmd.Output()
+	cancel()
 	remoteBranch := strings.TrimSpace(string(remoteOut))
 	if remoteBranch != "" {
 		status.RemoteBranch = remoteBranch
@@ -399,13 +399,13 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 	// Get ahead/behind compared to base branch (origin/main or similar)
 	remoteBase := "origin/" + baseBranch
 	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-list", "--left-right", "--count", remoteBase+"...HEAD")
-	defer cancel()
 	countOut, err := cmd.Output()
+	cancel()
 	if err != nil {
 		// Try without origin prefix
 		cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-list", "--left-right", "--count", baseBranch+"...HEAD")
-		defer cancel()
 		countOut, err = cmd.Output()
+		cancel()
 		if err != nil {
 			return status, nil // Return what we have
 		}
@@ -422,8 +422,8 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 	// Get unpushed commits (if we have a remote tracking branch)
 	if status.HasRemote {
 		cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-list", "@{u}..HEAD", "--count")
-		defer cancel()
 		unpushedOut, err := cmd.Output()
+		cancel()
 		if err == nil {
 			fmt.Sscanf(strings.TrimSpace(string(unpushedOut)), "%d", &status.UnpushedCommits)
 		}
