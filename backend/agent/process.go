@@ -175,8 +175,14 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		ConversationID: opts.ConversationID,
 		cmd:            cmd,
 		cancel:         cancel,
-		output:         make(chan string, 100),
-		done:           make(chan struct{}),
+		// Buffer size of 1000 provides headroom for bursty agent output.
+		// This allows the process to continue producing output even if
+		// consumers (WebSocket clients) are temporarily slow. The buffer
+		// size was increased from 100 to handle high-throughput scenarios
+		// where agents produce rapid bursts of output (e.g., streaming
+		// tool results or large code blocks).
+		output: make(chan string, 1000),
+		done:   make(chan struct{}),
 	}
 }
 

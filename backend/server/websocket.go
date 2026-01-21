@@ -12,18 +12,41 @@ import (
 )
 
 const (
-	// Per-client buffer size
-	clientBufferSize = 64
+	// Per-client send buffer size
+	clientSendBufferSize = 256
 
-	// Write deadline for slow client detection
+	// Time allowed to write a message to the client
 	writeWait = 10 * time.Second
+
+	// Time allowed to read the next pong message from the client
+	pongWait = 60 * time.Second
+
+	// Send pings to client with this period (must be less than pongWait)
+	pingPeriod = (pongWait * 9) / 10
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		return AllowedOriginsMap[origin]
+	},
+}
+
+type Event struct {
+	Type           string      `json:"type"`
+	AgentID        string      `json:"agentId,omitempty"`
+	SessionID      string      `json:"sessionId,omitempty"`
+	ConversationID string      `json:"conversationId,omitempty"`
+	Payload        interface{} `json:"payload,omitempty"`
+}
 
 // Client represents a connected WebSocket client with its own send buffer
 type Client struct {
-	conn *websocket.Conn
-	send chan []byte // Per-client send buffer
-	hub  *Hub
+	hub       *Hub
+	conn      *websocket.Conn
+	send      chan []byte // Buffered channel for outgoing messages
+	closeOnce sync.Once   // Ensures send channel is closed only once
+	evicting  atomic.Bool // Prevents multiple eviction goroutines
 }
 
 // HubMetrics tracks WebSocket hub statistics
@@ -69,24 +92,9 @@ func (m *HubMetrics) recordClientDisconnect(count int) {
 	m.currentClients.Store(int64(count))
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		return AllowedOriginsMap[origin]
-	},
-}
-
-type Event struct {
-	Type           string      `json:"type"`
-	AgentID        string      `json:"agentId,omitempty"`
-	SessionID      string      `json:"sessionId,omitempty"`
-	ConversationID string      `json:"conversationId,omitempty"`
-	Payload        interface{} `json:"payload,omitempty"`
-}
-
 type Hub struct {
 	clients    map[*Client]bool
-	broadcast  chan Event
+	broadcast  chan []byte // Pre-serialized JSON bytes
 	register   chan *Client
 	unregister chan *Client
 	mu         sync.RWMutex
@@ -95,10 +103,12 @@ type Hub struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan Event, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client, 64), // Buffered to avoid blocking broadcast loop
+		clients:   make(map[*Client]bool),
+		broadcast: make(chan []byte, 256),
+		register:  make(chan *Client),
+		// Buffered to prevent eviction goroutines from blocking during
+		// high-churn scenarios or if the Hub is slow to process unregisters
+		unregister: make(chan *Client, 64),
 		metrics:    &HubMetrics{},
 	}
 }
@@ -118,72 +128,36 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send) // Signal writePump to exit
+				// Use closeOnce to safely close the channel exactly once,
+				// even if multiple unregister attempts occur
+				client.closeOnce.Do(func() {
+					close(client.send)
+				})
 			}
 			count := len(h.clients)
 			h.metrics.recordClientDisconnect(count)
 			h.mu.Unlock()
 			log.Printf("Client disconnected, total: %d", count)
 
-		case event := <-h.broadcast:
-			data, err := json.Marshal(event)
-			if err != nil {
-				log.Printf("Error marshaling event: %v", err)
-				continue
-			}
-
-			// Collect slow clients to unregister after releasing lock
-			var slowClients []*Client
-
+		case message := <-h.broadcast:
 			h.mu.RLock()
 			for client := range h.clients {
 				select {
-				case client.send <- data:
-					// Delivered to client buffer
+				case client.send <- message:
+					// Message queued successfully
 				default:
-					// Client buffer full - mark for disconnection
-					slowClients = append(slowClients, client)
+					// Client buffer full - they can't keep up, schedule for removal
+					// Use CompareAndSwap to ensure only one eviction goroutine is spawned
+					if client.evicting.CompareAndSwap(false, true) {
+						h.metrics.recordClientDropped()
+						log.Printf("Client send buffer full, evicting slow client")
+						go func(c *Client) {
+							h.unregister <- c
+						}(client)
+					}
 				}
 			}
 			h.mu.RUnlock()
-
-			// Unregister slow clients outside of lock
-			for _, client := range slowClients {
-				h.metrics.recordClientDropped()
-				log.Printf("Client buffer full, disconnecting slow client")
-				h.unregister <- client
-			}
-		}
-	}
-}
-
-// writePump pumps messages from the hub to the websocket connection
-func (c *Client) writePump() {
-	defer func() {
-		c.conn.Close()
-	}()
-
-	for message := range c.send {
-		c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-		if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			log.Printf("Error writing to client: %v", err)
-			return
-		}
-		c.hub.metrics.recordDelivered()
-
-		// Drain any queued messages to batch writes
-		n := len(c.send)
-		for i := 0; i < n; i++ {
-			msg, ok := <-c.send
-			if !ok {
-				return
-			}
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				log.Printf("Error writing batched message: %v", err)
-				return
-			}
-			c.hub.metrics.recordDelivered()
 		}
 	}
 }
@@ -197,6 +171,12 @@ type BroadcastResult struct {
 func (h *Hub) Broadcast(event Event) BroadcastResult {
 	result := BroadcastResult{Delivered: true}
 
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Error marshaling event: %v", err)
+		return BroadcastResult{Delivered: false}
+	}
+
 	// Check buffer utilization for backpressure signal
 	bufferUsage := len(h.broadcast)
 	bufferCapacity := cap(h.broadcast)
@@ -208,7 +188,7 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 	}
 
 	select {
-	case h.broadcast <- event:
+	case h.broadcast <- data:
 		// Successfully queued
 	default:
 		// Channel full - this should now be rare with per-client buffers
@@ -238,9 +218,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		conn: conn,
-		send: make(chan []byte, clientBufferSize),
 		hub:  h,
+		conn: conn,
+		send: make(chan []byte, clientSendBufferSize),
 	}
 
 	h.register <- client
@@ -248,18 +228,75 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Start write pump in separate goroutine
 	go client.writePump()
 
-	// Read pump (keep connection alive, handle client messages)
-	go func() {
-		defer func() {
-			h.unregister <- client
-		}()
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				break
+	// Start read pump (handles pongs and detects disconnects)
+	go client.readPump()
+}
+
+// writePump pumps messages from the hub to the websocket connection.
+// A goroutine running writePump is started for each connection.
+func (c *Client) writePump() {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		// Close connection to unblock readPump's ReadMessage call.
+		// This ensures readPump exits promptly when writePump fails,
+		// rather than waiting for the pongWait timeout.
+		c.conn.Close()
+	}()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				// Hub closed the channel - client was unregistered
+				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+					log.Printf("Error sending close message: %v", err)
+				}
+				return
+			}
+
+			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				log.Printf("Error writing message to client: %v", err)
+				return
+			}
+			c.hub.metrics.recordDelivered()
+
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("Error sending ping to client: %v", err)
+				return
 			}
 		}
+	}
+}
+
+// readPump pumps messages from the websocket connection to the hub.
+// Handles pong responses and detects client disconnection.
+func (c *Client) readPump() {
+	defer func() {
+		c.hub.unregister <- c
+		c.conn.Close()
 	}()
+
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	for {
+		_, _, err := c.conn.ReadMessage()
+		if err != nil {
+			// Log unexpected errors for debugging, but not normal disconnections
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) &&
+				!websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				log.Printf("Error reading from client: %v", err)
+			}
+			break
+		}
+	}
 }
 
 // GetStats returns current hub statistics

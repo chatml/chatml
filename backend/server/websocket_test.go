@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -28,10 +29,11 @@ func TestNewHub_ChannelsInitialized(t *testing.T) {
 	hub := NewHub()
 
 	// Verify broadcast channel has buffer of 256
-	// We can verify this by sending 256 messages without blocking
+	// We can verify this by sending 256 pre-serialized messages without blocking
+	testData, _ := json.Marshal(Event{Type: "test"})
 	for i := 0; i < 256; i++ {
 		select {
-		case hub.broadcast <- Event{Type: "test"}:
+		case hub.broadcast <- testData:
 			// OK - channel accepted the message
 		default:
 			t.Fatalf("Channel blocked after %d messages, expected buffer of 256", i)
@@ -73,8 +75,9 @@ func TestHub_Broadcast_ChannelFull(t *testing.T) {
 	hub := NewHub()
 
 	// Fill the channel to capacity (256)
+	fillerData, _ := json.Marshal(Event{Type: "filler"})
 	for i := 0; i < 256; i++ {
-		hub.broadcast <- Event{Type: "filler"}
+		hub.broadcast <- fillerData
 	}
 
 	// Now broadcast should drop the event (non-blocking)
@@ -109,10 +112,13 @@ func TestHub_Broadcast_MultipleEvents(t *testing.T) {
 		hub.Broadcast(event)
 	}
 
-	// Verify all events are in the channel
+	// Verify all events are in the channel (now as pre-serialized JSON)
 	for i, expected := range events {
 		select {
-		case actual := <-hub.broadcast:
+		case data := <-hub.broadcast:
+			var actual Event
+			err := json.Unmarshal(data, &actual)
+			require.NoError(t, err, "Failed to unmarshal event %d", i)
 			assert.Equal(t, expected.Type, actual.Type, "Event %d type mismatch", i)
 		default:
 			t.Fatalf("Missing event %d in broadcast channel", i)
@@ -124,8 +130,9 @@ func TestHub_Broadcast_Backpressure(t *testing.T) {
 	hub := NewHub()
 
 	// Fill channel to >75% capacity (193 messages, which is > 192 = 256*3/4) to trigger backpressure
+	fillerData, _ := json.Marshal(Event{Type: "filler"})
 	for i := 0; i < 193; i++ {
-		hub.broadcast <- Event{Type: "filler"}
+		hub.broadcast <- fillerData
 	}
 
 	// Next broadcast should signal backpressure
@@ -314,43 +321,78 @@ func TestHub_GetStats(t *testing.T) {
 }
 
 // ============================================================================
-// Per-Client Buffer Tests
+// Client Buffer Tests
 // ============================================================================
 
-func TestHub_PerClientBuffer_SlowClientDisconnected(t *testing.T) {
+func TestClient_SendBufferSize(t *testing.T) {
+	hub := NewHub()
+
+	// Create a client with the standard buffer size
+	client := &Client{
+		hub:  hub,
+		conn: nil, // We don't need a real connection for this test
+		send: make(chan []byte, clientSendBufferSize),
+	}
+
+	// Verify we can queue clientSendBufferSize messages
+	testData := []byte(`{"type":"test"}`)
+	for i := 0; i < clientSendBufferSize; i++ {
+		select {
+		case client.send <- testData:
+			// OK
+		default:
+			t.Fatalf("Client send buffer blocked after %d messages, expected %d", i, clientSendBufferSize)
+		}
+	}
+
+	// Buffer should now be full
+	select {
+	case client.send <- testData:
+		t.Fatal("Client send buffer should be full but accepted another message")
+	default:
+		// Expected - buffer is full
+	}
+}
+
+func TestHub_SlowClientEviction(t *testing.T) {
 	hub := NewHub()
 	go hub.Run()
 	time.Sleep(10 * time.Millisecond)
 
-	// Create a mock slow client with a tiny buffer that we fill immediately.
-	// Note: conn is intentionally nil - this test only exercises hub registration
-	// and buffer overflow logic, not the writePump which would use the connection.
-	slowClient := &Client{
-		send: make(chan []byte, 1), // Very small buffer
+	// Create a mock client with a very small buffer that will fill up
+	client := &Client{
 		hub:  hub,
+		conn: nil,
+		send: make(chan []byte, 1), // Tiny buffer
 	}
 
 	// Register the client
-	hub.register <- slowClient
+	hub.register <- client
 	time.Sleep(10 * time.Millisecond)
 
+	// Verify client is registered
+	hub.mu.RLock()
+	clientCount := len(hub.clients)
+	hub.mu.RUnlock()
+	assert.Equal(t, 1, clientCount, "Client should be registered")
+
 	// Fill the client's buffer
-	slowClient.send <- []byte("filler")
+	client.send <- []byte(`{"type":"fill"}`)
 
-	// Broadcast multiple events - should trigger slow client disconnect
-	for i := 0; i < 5; i++ {
-		hub.Broadcast(Event{Type: "test"})
-	}
+	// Now broadcast more - this should trigger eviction
+	hub.Broadcast(Event{Type: "overflow1"})
+	hub.Broadcast(Event{Type: "overflow2"})
 
-	// Wait for hub to process and disconnect slow client
+	// Give time for eviction to happen
 	time.Sleep(50 * time.Millisecond)
 
-	// Verify client was dropped
+	// Client should be evicted
 	hub.mu.RLock()
-	_, exists := hub.clients[slowClient]
+	clientCount = len(hub.clients)
 	hub.mu.RUnlock()
+	assert.Equal(t, 0, clientCount, "Slow client should be evicted")
 
-	assert.False(t, exists, "Slow client should have been disconnected")
+	// Verify client drop was recorded in metrics
 	assert.GreaterOrEqual(t, hub.metrics.clientsDropped.Load(), uint64(1), "At least one client drop should be recorded")
 }
 
@@ -363,14 +405,14 @@ func TestHub_PerClientBuffer_IsolatesSlowClients(t *testing.T) {
 	// Note: conn is intentionally nil - this test only exercises hub registration
 	// and buffer overflow logic, not the writePump which would use the connection.
 	fastClient := &Client{
-		send: make(chan []byte, clientBufferSize),
 		hub:  hub,
+		send: make(chan []byte, clientSendBufferSize),
 	}
 
 	// Create a slow client that will be disconnected (also with nil conn)
 	slowClient := &Client{
-		send: make(chan []byte, 1), // Very small buffer
 		hub:  hub,
+		send: make(chan []byte, 1), // Very small buffer
 	}
 
 	// Register both clients
