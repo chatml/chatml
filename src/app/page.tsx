@@ -933,7 +933,7 @@ export default function Home() {
               {/* Right Sidebar */}
               <ResizablePanel
                 id="right-sidebar"
-                defaultSize={30}
+                defaultSize={22}
                 minSize="250px"
                 maxSize="500px"
               >
