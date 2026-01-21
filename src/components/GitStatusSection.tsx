@@ -46,7 +46,7 @@ function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItem
   }[type];
 
   return (
-    <div className="flex items-center gap-2 py-1.5 px-1.5 group">
+    <div className="flex items-center gap-2 py-1.5 px-2 group">
       <Icon className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
       <span className="text-xs flex-1 min-w-0 truncate">{message}</span>
       {action && (
@@ -281,7 +281,7 @@ export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
   return (
     <ScrollArea className="h-full">
       <div>
-        <div className="flex items-center justify-between px-1.5 py-1">
+        <div className="flex items-center justify-between px-2 py-1">
           <span className="text-xs font-medium text-muted-foreground">Git status</span>
           <Button
             variant="ghost"
