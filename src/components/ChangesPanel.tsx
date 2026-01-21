@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
+import { listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
 import { CheckpointTimeline } from '@/components/CheckpointTimeline';
@@ -76,6 +77,29 @@ export function ChangesPanel() {
   const [changesLoading, setChangesLoading] = useState(false);
   const [containerWidth, setContainerWidth] = useState(400);
   const changesContainerRef = useRef<HTMLDivElement>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch changes function (extracted for reuse)
+  const fetchChanges = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    try {
+      const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
+      setChanges(data || []);
+    } catch (error) {
+      console.error('Failed to fetch changes:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId]);
+
+  // Debounced refetch for file change events
+  const debouncedFetchChanges = useCallback(() => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      fetchChanges();
+    }, 500); // 500ms debounce for rapid file changes
+  }, [fetchChanges]);
 
   // Track container width for dynamic truncation
   useEffect(() => {
@@ -258,6 +282,38 @@ export function ChangesPanel() {
       return () => { cancelled = true; };
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
+
+  // Listen for file change events and auto-refresh changes
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    const cleanupRef = { current: null as (() => void) | null };
+    let isMounted = true;
+
+    const handleFileChange = (event: FileChangedEvent) => {
+      // Only refetch if the file change is for this workspace
+      if (event.workspaceId === selectedWorkspaceId) {
+        debouncedFetchChanges();
+      }
+    };
+
+    listenForFileChanges(handleFileChange).then((unlisten) => {
+      if (isMounted) {
+        cleanupRef.current = unlisten;
+      } else {
+        unlisten();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      cleanupRef.current?.();
+      // Clear any pending debounce timeout
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
 
   return (
     <div className="flex flex-col h-full border-l">
