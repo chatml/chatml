@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -12,7 +13,15 @@ import {
   Terminal,
   Search,
   RotateCw,
+  ChevronDown,
+  ChevronRight,
+  Globe,
 } from 'lucide-react';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import type { RunSummary } from '@/lib/types';
 
@@ -21,6 +30,8 @@ interface RunSummaryBlockProps {
 }
 
 export function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const formatDuration = (ms?: number) => {
     if (!ms) return null;
     const seconds = Math.floor(ms / 1000);
@@ -39,92 +50,193 @@ export function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
   const stats = summary.stats;
   const duration = formatDuration(summary.durationMs);
   const cost = formatCost(summary.cost);
+  const toolDuration = stats?.totalToolDurationMs ? formatDuration(stats.totalToolDurationMs) : null;
+
+  // Check if we have detailed breakdown to show
+  const hasDetailedStats = stats?.toolsByType && Object.keys(stats.toolsByType).length > 0;
+
+  // Get tool icon for breakdown
+  const getToolIcon = (tool: string) => {
+    switch (tool) {
+      case 'Read':
+      case 'read_file':
+        return FileText;
+      case 'Write':
+      case 'write_file':
+      case 'Edit':
+      case 'edit_file':
+        return FileEdit;
+      case 'Bash':
+      case 'bash':
+      case 'execute_command':
+        return Terminal;
+      case 'Grep':
+      case 'Glob':
+      case 'search':
+        return Search;
+      case 'WebFetch':
+      case 'WebSearch':
+      case 'web':
+        return Globe;
+      case 'Task':
+        return GitBranch;
+      default:
+        return Wrench;
+    }
+  };
 
   return (
-    <div
-      className={cn(
-        'mt-3 flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap',
-        !summary.success && 'text-destructive/70'
-      )}
-    >
-      {/* Status */}
-      {summary.success ? (
-        <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
-      ) : (
-        <XCircle className="w-3 h-3 text-destructive shrink-0" />
-      )}
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <CollapsibleTrigger
+        className={cn(
+          'mt-3 flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap w-full',
+          'hover:text-foreground/80 transition-colors cursor-pointer',
+          !summary.success && 'text-destructive/70'
+        )}
+      >
+        {/* Status */}
+        {summary.success ? (
+          <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+        ) : (
+          <XCircle className="w-3 h-3 text-destructive shrink-0" />
+        )}
 
-      {/* Duration */}
-      {duration && (
-        <span className="flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {duration}
-        </span>
-      )}
+        {/* Duration */}
+        {duration && (
+          <span className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {duration}
+          </span>
+        )}
 
-      {/* Cost */}
-      {cost && (
-        <span className="flex items-center gap-1">
-          <DollarSign className="w-3 h-3" />
-          {cost}
-        </span>
-      )}
+        {/* Cost */}
+        {cost && (
+          <span className="flex items-center gap-1">
+            <DollarSign className="w-3 h-3" />
+            {cost}
+          </span>
+        )}
 
-      {/* Turns */}
-      {summary.turns !== undefined && (
-        <span className="flex items-center gap-1">
-          <RotateCw className="w-3 h-3" />
-          {summary.turns} turn{summary.turns !== 1 ? 's' : ''}
-        </span>
-      )}
+        {/* Turns */}
+        {summary.turns !== undefined && (
+          <span className="flex items-center gap-1">
+            <RotateCw className="w-3 h-3" />
+            {summary.turns} turn{summary.turns !== 1 ? 's' : ''}
+          </span>
+        )}
 
-      {/* Tool Calls */}
-      {stats && stats.toolCalls > 0 && (
-        <span className="flex items-center gap-1">
-          <Wrench className="w-3 h-3" />
-          {stats.toolCalls} tool{stats.toolCalls !== 1 ? 's' : ''}
-        </span>
-      )}
+        {/* Tool Calls */}
+        {stats && stats.toolCalls > 0 && (
+          <span className="flex items-center gap-1">
+            <Wrench className="w-3 h-3" />
+            {stats.toolCalls} tool{stats.toolCalls !== 1 ? 's' : ''}
+          </span>
+        )}
 
-      {/* Files Read */}
-      {stats && stats.filesRead > 0 && (
-        <span className="flex items-center gap-1">
-          <FileText className="w-3 h-3" />
-          {stats.filesRead} read
-        </span>
-      )}
+        {/* Expand indicator if there are detailed stats */}
+        {hasDetailedStats && (
+          <span className="ml-auto shrink-0">
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+          </span>
+        )}
+      </CollapsibleTrigger>
 
-      {/* Files Written */}
-      {stats && stats.filesWritten > 0 && (
-        <span className="flex items-center gap-1">
-          <FileEdit className="w-3 h-3" />
-          {stats.filesWritten} written
-        </span>
-      )}
+      {hasDetailedStats && (
+        <CollapsibleContent>
+          <div className="mt-2 ml-4 p-2 rounded border bg-muted/30 space-y-2">
+            {/* Tool breakdown by type */}
+            <div>
+              <div className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium">
+                Tool Breakdown
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Object.entries(stats.toolsByType || {}).map(([tool, count]) => {
+                  const Icon = getToolIcon(tool);
+                  return (
+                    <div
+                      key={tool}
+                      className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                    >
+                      <Icon className="w-3 h-3 shrink-0" />
+                      <span className="font-medium">{tool}</span>
+                      <span className="text-muted-foreground/60">×{count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-      {/* Bash Commands */}
-      {stats && stats.bashCommands > 0 && (
-        <span className="flex items-center gap-1">
-          <Terminal className="w-3 h-3" />
-          {stats.bashCommands} cmd{stats.bashCommands !== 1 ? 's' : ''}
-        </span>
-      )}
+            {/* File operations summary */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+              {stats.filesRead > 0 && (
+                <span className="flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  {stats.filesRead} file{stats.filesRead !== 1 ? 's' : ''} read
+                </span>
+              )}
+              {stats.filesWritten > 0 && (
+                <span className="flex items-center gap-1">
+                  <FileEdit className="w-3 h-3" />
+                  {stats.filesWritten} file{stats.filesWritten !== 1 ? 's' : ''} written
+                </span>
+              )}
+              {stats.bashCommands > 0 && (
+                <span className="flex items-center gap-1">
+                  <Terminal className="w-3 h-3" />
+                  {stats.bashCommands} command{stats.bashCommands !== 1 ? 's' : ''}
+                </span>
+              )}
+              {stats.webSearches > 0 && (
+                <span className="flex items-center gap-1">
+                  <Globe className="w-3 h-3" />
+                  {stats.webSearches} web search{stats.webSearches !== 1 ? 'es' : ''}
+                </span>
+              )}
+              {stats.subAgents > 0 && (
+                <span className="flex items-center gap-1">
+                  <GitBranch className="w-3 h-3" />
+                  {stats.subAgents} sub-agent{stats.subAgents !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
 
-      {/* Web Searches */}
-      {stats && stats.webSearches > 0 && (
-        <span className="flex items-center gap-1">
-          <Search className="w-3 h-3" />
-          {stats.webSearches}
-        </span>
-      )}
+            {/* Tool execution time */}
+            {toolDuration && (
+              <div className="text-[10px] text-muted-foreground/60">
+                Total tool execution time: {toolDuration}
+              </div>
+            )}
 
-      {/* Sub-agents */}
-      {stats && stats.subAgents > 0 && (
-        <span className="flex items-center gap-1">
-          <GitBranch className="w-3 h-3" />
-          {stats.subAgents} agent{stats.subAgents !== 1 ? 's' : ''}
-        </span>
+            {/* Errors if any */}
+            {summary.errors && summary.errors.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border/50">
+                <div className="text-[10px] text-destructive/80 font-medium mb-1">
+                  {summary.errors.length} error{summary.errors.length !== 1 ? 's' : ''}
+                </div>
+                <div className="space-y-1">
+                  {summary.errors.slice(0, 3).map((error, idx) => (
+                    <div
+                      key={idx}
+                      className="text-[10px] text-destructive/70 font-mono bg-destructive/5 p-1 rounded"
+                    >
+                      {typeof error === 'string' ? error : JSON.stringify(error)}
+                    </div>
+                  ))}
+                  {summary.errors.length > 3 && (
+                    <div className="text-[10px] text-destructive/60">
+                      ... and {summary.errors.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
       )}
-    </div>
+    </Collapsible>
   );
 }
