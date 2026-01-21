@@ -481,6 +481,17 @@ export async function setConversationPlanMode(convId: string, enabled: boolean):
   }
 }
 
+export async function approvePlan(convId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/conversations/${convId}/approve-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
 // File Tab DTOs and functions
 export interface FileTabDTO {
   id: string;

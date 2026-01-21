@@ -35,6 +35,7 @@ interface StreamingState {
   isThinking: boolean;
   startTime?: number; // When streaming started (for elapsed time)
   planModeActive: boolean; // Whether plan mode is active for this conversation
+  awaitingPlanApproval: boolean; // Whether we're waiting for user to approve ExitPlanMode
 }
 
 interface ActiveTool {
@@ -155,6 +156,7 @@ interface AppState {
   setThinking: (conversationId: string, isThinking: boolean) => void;
   clearThinking: (conversationId: string) => void;
   setPlanModeActive: (conversationId: string, active: boolean) => void;
+  setAwaitingPlanApproval: (conversationId: string, awaiting: boolean) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   clearActiveTools: (conversationId: string) => void;
@@ -730,13 +732,22 @@ updateFileTabContent: (id, content) => set((state) => ({
         thinking: null,
         isThinking: false,
         planModeActive: state.streamingState[conversationId]?.planModeActive || false,
+        awaitingPlanApproval: false,
       },
     },
   })),
   clearStreamingText: (conversationId) => set((state) => ({
     streamingState: {
       ...state.streamingState,
-      [conversationId]: { text: '', isStreaming: false, error: null, thinking: null, isThinking: false, planModeActive: state.streamingState[conversationId]?.planModeActive || false },
+      [conversationId]: {
+        text: '',
+        isStreaming: false,
+        error: null,
+        thinking: null,
+        isThinking: false,
+        planModeActive: state.streamingState[conversationId]?.planModeActive || false,
+        awaitingPlanApproval: false,
+      },
     },
   })),
   appendThinkingText: (conversationId, text) => set((state) => ({
@@ -776,6 +787,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         thinking: null,
         isThinking: false,
         planModeActive: state.streamingState[conversationId]?.planModeActive || false,
+        awaitingPlanApproval: state.streamingState[conversationId]?.awaitingPlanApproval || false,
       },
     },
   })),
@@ -790,6 +802,22 @@ updateFileTabContent: (id, content) => set((state) => ({
         thinking: state.streamingState[conversationId]?.thinking || null,
         isThinking: state.streamingState[conversationId]?.isThinking || false,
         planModeActive: active,
+        awaitingPlanApproval: state.streamingState[conversationId]?.awaitingPlanApproval || false,
+      },
+    },
+  })),
+  setAwaitingPlanApproval: (conversationId, awaiting) => set((state) => ({
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        isStreaming: state.streamingState[conversationId]?.isStreaming || false,
+        error: state.streamingState[conversationId]?.error || null,
+        thinking: state.streamingState[conversationId]?.thinking || null,
+        isThinking: state.streamingState[conversationId]?.isThinking || false,
+        planModeActive: state.streamingState[conversationId]?.planModeActive || false,
+        awaitingPlanApproval: awaiting,
       },
     },
   })),
@@ -829,6 +857,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       thinking: null,
       isThinking: false,
       planModeActive: streaming?.planModeActive || false,
+      awaitingPlanApproval: false,
     };
 
     // If no streaming text, just clear the state
