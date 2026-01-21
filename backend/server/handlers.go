@@ -13,6 +13,8 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/naming"
+	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -168,10 +170,14 @@ func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateSessionRequest struct {
-	Name         string `json:"name"`
-	Branch       string `json:"branch"`
-	WorktreePath string `json:"worktreePath"`
-	Task         string `json:"task,omitempty"`
+	// Name is optional - if not provided, a city name will be auto-generated
+	Name string `json:"name,omitempty"`
+	// Branch is optional - if not provided, will be generated from the session name
+	Branch string `json:"branch,omitempty"`
+	// WorktreePath is deprecated - worktrees are now created at ~/.chatml/workspaces/{name}
+	WorktreePath string `json:"worktreePath,omitempty"`
+	// Task is an optional description of what this session is for
+	Task string `json:"task,omitempty"`
 }
 
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
@@ -196,18 +202,71 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Generate session ID
 	sessionID := uuid.New().String()
 
-	// Create git worktree for this session
-	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateWithBranch(repo.Path, sessionID, req.Branch)
+	// Generate or use provided session name (city-based naming)
+	sessionName := req.Name
+	if sessionName == "" {
+		// Get workspaces base directory to check for existing directories
+		workspacesDir, err := git.WorkspacesBaseDir()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to get workspaces directory: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Scan filesystem for existing session directories (global collision check)
+		existingNames := []string{}
+		entries, err := os.ReadDir(workspacesDir)
+		if err == nil { // Directory might not exist yet
+			for _, entry := range entries {
+				if entry.IsDir() {
+					existingNames = append(existingNames, entry.Name())
+				}
+			}
+		}
+		sessionName = naming.GenerateUniqueSessionName(existingNames)
+	}
+
+	// Generate or use provided branch name
+	branchName := req.Branch
+	if branchName == "" {
+		branchName = fmt.Sprintf("session/%s", sessionName)
+	}
+
+	// Get workspaces base directory (~/.chatml/workspaces)
+	workspacesDir, err := git.WorkspacesBaseDir()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get workspaces directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Create git worktree at the new location
+	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateAtPath(repo.Path, filepath.Join(workspacesDir, sessionName), branchName)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create worktree: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	now := time.Now()
-	session := &models.Session{
+
+	// Write session metadata JSON file for portability
+	meta := &session.Metadata{
+		ID:            sessionID,
+		Name:          sessionName,
+		WorkspaceID:   workspaceID,
+		WorkspacePath: repo.Path,
+		Branch:        branchName,
+		BaseCommitSHA: baseCommitSHA,
+		CreatedAt:     now,
+		Task:          req.Task,
+	}
+	if err := session.WriteMetadata(worktreePath, meta); err != nil {
+		// Log but don't fail - metadata is supplementary
+		fmt.Printf("[handlers] Warning: failed to write session metadata: %v\n", err)
+	}
+
+	sess := &models.Session{
 		ID:            sessionID,
 		WorkspaceID:   workspaceID,
-		Name:          req.Name,
+		Name:          sessionName,
 		Branch:        branchName,
 		WorktreePath:  worktreePath,
 		BaseCommitSHA: baseCommitSHA,
@@ -218,7 +277,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     now,
 	}
 
-	if err := h.store.AddSession(ctx, session); err != nil {
+	if err := h.store.AddSession(ctx, sess); err != nil {
 		http.Error(w, fmt.Sprintf("failed to create session: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -227,7 +286,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	convID := uuid.New().String()[:8]
 	conv := &models.Conversation{
 		ID:          convID,
-		SessionID:   session.ID,
+		SessionID:   sess.ID,
 		Type:        models.ConversationTypeTask,
 		Name:        "Untitled",
 		Status:      models.ConversationStatusIdle,
@@ -251,8 +310,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Role:    "system",
 		Content: "",
 		SetupInfo: &models.SetupInfo{
-			SessionName:  session.Name,
-			BranchName:   session.Branch,
+			SessionName:  sess.Name,
+			BranchName:   sess.Branch,
 			OriginBranch: originBranch,
 		},
 		Timestamp: now,
@@ -262,7 +321,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, session)
+	writeJSON(w, sess)
 }
 
 func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
@@ -364,20 +423,23 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 
 	// Get session to find workspace and worktree path
-	session, err := h.store.GetSession(ctx, sessionID)
+	sess, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
 		return
 	}
-	if session != nil {
-		repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
+	if sess != nil {
+		repo, err := h.store.GetRepo(ctx, sess.WorkspaceID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("database error: %v", err), http.StatusInternalServerError)
 			return
 		}
-		if repo != nil && session.WorktreePath != "" {
-			// Remove the git worktree
-			h.worktreeManager.RemoveByPath(repo.Path, sessionID, session.Branch)
+		if repo != nil && sess.WorktreePath != "" {
+			// Delete session metadata file (if exists)
+			session.DeleteMetadata(sess.WorktreePath)
+
+			// Remove the git worktree using absolute path
+			h.worktreeManager.RemoveAtPath(repo.Path, sess.WorktreePath, sess.Branch)
 		}
 	}
 

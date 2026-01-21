@@ -8,6 +8,15 @@ import (
 	"strings"
 )
 
+// WorkspacesBaseDir returns the base directory for session worktrees: ~/.chatml/workspaces
+func WorkspacesBaseDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".chatml", "workspaces"), nil
+}
+
 type WorktreeManager struct{}
 
 func NewWorktreeManager() *WorktreeManager {
@@ -19,9 +28,18 @@ func (wm *WorktreeManager) Create(repoPath, agentID string) (worktreePath string
 	return wm.CreateWithBranch(repoPath, agentID, branchName)
 }
 
-// CreateWithBranch creates a worktree with a custom branch name
-// Returns the worktree path, branch name, and the base commit SHA that the worktree was created from
+// CreateWithBranch creates a worktree with a custom branch name in the repo's .worktrees directory.
+// Returns the worktree path, branch name, and the base commit SHA that the worktree was created from.
+// Deprecated: Use CreateAtPath for new code - it allows specifying the worktree location.
 func (wm *WorktreeManager) CreateWithBranch(repoPath, worktreeID, branchName string) (worktreePath string, branch string, baseCommit string, err error) {
+	worktreesDir := filepath.Join(repoPath, ".worktrees")
+	worktreePath = filepath.Join(worktreesDir, worktreeID)
+	return wm.CreateAtPath(repoPath, worktreePath, branchName)
+}
+
+// CreateAtPath creates a worktree at a specific absolute path with a custom branch name.
+// Returns the worktree path, branch name, and the base commit SHA that the worktree was created from.
+func (wm *WorktreeManager) CreateAtPath(repoPath, worktreePath, branchName string) (string, string, string, error) {
 	// Capture current HEAD before creating the worktree - this is the base commit
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = repoPath
@@ -29,14 +47,13 @@ func (wm *WorktreeManager) CreateWithBranch(repoPath, worktreeID, branchName str
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
 	}
-	baseCommit = strings.TrimSpace(string(out))
+	baseCommit := strings.TrimSpace(string(out))
 
-	worktreesDir := filepath.Join(repoPath, ".worktrees")
-	if err := os.MkdirAll(worktreesDir, 0755); err != nil {
-		return "", "", "", fmt.Errorf("failed to create worktrees dir: %w", err)
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(worktreePath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return "", "", "", fmt.Errorf("failed to create parent dir %s: %w", parentDir, err)
 	}
-
-	worktreePath = filepath.Join(worktreesDir, worktreeID)
 
 	cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
 	cmd.Dir = repoPath
@@ -52,10 +69,15 @@ func (wm *WorktreeManager) Remove(repoPath, agentID string) error {
 	return wm.RemoveByPath(repoPath, agentID, branchName)
 }
 
-// RemoveByPath removes a worktree by its ID and branch name
+// RemoveByPath removes a worktree by its ID and branch name from the repo's .worktrees directory.
+// Deprecated: Use RemoveAtPath for new code - it works with absolute worktree paths.
 func (wm *WorktreeManager) RemoveByPath(repoPath, worktreeID, branchName string) error {
 	worktreePath := filepath.Join(repoPath, ".worktrees", worktreeID)
+	return wm.RemoveAtPath(repoPath, worktreePath, branchName)
+}
 
+// RemoveAtPath removes a worktree at an absolute path and deletes its branch.
+func (wm *WorktreeManager) RemoveAtPath(repoPath, worktreePath, branchName string) error {
 	// Remove the worktree
 	cmd := exec.Command("git", "worktree", "remove", worktreePath, "--force")
 	cmd.Dir = repoPath
@@ -79,11 +101,15 @@ func (wm *WorktreeManager) List(repoPath string) ([]string, error) {
 		return nil, err
 	}
 
+	// Get the workspaces base directory to recognize new-style worktrees
+	workspacesDir, _ := WorkspacesBaseDir() // Ignore error, will just not match new-style
+
 	var worktrees []string
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.HasPrefix(line, "worktree ") {
 			path := strings.TrimPrefix(line, "worktree ")
-			if strings.Contains(path, ".worktrees") {
+			// Include old-style worktrees (in .worktrees dir) and new-style (in ~/.chatml/workspaces)
+			if strings.Contains(path, ".worktrees") || (workspacesDir != "" && strings.HasPrefix(path, workspacesDir)) {
 				worktrees = append(worktrees, path)
 			}
 		}

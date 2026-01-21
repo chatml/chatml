@@ -23,16 +23,6 @@ interface AddWorkspaceModalProps {
   onClose: () => void;
 }
 
-// Generate a random branch name for new sessions
-function generateBranchName(): string {
-  const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
-  const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(Math.random() * 100);
-  return `${adj}-${noun}-${num}`;
-}
-
 export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
@@ -67,13 +57,8 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
       addWorkspace(workspace);
       selectWorkspace(workspace.id);
 
-      // Auto-create first session for the new workspace
-      const branchName = generateBranchName();
-      const session = await createSessionApi(workspace.id, {
-        name: branchName,
-        branch: branchName,
-        worktreePath: '',
-      });
+      // Auto-create first session for the new workspace (backend generates city-based name)
+      const session = await createSessionApi(workspace.id);
 
       addSession({
         id: session.id,

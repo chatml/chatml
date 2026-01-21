@@ -71,16 +71,6 @@ import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 
-// Generate a random branch name - moved outside component to avoid React purity warning
-function generateBranchName(): string {
-  const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
-  const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(Math.random() * 100);
-  return `${adj}-${noun}-${num}`;
-}
-
 interface WorkspaceSidebarProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
@@ -184,15 +174,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const handleCreateSession = async (workspaceId: string) => {
-    const branchName = generateBranchName();
-
     try {
-      // Create session via backend API (backend auto-creates "Untitled" conversation)
-      const session = await createSessionApi(workspaceId, {
-        name: branchName,
-        branch: branchName,
-        worktreePath: '', // Will be set when agent starts
-      });
+      // Create session via backend API (generates city-based name, branch, and worktree path)
+      const session = await createSessionApi(workspaceId);
 
       // Add to local store
       addSession({
