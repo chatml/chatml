@@ -61,7 +61,7 @@ func main() {
 
 	go hub.Run()
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, orch)
 
 	log.Printf("ChatML backend starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, router); err != nil {

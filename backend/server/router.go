@@ -8,6 +8,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/orchestrator"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,7 +16,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandlers(s, agentMgr)
 	auth := NewAuthHandlers(ghClient)
@@ -81,7 +82,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Delete("/{convId}", h.DeleteConversation)
 	})
 
-	// Agent endpoints
+	// Agent endpoints (legacy)
 	r.Route("/api/agents", func(r chi.Router) {
 		r.Get("/{id}", h.GetAgent)
 		r.Post("/{id}/stop", h.StopAgent)
@@ -89,6 +90,24 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{id}/merge", h.MergeAgent)
 		r.Delete("/{id}", h.DeleteAgent)
 	})
+
+	// Orchestrator agent endpoints
+	if orch != nil {
+		oh := NewOrchestratorHandlers(orch)
+		r.Route("/api/orchestrator/agents", func(r chi.Router) {
+			r.Get("/", oh.ListAgents)
+			r.Post("/reload", oh.ReloadAgents)
+
+			r.Route("/{agentId}", func(r chi.Router) {
+				r.Get("/", oh.GetAgent)
+				r.Patch("/", oh.UpdateAgentState)
+				r.Post("/run", oh.TriggerAgentRun)
+				r.Get("/runs", oh.ListAgentRuns)
+				r.Get("/runs/{runId}", oh.GetAgentRun)
+				r.Post("/runs/{runId}/stop", oh.StopAgentRun)
+			})
+		})
+	}
 
 	// Wire up agent manager callbacks (legacy)
 	agentMgr.SetOutputHandler(func(agentID, line string) {
