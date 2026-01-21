@@ -482,8 +482,8 @@ function SortableWorkspaceItem({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={cn("mb-1", isExpanded && "flex-1 flex flex-col")}>
-      <Collapsible open={isExpanded} onOpenChange={onToggle} className={cn(isExpanded && "flex-1 flex flex-col")}>
+    <div ref={setNodeRef} style={style} className="mb-1">
+      <Collapsible open={isExpanded} onOpenChange={onToggle}>
         {/* Workspace Header */}
         <CollapsibleTrigger asChild>
           <div
@@ -559,7 +559,7 @@ function SortableWorkspaceItem({
         </CollapsibleTrigger>
 
         {/* Sessions */}
-        <CollapsibleContent className="flex-1 flex flex-col">
+        <CollapsibleContent>
           <div className="ml-5">
             {sessions.length === 0 ? (
               <div className="py-2 px-2 text-xs text-muted-foreground/70">
@@ -699,7 +699,7 @@ function SortableWorkspaceItem({
           {/* Empty space area for right-click to add session */}
           <ContextMenu>
             <ContextMenuTrigger asChild>
-              <div className="ml-5 flex-1 min-h-4" />
+              <div className="ml-5 min-h-4" />
             </ContextMenuTrigger>
             <ContextMenuContent>
               <ContextMenuItem onClick={onCreateSession}>
