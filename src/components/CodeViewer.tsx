@@ -8,10 +8,11 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows } from 'lucide-react';
+import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows, WrapText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MonacoEditor, MonacoDiffEditor } from '@/components/MonacoEditor';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import { getShikiLanguage } from '@/lib/languageMapping';
 
 interface EditorState {
   cursorPosition?: { line: number; column: number };
@@ -30,75 +31,6 @@ interface CodeViewerProps {
   initialCursorPosition?: { line: number; column: number };
   /** Initial scroll position to restore */
   initialScrollPosition?: { top: number; left: number };
-}
-
-// Map file extensions to shiki language identifiers
-function getLanguage(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const name = filename.toLowerCase();
-
-  // Special files
-  if (name === 'dockerfile' || name.endsWith('.dockerfile')) return 'dockerfile';
-  if (name === 'makefile') return 'makefile';
-  if (name === '.gitignore' || name === '.dockerignore') return 'ignore';
-
-  const langMap: Record<string, string> = {
-    // JavaScript/TypeScript
-    js: 'javascript',
-    jsx: 'jsx',
-    ts: 'typescript',
-    tsx: 'tsx',
-    mjs: 'javascript',
-    cjs: 'javascript',
-    // Web
-    html: 'html',
-    htm: 'html',
-    css: 'css',
-    scss: 'scss',
-    sass: 'sass',
-    less: 'less',
-    // Data/Config
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    toml: 'toml',
-    xml: 'xml',
-    // Documentation
-    md: 'markdown',
-    mdx: 'mdx',
-    // Programming languages
-    go: 'go',
-    py: 'python',
-    rb: 'ruby',
-    rs: 'rust',
-    java: 'java',
-    kt: 'kotlin',
-    kts: 'kotlin',
-    swift: 'swift',
-    c: 'c',
-    h: 'c',
-    cpp: 'cpp',
-    cc: 'cpp',
-    hpp: 'cpp',
-    cs: 'csharp',
-    php: 'php',
-    // Shell
-    sh: 'bash',
-    bash: 'bash',
-    zsh: 'zsh',
-    ps1: 'powershell',
-    // SQL
-    sql: 'sql',
-    // Others
-    graphql: 'graphql',
-    gql: 'graphql',
-    prisma: 'prisma',
-    env: 'dotenv',
-    lock: 'text',
-    txt: 'text',
-  };
-
-  return langMap[ext] || 'text';
 }
 
 function isMarkdownFile(filename: string): boolean {
@@ -122,10 +54,11 @@ export function CodeViewer({
   const [lineCount, setLineCount] = useState(0);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('split');
+  const [wordWrap, setWordWrap] = useState(false);
 
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
-  const language = getLanguage(filename);
+  const language = getShikiLanguage(filename);
 
   useEffect(() => {
     // Monaco handles diff mode highlighting
@@ -244,6 +177,15 @@ export function CodeViewer({
             <Button
               variant="ghost"
               size="icon"
+              className={cn('h-5 w-5 text-muted-foreground', wordWrap && 'bg-muted')}
+              onClick={() => setWordWrap(!wordWrap)}
+              title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+            >
+              <WrapText className="w-2.5 h-2.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-5 w-5 text-muted-foreground"
               onClick={handleCopy}
             >
@@ -264,6 +206,7 @@ export function CodeViewer({
             filename={filename}
             readOnly={true}
             sideBySide={diffViewMode === 'split'}
+            wordWrap={wordWrap}
           />
         </div>
       </div>
@@ -291,12 +234,21 @@ export function CodeViewer({
               title={viewMode === 'code' ? 'Show rendered' : 'Show code'}
             >
               {viewMode === 'code' ? (
-                <Eye className="w-1 h-1" />
+                <Eye className="w-2.5 h-2.5" />
               ) : (
-                <Code className="w-1 h-1" />
+                <Code className="w-2.5 h-2.5" />
               )}
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('h-5 w-5 text-muted-foreground', wordWrap && 'bg-muted')}
+            onClick={() => setWordWrap(!wordWrap)}
+            title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+          >
+            <WrapText className="w-2.5 h-2.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -304,9 +256,9 @@ export function CodeViewer({
             onClick={handleCopy}
           >
             {copied ? (
-              <Check className="w-1 h-1 text-green-500" />
+              <Check className="w-2.5 h-2.5 text-green-500" />
             ) : (
-              <Copy className="w-1 h-1" />
+              <Copy className="w-2.5 h-2.5" />
             )}
           </Button>
         </div>
@@ -331,6 +283,7 @@ export function CodeViewer({
             content={content}
             filename={filename}
             readOnly={true}
+            wordWrap={wordWrap}
             onStateChange={onStateChange}
             initialCursorPosition={initialCursorPosition}
             initialScrollPosition={initialScrollPosition}
@@ -339,6 +292,7 @@ export function CodeViewer({
           // For all other code files, use Monaco
           <MonacoEditor
             content={content}
+            wordWrap={wordWrap}
             filename={filename}
             readOnly={true}
             onStateChange={onStateChange}

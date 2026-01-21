@@ -5,76 +5,8 @@ import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { Loader2 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { registerMonacoTheme, getThemeById } from '@/lib/monacoThemes';
-
-// Map file extensions to Monaco language identifiers
-function getMonacoLanguage(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const name = filename.toLowerCase();
-
-  // Special files
-  if (name === 'dockerfile' || name.endsWith('.dockerfile')) return 'dockerfile';
-  if (name === 'makefile') return 'makefile';
-  if (name === '.gitignore' || name === '.dockerignore') return 'plaintext';
-
-  const langMap: Record<string, string> = {
-    // JavaScript/TypeScript
-    js: 'javascript',
-    jsx: 'javascript',
-    ts: 'typescript',
-    tsx: 'typescript',
-    mjs: 'javascript',
-    cjs: 'javascript',
-    // Web
-    html: 'html',
-    htm: 'html',
-    css: 'css',
-    scss: 'scss',
-    sass: 'scss',
-    less: 'less',
-    // Data/Config
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    toml: 'plaintext',
-    xml: 'xml',
-    // Documentation
-    md: 'markdown',
-    mdx: 'markdown',
-    // Programming languages
-    go: 'go',
-    py: 'python',
-    rb: 'ruby',
-    rs: 'rust',
-    java: 'java',
-    kt: 'kotlin',
-    kts: 'kotlin',
-    swift: 'swift',
-    c: 'c',
-    h: 'c',
-    cpp: 'cpp',
-    cc: 'cpp',
-    hpp: 'cpp',
-    cs: 'csharp',
-    php: 'php',
-    // Shell
-    sh: 'shell',
-    bash: 'shell',
-    zsh: 'shell',
-    ps1: 'powershell',
-    // SQL
-    sql: 'sql',
-    // Others
-    graphql: 'graphql',
-    gql: 'graphql',
-    prisma: 'plaintext',
-    env: 'plaintext',
-    lock: 'plaintext',
-    txt: 'plaintext',
-  };
-
-  return langMap[ext] || 'plaintext';
-}
+import { registerMonacoTheme } from '@/lib/monacoThemes';
+import { getMonacoLanguage } from '@/lib/languageMapping';
 
 interface EditorState {
   cursorPosition?: { line: number; column: number };
@@ -85,6 +17,7 @@ interface MonacoEditorProps {
   content: string;
   filename: string;
   readOnly?: boolean;
+  wordWrap?: boolean;
   onChange?: (content: string) => void;
   onStateChange?: (state: EditorState) => void;
   initialCursorPosition?: { line: number; column: number };
@@ -95,6 +28,7 @@ export function MonacoEditor({
   content,
   filename,
   readOnly = false,
+  wordWrap = false,
   onChange,
   onStateChange,
   initialCursorPosition,
@@ -103,12 +37,15 @@ export function MonacoEditor({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const language = getMonacoLanguage(filename);
   const editorTheme = useSettingsStore((s) => s.editorTheme);
-  const [activeTheme, setActiveTheme] = useState<string>(editorTheme);
+  const [activeTheme, setActiveTheme] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Register custom theme when editorTheme changes
+  // Only show loading spinner on initial load to prevent flash when switching themes
   useEffect(() => {
     registerMonacoTheme(editorTheme).then((themeId) => {
       setActiveTheme(themeId);
+      setIsInitialLoad(false);
     });
   }, [editorTheme]);
 
@@ -163,6 +100,21 @@ export function MonacoEditor({
     };
   }, [onStateChange]);
 
+  // Dispose editor on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.dispose();
+        editorRef.current = null;
+      }
+    };
+  }, []);
+
+  // Show loading state only on initial theme registration
+  if (isInitialLoad || !activeTheme) {
+    return <EditorLoading />;
+  }
+
   return (
     <Editor
       height="100%"
@@ -185,7 +137,7 @@ export function MonacoEditor({
         renderLineHighlight: readOnly ? 'none' : 'line',
         cursorStyle: readOnly ? 'block' : 'line',
         cursorBlinking: readOnly ? 'solid' : 'blink',
-        wordWrap: 'off',
+        wordWrap: wordWrap ? 'on' : 'off',
         folding: true,
         foldingStrategy: 'indentation',
         showFoldingControls: 'mouseover',
@@ -199,11 +151,18 @@ export function MonacoEditor({
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
         contextmenu: !readOnly,
-        quickSuggestions: false,
-        suggestOnTriggerCharacters: false,
-        acceptSuggestionOnEnter: 'off',
-        tabCompletion: 'off',
-        parameterHints: { enabled: false },
+        // Enable find widget (Cmd/Ctrl+F)
+        find: {
+          addExtraSpaceOnTop: false,
+          autoFindInSelection: 'multiline',
+          seedSearchStringFromSelection: 'selection',
+        },
+        // Enable IntelliSense features for editable editors
+        quickSuggestions: !readOnly,
+        suggestOnTriggerCharacters: !readOnly,
+        acceptSuggestionOnEnter: readOnly ? 'off' : 'on',
+        tabCompletion: readOnly ? 'off' : 'on',
+        parameterHints: { enabled: !readOnly },
       }}
     />
   );
@@ -215,6 +174,7 @@ interface MonacoDiffEditorProps {
   filename: string;
   readOnly?: boolean;
   sideBySide?: boolean;
+  wordWrap?: boolean;
 }
 
 export function MonacoDiffEditor({
@@ -223,16 +183,20 @@ export function MonacoDiffEditor({
   filename,
   readOnly = true,
   sideBySide = true,
+  wordWrap = false,
 }: MonacoDiffEditorProps) {
   const language = getMonacoLanguage(filename);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const editorTheme = useSettingsStore((s) => s.editorTheme);
-  const [activeTheme, setActiveTheme] = useState<string>(editorTheme);
+  const [activeTheme, setActiveTheme] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Register custom theme when editorTheme changes
+  // Only show loading spinner on initial load to prevent flash when switching themes
   useEffect(() => {
     registerMonacoTheme(editorTheme).then((themeId) => {
       setActiveTheme(themeId);
+      setIsInitialLoad(false);
     });
   }, [editorTheme]);
 
@@ -243,8 +207,39 @@ export function MonacoDiffEditor({
     }
   }, [sideBySide]);
 
+  // Update diff editor content when props change
+  // Note: This only syncs content, not language. If the filename changes to a different
+  // language, the model language won't update since Monaco models are tied to their
+  // language at creation. In practice, this component is typically used with a fixed
+  // filename within a single mount lifecycle, so this is acceptable.
+  useEffect(() => {
+    if (editorRef.current) {
+      const modifiedEditor = editorRef.current.getModifiedEditor();
+      const originalEditor = editorRef.current.getOriginalEditor();
+      const modifiedModel = modifiedEditor.getModel();
+      const originalModel = originalEditor.getModel();
+
+      if (modifiedModel && modifiedModel.getValue() !== newContent) {
+        modifiedModel.setValue(newContent);
+      }
+      if (originalModel && originalModel.getValue() !== oldContent) {
+        originalModel.setValue(oldContent);
+      }
+    }
+  }, [oldContent, newContent]);
+
   const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
     editorRef.current = editor;
+  }, []);
+
+  // Dispose editor on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.dispose();
+        editorRef.current = null;
+      }
+    };
   }, []);
 
   // Memoize options to prevent unnecessary re-renders
@@ -263,7 +258,8 @@ export function MonacoDiffEditor({
     enableSplitViewResizing: true,
     renderIndicators: true,
     renderOverviewRuler: false,
-    diffWordWrap: 'off' as const,
+    diffWordWrap: (wordWrap ? 'on' : 'off') as 'on' | 'off',
+    wordWrap: (wordWrap ? 'on' : 'off') as 'on' | 'off',
     scrollbar: {
       vertical: 'auto' as const,
       horizontal: 'auto' as const,
@@ -272,7 +268,12 @@ export function MonacoDiffEditor({
     },
     overviewRulerBorder: false,
     contextmenu: false,
-  }), [readOnly, sideBySide]);
+  }), [readOnly, sideBySide, wordWrap]);
+
+  // Show loading state only on initial theme registration
+  if (isInitialLoad || !activeTheme) {
+    return <EditorLoading />;
+  }
 
   return (
     <DiffEditor
@@ -300,4 +301,4 @@ function EditorLoading() {
 }
 
 // Re-export the language detection function for use elsewhere
-export { getMonacoLanguage };
+export { getMonacoLanguage } from '@/lib/languageMapping';
