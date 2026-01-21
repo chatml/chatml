@@ -1,254 +1,201 @@
 'use client';
 
-import type { Agent } from '@/lib/types';
-import { stopAgent, getAgentDiff, mergeAgent, deleteAgent } from '@/lib/api';
-import { OutputLog } from './OutputLog';
 import { useState } from 'react';
-import { useAppStore } from '@/stores/appStore';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Play, Square, MoreHorizontal, Clock, DollarSign } from 'lucide-react';
+import type { OrchestratorAgent, AgentRun } from '@/lib/agentTypes';
+import { useAgentStore } from '@/stores/agentStore';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Bot,
-  Square,
-  GitMerge,
-  Trash2,
-  FileCode,
-  Terminal,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-} from 'lucide-react';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 interface AgentCardProps {
-  agent: Agent;
-  onRefresh: () => void;
+  agent: OrchestratorAgent;
+  runs?: AgentRun[];
+  isSelected?: boolean;
+  onClick?: () => void;
 }
 
-const statusConfig = {
-  pending: {
-    icon: Clock,
-    label: 'Pending',
-    variant: 'secondary' as const,
-  },
-  running: {
-    icon: Loader2,
-    label: 'Running',
-    variant: 'default' as const,
-  },
-  done: {
-    icon: CheckCircle2,
-    label: 'Completed',
-    variant: 'secondary' as const,
-  },
-  error: {
-    icon: XCircle,
-    label: 'Failed',
-    variant: 'destructive' as const,
-  },
-};
+export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardProps) {
+  const { updateAgent, triggerRun, stopRun } = useAgentStore();
+  const [isHovered, setIsHovered] = useState(false);
 
-export function AgentCard({ agent, onRefresh }: AgentCardProps) {
-  const [showDiff, setShowDiff] = useState(false);
-  const [diff, setDiff] = useState('');
-  const [expanded, setExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState('output');
-  const removeAgent = useAppStore((state) => state.removeAgent);
+  const latestRun = runs[0];
+  const recentRuns = runs.slice(0, 3);
 
-  const status = statusConfig[agent.status];
-  const StatusIcon = status.icon;
-
-  const handleStop = async () => {
-    await stopAgent(agent.id);
-    onRefresh();
+  const getStatusColor = () => {
+    if (agent.isRunning) return 'bg-blue-500';
+    if (agent.lastError) return 'bg-amber-500';
+    if (!agent.enabled) return 'bg-zinc-500';
+    return 'bg-emerald-500';
   };
 
-  const handleViewDiff = async () => {
-    const d = await getAgentDiff(agent.id);
-    setDiff(d);
-    setShowDiff(true);
+  const getStatusText = () => {
+    if (agent.isRunning) return 'Running';
+    if (agent.lastError) return 'Error';
+    if (!agent.enabled) return 'Disabled';
+    return 'Idle';
   };
 
-  const handleMerge = async () => {
-    await mergeAgent(agent.id);
-    await deleteAgent(agent.id);
-    removeAgent(agent.id);
-    onRefresh();
+  const formatTimeAgo = (dateStr: string | null) => {
+    if (!dateStr) return 'Never';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
   };
 
-  const handleDiscard = async () => {
-    await deleteAgent(agent.id);
-    removeAgent(agent.id);
-    onRefresh();
+  const formatCost = (cost: number) => {
+    return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`;
+  };
+
+  const handleToggleEnabled = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await updateAgent(agent.id, { enabled: !agent.enabled });
+  };
+
+  const handleTriggerRun = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await triggerRun(agent.id);
+  };
+
+  const handleStopRun = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (latestRun && latestRun.status === 'running') {
+      await stopRun(agent.id, latestRun.id);
+    }
   };
 
   return (
-    <>
-      <Card className="mb-4">
-        <CardHeader className="p-4 pb-0">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                <Bot className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">
-                    Agent {agent.id.slice(0, 8)}
-                  </span>
-                  <Badge variant={status.variant} className="gap-1">
-                    <StatusIcon
-                      className={cn(
-                        'w-3 h-3',
-                        agent.status === 'running' && 'animate-spin'
-                      )}
-                    />
-                    {status.label}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                  {agent.task}
-                </p>
-              </div>
-            </div>
+    <div
+      className={cn(
+        'group relative rounded-lg border p-3 transition-colors cursor-pointer',
+        isSelected
+          ? 'border-blue-500 bg-blue-500/10'
+          : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/50'
+      )}
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={cn('h-2 w-2 rounded-full flex-shrink-0', getStatusColor())} />
+          <span className="font-medium text-sm text-zinc-100 truncate">
+            {agent.definition?.name || agent.id}
+          </span>
+        </div>
 
-            <div className="flex items-center gap-2">
-              {agent.status === 'running' && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleStop}
-                >
-                  <Square className="w-3 h-3 mr-1.5" />
-                  Stop
-                </Button>
-              )}
-              {agent.status === 'done' && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleViewDiff}
-                  >
-                    <FileCode className="w-3 h-3 mr-1.5" />
-                    Diff
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleMerge}
-                  >
-                    <GitMerge className="w-3 h-3 mr-1.5" />
-                    Merge
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleDiscard}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </>
-              )}
-              {agent.status === 'error' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDiscard}
-                >
-                  <Trash2 className="w-3 h-3 mr-1.5" />
-                  Discard
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setExpanded(!expanded)}
+        <div className="flex items-center gap-1">
+          {/* Action buttons (shown on hover) */}
+          <div className={cn(
+            'flex items-center gap-1 transition-opacity',
+            isHovered ? 'opacity-100' : 'opacity-0'
+          )}>
+            {agent.isRunning ? (
+              <button
+                onClick={handleStopRun}
+                className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400"
+                title="Stop run"
               >
-                {expanded ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-              </Button>
+                <Square className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <button
+                onClick={handleTriggerRun}
+                className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-emerald-400"
+                title="Trigger run"
+                disabled={!agent.enabled}
+              >
+                <Play className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded hover:bg-zinc-700 text-zinc-400"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={handleToggleEnabled}
+                className="flex items-center justify-between"
+              >
+                <span>{agent.enabled ? 'Disable' : 'Enable'}</span>
+                <Switch
+                  checked={agent.enabled}
+                  onCheckedChange={() => {}}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleTriggerRun} disabled={!agent.enabled || agent.isRunning}>
+                Run Now
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Status line */}
+      <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+        <span>{getStatusText()}</span>
+        <span>•</span>
+        <span>{formatTimeAgo(agent.lastRunAt)}</span>
+      </div>
+
+      {/* Recent activity */}
+      {recentRuns.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {recentRuns.map((run) => (
+            <div key={run.id} className="flex items-center gap-2 text-xs text-zinc-500">
+              <span className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                run.status === 'running' ? 'bg-blue-500 animate-pulse' :
+                run.status === 'completed' ? 'bg-emerald-500' : 'bg-red-500'
+              )} />
+              <span className="truncate flex-1">
+                {run.resultSummary || (run.status === 'running' ? 'Running...' : 'No summary')}
+              </span>
             </div>
-          </div>
-        </CardHeader>
+          ))}
+        </div>
+      )}
 
-        {expanded && (
-          <CardContent className="p-4 pt-3">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList>
-                <TabsTrigger value="output" className="gap-1.5">
-                  <Terminal className="w-3 h-3" />
-                  Output
-                </TabsTrigger>
-                {agent.status === 'done' && (
-                  <TabsTrigger value="changes" className="gap-1.5">
-                    <FileCode className="w-3 h-3" />
-                    Changes
-                  </TabsTrigger>
-                )}
-              </TabsList>
-              <TabsContent value="output" className="mt-3">
-                <OutputLog agentId={agent.id} />
-              </TabsContent>
-              {agent.status === 'done' && (
-                <TabsContent value="changes" className="mt-3">
-                  <div className="rounded-lg border bg-muted/50 p-4 h-64">
-                    <p className="text-muted-foreground text-sm">
-                      Click &quot;Diff&quot; to view changes
-                    </p>
-                  </div>
-                </TabsContent>
-              )}
-            </Tabs>
-          </CardContent>
-        )}
-      </Card>
+      {/* Stats footer */}
+      <div className="mt-2 pt-2 border-t border-zinc-800 flex items-center gap-3 text-xs text-zinc-500">
+        <div className="flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          <span>{agent.totalRuns} runs</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <DollarSign className="h-3 w-3" />
+          <span>{formatCost(agent.totalCost)}</span>
+        </div>
+      </div>
 
-      {/* Diff Modal */}
-      <Dialog open={showDiff} onOpenChange={setShowDiff}>
-        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileCode className="w-5 h-5" />
-              Changes from Agent {agent.id.slice(0, 8)}
-            </DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="flex-1 mt-4">
-            <pre className="terminal rounded-lg border bg-muted/50 p-4 text-sm whitespace-pre-wrap">
-              {diff || 'No changes'}
-            </pre>
-          </ScrollArea>
-          <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-            <Button variant="outline" onClick={() => setShowDiff(false)}>
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                setShowDiff(false);
-                handleMerge();
-              }}
-            >
-              <GitMerge className="w-4 h-4 mr-2" />
-              Merge Changes
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+      {/* Error indicator */}
+      {agent.lastError && (
+        <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 truncate">
+          {agent.lastError}
+        </div>
+      )}
+    </div>
   );
 }

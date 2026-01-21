@@ -1,0 +1,37 @@
+id: github-monitor
+name: GitHub Monitor
+type: monitor
+description: Monitors GitHub issues and creates sessions for new work
+
+execution:
+  mode: creates-session
+  workingDirectory: session
+
+polling:
+  interval: 60s
+  sources:
+    - type: github
+      owner: "{{workspace.github_owner}}"
+      repo: "{{workspace.github_repo}}"
+      resources: [issues, pull_requests]
+      filters:
+        labels: [bug, feature]
+        state: open
+
+capabilities:
+  - read:github
+  - create:session
+
+systemPrompt: |
+  You monitor GitHub for new issues and PRs.
+  When you find actionable items, create a session to work on them.
+
+  For each new issue:
+  1. Analyze the issue description and labels
+  2. Determine if it's something that can be addressed automatically
+  3. If yes, create a new session with a clear task description
+  4. If no, add a comment suggesting next steps
+
+limits:
+  budgetPerRun: 0.50
+  maxSessionsPerHour: 5
