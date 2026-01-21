@@ -76,12 +76,13 @@ func (m *SessionLockManager) Unlock(path string) {
 }
 
 type Handlers struct {
-	store           *store.SQLiteStore
-	repoManager     *git.RepoManager
-	worktreeManager *git.WorktreeManager
-	agentManager    *agent.Manager
-	sessionLocks    *SessionLockManager
-	fileSizeConfig  FileSizeConfig
+	store            *store.SQLiteStore
+	repoManager      *git.RepoManager
+	worktreeManager  *git.WorktreeManager
+	agentManager     *agent.Manager
+	sessionLocks     *SessionLockManager
+	sessionNameCache *SessionNameCache
+	fileSizeConfig   FileSizeConfig
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -94,13 +95,20 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 }
 
 func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
+	// Initialize session name cache with workspaces directory
+	// Cache initializes lazily on first use
+	workspacesDir, err := git.WorkspacesBaseDir()
+	if err != nil {
+		log.Printf("[handlers] Warning: failed to get workspaces base directory: %v (session name cache will be disabled)", err)
+	}
 	return &Handlers{
-		store:           s,
-		repoManager:     git.NewRepoManager(),
-		worktreeManager: git.NewWorktreeManager(),
-		agentManager:    am,
-		sessionLocks:    NewSessionLockManager(),
-		fileSizeConfig:  LoadFileSizeConfig(),
+		store:            s,
+		repoManager:      git.NewRepoManager(),
+		worktreeManager:  git.NewWorktreeManager(),
+		agentManager:     am,
+		sessionLocks:     NewSessionLockManager(),
+		sessionNameCache: NewSessionNameCache(workspacesDir),
+		fileSizeConfig:   LoadFileSizeConfig(),
 	}
 }
 
@@ -282,15 +290,11 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		// Atomic session name generation with retry loop
 		const maxRetries = 5
 		for attempt := 0; attempt < maxRetries; attempt++ {
-			// Scan filesystem for existing session directories
-			existingNames := []string{}
-			entries, err := os.ReadDir(workspacesDir)
-			if err == nil {
-				for _, entry := range entries {
-					if entry.IsDir() {
-						existingNames = append(existingNames, entry.Name())
-					}
-				}
+			// Get existing names from cache (initializes on first call)
+			existingNames, err := h.sessionNameCache.GetAll()
+			if err != nil {
+				writeInternalError(w, "failed to get existing session names", err)
+				return
 			}
 
 			// Generate candidate name
@@ -301,11 +305,14 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				sessionName = candidateName
 				sessionPath = path
+				// Add to cache after successful creation
+				h.sessionNameCache.Add(sessionName)
 				break
 			}
 
 			if errors.Is(err, git.ErrDirectoryExists) {
-				// Name collision - retry with fresh name
+				// Name collision (external change or race) - add to cache and retry
+				h.sessionNameCache.Add(candidateName)
 				continue
 			}
 
@@ -330,6 +337,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionPath = path
+		// Add to cache after successful creation
+		h.sessionNameCache.Add(sessionName)
 	}
 
 	// Generate or use provided branch name
@@ -345,7 +354,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Create git worktree in the atomically created directory
 	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName)
 	if err != nil {
-		// Rollback: remove the atomically created directory
+		// Rollback: remove the atomically created directory and cache entry
+		h.sessionNameCache.Remove(sessionName)
 		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
 			log.Printf("[handlers] Warning: failed to rollback session directory %s: %v", sessionPath, removeErr)
 		}
@@ -358,6 +368,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if rollback {
 			fmt.Printf("[handlers] Rolling back worktree creation due to failure: %s\n", worktreePath)
+			h.sessionNameCache.Remove(sessionName)
 			session.DeleteMetadata(sessionID)
 			// Use background context for cleanup - the original request context may be cancelled
 			h.worktreeManager.RemoveAtPath(context.Background(), repo.Path, worktreePath, branchName)
@@ -576,6 +587,9 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 			// Remove the git worktree using absolute path
 			h.worktreeManager.RemoveAtPath(ctx, repo.Path, sess.WorktreePath, sess.Branch)
+
+			// Remove from session name cache
+			h.sessionNameCache.Remove(sess.Name)
 		}
 	}
 
