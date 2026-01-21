@@ -134,7 +134,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Check if a conversation is fresh (no user messages yet)
   const isFreshConversation = useCallback(
-    (convId: string) => !conversationsWithUserMessages.has(convId),
+    (convId: string) => !conversationsWithUserMessages.includes(convId),
     [conversationsWithUserMessages]
   );
 

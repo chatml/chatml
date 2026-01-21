@@ -74,23 +74,32 @@ export const useHasUserMessages = (conversationId: string | null) =>
       : false
   );
 
+// Stable empty array for conversations with user messages
+const EMPTY_CONVERSATION_IDS: readonly string[] = [];
+
 /**
- * Get a Set of conversation IDs that have user messages.
+ * Get an array of conversation IDs that have user messages.
  * Use in: ConversationArea for checking "fresh" status across multiple conversations
  *
  * This avoids subscribing to the entire messages array when you need to check
  * freshness for multiple conversations (e.g., in tab rendering).
+ *
+ * Returns a stable reference when empty to avoid infinite re-render loops.
  */
 export const useConversationsWithUserMessages = () =>
-  useAppStore((s) => {
-    const ids = new Set<string>();
-    for (const m of s.messages) {
-      if (m.role === 'user') {
-        ids.add(m.conversationId);
+  useAppStore(
+    useShallow((s) => {
+      const ids: string[] = [];
+      const seen = new Set<string>();
+      for (const m of s.messages) {
+        if (m.role === 'user' && !seen.has(m.conversationId)) {
+          seen.add(m.conversationId);
+          ids.push(m.conversationId);
+        }
       }
-    }
-    return ids;
-  });
+      return ids.length > 0 ? ids : EMPTY_CONVERSATION_IDS;
+    })
+  );
 
 // ============================================================================
 // Streaming State
