@@ -81,6 +81,7 @@ type Handlers struct {
 	worktreeManager *git.WorktreeManager
 	agentManager    *agent.Manager
 	sessionLocks    *SessionLockManager
+	fileSizeConfig  FileSizeConfig
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -99,6 +100,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 		worktreeManager: git.NewWorktreeManager(),
 		agentManager:    am,
 		sessionLocks:    NewSessionLockManager(),
+		fileSizeConfig:  LoadFileSizeConfig(),
 	}
 }
 
@@ -1369,6 +1371,13 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 	var req SaveFileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Check file size limit
+	maxSize := h.fileSizeConfig.MaxFileSizeBytes
+	if int64(len(req.Content)) > maxSize {
+		writePayloadTooLarge(w, fmt.Sprintf("file content exceeds maximum size of %d MB", maxSize/(1024*1024)))
 		return
 	}
 

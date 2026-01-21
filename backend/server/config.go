@@ -1,6 +1,10 @@
 package server
 
-import "os"
+import (
+	"log"
+	"os"
+	"strconv"
+)
 
 // AllowedOrigins defines the allowed origins for CORS and WebSocket connections.
 // These must be kept in sync to prevent security misconfigurations.
@@ -38,4 +42,26 @@ func LoadGitHubConfig() GitHubConfig {
 		ClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		ClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 	}
+}
+
+// FileSizeConfig holds file size limit configuration
+type FileSizeConfig struct {
+	MaxFileSizeBytes int64
+}
+
+// LoadFileSizeConfig loads file size config from environment variables.
+// Default: 50MB if CHATML_MAX_FILE_SIZE_MB is not set.
+func LoadFileSizeConfig() FileSizeConfig {
+	maxSize := int64(50 * 1024 * 1024) // 50MB default
+	if envSize := os.Getenv("CHATML_MAX_FILE_SIZE_MB"); envSize != "" {
+		mb, err := strconv.ParseInt(envSize, 10, 64)
+		if err != nil {
+			log.Printf("[config] Warning: invalid CHATML_MAX_FILE_SIZE_MB value %q (not a number), using default 50MB", envSize)
+		} else if mb <= 0 {
+			log.Printf("[config] Warning: invalid CHATML_MAX_FILE_SIZE_MB value %d (must be positive), using default 50MB", mb)
+		} else {
+			maxSize = mb * 1024 * 1024
+		}
+	}
+	return FileSizeConfig{MaxFileSizeBytes: maxSize}
 }
