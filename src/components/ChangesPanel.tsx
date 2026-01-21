@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/stores/appStore';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileNodeDTO, type FileChangeDTO } from '@/lib/api';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
 import { TodoPanel } from '@/components/TodoPanel';
 import { CheckpointTimeline } from '@/components/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
+import { GitStatusSection } from '@/components/GitStatusSection';
 
 // Dynamic import for TerminalOutput (browser-only)
 const TerminalOutput = dynamic(() => import('@/components/TerminalOutput').then(mod => mod.TerminalOutput), {
@@ -217,6 +218,15 @@ export function ChangesPanel() {
   const pendingAgentTodos = currentAgentTodos.filter((t) => t.status !== 'completed').length;
   const pendingCustomTodos = currentCustomTodos.filter((t) => !t.completed).length;
   const totalPendingTodos = pendingAgentTodos + pendingCustomTodos;
+
+  // Callback for GitStatusSection to send messages to the agent
+  const handleGitActionMessage = useCallback((content: string) => {
+    if (!selectedConversationId) {
+      console.warn('No conversation selected, cannot send git action message');
+      return;
+    }
+    sendConversationMessage(selectedConversationId, content).catch(console.error);
+  }, [selectedConversationId]);
 
   // Fetch files from session's worktree when session changes or tab switches to files
   useEffect(() => {
@@ -446,11 +456,13 @@ export function ChangesPanel() {
             )
           ) : selectedTab === 'todos' ? (
             <TodoPanel />
+          ) : selectedTab === 'checks' ? (
+            <GitStatusSection onSendMessage={handleGitActionMessage} />
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
                 <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No checks configured</p>
+                <p className="text-sm">No content</p>
               </div>
             </div>
           )}

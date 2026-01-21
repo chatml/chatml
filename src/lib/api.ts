@@ -217,6 +217,44 @@ export async function getSessionChanges(workspaceId: string, sessionId: string):
   return handleResponse<FileChangeDTO[]>(res);
 }
 
+// Git status types matching backend response
+export interface GitStatusDTO {
+  workingDirectory: {
+    stagedCount: number;
+    unstagedCount: number;
+    untrackedCount: number;
+    totalUncommitted: number;
+    hasChanges: boolean;
+  };
+  sync: {
+    aheadBy: number;
+    behindBy: number;
+    baseBranch: string;
+    remoteBranch?: string;
+    hasRemote: boolean;
+    diverged: boolean;
+    unpushedCommits: number;
+  };
+  inProgress: {
+    type: 'none' | 'rebase' | 'merge' | 'cherry-pick' | 'revert';
+    current?: number;
+    total?: number;
+  };
+  conflicts: {
+    hasConflicts: boolean;
+    count: number;
+    files: string[];
+  };
+  stash: {
+    count: number;
+  };
+}
+
+export async function getGitStatus(workspaceId: string, sessionId: string): Promise<GitStatusDTO> {
+  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/git-status`);
+  return handleResponse<GitStatusDTO>(res);
+}
+
 export async function sendSessionMessage(
   workspaceId: string,
   sessionId: string,
