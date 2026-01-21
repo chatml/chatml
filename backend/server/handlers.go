@@ -75,6 +75,130 @@ func (m *SessionLockManager) Unlock(path string) {
 	entry.mu.Unlock()
 }
 
+// DirListingCache provides TTL-based caching for directory listing operations.
+// This reduces filesystem operations for frequently accessed directory trees.
+type DirListingCache struct {
+	mu      sync.RWMutex
+	entries map[string]*dirCacheEntry
+	ttl     time.Duration
+	done    chan struct{}
+}
+
+type dirCacheEntry struct {
+	data      []*FileNode
+	expiresAt time.Time
+}
+
+// NewDirListingCache creates a new directory listing cache with the given TTL
+func NewDirListingCache(ttl time.Duration) *DirListingCache {
+	cache := &DirListingCache{
+		entries: make(map[string]*dirCacheEntry),
+		ttl:     ttl,
+		done:    make(chan struct{}),
+	}
+	go cache.cleanupLoop()
+	return cache
+}
+
+// Close stops the cleanup goroutine. Should be called when the cache is no longer needed.
+func (c *DirListingCache) Close() {
+	close(c.done)
+}
+
+// Get retrieves a cached directory listing by key
+func (c *DirListingCache) Get(key string) ([]*FileNode, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, ok := c.entries[key]
+	if !ok {
+		return nil, false
+	}
+
+	if time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+
+	return entry.data, true
+}
+
+// Set stores a directory listing in the cache
+func (c *DirListingCache) Set(key string, data []*FileNode) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.entries[key] = &dirCacheEntry{
+		data:      data,
+		expiresAt: time.Now().Add(c.ttl),
+	}
+}
+
+// InvalidatePath removes all cache entries whose keys start with the given path prefix.
+// This is used to invalidate cache when files are modified.
+// Cache keys are formatted as "type:path:depth:N", so we check if the path portion
+// starts with basePath to avoid over-invalidation of unrelated paths.
+func (c *DirListingCache) InvalidatePath(basePath string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key := range c.entries {
+		// Extract path from cache key format "type:path:depth:N"
+		// We need to check if the path portion starts with basePath
+		if strings.HasPrefix(key, "repo:"+basePath) || strings.HasPrefix(key, "session:"+basePath) {
+			delete(c.entries, key)
+		}
+	}
+}
+
+// cleanupLoop periodically removes expired entries
+func (c *DirListingCache) cleanupLoop() {
+	// Use a minimum cleanup interval of 30 seconds to avoid excessive CPU usage
+	// when TTL is configured to a very short duration (e.g., for testing)
+	cleanupInterval := c.ttl
+	if cleanupInterval < 30*time.Second {
+		cleanupInterval = 30 * time.Second
+	}
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.cleanup()
+		case <-c.done:
+			return
+		}
+	}
+}
+
+// cleanup removes expired entries
+func (c *DirListingCache) cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	now := time.Now()
+	for key, entry := range c.entries {
+		if now.After(entry.expiresAt) {
+			delete(c.entries, key)
+		}
+	}
+}
+
+// Stats returns cache statistics (total entries, expired entries)
+func (c *DirListingCache) Stats() (total int, expired int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	now := time.Now()
+	total = len(c.entries)
+	for _, entry := range c.entries {
+		if now.After(entry.expiresAt) {
+			expired++
+		}
+	}
+	return total, expired
+}
+
 type Handlers struct {
 	store            *store.SQLiteStore
 	repoManager      *git.RepoManager
@@ -83,6 +207,7 @@ type Handlers struct {
 	sessionLocks     *SessionLockManager
 	sessionNameCache *SessionNameCache
 	fileSizeConfig   FileSizeConfig
+	dirCache         *DirListingCache
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -94,7 +219,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -109,6 +234,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager) *Handlers {
 		sessionLocks:     NewSessionLockManager(),
 		sessionNameCache: NewSessionNameCache(workspacesDir),
 		fileSizeConfig:   LoadFileSizeConfig(),
+		dirCache:         NewDirListingCache(dirCacheConfig.TTL),
 	}
 }
 
@@ -1024,12 +1150,21 @@ func (h *Handlers) ListRepoFiles(w http.ResponseWriter, r *http.Request) {
 		maxDepth = -1
 	}
 
+	// Check cache first
+	cacheKey := fmt.Sprintf("repo:%s:depth:%d", repo.Path, maxDepth)
+	if cached, ok := h.dirCache.Get(cacheKey); ok {
+		writeJSON(w, cached)
+		return
+	}
+
 	tree, err := buildFileTree(repo.Path, "", maxDepth, 0)
 	if err != nil {
 		writeInternalError(w, "failed to list files", err)
 		return
 	}
 
+	// Cache the result
+	h.dirCache.Set(cacheKey, tree)
 	writeJSON(w, tree)
 }
 
@@ -1350,6 +1485,13 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check cache first
+	cacheKey := fmt.Sprintf("session:%s:depth:%d", session.WorktreePath, maxDepth)
+	if cached, ok := h.dirCache.Get(cacheKey); ok {
+		writeJSON(w, cached)
+		return
+	}
+
 	// Build file tree from worktree path
 	tree, err := buildFileTree(session.WorktreePath, "", maxDepth, 0)
 	if err != nil {
@@ -1357,6 +1499,8 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cache the result
+	h.dirCache.Set(cacheKey, tree)
 	writeJSON(w, tree)
 }
 
@@ -1451,6 +1595,9 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, "failed to save file", err)
 		return
 	}
+
+	// Invalidate directory listing cache for this path
+	h.dirCache.InvalidatePath(basePath)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})

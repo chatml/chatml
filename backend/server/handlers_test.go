@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/chatml/chatml-backend/models"
 	"github.com/stretchr/testify/assert"
@@ -991,4 +992,128 @@ func TestLoadFileSizeConfig_ZeroValue(t *testing.T) {
 
 	// Zero is invalid, should fall back to default (50MB)
 	assert.Equal(t, int64(50*1024*1024), config.MaxFileSizeBytes)
+}
+
+// ============================================================================
+// DirListingCache Tests
+// ============================================================================
+
+func TestDirListingCache_GetSet(t *testing.T) {
+	cache := NewDirListingCache(1 * time.Second)
+	defer cache.Close()
+
+	// Initially should not have the key
+	_, ok := cache.Get("test-key")
+	assert.False(t, ok)
+
+	// Set a value
+	testData := []*FileNode{
+		{Name: "file1.txt", Path: "file1.txt", IsDir: false},
+		{Name: "dir1", Path: "dir1", IsDir: true},
+	}
+	cache.Set("test-key", testData)
+
+	// Should now have the key
+	result, ok := cache.Get("test-key")
+	assert.True(t, ok)
+	assert.Equal(t, testData, result)
+}
+
+func TestDirListingCache_Expiration(t *testing.T) {
+	cache := NewDirListingCache(50 * time.Millisecond)
+	defer cache.Close()
+
+	testData := []*FileNode{
+		{Name: "file1.txt", Path: "file1.txt", IsDir: false},
+	}
+	cache.Set("test-key", testData)
+
+	// Should have the key immediately
+	_, ok := cache.Get("test-key")
+	assert.True(t, ok)
+
+	// Wait for TTL to expire with sufficient margin for CI environments
+	time.Sleep(150 * time.Millisecond)
+
+	// Should no longer have the key
+	_, ok = cache.Get("test-key")
+	assert.False(t, ok)
+}
+
+func TestDirListingCache_InvalidatePath(t *testing.T) {
+	cache := NewDirListingCache(1 * time.Minute)
+	defer cache.Close()
+
+	// Set multiple entries with different paths
+	cache.Set("repo:/path/to/repo:depth:1", []*FileNode{{Name: "a.txt"}})
+	cache.Set("repo:/path/to/repo:depth:10", []*FileNode{{Name: "b.txt"}})
+	cache.Set("session:/path/to/worktree:depth:1", []*FileNode{{Name: "c.txt"}})
+
+	// Verify all entries exist
+	_, ok1 := cache.Get("repo:/path/to/repo:depth:1")
+	_, ok2 := cache.Get("repo:/path/to/repo:depth:10")
+	_, ok3 := cache.Get("session:/path/to/worktree:depth:1")
+	assert.True(t, ok1)
+	assert.True(t, ok2)
+	assert.True(t, ok3)
+
+	// Invalidate entries containing /path/to/repo
+	cache.InvalidatePath("/path/to/repo")
+
+	// repo entries should be gone, session entry should remain
+	_, ok1 = cache.Get("repo:/path/to/repo:depth:1")
+	_, ok2 = cache.Get("repo:/path/to/repo:depth:10")
+	_, ok3 = cache.Get("session:/path/to/worktree:depth:1")
+	assert.False(t, ok1)
+	assert.False(t, ok2)
+	assert.True(t, ok3)
+}
+
+func TestDirListingCache_Stats(t *testing.T) {
+	// Use longer TTL to avoid cleanup goroutine interference
+	cache := NewDirListingCache(1 * time.Minute)
+	defer cache.Close()
+
+	// Initially empty
+	total, expired := cache.Stats()
+	assert.Equal(t, 0, total)
+	assert.Equal(t, 0, expired)
+
+	// Add entries
+	cache.Set("key1", []*FileNode{{Name: "a.txt"}})
+	cache.Set("key2", []*FileNode{{Name: "b.txt"}})
+
+	total, expired = cache.Stats()
+	assert.Equal(t, 2, total)
+	assert.Equal(t, 0, expired)
+}
+
+func TestDirListingCache_ConcurrentAccess(t *testing.T) {
+	cache := NewDirListingCache(1 * time.Minute)
+	defer cache.Close()
+	var wg sync.WaitGroup
+
+	// Concurrently read and write
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		key := "key-" + string(rune('a'+i%26))
+
+		// Writer
+		go func(k string) {
+			defer wg.Done()
+			cache.Set(k, []*FileNode{{Name: k}})
+		}(key)
+
+		// Reader
+		go func(k string) {
+			defer wg.Done()
+			cache.Get(k)
+		}(key)
+	}
+
+	wg.Wait()
+
+	// Should not panic and should have some entries
+	total, _ := cache.Stats()
+	assert.Greater(t, total, 0)
 }
