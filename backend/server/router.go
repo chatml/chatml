@@ -39,6 +39,13 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// WebSocket
 	r.Get("/ws", hub.HandleWebSocket)
 
+	// WebSocket stats endpoint (local desktop app only - no auth needed)
+	// NOTE: If this app is ever exposed to a network, consider adding authentication
+	r.Get("/ws/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(hub.GetStats())
+	})
+
 	// Rate limiting middleware for sensitive operations
 	agentRateLimiter := httprate.LimitByIP(10, 1*time.Minute)        // 10 agent spawns per minute
 	conversationRateLimiter := httprate.LimitByIP(20, 1*time.Minute) // 20 conversations per minute
