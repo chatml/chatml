@@ -268,6 +268,50 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	log.Printf("[sqlite] Migration: file_tabs table ready")
 
+	// Migration: Create orchestrator_agents table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS orchestrator_agents (
+			id TEXT PRIMARY KEY,
+			yaml_path TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			polling_interval_ms INTEGER,
+			last_run_at DATETIME,
+			last_error TEXT,
+			total_runs INTEGER NOT NULL DEFAULT 0,
+			total_cost REAL NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	log.Printf("[sqlite] Migration: orchestrator_agents table ready")
+
+	// Migration: Create agent_runs table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS agent_runs (
+			id TEXT PRIMARY KEY,
+			agent_id TEXT NOT NULL,
+			trigger TEXT NOT NULL,
+			status TEXT NOT NULL,
+			result_summary TEXT,
+			sessions_created TEXT,
+			cost REAL NOT NULL DEFAULT 0,
+			started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			completed_at DATETIME,
+			FOREIGN KEY (agent_id) REFERENCES orchestrator_agents(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_id ON agent_runs(agent_id)`)
+	if err != nil {
+		return err
+	}
+	log.Printf("[sqlite] Migration: agent_runs table ready")
+
 	return nil
 }
 

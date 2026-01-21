@@ -65,7 +65,9 @@ import {
   Folder,
   Globe,
   SquarePlus,
+  Bot,
 } from 'lucide-react';
+import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 
@@ -96,7 +98,11 @@ const ADD_REPO_MENU_ITEMS = [
   { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
 ] as const;
 
+type SidebarTab = 'workspaces' | 'agents';
+
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
+  const [activeTab, setActiveTab] = useState<SidebarTab>('workspaces');
+
   const menuHandlers = {
     open: onOpenProject,
     clone: onCloneFromUrl,
@@ -286,121 +292,144 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         )}
       </div>
 
-      {/* Workspaces Section Header */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 border-b cursor-pointer hover:bg-sidebar-accent/50 transition-colors"
-        onClick={onShowWorkspaceManagement}
-      >
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Workspaces</span>
-        <div className="flex-1" />
-        <span className="text-xs text-muted-foreground">{sessions.filter(s => !s.archived).length} sessions</span>
+      {/* Tab Switcher */}
+      <div className="flex border-b">
+        <button
+          onClick={() => setActiveTab('workspaces')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors',
+            activeTab === 'workspaces'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          Workspaces
+        </button>
+        <button
+          onClick={() => setActiveTab('agents')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors',
+            activeTab === 'agents'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Bot className="h-3.5 w-3.5" />
+          Agents
+        </button>
       </div>
 
-      {/* Workspace List */}
-      <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!h-full">
-        <div className="py-2 px-1 h-full flex flex-col">
-          {workspaces.length === 0 ? (
-            <div className="px-3 py-12 text-center">
-              <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
-                <FolderPlus className="w-6 h-6 text-muted-foreground/50" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">No workspaces</p>
-              <p className="text-xs text-muted-foreground/70 mt-1 mb-4">
-                Add a repository to get started
-              </p>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
+      {activeTab === 'workspaces' ? (
+        <>
+          {/* Workspace List */}
+          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!h-full">
+            <div className="py-2 px-1 h-full flex flex-col">
+              {workspaces.length === 0 ? (
+                <div className="px-3 py-12 text-center">
+                  <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
+                    <FolderPlus className="w-6 h-6 text-muted-foreground/50" />
+                  </div>
+                  <p className="text-sm font-medium text-muted-foreground">No workspaces</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1 mb-4">
+                    Add a repository to get started
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add repository
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="center" className="w-48">
+                      {ADD_REPO_MENU_ITEMS.map((item) => (
+                        <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                          <item.icon className="h-4 w-4" />
+                          {item.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={workspaces.map((w) => w.id)}
+                    strategy={verticalListSortingStrategy}
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1.5" />
-                    Add repository
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center" className="w-48">
-                  {ADD_REPO_MENU_ITEMS.map((item) => (
-                    <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {workspaces.map((workspace) => (
+                      <SortableWorkspaceItem
+                        key={workspace.id}
+                        workspace={workspace}
+                        sessions={getWorkspaceSessions(workspace.id)}
+                        isExpanded={isWorkspaceExpanded(workspace.id)}
+                        selectedSessionId={selectedSessionId}
+                        onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
+                        onCreateSession={() => handleCreateSession(workspace.id)}
+                        onSelectSession={(sessionId) => {
+                          selectWorkspace(workspace.id);
+                          selectSession(sessionId);
+                          onSessionSelected?.();
+                        }}
+                        onArchiveSession={handleArchiveSession}
+                        onPinSession={handlePinSession}
+                        onOpenProject={onOpenProject}
+                        onCloneFromUrl={onCloneFromUrl}
+                        getStatusColor={getStatusColor}
+                        formatTimeAgo={formatTimeAgo}
+                        getInitial={getInitial}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              )}
             </div>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={workspaces.map((w) => w.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {workspaces.map((workspace) => (
-                  <SortableWorkspaceItem
-                    key={workspace.id}
-                    workspace={workspace}
-                    sessions={getWorkspaceSessions(workspace.id)}
-                    isExpanded={isWorkspaceExpanded(workspace.id)}
-                    selectedSessionId={selectedSessionId}
-                    onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
-                    onCreateSession={() => handleCreateSession(workspace.id)}
-                    onSelectSession={(sessionId) => {
-                      selectWorkspace(workspace.id);
-                      selectSession(sessionId);
-                      onSessionSelected?.();
-                    }}
-                    onArchiveSession={handleArchiveSession}
-                    onPinSession={handlePinSession}
-                    onOpenProject={onOpenProject}
-                    onCloneFromUrl={onCloneFromUrl}
-                    getStatusColor={getStatusColor}
-                    formatTimeAgo={formatTimeAgo}
-                    getInitial={getInitial}
-                  />
-                ))}
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
-      </ScrollArea>
+          </ScrollArea>
 
-      {/* Footer */}
-      <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          {/* Footer */}
+          <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm">Add repository</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="w-48">
+                {ADD_REPO_MENU_ITEMS.map((item) => (
+                  <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="ghost"
-              size="sm"
-              className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+              onClick={onOpenSettings}
             >
-              <Plus className="w-4 h-4" />
-              <span className="text-sm">Add repository</span>
+              <Settings className="w-4 h-4" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-48">
-            {ADD_REPO_MENU_ITEMS.map((item) => (
-              <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-          onClick={onOpenSettings}
-        >
-          <Settings className="w-4 h-4" />
-        </Button>
-      </div>
-
-      </div>
+          </div>
+        </>
+      ) : (
+        <AgentSidebar className="flex-1" />
+      )}
+    </div>
   );
 }
 
