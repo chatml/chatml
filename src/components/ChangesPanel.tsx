@@ -419,7 +419,7 @@ export function ChangesPanel() {
               <FileTree
                 files={files}
                 onFileSelect={handleFileSelect}
-                workspacePath={currentWorkspace?.path}
+                workspacePath={currentSession?.worktreePath}
                 workspaceName={currentWorkspace?.name}
               />
             )
