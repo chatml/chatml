@@ -16,3 +16,6 @@ export const UPDATE_CHECK_DELAY_MS = 3000;
 
 // Sidecar restart delay
 export const SIDECAR_RESTART_DELAY_MS = 1000;
+
+// Git status polling interval
+export const GIT_STATUS_POLL_INTERVAL_MS = 30000; // 30 seconds

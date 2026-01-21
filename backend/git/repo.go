@@ -199,3 +199,304 @@ func (rm *RepoManager) HasMergeConflicts(repoPath string) (bool, error) {
 	}
 	return false, nil
 }
+
+// GitStatus represents the comprehensive git status of a worktree
+type GitStatus struct {
+	WorkingDirectory WorkingDirectoryStatus `json:"workingDirectory"`
+	Sync             SyncStatus             `json:"sync"`
+	InProgress       InProgressStatus       `json:"inProgress"`
+	Conflicts        ConflictStatus         `json:"conflicts"`
+	Stash            StashStatus            `json:"stash"`
+}
+
+// WorkingDirectoryStatus represents the state of the working directory
+type WorkingDirectoryStatus struct {
+	StagedCount        int  `json:"stagedCount"`
+	UnstagedCount      int  `json:"unstagedCount"`
+	UntrackedCount     int  `json:"untrackedCount"`
+	TotalUncommitted   int  `json:"totalUncommitted"`
+	HasChanges         bool `json:"hasChanges"`
+}
+
+// SyncStatus represents the sync state with remote/base branch
+type SyncStatus struct {
+	AheadBy          int    `json:"aheadBy"`
+	BehindBy         int    `json:"behindBy"`
+	BaseBranch       string `json:"baseBranch"`
+	RemoteBranch     string `json:"remoteBranch,omitempty"`
+	HasRemote        bool   `json:"hasRemote"`
+	Diverged         bool   `json:"diverged"`
+	UnpushedCommits  int    `json:"unpushedCommits"`
+}
+
+// InProgressStatus represents any in-progress git operations
+type InProgressStatus struct {
+	Type    string `json:"type"` // "none", "rebase", "merge", "cherry-pick", "revert"
+	Current int    `json:"current,omitempty"`
+	Total   int    `json:"total,omitempty"`
+}
+
+// ConflictStatus represents merge conflict information
+type ConflictStatus struct {
+	HasConflicts bool     `json:"hasConflicts"`
+	Count        int      `json:"count"`
+	Files        []string `json:"files"`
+}
+
+// StashStatus represents stash information
+type StashStatus struct {
+	Count int `json:"count"`
+}
+
+// GetStatus returns comprehensive git status for a worktree
+func (rm *RepoManager) GetStatus(worktreePath, baseBranch string) (*GitStatus, error) {
+	status := &GitStatus{
+		InProgress: InProgressStatus{Type: "none"},
+		Conflicts:  ConflictStatus{Files: []string{}},
+	}
+
+	// Get working directory status
+	wdStatus, err := rm.getWorkingDirectoryStatus(worktreePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get working directory status: %w", err)
+	}
+	status.WorkingDirectory = *wdStatus
+
+	// Get sync status
+	syncStatus, err := rm.getSyncStatus(worktreePath, baseBranch)
+	if err != nil {
+		// Don't fail completely if sync status fails
+		status.Sync = SyncStatus{BaseBranch: baseBranch}
+	} else {
+		status.Sync = *syncStatus
+	}
+
+	// Get in-progress operation status
+	inProgress, err := rm.getInProgressStatus(worktreePath)
+	if err == nil {
+		status.InProgress = *inProgress
+	}
+
+	// Get conflict status
+	conflicts, err := rm.getConflictStatus(worktreePath)
+	if err == nil {
+		status.Conflicts = *conflicts
+	}
+
+	// Get stash count
+	stashCount, err := rm.getStashCount(worktreePath)
+	if err == nil {
+		status.Stash = StashStatus{Count: stashCount}
+	}
+
+	return status, nil
+}
+
+// getWorkingDirectoryStatus parses git status --porcelain output.
+// Note: A file can have both staged and unstaged changes (partial staging),
+// and will be counted in both StagedCount and UnstagedCount. TotalUncommitted
+// is the sum of all counts, representing the total number of status entries,
+// not unique files.
+func (rm *RepoManager) getWorkingDirectoryStatus(repoPath string) (*WorkingDirectoryStatus, error) {
+	cmd, cancel := gitCmd(repoPath, "status", "--porcelain")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	status := &WorkingDirectoryStatus{}
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		if len(line) < 2 {
+			continue
+		}
+		indexStatus := line[0]
+		worktreeStatus := line[1]
+
+		// Untracked files
+		if indexStatus == '?' && worktreeStatus == '?' {
+			status.UntrackedCount++
+			continue
+		}
+
+		// Staged changes (index has changes)
+		if indexStatus != ' ' && indexStatus != '?' {
+			status.StagedCount++
+		}
+
+		// Unstaged changes (worktree has changes)
+		if worktreeStatus != ' ' && worktreeStatus != '?' {
+			status.UnstagedCount++
+		}
+	}
+
+	status.TotalUncommitted = status.StagedCount + status.UnstagedCount + status.UntrackedCount
+	status.HasChanges = status.TotalUncommitted > 0
+
+	return status, nil
+}
+
+// getSyncStatus gets ahead/behind counts relative to base branch
+func (rm *RepoManager) getSyncStatus(repoPath, baseBranch string) (*SyncStatus, error) {
+	status := &SyncStatus{
+		BaseBranch: baseBranch,
+	}
+
+	// Validate base branch ref
+	if err := validateGitRef(baseBranch); err != nil {
+		return status, fmt.Errorf("invalid base branch: %w", err)
+	}
+
+	// Check if remote tracking branch exists
+	cmd, cancel := gitCmd(repoPath, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	defer cancel()
+	remoteOut, _ := cmd.Output()
+	remoteBranch := strings.TrimSpace(string(remoteOut))
+	if remoteBranch != "" {
+		status.RemoteBranch = remoteBranch
+		status.HasRemote = true
+	}
+
+	// Get ahead/behind compared to base branch (origin/main or similar)
+	remoteBase := "origin/" + baseBranch
+	cmd, cancel = gitCmd(repoPath, "rev-list", "--left-right", "--count", remoteBase+"...HEAD")
+	defer cancel()
+	countOut, err := cmd.Output()
+	if err != nil {
+		// Try without origin prefix
+		cmd, cancel = gitCmd(repoPath, "rev-list", "--left-right", "--count", baseBranch+"...HEAD")
+		defer cancel()
+		countOut, err = cmd.Output()
+		if err != nil {
+			return status, nil // Return what we have
+		}
+	}
+
+	parts := strings.Fields(string(countOut))
+	if len(parts) >= 2 {
+		fmt.Sscanf(parts[0], "%d", &status.BehindBy)
+		fmt.Sscanf(parts[1], "%d", &status.AheadBy)
+	}
+
+	status.Diverged = status.AheadBy > 0 && status.BehindBy > 0
+
+	// Get unpushed commits (if we have a remote tracking branch)
+	if status.HasRemote {
+		cmd, cancel = gitCmd(repoPath, "rev-list", "@{u}..HEAD", "--count")
+		defer cancel()
+		unpushedOut, err := cmd.Output()
+		if err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(unpushedOut)), "%d", &status.UnpushedCommits)
+		}
+	} else {
+		// If no remote tracking, all local commits are unpushed
+		status.UnpushedCommits = status.AheadBy
+	}
+
+	return status, nil
+}
+
+// getInProgressStatus checks for in-progress git operations
+func (rm *RepoManager) getInProgressStatus(repoPath string) (*InProgressStatus, error) {
+	status := &InProgressStatus{Type: "none"}
+
+	// Get the git directory for this worktree
+	cmd, cancel := gitCmd(repoPath, "rev-parse", "--git-dir")
+	defer cancel()
+	gitDirOut, err := cmd.Output()
+	if err != nil {
+		return status, err
+	}
+	gitDir := strings.TrimSpace(string(gitDirOut))
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(repoPath, gitDir)
+	}
+
+	// Check for rebase
+	rebaseMergeDir := filepath.Join(gitDir, "rebase-merge")
+	rebaseApplyDir := filepath.Join(gitDir, "rebase-apply")
+	if _, err := os.Stat(rebaseMergeDir); err == nil {
+		status.Type = "rebase"
+		// Get progress
+		if msgnum, err := os.ReadFile(filepath.Join(rebaseMergeDir, "msgnum")); err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(msgnum)), "%d", &status.Current)
+		}
+		if end, err := os.ReadFile(filepath.Join(rebaseMergeDir, "end")); err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(end)), "%d", &status.Total)
+		}
+		return status, nil
+	}
+	if _, err := os.Stat(rebaseApplyDir); err == nil {
+		status.Type = "rebase"
+		// Get progress from rebase-apply
+		if next, err := os.ReadFile(filepath.Join(rebaseApplyDir, "next")); err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(next)), "%d", &status.Current)
+		}
+		if last, err := os.ReadFile(filepath.Join(rebaseApplyDir, "last")); err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(last)), "%d", &status.Total)
+		}
+		return status, nil
+	}
+
+	// Check for merge
+	if _, err := os.Stat(filepath.Join(gitDir, "MERGE_HEAD")); err == nil {
+		status.Type = "merge"
+		return status, nil
+	}
+
+	// Check for cherry-pick
+	if _, err := os.Stat(filepath.Join(gitDir, "CHERRY_PICK_HEAD")); err == nil {
+		status.Type = "cherry-pick"
+		return status, nil
+	}
+
+	// Check for revert
+	if _, err := os.Stat(filepath.Join(gitDir, "REVERT_HEAD")); err == nil {
+		status.Type = "revert"
+		return status, nil
+	}
+
+	return status, nil
+}
+
+// getConflictStatus gets list of files with conflicts
+func (rm *RepoManager) getConflictStatus(repoPath string) (*ConflictStatus, error) {
+	status := &ConflictStatus{Files: []string{}}
+
+	cmd, cancel := gitCmd(repoPath, "diff", "--name-only", "--diff-filter=U")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return status, nil // No conflicts
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if line != "" {
+			status.Files = append(status.Files, line)
+		}
+	}
+
+	status.Count = len(status.Files)
+	status.HasConflicts = status.Count > 0
+
+	return status, nil
+}
+
+// getStashCount returns the number of stashed changes
+func (rm *RepoManager) getStashCount(repoPath string) (int, error) {
+	cmd, cancel := gitCmd(repoPath, "stash", "list")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+
+	if len(strings.TrimSpace(string(out))) == 0 {
+		return 0, nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	return len(lines), nil
+}
