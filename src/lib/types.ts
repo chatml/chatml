@@ -427,10 +427,10 @@ export interface TerminalSession {
   status: 'idle' | 'active' | 'closed';
 }
 
-// Terminal instance for bottom panel terminals (per workspace)
+// Terminal instance for bottom panel terminals (per session)
 export interface TerminalInstance {
-  id: string;           // "workspaceId-term-slotNumber"
-  workspaceId: string;
+  id: string;           // "sessionId-term-slotNumber"
+  sessionId: string;
   slotNumber: number;   // 1-5
   status: 'active' | 'exited';
 }

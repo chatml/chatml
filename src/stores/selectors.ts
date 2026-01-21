@@ -188,14 +188,14 @@ export const useSelectedIds = () =>
 // ============================================================================
 
 /**
- * Terminal instances for a specific workspace.
+ * Terminal instances for a specific session.
  * Use in: BottomTerminal
  */
-export const useTerminalState = (workspaceId: string | null) =>
+export const useTerminalState = (sessionId: string | null) =>
   useAppStore(
     useShallow((s) => ({
-      instances: workspaceId ? s.terminalInstances[workspaceId] ?? EMPTY_TERMINAL_INSTANCES : EMPTY_TERMINAL_INSTANCES,
-      activeId: workspaceId ? s.activeTerminalId[workspaceId] : null,
+      instances: sessionId ? s.terminalInstances[sessionId] ?? EMPTY_TERMINAL_INSTANCES : EMPTY_TERMINAL_INSTANCES,
+      activeId: sessionId ? s.activeTerminalId[sessionId] : null,
       createTerminal: s.createTerminal,
       closeTerminal: s.closeTerminal,
       setActiveTerminal: s.setActiveTerminal,

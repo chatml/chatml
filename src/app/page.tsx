@@ -227,6 +227,11 @@ export default function Home() {
 
   const { expandWorkspace } = useSettingsStore();
 
+  // Computed: selected session for terminal and other uses
+  const selectedSession = selectedSessionId
+    ? sessions.find((s) => s.id === selectedSessionId)
+    : null;
+
   // Connect WebSocket for real-time updates (only when backend is connected)
   useWebSocket(backendConnected);
 
@@ -904,7 +909,7 @@ export default function Home() {
 
               {/* Bottom Terminal - always mounted to preserve PTY session */}
               {showBottomTerminal && <ResizableHandle />}
-              {selectedWorkspaceId && (
+              {selectedSession && (
                 <ResizablePanel
                   id="bottom-terminal"
                   defaultSize={showBottomTerminal ? "150px" : "0px"}
@@ -915,8 +920,8 @@ export default function Home() {
                   <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
                     <ErrorBoundary section="Terminal">
                       <BottomTerminal
-                        workspaceId={selectedWorkspaceId}
-                        workspacePath={workspaces.find((w) => w.id === selectedWorkspaceId)?.path || ''}
+                        sessionId={selectedSession.id}
+                        workspacePath={selectedSession.worktreePath}
                         onHide={() => setShowBottomTerminal(false)}
                       />
                     </ErrorBoundary>
