@@ -43,16 +43,6 @@ import {
 // Pre-computed skeleton widths (avoids Math.random() during render)
 const SKELETON_WIDTHS = [72, 88, 65, 81];
 
-// Generate a random branch name for new sessions
-function generateBranchName(): string {
-  const adjectives = ['quick', 'bright', 'swift', 'calm', 'bold', 'keen', 'warm', 'cool'];
-  const nouns = ['fox', 'owl', 'bear', 'wolf', 'hawk', 'deer', 'lion', 'sage'];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(Math.random() * 100);
-  return `${adj}-${noun}-${num}`;
-}
-
 // Loading skeleton for conversation area
 function ConversationSkeleton() {
   return (
@@ -398,20 +388,9 @@ export default function Home() {
   const handleNewSession = useCallback(async () => {
     if (!selectedWorkspaceId) return;
 
-    const workspace = workspaces.find((w) => w.id === selectedWorkspaceId);
-    if (!workspace) return;
-
     try {
-      // Generate a unique session name
-      const workspaceSessions = sessions.filter((s) => s.workspaceId === selectedWorkspaceId);
-      const sessionNumber = workspaceSessions.length + 1;
-      const branchName = `session-${sessionNumber}-${Date.now().toString(36)}`;
-
-      const newSession = await createSession(selectedWorkspaceId, {
-        name: `Session ${sessionNumber}`,
-        branch: branchName,
-        worktreePath: `${workspace.path}/.worktrees/${branchName}`,
-      });
+      // Backend generates city-based session name, branch, and worktree path
+      const newSession = await createSession(selectedWorkspaceId);
 
       // Add to store and select
       addSession({
@@ -546,13 +525,8 @@ export default function Home() {
       useAppStore.getState().addWorkspace(workspace);
       selectWorkspace(workspace.id);
 
-      // Auto-create first session for the new workspace
-      const branchName = generateBranchName();
-      const session = await createSession(workspace.id, {
-        name: branchName,
-        branch: branchName,
-        worktreePath: '',
-      });
+      // Auto-create first session for the new workspace (backend generates city-based name)
+      const session = await createSession(workspace.id);
 
       addSession({
         id: session.id,

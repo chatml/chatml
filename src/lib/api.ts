@@ -178,7 +178,7 @@ export async function listSessions(workspaceId: string): Promise<SessionDTO[]> {
 
 export async function createSession(
   workspaceId: string,
-  data: { name: string; branch: string; worktreePath: string; task?: string }
+  data: { name?: string; branch?: string; worktreePath?: string; task?: string } = {}
 ): Promise<SessionDTO> {
   const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
