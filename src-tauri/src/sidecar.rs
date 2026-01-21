@@ -65,7 +65,7 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // In development, allow localhost:3000 for CORS
     #[cfg(debug_assertions)]
     {
-        sidecar_command = sidecar_command.env("CHATML_DEV_ORIGIN", "http://localhost:3000");
+        sidecar_command = sidecar_command.env("CHATML_DEV_ORIGIN", "http://localhost:3100");
     }
 
     let (mut rx, child) = sidecar_command
