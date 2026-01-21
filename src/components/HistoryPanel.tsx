@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useConversationState } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,10 @@ interface HistoryItem {
 }
 
 export function HistoryPanel() {
-  const { conversations, sessions, workspaces } = useAppStore();
+  // Use optimized selectors
+  const { conversations } = useConversationState();
+  const sessions = useAppStore((s) => s.sessions);
+  const workspaces = useAppStore((s) => s.workspaces);
   const [filter, setFilter] = useState('');
 
   // Build history from conversations and sessions

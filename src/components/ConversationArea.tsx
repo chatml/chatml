@@ -5,6 +5,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useAppStore } from '@/stores/appStore';
+import {
+  useConversationState,
+  useFileTabState,
+  useMessages,
+  useConversationsWithUserMessages,
+} from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -64,16 +70,17 @@ interface ConversationAreaProps {
 }
 
 export function ConversationArea({ children }: ConversationAreaProps) {
+  // Use selector hooks for optimized subscriptions
   const {
     conversations,
-    messages,
-    sessions,
-    selectedSessionId,
     selectedConversationId,
     selectConversation,
     addConversation,
     removeConversation,
     updateConversation,
+  } = useConversationState();
+
+  const {
     fileTabs,
     selectedFileTabId,
     selectFileTab,
@@ -83,9 +90,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     closeTabsToRight,
     reorderFileTabs,
     updateFileTab,
-    streamingState,
     setPendingCloseFileTabId,
-  } = useAppStore();
+  } = useFileTabState();
+
+  // Targeted selectors for remaining state
+  const sessions = useAppStore((s) => s.sessions);
+  const selectedSessionId = useAppStore((s) => s.selectedSessionId);
+  const streamingState = useAppStore((s) => s.streamingState);
+
+  // Use messages selector scoped to the selected conversation
+  const conversationMessages = useMessages(selectedConversationId);
+  // Get Set of conversation IDs that have user messages (avoids subscribing to all messages)
+  const conversationsWithUserMessages = useConversationsWithUserMessages();
 
   // Rename dialog state for conversations
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -115,18 +131,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     () => conversations.filter((c) => c.sessionId === selectedSessionId),
     [conversations, selectedSessionId]
   );
-  const conversationMessages = useMemo(
-    () => messages.filter((m) => m.conversationId === selectedConversationId),
-    [messages, selectedConversationId]
-  );
 
   // Check if a conversation is fresh (no user messages yet)
   const isFreshConversation = useCallback(
-    (convId: string) => {
-      const convMessages = messages.filter((m) => m.conversationId === convId);
-      return !convMessages.some((m) => m.role === 'user');
-    },
-    [messages]
+    (convId: string) => !conversationsWithUserMessages.has(convId),
+    [conversationsWithUserMessages]
   );
 
   // Get status indicator for conversation tabs

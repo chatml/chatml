@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppStore } from '@/stores/appStore';
+import { useWorkspaceSelection, useTotalCost } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -35,13 +35,9 @@ export function TopBar({
   onToggleLeftSidebar,
   onToggleRightSidebar
 }: TopBarProps) {
-  const {
-    workspaces,
-    sessions,
-    selectedWorkspaceId,
-    selectedSessionId,
-    totalCost,
-  } = useAppStore();
+  // Use optimized selectors to prevent unnecessary re-renders
+  const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
+  const totalCost = useTotalCost();
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);

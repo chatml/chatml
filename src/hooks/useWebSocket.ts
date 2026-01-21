@@ -78,8 +78,8 @@ export function useWebSocket(enabled: boolean = true) {
     addActiveTool,
     completeActiveTool,
     clearActiveTools,
-    addMessage,
     setAgentTodos,
+    finalizeStreamingMessage,
   } = useAppStore();
 
   // Map backend status to frontend session status
@@ -196,9 +196,9 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'result':
-        // Result event signals the end of a turn - finalize streaming
+        // Result event signals the end of a turn - finalize streaming atomically
+        // This prevents data loss by creating message and clearing state in one update
         const state = useAppStore.getState();
-        const streamingText = state.streamingState[conversationId]?.text;
         const startTime = state.streamingState[conversationId]?.startTime;
         const durationMs = startTime ? Date.now() - startTime : undefined;
 
@@ -215,29 +215,20 @@ export function useWebSocket(enabled: boolean = true) {
           stderr: t.stderr,
         }));
 
-        if (streamingText) {
-          addMessage({
-            id: `msg-${Date.now()}`,
-            conversationId,
-            role: 'assistant',
-            content: streamingText,
-            timestamp: new Date().toISOString(),
+        // Atomic finalization - creates message and clears streaming/activeTools in one update
+        // Note: finalizeStreamingMessage also clears thinking state, so no separate clearThinking needed
+        finalizeStreamingMessage(conversationId, {
+          durationMs,
+          toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
+          runSummary: {
+            success: event.success !== false,
+            cost: event.cost,
+            turns: event.turns,
             durationMs,
-            toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
-            runSummary: {
-              success: event.success !== false,
-              cost: event.cost,
-              turns: event.turns,
-              durationMs,
-              stats: event.stats,
-              errors: event.errors,
-            },
-          });
-        }
-        clearStreamingText(conversationId);
-        setStreaming(conversationId, false);
-        clearThinking(conversationId);
-        clearActiveTools(conversationId);
+            stats: event.stats,
+            errors: event.errors,
+          },
+        });
 // Update budget status from result event, preserving max values
         if (event.cost !== undefined) {
           const existingStatus = useAppStore.getState().budgetStatus;
@@ -285,7 +276,6 @@ export function useWebSocket(enabled: boolean = true) {
     addActiveTool,
     completeActiveTool,
     updateConversation,
-    addMessage,
     clearStreamingText,
     setStreaming,
     setStreamingError,
@@ -294,6 +284,7 @@ export function useWebSocket(enabled: boolean = true) {
     clearThinking,
     clearActiveTools,
     setAgentTodos,
+    finalizeStreamingMessage,
   ]);
 
   const connect = useCallback(() => {

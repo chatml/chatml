@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAppStore } from '@/stores/appStore';
+import { useTerminalState } from '@/stores/selectors';
 import { cn } from '@/lib/utils';
 
 const Terminal = dynamic(
@@ -26,17 +26,15 @@ interface BottomTerminalProps {
 }
 
 export function BottomTerminal({ workspaceId, workspacePath, onHide }: BottomTerminalProps) {
+  // Use optimized selector scoped to this workspace
   const {
-    terminalInstances,
-    activeTerminalId,
+    instances,
+    activeId,
     createTerminal,
     closeTerminal,
     setActiveTerminal,
     markTerminalExited,
-  } = useAppStore();
-
-  const instances = terminalInstances[workspaceId] || [];
-  const activeId = activeTerminalId[workspaceId];
+  } = useTerminalState(workspaceId);
   const canCreateMore = instances.length < 5;
 
   // Auto-create first terminal when panel is shown and no terminals exist
