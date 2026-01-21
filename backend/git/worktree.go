@@ -119,6 +119,7 @@ func (wm *WorktreeManager) RemoveByPath(repoPath, worktreeID, branchName string)
 }
 
 // RemoveAtPath removes a worktree at an absolute path and deletes its branch.
+// If branchName is empty, only the worktree is removed (branch deletion is skipped).
 func (wm *WorktreeManager) RemoveAtPath(repoPath, worktreePath, branchName string) error {
 	// Remove the worktree
 	cmd := exec.Command("git", "worktree", "remove", worktreePath, "--force")
@@ -127,10 +128,12 @@ func (wm *WorktreeManager) RemoveAtPath(repoPath, worktreePath, branchName strin
 		return fmt.Errorf("failed to remove worktree: %s: %w", string(out), err)
 	}
 
-	// Delete the branch
-	cmd = exec.Command("git", "branch", "-D", branchName)
-	cmd.Dir = repoPath
-	cmd.CombinedOutput() // Ignore error, branch might not exist
+	// Delete the branch if specified
+	if branchName != "" {
+		cmd = exec.Command("git", "branch", "-D", branchName)
+		cmd.Dir = repoPath
+		cmd.CombinedOutput() // Ignore error, branch might not exist
+	}
 
 	return nil
 }
@@ -151,7 +154,7 @@ func (wm *WorktreeManager) List(repoPath string) ([]string, error) {
 		if strings.HasPrefix(line, "worktree ") {
 			path := strings.TrimPrefix(line, "worktree ")
 			// Include old-style worktrees (in .worktrees dir) and new-style (in ~/.chatml/workspaces)
-			if strings.Contains(path, ".worktrees") || (workspacesDir != "" && strings.HasPrefix(path, workspacesDir)) {
+			if strings.Contains(path, ".worktrees") || (workspacesDir != "" && strings.HasPrefix(path, workspacesDir+string(os.PathSeparator))) {
 				worktrees = append(worktrees, path)
 			}
 		}
