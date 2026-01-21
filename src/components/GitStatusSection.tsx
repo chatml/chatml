@@ -53,7 +53,7 @@ function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItem
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-6 text-xs px-2"
           onClick={action.onClick}
         >
           {action.label}
@@ -63,7 +63,7 @@ function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItem
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-6 text-xs px-2"
           onClick={secondaryAction.onClick}
         >
           {secondaryAction.label}
@@ -280,8 +280,8 @@ export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="py-1">
-        <div className="flex items-center justify-between px-2 py-1 border-b">
+      <div>
+        <div className="flex items-center justify-between px-2 py-1">
           <span className="text-xs font-medium text-muted-foreground">Git status</span>
           <Button
             variant="ghost"
