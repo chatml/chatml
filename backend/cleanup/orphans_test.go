@@ -57,11 +57,11 @@ type mockWorktreeManager struct {
 	removeErr    error
 }
 
-func (m *mockWorktreeManager) List(repoPath string) ([]string, error) {
+func (m *mockWorktreeManager) List(ctx context.Context, repoPath string) ([]string, error) {
 	return m.worktrees[repoPath], nil
 }
 
-func (m *mockWorktreeManager) RemoveAtPath(repoPath, worktreePath, branchName string) error {
+func (m *mockWorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreePath, branchName string) error {
 	if m.removeErr != nil {
 		return m.removeErr
 	}

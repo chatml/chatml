@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -159,7 +160,7 @@ func (h *Handlers) AddRepo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	branch, _ := h.repoManager.GetCurrentBranch(req.Path)
+	branch, _ := h.repoManager.GetCurrentBranch(ctx, req.Path)
 
 	repo := &models.Repo{
 		ID:        uuid.New().String(),
@@ -340,7 +341,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	defer h.sessionLocks.Unlock(sessionPath)
 
 	// Create git worktree in the atomically created directory
-	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(repo.Path, sessionPath, branchName)
+	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName)
 	if err != nil {
 		// Rollback: remove the atomically created directory
 		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
@@ -356,7 +357,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		if rollback {
 			fmt.Printf("[handlers] Rolling back worktree creation due to failure: %s\n", worktreePath)
 			session.DeleteMetadata(sessionID)
-			h.worktreeManager.RemoveAtPath(repo.Path, worktreePath, branchName)
+			// Use background context for cleanup - the original request context may be cancelled
+			h.worktreeManager.RemoveAtPath(context.Background(), repo.Path, worktreePath, branchName)
 		}
 	}()
 
@@ -571,7 +573,7 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 			session.DeleteMetadata(sessionID)
 
 			// Remove the git worktree using absolute path
-			h.worktreeManager.RemoveAtPath(repo.Path, sess.WorktreePath, sess.Branch)
+			h.worktreeManager.RemoveAtPath(ctx, repo.Path, sess.WorktreePath, sess.Branch)
 		}
 	}
 
@@ -621,7 +623,7 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get comprehensive git status
-	status, err := h.repoManager.GetStatus(workingPath, baseBranch)
+	status, err := h.repoManager.GetStatus(ctx, workingPath, baseBranch)
 	if err != nil {
 		writeInternalError(w, "failed to get git status", err)
 		return
@@ -671,14 +673,14 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get changed files in the session's worktree compared to base ref
-	changes, err := h.repoManager.GetChangedFilesWithStats(workingPath, baseRef)
+	changes, err := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
 	if err != nil {
 		// If there's no diff (e.g., new worktree with no changes), return empty list
 		changes = []git.FileChange{}
 	}
 
 	// Get untracked files
-	untracked, err := h.repoManager.GetUntrackedFiles(workingPath)
+	untracked, err := h.repoManager.GetUntrackedFiles(ctx, workingPath)
 	if err != nil {
 		untracked = []git.FileChange{}
 	}
@@ -751,7 +753,7 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get base ref version using git show
-	oldContent, err := h.repoManager.GetFileAtRef(workingPath, baseRef, cleanPath)
+	oldContent, err := h.repoManager.GetFileAtRef(ctx, workingPath, baseRef, cleanPath)
 	if err != nil {
 		// File might not exist in base branch (new file)
 		oldContent = ""
@@ -907,7 +909,7 @@ func (h *Handlers) GetAgentDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	diff, err := h.worktreeManager.GetDiff(repo.Path, agentID)
+	diff, err := h.worktreeManager.GetDiff(ctx, repo.Path, agentID)
 	if err != nil {
 		writeInternalError(w, "failed to get diff", err)
 		return
@@ -940,7 +942,7 @@ func (h *Handlers) MergeAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.worktreeManager.Merge(repo.Path, agentID); err != nil {
+	if err := h.worktreeManager.Merge(ctx, repo.Path, agentID); err != nil {
 		writeInternalError(w, "failed to merge agent changes", err)
 		return
 	}
@@ -967,7 +969,7 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if repo != nil {
-		h.worktreeManager.Remove(repo.Path, agentID)
+		h.worktreeManager.Remove(ctx, repo.Path, agentID)
 	}
 
 	if err := h.store.DeleteAgent(ctx, agentID); err != nil {
@@ -1162,7 +1164,7 @@ func (h *Handlers) GetFileDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get base branch version using git show
-	oldContent, err := h.repoManager.GetFileAtRef(repo.Path, baseBranch, cleanPath)
+	oldContent, err := h.repoManager.GetFileAtRef(ctx, repo.Path, baseBranch, cleanPath)
 	if err != nil {
 		// File might not exist in base branch (new file)
 		oldContent = ""

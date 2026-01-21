@@ -21,8 +21,8 @@ type Store interface {
 
 // WorktreeManager defines the minimal interface for worktree operations.
 type WorktreeManager interface {
-	List(repoPath string) ([]string, error)
-	RemoveAtPath(repoPath, worktreePath, branchName string) error
+	List(ctx context.Context, repoPath string) ([]string, error)
+	RemoveAtPath(ctx context.Context, repoPath, worktreePath, branchName string) error
 }
 
 // CleanOrphanedWorktrees finds worktrees on disk that are not tracked in the database
@@ -65,7 +65,7 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 			}
 
 			// Remove the worktree and branch
-			if err := wm.RemoveAtPath(repo.Path, orphan.path, orphan.branch); err != nil {
+			if err := wm.RemoveAtPath(ctx, repo.Path, orphan.path, orphan.branch); err != nil {
 				log.Printf("[cleanup] Warning: failed to remove orphan %s: %v", orphan.path, err)
 				continue
 			}
@@ -100,7 +100,7 @@ type orphanInfo struct {
 
 func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, repo *models.Repo, workspacesDir string) ([]orphanInfo, error) {
 	// Get all worktrees on disk for this repo
-	diskWorktrees, err := wm.List(repo.Path)
+	diskWorktrees, err := wm.List(ctx, repo.Path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list worktrees: %w", err)
 	}

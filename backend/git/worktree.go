@@ -1,10 +1,10 @@
 package git
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -41,27 +41,27 @@ func NewWorktreeManager() *WorktreeManager {
 	return &WorktreeManager{}
 }
 
-func (wm *WorktreeManager) Create(repoPath, agentID string) (worktreePath string, branchName string, baseCommit string, err error) {
+func (wm *WorktreeManager) Create(ctx context.Context, repoPath, agentID string) (worktreePath string, branchName string, baseCommit string, err error) {
 	branchName = fmt.Sprintf("agent/%s", agentID)
-	return wm.CreateWithBranch(repoPath, agentID, branchName)
+	return wm.CreateWithBranch(ctx, repoPath, agentID, branchName)
 }
 
 // CreateWithBranch creates a worktree with a custom branch name in the repo's .worktrees directory.
 // Returns the worktree path, branch name, and the base commit SHA that the worktree was created from.
 // Deprecated: Use CreateAtPath for new code - it allows specifying the worktree location.
-func (wm *WorktreeManager) CreateWithBranch(repoPath, worktreeID, branchName string) (worktreePath string, branch string, baseCommit string, err error) {
+func (wm *WorktreeManager) CreateWithBranch(ctx context.Context, repoPath, worktreeID, branchName string) (worktreePath string, branch string, baseCommit string, err error) {
 	worktreesDir := filepath.Join(repoPath, ".worktrees")
 	worktreePath = filepath.Join(worktreesDir, worktreeID)
-	return wm.CreateAtPath(repoPath, worktreePath, branchName)
+	return wm.CreateAtPath(ctx, repoPath, worktreePath, branchName)
 }
 
 // CreateAtPath creates a worktree at a specific absolute path with a custom branch name.
 // Returns the worktree path, branch name, and the base commit SHA that the worktree was created from.
-func (wm *WorktreeManager) CreateAtPath(repoPath, worktreePath, branchName string) (string, string, string, error) {
+func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreePath, branchName string) (string, string, string, error) {
 	// Capture current HEAD before creating the worktree - this is the base commit
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
 	out, err := cmd.Output()
+	cancel()
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
 	}
@@ -73,8 +73,8 @@ func (wm *WorktreeManager) CreateAtPath(repoPath, worktreePath, branchName strin
 		return "", "", "", fmt.Errorf("failed to create parent dir %s: %w", parentDir, err)
 	}
 
-	cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
-	cmd.Dir = repoPath
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath)
+	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
 	}
@@ -85,11 +85,11 @@ func (wm *WorktreeManager) CreateAtPath(repoPath, worktreePath, branchName strin
 // CreateInExistingDir creates a git worktree in an existing directory.
 // The directory must already exist (created atomically by caller via CreateSessionDirectoryAtomic).
 // Returns the worktree path, branch name, and the base commit SHA.
-func (wm *WorktreeManager) CreateInExistingDir(repoPath, worktreePath, branchName string) (string, string, string, error) {
+func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, worktreePath, branchName string) (string, string, string, error) {
 	// Capture current HEAD before creating the worktree - this is the base commit
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
 	out, err := cmd.Output()
+	cancel()
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
 	}
@@ -97,8 +97,8 @@ func (wm *WorktreeManager) CreateInExistingDir(repoPath, worktreePath, branchNam
 
 	// Create worktree in the existing directory
 	// git worktree add will work with an existing empty directory
-	cmd = exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
-	cmd.Dir = repoPath
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath)
+	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
 	}
@@ -106,41 +106,42 @@ func (wm *WorktreeManager) CreateInExistingDir(repoPath, worktreePath, branchNam
 	return worktreePath, branchName, baseCommit, nil
 }
 
-func (wm *WorktreeManager) Remove(repoPath, agentID string) error {
+func (wm *WorktreeManager) Remove(ctx context.Context, repoPath, agentID string) error {
 	branchName := fmt.Sprintf("agent/%s", agentID)
-	return wm.RemoveByPath(repoPath, agentID, branchName)
+	return wm.RemoveByPath(ctx, repoPath, agentID, branchName)
 }
 
 // RemoveByPath removes a worktree by its ID and branch name from the repo's .worktrees directory.
 // Deprecated: Use RemoveAtPath for new code - it works with absolute worktree paths.
-func (wm *WorktreeManager) RemoveByPath(repoPath, worktreeID, branchName string) error {
+func (wm *WorktreeManager) RemoveByPath(ctx context.Context, repoPath, worktreeID, branchName string) error {
 	worktreePath := filepath.Join(repoPath, ".worktrees", worktreeID)
-	return wm.RemoveAtPath(repoPath, worktreePath, branchName)
+	return wm.RemoveAtPath(ctx, repoPath, worktreePath, branchName)
 }
 
 // RemoveAtPath removes a worktree at an absolute path and deletes its branch.
 // If branchName is empty, only the worktree is removed (branch deletion is skipped).
-func (wm *WorktreeManager) RemoveAtPath(repoPath, worktreePath, branchName string) error {
+func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreePath, branchName string) error {
 	// Remove the worktree
-	cmd := exec.Command("git", "worktree", "remove", worktreePath, "--force")
-	cmd.Dir = repoPath
-	if out, err := cmd.CombinedOutput(); err != nil {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "remove", worktreePath, "--force")
+	out, err := cmd.CombinedOutput()
+	cancel()
+	if err != nil {
 		return fmt.Errorf("failed to remove worktree: %s: %w", string(out), err)
 	}
 
 	// Delete the branch if specified
 	if branchName != "" {
-		cmd = exec.Command("git", "branch", "-D", branchName)
-		cmd.Dir = repoPath
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "branch", "-D", branchName)
 		cmd.CombinedOutput() // Ignore error, branch might not exist
+		cancel()
 	}
 
 	return nil
 }
 
-func (wm *WorktreeManager) List(repoPath string) ([]string, error) {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	cmd.Dir = repoPath
+func (wm *WorktreeManager) List(ctx context.Context, repoPath string) ([]string, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "list", "--porcelain")
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -162,27 +163,27 @@ func (wm *WorktreeManager) List(repoPath string) ([]string, error) {
 	return worktrees, nil
 }
 
-func (wm *WorktreeManager) GetDiff(repoPath, agentID string) (string, error) {
+func (wm *WorktreeManager) GetDiff(ctx context.Context, repoPath, agentID string) (string, error) {
 	branchName := fmt.Sprintf("agent/%s", agentID)
 
 	// Get the base branch
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	baseOut, err := cmd.Output()
+	cancel()
 	if err != nil {
 		return "", err
 	}
 	baseBranch := strings.TrimSpace(string(baseOut))
 
 	// Get diff
-	cmd = exec.Command("git", "diff", baseBranch+"..."+branchName)
-	cmd.Dir = repoPath
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "diff", baseBranch+"..."+branchName)
 	out, err := cmd.Output()
+	cancel()
 	if err != nil {
 		// If diff fails, try without the three-dot syntax
-		cmd = exec.Command("git", "diff", baseBranch, branchName)
-		cmd.Dir = repoPath
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "diff", baseBranch, branchName)
 		out, err = cmd.Output()
+		cancel()
 		if err != nil {
 			return "", err
 		}
@@ -191,11 +192,11 @@ func (wm *WorktreeManager) GetDiff(repoPath, agentID string) (string, error) {
 	return string(out), nil
 }
 
-func (wm *WorktreeManager) Merge(repoPath, agentID string) error {
+func (wm *WorktreeManager) Merge(ctx context.Context, repoPath, agentID string) error {
 	branchName := fmt.Sprintf("agent/%s", agentID)
 
-	cmd := exec.Command("git", "merge", branchName, "--no-edit")
-	cmd.Dir = repoPath
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "merge", branchName, "--no-edit")
+	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("merge failed: %s: %w", string(out), err)
 	}
@@ -205,9 +206,9 @@ func (wm *WorktreeManager) Merge(repoPath, agentID string) error {
 
 // RenameBranch renames a git branch. The command must be run from within the worktree
 // that has the branch checked out, as you cannot rename a branch from outside.
-func (wm *WorktreeManager) RenameBranch(worktreePath, oldBranchName, newBranchName string) error {
-	cmd := exec.Command("git", "branch", "-m", oldBranchName, newBranchName)
-	cmd.Dir = worktreePath
+func (wm *WorktreeManager) RenameBranch(ctx context.Context, worktreePath, oldBranchName, newBranchName string) error {
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "branch", "-m", oldBranchName, newBranchName)
+	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to rename branch: %s: %w", string(out), err)
 	}
