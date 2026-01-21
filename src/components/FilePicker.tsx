@@ -153,14 +153,13 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
         sessionId, // Session-scoped!
         path: file.path,
         name: file.name,
-        isLoading: true,
         viewMode: 'file',
       };
 
       openFileTab(newTab);
       setOpen(false);
 
-      // Content is loaded lazily by ConversationArea.handleSelectFileTab
+      // Content is loaded lazily by ConversationArea useEffect when tab becomes active
     },
     [workspaceId, sessionId, openFileTab]
   );
