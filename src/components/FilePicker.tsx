@@ -167,13 +167,15 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
 
   return (
     <CommandDialog
+      variant="spotlight"
       open={open}
       onOpenChange={setOpen}
       title="Open File"
       description="Search for a file to open..."
+      showCloseButton={false}
     >
       <CommandInput placeholder="Search files..." />
-      <CommandList>
+      <CommandList className="max-h-[400px]">
         {isLoading ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
