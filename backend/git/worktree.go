@@ -57,13 +57,15 @@ func (wm *WorktreeManager) CreateWithBranch(ctx context.Context, repoPath, workt
 
 // CreateAtPath creates a worktree at a specific absolute path with a custom branch name.
 // Returns the worktree path, branch name, and the base commit SHA that the worktree was created from.
+// The worktree branch is always based on origin/main.
+// Returns an error if the repository has no origin remote or origin/main branch.
 func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreePath, branchName string) (string, string, string, error) {
-	// Capture current HEAD before creating the worktree - this is the base commit
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
+	// Capture origin/main commit - this is the base commit for the new worktree
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "origin/main")
 	out, err := cmd.Output()
 	cancel()
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
+		return "", "", "", fmt.Errorf("failed to get origin/main: repository must have an 'origin' remote with a 'main' branch: %w", err)
 	}
 	baseCommit := strings.TrimSpace(string(out))
 
@@ -73,7 +75,7 @@ func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreeP
 		return "", "", "", fmt.Errorf("failed to create parent dir %s: %w", parentDir, err)
 	}
 
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath)
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, "origin/main")
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
@@ -85,19 +87,21 @@ func (wm *WorktreeManager) CreateAtPath(ctx context.Context, repoPath, worktreeP
 // CreateInExistingDir creates a git worktree in an existing directory.
 // The directory must already exist (created atomically by caller via CreateSessionDirectoryAtomic).
 // Returns the worktree path, branch name, and the base commit SHA.
+// The worktree branch is always based on origin/main.
+// Returns an error if the repository has no origin remote or origin/main branch.
 func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, worktreePath, branchName string) (string, string, string, error) {
-	// Capture current HEAD before creating the worktree - this is the base commit
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
+	// Capture origin/main commit - this is the base commit for the new worktree
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "origin/main")
 	out, err := cmd.Output()
 	cancel()
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to get current HEAD: %w", err)
+		return "", "", "", fmt.Errorf("failed to get origin/main: repository must have an 'origin' remote with a 'main' branch: %w", err)
 	}
 	baseCommit := strings.TrimSpace(string(out))
 
 	// Create worktree in the existing directory
 	// git worktree add will work with an existing empty directory
-	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath)
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, "origin/main")
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
