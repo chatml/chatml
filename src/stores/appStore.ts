@@ -355,9 +355,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       fileTabs: [],
     };
   }),
-  selectSession: (id) => set((state) => {
-    // When switching sessions, find the first conversation for this session
-    // File tabs persist in store but UI only shows tabs for current session
+  selectSession: (id) => {
+    // NOTE: This intentionally uses get() instead of set((state) => ...) pattern.
+    // Using get() ensures we read the latest state, avoiding stale closure issues
+    // when called immediately after other store updates like addConversation.
+    const state = get();
     const sessionConversations = state.conversations.filter(c => c.sessionId === id);
     const firstConversation = sessionConversations[0];
 
@@ -368,13 +370,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? state.selectedFileTabId
       : visibleTabs[0]?.id || null;
 
-    return {
+    set({
       selectedSessionId: id,
       selectedConversationId: firstConversation?.id || null,
       selectedFileTabId: newSelectedTabId,
-      // fileTabs remain unchanged - UI filters by session
-    };
-  }),
+    });
+  },
   archiveSession: (id) => set((state) => {
     const session = state.sessions.find((s) => s.id === id);
 

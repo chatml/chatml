@@ -372,13 +372,9 @@ export default function Home() {
           selectWorkspace(mappedWorkspaces[0].id);
           const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id);
           if (firstSession) {
-            selectSession(firstSession.id);
-            // Select existing conversation or create a new one if none exists
+            // Create a placeholder conversation if none exist for this session
             const sessionConvs = allConversations.filter(c => c.sessionId === firstSession.id);
-            if (sessionConvs.length > 0) {
-              selectConversation(sessionConvs[0].id);
-            } else {
-              // Create a placeholder conversation only if none exist
+            if (sessionConvs.length === 0) {
               const convId = `conv-${firstSession.id}`;
               addConversation({
                 id: convId,
@@ -391,8 +387,9 @@ export default function Home() {
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               });
-              selectConversation(convId);
             }
+            // selectSession auto-selects the first conversation for the session
+            selectSession(firstSession.id);
           }
         }
       } catch (error) {
@@ -403,7 +400,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [backendConnected, repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation, selectConversation]);
+  }, [backendConnected, repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation]);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {
