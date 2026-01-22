@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { codeToHtml } from 'shiki';
+import { useState } from 'react';
 import { useTheme } from 'next-themes';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -48,10 +47,7 @@ export function CodeViewer({
   initialScrollPosition,
 }: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
-  const [highlightedHtml, setHighlightedHtml] = useState<string>('');
-  const [isHighlighting, setIsHighlighting] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [lineCount, setLineCount] = useState(0);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
   const [wordWrap, setWordWrap] = useState(false);
@@ -60,53 +56,6 @@ export function CodeViewer({
   const isDiffMode = typeof oldContent === 'string';
   const language = getShikiLanguage(filename);
 
-  useEffect(() => {
-    // Monaco handles diff mode highlighting
-    if (isDiffMode) {
-      queueMicrotask(() => setIsHighlighting(false));
-      return;
-    }
-
-    if (isLoading) {
-      queueMicrotask(() => {
-        setHighlightedHtml('');
-        setIsHighlighting(false);
-      });
-      return;
-    }
-
-    if (!content) {
-      queueMicrotask(() => {
-        setHighlightedHtml('');
-        setIsHighlighting(false);
-      });
-      return;
-    }
-
-    const lineCount = content.split('\n').length;
-    queueMicrotask(() => {
-      setIsHighlighting(true);
-      setLineCount(lineCount);
-    });
-
-    // Use the appropriate theme based on current app theme
-    const theme = resolvedTheme === 'dark' ? 'github-dark' : 'github-light';
-
-    codeToHtml(content, {
-      lang: language,
-      theme: theme,
-    })
-      .then((html) => {
-        setHighlightedHtml(html);
-        setIsHighlighting(false);
-      })
-      .catch((err) => {
-        console.error('Syntax highlighting failed:', err);
-        // Fallback to plain text
-        setHighlightedHtml(`<pre class="shiki"><code>${escapeHtml(content)}</code></pre>`);
-        setIsHighlighting(false);
-      });
-  }, [content, oldContent, filename, isLoading, resolvedTheme, isDiffMode, diffViewMode, language]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -305,12 +254,4 @@ export function CodeViewer({
   );
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 

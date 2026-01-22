@@ -20,7 +20,6 @@ import {
   type SubagentStopHookInput,
   type PostToolUseFailureHookInput,
   type StopHookInput,
-  type HookJSONOutput,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
