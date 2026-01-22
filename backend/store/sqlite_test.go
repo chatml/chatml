@@ -668,14 +668,39 @@ func TestListConversations_WithMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, convs, 1)
 
-	// Verify messages were added (use GetConversation for full message loading)
-	// Note: ListConversations should also load messages but checking via GetConversation
-	conv, err := s.GetConversation(ctx, "c1")
+	// Verify messages are loaded directly by ListConversations
+	require.Len(t, convs[0].Messages, 2)
+	assert.Equal(t, "Hello", convs[0].Messages[0].Content)
+	assert.Equal(t, "Hi", convs[0].Messages[1].Content)
+}
+
+func TestListConversations_WithToolActions(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "c1", "sess-1")
+
+	// Add tool actions
+	require.NoError(t, s.AddToolActionToConversation(ctx, "c1", models.ToolAction{
+		ID: "t1", Tool: "read_file", Target: "main.go", Success: true,
+	}))
+	require.NoError(t, s.AddToolActionToConversation(ctx, "c1", models.ToolAction{
+		ID: "t2", Tool: "write_file", Target: "test.go", Success: false,
+	}))
+
+	convs, err := s.ListConversations(ctx, "sess-1")
 	require.NoError(t, err)
-	require.NotNil(t, conv)
-	require.Len(t, conv.Messages, 2)
-	assert.Equal(t, "Hello", conv.Messages[0].Content)
-	assert.Equal(t, "Hi", conv.Messages[1].Content)
+	require.Len(t, convs, 1)
+
+	// Verify tool actions are loaded directly by ListConversations
+	require.Len(t, convs[0].ToolSummary, 2)
+	assert.Equal(t, "read_file", convs[0].ToolSummary[0].Tool)
+	assert.Equal(t, "main.go", convs[0].ToolSummary[0].Target)
+	assert.True(t, convs[0].ToolSummary[0].Success)
+	assert.Equal(t, "write_file", convs[0].ToolSummary[1].Tool)
+	assert.Equal(t, "test.go", convs[0].ToolSummary[1].Target)
+	assert.False(t, convs[0].ToolSummary[1].Success)
 }
 
 func TestUpdateConversation_NameChange(t *testing.T) {
