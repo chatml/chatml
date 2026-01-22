@@ -601,14 +601,6 @@
   }
 }
 
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 20px var(--primary);
-  }
-  50% {
-    box-shadow: 0 0 30px var(--primary), 0 0 60px var(--primary);
-  }
-}
 
 /* Animation Utility Classes */
 .animate-slide-up-fade {
@@ -643,23 +635,6 @@
   animation: gradient-shift 3s ease infinite;
 }
 
-.animate-glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
-}
-
-/* Destructive variant for glow-pulse */
-@keyframes glow-pulse-destructive {
-  0%, 100% {
-    box-shadow: 0 0 15px var(--destructive);
-  }
-  50% {
-    box-shadow: 0 0 25px var(--destructive), 0 0 40px var(--destructive);
-  }
-}
-
-.animate-glow-pulse-destructive {
-  animation: glow-pulse-destructive 1.5s ease-in-out infinite;
-}
 
 /* Stagger children animation */
 .stagger-children > * {
@@ -688,13 +663,6 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.hover-glow {
-  transition: box-shadow 0.2s ease;
-}
-
-.hover-glow:hover {
-  box-shadow: 0 0 20px var(--primary);
-}
 
 .hover-scale {
   transition: transform 0.15s ease;
@@ -716,8 +684,6 @@
   .animate-thinking-pulse,
   .animate-shimmer,
   .animate-gradient-shift,
-  .animate-glow-pulse,
-  .animate-glow-pulse-destructive,
   .stagger-children > * {
     animation: none;
     opacity: 1;
