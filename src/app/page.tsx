@@ -1002,7 +1002,6 @@ export default function Home() {
         <CloseTabConfirmDialog
           open={showCloseConfirm}
           onOpenChange={setShowCloseConfirm}
-          conversationName={conversations.find((c) => c.id === pendingCloseConvId)?.name || 'Conversation'}
           onConfirm={handleConfirmClose}
         />
 
