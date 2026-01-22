@@ -569,7 +569,7 @@ export function ChatInput() {
             <Button
               size="icon"
               variant="destructive"
-              className="h-8 w-8 rounded-full animate-glow-pulse-destructive"
+              className="h-8 w-8 rounded-full"
               onClick={handleStop}
               aria-label="Stop agent"
             >

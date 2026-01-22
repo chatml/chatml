@@ -10,12 +10,10 @@ const glassCardVariants = cva(
         default: "bg-card/80 border-border/50",
         elevated: "bg-card/90 border-border/60 shadow-lg",
         subtle: "bg-card/50 border-border/30",
-        glow: "bg-card/80 border-primary/30 shadow-[0_0_30px_-5px_var(--primary)]",
       },
       hover: {
         none: "",
         lift: "hover:translate-y-[-2px] hover:shadow-lg",
-        glow: "hover:border-primary/50 hover:shadow-[0_0_20px_-5px_var(--primary)]",
         scale: "hover:scale-[1.02]",
       },
       padding: {

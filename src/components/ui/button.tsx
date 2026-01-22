@@ -21,8 +21,6 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         gradient:
           "bg-gradient-to-r from-primary to-purple-500 text-primary-foreground hover:from-primary/90 hover:to-purple-500/90 shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30",
-        glow:
-          "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_var(--primary)] hover:shadow-[0_0_25px_var(--primary)]",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",

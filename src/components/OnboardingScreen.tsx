@@ -74,12 +74,12 @@ export function OnboardingScreen() {
             Enterprise AI Orchestration
           </p>
 
-          {/* Sign in button with gradient and glow */}
+          {/* Sign in button with gradient */}
           <Button
             size="lg"
             onClick={handleSignIn}
             disabled={isConnecting}
-            className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98] hover-glow"
+            className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98]"
           >
             {isConnecting ? (
               <>
