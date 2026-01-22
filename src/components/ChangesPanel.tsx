@@ -20,7 +20,6 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Eye,
   MoreVertical,
@@ -71,6 +70,7 @@ export function ChangesPanel() {
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const [selectedTab, setSelectedTab] = useState('changes');
+  const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
@@ -550,36 +550,47 @@ export function ChangesPanel() {
 
         {/* Bottom Panel - Todos/MCP/History */}
         <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
-          <Tabs defaultValue="todos" className="flex flex-col h-full">
-            <div className="px-2 py-1.5 border-t shrink-0">
-              <TabsList className="h-7">
-                <TabsTrigger value="todos" className="text-xs px-2 h-6 gap-1">
-                  Todos
-                  {totalPendingTodos > 0 && (
-                    <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[11px]">
-                      {totalPendingTodos}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="mcp" className="text-xs px-2 h-6">
-                  MCP
-                </TabsTrigger>
-                <TabsTrigger value="history" className="text-xs px-2 h-6">
-                  History
-                </TabsTrigger>
-              </TabsList>
+          <div className="flex flex-col h-full">
+            {/* Tabs Row - matching top panel style */}
+            <div className="flex items-center gap-0.5 px-1.5 py-1 border-t shrink-0">
+              <Button
+                variant={bottomTab === 'todos' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 text-xs px-2 gap-1 shrink-0"
+                onClick={() => setBottomTab('todos')}
+              >
+                Todos
+                {totalPendingTodos > 0 && (
+                  <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[11px]">
+                    {totalPendingTodos}
+                  </span>
+                )}
+              </Button>
+              <Button
+                variant={bottomTab === 'mcp' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 text-xs px-2 shrink-0"
+                onClick={() => setBottomTab('mcp')}
+              >
+                MCP
+              </Button>
+              <Button
+                variant={bottomTab === 'history' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 text-xs px-2 shrink-0"
+                onClick={() => setBottomTab('history')}
+              >
+                History
+              </Button>
             </div>
             <BudgetStatusPanel />
-            <TabsContent value="todos" className="flex-1 min-h-0 mt-0">
-              <TodoPanel />
-            </TabsContent>
-            <TabsContent value="mcp" className="flex-1 min-h-0 mt-0">
-              <McpServersPanel />
-            </TabsContent>
-            <TabsContent value="history" className="flex-1 min-h-0 mt-0">
-              <CheckpointTimeline />
-            </TabsContent>
-          </Tabs>
+            {/* Tab content */}
+            <div className="flex-1 min-h-0">
+              {bottomTab === 'todos' && <TodoPanel />}
+              {bottomTab === 'mcp' && <McpServersPanel />}
+              {bottomTab === 'history' && <CheckpointTimeline />}
+            </div>
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
