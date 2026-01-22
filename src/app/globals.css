@@ -583,23 +583,9 @@
   }
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
+/* Removed for performance - shimmer animation disabled */
 
-@keyframes gradient-shift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
+/* Removed for performance - gradient-shift animation disabled */
 
 
 /* Animation Utility Classes */
@@ -619,21 +605,9 @@
   animation: thinking-pulse 2s ease-in-out infinite;
 }
 
-.animate-shimmer {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--muted-foreground) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
-}
+/* Removed for performance - shimmer animation disabled */
 
-.animate-gradient-shift {
-  background-size: 200% 200%;
-  animation: gradient-shift 3s ease infinite;
-}
+/* Removed for performance - use static gradients instead */
 
 
 /* Stagger children animation */

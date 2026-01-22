@@ -362,9 +362,9 @@ export function ChatInput() {
         'relative',
         awaitingPlanApproval && 'plan-approval-border'
       )}>
-        {/* Animated gradient border for streaming state */}
+        {/* Gradient border for streaming state (static for performance) */}
         {isStreaming && !awaitingPlanApproval && (
-          <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 animate-gradient-shift opacity-70" style={{ backgroundSize: '200% 200%' }} />
+          <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
         )}
       <div className={cn(
         'relative rounded-lg border backdrop-blur-sm bg-surface-1/50 transition-all duration-200',
