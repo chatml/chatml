@@ -62,92 +62,31 @@ Workspace → Session → Conversation → Message
 - **Frontend**: Zustand stores in `src/stores/`
 - **Backend**: SQLite persistence in `backend/store/`
 
-## Issue Tracking (GitHub Issues)
+## Issue Tracking (Linear)
 
-This project uses **GitHub Issues** for issue tracking. Do NOT use Linear for this project.
+This project uses the **ChatML** team in Linear for issue tracking. Use the Linear MCP tools (e.g., `mcp__linear__list_issues`, `mcp__linear__create_issue`).
 
-### Creating Issues
+### Working with Issues
 
-Use clean titles without prefixes like `[BUG]` or `[PERF]`. Instead, set the **Issue Type**:
-
-| Type | Use For |
-|------|---------|
-| Bug | Unexpected behavior, errors, crashes, race conditions |
-| Task | Performance improvements, tests, refactoring, chores |
-| Feature | New functionality, enhancements |
-
-**Creating an issue:**
 ```bash
-# Create issue with labels
-gh issue create --title "Description of the issue" --body "..." --label "bug,frontend,P1"
+# List issues
+mcp__linear__list_issues team="ChatML"
 
-# Set issue type via GraphQL (Bug=IT_kwDOAHVBAs4ADKJ1, Task=IT_kwDOAHVBAs4ADKJy, Feature=IT_kwDOAHVBAs4ADKJ5)
-ID=$(gh issue view <number> --json id -q .id)
-gh api graphql -f query='mutation { updateIssue(input: { id: "'"$ID"'", issueTypeId: "IT_kwDOAHVBAs4ADKJ1" }) { issue { number } } }'
+# Create issue
+mcp__linear__create_issue team="ChatML" title="Description" description="..."
+
+# View issue
+mcp__linear__get_issue id="CHA-123"
 ```
 
-### Labels
+### Priority Levels
 
-| Label | Description |
-|-------|-------------|
-| `frontend` | Frontend/UI (React, Next.js) |
-| `backend` | Backend/Go related |
-| `agent` | Claude agent/SDK related |
-| `P0` | Critical - must fix immediately |
-| `P1` | High priority |
-| `P2` | Medium priority |
-| `P3` | Low priority |
-| `security` | Security issues |
-| `perf` | Performance improvements |
-| `test` | Test coverage |
-| `reliability` | Reliability/resilience |
-
-### Working on Issues
-
-1. **Find an issue**: `gh issue list --label P0` or `gh issue list --label frontend`
-2. **View details**: `gh issue view <number>`
-3. **Create branch**: Use issue number in branch name (e.g., `fix/86-stale-closure`)
-
-### Auto-Closing Issues (IMPORTANT)
-
-**ALWAYS** include the exact closing keyword format in PR descriptions:
-
-```
-Fixes #86
-```
-
-| Format | Auto-closes? |
-|--------|--------------|
-| `Fixes #86` | ✅ Yes |
-| `Closes #86` | ✅ Yes |
-| `Resolves #86` | ✅ Yes |
-| `Fixes Issue #86` | ❌ No (extra word) |
-| `Addresses #86` | ❌ No (wrong keyword) |
-| `Related to #86` | ❌ No (wrong keyword) |
-
-**Multiple issues**: `Fixes #86, fixes #87, fixes #88` (repeat keyword)
-
-**Where to put it**: First line of PR body or in a commit message that gets merged.
-
-### Issue Body Template
-
-```markdown
-## Description
-[What is the problem?]
-
-## Location
-`path/to/file.ts:line-number`
-
-## Impact
-[What happens if this isn't fixed?]
-
-## Proposed Fix
-[How should it be fixed?]
-
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
-```
+| Priority | Use For |
+|----------|---------|
+| Urgent (1) | Critical - must fix immediately |
+| High (2) | Important, blocks other work |
+| Medium (3) | Normal priority |
+| Low (4) | Nice to have |
 
 ## Verification Checklist
 
