@@ -594,6 +594,9 @@ function handleMessage(message: SDKMessage): void {
               content: (block as { type: "thinking"; thinking: string }).thinking,
             });
           } else if (block.type === "tool_use") {
+            // Flush any buffered text before tool starts
+            flushBlockBuffer();
+
             // Tool use started
             activeTools.set(block.id, {
               tool: block.name,
@@ -656,6 +659,9 @@ function handleMessage(message: SDKMessage): void {
           if (block.type === "tool_result") {
             const toolInfo = activeTools.get(block.tool_use_id);
             if (toolInfo) {
+              // Flush any buffered text before tool ends
+              flushBlockBuffer();
+
               const duration = Date.now() - toolInfo.startTime;
               // Determine success from content
               const isError = block.is_error === true;
