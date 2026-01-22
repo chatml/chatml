@@ -1198,22 +1198,21 @@ func buildFileTree(basePath, relativePath string, maxDepth, currentDepth int) ([
 	var dirs, files []os.DirEntry
 	for _, entry := range entries {
 		name := entry.Name()
-		// Skip hidden files except important ones
-		if strings.HasPrefix(name, ".") {
-			// Allow these hidden files/dirs
-			allowed := map[string]bool{
-				".github": true, ".vscode": true, ".husky": true,
-				".gitignore": true, ".dockerignore": true, ".env": true,
-				".env.example": true, ".env.local": true, ".prettierrc": true,
-				".prettierignore": true, ".eslintrc": true, ".editorconfig": true,
-				".nvmrc": true, ".npmrc": true, ".yarnrc": true,
-			}
-			if !allowed[name] && !strings.HasPrefix(name, ".env") {
-				continue
-			}
+
+		// Skip known junk/cache files and OS-specific hidden files
+		blocked := map[string]bool{
+			".DS_Store": true, ".localized": true, ".Trash": true,
+			".DocumentRevisions-V100": true, ".Spotlight-V100": true,
+			".TemporaryItems": true, ".fseventsd": true, ".VolumeIcon.icns": true,
+			".AppleDouble": true, ".LSOverride": true, "._*": true,
+			"Thumbs.db": true, "desktop.ini": true, ".git": true,
 		}
-		// Skip node_modules and other large dirs
-		if name == "node_modules" || name == "vendor" || name == ".git" ||
+		if blocked[name] || strings.HasPrefix(name, "._") {
+			continue
+		}
+
+		// Skip large build/dependency directories
+		if name == "node_modules" || name == "vendor" ||
 			name == "dist" || name == "build" || name == "__pycache__" ||
 			name == "target" || name == ".next" || name == "out" {
 			continue

@@ -714,6 +714,68 @@ func TestListSessionFiles_SessionNotFound(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "session not found")
 }
 
+func TestListSessionFiles_DotfileFiltering(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	_, worktreePath := createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+	// Create legitimate config dotfiles that should be shown
+	writeFile(t, worktreePath, ".mcp.json", `{"mcpServers":{}}`)
+	writeFile(t, worktreePath, ".gitignore", "node_modules")
+	writeFile(t, worktreePath, ".env.example", "KEY=value")
+	writeFile(t, worktreePath, ".prettierrc", `{}`)
+	writeFile(t, worktreePath, ".babelrc", `{}`)
+	writeFile(t, worktreePath, ".eslintrc.json", `{}`)
+
+	// Create OS junk files that should be filtered out
+	writeFile(t, worktreePath, ".DS_Store", "junk")
+	writeFile(t, worktreePath, ".localized", "junk")
+	writeFile(t, worktreePath, "._hidden", "junk")
+
+	// Create normal files
+	writeFile(t, worktreePath, "README.md", "readme")
+	writeFile(t, worktreePath, "package.json", `{}`)
+
+	req := httptest.NewRequest("GET", "/api/sessions/sess-1/files", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.ListSessionFiles(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	// Convert response to map for easier checking
+	fileMap := make(map[string]bool)
+	for _, file := range response {
+		name, ok := file["name"].(string)
+		if ok {
+			fileMap[name] = true
+		}
+	}
+
+	// Verify legitimate config dotfiles are included
+	assert.True(t, fileMap[".mcp.json"], ".mcp.json should be included")
+	assert.True(t, fileMap[".gitignore"], ".gitignore should be included")
+	assert.True(t, fileMap[".env.example"], ".env.example should be included")
+	assert.True(t, fileMap[".prettierrc"], ".prettierrc should be included")
+	assert.True(t, fileMap[".babelrc"], ".babelrc should be included")
+	assert.True(t, fileMap[".eslintrc.json"], ".eslintrc.json should be included")
+
+	// Verify OS junk files are excluded
+	assert.False(t, fileMap[".DS_Store"], ".DS_Store should be excluded")
+	assert.False(t, fileMap[".localized"], ".localized should be excluded")
+	assert.False(t, fileMap["._hidden"], "._hidden should be excluded")
+
+	// Verify normal files are included
+	assert.True(t, fileMap["README.md"], "README.md should be included")
+	assert.True(t, fileMap["package.json"], "package.json should be included")
+}
+
 // ============================================================================
 // JSON Response Tests
 // ============================================================================
