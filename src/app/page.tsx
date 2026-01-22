@@ -124,7 +124,7 @@ export default function Home() {
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
-  const { showBottomTerminal, setShowBottomTerminal } = useSettingsStore();
+  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode } = useSettingsStore();
 
   const { isLoading: authLoading, isAuthenticated, setAuthenticated, setError } = useAuthStore();
 
@@ -163,11 +163,16 @@ export default function Home() {
     };
   }, [setAuthenticated, setError]);
 
-  // Use ref to avoid changing useEffect dependency array sizes
+  // Use refs to avoid changing useEffect dependency array sizes
   const showBottomTerminalRef = useRef(showBottomTerminal);
   useEffect(() => {
     showBottomTerminalRef.current = showBottomTerminal;
   }, [showBottomTerminal]);
+
+  const zenModeRef = useRef(zenMode);
+  useEffect(() => {
+    zenModeRef.current = zenMode;
+  }, [zenMode]);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
@@ -705,11 +710,21 @@ export default function Home() {
         e.preventDefault();
         saveCurrentTab();
       }
+      // Cmd+. to toggle zen mode (distraction-free mode)
+      if (e.code === 'Period' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setZenMode(!zenModeRef.current);
+      }
+      // Escape to exit zen mode (only when zen mode is active)
+      if (e.key === 'Escape' && zenModeRef.current) {
+        e.preventDefault();
+        setZenMode(false);
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -830,8 +845,8 @@ export default function Home() {
         <div className="h-screen overflow-hidden flex relative">
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
-          {/* Left Sidebar - Workspaces */}
-          {showLeftSidebar && (
+          {/* Left Sidebar - Workspaces (hidden in zen mode) */}
+          {showLeftSidebar && !zenMode && (
             <>
               <ResizablePanel
                 id="left-sidebar"
@@ -868,8 +883,8 @@ export default function Home() {
                 ) : (
                   <div className="flex flex-col h-full">
                     <TopBar
-                      showLeftSidebar={showLeftSidebar}
-                      showRightSidebar={showRightSidebar}
+                      showLeftSidebar={showLeftSidebar || zenMode}
+                      showRightSidebar={showRightSidebar || zenMode}
                       onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
                       onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
                     />
@@ -906,7 +921,8 @@ export default function Home() {
             </ResizablePanelGroup>
           </ResizablePanel>
 
-          {showRightSidebar && (
+          {/* Right Sidebar (hidden in zen mode) */}
+          {showRightSidebar && !zenMode && (
             <>
               <ResizableHandle />
 
