@@ -3,7 +3,6 @@ use tauri::{Manager, State};
 
 use crate::error::AppResult;
 use crate::sidecar;
-use crate::speech;
 use crate::state::AppState;
 use crate::watcher;
 
@@ -36,27 +35,6 @@ pub fn is_window_visible(app: tauri::AppHandle) -> bool {
     } else {
         false
     }
-}
-
-/// Check if speech recognition is available
-#[tauri::command]
-pub fn check_speech_availability() -> AppResult<bool> {
-    Ok(speech::check_availability())
-}
-
-/// Start speech recognition
-#[tauri::command]
-pub fn start_speech_recognition(
-    app: tauri::AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> AppResult<()> {
-    speech::start_speech_recognition(&app, &state)
-}
-
-/// Stop speech recognition
-#[tauri::command]
-pub fn stop_speech_recognition(state: State<'_, Arc<AppState>>) -> AppResult<()> {
-    speech::stop_speech_recognition(&state)
 }
 
 /// Start watching a workspace directory for file changes

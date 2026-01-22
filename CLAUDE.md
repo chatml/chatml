@@ -10,7 +10,6 @@ ChatML is a native macOS desktop app for AI-assisted development. It uses isolat
 | `backend/` | Go 1.25 | REST API, WebSocket, SQLite |
 | `agent-runner/` | Node.js / TypeScript | Claude Agent SDK wrapper |
 | `src-tauri/` | Rust / Tauri 2 | Native desktop shell |
-| `speech-cli/` | Swift | macOS speech recognition |
 
 ### Key Entry Points
 

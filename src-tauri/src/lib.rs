@@ -2,7 +2,6 @@ mod commands;
 mod error;
 mod menu;
 mod sidecar;
-mod speech;
 mod state;
 mod tray;
 mod watcher;
@@ -126,9 +125,6 @@ pub fn run() {
             commands::restart_sidecar,
             commands::set_minimize_to_tray,
             commands::is_window_visible,
-            commands::check_speech_availability,
-            commands::start_speech_recognition,
-            commands::stop_speech_recognition,
             commands::watch_workspace,
             commands::unwatch_workspace
         ])

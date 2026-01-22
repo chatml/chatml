@@ -24,15 +24,11 @@ import {
   Link,
   FolderSymlink,
   FileText,
-  X,
   EyeOff,
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave } from '@/lib/tauri';
-import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
-import { DictationButton } from '@/components/DictationButton';
-import { DictationOverlay } from '@/components/DictationOverlay';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake },
@@ -53,17 +49,6 @@ export function ChatInput() {
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Speech recognition
-  const {
-    isListening,
-    isAvailable: speechAvailable,
-    interimText,
-    finalText,
-    soundLevel,
-    toggleListening,
-    stopListening,
-  } = useSpeechRecognition();
 
   const {
     selectedConversationId,
@@ -101,40 +86,6 @@ export function ChatInput() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [message]);
-
-  // Insert transcribed text when speech recognition completes
-  useEffect(() => {
-    if (finalText) {
-      setMessage((prev) => {
-        // Insert at cursor position or append
-        const textarea = textareaRef.current;
-        if (textarea) {
-          const start = textarea.selectionStart;
-          const end = textarea.selectionEnd;
-          const before = prev.slice(0, start);
-          const after = prev.slice(end);
-          const separator = before && !before.endsWith(' ') ? ' ' : '';
-          return before + separator + finalText + after;
-        }
-        return prev + (prev ? ' ' : '') + finalText;
-      });
-    }
-  }, [finalText]);
-
-  // Handle ESC key to exit speech mode
-  useEffect(() => {
-    if (!isListening) return;
-
-    const handleEscape = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        stopListening();
-      }
-    };
-
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [isListening, stopListening]);
 
   // Listen for drag-drop events from Tauri
   useEffect(() => {
@@ -226,13 +177,6 @@ export function ChatInput() {
         e.preventDefault();
         handlePlanModeToggle();
       }
-      // Cmd+Shift+D to toggle dictation
-      if (e.code === 'KeyD' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        if (speechAvailable && !isStreaming) {
-          toggleListening();
-        }
-      }
       // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
     };
 
@@ -251,7 +195,7 @@ export function ChatInput() {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [speechAvailable, isStreaming, toggleListening, handlePlanModeToggle]);
+  }, [handlePlanModeToggle]);
 
   const handleSubmit = async () => {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
@@ -427,17 +371,8 @@ export function ChatInput() {
         isStreaming && !awaitingPlanApproval && 'border-transparent',
         awaitingPlanApproval && 'border-transparent',
         !isStreaming && !awaitingPlanApproval && 'hover:bg-surface-2/50 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50',
-        isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary',
-        isListening && 'shadow-[inset_0_4px_8px_-2px_rgba(16,185,129,0.15)]'
+        isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
-        {/* Dictation overlay */}
-        {isListening && (
-          <DictationOverlay
-            soundLevel={soundLevel}
-            onStop={stopListening}
-          />
-        )}
-
         {/* Drag overlay - file attachments coming soon */}
         {isDragOver && (
           <div className="absolute inset-0 bg-primary/10 rounded-lg flex items-center justify-center z-10 pointer-events-none">
@@ -452,18 +387,16 @@ export function ChatInput() {
         <div className="relative">
           <Textarea
             ref={textareaRef}
-            value={isListening && interimText ? message + (message ? ' ' : '') + interimText : message}
-            onChange={(e) => !isListening && setMessage(e.target.value)}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isStreaming ? "Agent is working..." : isListening ? "Listening..." : "Ask to make changes, @mention files, run /commands"}
+            placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
             className={cn(
               'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
               'bg-transparent dark:bg-transparent',
-              'placeholder:text-muted-foreground/60',
-              isListening && 'text-emerald-600 dark:text-emerald-400'
+              'placeholder:text-muted-foreground/60'
             )}
             disabled={!selectedSessionId || isSending || isStreaming}
-            readOnly={isListening}
           />
           {/* Cmd+L hint */}
           <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none">
@@ -555,14 +488,6 @@ export function ChatInput() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* Dictation Button */}
-          <DictationButton
-            isListening={isListening}
-            isAvailable={speechAvailable}
-            disabled={isStreaming || !selectedSessionId}
-            onClick={toggleListening}
-          />
 
           {/* Stop Button (when streaming) */}
           {isStreaming ? (

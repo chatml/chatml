@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri_plugin_shell::process::CommandChild;
 
 /// Application state managed by Tauri's State<T> system
 pub struct AppState {
@@ -10,8 +9,6 @@ pub struct AppState {
     pub minimize_to_tray: AtomicBool,
     /// PID of the backend sidecar process
     pub sidecar_pid: Mutex<Option<u32>>,
-    /// Handle to the speech recognition sidecar process
-    pub speech_sidecar: Mutex<Option<CommandChild>>,
 }
 
 impl Default for AppState {
@@ -26,7 +23,6 @@ impl AppState {
             app_ready: AtomicBool::new(false),
             minimize_to_tray: AtomicBool::new(false),
             sidecar_pid: Mutex::new(None),
-            speech_sidecar: Mutex::new(None),
         }
     }
 
@@ -71,36 +67,6 @@ impl AppState {
             Ok(mut guard) => guard.take(),
             Err(e) => {
                 log::warn!("sidecar_pid mutex poisoned: {}", e);
-                None
-            }
-        }
-    }
-
-    /// Check if speech sidecar is running
-    pub fn is_speech_running(&self) -> bool {
-        match self.speech_sidecar.lock() {
-            Ok(guard) => guard.is_some(),
-            Err(e) => {
-                log::warn!("speech_sidecar mutex poisoned: {}", e);
-                false
-            }
-        }
-    }
-
-    /// Store the speech sidecar child process
-    pub fn set_speech_sidecar(&self, child: Option<CommandChild>) {
-        match self.speech_sidecar.lock() {
-            Ok(mut guard) => *guard = child,
-            Err(e) => log::warn!("speech_sidecar mutex poisoned: {}", e),
-        }
-    }
-
-    /// Take the speech sidecar (removes it from state)
-    pub fn take_speech_sidecar(&self) -> Option<CommandChild> {
-        match self.speech_sidecar.lock() {
-            Ok(mut guard) => guard.take(),
-            Err(e) => {
-                log::warn!("speech_sidecar mutex poisoned: {}", e);
                 None
             }
         }
