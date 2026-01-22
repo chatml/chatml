@@ -670,7 +670,7 @@ function SortableWorkspaceItem({
                             ) : (
                               <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             )}
-                            <span className="text-sm font-medium truncate flex-1">
+                            <span className="text-sm font-medium truncate min-w-0 flex-shrink">
                               {session.branch || session.name}
                             </span>
                             {/* Pinned indicator - fade out on hover */}
@@ -678,10 +678,10 @@ function SortableWorkspaceItem({
                               <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
                             )}
                             {/* Git line stats badge and actions container */}
-                            <div className="relative shrink-0 flex items-center">
+                            <div className="relative shrink-0 flex items-center min-w-[80px]">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity">
+                                <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-emerald-400">+{session.stats!.additions}</span>
                                   <span className="text-red-400 ml-1">-{session.stats!.deletions}</span>
                                 </span>
