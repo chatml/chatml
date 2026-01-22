@@ -311,7 +311,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Session actions
   setSessions: (sessions) => set({ sessions }),
   addSession: (session) => set((state) => ({
-    sessions: [...state.sessions, session]
+    sessions: [session, ...state.sessions]
   })),
   updateSession: (id, updates) => set((state) => ({
     sessions: state.sessions.map((s) =>
