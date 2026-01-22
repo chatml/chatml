@@ -72,6 +72,7 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
   // Reset search value when dialog closes
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchValue('');
     }
   }, [open]);
