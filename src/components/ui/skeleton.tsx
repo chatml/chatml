@@ -12,14 +12,14 @@ const skeletonVariants = cva(
         text: "rounded h-4 w-full",
       },
       animation: {
-        shimmer: "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.5s_ease-in-out_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
+        shimmer: "", // Disabled for performance - was causing continuous repaints
         pulse: "animate-pulse",
         none: "",
       },
     },
     defaultVariants: {
       variant: "default",
-      animation: "shimmer",
+      animation: "none",
     },
   }
 )

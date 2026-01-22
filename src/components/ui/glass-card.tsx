@@ -54,7 +54,7 @@ function GlassCard({
   )
 }
 
-// Glass card with animated gradient border
+// Glass card with gradient border
 function GlassCardGradient({
   className,
   children,
@@ -62,10 +62,9 @@ function GlassCardGradient({
 }: Omit<GlassCardProps, "variant">) {
   return (
     <div className="relative p-[1px] rounded-xl">
-      {/* Gradient border */}
+      {/* Gradient border (static for performance) */}
       <div
-        className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary via-purple-500 to-primary animate-gradient-shift opacity-60"
-        style={{ backgroundSize: "200% 200%" }}
+        className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary via-purple-500 to-primary opacity-60"
       />
       {/* Card content */}
       <div

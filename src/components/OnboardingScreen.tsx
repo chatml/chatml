@@ -36,20 +36,17 @@ export function OnboardingScreen() {
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center bg-surface-0 overflow-hidden">
-      {/* Animated gradient background */}
+      {/* Gradient background (static for performance) */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Large blur orbs */}
         <div
-          className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 bg-primary/20 rounded-full blur-[120px] animate-gradient-shift"
-          style={{ backgroundSize: '200% 200%' }}
+          className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 bg-primary/20 rounded-full blur-[120px]"
         />
         <div
-          className="absolute -bottom-1/4 -right-1/4 w-1/2 h-1/2 bg-purple-500/15 rounded-full blur-[120px] animate-gradient-shift"
-          style={{ backgroundSize: '200% 200%', animationDelay: '-1.5s' }}
+          className="absolute -bottom-1/4 -right-1/4 w-1/2 h-1/2 bg-purple-500/15 rounded-full blur-[120px]"
         />
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/3 h-1/3 bg-ai-active/10 rounded-full blur-[100px] animate-gradient-shift"
-          style={{ backgroundSize: '200% 200%', animationDelay: '-0.75s' }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/3 h-1/3 bg-ai-active/10 rounded-full blur-[100px]"
         />
       </div>
 
