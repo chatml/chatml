@@ -16,6 +16,7 @@ interface SettingsState {
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   showBottomTerminal: boolean;
+  zenMode: boolean; // Distraction-free mode that hides sidebars
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
@@ -27,6 +28,7 @@ interface SettingsState {
   setMinimizeToTray: (value: boolean) => void;
   setEditorTheme: (value: string) => void;
   setShowBottomTerminal: (value: boolean) => void;
+  setZenMode: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
 }
@@ -45,6 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       editorTheme: 'vs-dark',
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       showBottomTerminal: false,
+      zenMode: false,
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -56,6 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
       setEditorTheme: (value) => set({ editorTheme: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
+      setZenMode: (value) => set({ zenMode: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
         set((state) => ({
           collapsedWorkspaces: state.collapsedWorkspaces.includes(workspaceId)
