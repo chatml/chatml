@@ -24,7 +24,6 @@ interface DiffLine {
 export function SplitDiffViewer({
   oldContent,
   newContent,
-  filename,
   language,
 }: SplitDiffViewerProps) {
   const { resolvedTheme } = useTheme();

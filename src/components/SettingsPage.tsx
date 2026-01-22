@@ -616,6 +616,7 @@ function AccountSettings() {
 
       {/* User profile */}
       <div className="flex items-center gap-4 pb-6 border-b border-border/50">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={user.avatar}
           alt={user.name}

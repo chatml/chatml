@@ -118,7 +118,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [streaming?.isStreaming]);
+  }, [streaming?.isStreaming, streaming?.startTime]);
 
   // Thinking expansion state (must be before early return to satisfy Rules of Hooks)
   // Note: We don't need to reset this when thinking becomes null because the

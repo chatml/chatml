@@ -8,14 +8,11 @@ import {
   Search,
   X,
   FileCode,
-  FolderGit2,
   Filter,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 export function SearchPanel() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ file: string; line: number; content: string; workspace: string }[]>([]);
 
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTerminal } from '@/hooks/useTerminal';
 import { cn } from '@/lib/utils';
 import '@xterm/xterm/css/xterm.css';
