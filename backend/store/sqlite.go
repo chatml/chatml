@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/chatml/chatml-backend/models"
@@ -770,10 +771,7 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 }
 
 // ListConversations returns all conversations for a session with their messages and tools.
-// Note: This uses N+2 queries (1 for conversations + N for messages + N for tools) rather than
-// JOINs to keep the code simple and avoid complex result set mapping. For typical usage with
-// a small number of conversations per session (<20), this performs well. If performance becomes
-// an issue with large conversation counts, consider batching or using JOINs with result mapping.
+// Uses 3 queries total regardless of conversation count (1 for conversations + 1 for all messages + 1 for all tool actions).
 func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) ([]*models.Conversation, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, session_id, type, name, status, created_at, updated_at
@@ -782,8 +780,10 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 		return nil, fmt.Errorf("ListConversations: %w", err)
 	}
 
-	// First, collect all conversations (close rows before nested queries to avoid SQLite issues)
 	convs := []*models.Conversation{}
+	convMap := make(map[string]*models.Conversation)
+	convIDs := []string{}
+
 	for rows.Next() {
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
@@ -795,70 +795,119 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 		conv.Messages = []models.Message{}
 		conv.ToolSummary = []models.ToolAction{}
 		convs = append(convs, &conv)
+		convMap[conv.ID] = &conv
+		convIDs = append(convIDs, conv.ID)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("ListConversations rows: %w", err)
 	}
 
-	// Now load messages and tool actions for each conversation
-	for _, conv := range convs {
-		// Load messages for this conversation
-		msgRows, err := s.db.QueryContext(ctx, `
-			SELECT id, role, content, setup_info, run_summary, timestamp
-			FROM messages
-			WHERE conversation_id = ?
-			ORDER BY position`, conv.ID)
-		if err != nil {
-			return nil, fmt.Errorf("ListConversations messages: %w", err)
-		}
-		for msgRows.Next() {
-			var msg models.Message
-			var setupInfoJSON sql.NullString
-			var runSummaryJSON sql.NullString
-			if err := msgRows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err != nil {
-				msgRows.Close()
-				return nil, fmt.Errorf("ListConversations message scan: %w", err)
-			}
-			if setupInfoJSON.Valid {
-				var setupInfo models.SetupInfo
-				if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
-					msg.SetupInfo = &setupInfo
-				}
-			}
-			if runSummaryJSON.Valid {
-				var runSummary models.RunSummary
-				if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
-					msg.RunSummary = &runSummary
-				}
-			}
-			conv.Messages = append(conv.Messages, msg)
-		}
-		msgRows.Close()
+	// Early return if no conversations
+	if len(convIDs) == 0 {
+		return convs, nil
+	}
 
-		// Load tool actions for this conversation
-		toolRows, err := s.db.QueryContext(ctx, `
-			SELECT id, tool, target, success
-			FROM tool_actions
-			WHERE conversation_id = ?
-			ORDER BY position`, conv.ID)
-		if err != nil {
-			return nil, fmt.Errorf("ListConversations tool_actions: %w", err)
-		}
-		for toolRows.Next() {
-			var action models.ToolAction
-			var success int
-			if err := toolRows.Scan(&action.ID, &action.Tool, &action.Target, &success); err != nil {
-				toolRows.Close()
-				return nil, fmt.Errorf("ListConversations tool_action scan: %w", err)
-			}
-			action.Success = intToBool(success)
-			conv.ToolSummary = append(conv.ToolSummary, action)
-		}
-		toolRows.Close()
+	// Load all messages for these conversations in one query
+	if err := s.loadMessagesForConversations(ctx, convMap, convIDs); err != nil {
+		return nil, err
+	}
+
+	// Load all tool actions for these conversations in one query
+	if err := s.loadToolActionsForConversations(ctx, convMap, convIDs); err != nil {
+		return nil, err
 	}
 
 	return convs, nil
+}
+
+// loadMessagesForConversations loads messages for multiple conversations in a single query
+func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap map[string]*models.Conversation, convIDs []string) error {
+	placeholders := make([]string, len(convIDs))
+	args := make([]interface{}, len(convIDs))
+	for i, id := range convIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT conversation_id, id, role, content, setup_info, run_summary, timestamp
+		FROM messages
+		WHERE conversation_id IN (%s)
+		ORDER BY conversation_id, position`, strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("loadMessagesForConversations: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var convID string
+		var msg models.Message
+		var setupInfoJSON, runSummaryJSON sql.NullString
+
+		if err := rows.Scan(&convID, &msg.ID, &msg.Role, &msg.Content,
+			&setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err != nil {
+			return fmt.Errorf("loadMessagesForConversations scan: %w", err)
+		}
+
+		if setupInfoJSON.Valid {
+			var setupInfo models.SetupInfo
+			if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
+				msg.SetupInfo = &setupInfo
+			}
+		}
+		if runSummaryJSON.Valid {
+			var runSummary models.RunSummary
+			if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
+				msg.RunSummary = &runSummary
+			}
+		}
+
+		if conv, ok := convMap[convID]; ok {
+			conv.Messages = append(conv.Messages, msg)
+		}
+	}
+	return rows.Err()
+}
+
+// loadToolActionsForConversations loads tool actions for multiple conversations in a single query
+func (s *SQLiteStore) loadToolActionsForConversations(ctx context.Context, convMap map[string]*models.Conversation, convIDs []string) error {
+	placeholders := make([]string, len(convIDs))
+	args := make([]interface{}, len(convIDs))
+	for i, id := range convIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT conversation_id, id, tool, target, success
+		FROM tool_actions
+		WHERE conversation_id IN (%s)
+		ORDER BY conversation_id, position`, strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("loadToolActionsForConversations: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var convID string
+		var action models.ToolAction
+		var success int
+
+		if err := rows.Scan(&convID, &action.ID, &action.Tool, &action.Target, &success); err != nil {
+			return fmt.Errorf("loadToolActionsForConversations scan: %w", err)
+		}
+		action.Success = intToBool(success)
+
+		if conv, ok := convMap[convID]; ok {
+			conv.ToolSummary = append(conv.ToolSummary, action)
+		}
+	}
+	return rows.Err()
 }
 
 func (s *SQLiteStore) UpdateConversation(ctx context.Context, id string, updates func(*models.Conversation)) error {
