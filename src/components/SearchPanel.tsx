@@ -13,6 +13,7 @@ import {
 
 export function SearchPanel() {
   const [query, setQuery] = useState('');
+  const [results] = useState<{ file: string; line: number; content: string; workspace: string }[]>([]);
 
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
