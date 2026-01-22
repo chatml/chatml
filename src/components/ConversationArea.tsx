@@ -280,12 +280,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Reset scroll state when conversation changes
   useEffect(() => {
-    // Reset scroll state
+    // Reset scroll state (ref updated synchronously)
     isUserScrolledRef.current = false;
-    setShowScrollButton(false);
 
-    // Scroll to bottom after DOM updates
+    // Scroll to bottom and reset UI state after DOM updates
     requestAnimationFrame(() => {
+      setShowScrollButton(false);
       const container = scrollContainerRef.current;
       if (container) {
         container.scrollTop = container.scrollHeight;
