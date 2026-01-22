@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/orchestrator"
@@ -16,10 +17,10 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
