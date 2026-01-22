@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
@@ -208,6 +209,7 @@ type Handlers struct {
 	sessionNameCache *SessionNameCache
 	fileSizeConfig   FileSizeConfig
 	dirCache         *DirListingCache
+	branchWatcher    *branch.Watcher
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -219,7 +221,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -235,6 +237,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		sessionNameCache: NewSessionNameCache(workspacesDir),
 		fileSizeConfig:   LoadFileSizeConfig(),
 		dirCache:         NewDirListingCache(dirCacheConfig.TTL),
+		branchWatcher:    bw,
 	}
 }
 
@@ -578,6 +581,14 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Start watching for branch changes
+	if h.branchWatcher != nil {
+		if err := h.branchWatcher.WatchSession(sess.ID, worktreePath, branchName); err != nil {
+			log.Printf("[handlers] Warning: failed to start branch watching for session %s: %v", sess.ID, err)
+			// Non-fatal - session works without instant branch detection
+		}
+	}
+
 	// All operations succeeded - disable rollback
 	rollback = false
 	writeJSON(w, sess)
@@ -702,6 +713,11 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	// Clean up worktree if session exists
 	if sess != nil {
+		// Stop watching for branch changes
+		if h.branchWatcher != nil {
+			h.branchWatcher.UnwatchSession(sessionID)
+		}
+
 		repo, err := h.store.GetRepo(ctx, sess.WorkspaceID)
 		if err != nil {
 			writeDBError(w, err)
