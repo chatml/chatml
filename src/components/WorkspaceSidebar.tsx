@@ -19,7 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -69,6 +69,15 @@ import {
 } from 'lucide-react';
 import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 
 interface WorkspaceSidebarProps {
@@ -92,6 +101,8 @@ type SidebarTab = 'workspaces' | 'agents';
 
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>('workspaces');
+  const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
+  const { error: showError } = useToast();
 
   const menuHandlers = {
     open: onOpenProject,
@@ -111,6 +122,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     reorderWorkspaces,
     archiveSession,
     updateSession,
+    removeWorkspace,
   } = useAppStore();
 
   const sensors = useSensors(
@@ -254,6 +266,25 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     }
   };
 
+  const handleRemoveWorkspace = async (workspaceId: string) => {
+    try {
+      // Delete from backend
+      await deleteRepoApi(workspaceId);
+      // Update local store
+      removeWorkspace(workspaceId);
+    } catch (error) {
+      console.error('Failed to remove workspace:', error);
+      showError('Failed to remove workspace. Please try again.');
+    }
+  };
+
+  const confirmRemoveWorkspace = async () => {
+    if (workspaceToRemove) {
+      await handleRemoveWorkspace(workspaceToRemove.id);
+      setWorkspaceToRemove(null);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground select-none" onContextMenu={(e) => e.preventDefault()}>
       {/* Header - pl-20 gives space for macOS traffic lights */}
@@ -361,6 +392,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         }}
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
+                        onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
                         getStatusColor={getStatusColor}
                         formatTimeAgo={formatTimeAgo}
                         getInitial={getInitial}
@@ -438,6 +470,26 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       ) : (
         <AgentSidebar className="flex-1" />
       )}
+
+      {/* Remove workspace confirmation dialog */}
+      <Dialog open={workspaceToRemove !== null} onOpenChange={(open) => !open && setWorkspaceToRemove(null)}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove workspace?</DialogTitle>
+            <DialogDescription>
+              This will remove <span className="font-medium">{workspaceToRemove?.name}</span> from your sidebar. The files on disk will not be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWorkspaceToRemove(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmRemoveWorkspace}>
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -452,6 +504,7 @@ interface SortableWorkspaceItemProps {
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
+  onRemoveWorkspace: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -467,6 +520,7 @@ function SortableWorkspaceItem({
   onSelectSession,
   onArchiveSession,
   onPinSession,
+  onRemoveWorkspace,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -553,7 +607,7 @@ function SortableWorkspaceItem({
                     Copy path
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive">
+                  <DropdownMenuItem className="text-destructive" onClick={onRemoveWorkspace}>
                     <Trash2 className="h-4 w-4 mr-2" />
                     Remove
                   </DropdownMenuItem>
