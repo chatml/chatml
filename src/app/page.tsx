@@ -33,7 +33,7 @@ import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast';
-import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
+import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS, ADD_WORKSPACE_REQUESTED_EVENT } from '@/lib/constants';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -785,6 +785,14 @@ export default function Home() {
     };
   }, []);
 
+  // Handle add-workspace-requested event dispatched by NoSessionView when user
+  // clicks "Add Repository" and no workspaces exist yet. Uses a custom event
+  // since NoSessionView is rendered deep in the component tree via ConversationArea.
+  useEffect(() => {
+    const handleAddWorkspaceRequested = () => setShowAddWorkspace(true);
+    window.addEventListener(ADD_WORKSPACE_REQUESTED_EVENT, handleAddWorkspaceRequested);
+    return () => window.removeEventListener(ADD_WORKSPACE_REQUESTED_EVENT, handleAddWorkspaceRequested);
+  }, []);
 
   // Handle selecting a session from workspace management view
   const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
