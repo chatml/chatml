@@ -27,7 +27,7 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { addWorkspace, selectWorkspace, addSession, selectSession, addConversation, selectConversation } = useAppStore();
+  const { addWorkspace, selectWorkspace, addSession, selectSession, addConversation } = useAppStore();
   const { expandWorkspace } = useSettingsStore();
 
   useEffect(() => {
@@ -97,9 +97,6 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
 
       expandWorkspace(workspace.id);
       selectSession(session.id);
-      if (conversations.length > 0) {
-        selectConversation(conversations[0].id);
-      }
 
       setPath('');
       onClose();

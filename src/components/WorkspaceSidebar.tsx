@@ -108,7 +108,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     selectSession,
     addSession,
     addConversation,
-    selectConversation,
     reorderWorkspaces,
     archiveSession,
     updateSession,
@@ -217,12 +216,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       // Expand the workspace if not already
       expandWorkspace(workspaceId);
 
-      // Select the new session and first conversation
+      // Select the new session (selectSession auto-selects first conversation)
       selectWorkspace(workspaceId);
       selectSession(session.id);
-      if (conversations.length > 0) {
-        selectConversation(conversations[0].id);
-      }
     } catch (error) {
       console.error('Failed to create session:', error);
     }
