@@ -230,6 +230,19 @@ export function MonacoDiffEditor({
 
   const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
     editorRef.current = editor;
+
+    // Scroll to the first change after the diff is computed
+    // Use a small delay to ensure diff computation is complete
+    setTimeout(() => {
+      const lineChanges = editor.getLineChanges();
+      if (lineChanges && lineChanges.length > 0) {
+        const firstChange = lineChanges[0];
+        // Use the modified line number (right side) for positioning
+        const targetLine = firstChange.modifiedStartLineNumber || firstChange.originalStartLineNumber || 1;
+        const modifiedEditor = editor.getModifiedEditor();
+        modifiedEditor.revealLineInCenter(targetLine);
+      }
+    }, 50);
   }, []);
 
   // Dispose editor on unmount to prevent memory leaks
@@ -257,7 +270,7 @@ export function MonacoDiffEditor({
     useInlineViewWhenSpaceIsLimited: false, // Prevent auto-switch to unified based on width
     enableSplitViewResizing: true,
     renderIndicators: true,
-    renderOverviewRuler: false,
+    renderOverviewRuler: true,
     diffWordWrap: (wordWrap ? 'on' : 'off') as 'on' | 'off',
     wordWrap: (wordWrap ? 'on' : 'off') as 'on' | 'off',
     scrollbar: {
