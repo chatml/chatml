@@ -67,6 +67,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 }
 
 // createTestGitRepo creates a temporary git repository for testing
+// Sets up a fake "origin" remote with a "main" branch so origin/main is available.
 func createTestGitRepo(t *testing.T) string {
 	t.Helper()
 
@@ -76,10 +77,19 @@ func createTestGitRepo(t *testing.T) string {
 	runGit(t, dir, "config", "user.email", "test@test.com")
 	runGit(t, dir, "config", "user.name", "Test User")
 
-	// Create initial commit
+	// Create initial commit on main branch
+	runGit(t, dir, "checkout", "-b", "main")
 	writeFile(t, dir, "README.md", "# Test Repository")
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "Initial commit")
+
+	// Create a bare repo to act as "origin" so we have origin/main
+	originDir := t.TempDir()
+	runGit(t, originDir, "init", "--bare")
+
+	// Add origin remote and push
+	runGit(t, dir, "remote", "add", "origin", originDir)
+	runGit(t, dir, "push", "-u", "origin", "main")
 
 	return dir
 }
