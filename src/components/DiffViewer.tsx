@@ -5,17 +5,13 @@ import { DiffView, DiffModeEnum, SplitSide } from '@git-diff-view/react';
 import { DiffFile, generateDiffFile } from '@git-diff-view/file';
 import '@git-diff-view/react/styles/diff-view.css';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import {
   SplitSquareHorizontal,
   Rows,
-  MessageSquare,
-  X,
   Send,
   Loader2,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
 
 // Pre-computed skeleton widths (avoids Math.random() during render)

@@ -12,7 +12,6 @@ import {
   useConversationsWithUserMessages,
 } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +26,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
-  X,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -36,8 +34,6 @@ import {
   ChevronRight,
   ChevronDown,
   FileCode,
-  Clock,
-  MessageSquare,
   Circle,
   Sparkles,
   GitBranch,
@@ -349,7 +345,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       };
       loadDiff();
     }
-  }, [currentFileTab?.id, currentFileTab?.content, currentFileTab?.diff, currentFileTab?.isLoading, updateFileTab]);
+  }, [currentFileTab, updateFileTab]);
 
   const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedSessionId) return;
@@ -369,10 +365,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectFileTab(null); // Deselect file tab
   };
 
-  const handleSelectConversation = (id: string) => {
+  const handleSelectConversation = useCallback((id: string) => {
     selectConversation(id);
     selectFileTab(null); // Deselect file tab when selecting conversation
-  };
+  }, [selectConversation, selectFileTab]);
 
   const handleSelectFileTab = useCallback(async (id: string) => {
     selectFileTab(id);
@@ -422,17 +418,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [fileTabs, selectFileTab, updateFileTab]);
 
-  const handleCloseFileTab = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const tab = fileTabs.find((t) => t.id === id);
-    // If tab is dirty, set pending close ID to show confirmation dialog
-    if (tab?.isDirty) {
-      setPendingCloseFileTabId(id);
-      return;
-    }
-    closeFileTab(id);
-  };
-
   // Save editor state (cursor/scroll position) when switching tabs
   const handleEditorStateChange = useCallback((state: {
     cursorPosition?: { line: number; column: number };
@@ -460,7 +445,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Unified tab close handler for TabBar
   const handleTabClose = useCallback(
-    (id: string, type: 'file' | 'conversation', e?: React.MouseEvent) => {
+    (id: string, type: 'file' | 'conversation') => {
       if (type === 'file') {
         const tab = fileTabs.find((t) => t.id === id);
         if (tab?.isDirty) {

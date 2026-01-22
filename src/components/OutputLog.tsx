@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -48,7 +48,7 @@ function stripEmoji(line: string): string {
 
 export function OutputLog({ agentId }: OutputLogProps) {
   const agentOutputs = useAppStore((state) => state.agentOutputs);
-  const output = agentOutputs[agentId] ?? [];
+  const output = useMemo(() => agentOutputs[agentId] ?? [], [agentOutputs, agentId]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

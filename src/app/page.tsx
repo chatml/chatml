@@ -183,11 +183,9 @@ export default function Home() {
     const el = leftSidebarRef.current;
     if (!el) return;
 
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        // Use offsetWidth to include padding/borders
-        setSidebarWidth(el.offsetWidth);
-      }
+    const observer = new ResizeObserver(() => {
+      // Use offsetWidth to include padding/borders
+      setSidebarWidth(el.offsetWidth);
     });
     observer.observe(el);
 
@@ -219,7 +217,6 @@ export default function Home() {
     closeFileTab,
     selectNextTab,
     selectPreviousTab,
-    selectFileTab,
     pendingCloseFileTabId,
     setPendingCloseFileTabId,
   } = useAppStore();
@@ -433,7 +430,7 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to create session:', error);
     }
-  }, [selectedWorkspaceId, workspaces, sessions, addSession, selectSession]);
+  }, [selectedWorkspaceId, addSession, selectSession]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -617,14 +614,14 @@ export default function Home() {
       closeFileTab(pendingCloseFileTabId);
     }
     setPendingCloseFileTabId(null);
-  }, [pendingCloseFileTabId, fileTabs, saveTab, closeFileTab]);
+  }, [pendingCloseFileTabId, fileTabs, saveTab, closeFileTab, setPendingCloseFileTabId]);
 
   // Close dirty file without saving
   const handleDontSaveAndCloseFile = useCallback(() => {
     if (!pendingCloseFileTabId) return;
     closeFileTab(pendingCloseFileTabId);
     setPendingCloseFileTabId(null);
-  }, [pendingCloseFileTabId, closeFileTab]);
+  }, [pendingCloseFileTabId, closeFileTab, setPendingCloseFileTabId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1021,7 +1018,6 @@ export default function Home() {
         <CloseTabConfirmDialog
           open={showCloseConfirm}
           onOpenChange={setShowCloseConfirm}
-          conversationName={conversations.find((c) => c.id === pendingCloseConvId)?.name || 'Conversation'}
           onConfirm={handleConfirmClose}
         />
 

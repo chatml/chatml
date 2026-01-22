@@ -16,14 +16,12 @@ import { useSettingsStore } from '@/stores/settingsStore';
 interface CloseTabConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  conversationName: string;
   onConfirm: () => void;
 }
 
 export function CloseTabConfirmDialog({
   open,
   onOpenChange,
-  conversationName,
   onConfirm,
 }: CloseTabConfirmDialogProps) {
   const [dontAskAgain, setDontAskAgain] = useState(false);

@@ -15,6 +15,7 @@ import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 import { FileIcon } from '@/components/FileTree';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { FileTab } from '@/lib/types';
+import type { Command as CommandPrimitive } from 'cmdk';
 
 interface FlatFile {
   path: string;      // Full relative path (e.g., "src/components/Button.tsx")
@@ -56,8 +57,10 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
   const [files, setFiles] = useState<FlatFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchValue, setSearchValue] = useState('');
   const cachedSessionIdRef = useRef<string | null>(null);
   const hasCacheRef = useRef(false);
+  const listRef = useRef<React.ElementRef<typeof CommandPrimitive.List>>(null);
 
   const { openFileTab } = useAppStore();
 
@@ -65,6 +68,21 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
   useShortcut('filePicker', useCallback(() => {
     setOpen((prev) => !prev);
   }, []));
+
+  // Reset search value when dialog closes
+  useEffect(() => {
+    if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearchValue('');
+    }
+  }, [open]);
+
+  // Scroll to top when search value changes
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+    }
+  }, [searchValue]);
 
   // Listen for custom event (from menu or other triggers)
   useEffect(() => {
@@ -166,8 +184,12 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
       description="Search for a file to open..."
       showCloseButton={false}
     >
-      <CommandInput placeholder="Search files..." />
-      <CommandList className="max-h-[400px]">
+      <CommandInput
+        placeholder="Search files..."
+        value={searchValue}
+        onValueChange={setSearchValue}
+      />
+      <CommandList ref={listRef} className="max-h-[400px]">
         {isLoading ? (
           <div className="p-2 space-y-1">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -189,7 +211,8 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
               {files.map((file) => (
                 <CommandItem
                   key={file.path}
-                  value={`${file.name} ${file.path}`}
+                  value={file.path}
+                  keywords={[file.name]}
                   onSelect={() => handleFileSelect(file)}
                 >
                   <FileIcon filename={file.name} className="mr-2" />

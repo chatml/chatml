@@ -53,7 +53,7 @@ export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
 
 // Handle <code> elements - for inline code
 export function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
-  const { className, children, inline, ...rest } = props;
+  const { className, children, ...rest } = props;
   // Only handle inline code here - block code is handled by MarkdownPre
   return <code className={className} {...rest}>{children}</code>;
 }

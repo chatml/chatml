@@ -54,7 +54,6 @@ export function ChatInput() {
     selectedConversationId,
     selectedWorkspaceId,
     selectedSessionId,
-    sessions,
     conversations,
     streamingState,
     addMessage,
@@ -66,8 +65,7 @@ export function ChatInput() {
     setAwaitingPlanApproval,
   } = useAppStore();
 
-  // Get current session and conversation
-  const currentSession = sessions.find((s) => s.id === selectedSessionId);
+  // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
 
   // Check if currently streaming
