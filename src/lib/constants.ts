@@ -19,3 +19,6 @@ export const SIDECAR_RESTART_DELAY_MS = 1000;
 
 // Git status polling interval
 export const GIT_STATUS_POLL_INTERVAL_MS = 30000; // 30 seconds
+
+// Custom event names (for cross-component communication)
+export const ADD_WORKSPACE_REQUESTED_EVENT = 'add-workspace-requested';

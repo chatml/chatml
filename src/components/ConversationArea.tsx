@@ -36,7 +36,6 @@ import {
   ChevronRight,
   ChevronDown,
   FileCode,
-  Terminal,
   Clock,
   MessageSquare,
   Circle,
@@ -65,6 +64,7 @@ import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { getSessionFileContent, getSessionFileDiff } from '@/lib/api';
+import { NoSessionView } from '@/components/NoSessionView';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -503,22 +503,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }, [renameConvId, renameValue, updateConversation]);
 
   if (!selectedSessionId) {
-    return (
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md px-6">
-            <div className="w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center mx-auto mb-4">
-              <Terminal className="w-6 h-6 text-muted-foreground" />
-            </div>
-            <h3 className="text-base font-medium mb-2">No session selected</h3>
-            <p className="text-sm text-muted-foreground">
-              Select a session from the sidebar to begin.
-            </p>
-          </div>
-        </div>
-        <div className="shrink-0">{children}</div>
-      </div>
-    );
+    return <NoSessionView>{children}</NoSessionView>;
   }
 
   return (
