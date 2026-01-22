@@ -231,6 +231,12 @@ export default function Home() {
     ? sessions.find((s) => s.id === selectedSessionId)
     : null;
 
+  // Ref for selectedSessionId to use in event handlers
+  const selectedSessionIdRef = useRef(selectedSessionId);
+  useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
+
   // Connect WebSocket for real-time updates (only when backend is connected)
   useWebSocket(backendConnected);
 
@@ -665,10 +671,12 @@ export default function Home() {
         e.preventDefault();
         setShowLeftSidebar((prev) => !prev);
       }
-      // Cmd+Option+B to toggle right sidebar
+      // Cmd+Option+B to toggle right sidebar (only when session is selected)
       if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey) {
         e.preventDefault();
-        setShowRightSidebar((prev) => !prev);
+        if (selectedSessionIdRef.current) {
+          setShowRightSidebar((prev) => !prev);
+        }
       }
       // Ctrl+` to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
       if (e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
@@ -719,10 +727,12 @@ export default function Home() {
         e.preventDefault();
         saveCurrentTab();
       }
-      // Cmd+. to toggle zen mode (distraction-free mode)
+      // Cmd+. to toggle zen mode (distraction-free mode, only when session is selected)
       if (e.code === 'Period' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        setZenMode(!zenModeRef.current);
+        if (selectedSessionIdRef.current) {
+          setZenMode(!zenModeRef.current);
+        }
       }
       // Escape to exit zen mode (only when zen mode is active)
       if (e.key === 'Escape' && zenModeRef.current) {
@@ -763,7 +773,10 @@ export default function Home() {
           setShowLeftSidebar((prev) => !prev);
           break;
         case 'toggle_right_sidebar':
-          setShowRightSidebar((prev) => !prev);
+          // Only toggle right sidebar if a session is selected
+          if (selectedSessionIdRef.current) {
+            setShowRightSidebar((prev) => !prev);
+          }
           break;
         case 'toggle_terminal':
           setShowBottomTerminal(!showBottomTerminalRef.current);
@@ -888,6 +901,12 @@ export default function Home() {
               <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
                 {isLoadingData ? (
                   <ConversationSkeleton />
+                ) : !selectedSessionId ? (
+                  <EmptyView
+                    onOpenProject={handleOpenProject}
+                    onCloneFromUrl={() => setShowCloneFromUrl(true)}
+                    onQuickStart={() => setShowQuickStart(true)}
+                  />
                 ) : (
                   <div className="flex flex-col h-full">
                     <TopBar
@@ -929,8 +948,8 @@ export default function Home() {
             </ResizablePanelGroup>
           </ResizablePanel>
 
-          {/* Right Sidebar (hidden in zen mode) */}
-          {showRightSidebar && !zenMode && (
+          {/* Right Sidebar (hidden in zen mode or when no session selected) */}
+          {showRightSidebar && !zenMode && selectedSessionId && (
             <>
               <ResizableHandle />
 
