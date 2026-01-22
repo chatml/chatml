@@ -137,7 +137,6 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           touch src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu
-          touch src-tauri/binaries/chatml-speech-x86_64-unknown-linux-gnu
 
       # Format check (fastest)
       - name: Check formatting

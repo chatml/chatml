@@ -6,8 +6,6 @@ use serde::Serialize;
 pub enum AppError {
     /// Sidecar process related errors
     Sidecar(String),
-    /// Speech recognition related errors
-    Speech(String),
     /// File watcher related errors
     Watcher(String),
     /// General application errors
@@ -18,7 +16,6 @@ impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppError::Sidecar(msg) => write!(f, "Sidecar error: {}", msg),
-            AppError::Speech(msg) => write!(f, "Speech error: {}", msg),
             AppError::Watcher(msg) => write!(f, "Watcher error: {}", msg),
             AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
         }

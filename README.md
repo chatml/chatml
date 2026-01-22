@@ -43,7 +43,6 @@ graph TB
 - **File Browser** - Navigate and edit files with syntax highlighting
 - **Session Management** - Pin, archive, and track progress across sessions
 - **PR Workflow** - Create and track pull requests directly from sessions
-- **Voice Dictation** - Native macOS speech recognition for hands-free input (Cmd+Shift+D)
 
 ## Architecture
 
@@ -139,7 +138,6 @@ graph LR
 ### Desktop
 - **[Tauri 2](https://tauri.app)** - Native desktop wrapper
 - **[Rust](https://www.rust-lang.org)** - Tauri runtime
-- **[Swift](https://swift.org)** - Native macOS speech recognition CLI
 
 ### Agent
 - **[Claude Agent SDK](https://docs.anthropic.com)** - AI agent framework
@@ -151,7 +149,6 @@ graph LR
 - [Go](https://go.dev) 1.22+
 - [Rust](https://www.rust-lang.org/tools/install) (for Tauri)
 - [Tauri CLI](https://tauri.app/start/prerequisites/)
-- [Xcode](https://developer.apple.com/xcode/) (macOS only, for speech recognition)
 
 ## Getting Started
 
@@ -198,8 +195,6 @@ chatml/
 │   └── store/                # SQLite persistence
 ├── agent-runner/             # Claude Agent SDK runner
 │   └── src/                  # TypeScript agent code
-├── speech-cli/               # Native macOS speech recognition
-│   └── Sources/              # Swift source code
 ├── src-tauri/                # Tauri desktop wrapper
 │   ├── src/                  # Rust source
 │   └── tauri.conf.json       # Tauri configuration
@@ -226,9 +221,6 @@ The Go backend provides REST APIs for CRUD operations and WebSocket connections 
 
 ### Agent Runner
 The agent runner spawns Claude Agent SDK processes for each conversation, streaming tool calls and responses back through the backend.
-
-### Speech CLI (macOS)
-A native Swift CLI tool that provides on-device speech recognition using Apple's Speech framework. Communicates with the Tauri app via JSON over stdin/stderr for real-time transcription.
 
 ## License
 
