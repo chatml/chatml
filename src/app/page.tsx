@@ -10,10 +10,12 @@ import { initAuth, listenForOAuthCallback } from '@/lib/auth';
 import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/CloseFileConfirmDialog';
+import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
+import { useShortcut } from '@/hooks/useShortcut';
 import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
@@ -121,6 +123,7 @@ export default function Home() {
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
   const [showQuickStart, setShowQuickStart] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
@@ -233,6 +236,11 @@ export default function Home() {
 
   // Watch for external file changes
   useFileWatcher();
+
+  // Keyboard shortcut: Cmd+/ to show shortcuts dialog
+  useShortcut('shortcutsDialog', useCallback(() => {
+    setShowShortcuts((prev) => !prev);
+  }, []));
 
   // Map backend Repo to frontend Workspace
   const repoToWorkspace = useCallback((repo: RepoDTO) => ({
@@ -986,6 +994,12 @@ export default function Home() {
         <FilePicker
           workspaceId={selectedWorkspaceId}
           sessionId={selectedSessionId}
+        />
+
+        {/* Keyboard Shortcuts Dialog (Cmd+/) */}
+        <KeyboardShortcutsDialog
+          open={showShortcuts}
+          onOpenChange={setShowShortcuts}
         />
 
         {/* Update Checker - disabled until remote URL is configured

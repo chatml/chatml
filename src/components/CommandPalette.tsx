@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   CommandDialog,
   CommandEmpty,
@@ -11,13 +11,12 @@ import {
   CommandSeparator,
 } from '@/components/ui/command';
 import { useAppStore } from '@/stores/appStore';
+import { useShortcut } from '@/hooks/useShortcut';
 import {
   FolderGit2,
   Plus,
   Bot,
-  Settings,
   GitBranch,
-  Trash2,
 } from 'lucide-react';
 
 interface CommandPaletteProps {
@@ -29,17 +28,10 @@ export function CommandPalette({ onAddRepo, onSpawnAgent }: CommandPaletteProps)
   const [open, setOpen] = useState(false);
   const { repos, selectedRepoId, selectRepo } = useAppStore();
 
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setOpen((open) => !open);
-      }
-    };
-
-    document.addEventListener('keydown', down);
-    return () => document.removeEventListener('keydown', down);
-  }, []);
+  // Register Cmd+K shortcut
+  useShortcut('commandPalette', useCallback(() => {
+    setOpen((prev) => !prev);
+  }, []));
 
   const runCommand = useCallback((command: () => void) => {
     setOpen(false);

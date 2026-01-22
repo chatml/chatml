@@ -10,6 +10,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { useAppStore } from '@/stores/appStore';
+import { useShortcut } from '@/hooks/useShortcut';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 import { FileIcon } from '@/components/FileTree';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -60,18 +61,10 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
 
   const { openFileTab } = useAppStore();
 
-  // Listen for Cmd+P keyboard shortcut
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'p' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        setOpen((prev) => !prev);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  // Register Cmd+P shortcut
+  useShortcut('filePicker', useCallback(() => {
+    setOpen((prev) => !prev);
+  }, []));
 
   // Listen for custom event (from menu or other triggers)
   useEffect(() => {
