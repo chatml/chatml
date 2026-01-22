@@ -216,7 +216,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Auto-scroll management
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [isUserScrolled, setIsUserScrolled] = useState(false);
+  const isUserScrolledRef = useRef(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Check if user has scrolled away from bottom
   const handleScroll = useCallback(() => {
@@ -225,24 +226,40 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
     const { scrollTop, scrollHeight, clientHeight } = container;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    setIsUserScrolled(!isAtBottom);
+
+    // Update ref synchronously for scroll logic
+    isUserScrolledRef.current = !isAtBottom;
+
+    // Update button visibility (React bails out if value unchanged)
+    setShowScrollButton(!isAtBottom);
   }, []);
 
   // Auto-scroll to bottom when new content arrives
   const scrollToBottom = useCallback(() => {
+    // Read ref directly - no stale closure issues
+    if (isUserScrolledRef.current) return;
+
     const container = scrollContainerRef.current;
-    if (container && !isUserScrolled) {
+    if (!container) return;
+
+    // Use requestAnimationFrame for smoother scrolling
+    requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
-    }
-  }, [isUserScrolled]);
+    });
+  }, []); // No dependencies - reads ref directly
 
   // Force scroll to bottom (for manual button click)
   const forceScrollToBottom = useCallback(() => {
     const container = scrollContainerRef.current;
-    if (container) {
+    if (!container) return;
+
+    // Reset both ref and state
+    isUserScrolledRef.current = false;
+    setShowScrollButton(false);
+
+    requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
-      setIsUserScrolled(false);
-    }
+    });
   }, []);
 
   // Scroll when messages change or streaming updates
@@ -263,14 +280,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Reset scroll state when conversation changes
   useEffect(() => {
-    queueMicrotask(() => setIsUserScrolled(false));
-    // Scroll to bottom immediately when switching conversations
-    setTimeout(() => {
+    // Reset scroll state (ref updated synchronously)
+    isUserScrolledRef.current = false;
+
+    // Scroll to bottom and reset UI state after DOM updates
+    requestAnimationFrame(() => {
+      setShowScrollButton(false);
       const container = scrollContainerRef.current;
       if (container) {
         container.scrollTop = container.scrollHeight;
       }
-    }, 0);
+    });
   }, [selectedConversationId]);
 
   // Get current file tab from visible tabs
@@ -641,7 +661,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             {/* Scroll to bottom button - floating */}
             <div className={cn(
               "absolute -top-7 right-4 z-10 transition-opacity duration-200",
-              isUserScrolled ? "opacity-100" : "opacity-0 pointer-events-none"
+              showScrollButton ? "opacity-100" : "opacity-0 pointer-events-none"
             )}>
               <Button
                 variant="secondary"
