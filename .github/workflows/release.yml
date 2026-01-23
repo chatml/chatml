@@ -55,12 +55,6 @@ jobs:
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             target: x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            args: ''
-            target: x86_64-unknown-linux-gnu
-          - platform: windows-latest
-            args: ''
-            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -77,16 +71,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
           cache-dependency-path: backend/go.sum
 
       - name: Build Go backend (macOS ARM64)
@@ -101,19 +89,33 @@ jobs:
           cd backend
           GOOS=darwin GOARCH=amd64 go build -o ../src-tauri/binaries/chatml-backend-x86_64-apple-darwin ./cmd/chatml
 
-      - name: Build Go backend (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Sign Go backend sidecar (macOS)
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
-          cd backend
-          GOOS=linux GOARCH=amd64 go build -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu ./cmd/chatml
+          # Import certificate to keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-      - name: Build Go backend (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          cd backend
-          $env:GOOS = "windows"
-          $env:GOARCH = "amd64"
-          go build -o ../src-tauri/binaries/chatml-backend-x86_64-pc-windows-msvc.exe ./cmd/chatml
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # Sign the sidecar with hardened runtime
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
+            --entitlements src-tauri/entitlements.plist \
+            src-tauri/binaries/chatml-backend-${{ matrix.target }}
+
+          # Cleanup keychain
+          security delete-keychain $KEYCHAIN_PATH
 
       - name: Install npm dependencies
         run: npm ci
@@ -122,8 +124,16 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tauri update signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple code signing + notarization
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
