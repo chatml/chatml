@@ -11,6 +11,7 @@ import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows, WrapText 
 import { cn } from '@/lib/utils';
 import { MonacoEditor, MonacoDiffEditor } from '@/components/MonacoEditor';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import { copyToClipboard } from '@/lib/tauri';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import type { ReviewComment } from '@/lib/types';
 
@@ -67,10 +68,12 @@ export function CodeViewer({
   const language = getShikiLanguage(filename);
 
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+  const handleCopy = async () => {
+    const success = await copyToClipboard(content);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+    }
   };
 
   if (isLoading) {

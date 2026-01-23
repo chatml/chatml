@@ -1,7 +1,10 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import React from 'react';
+import React, { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
+import { copyToClipboard } from '@/lib/tauri';
+import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 
 // Dynamically import MermaidDiagram to avoid SSR issues with mermaid.js
 const MermaidDiagram = dynamic(
@@ -27,6 +30,36 @@ function isMermaidCode(code: string, language?: string): boolean {
   return MERMAID_KEYWORDS.test(code.trim());
 }
 
+// Wrapper component with hover copy button
+function CodeBlockWithCopy({ children, code, ...rest }: React.HTMLAttributes<HTMLPreElement> & { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(code);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+    }
+  };
+
+  return (
+    <div className="relative group">
+      <pre {...rest}>{children}</pre>
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 p-1.5 rounded-md bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-muted"
+        title={copied ? 'Copied!' : 'Copy code'}
+      >
+        {copied ? (
+          <Check className="w-4 h-4 text-green-500" />
+        ) : (
+          <Copy className="w-4 h-4 text-muted-foreground" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 // Handle <pre> elements - this wraps code blocks
 export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
   const { children, ...rest } = props;
@@ -44,10 +77,13 @@ export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
       if (isMermaidCode(code, language)) {
         return <MermaidDiagram code={code} />;
       }
+
+      // For non-mermaid code blocks, wrap with copy button
+      return <CodeBlockWithCopy code={code} {...rest}>{children}</CodeBlockWithCopy>;
     }
   }
 
-  // Default: render as normal pre
+  // Default: render as normal pre (fallback for edge cases)
   return <pre {...rest}>{children}</pre>;
 }
 

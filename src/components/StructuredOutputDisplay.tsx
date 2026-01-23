@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Check, Copy, ChevronDown, ChevronRight, FileJson } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { copyToClipboard } from '@/lib/tauri';
+import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 
 interface StructuredOutputDisplayProps {
   data: unknown;
@@ -16,12 +18,10 @@ export function StructuredOutputDisplay({ data, className }: StructuredOutputDis
   const [expanded, setExpanded] = useState(true);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    const success = await copyToClipboard(JSON.stringify(data, null, 2));
+    if (success) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
     }
   };
 

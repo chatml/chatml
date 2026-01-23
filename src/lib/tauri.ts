@@ -292,3 +292,51 @@ export async function listenForFileChanges(
     return () => {};
   }
 }
+
+// ============================================
+// Clipboard Functions
+// ============================================
+
+/**
+ * Copy text to clipboard (Tauri native with browser fallback)
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  if (isTauri()) {
+    try {
+      const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+      await writeText(text);
+      return true;
+    } catch (e) {
+      console.error('Tauri clipboard write failed, falling back to browser', e);
+    }
+  }
+  // Browser fallback
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    console.error('Clipboard write failed', e);
+    return false;
+  }
+}
+
+/**
+ * Read text from clipboard (Tauri native with browser fallback)
+ */
+export async function readFromClipboard(): Promise<string | null> {
+  if (isTauri()) {
+    try {
+      const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
+      return await readText();
+    } catch (e) {
+      console.error('Tauri clipboard read failed, falling back to browser', e);
+    }
+  }
+  // Browser fallback
+  try {
+    return await navigator.clipboard.readText();
+  } catch (e) {
+    console.error('Clipboard read failed', e);
+    return null;
+  }
+}
