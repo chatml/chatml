@@ -69,6 +69,7 @@ export function ChangesPanel() {
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
+  const updateSession = useAppStore((s) => s.updateSession);
   const [selectedTab, setSelectedTab] = useState('changes');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -86,10 +87,25 @@ export function ChangesPanel() {
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
+
+      // Update session stats in the store
+      if (data && data.length > 0) {
+        const stats = data.reduce(
+          (acc, change) => ({
+            additions: acc.additions + change.additions,
+            deletions: acc.deletions + change.deletions,
+          }),
+          { additions: 0, deletions: 0 }
+        );
+        updateSession(selectedSessionId, { stats });
+      } else {
+        // Clear stats if no changes
+        updateSession(selectedSessionId, { stats: undefined });
+      }
     } catch (error) {
       console.error('Failed to fetch changes:', error);
     }
-  }, [selectedWorkspaceId, selectedSessionId]);
+  }, [selectedWorkspaceId, selectedSessionId, updateSession]);
 
   // Debounced refetch for file change events
   const debouncedFetchChanges = useCallback(() => {
