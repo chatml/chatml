@@ -213,26 +213,32 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Auto-scroll management
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isUserScrolledRef = useRef(false);
+  const wasAtBottomRef = useRef(true); // Track if we were at bottom before content changes
   const [showScrollButton, setShowScrollButton] = useState(false);
+
+  // Check if currently at bottom (utility function)
+  const checkIsAtBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return true;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < 50;
+  }, []);
 
   // Check if user has scrolled away from bottom
   const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
+    const isAtBottom = checkIsAtBottom();
 
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-
-    // Update ref synchronously for scroll logic
+    // Update refs synchronously for scroll logic
     isUserScrolledRef.current = !isAtBottom;
+    wasAtBottomRef.current = isAtBottom;
 
     // Update button visibility (React bails out if value unchanged)
     setShowScrollButton(!isAtBottom);
-  }, []);
+  }, [checkIsAtBottom]);
 
-  // Auto-scroll to bottom when new content arrives
+  // Auto-scroll to bottom when new content arrives (only if user hasn't scrolled away)
   const scrollToBottom = useCallback(() => {
-    // Read ref directly - no stale closure issues
+    // Don't scroll if user has explicitly scrolled away
     if (isUserScrolledRef.current) return;
 
     const container = scrollContainerRef.current;
@@ -241,16 +247,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // Use requestAnimationFrame for smoother scrolling
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
+      // Update wasAtBottomRef after scrolling
+      wasAtBottomRef.current = true;
     });
-  }, []); // No dependencies - reads ref directly
+  }, []);
 
-  // Force scroll to bottom (for manual button click)
+  // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
     // Reset both ref and state
     isUserScrolledRef.current = false;
+    wasAtBottomRef.current = true;
     setShowScrollButton(false);
 
     requestAnimationFrame(() => {
@@ -270,9 +279,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [selectedConversationId, streamingState]
   );
 
+  // Auto-scroll when content changes - but only if we were at the bottom
   useEffect(() => {
-    scrollToBottom();
-  }, [conversationMessages.length, streamingText, scrollToBottom]);
+    // Check if we were at bottom before this render
+    // wasAtBottomRef is updated by handleScroll and tracks our position
+    if (wasAtBottomRef.current && !isUserScrolledRef.current) {
+      const container = scrollContainerRef.current;
+      if (container) {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      }
+    }
+  }, [conversationMessages.length, streamingText]);
 
   // Reset scroll state when conversation changes
   useEffect(() => {
@@ -288,6 +307,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     });
   }, [selectedConversationId]);
+
+  // Listen for message submit events to force scroll to bottom
+  useEffect(() => {
+    const handleMessageSubmit = () => {
+      forceScrollToBottom();
+    };
+
+    window.addEventListener('chat-message-submitted', handleMessageSubmit);
+    return () => {
+      window.removeEventListener('chat-message-submitted', handleMessageSubmit);
+    };
+  }, [forceScrollToBottom]);
 
   // Get current file tab from visible tabs
   const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);

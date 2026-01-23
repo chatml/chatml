@@ -39,7 +39,11 @@ const MODELS = [
 // Token budget for extended thinking mode
 const DEFAULT_THINKING_TOKENS = 10000;
 
-export function ChatInput() {
+interface ChatInputProps {
+  onMessageSubmit?: () => void;
+}
+
+export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [isSending, setIsSending] = useState(false);
@@ -201,6 +205,10 @@ export function ChatInput() {
     const content = message.trim();
     setMessage('');
     setIsSending(true);
+
+    // Notify parent to scroll to bottom when user submits a message
+    onMessageSubmit?.();
+    window.dispatchEvent(new CustomEvent('chat-message-submitted'));
 
     try {
       // Check if this is a new conversation (no messages yet) or no conversation selected
