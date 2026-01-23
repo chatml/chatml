@@ -59,7 +59,7 @@ import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
-import { getSessionFileContent, getSessionFileDiff } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, createConversation } from '@/lib/api';
 import { Terminal } from 'lucide-react';
 
 interface ConversationAreaProps {
@@ -92,6 +92,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
+  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const streamingState = useAppStore((s) => s.streamingState);
 
@@ -213,26 +214,32 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Auto-scroll management
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isUserScrolledRef = useRef(false);
+  const wasAtBottomRef = useRef(true); // Track if we were at bottom before content changes
   const [showScrollButton, setShowScrollButton] = useState(false);
+
+  // Check if currently at bottom (utility function)
+  const checkIsAtBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return true;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    return scrollHeight - scrollTop - clientHeight < 50;
+  }, []);
 
   // Check if user has scrolled away from bottom
   const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
+    const isAtBottom = checkIsAtBottom();
 
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-
-    // Update ref synchronously for scroll logic
+    // Update refs synchronously for scroll logic
     isUserScrolledRef.current = !isAtBottom;
+    wasAtBottomRef.current = isAtBottom;
 
     // Update button visibility (React bails out if value unchanged)
     setShowScrollButton(!isAtBottom);
-  }, []);
+  }, [checkIsAtBottom]);
 
-  // Auto-scroll to bottom when new content arrives
+  // Auto-scroll to bottom when new content arrives (only if user hasn't scrolled away)
   const scrollToBottom = useCallback(() => {
-    // Read ref directly - no stale closure issues
+    // Don't scroll if user has explicitly scrolled away
     if (isUserScrolledRef.current) return;
 
     const container = scrollContainerRef.current;
@@ -241,16 +248,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // Use requestAnimationFrame for smoother scrolling
     requestAnimationFrame(() => {
       container.scrollTop = container.scrollHeight;
+      // Update wasAtBottomRef after scrolling
+      wasAtBottomRef.current = true;
     });
-  }, []); // No dependencies - reads ref directly
+  }, []);
 
-  // Force scroll to bottom (for manual button click)
+  // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
 
     // Reset both ref and state
     isUserScrolledRef.current = false;
+    wasAtBottomRef.current = true;
     setShowScrollButton(false);
 
     requestAnimationFrame(() => {
@@ -270,9 +280,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [selectedConversationId, streamingState]
   );
 
+  // Auto-scroll when content changes - but only if we were at the bottom
   useEffect(() => {
-    scrollToBottom();
-  }, [conversationMessages.length, streamingText, scrollToBottom]);
+    // Check if we were at bottom before this render
+    // wasAtBottomRef is updated by handleScroll and tracks our position
+    if (wasAtBottomRef.current && !isUserScrolledRef.current) {
+      const container = scrollContainerRef.current;
+      if (container) {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      }
+    }
+  }, [conversationMessages.length, streamingText]);
 
   // Reset scroll state when conversation changes
   useEffect(() => {
@@ -288,6 +308,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     });
   }, [selectedConversationId]);
+
+  // Listen for message submit events to force scroll to bottom
+  useEffect(() => {
+    const handleMessageSubmit = () => {
+      forceScrollToBottom();
+    };
+
+    window.addEventListener('chat-message-submitted', handleMessageSubmit);
+    return () => {
+      window.removeEventListener('chat-message-submitted', handleMessageSubmit);
+    };
+  }, [forceScrollToBottom]);
 
   // Get current file tab from visible tabs
   const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);
@@ -347,23 +379,46 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [currentFileTab, updateFileTab]);
 
-  const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
-    if (!selectedSessionId) return;
-    const newConversation = {
-      id: crypto.randomUUID(),
-      sessionId: selectedSessionId,
-      type,
-      name: 'Untitled',
-      status: 'idle' as const,
-      messages: [],
-      toolSummary: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    addConversation(newConversation);
-    selectConversation(newConversation.id);
-    selectFileTab(null); // Deselect file tab
-  };
+  const handleNewConversation = useCallback(async (type: 'task' | 'review' | 'chat' = 'task') => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    try {
+      // Call backend API to create conversation with proper setupInfo
+      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, { type });
+
+      // Add to store with messages from backend (includes setupInfo)
+      // addConversation automatically adds conversation.messages to the messages array
+      addConversation({
+        id: newConv.id,
+        sessionId: newConv.sessionId,
+        type: newConv.type,
+        name: newConv.name,
+        status: newConv.status,
+        messages: newConv.messages.map((m) => ({
+          id: m.id,
+          conversationId: newConv.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          setupInfo: m.setupInfo,
+          runSummary: m.runSummary,
+          timestamp: m.timestamp,
+        })),
+        toolSummary: newConv.toolSummary.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          target: t.target,
+          success: t.success,
+        })),
+        createdAt: newConv.createdAt,
+        updatedAt: newConv.updatedAt,
+      });
+
+      selectConversation(newConv.id);
+      selectFileTab(null); // Deselect file tab
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation, selectFileTab]);
 
   const handleSelectConversation = useCallback((id: string) => {
     selectConversation(id);
