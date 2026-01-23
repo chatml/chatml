@@ -17,6 +17,7 @@ import type {
   BudgetStatus,
   ToolUsage,
   RunSummary,
+  ReviewComment,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -89,6 +90,9 @@ interface AppState {
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
   budgetStatus: BudgetStatus | null;
+
+  // Review comments state (keyed by sessionId)
+  reviewComments: { [sessionId: string]: ReviewComment[] };
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -193,6 +197,12 @@ interface AppState {
   clearCheckpoints: () => void;
   setBudgetStatus: (status: BudgetStatus | null) => void;
 
+  // Review comments actions
+  setReviewComments: (sessionId: string, comments: ReviewComment[]) => void;
+  addReviewComment: (sessionId: string, comment: ReviewComment) => void;
+  updateReviewComment: (sessionId: string, id: string, updates: Partial<ReviewComment>) => void;
+  deleteReviewComment: (sessionId: string, id: string) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -233,6 +243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpServers: [],
   checkpoints: [],
   budgetStatus: null,
+  reviewComments: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -334,9 +345,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedAgentTodos[convId];
     }
 
-    // Clean up custom todos and session outputs
+    // Clean up custom todos, session outputs, and review comments
     const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
     const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
+    const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
 
     return {
       sessions: state.sessions.filter((s) => s.id !== id),
@@ -351,6 +363,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       agentTodos: cleanedAgentTodos,
       customTodos: remainingCustomTodos,
       sessionOutputs: remainingSessionOutputs,
+      reviewComments: remainingReviewComments,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -1038,6 +1051,34 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
   clearCheckpoints: () => set({ checkpoints: [] }),
   setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
+
+  // Review comments actions
+  setReviewComments: (sessionId, comments) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: comments,
+    },
+  })),
+  addReviewComment: (sessionId, comment) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: [...(state.reviewComments[sessionId] || []), comment],
+    },
+  })),
+  updateReviewComment: (sessionId, id, updates) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: (state.reviewComments[sessionId] || []).map((c) =>
+        c.id === id ? { ...c, ...updates } : c
+      ),
+    },
+  })),
+  deleteReviewComment: (sessionId, id) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: (state.reviewComments[sessionId] || []).filter((c) => c.id !== id),
+    },
+  })),
 
   // Legacy support
   repos: [],

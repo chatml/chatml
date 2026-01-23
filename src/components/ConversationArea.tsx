@@ -10,6 +10,8 @@ import {
   useFileTabState,
   useMessages,
   useConversationsWithUserMessages,
+  useReviewComments,
+  useReviewCommentActions,
 } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import {
@@ -59,7 +61,7 @@ import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
-import { getSessionFileContent, getSessionFileDiff } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments } from '@/lib/api';
 import { Terminal } from 'lucide-react';
 
 interface ConversationAreaProps {
@@ -93,12 +95,33 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
+  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const streamingState = useAppStore((s) => s.streamingState);
 
   // Use messages selector scoped to the selected conversation
   const conversationMessages = useMessages(selectedConversationId);
   // Get Set of conversation IDs that have user messages (avoids subscribing to all messages)
   const conversationsWithUserMessages = useConversationsWithUserMessages();
+
+  // Review comments for current session
+  const reviewComments = useReviewComments(selectedSessionId);
+  const { updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
+
+  // Fetch initial review comments when session changes
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    const fetchComments = async () => {
+      try {
+        const comments = await listReviewComments(selectedWorkspaceId, selectedSessionId);
+        setReviewComments(selectedSessionId, comments);
+      } catch (error) {
+        console.error('Failed to fetch review comments:', error);
+      }
+    };
+
+    fetchComments();
+  }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
 
   // Rename dialog state for conversations
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -431,6 +454,33 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [selectedFileTabId, updateFileTab]);
 
+  // Handle resolving/unresolving a review comment
+  const handleResolveComment = useCallback(async (commentId: string, resolved: boolean) => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+    try {
+      const updatedComment = await updateReviewComment(
+        selectedWorkspaceId,
+        selectedSessionId,
+        commentId,
+        { resolved, resolvedBy: resolved ? 'You' : undefined }
+      );
+      updateReviewCommentInStore(selectedSessionId, commentId, updatedComment);
+    } catch (error) {
+      console.error('Failed to update comment:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, updateReviewCommentInStore]);
+
+  // Handle deleting a review comment
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+    try {
+      await deleteReviewCommentApi(selectedWorkspaceId, selectedSessionId, commentId);
+      deleteReviewCommentFromStore(selectedSessionId, commentId);
+    } catch (error) {
+      console.error('Failed to delete comment:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, deleteReviewCommentFromStore]);
+
   // Unified tab select handler for TabBar
   const handleTabSelect = useCallback(
     (id: string, type: 'file' | 'conversation') => {
@@ -580,6 +630,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 onStateChange={handleEditorStateChange}
                 initialCursorPosition={currentFileTab.cursorPosition}
                 initialScrollPosition={currentFileTab.scrollPosition}
+                comments={reviewComments.filter((c) => c.filePath === currentFileTab.path)}
+                onResolveComment={handleResolveComment}
+                onDeleteComment={handleDeleteComment}
               />
             ) : (
               // Regular file view

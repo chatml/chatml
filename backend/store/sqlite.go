@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,9 @@ import (
 	"github.com/chatml/chatml-backend/models"
 	_ "modernc.org/sqlite"
 )
+
+// ErrNotFound is returned when a requested resource does not exist
+var ErrNotFound = errors.New("not found")
 
 // SQLiteStore implements data persistence using SQLite
 // Note: We don't use a Go mutex because SQLite with WAL mode handles concurrency.
@@ -312,6 +316,37 @@ func (s *SQLiteStore) runMigrations() error {
 		return err
 	}
 	log.Printf("[sqlite] Migration: agent_runs table ready")
+
+	// Migration: Create review_comments table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS review_comments (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			file_path TEXT NOT NULL,
+			line_number INTEGER NOT NULL,
+			content TEXT NOT NULL,
+			source TEXT NOT NULL,
+			author TEXT NOT NULL,
+			severity TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			resolved INTEGER NOT NULL DEFAULT 0,
+			resolved_at DATETIME,
+			resolved_by TEXT,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_review_comments_session ON review_comments(session_id)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_review_comments_file ON review_comments(session_id, file_path)`)
+	if err != nil {
+		return err
+	}
+	log.Printf("[sqlite] Migration: review_comments table ready")
 
 	return nil
 }
@@ -1278,6 +1313,230 @@ func (s *SQLiteStore) SaveFileTabs(ctx context.Context, workspaceID string, tabs
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("SaveFileTabs commit: %w", err)
+	}
+	return nil
+}
+
+// ============================================================================
+// ReviewComment methods
+// ============================================================================
+
+func (s *SQLiteStore) AddReviewComment(ctx context.Context, comment *models.ReviewComment) error {
+	var severity sql.NullString
+	if comment.Severity != "" {
+		severity = sql.NullString{String: comment.Severity, Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO review_comments (id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		comment.ID, comment.SessionID, comment.FilePath, comment.LineNumber,
+		comment.Content, comment.Source, comment.Author, severity,
+		comment.CreatedAt, boolToInt(comment.Resolved))
+	if err != nil {
+		return fmt.Errorf("AddReviewComment: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetReviewComment(ctx context.Context, id string) (*models.ReviewComment, error) {
+	var comment models.ReviewComment
+	var severity sql.NullString
+	var resolved int
+	var resolvedAt sql.NullTime
+	var resolvedBy sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
+		FROM review_comments WHERE id = ?`, id).Scan(
+		&comment.ID, &comment.SessionID, &comment.FilePath, &comment.LineNumber,
+		&comment.Content, &comment.Source, &comment.Author, &severity,
+		&comment.CreatedAt, &resolved, &resolvedAt, &resolvedBy)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetReviewComment: %w", err)
+	}
+
+	comment.Resolved = intToBool(resolved)
+	if severity.Valid {
+		comment.Severity = severity.String
+	}
+	if resolvedAt.Valid {
+		comment.ResolvedAt = &resolvedAt.Time
+	}
+	if resolvedBy.Valid {
+		comment.ResolvedBy = resolvedBy.String
+	}
+
+	return &comment, nil
+}
+
+func (s *SQLiteStore) ListReviewComments(ctx context.Context, sessionID string) ([]*models.ReviewComment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
+		FROM review_comments WHERE session_id = ?
+		ORDER BY file_path, line_number`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("ListReviewComments: %w", err)
+	}
+	defer rows.Close()
+
+	comments := []*models.ReviewComment{}
+	for rows.Next() {
+		var comment models.ReviewComment
+		var severity sql.NullString
+		var resolved int
+		var resolvedAt sql.NullTime
+		var resolvedBy sql.NullString
+
+		if err := rows.Scan(
+			&comment.ID, &comment.SessionID, &comment.FilePath, &comment.LineNumber,
+			&comment.Content, &comment.Source, &comment.Author, &severity,
+			&comment.CreatedAt, &resolved, &resolvedAt, &resolvedBy); err != nil {
+			return nil, fmt.Errorf("ListReviewComments scan: %w", err)
+		}
+
+		comment.Resolved = intToBool(resolved)
+		if severity.Valid {
+			comment.Severity = severity.String
+		}
+		if resolvedAt.Valid {
+			comment.ResolvedAt = &resolvedAt.Time
+		}
+		if resolvedBy.Valid {
+			comment.ResolvedBy = resolvedBy.String
+		}
+
+		comments = append(comments, &comment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListReviewComments rows: %w", err)
+	}
+	return comments, nil
+}
+
+func (s *SQLiteStore) ListReviewCommentsForFile(ctx context.Context, sessionID, filePath string) ([]*models.ReviewComment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
+		FROM review_comments WHERE session_id = ? AND file_path = ?
+		ORDER BY line_number`, sessionID, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("ListReviewCommentsForFile: %w", err)
+	}
+	defer rows.Close()
+
+	comments := []*models.ReviewComment{}
+	for rows.Next() {
+		var comment models.ReviewComment
+		var severity sql.NullString
+		var resolved int
+		var resolvedAt sql.NullTime
+		var resolvedBy sql.NullString
+
+		if err := rows.Scan(
+			&comment.ID, &comment.SessionID, &comment.FilePath, &comment.LineNumber,
+			&comment.Content, &comment.Source, &comment.Author, &severity,
+			&comment.CreatedAt, &resolved, &resolvedAt, &resolvedBy); err != nil {
+			return nil, fmt.Errorf("ListReviewCommentsForFile scan: %w", err)
+		}
+
+		comment.Resolved = intToBool(resolved)
+		if severity.Valid {
+			comment.Severity = severity.String
+		}
+		if resolvedAt.Valid {
+			comment.ResolvedAt = &resolvedAt.Time
+		}
+		if resolvedBy.Valid {
+			comment.ResolvedBy = resolvedBy.String
+		}
+
+		comments = append(comments, &comment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListReviewCommentsForFile rows: %w", err)
+	}
+	return comments, nil
+}
+
+// GetReviewCommentStats returns per-file comment statistics for a session
+func (s *SQLiteStore) GetReviewCommentStats(ctx context.Context, sessionID string) ([]*models.CommentStats, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT file_path, COUNT(*) as total, SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END) as unresolved
+		FROM review_comments WHERE session_id = ?
+		GROUP BY file_path
+		ORDER BY file_path`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("GetReviewCommentStats: %w", err)
+	}
+	defer rows.Close()
+
+	stats := []*models.CommentStats{}
+	for rows.Next() {
+		var stat models.CommentStats
+		if err := rows.Scan(&stat.FilePath, &stat.Total, &stat.Unresolved); err != nil {
+			return nil, fmt.Errorf("GetReviewCommentStats scan: %w", err)
+		}
+		stats = append(stats, &stat)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetReviewCommentStats rows: %w", err)
+	}
+	return stats, nil
+}
+
+func (s *SQLiteStore) UpdateReviewComment(ctx context.Context, id string, updates func(*models.ReviewComment)) error {
+	// Read current state
+	comment, err := s.GetReviewComment(ctx, id)
+	if err != nil {
+		return err
+	}
+	if comment == nil {
+		return fmt.Errorf("UpdateReviewComment: comment %s %w", id, ErrNotFound)
+	}
+
+	// Apply updates
+	updates(comment)
+
+	// Write back
+	var severity sql.NullString
+	if comment.Severity != "" {
+		severity = sql.NullString{String: comment.Severity, Valid: true}
+	}
+	var resolvedAt sql.NullTime
+	if comment.ResolvedAt != nil {
+		resolvedAt = sql.NullTime{Time: *comment.ResolvedAt, Valid: true}
+	}
+	var resolvedBy sql.NullString
+	if comment.ResolvedBy != "" {
+		resolvedBy = sql.NullString{String: comment.ResolvedBy, Valid: true}
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE review_comments SET
+			content = ?, severity = ?, resolved = ?, resolved_at = ?, resolved_by = ?
+		WHERE id = ?`,
+		comment.Content, severity, boolToInt(comment.Resolved), resolvedAt, resolvedBy, id)
+	if err != nil {
+		return fmt.Errorf("UpdateReviewComment: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteReviewComment(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM review_comments WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("DeleteReviewComment: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) DeleteReviewCommentsForSession(ctx context.Context, sessionID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM review_comments WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return fmt.Errorf("DeleteReviewCommentsForSession: %w", err)
 	}
 	return nil
 }
