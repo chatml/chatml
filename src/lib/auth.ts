@@ -49,11 +49,48 @@ function generateState(): string {
 // Store state temporarily for verification
 let pendingOAuthState: string | null = null;
 
+// OAuth timeout duration (2 minutes)
+export const OAUTH_TIMEOUT_MS = 120000;
+
+/**
+ * Get user-friendly error message for GitHub OAuth errors
+ */
+function getOAuthErrorMessage(error: string, description: string | null): string {
+  switch (error) {
+    case 'access_denied':
+      return 'You declined to authorize ChatML. Click "Sign in" to try again.';
+    case 'redirect_uri_mismatch':
+      return 'OAuth configuration error. The redirect URL is not registered with GitHub.';
+    case 'application_suspended':
+      return 'This application has been suspended. Please contact support.';
+    case 'incorrect_client_credentials':
+      return 'OAuth configuration error. Please contact support.';
+    default:
+      return description || `GitHub authorization failed: ${error}`;
+  }
+}
+
+/**
+ * Check if an OAuth flow is currently pending
+ */
+export function isOAuthPending(): boolean {
+  return pendingOAuthState !== null;
+}
+
+/**
+ * Cancel any pending OAuth flow
+ * Clears the stored state so callbacks will be rejected
+ */
+export function cancelOAuthFlow(): void {
+  pendingOAuthState = null;
+}
+
 /**
  * Start the GitHub OAuth flow
  * Opens browser to GitHub authorization page
  */
 export async function startOAuthFlow(): Promise<void> {
+  // Clear any previous pending state
   pendingOAuthState = generateState();
 
   const params = new URLSearchParams({
@@ -82,15 +119,28 @@ export async function startOAuthFlow(): Promise<void> {
  */
 export async function handleOAuthCallback(url: string): Promise<{ token: string; user: GitHubUser }> {
   const parsed = new URL(url);
+
+  // Check for GitHub error response FIRST (e.g., user denied access)
+  const error = parsed.searchParams.get('error');
+  const errorDescription = parsed.searchParams.get('error_description');
+
+  if (error) {
+    pendingOAuthState = null; // Clear state on error
+    const message = getOAuthErrorMessage(error, errorDescription);
+    throw new Error(message);
+  }
+
   const code = parsed.searchParams.get('code');
   const state = parsed.searchParams.get('state');
 
   if (!code) {
-    throw new Error('No authorization code received');
+    pendingOAuthState = null;
+    throw new Error('No authorization code received from GitHub.');
   }
 
   if (state !== pendingOAuthState) {
-    throw new Error('State mismatch - possible CSRF attack');
+    pendingOAuthState = null;
+    throw new Error('Security error: state mismatch. Please try again.');
   }
 
   pendingOAuthState = null;
@@ -104,7 +154,7 @@ export async function handleOAuthCallback(url: string): Promise<{ token: string;
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`OAuth exchange failed: ${text}`);
+    throw new Error(`Failed to complete authentication: ${text}`);
   }
 
   return res.json();

@@ -1,32 +1,54 @@
 // src/components/OnboardingScreen.tsx
 'use client';
 
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/glass-card';
-import { Github, Loader2 } from 'lucide-react';
-import { startOAuthFlow } from '@/lib/auth';
+import { Github, Loader2, X, RefreshCw } from 'lucide-react';
+import { startOAuthFlow, cancelOAuthFlow } from '@/lib/auth';
 import { useAuthStore } from '@/stores/authStore';
 
 export function OnboardingScreen() {
-  const [isConnecting, setIsConnecting] = useState(false);
-  const { error, setError, setAuthenticated } = useAuthStore();
+  const {
+    oauthState,
+    oauthError,
+    startOAuth,
+    cancelOAuth,
+    setAuthenticated,
+  } = useAuthStore();
+
+  const isConnecting = oauthState === 'pending';
+  const hasError = oauthState === 'error';
 
   const handleSignIn = async () => {
-    setIsConnecting(true);
-    setError(null);
+    startOAuth();
 
     try {
       await startOAuthFlow();
       // OAuth callback will be handled by listener in page.tsx
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start sign in');
-      setIsConnecting(false);
+      // Only fail if we're still in pending state (not cancelled)
+      if (useAuthStore.getState().oauthState === 'pending') {
+        useAuthStore.getState().failOAuth(
+          err instanceof Error ? err.message : 'Failed to start sign in'
+        );
+      }
     }
+  };
+
+  const handleCancel = () => {
+    cancelOAuthFlow();
+    cancelOAuth();
+  };
+
+  const handleRetry = () => {
+    // Clear error and start fresh
+    cancelOAuth();
+    handleSignIn();
   };
 
   const handleSkip = () => {
     // Skip authentication for development - sets a placeholder user
+    cancelOAuthFlow(); // Clear any pending state
     setAuthenticated(true, {
       login: 'local-dev',
       name: 'Local Developer',
@@ -71,39 +93,74 @@ export function OnboardingScreen() {
             Enterprise AI Orchestration
           </p>
 
-          {/* Sign in button with gradient */}
-          <Button
-            size="lg"
-            onClick={handleSignIn}
-            disabled={isConnecting}
-            className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98]"
-          >
-            {isConnecting ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              <>
+          {/* Action buttons */}
+          <div className="flex flex-col items-center gap-3 w-full">
+            {/* Error state: show error and retry button */}
+            {hasError && (
+              <div className="flex flex-col items-center gap-3 w-full animate-slide-up-fade">
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-4 py-2 rounded-lg">
+                  <X className="h-4 w-4 shrink-0" />
+                  <span>{oauthError}</span>
+                </div>
+                <Button
+                  size="lg"
+                  onClick={handleRetry}
+                  className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98]"
+                >
+                  <RefreshCw className="mr-2 h-5 w-5" />
+                  Try Again
+                </Button>
+              </div>
+            )}
+
+            {/* Pending state: show spinner and cancel button */}
+            {isConnecting && (
+              <div className="flex flex-col items-center gap-3 w-full">
+                <Button
+                  size="lg"
+                  disabled
+                  className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 shadow-lg shadow-primary/25"
+                >
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Waiting for GitHub...
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancel}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Complete authorization in your browser, then return here.
+                </p>
+              </div>
+            )}
+
+            {/* Idle state: show sign in button */}
+            {!isConnecting && !hasError && (
+              <Button
+                size="lg"
+                onClick={handleSignIn}
+                className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98]"
+              >
                 <Github className="mr-2 h-5 w-5" />
                 Sign in with GitHub
-              </>
+              </Button>
             )}
-          </Button>
+          </div>
 
-          {/* Skip button for development */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSkip}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Skip for now
-          </Button>
-
-          {/* Error message */}
-          {error && (
-            <p className="text-sm text-destructive animate-slide-up-fade">{error}</p>
+          {/* Skip button for development - only show when not connecting */}
+          {!isConnecting && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSkip}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Skip for now
+            </Button>
           )}
 
           {/* Footer */}
