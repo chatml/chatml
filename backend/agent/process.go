@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -225,7 +226,12 @@ func (p *Process) Start() error {
 
 	// Stream stdout
 	go func() {
-		defer outputWg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[process:%s] PANIC in stdout reader: %v\n%s", p.ID, r, debug.Stack())
+			}
+			outputWg.Done()
+		}()
 		scanner := bufio.NewScanner(stdout)
 		// Increase buffer for large JSON events
 		buf := make([]byte, 0, 1024*1024)
@@ -243,7 +249,12 @@ func (p *Process) Start() error {
 
 	// Stream stderr
 	go func() {
-		defer outputWg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[process:%s] PANIC in stderr reader: %v\n%s", p.ID, r, debug.Stack())
+			}
+			outputWg.Done()
+		}()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			select {
@@ -258,6 +269,12 @@ func (p *Process) Start() error {
 
 	// Wait for completion
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[process:%s] PANIC in completion handler: %v\n%s", p.ID, r, debug.Stack())
+			}
+		}()
+
 		err := p.cmd.Wait()
 		p.mu.Lock()
 		p.running = false

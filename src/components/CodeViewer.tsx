@@ -13,6 +13,7 @@ import { MonacoEditor, MonacoDiffEditor } from '@/components/MonacoEditor';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
 import { getShikiLanguage } from '@/lib/languageMapping';
+import type { ReviewComment } from '@/lib/types';
 
 interface EditorState {
   cursorPosition?: { line: number; column: number };
@@ -31,6 +32,12 @@ interface CodeViewerProps {
   initialCursorPosition?: { line: number; column: number };
   /** Initial scroll position to restore */
   initialScrollPosition?: { top: number; left: number };
+  /** Review comments to display in diff view */
+  comments?: ReviewComment[];
+  /** Callback when a comment is resolved/unresolved */
+  onResolveComment?: (id: string, resolved: boolean) => void;
+  /** Callback when a comment is deleted */
+  onDeleteComment?: (id: string) => void;
 }
 
 function isMarkdownFile(filename: string): boolean {
@@ -46,6 +53,9 @@ export function CodeViewer({
   onStateChange,
   initialCursorPosition,
   initialScrollPosition,
+  comments,
+  onResolveComment,
+  onDeleteComment,
 }: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
   const [copied, setCopied] = useState(false);
@@ -159,6 +169,9 @@ export function CodeViewer({
             readOnly={true}
             sideBySide={diffViewMode === 'split'}
             wordWrap={wordWrap}
+            comments={comments}
+            onResolveComment={onResolveComment}
+            onDeleteComment={onDeleteComment}
           />
         </div>
       </div>

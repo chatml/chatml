@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSelectedIds, useFileTabState, useTodoState } from '@/stores/selectors';
+import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
 import { watchWorkspace, unwatchWorkspace, listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
@@ -12,6 +12,7 @@ import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
 
 import { McpServersPanel } from '@/components/McpServersPanel';
+import { ReviewPanel } from '@/components/ReviewPanel';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,6 +31,7 @@ import {
   GitPullRequest,
   AlertTriangle,
   ExternalLink,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileTab } from '@/lib/types';
@@ -67,8 +69,10 @@ export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { openFileTab, updateFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
+  const commentStats = useFileCommentStats(selectedSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
+  const updateSession = useAppStore((s) => s.updateSession);
   const [selectedTab, setSelectedTab] = useState('changes');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -86,10 +90,25 @@ export function ChangesPanel() {
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
+
+      // Update session stats in the store
+      if (data && data.length > 0) {
+        const stats = data.reduce(
+          (acc, change) => ({
+            additions: acc.additions + change.additions,
+            deletions: acc.deletions + change.deletions,
+          }),
+          { additions: 0, deletions: 0 }
+        );
+        updateSession(selectedSessionId, { stats });
+      } else {
+        // Clear stats if no changes
+        updateSession(selectedSessionId, { stats: undefined });
+      }
     } catch (error) {
       console.error('Failed to fetch changes:', error);
     }
-  }, [selectedWorkspaceId, selectedSessionId]);
+  }, [selectedWorkspaceId, selectedSessionId, updateSession]);
 
   // Debounced refetch for file change events
   const debouncedFetchChanges = useCallback(() => {
@@ -415,6 +434,14 @@ export function ChangesPanel() {
           )}
         </Button>
         <Button
+          variant={selectedTab === 'review' ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-6 text-xs px-2 shrink-0"
+          onClick={() => setSelectedTab('review')}
+        >
+          Review
+        </Button>
+        <Button
           variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
           size="sm"
           className="h-6 text-xs px-2 shrink-0"
@@ -504,6 +531,7 @@ export function ChangesPanel() {
                                 change={change}
                                 onSelect={() => handleFileSelect(change.path)}
                                 containerWidth={containerWidth}
+                                commentStats={commentStats.get(change.path)}
                               />
                             ))}
                           </>
@@ -522,6 +550,7 @@ export function ChangesPanel() {
                                 change={change}
                                 onSelect={() => handleChangedFileSelect(change.path)}
                                 containerWidth={containerWidth}
+                                commentStats={commentStats.get(change.path)}
                               />
                             ))}
                           </>
@@ -532,6 +561,8 @@ export function ChangesPanel() {
                 </div>
               </ScrollArea>
             )
+          ) : selectedTab === 'review' ? (
+            <ReviewPanel onFileSelect={handleFileSelect} />
           ) : selectedTab === 'checks' ? (
             <div className="h-full px-1.5">
               <GitStatusSection onSendMessage={handleGitActionMessage} />
@@ -597,7 +628,12 @@ export function ChangesPanel() {
   );
 }
 
-function FileChangeRow({ change, onSelect, containerWidth }: { change: FileChangeDTO; onSelect: () => void; containerWidth: number }) {
+function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
+  change: FileChangeDTO;
+  onSelect: () => void;
+  containerWidth: number;
+  commentStats?: { total: number; unresolved: number };
+}) {
   const parts = change.path.split('/');
   const fileName = parts.pop() || change.path;
   const dirPath = parts.join('/');
@@ -658,6 +694,13 @@ function FileChangeRow({ change, onSelect, containerWidth }: { change: FileChang
           {change.deletions > 0 && (
             <span className="text-red-500 ml-1">-{change.deletions}</span>
           )}
+        </span>
+      )}
+      {/* Comment badge - show unresolved count */}
+      {commentStats && commentStats.unresolved > 0 && (
+        <span className="flex items-center gap-0.5 text-yellow-600 dark:text-yellow-500 shrink-0" title={`${commentStats.unresolved} unresolved comment${commentStats.unresolved > 1 ? 's' : ''}`}>
+          <MessageSquare className="h-3 w-3" />
+          <span className="text-[10px] font-medium">{commentStats.unresolved}</span>
         </span>
       )}
       <Checkbox className="h-3.5 w-3.5 shrink-0" />

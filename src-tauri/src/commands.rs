@@ -52,3 +52,11 @@ pub fn watch_workspace(
 pub fn unwatch_workspace(workspace_id: String) -> AppResult<()> {
     watcher::unwatch_workspace(&workspace_id)
 }
+
+/// Get the authentication token for backend API calls
+#[tauri::command]
+pub fn get_auth_token(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    state
+        .get_auth_token()
+        .ok_or_else(|| "Auth token not available".to_string())
+}

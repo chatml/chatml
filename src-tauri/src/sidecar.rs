@@ -2,6 +2,9 @@ use std::net::TcpListener;
 use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use rand::Rng;
 use tauri::{Emitter, Manager};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
@@ -98,10 +101,24 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
         .sidecar("chatml-backend")
         .map_err(|e| AppError::Sidecar(format!("Failed to create sidecar command: {}", e)))?;
 
+    // Generate authentication token for backend API security
+    let token_bytes: [u8; 32] = rand::thread_rng().gen();
+    let auth_token = URL_SAFE_NO_PAD.encode(token_bytes);
+    state.set_auth_token(auth_token.clone());
+    sidecar_command = sidecar_command.env("CHATML_AUTH_TOKEN", &auth_token);
+
     // In development, allow localhost:3000 for CORS
     #[cfg(debug_assertions)]
     {
         sidecar_command = sidecar_command.env("CHATML_DEV_ORIGIN", "http://localhost:3100");
+    }
+
+    // Pass GitHub OAuth credentials to sidecar (if set)
+    if let Ok(client_id) = std::env::var("GITHUB_CLIENT_ID") {
+        sidecar_command = sidecar_command.env("GITHUB_CLIENT_ID", &client_id);
+    }
+    if let Ok(client_secret) = std::env::var("GITHUB_CLIENT_SECRET") {
+        sidecar_command = sidecar_command.env("GITHUB_CLIENT_SECRET", &client_secret);
     }
 
     let (mut rx, child) = sidecar_command

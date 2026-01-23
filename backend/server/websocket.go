@@ -1,9 +1,12 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -124,6 +127,20 @@ func NewHub() *Hub {
 
 func (h *Hub) Run() {
 	for {
+		h.runLoop()
+	}
+}
+
+// runLoop is the inner event loop, separated to allow panic recovery
+func (h *Hub) runLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[websocket-hub] PANIC recovered: %v\n%s", r, debug.Stack())
+			// Log but continue - the outer loop will restart runLoop
+		}
+	}()
+
+	for {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
@@ -161,6 +178,11 @@ func (h *Hub) Run() {
 						h.metrics.recordClientDropped()
 						log.Printf("Client send buffer full, evicting slow client")
 						go func(c *Client) {
+							defer func() {
+								if r := recover(); r != nil {
+									log.Printf("[websocket-hub] PANIC in eviction goroutine: %v", r)
+								}
+							}()
 							h.unregister <- c
 						}(client)
 					}
@@ -222,6 +244,20 @@ func (h *Hub) BroadcastJSON(data interface{}) {
 }
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Validate token from query parameter.
+	// Note: WebSocket connections cannot use custom HTTP headers, so we pass the token
+	// as a query parameter. This is a known trade-off - the token may appear in server
+	// access logs. In production, ensure logging does not capture query parameters,
+	// or configure log scrubbing for sensitive data.
+	expectedToken := os.Getenv("CHATML_AUTH_TOKEN")
+	if expectedToken != "" {
+		token := r.URL.Query().Get("token")
+		if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
@@ -248,6 +284,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[websocket-client] PANIC in writePump: %v\n%s", r, debug.Stack())
+		}
 		ticker.Stop()
 		// Close connection to unblock readPump's ReadMessage call.
 		// This ensures readPump exits promptly when writePump fails,
@@ -287,6 +326,9 @@ func (c *Client) writePump() {
 // Handles pong responses and detects client disconnection.
 func (c *Client) readPump() {
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[websocket-client] PANIC in readPump: %v\n%s", r, debug.Stack())
+		}
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()

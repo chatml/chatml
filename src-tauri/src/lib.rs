@@ -127,7 +127,8 @@ pub fn run() {
             commands::set_minimize_to_tray,
             commands::is_window_visible,
             commands::watch_workspace,
-            commands::unwatch_workspace
+            commands::unwatch_workspace,
+            commands::get_auth_token
         ])
         .setup(move |app| {
             // Create and set the menu

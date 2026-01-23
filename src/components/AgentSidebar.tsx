@@ -56,7 +56,7 @@ export function AgentSidebar({ className }: AgentSidebarProps) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-zinc-400" />
-          <span className="text-sm font-medium text-zinc-200">Agents</span>
+          <span className="text-sm font-normal text-zinc-200">Agents</span>
         </div>
         <button
           onClick={() => reloadAgents()}

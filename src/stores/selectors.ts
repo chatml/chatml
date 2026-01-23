@@ -17,7 +17,7 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
-import type { Message, AgentTodoItem, CustomTodoItem, TerminalInstance } from '@/lib/types';
+import type { Message, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -26,6 +26,8 @@ const EMPTY_TOOLS: readonly unknown[] = []; // ActiveTool is internal to appStor
 const EMPTY_AGENT_TODOS: readonly AgentTodoItem[] = [];
 const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
 const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
+const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
+const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
 // Conversation State
@@ -259,3 +261,59 @@ export const useCheckpoints = () => useAppStore((s) => s.checkpoints);
  * Use in: McpStatus
  */
 export const useMcpServers = () => useAppStore((s) => s.mcpServers);
+
+// ============================================================================
+// Review Comments State
+// ============================================================================
+
+/**
+ * Review comments for a specific session.
+ * Use in: ChangesPanel, MonacoDiffEditor
+ */
+export const useReviewComments = (sessionId: string | null) =>
+  useAppStore((s) =>
+    sessionId ? s.reviewComments[sessionId] ?? EMPTY_REVIEW_COMMENTS : EMPTY_REVIEW_COMMENTS
+  );
+
+/**
+ * Comment statistics per file for a session.
+ * Returns a Map of filePath to { total, unresolved } counts.
+ * Use in: ChangesPanel for badge display
+ *
+ * Returns a stable empty Map when there are no comments.
+ * Note: Components should use useMemo if they need to avoid re-computation.
+ */
+export const useFileCommentStats = (sessionId: string | null) =>
+  useAppStore((s) => {
+    const comments = sessionId ? s.reviewComments[sessionId] : null;
+
+    // Return stable empty map when no comments
+    if (!comments || comments.length === 0) {
+      return EMPTY_FILE_COMMENT_STATS;
+    }
+
+    // Only construct Map when we have actual comments
+    const stats = new Map<string, { total: number; unresolved: number }>();
+    for (const comment of comments) {
+      const current = stats.get(comment.filePath) || { total: 0, unresolved: 0 };
+      current.total++;
+      if (!comment.resolved) current.unresolved++;
+      stats.set(comment.filePath, current);
+    }
+
+    return stats;
+  });
+
+/**
+ * Review comment actions for components that need to modify comments.
+ * Use in: CommentThread, MonacoDiffEditor
+ */
+export const useReviewCommentActions = () =>
+  useAppStore(
+    useShallow((s) => ({
+      addReviewComment: s.addReviewComment,
+      updateReviewComment: s.updateReviewComment,
+      deleteReviewComment: s.deleteReviewComment,
+      setReviewComments: s.setReviewComments,
+    }))
+  );
