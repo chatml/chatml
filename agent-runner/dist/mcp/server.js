@@ -2,6 +2,7 @@
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { createLinearTools } from "./tools/linear.js";
+import { createCommentTools } from "./tools/comments.js";
 export function createConductorMcpServer(options) {
     const { context } = options;
     return createSdkMcpServer({
@@ -78,6 +79,8 @@ export function createConductorMcpServer(options) {
             }),
             // Linear integration tools
             ...createLinearTools(context),
+            // Review comment tools
+            ...createCommentTools(context),
         ],
     });
 }

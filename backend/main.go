@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
@@ -80,6 +81,12 @@ func main() {
 	branchWatcher, err := branch.NewWatcher(func(event branch.BranchChangeEvent) {
 		// Handle updates asynchronously to avoid blocking the watcher's event loop
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[branch-watcher] PANIC recovered: %v\n%s", r, debug.Stack())
+				}
+			}()
+
 			ctx := context.Background()
 
 			// Extract display name from the new branch

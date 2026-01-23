@@ -558,3 +558,102 @@ export async function saveFile(
     throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
   }
 }
+
+// Review Comment DTOs and functions
+export interface ReviewCommentDTO {
+  id: string;
+  sessionId: string;
+  filePath: string;
+  lineNumber: number;
+  content: string;
+  source: 'claude' | 'user';
+  author: string;
+  severity?: 'error' | 'warning' | 'suggestion';
+  createdAt: string;
+  resolved: boolean;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+export interface CommentStatsDTO {
+  filePath: string;
+  total: number;
+  unresolved: number;
+}
+
+export async function listReviewComments(
+  workspaceId: string,
+  sessionId: string,
+  filePath?: string
+): Promise<ReviewCommentDTO[]> {
+  const params = filePath ? `?filePath=${encodeURIComponent(filePath)}` : '';
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments${params}`
+  );
+  return handleResponse<ReviewCommentDTO[]>(res);
+}
+
+export async function createReviewComment(
+  workspaceId: string,
+  sessionId: string,
+  data: {
+    filePath: string;
+    lineNumber: number;
+    content: string;
+    source: 'claude' | 'user';
+    author: string;
+    severity?: 'error' | 'warning' | 'suggestion';
+  }
+): Promise<ReviewCommentDTO> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }
+  );
+  return handleResponse<ReviewCommentDTO>(res);
+}
+
+export async function getReviewCommentStats(
+  workspaceId: string,
+  sessionId: string
+): Promise<CommentStatsDTO[]> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/stats`
+  );
+  return handleResponse<CommentStatsDTO[]>(res);
+}
+
+export async function updateReviewComment(
+  workspaceId: string,
+  sessionId: string,
+  commentId: string,
+  data: { resolved?: boolean; resolvedBy?: string }
+): Promise<ReviewCommentDTO> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }
+  );
+  return handleResponse<ReviewCommentDTO>(res);
+}
+
+export async function deleteReviewComment(
+  workspaceId: string,
+  sessionId: string,
+  commentId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || 'Delete failed', res.status, text);
+  }
+}

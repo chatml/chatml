@@ -434,3 +434,26 @@ export interface TerminalInstance {
   slotNumber: number;   // 1-5
   status: 'active' | 'exited';
 }
+
+// Review comment for code review inline comments
+export interface ReviewComment {
+  id: string;
+  sessionId: string;
+  filePath: string;
+  lineNumber: number;
+  content: string;
+  source: 'claude' | 'user';
+  author: string;
+  severity?: 'error' | 'warning' | 'suggestion';
+  createdAt: string;
+  resolved: boolean;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+// Comment statistics per file
+export interface CommentStats {
+  filePath: string;
+  total: number;
+  unresolved: number;
+}

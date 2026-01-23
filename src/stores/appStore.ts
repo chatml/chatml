@@ -17,6 +17,7 @@ import type {
   BudgetStatus,
   ToolUsage,
   RunSummary,
+  ReviewComment,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -89,6 +90,9 @@ interface AppState {
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
   budgetStatus: BudgetStatus | null;
+
+  // Review comments state (keyed by sessionId)
+  reviewComments: { [sessionId: string]: ReviewComment[] };
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -193,6 +197,12 @@ interface AppState {
   clearCheckpoints: () => void;
   setBudgetStatus: (status: BudgetStatus | null) => void;
 
+  // Review comments actions
+  setReviewComments: (sessionId: string, comments: ReviewComment[]) => void;
+  addReviewComment: (sessionId: string, comment: ReviewComment) => void;
+  updateReviewComment: (sessionId: string, id: string, updates: Partial<ReviewComment>) => void;
+  deleteReviewComment: (sessionId: string, id: string) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -233,6 +243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpServers: [],
   checkpoints: [],
   budgetStatus: null,
+  reviewComments: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -334,9 +345,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedAgentTodos[convId];
     }
 
-    // Clean up custom todos and session outputs
+    // Clean up custom todos, session outputs, and review comments
     const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
     const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
+    const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
 
     return {
       sessions: state.sessions.filter((s) => s.id !== id),
@@ -351,6 +363,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       agentTodos: cleanedAgentTodos,
       customTodos: remainingCustomTodos,
       sessionOutputs: remainingSessionOutputs,
+      reviewComments: remainingReviewComments,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -467,10 +480,28 @@ streamingState: cleanedStreamingState,
     const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
 
+    const removedConv = state.conversations.find((c) => c.id === id);
+    const newConversations = state.conversations.filter((c) => c.id !== id);
+
+    // Select another conversation if we're removing the selected one
+    let newSelectedConversationId = state.selectedConversationId;
+    if (state.selectedConversationId === id && removedConv) {
+      // Find conversations from the same session
+      const sessionConvs = newConversations.filter((c) => c.sessionId === removedConv.sessionId);
+      // Find the position of the removed conversation among session conversations
+      const oldSessionConvs = state.conversations.filter((c) => c.sessionId === removedConv.sessionId);
+      const removedIdx = oldSessionConvs.findIndex((c) => c.id === id);
+      // Select adjacent conversation: prefer next, then previous
+      newSelectedConversationId = sessionConvs[removedIdx]?.id
+        ?? sessionConvs[removedIdx - 1]?.id
+        ?? sessionConvs[0]?.id
+        ?? null;
+    }
+
     return {
-      conversations: state.conversations.filter((c) => c.id !== id),
+      conversations: newConversations,
       messages: state.messages.filter((m) => m.conversationId !== id),
-      selectedConversationId: state.selectedConversationId === id ? null : state.selectedConversationId,
+      selectedConversationId: newSelectedConversationId,
       streamingState: remainingStreamingState,
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
@@ -551,16 +582,20 @@ streamingState: cleanedStreamingState,
   }),
 
   closeFileTab: (id) => set((state) => {
+    const closedIdx = state.fileTabs.findIndex((t) => t.id === id);
     const newTabs = state.fileTabs.filter((t) => t.id !== id);
-    let newSelectedId = state.selectedFileTabId;
-    if (state.selectedFileTabId === id) {
-      // Select adjacent tab or null
-      const idx = state.fileTabs.findIndex((t) => t.id === id);
-      newSelectedId = newTabs[idx]?.id || newTabs[idx - 1]?.id || null;
+
+    // Only update selection if we're closing the currently selected tab
+    if (state.selectedFileTabId !== id) {
+      return { fileTabs: newTabs };
     }
+
+    // Try to select adjacent tab: prefer next, then previous
+    const nextTab = newTabs[closedIdx] ?? newTabs[closedIdx - 1];
+
     return {
       fileTabs: newTabs,
-      selectedFileTabId: newSelectedId,
+      selectedFileTabId: nextTab?.id ?? null,
     };
   }),
 
@@ -1038,6 +1073,34 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
   clearCheckpoints: () => set({ checkpoints: [] }),
   setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
+
+  // Review comments actions
+  setReviewComments: (sessionId, comments) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: comments,
+    },
+  })),
+  addReviewComment: (sessionId, comment) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: [...(state.reviewComments[sessionId] || []), comment],
+    },
+  })),
+  updateReviewComment: (sessionId, id, updates) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: (state.reviewComments[sessionId] || []).map((c) =>
+        c.id === id ? { ...c, ...updates } : c
+      ),
+    },
+  })),
+  deleteReviewComment: (sessionId, id) => set((state) => ({
+    reviewComments: {
+      ...state.reviewComments,
+      [sessionId]: (state.reviewComments[sessionId] || []).filter((c) => c.id !== id),
+    },
+  })),
 
   // Legacy support
   repos: [],

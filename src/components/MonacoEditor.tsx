@@ -3,10 +3,14 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import { createRoot } from 'react-dom/client';
 import { Loader2 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { registerMonacoTheme } from '@/lib/monacoThemes';
 import { getMonacoLanguage } from '@/lib/languageMapping';
+import { CommentZoneManager } from '@/lib/monaco/CommentZoneManager';
+import { CommentThread } from '@/components/monaco/CommentThread';
+import type { ReviewComment } from '@/lib/types';
 
 interface EditorState {
   cursorPosition?: { line: number; column: number };
@@ -175,6 +179,10 @@ interface MonacoDiffEditorProps {
   readOnly?: boolean;
   sideBySide?: boolean;
   wordWrap?: boolean;
+  // Review comments support
+  comments?: ReviewComment[];
+  onResolveComment?: (id: string, resolved: boolean) => void;
+  onDeleteComment?: (id: string) => void;
 }
 
 export function MonacoDiffEditor({
@@ -184,9 +192,13 @@ export function MonacoDiffEditor({
   readOnly = true,
   sideBySide = true,
   wordWrap = false,
+  comments,
+  onResolveComment,
+  onDeleteComment,
 }: MonacoDiffEditorProps) {
   const language = getMonacoLanguage(filename);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const commentZoneManagerRef = useRef<CommentZoneManager | null>(null);
   const editorTheme = useSettingsStore((s) => s.editorTheme);
   const [activeTheme, setActiveTheme] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -231,6 +243,35 @@ export function MonacoDiffEditor({
   const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
     editorRef.current = editor;
 
+    // Initialize CommentZoneManager on the modified editor (right side)
+    // Comments are shown on the new/modified code
+    const modifiedEditor = editor.getModifiedEditor();
+
+    if (onResolveComment) {
+      const manager = new CommentZoneManager(modifiedEditor, {
+        onResolve: onResolveComment,
+        onDelete: onDeleteComment,
+      });
+
+      // Set up render callback for creating React components
+      manager.setRenderCallback((comment, container, root) => {
+        root.render(
+          <CommentThread
+            comment={comment}
+            onResolve={onResolveComment}
+            onDelete={onDeleteComment}
+          />
+        );
+      });
+
+      commentZoneManagerRef.current = manager;
+
+      // Set initial comments if provided
+      if (comments && comments.length > 0) {
+        manager.setComments(comments);
+      }
+    }
+
     // Scroll to the first change after the diff is computed
     // Use a small delay to ensure diff computation is complete
     setTimeout(() => {
@@ -239,15 +280,25 @@ export function MonacoDiffEditor({
         const firstChange = lineChanges[0];
         // Use the modified line number (right side) for positioning
         const targetLine = firstChange.modifiedStartLineNumber || firstChange.originalStartLineNumber || 1;
-        const modifiedEditor = editor.getModifiedEditor();
         modifiedEditor.revealLineInCenter(targetLine);
       }
     }, 50);
-  }, []);
+  }, [comments, onResolveComment, onDeleteComment]);
 
-  // Dispose editor on unmount to prevent memory leaks
+  // Update comments when they change
+  useEffect(() => {
+    if (commentZoneManagerRef.current && comments) {
+      commentZoneManagerRef.current.setComments(comments);
+    }
+  }, [comments]);
+
+  // Dispose editor and comment manager on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
+      if (commentZoneManagerRef.current) {
+        commentZoneManagerRef.current.dispose();
+        commentZoneManagerRef.current = null;
+      }
       if (editorRef.current) {
         editorRef.current.dispose();
         editorRef.current = null;

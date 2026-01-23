@@ -44,7 +44,7 @@ export function RepoList({ onAddClick }: RepoListProps) {
           <Zap className="w-4 h-4 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-sm font-semibold">ChatML</h1>
+          <h1 className="text-lg font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></h1>
           <p className="text-xs text-muted-foreground">Agent Orchestration</p>
         </div>
       </div>
@@ -155,7 +155,7 @@ export function RepoList({ onAddClick }: RepoListProps) {
       <div className="p-3">
         <Button onClick={onAddClick} className="w-full" variant="outline">
           <Plus className="w-4 h-4 mr-2" />
-          Add Repository
+          Add Project
         </Button>
       </div>
     </div>

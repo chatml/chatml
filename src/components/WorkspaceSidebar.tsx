@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -52,6 +52,7 @@ import {
   FolderPlus,
   ChevronDown,
   FolderOpen,
+  Layers,
   Terminal,
   Trash2,
   Copy,
@@ -66,6 +67,8 @@ import {
   Globe,
   SquarePlus,
   Bot,
+  Search,
+  X,
 } from 'lucide-react';
 import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
@@ -78,6 +81,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 
 interface WorkspaceSidebarProps {
@@ -90,7 +98,7 @@ interface WorkspaceSidebarProps {
   onToggleSidebar?: () => void;
 }
 
-// Shared menu items for "Add repository" dropdown
+// Shared menu items for "Add project" dropdown
 const ADD_REPO_MENU_ITEMS = [
   { icon: Folder, label: 'Open project', key: 'open' },
   { icon: Globe, label: 'Clone from URL', key: 'clone' },
@@ -102,6 +110,10 @@ type SidebarTab = 'workspaces' | 'agents';
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>('workspaces');
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addTooltipOpen, setAddTooltipOpen] = useState(false);
+  const addMenuClosedRef = useRef(false);
   const { error: showError } = useToast();
 
   const menuHandlers = {
@@ -151,7 +163,16 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const getWorkspaceSessions = (workspaceId: string) => {
-    return sessions.filter((s) => s.workspaceId === workspaceId && !s.archived);
+    return sessions.filter((s) => {
+      if (s.workspaceId !== workspaceId || s.archived) return false;
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        s.name.toLowerCase().includes(term) ||
+        s.branch?.toLowerCase().includes(term) ||
+        s.task?.toLowerCase().includes(term)
+      );
+    });
   };
 
   const getInitial = (name: string) => {
@@ -285,21 +306,33 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     }
   };
 
+  // Detect macOS for traffic light styling
+  const isMacOS = typeof window !== 'undefined' && navigator.platform.includes('Mac');
+
   return (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground select-none" onContextMenu={(e) => e.preventDefault()}>
+    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
+      {/* Gradient orb behind traffic lights - macOS only */}
+      {isMacOS && (
+        <div className="absolute -top-4 -left-4 w-20 h-20 bg-primary/45 rounded-full blur-[25px] pointer-events-none" />
+      )}
+
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center justify-between border-b bg-sidebar shrink-0">
-        <span className="text-sm font-semibold">ChatML</span>
+      <div data-tauri-drag-region className="relative h-11 pl-20 pr-3 flex items-center justify-between border-b shrink-0">
+        <span className="text-lg font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
         {onToggleSidebar && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onToggleSidebar}
-            title="Hide sidebar (⌘B)"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={onToggleSidebar}
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Hide sidebar (⌘B)</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
@@ -314,7 +347,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <FolderOpen className="h-3.5 w-3.5" />
+          <Layers className="h-3.5 w-3.5" />
           Workspaces
         </button>
         <button
@@ -334,8 +367,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       {activeTab === 'workspaces' ? (
         <>
           {/* Workspace List */}
-          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!h-full">
-            <div className="py-2 px-1 h-full flex flex-col">
+          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden [&>[data-slot=scroll-area-viewport]>div]:!h-full">
+            <div className="py-2 px-1 h-full w-full flex flex-col">
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
@@ -353,7 +386,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         className="text-xs"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        Add repository
+                        Add project
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="center" className="w-48">
@@ -376,7 +409,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     items={workspaces.map((w) => w.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {workspaces.map((workspace) => (
+                    {workspaces
+                      .filter((workspace) => !searchTerm || getWorkspaceSessions(workspace.id).length > 0)
+                      .map((workspace) => (
                       <SortableWorkspaceItem
                         key={workspace.id}
                         workspace={workspace}
@@ -416,7 +451,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     <ContextMenuSub>
                       <ContextMenuSubTrigger>
                         <FolderPlus className="h-4 w-4" />
-                        Add repository
+                        Add project
                       </ContextMenuSubTrigger>
                       <ContextMenuSubContent>
                         <ContextMenuItem onClick={onOpenProject}>
@@ -437,34 +472,78 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
           {/* Footer */}
           <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <Tooltip
+                open={addTooltipOpen}
+                onOpenChange={(open) => {
+                  if (open && (addMenuOpen || addMenuClosedRef.current)) {
+                    return;
+                  }
+                  setAddTooltipOpen(open);
+                }}
+              >
+              <DropdownMenu open={addMenuOpen} onOpenChange={(open) => {
+                setAddMenuOpen(open);
+                if (open) {
+                  setAddTooltipOpen(false);
+                } else {
+                  addMenuClosedRef.current = true;
+                  setTimeout(() => { addMenuClosedRef.current = false; }, 200);
+                }
+              }}>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-48">
+                  {ADD_REPO_MENU_ITEMS.map((item) => (
+                    <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <TooltipContent side="top">Add project</TooltipContent>
+            </Tooltip>
+            {/* Search input */}
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search sessions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-8 pl-7 pr-7 text-sm bg-sidebar-accent/50 border border-sidebar-border rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={onOpenSettings}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Add repository</span>
+                  <Settings className="w-4 h-4" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-48">
-                {ADD_REPO_MENU_ITEMS.map((item) => (
-                  <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-              onClick={onOpenSettings}
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Settings (⌘,)</TooltipContent>
+            </Tooltip>
           </div>
         </>
       ) : (
@@ -619,7 +698,7 @@ function SortableWorkspaceItem({
 
         {/* Sessions */}
         <CollapsibleContent>
-          <div className="ml-5">
+          <div className="ml-5 overflow-hidden">
             {sessions.length === 0 ? (
               <div className="py-2 px-2 text-xs text-muted-foreground/70">
                 No active sessions
@@ -665,23 +744,26 @@ function SortableWorkspaceItem({
                         <div className="flex-1 min-w-0">
                           {/* First line: icon + branch name + stats/actions */}
                           <div className="flex items-center gap-1.5">
-                            {hasPR ? (
-                              <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                            ) : (
-                              <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                            )}
-                            <span className="text-sm font-medium truncate min-w-0 flex-shrink">
-                              {session.branch || session.name}
-                            </span>
-                            {/* Pinned indicator - fade out on hover */}
-                            {session.pinned && (
-                              <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
-                            )}
+                            {/* Branch name container - grows and truncates */}
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+                              {hasPR ? (
+                                <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              ) : (
+                                <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                              )}
+                              <span className="text-sm font-normal truncate flex-1 w-0 text-foreground/80">
+                                {session.branch || session.name}
+                              </span>
+                              {/* Pinned indicator - fade out on hover */}
+                              {session.pinned && (
+                                <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
+                              )}
+                            </div>
                             {/* Git line stats badge and actions container */}
-                            <div className="relative shrink-0 flex items-center min-w-[80px]">
+                            <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                <span className="text-[10px] px-1 py-px rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-emerald-400">+{session.stats!.additions}</span>
                                   <span className="text-red-400 ml-1">-{session.stats!.deletions}</span>
                                 </span>
@@ -746,8 +828,8 @@ function SortableWorkspaceItem({
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
-                        <Trash2 className="h-4 w-4" />
-                        Delete
+                        <Archive className="h-4 w-4" />
+                        Archive
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
