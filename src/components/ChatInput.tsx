@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,535 @@ const MODELS = [
 // Token budget for extended thinking mode
 const DEFAULT_THINKING_TOKENS = 10000;
 
-export function ChatInput() {
+// Common prompt patterns for suggestions
+const COMMON_PATTERNS = [
+  // Bug fixing & Debugging
+  'Fix the bug in',
+  'Fix the issue with',
+  'Fix the error in',
+  'Debug the',
+  'Debug why',
+  'Find the bug in',
+  'Find out why',
+  'Investigate why',
+  'Troubleshoot the',
+  'Figure out why',
+  'The tests are failing because',
+  'This is broken because',
+  'Why is this not working',
+  'Why does this fail',
+  'Why am I getting this error',
+
+  // Testing
+  'Add tests for',
+  'Add unit tests for',
+  'Add integration tests for',
+  'Add e2e tests for',
+  'Write tests for',
+  'Write unit tests for',
+  'Write a test that',
+  'Create tests for',
+  'Test the',
+  'Add test coverage for',
+  'Mock the',
+  'Add a snapshot test for',
+  'Add edge case tests for',
+
+  // Refactoring
+  'Refactor the',
+  'Refactor this to',
+  'Clean up the',
+  'Simplify the',
+  'Simplify this code',
+  'Extract a function for',
+  'Extract a component for',
+  'Extract this into',
+  'Split this into',
+  'Consolidate the',
+  'Merge these',
+  'Deduplicate the',
+  'Remove duplication in',
+  'Make this more readable',
+  'Improve the readability of',
+  'Reduce complexity in',
+
+  // Implementation
+  'Implement',
+  'Implement a function that',
+  'Implement a method that',
+  'Implement the logic for',
+  'Implement support for',
+  'Add a function that',
+  'Add a method that',
+  'Add a feature to',
+  'Add support for',
+  'Add the ability to',
+  'Add functionality to',
+  'Build a',
+  'Create a',
+  'Create a function that',
+  'Create a method that',
+  'Create a helper for',
+  'Create a utility for',
+  'Create a hook for',
+  'Create a service for',
+  'Create a class for',
+  'Write a function that',
+  'Write a script that',
+  'Write code to',
+  'Make it so that',
+  'I need to',
+  'I want to',
+  'Can you',
+  'Please',
+
+  // Components & UI
+  'Create a component for',
+  'Create a new component that',
+  'Add a component for',
+  'Build a component that',
+  'Add a button that',
+  'Add a form for',
+  'Add a modal for',
+  'Add a dialog for',
+  'Add a dropdown for',
+  'Add a tooltip for',
+  'Add a sidebar',
+  'Add a header',
+  'Add a footer',
+  'Add a navigation',
+  'Add a loading state',
+  'Add a loading spinner',
+  'Add an empty state',
+  'Add an error state',
+  'Add pagination to',
+  'Add infinite scroll to',
+  'Add drag and drop to',
+  'Add a search bar',
+  'Add filtering to',
+  'Add sorting to',
+
+  // Styling & CSS
+  'Style the',
+  'Add styles for',
+  'Update the styles for',
+  'Fix the styling of',
+  'Add responsive styles for',
+  'Make this responsive',
+  'Add dark mode support',
+  'Add animation to',
+  'Add a transition to',
+  'Center the',
+  'Align the',
+  'Add spacing to',
+  'Add padding to',
+  'Add margin to',
+
+  // Updates & Changes
+  'Update the',
+  'Update this to',
+  'Change the',
+  'Change this to',
+  'Modify the',
+  'Modify this to',
+  'Edit the',
+  'Adjust the',
+  'Tweak the',
+  'Rename',
+  'Move the',
+  'Move this to',
+  'Replace',
+  'Convert this to',
+  'Convert the',
+  'Transform the',
+  'Migrate the',
+  'Migrate this to',
+  'Upgrade the',
+  'Upgrade to',
+
+  // Removal & Cleanup
+  'Remove the',
+  'Remove this',
+  'Delete the',
+  'Delete this',
+  'Get rid of',
+  'Clean up',
+  'Remove unused',
+  'Remove dead code',
+  'Remove deprecated',
+
+  // Error Handling
+  'Add error handling to',
+  'Add error handling for',
+  'Handle the error',
+  'Handle errors in',
+  'Handle the case when',
+  'Handle edge cases in',
+  'Add try catch to',
+  'Add validation for',
+  'Add input validation to',
+  'Validate the',
+  'Add null checks to',
+  'Add boundary checks',
+  'Add fallback for',
+  'Add a default value for',
+
+  // Performance
+  'Optimize the',
+  'Optimize the performance of',
+  'Improve the performance of',
+  'Speed up the',
+  'Make this faster',
+  'Reduce the bundle size',
+  'Add memoization to',
+  'Add caching to',
+  'Cache the',
+  'Lazy load the',
+  'Add debouncing to',
+  'Add throttling to',
+  'Reduce re-renders in',
+  'Fix the memory leak in',
+
+  // Documentation
+  'Add documentation for',
+  'Add docs for',
+  'Document the',
+  'Add comments to',
+  'Add JSDoc to',
+  'Add a README for',
+  'Update the README',
+  'Explain the',
+  'Add inline comments to',
+  'Add type documentation for',
+
+  // Types & TypeScript
+  'Add types for',
+  'Add type annotations to',
+  'Fix the types for',
+  'Fix the type error in',
+  'Create a type for',
+  'Create an interface for',
+  'Define a type for',
+  'Add generics to',
+  'Make this type-safe',
+  'Add strict types to',
+
+  // API & Backend
+  'Add an API endpoint for',
+  'Create an API for',
+  'Create an endpoint for',
+  'Add a route for',
+  'Fetch data from',
+  'Send data to',
+  'Call the API',
+  'Make an API call to',
+  'Add a GET endpoint for',
+  'Add a POST endpoint for',
+  'Add a PUT endpoint for',
+  'Add a DELETE endpoint for',
+  'Handle the API response',
+  'Parse the response from',
+
+  // Database
+  'Add a database query for',
+  'Create a query that',
+  'Write a query to',
+  'Add a migration for',
+  'Create a migration that',
+  'Add an index on',
+  'Add a foreign key to',
+  'Create a table for',
+  'Update the schema to',
+  'Add a column for',
+  'Query the database for',
+
+  // Authentication & Security
+  'Add authentication to',
+  'Add authorization for',
+  'Add login functionality',
+  'Add logout functionality',
+  'Add password reset',
+  'Add session management',
+  'Add JWT support',
+  'Add OAuth support',
+  'Secure the',
+  'Add CSRF protection',
+  'Add rate limiting to',
+  'Sanitize the input',
+  'Escape the output',
+  'Add encryption for',
+
+  // State Management
+  'Add state for',
+  'Create a store for',
+  'Add a reducer for',
+  'Add an action for',
+  'Update the state when',
+  'Manage the state of',
+  'Add a context for',
+  'Add a provider for',
+  'Persist the state',
+  'Reset the state',
+  'Sync the state with',
+
+  // Events & Handlers
+  'Add a handler for',
+  'Add an event listener for',
+  'Handle the click event',
+  'Handle the submit event',
+  'Handle the change event',
+  'Handle keyboard events',
+  'Add keyboard shortcuts',
+  'Add hotkeys for',
+  'Listen for',
+  'Subscribe to',
+  'Emit an event when',
+
+  // Git & Version Control
+  'Commit these changes',
+  'Create a commit for',
+  'Create a branch for',
+  'Merge the',
+  'Rebase onto',
+  'Cherry-pick the',
+  'Resolve the merge conflict',
+  'Squash the commits',
+  'Revert the',
+  'Undo the last commit',
+
+  // Configuration
+  'Configure the',
+  'Add configuration for',
+  'Set up the',
+  'Initialize the',
+  'Add environment variables for',
+  'Add settings for',
+  'Create a config file for',
+  'Update the config to',
+
+  // Dependencies
+  'Add the dependency',
+  'Install the',
+  'Update the dependency',
+  'Remove the dependency',
+  'Upgrade the package',
+  'Fix the dependency conflict',
+  'Add a peer dependency',
+
+  // Logging & Monitoring
+  'Add logging to',
+  'Add logs for',
+  'Log the',
+  'Add debug logs to',
+  'Add error logging to',
+  'Add metrics for',
+  'Add monitoring for',
+  'Track the',
+  'Add analytics for',
+
+  // Questions - Explanation
+  'Explain how',
+  'Explain the',
+  'Explain this code',
+  'Explain what',
+  'Explain why',
+  'What does',
+  'What is',
+  'What are',
+  'What happens when',
+  'What would happen if',
+  'What is the difference between',
+  'What is the purpose of',
+  'What is the best way to',
+  'What are the options for',
+
+  // Questions - Why
+  'Why is',
+  'Why does',
+  'Why do',
+  'Why are',
+  'Why would',
+  'Why should',
+  'Why not',
+  'Why did',
+
+  // Questions - How
+  'How do I',
+  'How does',
+  'How can I',
+  'How would I',
+  'How should I',
+  'How to',
+  'How is',
+  'How are',
+
+  // Questions - Other
+  'Where is',
+  'Where does',
+  'Where should',
+  'When should I',
+  'When to',
+  'Which is better',
+  'Should I',
+  'Can I',
+  'Is it possible to',
+  'Is there a way to',
+  'Is this the right way to',
+
+  // Code Review
+  'Review the code in',
+  'Review this code',
+  'Check the code for',
+  'Find issues in',
+  'Look for bugs in',
+  'Audit the',
+  'Analyze the',
+  'Evaluate the',
+  'Suggest improvements for',
+  'What can be improved in',
+
+  // File Operations
+  'Read the file',
+  'Write to the file',
+  'Create a file for',
+  'Delete the file',
+  'Move the file to',
+  'Rename the file to',
+  'Copy the file to',
+  'Parse the file',
+  'Generate a file for',
+
+  // Async & Promises
+  'Add async/await to',
+  'Convert to async/await',
+  'Handle the promise',
+  'Add a promise for',
+  'Wait for',
+  'Run in parallel',
+  'Run sequentially',
+  'Add concurrency to',
+
+  // Architecture
+  'Design a',
+  'Architect the',
+  'Plan the',
+  'Structure the',
+  'Organize the',
+  'Set up the folder structure for',
+  'Add a layer for',
+  'Separate concerns in',
+  'Add dependency injection',
+
+  // Integration
+  'Integrate with',
+  'Connect to',
+  'Hook up the',
+  'Wire up the',
+  'Link the',
+  'Add webhook support for',
+  'Add SSO with',
+  'Add OAuth with',
+
+  // Deployment
+  'Deploy the',
+  'Add deployment scripts for',
+  'Set up CI/CD for',
+  'Add Docker support',
+  'Create a Dockerfile for',
+  'Add Kubernetes config for',
+  'Configure the build for',
+  'Add a build script for',
+
+  // Misc
+  'Show me',
+  'List all',
+  'Find all',
+  'Search for',
+  'Count the',
+  'Calculate the',
+  'Compare the',
+  'Sort the',
+  'Filter the',
+  'Group the',
+  'Format the',
+  'Serialize the',
+  'Deserialize the',
+  'Encode the',
+  'Decode the',
+  'Compress the',
+  'Generate a',
+  'Generate random',
+  'Generate unique',
+];
+
+// Get suggestion based on current input
+function getSuggestion(input: string, previousPrompts: string[]): string | null {
+  if (!input || input.length < 2) return null;
+
+  const lowerInput = input.toLowerCase();
+
+  // 1. Check if full input matches previous prompts (highest priority)
+  for (const prompt of previousPrompts) {
+    if (prompt.toLowerCase().startsWith(lowerInput) && prompt.length > input.length) {
+      return prompt.slice(input.length);
+    }
+  }
+
+  // 2. Check if full input matches common patterns
+  for (const pattern of COMMON_PATTERNS) {
+    if (pattern.toLowerCase().startsWith(lowerInput) && pattern.length > input.length) {
+      return pattern.slice(input.length);
+    }
+  }
+
+  // 3. Smart mid-sentence matching: check last N words against pattern starts
+  // Split by whitespace and get trailing portion
+  const words = input.split(/\s+/);
+  if (words.length >= 1) {
+    // Try matching from the last 1, 2, 3, 4, 5 words
+    for (let wordsToMatch = Math.min(5, words.length); wordsToMatch >= 1; wordsToMatch--) {
+      const lastWords = words.slice(-wordsToMatch).join(' ');
+      const lowerLastWords = lastWords.toLowerCase();
+
+      // Skip very short matches (less than 2 chars)
+      if (lowerLastWords.length < 2) continue;
+
+      // Check patterns that start with these last words
+      for (const pattern of COMMON_PATTERNS) {
+        const lowerPattern = pattern.toLowerCase();
+        if (lowerPattern.startsWith(lowerLastWords) && pattern.length > lastWords.length) {
+          // Return only the completion part
+          return pattern.slice(lastWords.length);
+        }
+      }
+    }
+  }
+
+  // 4. Check if input ends with a trigger word that commonly precedes patterns
+  const triggerEndings = [
+    { trigger: ' to ', patterns: ['add', 'fix', 'update', 'remove', 'create', 'implement', 'refactor'] },
+    { trigger: ' the ', patterns: ['bug', 'code', 'function', 'component', 'error', 'issue', 'test'] },
+    { trigger: ' a ', patterns: ['function', 'component', 'test', 'method', 'class', 'hook', 'button', 'form'] },
+    { trigger: ' for ', patterns: ['the', 'this', 'user', 'error', 'authentication', 'validation'] },
+    { trigger: ' with ', patterns: ['the', 'a', 'error', 'async', 'proper'] },
+    { trigger: ' in ', patterns: ['the', 'this', 'my'] },
+  ];
+
+  for (const { trigger, patterns } of triggerEndings) {
+    if (lowerInput.endsWith(trigger)) {
+      // Suggest the first common word that follows this trigger
+      return patterns[0];
+    }
+  }
+
+  return null;
+}
+
+interface ChatInputProps {
+  onMessageSubmit?: () => void;
+}
+
+export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [isSending, setIsSending] = useState(false);
@@ -48,7 +576,9 @@ export function ChatInput() {
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const ghostTextRef = useRef<HTMLSpanElement>(null);
 
   const {
     selectedConversationId,
@@ -67,6 +597,28 @@ export function ChatInput() {
 
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
+
+  // Get all messages for the current session to extract previous user prompts
+  const allMessages = useAppStore((s) => s.messages);
+  const sessionConversationIds = useMemo(
+    () => new Set(conversations.filter((c) => c.sessionId === selectedSessionId).map((c) => c.id)),
+    [conversations, selectedSessionId]
+  );
+  const previousPrompts = useMemo(() => {
+    // Get unique user messages from this session, most recent first
+    const userMessages = allMessages
+      .filter((m) => m.role === 'user' && sessionConversationIds.has(m.conversationId))
+      .map((m) => m.content)
+      .reverse();
+    // Deduplicate while preserving order
+    return [...new Set(userMessages)].slice(0, 50); // Keep last 50 unique prompts
+  }, [allMessages, sessionConversationIds]);
+
+  // Calculate suggestion when message changes
+  useEffect(() => {
+    const newSuggestion = getSuggestion(message, previousPrompts);
+    setSuggestion(newSuggestion);
+  }, [message, previousPrompts]);
 
   // Check if currently streaming
   const isStreaming = selectedConversationId
@@ -202,6 +754,10 @@ export function ChatInput() {
     setMessage('');
     setIsSending(true);
 
+    // Notify parent to scroll to bottom when user submits a message
+    onMessageSubmit?.();
+    window.dispatchEvent(new CustomEvent('chat-message-submitted'));
+
     try {
       // Check if this is a new conversation (no messages yet) or no conversation selected
       // In either case, we need to create via API since local conversations don't exist on backend
@@ -299,6 +855,13 @@ export function ChatInput() {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Tab to accept suggestion
+    if (e.key === 'Tab' && suggestion && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      setMessage(message + suggestion);
+      setSuggestion(null);
+      return;
+    }
     // ⌘⇧↵ to approve plan
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && awaitingPlanApproval) {
       e.preventDefault();
@@ -309,6 +872,11 @@ export function ChatInput() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
+    }
+    // Escape to dismiss suggestion
+    if (e.key === 'Escape' && suggestion) {
+      e.preventDefault();
+      setSuggestion(null);
     }
   };
 
@@ -381,8 +949,34 @@ export function ChatInput() {
           </div>
         )}
 
-        {/* Text Input with Cmd+L hint */}
+        {/* Text Input with Cmd+L hint and ghost text */}
         <div className="relative">
+          {/* Ghost text overlay - must match textarea styling exactly for proper wrapping */}
+          <div
+            className="absolute inset-0 px-3 py-2 pointer-events-none overflow-hidden text-base md:text-sm"
+            aria-hidden="true"
+            style={{
+              // Match textarea's default line-height and font
+              lineHeight: '1.5',
+              fontFamily: 'inherit',
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+            }}
+          >
+            <span className="whitespace-pre-wrap">
+              {/* Invisible text matching user input to position the suggestion */}
+              <span className="invisible">{message}</span>
+              {/* Ghost suggestion text */}
+              {suggestion && (
+                <span
+                  ref={ghostTextRef}
+                  className="text-muted-foreground/40"
+                >
+                  {suggestion}
+                </span>
+              )}
+            </span>
+          </div>
           <Textarea
             ref={textareaRef}
             value={message}
@@ -392,14 +986,22 @@ export function ChatInput() {
             className={cn(
               'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
               'bg-transparent dark:bg-transparent',
-              'placeholder:text-muted-foreground/60'
+              'placeholder:text-muted-foreground/60',
+              // Make textarea background transparent to show ghost text
+              'relative z-10'
             )}
             disabled={!selectedSessionId || isSending || isStreaming}
           />
           {/* Cmd+L hint */}
-          <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none">
+          <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
             ⌘L to focus
           </div>
+          {/* Tab hint when suggestion is visible */}
+          {suggestion && (
+            <div className="absolute bottom-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
+              Tab to accept
+            </div>
+          )}
         </div>
 
         {/* Toolbar inside input */}

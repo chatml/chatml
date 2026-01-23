@@ -12,6 +12,7 @@ import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
 
 import { McpServersPanel } from '@/components/McpServersPanel';
+import { ReviewPanel } from '@/components/ReviewPanel';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -71,6 +72,7 @@ export function ChangesPanel() {
   const commentStats = useFileCommentStats(selectedSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
+  const updateSession = useAppStore((s) => s.updateSession);
   const [selectedTab, setSelectedTab] = useState('changes');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -88,10 +90,25 @@ export function ChangesPanel() {
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
+
+      // Update session stats in the store
+      if (data && data.length > 0) {
+        const stats = data.reduce(
+          (acc, change) => ({
+            additions: acc.additions + change.additions,
+            deletions: acc.deletions + change.deletions,
+          }),
+          { additions: 0, deletions: 0 }
+        );
+        updateSession(selectedSessionId, { stats });
+      } else {
+        // Clear stats if no changes
+        updateSession(selectedSessionId, { stats: undefined });
+      }
     } catch (error) {
       console.error('Failed to fetch changes:', error);
     }
-  }, [selectedWorkspaceId, selectedSessionId]);
+  }, [selectedWorkspaceId, selectedSessionId, updateSession]);
 
   // Debounced refetch for file change events
   const debouncedFetchChanges = useCallback(() => {
@@ -417,6 +434,14 @@ export function ChangesPanel() {
           )}
         </Button>
         <Button
+          variant={selectedTab === 'review' ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-6 text-xs px-2 shrink-0"
+          onClick={() => setSelectedTab('review')}
+        >
+          Review
+        </Button>
+        <Button
           variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
           size="sm"
           className="h-6 text-xs px-2 shrink-0"
@@ -536,6 +561,8 @@ export function ChangesPanel() {
                 </div>
               </ScrollArea>
             )
+          ) : selectedTab === 'review' ? (
+            <ReviewPanel onFileSelect={handleFileSelect} />
           ) : selectedTab === 'checks' ? (
             <div className="h-full px-1.5">
               <GitStatusSection onSendMessage={handleGitActionMessage} />

@@ -10,6 +10,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+import {
   ChevronLeft,
   ChevronRight,
   GitBranch,
@@ -20,6 +25,9 @@ import {
   Code,
   PanelLeft,
   PanelRight,
+  Folder,
+  Calendar,
+  Layers,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -41,6 +49,7 @@ export function TopBar({
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
+  const workspaceSessionCount = sessions.filter((s) => s.workspaceId === selectedWorkspaceId && !s.archived).length;
 
   const formatCost = (cost: number) => {
     return `$${cost.toFixed(2)}`;
@@ -104,7 +113,39 @@ export function TopBar({
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 ml-2 text-sm">
-        <span className="text-purple-400 font-medium">{selectedWorkspace.name}</span>
+        <HoverCard>
+          <HoverCardTrigger asChild>
+            <span className="text-purple-400 font-medium cursor-default hover:text-purple-300 transition-colors">
+              {selectedWorkspace.name}
+            </span>
+          </HoverCardTrigger>
+          <HoverCardContent align="start" className="w-80">
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold">{selectedWorkspace.name}</h4>
+                <p className="text-xs text-muted-foreground">Workspace</p>
+              </div>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-start gap-2">
+                  <Folder className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                  <span className="text-muted-foreground break-all">{selectedWorkspace.path}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">Default branch: <span className="text-foreground">{selectedWorkspace.defaultBranch}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">{workspaceSessionCount} active session{workspaceSessionCount !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">Added {new Date(selectedWorkspace.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+          </HoverCardContent>
+        </HoverCard>
         <ChevronRight className="h-3 w-3 text-muted-foreground" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
