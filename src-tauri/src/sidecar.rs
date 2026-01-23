@@ -113,6 +113,14 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
         sidecar_command = sidecar_command.env("CHATML_DEV_ORIGIN", "http://localhost:3100");
     }
 
+    // Pass GitHub OAuth credentials to sidecar (if set)
+    if let Ok(client_id) = std::env::var("GITHUB_CLIENT_ID") {
+        sidecar_command = sidecar_command.env("GITHUB_CLIENT_ID", &client_id);
+    }
+    if let Ok(client_secret) = std::env::var("GITHUB_CLIENT_SECRET") {
+        sidecar_command = sidecar_command.env("GITHUB_CLIENT_SECRET", &client_secret);
+    }
+
     let (mut rx, child) = sidecar_command
         .spawn()
         .map_err(|e| AppError::Sidecar(format!("Failed to spawn sidecar: {}", e)))?;
