@@ -467,10 +467,28 @@ streamingState: cleanedStreamingState,
     const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
 
+    const removedConv = state.conversations.find((c) => c.id === id);
+    const newConversations = state.conversations.filter((c) => c.id !== id);
+
+    // Select another conversation if we're removing the selected one
+    let newSelectedConversationId = state.selectedConversationId;
+    if (state.selectedConversationId === id && removedConv) {
+      // Find conversations from the same session
+      const sessionConvs = newConversations.filter((c) => c.sessionId === removedConv.sessionId);
+      // Find the position of the removed conversation among session conversations
+      const oldSessionConvs = state.conversations.filter((c) => c.sessionId === removedConv.sessionId);
+      const removedIdx = oldSessionConvs.findIndex((c) => c.id === id);
+      // Select adjacent conversation: prefer next, then previous
+      newSelectedConversationId = sessionConvs[removedIdx]?.id
+        ?? sessionConvs[removedIdx - 1]?.id
+        ?? sessionConvs[0]?.id
+        ?? null;
+    }
+
     return {
-      conversations: state.conversations.filter((c) => c.id !== id),
+      conversations: newConversations,
       messages: state.messages.filter((m) => m.conversationId !== id),
-      selectedConversationId: state.selectedConversationId === id ? null : state.selectedConversationId,
+      selectedConversationId: newSelectedConversationId,
       streamingState: remainingStreamingState,
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
@@ -551,16 +569,20 @@ streamingState: cleanedStreamingState,
   }),
 
   closeFileTab: (id) => set((state) => {
+    const closedIdx = state.fileTabs.findIndex((t) => t.id === id);
     const newTabs = state.fileTabs.filter((t) => t.id !== id);
-    let newSelectedId = state.selectedFileTabId;
-    if (state.selectedFileTabId === id) {
-      // Select adjacent tab or null
-      const idx = state.fileTabs.findIndex((t) => t.id === id);
-      newSelectedId = newTabs[idx]?.id || newTabs[idx - 1]?.id || null;
+
+    // Only update selection if we're closing the currently selected tab
+    if (state.selectedFileTabId !== id) {
+      return { fileTabs: newTabs };
     }
+
+    // Try to select adjacent tab: prefer next, then previous
+    const nextTab = newTabs[closedIdx] ?? newTabs[closedIdx - 1];
+
     return {
       fileTabs: newTabs,
-      selectedFileTabId: newSelectedId,
+      selectedFileTabId: nextTab?.id ?? null,
     };
   }),
 

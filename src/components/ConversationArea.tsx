@@ -59,7 +59,7 @@ import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
-import { getSessionFileContent, getSessionFileDiff } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, createConversation } from '@/lib/api';
 import { Terminal } from 'lucide-react';
 
 interface ConversationAreaProps {
@@ -92,6 +92,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
+  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const streamingState = useAppStore((s) => s.streamingState);
 
@@ -378,23 +379,46 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [currentFileTab, updateFileTab]);
 
-  const handleNewConversation = (type: 'task' | 'review' | 'chat' = 'task') => {
-    if (!selectedSessionId) return;
-    const newConversation = {
-      id: crypto.randomUUID(),
-      sessionId: selectedSessionId,
-      type,
-      name: 'Untitled',
-      status: 'idle' as const,
-      messages: [],
-      toolSummary: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    addConversation(newConversation);
-    selectConversation(newConversation.id);
-    selectFileTab(null); // Deselect file tab
-  };
+  const handleNewConversation = useCallback(async (type: 'task' | 'review' | 'chat' = 'task') => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    try {
+      // Call backend API to create conversation with proper setupInfo
+      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, { type });
+
+      // Add to store with messages from backend (includes setupInfo)
+      // addConversation automatically adds conversation.messages to the messages array
+      addConversation({
+        id: newConv.id,
+        sessionId: newConv.sessionId,
+        type: newConv.type,
+        name: newConv.name,
+        status: newConv.status,
+        messages: newConv.messages.map((m) => ({
+          id: m.id,
+          conversationId: newConv.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          setupInfo: m.setupInfo,
+          runSummary: m.runSummary,
+          timestamp: m.timestamp,
+        })),
+        toolSummary: newConv.toolSummary.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          target: t.target,
+          success: t.success,
+        })),
+        createdAt: newConv.createdAt,
+        updatedAt: newConv.updatedAt,
+      });
+
+      selectConversation(newConv.id);
+      selectFileTab(null); // Deselect file tab
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation, selectFileTab]);
 
   const handleSelectConversation = useCallback((id: string) => {
     selectConversation(id);

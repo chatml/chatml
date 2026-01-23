@@ -828,8 +828,8 @@ function SortableWorkspaceItem({
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
-                        <Trash2 className="h-4 w-4" />
-                        Delete
+                        <Archive className="h-4 w-4" />
+                        Archive
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>
