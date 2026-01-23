@@ -47,7 +47,7 @@ export function createCommentTools(context: WorkspaceContext) {
             };
           }
 
-          const comment = await response.json();
+          await response.json();
           return {
             content: [{
               type: "text",
@@ -103,7 +103,14 @@ export function createCommentTools(context: WorkspaceContext) {
           }
 
           // Format comments for display
-          const formatted = comments.map((c: any) => {
+          interface CommentResponse {
+            filePath: string;
+            lineNumber: number;
+            content: string;
+            severity?: string;
+            resolved?: boolean;
+          }
+          const formatted = comments.map((c: CommentResponse) => {
             const severityTag = c.severity ? `[${c.severity.toUpperCase()}] ` : "";
             const resolved = c.resolved ? " (resolved)" : "";
             return `${c.filePath}:${c.lineNumber} - ${severityTag}${c.content}${resolved}`;
@@ -157,12 +164,17 @@ export function createCommentTools(context: WorkspaceContext) {
             };
           }
 
-          const formatted = stats.map((s: any) =>
+          interface StatResponse {
+            filePath: string;
+            total: number;
+            unresolved: number;
+          }
+          const formatted = stats.map((s: StatResponse) =>
             `${s.filePath}: ${s.unresolved}/${s.total} unresolved`
           ).join("\n");
 
-          const totalUnresolved = stats.reduce((sum: number, s: any) => sum + s.unresolved, 0);
-          const totalComments = stats.reduce((sum: number, s: any) => sum + s.total, 0);
+          const totalUnresolved = stats.reduce((sum: number, s: StatResponse) => sum + s.unresolved, 0);
+          const totalComments = stats.reduce((sum: number, s: StatResponse) => sum + s.total, 0);
 
           return {
             content: [{
