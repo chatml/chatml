@@ -1,9 +1,11 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -242,6 +244,20 @@ func (h *Hub) BroadcastJSON(data interface{}) {
 }
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Validate token from query parameter.
+	// Note: WebSocket connections cannot use custom HTTP headers, so we pass the token
+	// as a query parameter. This is a known trade-off - the token may appear in server
+	// access logs. In production, ensure logging does not capture query parameters,
+	// or configure log scrubbing for sensitive data.
+	expectedToken := os.Getenv("CHATML_AUTH_TOKEN")
+	if expectedToken != "" {
+		token := r.URL.Query().Get("token")
+		if subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)

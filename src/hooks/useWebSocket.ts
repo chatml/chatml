@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
+import { getAuthToken } from '@/lib/auth-token';
 
 // Type guards for WebSocket payload validation
 function isAgentEvent(payload: unknown): payload is AgentEvent {
@@ -313,7 +314,7 @@ export function useWebSocket(enabled: boolean = true) {
     finalizeStreamingMessage,
   ]);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     // Cancel any pending reconnect to prevent race condition
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -323,7 +324,11 @@ export function useWebSocket(enabled: boolean = true) {
     if (!enabledRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const ws = new WebSocket(WS_URL);
+    // Fetch auth token (awaits if not yet cached, uses cache otherwise)
+    // This ensures we always have the current token, even after sidecar restarts
+    const token = await getAuthToken();
+    const wsUrl = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       // Connected successfully

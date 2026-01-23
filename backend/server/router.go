@@ -25,6 +25,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(TokenAuthMiddleware)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

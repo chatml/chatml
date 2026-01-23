@@ -1,4 +1,5 @@
 import { HEALTH_CHECK_REQUEST_TIMEOUT_MS } from '@/lib/constants';
+import { getAuthToken } from '@/lib/auth-token';
 
 // API base URL - configurable via environment variable for non-Tauri builds
 export const API_BASE = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
@@ -15,6 +16,16 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+// Fetch helper that adds authentication token for Tauri builds
+async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = await getAuthToken();
+  const headers = new Headers(options.headers);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...options, headers });
 }
 
 // Helper to handle API responses consistently
@@ -53,13 +64,13 @@ export interface FileNodeDTO {
 }
 
 export async function listRepos(): Promise<RepoDTO[]> {
-  const res = await fetch(`${API_BASE}/api/repos`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos`);
   return handleResponse<RepoDTO[]>(res);
 }
 
 export async function addRepo(path: string): Promise<RepoDTO> {
   try {
-    const res = await fetch(`${API_BASE}/api/repos`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/repos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
@@ -74,11 +85,11 @@ export async function addRepo(path: string): Promise<RepoDTO> {
 }
 
 export async function deleteRepo(id: string): Promise<void> {
-  await fetch(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
+  await fetchWithAuth(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
 }
 
 export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
-  const res = await fetch(`${API_BASE}/api/repos/${repoId}/files?depth=${depth}`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/files?depth=${depth}`);
   return handleResponse<FileNodeDTO[]>(res);
 }
 
@@ -90,7 +101,7 @@ export interface FileContentDTO {
 }
 
 export async function getRepoFileContent(repoId: string, filePath: string): Promise<FileContentDTO> {
-  const res = await fetch(`${API_BASE}/api/repos/${repoId}/file?path=${encodeURIComponent(filePath)}`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/file?path=${encodeURIComponent(filePath)}`);
   return handleResponse<FileContentDTO>(res);
 }
 
@@ -108,7 +119,7 @@ export async function getFileDiff(repoId: string, filePath: string, baseBranch?:
   if (baseBranch) {
     params.append('base', baseBranch);
   }
-  const res = await fetch(`${API_BASE}/api/repos/${repoId}/diff?${params.toString()}`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/diff?${params.toString()}`);
   return handleResponse<FileDiffDTO>(res);
 }
 
@@ -118,7 +129,7 @@ export async function getSessionFileDiff(
   filePath: string
 ): Promise<FileDiffDTO> {
   const params = new URLSearchParams({ path: filePath });
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`
   );
   return handleResponse<FileDiffDTO>(res);
@@ -130,7 +141,7 @@ export async function getSessionFileContent(
   sessionId: string,
   filePath: string
 ): Promise<FileContentDTO> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
   );
   return handleResponse<FileContentDTO>(res);
@@ -141,7 +152,7 @@ export async function listSessionFiles(
   sessionId: string,
   depth: number | 'all' = 'all'
 ): Promise<FileNodeDTO[]> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/files?maxDepth=${depth}`
   );
   return handleResponse<FileNodeDTO[]>(res);
@@ -172,7 +183,7 @@ export interface SessionDTO {
 }
 
 export async function listSessions(workspaceId: string): Promise<SessionDTO[]> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions`);
   return handleResponse<SessionDTO[]>(res);
 }
 
@@ -180,7 +191,7 @@ export async function createSession(
   workspaceId: string,
   data: { name?: string; branch?: string; worktreePath?: string; task?: string } = {}
 ): Promise<SessionDTO> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -193,7 +204,7 @@ export async function updateSession(
   sessionId: string,
   updates: Partial<Omit<SessionDTO, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt'>>
 ): Promise<SessionDTO> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
@@ -202,7 +213,7 @@ export async function updateSession(
 }
 
 export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
+  await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
 }
 
 export interface FileChangeDTO {
@@ -213,7 +224,7 @@ export interface FileChangeDTO {
 }
 
 export async function getSessionChanges(workspaceId: string, sessionId: string): Promise<FileChangeDTO[]> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/changes`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/changes`);
   return handleResponse<FileChangeDTO[]>(res);
 }
 
@@ -251,7 +262,7 @@ export interface GitStatusDTO {
 }
 
 export async function getGitStatus(workspaceId: string, sessionId: string): Promise<GitStatusDTO> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/git-status`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/git-status`);
   return handleResponse<GitStatusDTO>(res);
 }
 
@@ -260,7 +271,7 @@ export async function sendSessionMessage(
   sessionId: string,
   content: string
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/message`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
@@ -272,12 +283,12 @@ export async function sendSessionMessage(
 }
 
 export async function listAgents(repoId: string): Promise<AgentDTO[]> {
-  const res = await fetch(`${API_BASE}/api/repos/${repoId}/agents`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/agents`);
   return handleResponse<AgentDTO[]>(res);
 }
 
 export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO> {
-  const res = await fetch(`${API_BASE}/api/repos/${repoId}/agents`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ task }),
@@ -286,20 +297,20 @@ export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO
 }
 
 export async function stopAgent(agentId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/agents/${agentId}/stop`, { method: 'POST' });
+  await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/stop`, { method: 'POST' });
 }
 
 export async function getAgentDiff(agentId: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/agents/${agentId}/diff`);
+  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/diff`);
   return res.text();
 }
 
 export async function mergeAgent(agentId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/agents/${agentId}/merge`, { method: 'POST' });
+  await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/merge`, { method: 'POST' });
 }
 
 export async function deleteAgent(agentId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/agents/${agentId}`, { method: 'DELETE' });
+  await fetchWithAuth(`${API_BASE}/api/agents/${agentId}`, { method: 'DELETE' });
 }
 
 export async function checkHealth(): Promise<boolean> {
@@ -419,7 +430,7 @@ export async function listConversations(
   workspaceId: string,
   sessionId: string
 ): Promise<ConversationDTO[]> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`
   );
   return handleResponse<ConversationDTO[]>(res);
@@ -430,7 +441,7 @@ export async function createConversation(
   sessionId: string,
   data: { type?: 'task' | 'review' | 'chat'; message?: string; maxThinkingTokens?: number }
 ): Promise<ConversationDTO> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`,
     {
       method: 'POST',
@@ -442,7 +453,7 @@ export async function createConversation(
 }
 
 export async function getConversation(convId: string): Promise<ConversationDTO> {
-  const res = await fetch(`${API_BASE}/api/conversations/${convId}`);
+  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}`);
   return handleResponse<ConversationDTO>(res);
 }
 
@@ -450,7 +461,7 @@ export async function sendConversationMessage(
   convId: string,
   content: string
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/conversations/${convId}/messages`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
@@ -462,15 +473,15 @@ export async function sendConversationMessage(
 }
 
 export async function stopConversation(convId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/conversations/${convId}/stop`, { method: 'POST' });
+  await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/stop`, { method: 'POST' });
 }
 
 export async function deleteConversation(convId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
+  await fetchWithAuth(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
 }
 
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/conversations/${convId}/plan-mode`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/plan-mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
@@ -482,7 +493,7 @@ export async function setConversationPlanMode(convId: string, enabled: boolean):
 }
 
 export async function approvePlan(convId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/conversations/${convId}/approve-plan`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/approve-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -506,7 +517,7 @@ export interface FileTabDTO {
 }
 
 export async function listFileTabs(workspaceId: string): Promise<FileTabDTO[]> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/tabs`);
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs`);
   return handleResponse<FileTabDTO[]>(res);
 }
 
@@ -514,7 +525,7 @@ export async function saveFileTabs(
   workspaceId: string,
   tabs: FileTabDTO[]
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/tabs`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tabs }),
@@ -526,7 +537,7 @@ export async function saveFileTabs(
 }
 
 export async function deleteFileTab(workspaceId: string, tabId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/repos/${workspaceId}/tabs/${tabId}`, { method: 'DELETE' });
+  await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs/${tabId}`, { method: 'DELETE' });
 }
 
 // File save function
@@ -537,7 +548,7 @@ export async function saveFile(
   sessionId?: string
 ): Promise<void> {
   const params = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
-  const res = await fetch(`${API_BASE}/api/repos/${workspaceId}/file/save${params}`, {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/file/save${params}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, content }),

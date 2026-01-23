@@ -142,9 +142,11 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "base64 0.22.1",
  "log",
  "notify",
  "notify-debouncer-mini",
+ "rand 0.8.5",
  "sentry",
  "serde",
  "serde_json",
