@@ -163,7 +163,10 @@ mod tests {
 
         assert_eq!(state1.get_auth_token(), state2.get_auth_token());
         assert_eq!(state1.is_ready(), state2.is_ready());
-        assert_eq!(state1.should_minimize_to_tray(), state2.should_minimize_to_tray());
+        assert_eq!(
+            state1.should_minimize_to_tray(),
+            state2.should_minimize_to_tray()
+        );
     }
 
     #[test]
