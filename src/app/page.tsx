@@ -6,7 +6,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/OnboardingScreen';
-import { initAuth, listenForOAuthCallback } from '@/lib/auth';
+import { initAuth, listenForOAuthCallback, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/CloseFileConfirmDialog';
@@ -130,7 +130,14 @@ export default function Home() {
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode } = useSettingsStore();
 
-  const { isLoading: authLoading, isAuthenticated, setAuthenticated, setError } = useAuthStore();
+  const {
+    isLoading: authLoading,
+    isAuthenticated,
+    oauthState,
+    setAuthenticated,
+    completeOAuth,
+    failOAuth,
+  } = useAuthStore();
 
   // Initialize auth on mount
   useEffect(() => {
@@ -141,10 +148,11 @@ export default function Home() {
       try {
         unlistenOAuth = await listenForOAuthCallback(
           (result) => {
+            completeOAuth();
             setAuthenticated(true, result.user);
           },
           (error) => {
-            setError(error.message);
+            failOAuth(error.message);
           }
         );
       } catch {
@@ -165,7 +173,18 @@ export default function Home() {
     return () => {
       if (unlistenOAuth) unlistenOAuth();
     };
-  }, [setAuthenticated, setError]);
+  }, [setAuthenticated, completeOAuth, failOAuth]);
+
+  // OAuth timeout - fail if pending for too long
+  useEffect(() => {
+    if (oauthState !== 'pending') return;
+
+    const timeoutId = setTimeout(() => {
+      failOAuth('Authentication timed out. Please try again.');
+    }, OAUTH_TIMEOUT_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [oauthState, failOAuth]);
 
   // Use refs to avoid changing useEffect dependency array sizes
   const showBottomTerminalRef = useRef(showBottomTerminal);

@@ -188,8 +188,11 @@ pub fn run() {
                     for url in urls {
                         if url.scheme() == "chatml" && url.host_str() == Some("oauth") {
                             log::info!("Received OAuth callback URL: {}", url);
-                            // Emit to frontend for handling
+                            // Emit to frontend for handling and focus the window
                             if let Some(window) = app_handle.get_webview_window("main") {
+                                // Show and focus the window so user sees the result
+                                let _ = window.show();
+                                let _ = window.set_focus();
                                 let _ = window.emit("oauth-callback", url.to_string());
                             }
                         }
