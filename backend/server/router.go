@@ -20,7 +20,7 @@ import (
 func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, hub)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, hub, ghClient)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
@@ -74,6 +74,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Delete("/{id}/sessions/{sessionId}", h.DeleteSession)
 		r.Get("/{id}/sessions/{sessionId}/changes", h.GetSessionChanges)
 		r.Get("/{id}/sessions/{sessionId}/git-status", h.GetSessionGitStatus)
+		r.Get("/{id}/sessions/{sessionId}/pr-status", h.GetSessionPRStatus)
 		r.Get("/{id}/sessions/{sessionId}/diff", h.GetSessionFileDiff)
 		r.Get("/{id}/sessions/{sessionId}/file", h.GetSessionFileContent)
 		r.Get("/{id}/sessions/{sessionId}/files", h.ListSessionFiles)

@@ -1,0 +1,219 @@
+package github
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+// CheckStatus represents the aggregated status of CI checks
+type CheckStatus string
+
+const (
+	CheckStatusPending CheckStatus = "pending"
+	CheckStatusSuccess CheckStatus = "success"
+	CheckStatusFailure CheckStatus = "failure"
+	CheckStatusNone    CheckStatus = "none"
+)
+
+// CheckDetail represents a single CI check run
+type CheckDetail struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`     // "queued", "in_progress", "completed"
+	Conclusion string `json:"conclusion"` // "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
+}
+
+// PRDetails contains detailed information about a pull request
+type PRDetails struct {
+	Number         int           `json:"number"`
+	State          string        `json:"state"`         // "open", "closed"
+	Title          string        `json:"title"`
+	HTMLURL        string        `json:"htmlUrl"`
+	Mergeable      *bool         `json:"mergeable"`      // Can be null while GitHub computes it
+	MergeableState string        `json:"mergeableState"` // "clean", "dirty", "blocked", "unknown", "unstable"
+	CheckStatus    CheckStatus   `json:"checkStatus"`
+	CheckDetails   []CheckDetail `json:"checkDetails"`
+}
+
+// githubPR represents the GitHub API response for a pull request
+type githubPR struct {
+	Number         int    `json:"number"`
+	State          string `json:"state"`
+	Title          string `json:"title"`
+	HTMLURL        string `json:"html_url"`
+	Mergeable      *bool  `json:"mergeable"`
+	MergeableState string `json:"mergeable_state"`
+	Head           struct {
+		SHA string `json:"sha"`
+	} `json:"head"`
+}
+
+// githubCheckRuns represents the GitHub API response for check runs
+type githubCheckRuns struct {
+	TotalCount int `json:"total_count"`
+	CheckRuns  []struct {
+		Name       string  `json:"name"`
+		Status     string  `json:"status"`
+		Conclusion *string `json:"conclusion"`
+	} `json:"check_runs"`
+}
+
+// GetPRDetails fetches detailed information about a pull request including CI status
+func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber int) (*PRDetails, error) {
+	token := c.GetToken()
+	if token == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	// Fetch PR details
+	prURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", c.apiURL, owner, repo, prNumber)
+	req, err := http.NewRequestWithContext(ctx, "GET", prURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating PR request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching PR: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // PR not found
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var pr githubPR
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		return nil, fmt.Errorf("decoding PR: %w", err)
+	}
+
+	details := &PRDetails{
+		Number:         pr.Number,
+		State:          pr.State,
+		Title:          pr.Title,
+		HTMLURL:        pr.HTMLURL,
+		Mergeable:      pr.Mergeable,
+		MergeableState: pr.MergeableState,
+		CheckStatus:    CheckStatusNone,
+		CheckDetails:   []CheckDetail{},
+	}
+
+	// Fetch check runs for the PR's head commit
+	checksURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/check-runs", c.apiURL, owner, repo, pr.Head.SHA)
+	checksReq, err := http.NewRequestWithContext(ctx, "GET", checksURL, nil)
+	if err != nil {
+		// Don't fail completely if we can't get checks
+		return details, nil
+	}
+
+	checksReq.Header.Set("Authorization", "Bearer "+token)
+	checksReq.Header.Set("Accept", "application/vnd.github+json")
+
+	checksResp, err := c.httpClient.Do(checksReq)
+	if err != nil {
+		return details, nil
+	}
+	defer checksResp.Body.Close()
+
+	if checksResp.StatusCode == http.StatusOK {
+		var checkRuns githubCheckRuns
+		if err := json.NewDecoder(checksResp.Body).Decode(&checkRuns); err == nil {
+			details.CheckDetails = make([]CheckDetail, 0, len(checkRuns.CheckRuns))
+			hasFailure := false
+			hasPending := false
+
+			for _, run := range checkRuns.CheckRuns {
+				conclusion := ""
+				if run.Conclusion != nil {
+					conclusion = *run.Conclusion
+				}
+
+				details.CheckDetails = append(details.CheckDetails, CheckDetail{
+					Name:       run.Name,
+					Status:     run.Status,
+					Conclusion: conclusion,
+				})
+
+				// Determine overall check status
+				if run.Status != "completed" {
+					hasPending = true
+				} else if conclusion == "failure" || conclusion == "timed_out" || conclusion == "action_required" {
+					hasFailure = true
+				}
+			}
+
+			// Set aggregated status
+			if len(checkRuns.CheckRuns) == 0 {
+				details.CheckStatus = CheckStatusNone
+			} else if hasFailure {
+				details.CheckStatus = CheckStatusFailure
+			} else if hasPending {
+				details.CheckStatus = CheckStatusPending
+			} else {
+				details.CheckStatus = CheckStatusSuccess
+			}
+		}
+	}
+
+	return details, nil
+}
+
+// githubSearchResult represents the GitHub API response for PR search
+type githubSearchResult struct {
+	TotalCount int `json:"total_count"`
+	Items      []struct {
+		Number int `json:"number"`
+	} `json:"items"`
+}
+
+// FindPRForBranch finds an open PR for a given branch
+func (c *Client) FindPRForBranch(ctx context.Context, owner, repo, branch string) (int, error) {
+	token := c.GetToken()
+	if token == "" {
+		return 0, fmt.Errorf("not authenticated")
+	}
+
+	// Search for PRs with the given head branch
+	searchURL := fmt.Sprintf("%s/repos/%s/%s/pulls?head=%s:%s&state=open",
+		c.apiURL, owner, repo, owner, branch)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating search request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("searching PRs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var prs []githubPR
+	if err := json.NewDecoder(resp.Body).Decode(&prs); err != nil {
+		return 0, fmt.Errorf("decoding search results: %w", err)
+	}
+
+	if len(prs) == 0 {
+		return 0, nil // No open PR found
+	}
+
+	return prs[0].Number, nil
+}

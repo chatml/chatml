@@ -17,6 +17,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
 	"github.com/chatml/chatml-backend/session"
@@ -211,6 +212,7 @@ type Handlers struct {
 	dirCache         *DirListingCache
 	branchWatcher    *branch.Watcher
 	hub              *Hub // For broadcasting WebSocket events
+	ghClient         *github.Client
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -222,7 +224,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, hub *Hub) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, hub *Hub, ghClient *github.Client) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -240,6 +242,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		dirCache:         NewDirListingCache(dirCacheConfig.TTL),
 		branchWatcher:    bw,
 		hub:              hub,
+		ghClient:         ghClient,
 	}
 }
 
@@ -2232,4 +2235,64 @@ func (h *Handlers) DeleteReviewComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetSessionPRStatus returns PR details including CI check status for a session
+func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	// Get session
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	// Check if session has a PR
+	if session.PRStatus != "open" || session.PRNumber == 0 {
+		writeNotFound(w, "no open PR for this session")
+		return
+	}
+
+	// Get the workspace to find the repo details
+	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "workspace")
+		return
+	}
+
+	// Extract owner/repo from git remote
+	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
+	if err != nil {
+		writeInternalError(w, "failed to get GitHub remote", err)
+		return
+	}
+
+	// Check if GitHub client is available
+	if h.ghClient == nil {
+		writeInternalError(w, "GitHub client not configured", nil)
+		return
+	}
+
+	// Get PR details from GitHub
+	prDetails, err := h.ghClient.GetPRDetails(ctx, owner, repoName, session.PRNumber)
+	if err != nil {
+		writeInternalError(w, "failed to get PR details", err)
+		return
+	}
+	if prDetails == nil {
+		writeNotFound(w, "PR")
+		return
+	}
+
+	writeJSON(w, prDetails)
 }

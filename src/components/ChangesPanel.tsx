@@ -10,10 +10,19 @@ import { TodoPanel } from '@/components/TodoPanel';
 import { CheckpointTimeline } from '@/components/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
+import { PrimaryActionButton } from '@/components/PrimaryActionButton';
+import { useGitStatus } from '@/hooks/useGitStatus';
+import { usePRStatus } from '@/hooks/usePRStatus';
 
 import { McpServersPanel } from '@/components/McpServersPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -34,6 +43,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/stores/uiStore';
 import type { FileTab } from '@/lib/types';
 
 // Common binary file extensions
@@ -67,6 +77,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
+  const rightToolbarBg = useUIStore((state) => state.toolbarBackgrounds.right);
   const { openFileTab, updateFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
@@ -270,6 +281,16 @@ export function ChangesPanel() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
 
+  // Fetch git status for the primary action button
+  const { status: gitStatus } = useGitStatus(selectedWorkspaceId, selectedSessionId);
+
+  // Fetch PR details for the primary action button
+  const { prDetails } = usePRStatus(
+    selectedWorkspaceId,
+    selectedSessionId,
+    currentSession?.prStatus
+  );
+
   // Fetch files from session's worktree when session changes or tab switches to files
   useEffect(() => {
     if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
@@ -350,7 +371,7 @@ export function ChangesPanel() {
           'h-11 flex items-center gap-2 px-3 border-b shrink-0',
           hasActivePR && 'bg-green-500/15 border-green-500/30',
           hasConflictOrFailure && 'bg-red-500/15 border-red-500/30',
-          !hasActivePR && !hasConflictOrFailure && 'bg-muted/30'
+          !hasActivePR && !hasConflictOrFailure && rightToolbarBg
         )}
       >
         {hasActivePR ? (
@@ -400,22 +421,13 @@ export function ChangesPanel() {
           <Eye className="h-3.5 w-3.5" />
           Review
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'h-7 text-xs gap-1.5 border border-transparent transition-colors',
-            hasActivePR && 'text-green-600 dark:text-green-400 hover:border-green-500/50 hover:bg-green-500/10',
-            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:border-red-500/50 hover:bg-red-500/10',
-            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:border-primary/50 hover:bg-primary/10'
-          )}
-        >
-          <GitPullRequest className="h-3.5 w-3.5" />
-          Create PR
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <MoreVertical className="h-3.5 w-3.5" />
-        </Button>
+        <PrimaryActionButton
+          workspaceId={selectedWorkspaceId}
+          session={currentSession}
+          onSendMessage={handleGitActionMessage}
+          gitStatus={gitStatus}
+          prDetails={prDetails}
+        />
       </div>
 
       {/* Tabs Row */}
@@ -455,17 +467,26 @@ export function ChangesPanel() {
           className="h-6 text-xs px-2 shrink-0"
           onClick={() => setSelectedTab('files')}
         >
-          All files
+          Files
         </Button>
         <div className="flex-1 min-w-0" />
-        <div className="flex items-center shrink-0">
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            <SplitSquareHorizontal className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            <Search className="h-3 w-3" />
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>
+              <SplitSquareHorizontal className="h-4 w-4 mr-2" />
+              Split View
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
+              <Search className="h-4 w-4 mr-2" />
+              Search Files
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Resizable content area */}
