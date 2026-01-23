@@ -59,6 +59,7 @@ import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import { copyToClipboard } from '@/lib/tauri';
 import { getSessionFileContent, getSessionFileDiff } from '@/lib/api';
 import { Terminal } from 'lucide-react';
 
@@ -723,12 +724,10 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
   const [copied, setCopied] = useState(false);
 
   const copyContent = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
+    const success = await copyToClipboard(message.content);
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
     }
   }, [message.content]);
 

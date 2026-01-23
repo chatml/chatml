@@ -39,6 +39,8 @@
     "pty:allow-kill",
     "mcp-bridge:default",
     "deep-link:default",
-    "stronghold:default"
+    "stronghold:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
   ]
 }
