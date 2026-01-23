@@ -342,8 +342,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       {activeTab === 'workspaces' ? (
         <>
           {/* Workspace List */}
-          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]>div]:!h-full">
-            <div className="py-2 px-1 h-full flex flex-col">
+          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden [&>[data-slot=scroll-area-viewport]>div]:!h-full">
+            <div className="py-2 px-1 h-full w-full flex flex-col">
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
@@ -627,7 +627,7 @@ function SortableWorkspaceItem({
 
         {/* Sessions */}
         <CollapsibleContent>
-          <div className="ml-5">
+          <div className="ml-5 overflow-hidden">
             {sessions.length === 0 ? (
               <div className="py-2 px-2 text-xs text-muted-foreground/70">
                 No active sessions
@@ -673,23 +673,26 @@ function SortableWorkspaceItem({
                         <div className="flex-1 min-w-0">
                           {/* First line: icon + branch name + stats/actions */}
                           <div className="flex items-center gap-1.5">
-                            {hasPR ? (
-                              <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                            ) : (
-                              <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                            )}
-                            <span className="text-sm font-normal truncate min-w-0 flex-shrink">
-                              {session.branch || session.name}
-                            </span>
-                            {/* Pinned indicator - fade out on hover */}
-                            {session.pinned && (
-                              <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
-                            )}
+                            {/* Branch name container - grows and truncates */}
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+                              {hasPR ? (
+                                <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              ) : (
+                                <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                              )}
+                              <span className="text-sm font-normal truncate flex-1 w-0">
+                                {session.branch || session.name}
+                              </span>
+                              {/* Pinned indicator - fade out on hover */}
+                              {session.pinned && (
+                                <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
+                              )}
+                            </div>
                             {/* Git line stats badge and actions container */}
-                            <div className="relative shrink-0 flex items-center min-w-[80px]">
+                            <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                <span className="text-[10px] px-1 py-px rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-emerald-400">+{session.stats!.additions}</span>
                                   <span className="text-red-400 ml-1">-{session.stats!.deletions}</span>
                                 </span>
