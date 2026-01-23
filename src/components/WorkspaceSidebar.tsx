@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -52,6 +52,7 @@ import {
   FolderPlus,
   ChevronDown,
   FolderOpen,
+  Layers,
   Terminal,
   Trash2,
   Copy,
@@ -66,6 +67,8 @@ import {
   Globe,
   SquarePlus,
   Bot,
+  Search,
+  X,
 } from 'lucide-react';
 import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
@@ -78,6 +81,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 
 interface WorkspaceSidebarProps {
@@ -102,6 +110,10 @@ type SidebarTab = 'workspaces' | 'agents';
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>('workspaces');
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addTooltipOpen, setAddTooltipOpen] = useState(false);
+  const addMenuClosedRef = useRef(false);
   const { error: showError } = useToast();
 
   const menuHandlers = {
@@ -151,7 +163,16 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const getWorkspaceSessions = (workspaceId: string) => {
-    return sessions.filter((s) => s.workspaceId === workspaceId && !s.archived);
+    return sessions.filter((s) => {
+      if (s.workspaceId !== workspaceId || s.archived) return false;
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        s.name.toLowerCase().includes(term) ||
+        s.branch?.toLowerCase().includes(term) ||
+        s.task?.toLowerCase().includes(term)
+      );
+    });
   };
 
   const getInitial = (name: string) => {
@@ -299,15 +320,19 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       <div data-tauri-drag-region className="relative h-11 pl-20 pr-3 flex items-center justify-between border-b shrink-0">
         <span className="text-lg font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
         {onToggleSidebar && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onToggleSidebar}
-            title="Hide sidebar (⌘B)"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={onToggleSidebar}
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Hide sidebar (⌘B)</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
@@ -322,8 +347,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <FolderOpen className="h-3.5 w-3.5" />
-          Projects
+          <Layers className="h-3.5 w-3.5" />
+          Workspaces
         </button>
         <button
           onClick={() => setActiveTab('agents')}
@@ -384,7 +409,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     items={workspaces.map((w) => w.id)}
                     strategy={verticalListSortingStrategy}
                   >
-                    {workspaces.map((workspace) => (
+                    {workspaces
+                      .filter((workspace) => !searchTerm || getWorkspaceSessions(workspace.id).length > 0)
+                      .map((workspace) => (
                       <SortableWorkspaceItem
                         key={workspace.id}
                         workspace={workspace}
@@ -445,34 +472,78 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
           {/* Footer */}
           <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <Tooltip
+                open={addTooltipOpen}
+                onOpenChange={(open) => {
+                  if (open && (addMenuOpen || addMenuClosedRef.current)) {
+                    return;
+                  }
+                  setAddTooltipOpen(open);
+                }}
+              >
+              <DropdownMenu open={addMenuOpen} onOpenChange={(open) => {
+                setAddMenuOpen(open);
+                if (open) {
+                  setAddTooltipOpen(false);
+                } else {
+                  addMenuClosedRef.current = true;
+                  setTimeout(() => { addMenuClosedRef.current = false; }, 200);
+                }
+              }}>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-48">
+                  {ADD_REPO_MENU_ITEMS.map((item) => (
+                    <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <TooltipContent side="top">Add project</TooltipContent>
+            </Tooltip>
+            {/* Search input */}
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search sessions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-8 pl-7 pr-7 text-sm bg-sidebar-accent/50 border border-sidebar-border rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={onOpenSettings}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm font-normal">Add project</span>
+                  <Settings className="w-4 h-4" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-48">
-                {ADD_REPO_MENU_ITEMS.map((item) => (
-                  <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-              onClick={onOpenSettings}
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Settings (⌘,)</TooltipContent>
+            </Tooltip>
           </div>
         </>
       ) : (
@@ -568,7 +639,7 @@ function SortableWorkspaceItem({
             >
               {getInitial(workspace.name)}
             </div>
-            <span className="text-sm font-normal truncate">
+            <span className="text-sm font-medium truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -680,7 +751,7 @@ function SortableWorkspaceItem({
                               ) : (
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
-                              <span className="text-sm font-normal truncate flex-1 w-0">
+                              <span className="text-sm font-normal truncate flex-1 w-0 text-foreground/80">
                                 {session.branch || session.name}
                               </span>
                               {/* Pinned indicator - fade out on hover */}
