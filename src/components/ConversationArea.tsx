@@ -94,7 +94,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
-  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const streamingState = useAppStore((s) => s.streamingState);
