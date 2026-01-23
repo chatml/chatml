@@ -12,6 +12,7 @@ import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
 
 import { McpServersPanel } from '@/components/McpServersPanel';
+import { ReviewPanel } from '@/components/ReviewPanel';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -431,6 +432,14 @@ export function ChangesPanel() {
           )}
         </Button>
         <Button
+          variant={selectedTab === 'review' ? 'secondary' : 'ghost'}
+          size="sm"
+          className="h-6 text-xs px-2 shrink-0"
+          onClick={() => setSelectedTab('review')}
+        >
+          Review
+        </Button>
+        <Button
           variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
           size="sm"
           className="h-6 text-xs px-2 shrink-0"
@@ -548,6 +557,8 @@ export function ChangesPanel() {
                 </div>
               </ScrollArea>
             )
+          ) : selectedTab === 'review' ? (
+            <ReviewPanel onFileSelect={handleFileSelect} />
           ) : selectedTab === 'checks' ? (
             <div className="h-full px-1.5">
               <GitStatusSection onSendMessage={handleGitActionMessage} />
