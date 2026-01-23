@@ -90,7 +90,7 @@ interface WorkspaceSidebarProps {
   onToggleSidebar?: () => void;
 }
 
-// Shared menu items for "Add repository" dropdown
+// Shared menu items for "Add project" dropdown
 const ADD_REPO_MENU_ITEMS = [
   { icon: Folder, label: 'Open project', key: 'open' },
   { icon: Globe, label: 'Clone from URL', key: 'clone' },
@@ -285,11 +285,19 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     }
   };
 
+  // Detect macOS for traffic light styling
+  const isMacOS = typeof window !== 'undefined' && navigator.platform.includes('Mac');
+
   return (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground select-none" onContextMenu={(e) => e.preventDefault()}>
+    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
+      {/* Gradient orb behind traffic lights - macOS only */}
+      {isMacOS && (
+        <div className="absolute -top-4 -left-4 w-20 h-20 bg-primary/45 rounded-full blur-[25px] pointer-events-none" />
+      )}
+
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center justify-between border-b bg-sidebar shrink-0">
-        <span className="text-sm font-semibold">ChatML</span>
+      <div data-tauri-drag-region className="relative h-11 pl-20 pr-3 flex items-center justify-between border-b shrink-0">
+        <span className="text-lg font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
         {onToggleSidebar && (
           <Button
             variant="ghost"
@@ -315,7 +323,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
           )}
         >
           <FolderOpen className="h-3.5 w-3.5" />
-          Workspaces
+          Projects
         </button>
         <button
           onClick={() => setActiveTab('agents')}
@@ -353,7 +361,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         className="text-xs"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        Add repository
+                        Add project
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="center" className="w-48">
@@ -416,7 +424,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     <ContextMenuSub>
                       <ContextMenuSubTrigger>
                         <FolderPlus className="h-4 w-4" />
-                        Add repository
+                        Add project
                       </ContextMenuSubTrigger>
                       <ContextMenuSubContent>
                         <ContextMenuItem onClick={onOpenProject}>
@@ -445,7 +453,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   className="flex-1 justify-start gap-2 h-8 text-muted-foreground hover:text-foreground"
                 >
                   <Plus className="w-4 h-4" />
-                  <span className="text-sm">Add repository</span>
+                  <span className="text-sm font-normal">Add project</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" className="w-48">
@@ -560,7 +568,7 @@ function SortableWorkspaceItem({
             >
               {getInitial(workspace.name)}
             </div>
-            <span className="text-sm font-medium truncate">
+            <span className="text-sm font-normal truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -670,7 +678,7 @@ function SortableWorkspaceItem({
                             ) : (
                               <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             )}
-                            <span className="text-sm font-medium truncate min-w-0 flex-shrink">
+                            <span className="text-sm font-normal truncate min-w-0 flex-shrink">
                               {session.branch || session.name}
                             </span>
                             {/* Pinned indicator - fade out on hover */}
