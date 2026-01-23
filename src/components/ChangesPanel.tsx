@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSelectedIds, useFileTabState, useTodoState } from '@/stores/selectors';
+import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
 import { watchWorkspace, unwatchWorkspace, listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
 import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
@@ -31,6 +31,7 @@ import {
   GitPullRequest,
   AlertTriangle,
   ExternalLink,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileTab } from '@/lib/types';
@@ -68,6 +69,7 @@ export function ChangesPanel() {
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { openFileTab, updateFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
+  const commentStats = useFileCommentStats(selectedSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
@@ -529,6 +531,7 @@ export function ChangesPanel() {
                                 change={change}
                                 onSelect={() => handleFileSelect(change.path)}
                                 containerWidth={containerWidth}
+                                commentStats={commentStats.get(change.path)}
                               />
                             ))}
                           </>
@@ -547,6 +550,7 @@ export function ChangesPanel() {
                                 change={change}
                                 onSelect={() => handleChangedFileSelect(change.path)}
                                 containerWidth={containerWidth}
+                                commentStats={commentStats.get(change.path)}
                               />
                             ))}
                           </>
@@ -624,7 +628,12 @@ export function ChangesPanel() {
   );
 }
 
-function FileChangeRow({ change, onSelect, containerWidth }: { change: FileChangeDTO; onSelect: () => void; containerWidth: number }) {
+function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
+  change: FileChangeDTO;
+  onSelect: () => void;
+  containerWidth: number;
+  commentStats?: { total: number; unresolved: number };
+}) {
   const parts = change.path.split('/');
   const fileName = parts.pop() || change.path;
   const dirPath = parts.join('/');
@@ -685,6 +694,13 @@ function FileChangeRow({ change, onSelect, containerWidth }: { change: FileChang
           {change.deletions > 0 && (
             <span className="text-red-500 ml-1">-{change.deletions}</span>
           )}
+        </span>
+      )}
+      {/* Comment badge - show unresolved count */}
+      {commentStats && commentStats.unresolved > 0 && (
+        <span className="flex items-center gap-0.5 text-yellow-600 dark:text-yellow-500 shrink-0" title={`${commentStats.unresolved} unresolved comment${commentStats.unresolved > 1 ? 's' : ''}`}>
+          <MessageSquare className="h-3 w-3" />
+          <span className="text-[10px] font-medium">{commentStats.unresolved}</span>
         </span>
       )}
       <Checkbox className="h-3.5 w-3.5 shrink-0" />

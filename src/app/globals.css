@@ -670,3 +670,50 @@
     transform: none;
   }
 }
+
+/* ========================================
+   Monaco Editor - Review Comments
+   ======================================== */
+
+/* Comment gutter decorations */
+.comment-gutter-error {
+  background-color: #ef4444;
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+.comment-gutter-warning {
+  background-color: #eab308;
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+.comment-gutter-suggestion {
+  background-color: #3b82f6;
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+.comment-gutter-default {
+  background-color: #6b7280;
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+.comment-gutter-resolved {
+  background-color: #22c55e;
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+/* Comment zone container styling */
+.comment-zone-container {
+  background-color: transparent;
+  z-index: 10;
+}

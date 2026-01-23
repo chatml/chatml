@@ -176,3 +176,39 @@ type FileTab struct {
 	OpenedAt       time.Time `json:"openedAt"`
 	LastAccessedAt time.Time `json:"lastAccessedAt"`
 }
+
+// ReviewComment represents an inline code review comment
+type ReviewComment struct {
+	ID         string     `json:"id"`
+	SessionID  string     `json:"sessionId"`
+	FilePath   string     `json:"filePath"`
+	LineNumber int        `json:"lineNumber"`
+	Content    string     `json:"content"`
+	Source     string     `json:"source"` // "claude" or "user"
+	Author     string     `json:"author"` // Display name
+	Severity   string     `json:"severity,omitempty"` // "error", "warning", "suggestion"
+	CreatedAt  time.Time  `json:"createdAt"`
+	Resolved   bool       `json:"resolved"`
+	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedBy string     `json:"resolvedBy,omitempty"`
+}
+
+// ReviewCommentSource constants
+const (
+	CommentSourceClaude = "claude"
+	CommentSourceUser   = "user"
+)
+
+// ReviewCommentSeverity constants
+const (
+	CommentSeverityError      = "error"
+	CommentSeverityWarning    = "warning"
+	CommentSeveritySuggestion = "suggestion"
+)
+
+// CommentStats represents per-file comment statistics
+type CommentStats struct {
+	FilePath   string `json:"filePath"`
+	Total      int    `json:"total"`
+	Unresolved int    `json:"unresolved"`
+}

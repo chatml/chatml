@@ -20,7 +20,7 @@ import (
 func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig, bw)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, hub)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
@@ -53,6 +53,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	conversationRateLimiter := httprate.LimitByIP(20, 1*time.Minute) // 20 conversations per minute
 	messageRateLimiter := httprate.LimitByIP(60, 1*time.Minute)      // 60 messages per minute
 
+	// Rate limiter for comment operations
+	commentRateLimiter := httprate.LimitByIP(60, 1*time.Minute) // 60 comments per minute
+
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {
 		r.Get("/", h.ListRepos)
@@ -77,6 +80,12 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		// Conversation endpoints nested under sessions
 		r.Get("/{id}/sessions/{sessionId}/conversations", h.ListConversations)
 		r.With(conversationRateLimiter).Post("/{id}/sessions/{sessionId}/conversations", h.CreateConversation)
+		// Review comment endpoints nested under sessions
+		r.Get("/{id}/sessions/{sessionId}/comments", h.ListReviewComments)
+		r.With(commentRateLimiter).Post("/{id}/sessions/{sessionId}/comments", h.CreateReviewComment)
+		r.Get("/{id}/sessions/{sessionId}/comments/stats", h.GetReviewCommentStats)
+		r.Patch("/{id}/sessions/{sessionId}/comments/{commentId}", h.UpdateReviewComment)
+		r.Delete("/{id}/sessions/{sessionId}/comments/{commentId}", h.DeleteReviewComment)
 		r.Get("/{id}/agents", h.ListAgents)
 		r.With(agentRateLimiter).Post("/{id}/agents", h.SpawnAgent)
 		// File tabs
