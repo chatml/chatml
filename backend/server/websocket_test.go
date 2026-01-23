@@ -2,10 +2,16 @@ package server
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -516,4 +522,180 @@ func TestHub_GetStats_IncludesTimedOut(t *testing.T) {
 	timedOut, exists := stats["messagesTimedOut"]
 	assert.True(t, exists, "messagesTimedOut should be in stats")
 	assert.Equal(t, uint64(1), timedOut)
+}
+
+// ============================================================================
+// WebSocket Token Validation Tests
+// ============================================================================
+
+func TestHandleWebSocket_NoTokenConfigured(t *testing.T) {
+	// Ensure no token is set (dev mode)
+	os.Unsetenv("CHATML_AUTH_TOKEN")
+
+	hub := NewHub()
+	go hub.Run()
+	defer func() { time.Sleep(10 * time.Millisecond) }()
+
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	defer server.Close()
+
+	// Convert http URL to ws URL
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	// Set allowed origin for the test
+	AllowedOriginsMap[""] = true
+	defer delete(AllowedOriginsMap, "")
+
+	// Connect without token - should succeed
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Expected connection to succeed without token in dev mode, got error: %v", err)
+	}
+	defer conn.Close()
+
+	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+}
+
+func TestHandleWebSocket_ValidToken(t *testing.T) {
+	// Set expected token
+	testToken := "test-secret-token-12345"
+	os.Setenv("CHATML_AUTH_TOKEN", testToken)
+	defer os.Unsetenv("CHATML_AUTH_TOKEN")
+
+	hub := NewHub()
+	go hub.Run()
+	defer func() { time.Sleep(10 * time.Millisecond) }()
+
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	defer server.Close()
+
+	// Convert http URL to ws URL with token query param
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "?token=" + testToken
+
+	// Set allowed origin for the test
+	AllowedOriginsMap[""] = true
+	defer delete(AllowedOriginsMap, "")
+
+	// Connect with valid token - should succeed
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Expected connection to succeed with valid token, got error: %v", err)
+	}
+	defer conn.Close()
+
+	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+}
+
+func TestHandleWebSocket_InvalidToken(t *testing.T) {
+	// Set expected token
+	testToken := "test-secret-token-12345"
+	os.Setenv("CHATML_AUTH_TOKEN", testToken)
+	defer os.Unsetenv("CHATML_AUTH_TOKEN")
+
+	hub := NewHub()
+	go hub.Run()
+	defer func() { time.Sleep(10 * time.Millisecond) }()
+
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	defer server.Close()
+
+	// Convert http URL to ws URL with wrong token
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "?token=wrong-token"
+
+	// Set allowed origin for the test
+	AllowedOriginsMap[""] = true
+	defer delete(AllowedOriginsMap, "")
+
+	// Connect with invalid token - should fail with 401
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.Error(t, err, "Expected connection to fail with invalid token")
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestHandleWebSocket_MissingToken(t *testing.T) {
+	// Set expected token
+	testToken := "test-secret-token-12345"
+	os.Setenv("CHATML_AUTH_TOKEN", testToken)
+	defer os.Unsetenv("CHATML_AUTH_TOKEN")
+
+	hub := NewHub()
+	go hub.Run()
+	defer func() { time.Sleep(10 * time.Millisecond) }()
+
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	defer server.Close()
+
+	// Convert http URL to ws URL without token
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	// Set allowed origin for the test
+	AllowedOriginsMap[""] = true
+	defer delete(AllowedOriginsMap, "")
+
+	// Connect without token when one is required - should fail with 401
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.Error(t, err, "Expected connection to fail when token is missing")
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestHandleWebSocket_EmptyToken(t *testing.T) {
+	// Set expected token
+	testToken := "test-secret-token-12345"
+	os.Setenv("CHATML_AUTH_TOKEN", testToken)
+	defer os.Unsetenv("CHATML_AUTH_TOKEN")
+
+	hub := NewHub()
+	go hub.Run()
+	defer func() { time.Sleep(10 * time.Millisecond) }()
+
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	defer server.Close()
+
+	// Convert http URL to ws URL with empty token
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "?token="
+
+	// Set allowed origin for the test
+	AllowedOriginsMap[""] = true
+	defer delete(AllowedOriginsMap, "")
+
+	// Connect with empty token when one is required - should fail with 401
+	_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.Error(t, err, "Expected connection to fail with empty token")
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestHandleWebSocket_TokenWithSpecialChars(t *testing.T) {
+	// Test with a base64-like token with special chars (like our actual tokens)
+	testToken := "abc123XYZ_-=="
+	os.Setenv("CHATML_AUTH_TOKEN", testToken)
+	defer os.Unsetenv("CHATML_AUTH_TOKEN")
+
+	hub := NewHub()
+	go hub.Run()
+	defer func() { time.Sleep(10 * time.Millisecond) }()
+
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(hub.HandleWebSocket))
+	defer server.Close()
+
+	// URL-encode the token as the frontend would
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "?token=" + url.QueryEscape(testToken)
+
+	// Set allowed origin for the test
+	AllowedOriginsMap[""] = true
+	defer delete(AllowedOriginsMap, "")
+
+	// Connect with properly encoded token - should succeed
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Expected connection to succeed with valid encoded token, got error: %v", err)
+	}
+	defer conn.Close()
+
+	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
 }

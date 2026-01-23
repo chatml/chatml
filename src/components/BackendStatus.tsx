@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { checkHealthWithRetry } from '@/lib/api';
 import { isTauri, safeListen, markAppReady, restartSidecar } from '@/lib/tauri';
 import { SIDECAR_RESTART_DELAY_MS } from '@/lib/constants';
+import { initAuthToken, clearAuthTokenCache } from '@/lib/auth-token';
 
 interface BackendStatusProps {
   onConnected: () => void;
@@ -37,6 +38,8 @@ export function BackendStatus({
 
     if (result.success) {
       setState('connected');
+      // Initialize auth token before any authenticated requests
+      await initAuthToken();
       // Mark app as ready so close confirmation can work
       await markAppReady();
       onConnected();
@@ -91,6 +94,8 @@ export function BackendStatus({
     setIsRestarting(true);
     setSidecarLogs([]);
     setError(null);
+    // Clear cached auth token since sidecar will generate a new one
+    clearAuthTokenCache();
 
     const success = await restartSidecar();
     if (success) {

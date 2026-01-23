@@ -39,3 +39,5 @@ sentry = { version = "0.34", default-features = false, features = ["backtrace", 
 notify = { version = "6", features = ["serde"] }
 notify-debouncer-mini = "0.4"
 argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"

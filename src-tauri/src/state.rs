@@ -9,6 +9,8 @@ pub struct AppState {
     pub minimize_to_tray: AtomicBool,
     /// PID of the backend sidecar process
     pub sidecar_pid: Mutex<Option<u32>>,
+    /// Authentication token for backend API security
+    pub auth_token: Mutex<Option<String>>,
 }
 
 impl Default for AppState {
@@ -23,6 +25,7 @@ impl AppState {
             app_ready: AtomicBool::new(false),
             minimize_to_tray: AtomicBool::new(false),
             sidecar_pid: Mutex::new(None),
+            auth_token: Mutex::new(None),
         }
     }
 
@@ -70,5 +73,131 @@ impl AppState {
                 None
             }
         }
+    }
+
+    /// Store the authentication token for backend API security
+    pub fn set_auth_token(&self, token: String) {
+        match self.auth_token.lock() {
+            Ok(mut guard) => {
+                *guard = Some(token);
+            }
+            Err(e) => log::warn!("auth_token mutex poisoned: {}", e),
+        }
+    }
+
+    /// Get the authentication token
+    pub fn get_auth_token(&self) -> Option<String> {
+        match self.auth_token.lock() {
+            Ok(guard) => guard.clone(),
+            Err(e) => {
+                log::warn!("auth_token mutex poisoned: {}", e);
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_state_has_no_auth_token() {
+        let state = AppState::new();
+        assert!(state.get_auth_token().is_none());
+    }
+
+    #[test]
+    fn test_set_and_get_auth_token() {
+        let state = AppState::new();
+        let token = "test-token-12345".to_string();
+
+        state.set_auth_token(token.clone());
+
+        let retrieved = state.get_auth_token();
+        assert_eq!(retrieved, Some(token));
+    }
+
+    #[test]
+    fn test_auth_token_can_be_overwritten() {
+        let state = AppState::new();
+
+        state.set_auth_token("first-token".to_string());
+        assert_eq!(state.get_auth_token(), Some("first-token".to_string()));
+
+        state.set_auth_token("second-token".to_string());
+        assert_eq!(state.get_auth_token(), Some("second-token".to_string()));
+    }
+
+    #[test]
+    fn test_auth_token_thread_safety() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let state = Arc::new(AppState::new());
+        let mut handles = vec![];
+
+        // Spawn multiple threads that set tokens
+        for i in 0..10 {
+            let state_clone = Arc::clone(&state);
+            let handle = thread::spawn(move || {
+                let token = format!("token-{}", i);
+                state_clone.set_auth_token(token);
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Token should be set (we don't know which one wins, but it should be Some)
+        assert!(state.get_auth_token().is_some());
+    }
+
+    #[test]
+    fn test_default_impl_matches_new() {
+        let state1 = AppState::new();
+        let state2 = AppState::default();
+
+        assert_eq!(state1.get_auth_token(), state2.get_auth_token());
+        assert_eq!(state1.is_ready(), state2.is_ready());
+        assert_eq!(state1.should_minimize_to_tray(), state2.should_minimize_to_tray());
+    }
+
+    #[test]
+    fn test_app_ready_state() {
+        let state = AppState::new();
+
+        assert!(!state.is_ready());
+        state.mark_ready();
+        assert!(state.is_ready());
+    }
+
+    #[test]
+    fn test_minimize_to_tray_state() {
+        let state = AppState::new();
+
+        assert!(!state.should_minimize_to_tray());
+        state.set_minimize_to_tray(true);
+        assert!(state.should_minimize_to_tray());
+        state.set_minimize_to_tray(false);
+        assert!(!state.should_minimize_to_tray());
+    }
+
+    #[test]
+    fn test_sidecar_pid_state() {
+        let state = AppState::new();
+
+        // Initially no PID
+        assert!(state.take_sidecar_pid().is_none());
+
+        // Set and take PID
+        state.set_sidecar_pid(Some(12345));
+        assert_eq!(state.take_sidecar_pid(), Some(12345));
+
+        // After take, should be None
+        assert!(state.take_sidecar_pid().is_none());
     }
 }
