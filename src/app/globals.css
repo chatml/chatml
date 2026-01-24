@@ -65,6 +65,7 @@
 
   --radius: 0.625rem;
   --background: oklch(1 0 0);
+  --chat-background: oklch(0.98 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
@@ -112,8 +113,9 @@
 }
 
 .dark {
-  /* Main backgrounds - #141414 RGB(20,20,20) as base */
-  --background: #141414;           /* RGB(20,20,20) */
+  /* Main backgrounds */
+  --background: #141414;           /* RGB(20,20,20) - sidebar/panels */
+  --chat-background: #181818;      /* RGB(24,24,24) - chat area */
   --foreground: oklch(0.9 0 0);             /* ~#e5e5e5 - bright text */
   --card: #141414;                          /* Cards match background */
   --card-foreground: oklch(0.9 0 0);
@@ -173,6 +175,7 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-chat-background: var(--chat-background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);

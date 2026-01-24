@@ -705,7 +705,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   if (!selectedSessionId) {
     return (
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md px-6">
             <div className="w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center mx-auto mb-4">
@@ -723,7 +723,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
       {/* VS Code-style unified TabBar */}
       <TabBar
         workspaceTabs={[]}
@@ -827,7 +827,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               onScroll={handleScroll}
               className="h-full overflow-auto"
             >
-              <div className="p-4 space-y-1">
+              <div className="pt-3 pl-5 pr-12 pb-10 space-y-1">
               {conversationMessages.length === 0 && !selectedConversationId ? (
                 <ConversationEmptyState sessionName={currentSession?.name} />
               ) : (
@@ -851,7 +851,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               </div>
             </div>
             {/* Fade overlay at bottom of messages */}
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none" />
           </div>
 
           {/* Chat Input with floating scroll button */}
@@ -907,7 +907,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
 function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
   return (
-    <div className="py-12 px-4 animate-fade-in">
+    <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
       <div className="max-w-lg mx-auto text-center">
         {sessionName && (
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
