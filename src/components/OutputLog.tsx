@@ -22,22 +22,22 @@ function getLineConfig(line: string): {
   className: string;
 } {
   if (line.startsWith('💭')) {
-    return { icon: Lightbulb, className: 'text-purple-500' };
+    return { icon: Lightbulb, className: 'text-primary' };
   }
   if (line.startsWith('🔧')) {
-    return { icon: Wrench, className: 'text-yellow-500' };
+    return { icon: Wrench, className: 'text-text-warning' };
   }
   if (line.startsWith('✓')) {
-    return { icon: CheckCircle, className: 'text-green-500' };
+    return { icon: CheckCircle, className: 'text-text-success' };
   }
   if (line.startsWith('⏳')) {
-    return { icon: Clock, className: 'text-blue-500' };
+    return { icon: Clock, className: 'text-text-info' };
   }
   if (line.startsWith('✅')) {
-    return { icon: CheckCheck, className: 'text-green-600 font-medium' };
+    return { icon: CheckCheck, className: 'text-text-success font-medium' };
   }
   if (line.startsWith('[stderr]')) {
-    return { icon: AlertCircle, className: 'text-red-500' };
+    return { icon: AlertCircle, className: 'text-text-error' };
   }
   return { icon: null, className: 'text-muted-foreground' };
 }

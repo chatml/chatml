@@ -216,7 +216,7 @@ export function ToolUsageBlock({
       <CollapsibleTrigger
         className={cn(
           'flex items-center gap-1.5 text-[11px] w-full rounded px-1.5 py-1 transition-colors',
-          'hover:bg-muted/50',
+          'hover:bg-surface-2',
           isActive && 'bg-primary/5'
         )}
       >
@@ -224,9 +224,9 @@ export function ToolUsageBlock({
         {isActive ? (
           <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
         ) : success === true ? (
-          <Circle className="w-2 h-2 fill-green-500 text-green-500 shrink-0" />
+          <Circle className="w-2 h-2 fill-text-success text-text-success shrink-0" />
         ) : success === false ? (
-          <Circle className="w-2 h-2 fill-red-500 text-red-500 shrink-0" />
+          <Circle className="w-2 h-2 fill-text-error text-text-error shrink-0" />
         ) : (
           <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50 shrink-0" />
         )}
@@ -234,10 +234,10 @@ export function ToolUsageBlock({
         {/* Tool icon and label - show "Error" when tool failed */}
         {success === false ? (
           <>
-            <ToolIcon className="w-3 h-3 text-red-400 shrink-0" />
-            <span className="font-medium text-red-400">Error</span>
+            <ToolIcon className="w-3 h-3 text-text-error shrink-0" />
+            <span className="font-medium text-text-error">Error</span>
             {summary && (
-              <span className="text-red-400/80 text-[10px] truncate max-w-[350px]">
+              <span className="text-text-error/80 text-[10px] truncate max-w-[350px]">
                 {summary}
               </span>
             )}
@@ -305,8 +305,8 @@ export function ToolUsageBlock({
         {/* Git line stats for Edit tools - hide when error or no net change */}
         {success !== false && isEditTool && editStats && !isActive && (editStats.additions > 0 || editStats.deletions > 0) && (
           <span className="flex items-center gap-0.5 text-[10px] font-mono shrink-0">
-            <span className="text-green-500">+{editStats.additions}</span>
-            <span className="text-red-500">-{editStats.deletions}</span>
+            <span className="text-text-success">+{editStats.additions}</span>
+            <span className="text-text-error">-{editStats.deletions}</span>
           </span>
         )}
 
@@ -344,9 +344,9 @@ export function ToolUsageBlock({
 
             {/* Full command for Bash tools */}
             {isBashTool && fullTarget && (
-              <div className="rounded border bg-zinc-900 p-2">
+              <div className="rounded border bg-muted p-2">
                 <div className="text-[9px] text-muted-foreground/60 mb-1">Command</div>
-                <pre className="font-mono text-[10px] text-green-400 whitespace-pre-wrap break-all">
+                <pre className="font-mono text-[10px] text-text-success whitespace-pre-wrap break-all">
                   $ {fullTarget}
                 </pre>
               </div>
@@ -354,7 +354,7 @@ export function ToolUsageBlock({
 
             {/* stdout output */}
             {stdout && (
-              <div className="rounded border bg-zinc-900 p-2">
+              <div className="rounded border bg-muted p-2">
                 <div className="text-[9px] text-muted-foreground/60 mb-1">Output</div>
                 <pre className="font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
                   {stdout}
@@ -364,9 +364,9 @@ export function ToolUsageBlock({
 
             {/* stderr output */}
             {stderr && (
-              <div className="rounded border border-red-900/30 bg-red-950/20 p-2">
-                <div className="text-[9px] text-red-400/60 mb-1">Error Output</div>
-                <pre className="font-mono text-[10px] text-red-400 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+              <div className="rounded border border-text-error/30 bg-text-error/10 p-2">
+                <div className="text-[9px] text-text-error/60 mb-1">Error Output</div>
+                <pre className="font-mono text-[10px] text-text-error whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
                   {stderr}
                 </pre>
               </div>

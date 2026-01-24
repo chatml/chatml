@@ -91,7 +91,7 @@ export function RepoList({ onAddClick }: RepoListProps) {
                       'group relative rounded-lg p-2.5 cursor-pointer transition-colors',
                       isSelected
                         ? 'bg-accent text-accent-foreground'
-                        : 'hover:bg-accent/50'
+                        : 'hover:bg-surface-2'
                     )}
                   >
                     <div className="flex items-start gap-2.5">

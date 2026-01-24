@@ -267,7 +267,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         case 'active':
           return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
         case 'completed':
-          return <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />;
+          return <CheckCircle2 className="w-2.5 h-2.5 text-text-success" />;
         case 'idle':
         default:
           return <Circle className="w-2.5 h-2.5 text-muted-foreground/50" />;
@@ -705,7 +705,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   if (!selectedSessionId) {
     return (
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md px-6">
             <div className="w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center mx-auto mb-4">
@@ -723,7 +723,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
       {/* VS Code-style unified TabBar */}
       <TabBar
         workspaceTabs={[]}
@@ -827,7 +827,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               onScroll={handleScroll}
               className="h-full overflow-auto"
             >
-              <div className="p-4 space-y-1">
+              <div className="pt-3 pl-5 pr-12 pb-10 space-y-1">
               {conversationMessages.length === 0 && !selectedConversationId ? (
                 <ConversationEmptyState sessionName={currentSession?.name} />
               ) : (
@@ -851,7 +851,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               </div>
             </div>
             {/* Fade overlay at bottom of messages */}
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none" />
           </div>
 
           {/* Chat Input with floating scroll button */}
@@ -907,7 +907,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
 function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
   return (
-    <div className="py-12 px-4 animate-fade-in">
+    <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
       <div className="max-w-lg mx-auto text-center">
         {sessionName && (
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
@@ -919,7 +919,7 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
         <p className="text-sm text-muted-foreground mb-6">
           Describe your task below. An AI agent will work on it in an isolated git branch.
         </p>
-        <div className="text-left bg-surface-1/50 backdrop-blur-sm rounded-lg p-4 space-y-3 border border-border/50">
+        <div className="text-left bg-background rounded-lg p-4 space-y-3 border border-border">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Example tasks</p>
           <div className="space-y-2 text-sm stagger-children">
             <p className="text-muted-foreground">&quot;Add user authentication with JWT tokens&quot;</p>
@@ -995,7 +995,7 @@ const MessageBlock = memo(function MessageBlock({
   }
 
   return (
-    <div className={cn('py-2', !isFirst && 'border-t border-border/50')}>
+    <div className={cn('py-2', !isFirst && 'border-t border-border')}>
       <div className="space-y-1.5">
           {/* Tool Usage History */}
           {message.toolUsage && message.toolUsage.length > 0 && (
@@ -1028,7 +1028,7 @@ const MessageBlock = memo(function MessageBlock({
                     onClick={copyContent}
                   >
                     {copied ? (
-                      <Check className="h-2.5 w-2.5 text-green-500" />
+                      <Check className="h-2.5 w-2.5 text-text-success" />
                     ) : (
                       <Copy className="h-2.5 w-2.5" />
                     )}
@@ -1089,9 +1089,9 @@ function VerificationBlock({ results }: { results: VerificationResult[] }) {
         {isRunning ? (
           <Loader2 className="w-3 h-3 animate-spin text-primary" />
         ) : allPassed ? (
-          <CheckCircle2 className="w-3 h-3 text-green-500" />
+          <CheckCircle2 className="w-3 h-3 text-text-success" />
         ) : hasFailed ? (
-          <XCircle className="w-3 h-3 text-red-500" />
+          <XCircle className="w-3 h-3 text-text-error" />
         ) : null}
         <span className="text-muted-foreground font-normal">
           {results.filter((r) => r.status === 'pass').length}/{results.length} passed
@@ -1102,10 +1102,10 @@ function VerificationBlock({ results }: { results: VerificationResult[] }) {
           {results.map((result, idx) => (
             <div key={idx} className="flex items-center gap-2 px-3 py-2 text-xs">
               {result.status === 'pass' && (
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-text-success shrink-0" />
               )}
               {result.status === 'fail' && (
-                <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <XCircle className="w-3.5 h-3.5 text-text-error shrink-0" />
               )}
               {result.status === 'running' && (
                 <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
@@ -1142,20 +1142,20 @@ function FileChangesBlock({ changes }: { changes: FileChange[] }) {
         )}
         <FileCode className="w-3 h-3" />
         <span>{changes.length} file{changes.length !== 1 ? 's' : ''} changed</span>
-        <span className="font-mono text-green-500">+{totalAdditions}</span>
-        <span className="font-mono text-red-500">-{totalDeletions}</span>
+        <span className="font-mono text-text-success">+{totalAdditions}</span>
+        <span className="font-mono text-text-error">-{totalDeletions}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-2 rounded border bg-muted/30 divide-y divide-border/50">
           {changes.map((change, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-muted/50 cursor-pointer"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-surface-2 cursor-pointer"
             >
               <FileCode className="w-3 h-3 text-muted-foreground shrink-0" />
               <span className="flex-1 truncate">{change.path}</span>
-              <span className="text-green-500">+{change.additions}</span>
-              <span className="text-red-500">-{change.deletions}</span>
+              <span className="text-text-success">+{change.additions}</span>
+              <span className="text-text-error">-{change.deletions}</span>
             </div>
           ))}
         </div>

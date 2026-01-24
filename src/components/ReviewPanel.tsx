@@ -226,7 +226,7 @@ function ReviewCommentCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-2.5 cursor-pointer transition-colors hover:bg-accent/50',
+        'rounded-lg border p-2.5 cursor-pointer transition-colors hover:bg-surface-2',
         severityColor
       )}
       onClick={onClick}

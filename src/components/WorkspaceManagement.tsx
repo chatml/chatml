@@ -153,7 +153,7 @@ export function WorkspaceManagement({ onSelectSession, onBack }: WorkspaceManage
                   {group.sessions.map((session) => (
                     <div
                       key={session.id}
-                      className="group flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+                      className="group flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-2 cursor-pointer transition-colors"
                       onClick={() => onSelectSession(session.workspaceId, session.id)}
                     >
                       {/* Status Icon */}

@@ -147,7 +147,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   const thinkingNeedsTruncation = streaming?.thinking && streaming.thinking.length > THINKING_TRUNCATE_LENGTH;
 
   return (
-    <div className="py-2 border-t border-border/50" role="status" aria-live="polite" aria-atomic="false">
+    <div className="py-2 border-t border-border" role="status" aria-live="polite" aria-atomic="false">
       <div className="space-y-1.5">
           {/* Extended thinking mode indicator - shows when thinking is enabled but no content yet */}
           {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && (

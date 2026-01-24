@@ -140,7 +140,7 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
                   'group relative flex items-center gap-1.5 px-2.5 py-1 cursor-pointer text-xs transition-colors shrink-0 border-0 bg-transparent',
                   isSelected
                     ? 'text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-1 rounded'
                 )}
                 onClick={() => handleSelectConversation(conv.id)}
               >

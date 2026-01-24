@@ -639,7 +639,7 @@ function AccountSettings() {
         <div>
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-medium">Linear Integration</h4>
-            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            <CheckCircle2 className="w-4 h-4 text-text-success" />
           </div>
           <p className="text-sm text-muted-foreground mt-1">Linear is linked.</p>
         </div>
@@ -653,7 +653,7 @@ function AccountSettings() {
       <div className="py-6 border-b border-border/50">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium">GitHub CLI Integration</h4>
-          <CheckCircle2 className="w-4 h-4 text-green-500" />
+          <CheckCircle2 className="w-4 h-4 text-text-success" />
         </div>
         <p className="text-sm text-muted-foreground mt-1">
           GitHub CLI is authenticated and ready.

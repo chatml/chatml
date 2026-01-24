@@ -198,11 +198,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-        return 'text-green-500';
+        return 'text-text-success';
       case 'idle':
-        return 'text-yellow-500';
+        return 'text-text-warning';
       case 'error':
-        return 'text-red-500';
+        return 'text-text-error';
       default:
         return 'text-muted-foreground';
     }
@@ -314,14 +314,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   return (
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
-      {/* Gradient orb behind traffic lights - macOS only */}
-      {isMacOS && (
-        <div className="absolute -top-4 -left-4 w-20 h-20 bg-primary/45 rounded-full blur-[25px] pointer-events-none" />
-      )}
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
-        <span className="text-base font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
+        <span className="text-2xl font-extrabold"><span className="text-foreground">chat</span><span className="text-violet-500">ml</span></span>
         {onToggleSidebar && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -340,13 +336,13 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex border-b">
+      <div className="flex border-b h-[33px]">
         <button
           onClick={() => setActiveTab('workspaces')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 h-full text-[11px] font-medium transition-colors',
             activeTab === 'workspaces'
-              ? 'text-foreground border-b-2 border-primary'
+              ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -356,9 +352,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         <button
           onClick={() => setActiveTab('agents')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 h-full text-[11px] font-medium transition-colors',
             activeTab === 'agents'
-              ? 'text-foreground border-b-2 border-primary'
+              ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -630,17 +626,17 @@ function SortableWorkspaceItem({
           <div
             className={cn(
               'group flex items-center gap-1.5 px-1 py-1.5 rounded-md cursor-pointer',
-              'hover:bg-sidebar-accent/50 transition-colors',
-              isDragging && 'bg-sidebar-accent'
+              'hover:bg-surface-1 transition-colors',
+              isDragging && 'bg-surface-2'
             )}
           >
             <div
-              className="w-6 h-6 rounded-md bg-primary/15 flex items-center justify-center text-[11px] font-semibold text-primary shrink-0 cursor-grab active:cursor-grabbing"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-primary/60"
               {...attributes}
               {...listeners}
               onClick={(e) => e.stopPropagation()}
             >
-              {getInitial(workspace.name)}
+              <Folder className="w-4 h-4" />
             </div>
             <span className="text-[12px] font-medium truncate">
               {workspace.name}
@@ -656,7 +652,7 @@ function SortableWorkspaceItem({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 hover:bg-sidebar-accent"
+                className="h-6 w-6 hover:bg-surface-1"
                 onClick={(e) => {
                   e.stopPropagation();
                   onCreateSession();
@@ -669,7 +665,7 @@ function SortableWorkspaceItem({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 hover:bg-sidebar-accent"
+                    className="h-6 w-6 hover:bg-surface-1"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
@@ -716,16 +712,16 @@ function SortableWorkspaceItem({
                 const getPRStatusInfo = () => {
                   if (!hasPR) return null;
                   if (session.hasMergeConflict) {
-                    return { text: 'Merge conflict', color: 'text-orange-500', icon: AlertTriangle };
+                    return { text: 'Merge conflict', color: 'text-text-warning', icon: AlertTriangle };
                   }
                   if (session.hasCheckFailures) {
-                    return { text: 'Checks failing', color: 'text-red-500', icon: XCircle };
+                    return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
                   }
                   if (session.prStatus === 'merged') {
-                    return { text: 'Merged', color: 'text-purple-500', icon: CheckCircle2 };
+                    return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
                   }
                   if (session.prStatus === 'open') {
-                    return { text: 'Ready to merge', color: 'text-green-500', icon: CheckCircle2 };
+                    return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
                   }
                   return null;
                 };
@@ -737,10 +733,10 @@ function SortableWorkspaceItem({
                     <ContextMenuTrigger asChild>
                       <div
                         className={cn(
-                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5 transition-colors',
+                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5',
                           isSessionSelected
-                            ? 'bg-sidebar-accent shadow-sm'
-                            : 'hover:bg-sidebar-accent/50'
+                            ? 'bg-surface-2 hover:bg-surface-3'
+                            : 'hover:bg-surface-1'
                         )}
                         onClick={() => onSelectSession(session.id)}
                       >
@@ -754,7 +750,10 @@ function SortableWorkspaceItem({
                               ) : (
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
-                              <span className="text-[12px] font-normal truncate flex-1 w-0 text-foreground/80">
+                              <span className={cn(
+                                "text-[12px] font-normal truncate flex-1 w-0",
+                                isSessionSelected ? "text-foreground" : "text-foreground/60"
+                              )}>
                                 {session.branch || session.name}
                               </span>
                               {/* Pinned indicator - fade out on hover */}
@@ -766,16 +765,16 @@ function SortableWorkspaceItem({
                             <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[10px] px-1 py-px rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
-                                  <span className="text-emerald-400">+{session.stats!.additions}</span>
-                                  <span className="text-red-400 ml-1">-{session.stats!.deletions}</span>
+                                <span className="text-[10px] px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                  <span className="text-text-success">+{session.stats!.additions}</span>
+                                  <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                                 </span>
                               )}
                               {/* Actions - positioned absolutely to avoid layout shift */}
                               <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   className={cn(
-                                    "p-0.5 rounded hover:bg-sidebar-accent hover:text-foreground",
+                                    "p-0.5 rounded hover:bg-surface-1 hover:text-foreground",
                                     session.pinned ? "text-primary" : "text-muted-foreground"
                                   )}
                                   onClick={(e) => {
@@ -786,7 +785,7 @@ function SortableWorkspaceItem({
                                   <Pin className="h-2.5 w-2.5" />
                                 </button>
                                 <button
-                                  className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+                                  className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onArchiveSession(session.id);

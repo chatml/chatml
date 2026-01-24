@@ -141,7 +141,7 @@ export function OnboardingScreen() {
                 <Button
                   size="lg"
                   onClick={handleRetry}
-                  className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98]"
+                  className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-colors"
                 >
                   <RefreshCw className="mr-2 h-5 w-5" />
                   Try Again
@@ -236,7 +236,7 @@ export function OnboardingScreen() {
               <Button
                 size="lg"
                 onClick={handleSignIn}
-                className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-all duration-200 active:scale-[0.98]"
+                className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-colors"
               >
                 <Github className="mr-2 h-5 w-5" />
                 Sign in with GitHub

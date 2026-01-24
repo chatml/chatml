@@ -47,7 +47,7 @@ function CodeBlockWithCopy({ children, code, ...rest }: React.HTMLAttributes<HTM
       <pre {...rest}>{children}</pre>
       <button
         onClick={handleCopy}
-        className="absolute top-2 right-2 p-1.5 rounded-md bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-muted"
+        className="absolute top-2 right-2 p-1.5 rounded-md bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-surface-2"
         title={copied ? 'Copied!' : 'Copy code'}
       >
         {copied ? (

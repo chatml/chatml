@@ -28,10 +28,10 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
   const recentRuns = runs.slice(0, 3);
 
   const getStatusColor = () => {
-    if (agent.isRunning) return 'bg-blue-500';
-    if (agent.lastError) return 'bg-amber-500';
-    if (!agent.enabled) return 'bg-zinc-500';
-    return 'bg-emerald-500';
+    if (agent.isRunning) return 'bg-text-info';
+    if (agent.lastError) return 'bg-text-warning';
+    if (!agent.enabled) return 'bg-muted-foreground';
+    return 'bg-text-success';
   };
 
   const getStatusText = () => {
@@ -82,8 +82,8 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
       className={cn(
         'group relative rounded-lg border p-3 transition-colors cursor-pointer',
         isSelected
-          ? 'border-blue-500 bg-blue-500/10'
-          : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/50'
+          ? 'border-primary bg-primary/10'
+          : 'border-border hover:border-border/80 bg-muted/50'
       )}
       onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
@@ -93,7 +93,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn('h-2 w-2 rounded-full flex-shrink-0', getStatusColor())} />
-          <span className="font-medium text-sm text-zinc-100 truncate">
+          <span className="font-medium text-sm text-foreground truncate">
             {agent.definition?.name || agent.id}
           </span>
         </div>
@@ -107,7 +107,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
             {agent.isRunning ? (
               <button
                 onClick={handleStopRun}
-                className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-red-400"
+                className="p-1 rounded hover:bg-surface-2 text-muted-foreground hover:text-text-error"
                 title="Stop run"
               >
                 <Square className="h-3.5 w-3.5" />
@@ -115,7 +115,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
             ) : (
               <button
                 onClick={handleTriggerRun}
-                className="p-1 rounded hover:bg-zinc-700 text-zinc-400 hover:text-emerald-400"
+                className="p-1 rounded hover:bg-surface-2 text-muted-foreground hover:text-text-success"
                 title="Trigger run"
                 disabled={!agent.enabled}
               >
@@ -128,7 +128,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
             <DropdownMenuTrigger asChild>
               <button
                 onClick={(e) => e.stopPropagation()}
-                className="p-1 rounded hover:bg-zinc-700 text-zinc-400"
+                className="p-1 rounded hover:bg-surface-2 text-muted-foreground"
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
@@ -154,7 +154,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
       </div>
 
       {/* Status line */}
-      <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span>{getStatusText()}</span>
         <span>•</span>
         <span>{formatTimeAgo(agent.lastRunAt)}</span>
@@ -164,11 +164,11 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
       {recentRuns.length > 0 && (
         <div className="mt-2 space-y-1">
           {recentRuns.map((run) => (
-            <div key={run.id} className="flex items-center gap-2 text-xs text-zinc-500">
+            <div key={run.id} className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className={cn(
                 'h-1.5 w-1.5 rounded-full',
-                run.status === 'running' ? 'bg-blue-500 animate-pulse' :
-                run.status === 'completed' ? 'bg-emerald-500' : 'bg-red-500'
+                run.status === 'running' ? 'bg-text-info animate-pulse' :
+                run.status === 'completed' ? 'bg-text-success' : 'bg-text-error'
               )} />
               <span className="truncate flex-1">
                 {run.resultSummary || (run.status === 'running' ? 'Running...' : 'No summary')}
@@ -179,7 +179,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
       )}
 
       {/* Stats footer */}
-      <div className="mt-2 pt-2 border-t border-zinc-800 flex items-center gap-3 text-xs text-zinc-500">
+      <div className="mt-2 pt-2 border-t border-border flex items-center gap-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
           <span>{agent.totalRuns} runs</span>
@@ -192,7 +192,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
 
       {/* Error indicator */}
       {agent.lastError && (
-        <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 truncate">
+        <div className="mt-2 p-2 rounded bg-text-warning/10 border border-text-warning/20 text-xs text-text-warning truncate">
           {agent.lastError}
         </div>
       )}

@@ -57,7 +57,7 @@ export function CheckpointTimeline() {
         {checkpoints.map((checkpoint) => (
           <div
             key={checkpoint.uuid}
-            className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 group"
+            className="flex items-center justify-between p-2 rounded-md hover:bg-surface-2 group"
           >
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />

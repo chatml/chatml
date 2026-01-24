@@ -74,17 +74,17 @@ export const TabItem = memo(function TabItem({
             // Base styles - full height, no vertical padding
             'group relative flex items-center gap-1.5 px-2 h-[33px] cursor-pointer select-none',
             'text-xs font-medium shrink-0',
-            // Animation styles
-            'transition-colors duration-150',
+            // Minimal transition - colors only, no layout shifts
+            'transition-[background-color,color] duration-150',
             isClosing && 'tab-closing',
-            // Active state - VS Code style with top indicator
+            // Active state - subtle highlight with muted top indicator
             isActive && [
-              'bg-background text-foreground',
+              'bg-surface-2 text-foreground',
             ],
             // Inactive state
             !isActive && [
               'text-muted-foreground',
-              'hover:text-foreground hover:bg-muted/50',
+              'hover:text-foreground hover:bg-surface-1',
             ],
             // Session tab subtle distinction
             tab.group === 'session' && !isActive && 'opacity-90'
@@ -99,9 +99,9 @@ export const TabItem = memo(function TabItem({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          {/* Top indicator line - VS Code style */}
+          {/* Top indicator line - subtle */}
           {isActive && (
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-primary" />
+            <div className="absolute top-0 left-0 right-0 h-px bg-primary/50" />
           )}
 
           {/* Pin indicator */}
@@ -115,34 +115,27 @@ export const TabItem = memo(function TabItem({
           {/* Tab label */}
           <span className="truncate flex-1">{tab.label}</span>
 
-          {/* Dirty indicator (dot) - shown when dirty and not hovered */}
-          {showDirtyDot && (
-            <span
-              className="w-2 h-2 rounded-full bg-primary shrink-0 transition-opacity"
-              style={{ transitionDuration: `${ANIMATION_DURATION}ms` }}
-            />
-          )}
-
-          {/* Close button */}
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label={`Close ${tab.label}`}
-            className={cn(
-              'flex items-center justify-center w-4 h-4 rounded-sm shrink-0',
-              'transition-all',
-              'hover:bg-muted-foreground/20 hover:text-destructive',
-              // Visibility based on state
-              showCloseButton && !showDirtyDot
-                ? 'opacity-100'
-                : 'opacity-0 pointer-events-none'
+          {/* Fixed-size container for dot/close button - prevents layout shift */}
+          <div className="w-4 h-4 flex items-center justify-center shrink-0">
+            {showDirtyDot ? (
+              <span className="w-2 h-2 rounded-full bg-primary" />
+            ) : (
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={`Close ${tab.label}`}
+                className={cn(
+                  'flex items-center justify-center w-4 h-4 rounded-sm',
+                  'hover:bg-surface-2 hover:text-destructive',
+                  showCloseButton ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                )}
+                onClick={handleClose}
+                onKeyDown={handleCloseKeyDown}
+              >
+                <X className="w-3 h-3" />
+              </button>
             )}
-            style={{ transitionDuration: `${ANIMATION_DURATION}ms` }}
-            onClick={handleClose}
-            onKeyDown={handleCloseKeyDown}
-          >
-            <X className="w-3 h-3" />
-          </button>
+          </div>
         </div>
       </ContextMenuTrigger>
 

@@ -36,7 +36,7 @@ const emptyStateIconVariants = cva(
 );
 
 const emptyStateIconInnerVariants = cva(
-  'text-muted-foreground/60',
+  'text-muted-foreground',
   {
     variants: {
       size: {
@@ -83,7 +83,7 @@ export function EmptyState({
         </p>
         {description && (
           <p className={cn(
-            'text-muted-foreground/70 mt-1',
+            'text-muted-foreground mt-1',
             size === 'sm' && 'text-[11px]',
             size === 'default' && 'text-xs',
             size === 'lg' && 'text-sm'
