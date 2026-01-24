@@ -198,11 +198,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-        return 'text-green-500';
+        return 'text-text-success';
       case 'idle':
-        return 'text-yellow-500';
+        return 'text-text-warning';
       case 'error':
-        return 'text-red-500';
+        return 'text-text-error';
       default:
         return 'text-muted-foreground';
     }
@@ -712,16 +712,16 @@ function SortableWorkspaceItem({
                 const getPRStatusInfo = () => {
                   if (!hasPR) return null;
                   if (session.hasMergeConflict) {
-                    return { text: 'Merge conflict', color: 'text-orange-500', icon: AlertTriangle };
+                    return { text: 'Merge conflict', color: 'text-text-warning', icon: AlertTriangle };
                   }
                   if (session.hasCheckFailures) {
-                    return { text: 'Checks failing', color: 'text-red-500', icon: XCircle };
+                    return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
                   }
                   if (session.prStatus === 'merged') {
-                    return { text: 'Merged', color: 'text-purple-500', icon: CheckCircle2 };
+                    return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
                   }
                   if (session.prStatus === 'open') {
-                    return { text: 'Ready to merge', color: 'text-green-500', icon: CheckCircle2 };
+                    return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
                   }
                   return null;
                 };
@@ -765,9 +765,9 @@ function SortableWorkspaceItem({
                             <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[10px] px-1 py-px rounded border border-emerald-500/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
-                                  <span className="text-emerald-400">+{session.stats!.additions}</span>
-                                  <span className="text-red-400 ml-1">-{session.stats!.deletions}</span>
+                                <span className="text-[10px] px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                  <span className="text-text-success">+{session.stats!.additions}</span>
+                                  <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                                 </span>
                               )}
                               {/* Actions - positioned absolutely to avoid layout shift */}

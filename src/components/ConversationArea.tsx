@@ -267,7 +267,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         case 'active':
           return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
         case 'completed':
-          return <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />;
+          return <CheckCircle2 className="w-2.5 h-2.5 text-text-success" />;
         case 'idle':
         default:
           return <Circle className="w-2.5 h-2.5 text-muted-foreground/50" />;
@@ -1028,7 +1028,7 @@ const MessageBlock = memo(function MessageBlock({
                     onClick={copyContent}
                   >
                     {copied ? (
-                      <Check className="h-2.5 w-2.5 text-green-500" />
+                      <Check className="h-2.5 w-2.5 text-text-success" />
                     ) : (
                       <Copy className="h-2.5 w-2.5" />
                     )}
@@ -1089,9 +1089,9 @@ function VerificationBlock({ results }: { results: VerificationResult[] }) {
         {isRunning ? (
           <Loader2 className="w-3 h-3 animate-spin text-primary" />
         ) : allPassed ? (
-          <CheckCircle2 className="w-3 h-3 text-green-500" />
+          <CheckCircle2 className="w-3 h-3 text-text-success" />
         ) : hasFailed ? (
-          <XCircle className="w-3 h-3 text-red-500" />
+          <XCircle className="w-3 h-3 text-text-error" />
         ) : null}
         <span className="text-muted-foreground font-normal">
           {results.filter((r) => r.status === 'pass').length}/{results.length} passed
@@ -1102,10 +1102,10 @@ function VerificationBlock({ results }: { results: VerificationResult[] }) {
           {results.map((result, idx) => (
             <div key={idx} className="flex items-center gap-2 px-3 py-2 text-xs">
               {result.status === 'pass' && (
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-text-success shrink-0" />
               )}
               {result.status === 'fail' && (
-                <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <XCircle className="w-3.5 h-3.5 text-text-error shrink-0" />
               )}
               {result.status === 'running' && (
                 <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
@@ -1142,8 +1142,8 @@ function FileChangesBlock({ changes }: { changes: FileChange[] }) {
         )}
         <FileCode className="w-3 h-3" />
         <span>{changes.length} file{changes.length !== 1 ? 's' : ''} changed</span>
-        <span className="font-mono text-green-500">+{totalAdditions}</span>
-        <span className="font-mono text-red-500">-{totalDeletions}</span>
+        <span className="font-mono text-text-success">+{totalAdditions}</span>
+        <span className="font-mono text-text-error">-{totalDeletions}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="mt-2 rounded border bg-muted/30 divide-y divide-border/50">
@@ -1154,8 +1154,8 @@ function FileChangesBlock({ changes }: { changes: FileChange[] }) {
             >
               <FileCode className="w-3 h-3 text-muted-foreground shrink-0" />
               <span className="flex-1 truncate">{change.path}</span>
-              <span className="text-green-500">+{change.additions}</span>
-              <span className="text-red-500">-{change.deletions}</span>
+              <span className="text-text-success">+{change.additions}</span>
+              <span className="text-text-error">-{change.deletions}</span>
             </div>
           ))}
         </div>

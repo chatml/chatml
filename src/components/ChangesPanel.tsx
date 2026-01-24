@@ -397,21 +397,21 @@ export function ChangesPanel({
       <div
         className={cn(
           'h-10 flex items-center gap-2 px-3 border-b shrink-0',
-          hasActivePR && 'bg-green-500/15 border-green-500/30',
-          hasConflictOrFailure && 'bg-red-500/15 border-red-500/30'
+          hasActivePR && 'bg-text-success/15 border-text-success/30',
+          hasConflictOrFailure && 'bg-text-error/15 border-text-error/30'
         )}
       >
         {hasActivePR ? (
           <>
-            <GitPullRequest className="h-3.5 w-3.5 text-green-500 shrink-0" />
-            <span className="text-[12px] font-medium text-green-600 dark:text-green-400 truncate">
+            <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0" />
+            <span className="text-[12px] font-medium text-text-success truncate">
               PR #{currentSession?.prNumber}
             </span>
             {currentSession?.prUrl && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-green-600 dark:text-green-400 hover:bg-green-500/20"
+                className="h-6 w-6 text-text-success hover:bg-text-success/20"
                 onClick={() => window.open(currentSession.prUrl, '_blank')}
               >
                 <ExternalLink className="h-3 w-3" />
@@ -420,8 +420,8 @@ export function ChangesPanel({
           </>
         ) : hasConflictOrFailure ? (
           <>
-            <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-            <span className="text-[12px] font-medium text-red-600 dark:text-red-400 truncate">
+            <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0" />
+            <span className="text-[12px] font-medium text-text-error truncate">
               {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
             </span>
           </>
@@ -440,8 +440,8 @@ export function ChangesPanel({
           size="sm"
           className={cn(
             'h-7 text-xs gap-1.5 border border-transparent transition-colors',
-            hasActivePR && 'text-green-600 dark:text-green-400 hover:border-green-500/50 hover:bg-green-500/10',
-            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:border-red-500/50 hover:bg-red-500/10',
+            hasActivePR && 'text-text-success hover:border-text-success/50 hover:bg-text-success/10',
+            hasConflictOrFailure && 'text-text-error hover:border-text-error/50 hover:bg-text-error/10',
             !hasActivePR && !hasConflictOrFailure && 'text-primary hover:border-primary/50 hover:bg-primary/10'
           )}
         >
@@ -883,16 +883,16 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
       {hasStats && (
         <span className="text-[11px] shrink-0 tabular-nums whitespace-nowrap">
           {change.additions > 0 && (
-            <span className="text-green-500">+{change.additions}</span>
+            <span className="text-text-success">+{change.additions}</span>
           )}
           {change.deletions > 0 && (
-            <span className="text-red-500 ml-1">-{change.deletions}</span>
+            <span className="text-text-error ml-1">-{change.deletions}</span>
           )}
         </span>
       )}
       {/* Comment badge - show unresolved count */}
       {commentStats && commentStats.unresolved > 0 && (
-        <span className="flex items-center gap-0.5 text-yellow-600 dark:text-yellow-500 shrink-0" title={`${commentStats.unresolved} unresolved comment${commentStats.unresolved > 1 ? 's' : ''}`}>
+        <span className="flex items-center gap-0.5 text-text-warning shrink-0" title={`${commentStats.unresolved} unresolved comment${commentStats.unresolved > 1 ? 's' : ''}`}>
           <MessageSquare className="h-3 w-3" />
           <span className="text-[10px] font-medium">{commentStats.unresolved}</span>
         </span>
