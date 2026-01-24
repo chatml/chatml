@@ -48,6 +48,20 @@ func NewClient(clientID, clientSecret string) *Client {
 // ExchangeCode exchanges an OAuth code for an access token
 // If codeVerifier is provided, it's included for PKCE validation
 func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier string) (string, error) {
+	// Log the exchange attempt (mask sensitive values)
+	hasClientID := c.clientID != ""
+	hasClientSecret := c.clientSecret != ""
+	hasCodeVerifier := codeVerifier != ""
+	fmt.Printf("[OAuth] ExchangeCode: clientID=%v, clientSecret=%v, codeVerifier=%v, code_length=%d\n",
+		hasClientID, hasClientSecret, hasCodeVerifier, len(code))
+
+	if !hasClientID {
+		return "", fmt.Errorf("GITHUB_CLIENT_ID not configured")
+	}
+	if !hasClientSecret {
+		return "", fmt.Errorf("GITHUB_CLIENT_SECRET not configured")
+	}
+
 	data := url.Values{}
 	data.Set("client_id", c.clientID)
 	data.Set("client_secret", c.clientSecret)
@@ -72,8 +86,15 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 	}
 	defer resp.Body.Close()
 
+	// Read body for logging (GitHub returns 200 even on errors)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+
+	fmt.Printf("[OAuth] GitHub response: status=%d, body=%s\n", resp.StatusCode, string(body))
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -85,7 +106,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 		ErrorDesc   string `json:"error_description"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("decoding response: %w", err)
 	}
 
@@ -93,6 +114,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 		return "", fmt.Errorf("GitHub error: %s - %s", result.Error, result.ErrorDesc)
 	}
 
+	fmt.Printf("[OAuth] Token exchange successful, scope=%s\n", result.Scope)
 	return result.AccessToken, nil
 }
 

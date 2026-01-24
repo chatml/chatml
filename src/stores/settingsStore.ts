@@ -10,6 +10,9 @@ export type AllBottomPanelTab = 'todos' | BottomPanelTab;
 // Default tab order
 export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'history', 'budget', 'mcp'];
 
+// Theme options
+export type ThemeOption = 'system' | 'light' | 'dark';
+
 interface SettingsState {
   // Chat settings
   confirmCloseActiveTab: boolean;
@@ -21,6 +24,7 @@ interface SettingsState {
   // Window settings
   minimizeToTray: boolean;
   // Appearance settings
+  theme: ThemeOption; // App theme (system, light, dark)
   editorTheme: string; // Monaco editor theme (e.g., 'vs-dark', 'monokai', 'dracula')
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
@@ -37,6 +41,7 @@ interface SettingsState {
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
   setMinimizeToTray: (value: boolean) => void;
+  setTheme: (value: ThemeOption) => void;
   setEditorTheme: (value: string) => void;
   setShowBottomTerminal: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
@@ -57,6 +62,7 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffects: false,
       sendWithEnter: true,
       minimizeToTray: false,
+      theme: 'system',
       editorTheme: 'vs-dark',
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       showBottomTerminal: false,
@@ -72,6 +78,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
+      setTheme: (value) => set({ theme: value }),
       setEditorTheme: (value) => set({ editorTheme: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),

@@ -1,10 +1,11 @@
 // src/components/OnboardingScreen.tsx
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/glass-card';
-import { Github, Loader2, X, RefreshCw } from 'lucide-react';
-import { startOAuthFlow, cancelOAuthFlow } from '@/lib/auth';
+import { Github, Loader2, X, RefreshCw, ClipboardPaste } from 'lucide-react';
+import { startOAuthFlow, cancelOAuthFlow, handleOAuthCallback, storeToken } from '@/lib/auth';
 import { useAuthStore } from '@/stores/authStore';
 
 export function OnboardingScreen() {
@@ -14,10 +15,17 @@ export function OnboardingScreen() {
     startOAuth,
     cancelOAuth,
     setAuthenticated,
+    completeOAuth,
+    failOAuth,
   } = useAuthStore();
+
+  const [showDevPaste, setShowDevPaste] = useState(false);
+  const [devCallbackUrl, setDevCallbackUrl] = useState('');
+  const [devProcessing, setDevProcessing] = useState(false);
 
   const isConnecting = oauthState === 'pending';
   const hasError = oauthState === 'error';
+  const isDev = process.env.NODE_ENV === 'development';
 
   const handleSignIn = async () => {
     startOAuth();
@@ -54,6 +62,31 @@ export function OnboardingScreen() {
       name: 'Local Developer',
       avatar_url: '',
     });
+  };
+
+  // Dev mode: manually process OAuth callback URL
+  const handleDevPaste = async () => {
+    if (!devCallbackUrl.trim()) return;
+    console.log('[Onboarding] handleDevPaste: starting...');
+    setDevProcessing(true);
+    try {
+      console.log('[Onboarding] Calling handleOAuthCallback...');
+      const result = await handleOAuthCallback(devCallbackUrl.trim());
+      console.log('[Onboarding] handleOAuthCallback done, storing token...');
+      await storeToken(result.token);
+      console.log('[Onboarding] Token stored, calling completeOAuth...');
+      completeOAuth();
+      console.log('[Onboarding] Calling setAuthenticated...');
+      setAuthenticated(true, result.user);
+      console.log('[Onboarding] Done!');
+    } catch (err) {
+      console.error('[Onboarding] Error:', err);
+      failOAuth(err instanceof Error ? err.message : 'Failed to process callback');
+    } finally {
+      setDevProcessing(false);
+      setDevCallbackUrl('');
+      setShowDevPaste(false);
+    }
   };
 
   return (
@@ -137,6 +170,63 @@ export function OnboardingScreen() {
                 <p className="text-xs text-muted-foreground text-center">
                   Complete authorization in your browser, then return here.
                 </p>
+
+                {/* Dev mode: manual callback URL paste */}
+                {isDev && (
+                  <div className="mt-4 w-full border-t border-border/50 pt-4">
+                    {!showDevPaste ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowDevPaste(true)}
+                        className="w-full text-xs text-muted-foreground"
+                      >
+                        <ClipboardPaste className="mr-2 h-3 w-3" />
+                        Dev: Paste callback URL manually
+                      </Button>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="text"
+                          value={devCallbackUrl}
+                          onChange={(e) => setDevCallbackUrl(e.target.value)}
+                          placeholder="chatml://oauth/callback?code=...&state=..."
+                          className="w-full px-3 py-2 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+                          disabled={devProcessing}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={handleDevPaste}
+                            disabled={!devCallbackUrl.trim() || devProcessing}
+                            className="flex-1 text-xs"
+                          >
+                            {devProcessing ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              'Process'
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setShowDevPaste(false);
+                              setDevCallbackUrl('');
+                            }}
+                            disabled={devProcessing}
+                            className="text-xs"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/70">
+                          Deep links don&apos;t work in dev mode. Copy the redirect URL from your browser.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

@@ -622,7 +622,7 @@ export async function listReviewComments(
   filePath?: string
 ): Promise<ReviewCommentDTO[]> {
   const params = filePath ? `?filePath=${encodeURIComponent(filePath)}` : '';
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments${params}`
   );
   return handleResponse<ReviewCommentDTO[]>(res);
@@ -640,7 +640,7 @@ export async function createReviewComment(
     severity?: 'error' | 'warning' | 'suggestion';
   }
 ): Promise<ReviewCommentDTO> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments`,
     {
       method: 'POST',
@@ -655,7 +655,7 @@ export async function getReviewCommentStats(
   workspaceId: string,
   sessionId: string
 ): Promise<CommentStatsDTO[]> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/stats`
   );
   return handleResponse<CommentStatsDTO[]>(res);
@@ -667,7 +667,7 @@ export async function updateReviewComment(
   commentId: string,
   data: { resolved?: boolean; resolvedBy?: string }
 ): Promise<ReviewCommentDTO> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
     {
       method: 'PATCH',
@@ -683,7 +683,7 @@ export async function deleteReviewComment(
   sessionId: string,
   commentId: string
 ): Promise<void> {
-  const res = await fetch(
+  const res = await fetchWithAuth(
     `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
     { method: 'DELETE' }
   );

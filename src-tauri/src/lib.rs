@@ -89,12 +89,13 @@ pub fn run() {
                 // server-side storage, this should be revisited.
                 const APP_SALT: &[u8; 16] = b"chatml-stronghld";
 
-                // Configure Argon2id with OWASP-recommended parameters
-                // - 19 MiB memory (m_cost = 19456 KiB)
-                // - 2 iterations (t_cost)
+                // Configure Argon2id with fast parameters for development
+                // TODO: Consider increasing for production if needed
+                // - 4 MiB memory (m_cost = 4096 KiB) - reduced from 19456
+                // - 1 iteration (t_cost) - reduced from 2
                 // - 1 degree of parallelism (p_cost)
                 // - 32 bytes output for encryption key
-                let params = Params::new(19456, 2, 1, Some(32)).expect("Invalid Argon2 parameters");
+                let params = Params::new(4096, 1, 1, Some(32)).expect("Invalid Argon2 parameters");
                 let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
                 let mut output = [0u8; 32];
@@ -119,6 +120,7 @@ pub fn run() {
     // Clone state for closures
     let state_for_window_event = Arc::clone(&app_state);
     let state_for_setup = Arc::clone(&app_state);
+    let state_for_deep_link = Arc::clone(&app_state);
 
     builder
         .invoke_handler(tauri::generate_handler![
@@ -128,7 +130,8 @@ pub fn run() {
             commands::is_window_visible,
             commands::watch_workspace,
             commands::unwatch_workspace,
-            commands::get_auth_token
+            commands::get_auth_token,
+            commands::get_pending_oauth_callback
         ])
         .setup(move |app| {
             // Create and set the menu
@@ -183,17 +186,37 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let app_handle = app.handle().clone();
+                let deep_link_state = Arc::clone(&state_for_deep_link);
                 app.deep_link().on_open_url(move |event| {
                     let urls = event.urls();
+                    // Print to terminal for debugging (bypasses log system)
+                    println!("[DEEP-LINK] on_open_url called with {} URLs", urls.len());
                     for url in urls {
+                        println!("[DEEP-LINK] URL: {}", url);
                         if url.scheme() == "chatml" && url.host_str() == Some("oauth") {
+                            println!("[DEEP-LINK] OAuth callback matched!");
                             log::info!("Received OAuth callback URL: {}", url);
-                            // Emit to frontend for handling and focus the window
+                            let url_string = url.to_string();
+
+                            // Store the callback URL in state for frontend to retrieve
+                            deep_link_state.set_pending_oauth_callback(url_string.clone());
+
+                            // Focus the window so user sees the result
                             if let Some(window) = app_handle.get_webview_window("main") {
-                                // Show and focus the window so user sees the result
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                let _ = window.emit("oauth-callback", url.to_string());
+                                if let Err(e) = window.show() {
+                                    log::warn!("Failed to show window: {}", e);
+                                }
+                                if let Err(e) = window.set_focus() {
+                                    log::warn!("Failed to focus window: {}", e);
+                                }
+                                // Also try to emit the event (may not work in all contexts)
+                                let _ = window.emit("oauth-callback", url_string.clone());
+                                // And try JS eval as fallback
+                                let js_code = format!(
+                                    r#"window.dispatchEvent(new CustomEvent('tauri-oauth-callback', {{ detail: '{}' }}))"#,
+                                    url_string.replace('\'', "\\'")
+                                );
+                                let _ = window.eval(&js_code);
                             }
                         }
                     }

@@ -1,5 +1,9 @@
 .PHONY: build build-debug dev backend clean init deps install-debug
 
+# Load .env file if it exists (for OAuth credentials, API keys)
+-include .env
+export
+
 # Get the Rust target triple for the current platform
 TARGET := $(shell rustc -vV | grep host | cut -d' ' -f2)
 
@@ -26,6 +30,7 @@ backend-release:
 
 # Development mode (auto-installs deps if needed)
 # Trap SIGINT/SIGTERM to kill all child processes in the process group
+# Note: .env file is auto-loaded and exported (see -include .env above)
 dev: deps backend
 	@trap 'kill 0' INT TERM; npm run tauri:dev & wait
 

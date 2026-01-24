@@ -6,7 +6,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/OnboardingScreen';
-import { initAuth, listenForOAuthCallback, OAUTH_TIMEOUT_MS } from '@/lib/auth';
+import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/CloseFileConfirmDialog';
@@ -146,24 +146,33 @@ export default function Home() {
     const init = async () => {
       // Set up OAuth callback listener first
       try {
+        console.log('[OAuth] page.tsx: Setting up callback listener...');
         unlistenOAuth = await listenForOAuthCallback(
           (result) => {
+            console.log('[OAuth] page.tsx: Success callback received, user:', result.user?.login);
             completeOAuth();
             setAuthenticated(true, result.user);
           },
           (error) => {
+            console.log('[OAuth] page.tsx: Error callback received:', error.message);
             failOAuth(error.message);
           }
         );
-      } catch {
+        console.log('[OAuth] page.tsx: Callback listener ready');
+      } catch (e) {
         // Listener setup failed (not in Tauri), continue anyway
+        console.log('[OAuth] page.tsx: Listener setup failed (expected in browser):', e);
       }
 
       // Check for existing auth
       try {
+        console.log('[Auth] page.tsx: Calling initAuth...');
         const status = await initAuth();
+        console.log('[Auth] page.tsx: initAuth returned:', status.authenticated);
         setAuthenticated(status.authenticated, status.user);
-      } catch {
+        console.log('[Auth] page.tsx: setAuthenticated called');
+      } catch (e) {
+        console.error('[Auth] page.tsx: initAuth failed:', e);
         setAuthenticated(false);
       }
     };
@@ -185,6 +194,24 @@ export default function Home() {
 
     return () => clearTimeout(timeoutId);
   }, [oauthState, failOAuth]);
+
+  // Validate token with backend after connection is established
+  useEffect(() => {
+    if (!backendConnected || !isAuthenticated) return;
+
+    const validate = async () => {
+      const user = await validateStoredToken();
+      if (user) {
+        // Token is valid - update user info
+        setAuthenticated(true, user);
+      } else {
+        // Token is invalid/expired - show onboarding
+        setAuthenticated(false);
+      }
+    };
+
+    validate();
+  }, [backendConnected, isAuthenticated, setAuthenticated]);
 
   // Use refs to avoid changing useEffect dependency array sizes
   const showBottomTerminalRef = useRef(showBottomTerminal);
@@ -927,6 +954,9 @@ export default function Home() {
                       showRightSidebar={showRightSidebar || zenMode}
                       onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
                       onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+                      onOpenSettings={() => setShowSettings(true)}
+                      onOpenShortcuts={() => setShowShortcuts(true)}
+                      onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
                     />
                     <ErrorBoundary section="Conversation">
                       <ConversationArea>
@@ -974,7 +1004,11 @@ export default function Home() {
                 maxSize="500px"
               >
                 <ErrorBoundary section="Changes">
-                  <ChangesPanel />
+                  <ChangesPanel
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
+                  />
                 </ErrorBoundary>
               </ResizablePanel>
             </>

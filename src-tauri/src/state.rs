@@ -11,6 +11,8 @@ pub struct AppState {
     pub sidecar_pid: Mutex<Option<u32>>,
     /// Authentication token for backend API security
     pub auth_token: Mutex<Option<String>>,
+    /// Pending OAuth callback URL (set by deep link handler, consumed by frontend)
+    pub pending_oauth_callback: Mutex<Option<String>>,
 }
 
 impl Default for AppState {
@@ -26,6 +28,7 @@ impl AppState {
             minimize_to_tray: AtomicBool::new(false),
             sidecar_pid: Mutex::new(None),
             auth_token: Mutex::new(None),
+            pending_oauth_callback: Mutex::new(None),
         }
     }
 
@@ -91,6 +94,28 @@ impl AppState {
             Ok(guard) => guard.clone(),
             Err(e) => {
                 log::warn!("auth_token mutex poisoned: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Store a pending OAuth callback URL
+    pub fn set_pending_oauth_callback(&self, url: String) {
+        match self.pending_oauth_callback.lock() {
+            Ok(mut guard) => {
+                log::info!("Stored pending OAuth callback URL");
+                *guard = Some(url);
+            }
+            Err(e) => log::warn!("pending_oauth_callback mutex poisoned: {}", e),
+        }
+    }
+
+    /// Take the pending OAuth callback URL (removes it from state)
+    pub fn take_pending_oauth_callback(&self) -> Option<String> {
+        match self.pending_oauth_callback.lock() {
+            Ok(mut guard) => guard.take(),
+            Err(e) => {
+                log::warn!("pending_oauth_callback mutex poisoned: {}", e);
                 None
             }
         }
