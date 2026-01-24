@@ -18,19 +18,39 @@ import {
 
 type CommandDialogVariant = "centered" | "spotlight"
 
+// Context for tracking mouse hover separately from keyboard selection
+const CommandHoverContext = React.createContext<{
+  hoveredValue: string | null
+  setHoveredValue: (value: string | null) => void
+}>({
+  hoveredValue: null,
+  setHoveredValue: () => {},
+})
+
 function Command({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive>) {
+  const [hoveredValue, setHoveredValue] = React.useState<string | null>(null)
+
+  const contextValue = React.useMemo(() => ({
+    hoveredValue,
+    setHoveredValue,
+  }), [hoveredValue])
+
   return (
-    <CommandPrimitive
-      data-slot="command"
-      className={cn(
-        "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
-        className
-      )}
-      {...props}
-    />
+    <CommandHoverContext.Provider value={contextValue}>
+      <CommandPrimitive
+        data-slot="command"
+        className={cn(
+          "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
+          className
+        )}
+        // Disable cmdk's pointer selection - we handle mouse hover separately
+        disablePointerSelection
+        {...props}
+      />
+    </CommandHoverContext.Provider>
   )
 }
 
@@ -214,13 +234,44 @@ function CommandSeparator({
 
 function CommandItem({
   className,
+  value,
+  onSelect,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Item>) {
+  const { hoveredValue, setHoveredValue } = React.useContext(CommandHoverContext)
+  const isHovered = value !== undefined && hoveredValue === value
+
+  const handleMouseEnter = React.useCallback(() => {
+    if (value !== undefined) {
+      setHoveredValue(value)
+    }
+  }, [value, setHoveredValue])
+
+  const handleMouseLeave = React.useCallback(() => {
+    setHoveredValue(null)
+  }, [setHoveredValue])
+
+  // Handle click - this triggers onSelect for the hovered item
+  const handleClick = React.useCallback(() => {
+    onSelect?.(value ?? "")
+  }, [onSelect, value])
+
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
+      data-hovered={isHovered ? "true" : undefined}
+      value={value}
+      onSelect={onSelect}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleClick}
       className={cn(
-        "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // Base styles
+        "[&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // Mouse hover - subtle styling (comes first so keyboard selection can override)
+        "data-[hovered=true]:bg-muted",
+        // Keyboard selection - prominent styling (comes last to take precedence)
+        "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
         className
       )}
       {...props}
