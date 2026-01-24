@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -717,7 +718,7 @@ func TestOrchestratorHandlers_ListAgentRuns_CustomLimit(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 10; i++ {
 		mock.runs["agent-1"] = append(mock.runs["agent-1"], &models.AgentRun{
-			ID:        "run-" + string(rune('0'+i)),
+			ID:        fmt.Sprintf("run-%d", i),
 			AgentID:   "agent-1",
 			Status:    models.AgentRunStatusCompleted,
 			StartedAt: now,

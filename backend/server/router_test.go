@@ -24,10 +24,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 
 	// Create minimal dependencies
 	hub := NewHub()
-	ctx, cancel := make(chan struct{}), func() {}
-	_ = ctx
 	go hub.Run()
-	t.Cleanup(func() { cancel() })
 
 	// Create worktree manager for agent manager
 	wm := gitpkg.NewWorktreeManager()

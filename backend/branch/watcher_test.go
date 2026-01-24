@@ -1,6 +1,7 @@
 package branch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -393,7 +394,8 @@ func TestWatcher_BranchChangeEvent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for fsnotify to detect the change
-	time.Sleep(200 * time.Millisecond)
+	// Using a longer timeout to reduce flakiness on slow CI systems
+	time.Sleep(500 * time.Millisecond)
 
 	mu.Lock()
 	evtCount := len(events)
@@ -426,7 +428,7 @@ func TestWatcher_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			sessionID := "session-" + string(rune('0'+id))
+			sessionID := fmt.Sprintf("session-%d", id)
 			worktreePath, _ := createTestWorktree(t, sessionID)
 
 			// Watch
