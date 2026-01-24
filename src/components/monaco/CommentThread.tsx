@@ -56,11 +56,11 @@ function formatRelativeTime(isoTimestamp: string): string {
 function SeverityIcon({ severity }: { severity?: 'error' | 'warning' | 'suggestion' }) {
   switch (severity) {
     case 'error':
-      return <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />;
+      return <AlertCircle className="w-4 h-4 text-text-error shrink-0" />;
     case 'warning':
-      return <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />;
+      return <AlertTriangle className="w-4 h-4 text-text-warning shrink-0" />;
     case 'suggestion':
-      return <Lightbulb className="w-4 h-4 text-blue-500 shrink-0" />;
+      return <Lightbulb className="w-4 h-4 text-text-info shrink-0" />;
     default:
       return null;
   }
@@ -118,7 +118,7 @@ export const CommentThread = memo(function CommentThread({
             {formatRelativeTime(comment.createdAt)}
           </span>
           {comment.resolved && (
-            <span className="text-xs text-green-600 dark:text-green-400 shrink-0">
+            <span className="text-xs text-text-success shrink-0">
               Resolved
             </span>
           )}
@@ -132,7 +132,7 @@ export const CommentThread = memo(function CommentThread({
             title={comment.resolved ? 'Mark as unresolved' : 'Mark as resolved'}
           >
             {comment.resolved ? (
-              <CheckCircle2 className="w-4 h-4 text-green-600" />
+              <CheckCircle2 className="w-4 h-4 text-text-success" />
             ) : (
               <Circle className="w-4 h-4 text-muted-foreground" />
             )}

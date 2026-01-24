@@ -38,10 +38,10 @@ function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItem
   }[type];
 
   const iconColor = {
-    success: 'text-green-500',
-    warning: 'text-orange-500',
-    error: 'text-red-500',
-    info: 'text-blue-500',
+    success: 'text-text-success',
+    warning: 'text-text-warning',
+    error: 'text-text-error',
+    info: 'text-text-info',
     neutral: 'text-muted-foreground',
   }[type];
 
@@ -258,7 +258,7 @@ export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
   if (error) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
-        <XCircle className="h-5 w-5 text-red-500" />
+        <XCircle className="h-5 w-5 text-text-error" />
         <p className="text-xs text-muted-foreground text-center">{error}</p>
         <Button variant="ghost" size="sm" onClick={refetch}>
           <RefreshCw className="h-3 w-3 mr-1" />

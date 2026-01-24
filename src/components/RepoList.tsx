@@ -114,7 +114,7 @@ export function RepoList({ onAddClick }: RepoListProps) {
                             {repo.name}
                           </span>
                           {runningCount > 0 && (
-                            <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500">
+                            <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-text-info">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
                               {runningCount}
                             </span>

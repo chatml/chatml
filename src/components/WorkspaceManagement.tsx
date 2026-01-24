@@ -88,7 +88,7 @@ export function WorkspaceManagement({ onSelectSession, onBack }: WorkspaceManage
       case 'active':
         return <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />;
       case 'done':
-        return <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />;
+        return <CheckCircle2 className="w-3.5 h-3.5 text-text-success" />;
       default:
         return <Circle className="w-3.5 h-3.5 text-muted-foreground/50" />;
     }
@@ -179,7 +179,7 @@ export function WorkspaceManagement({ onSelectSession, onBack }: WorkspaceManage
 
                       {/* Stats Badge */}
                       {session.stats && (session.stats.additions > 0 || session.stats.deletions > 0) && (
-                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-green-500/20 text-green-600 dark:text-green-400">
+                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-green-500/20 text-text-success">
                           +{session.stats.additions}
                         </span>
                       )}

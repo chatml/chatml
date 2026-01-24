@@ -120,8 +120,8 @@ export function UpdateChecker() {
           <DialogTitle className="flex items-center gap-2">
             {state === 'available' && <Download className="w-5 h-5" />}
             {state === 'downloading' && <Loader2 className="w-5 h-5 animate-spin" />}
-            {state === 'ready' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-            {state === 'error' && <RefreshCw className="w-5 h-5 text-red-500" />}
+            {state === 'ready' && <CheckCircle2 className="w-5 h-5 text-text-success" />}
+            {state === 'error' && <RefreshCw className="w-5 h-5 text-text-error" />}
             {state === 'available' && 'Update Available'}
             {state === 'downloading' && 'Downloading Update'}
             {state === 'ready' && 'Update Ready'}

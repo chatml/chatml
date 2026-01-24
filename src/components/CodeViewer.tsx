@@ -152,7 +152,7 @@ export function CodeViewer({
               onClick={handleCopy}
             >
               {copied ? (
-                <Check className="w-2.5 h-2.5 text-green-500" />
+                <Check className="w-2.5 h-2.5 text-text-success" />
               ) : (
                 <Copy className="w-2.5 h-2.5" />
               )}
@@ -221,7 +221,7 @@ export function CodeViewer({
             onClick={handleCopy}
           >
             {copied ? (
-              <Check className="w-2.5 h-2.5 text-green-500" />
+              <Check className="w-2.5 h-2.5 text-text-success" />
             ) : (
               <Copy className="w-2.5 h-2.5" />
             )}

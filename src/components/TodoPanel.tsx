@@ -40,9 +40,9 @@ function AgentTodoRow({ todo }: { todo: AgentTodoItem }) {
   const getStatusIcon = () => {
     switch (todo.status) {
       case 'completed':
-        return <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />;
+        return <CheckCircle2 className="h-3.5 w-3.5 text-text-success shrink-0" />;
       case 'in_progress':
-        return <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin shrink-0" />;
+        return <Loader2 className="h-3.5 w-3.5 text-text-info animate-spin shrink-0" />;
       default:
         return <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
     }
