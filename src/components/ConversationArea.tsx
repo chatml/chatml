@@ -59,6 +59,8 @@ import { RunSummaryBlock } from '@/components/RunSummaryBlock';
 import { ToolUsageHistory } from '@/components/ToolUsageHistory';
 import { SystemInfoCard } from '@/components/SystemInfoCard';
 import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
+import { ChatSearchBar, countSearchMatches, highlightSearchMatches } from '@/components/ChatSearchBar';
+import { useShortcut } from '@/hooks/useShortcut';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
@@ -128,6 +130,95 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameConvId, setRenameConvId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+
+  // Chat search state - keyed by conversation to auto-reset
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchState, setSearchState] = useState<{ convId: string | null; query: string; matchIndex: number }>({
+    convId: null,
+    query: '',
+    matchIndex: 0,
+  });
+
+  // Derive search values, resetting if conversation changed
+  const searchQuery = searchState.convId === selectedConversationId ? searchState.query : '';
+  const currentMatchIndex = searchState.convId === selectedConversationId ? searchState.matchIndex : 0;
+
+  const setSearchQuery = useCallback((query: string) => {
+    setSearchState({ convId: selectedConversationId, query, matchIndex: 0 });
+  }, [selectedConversationId]);
+
+  const setCurrentMatchIndex = useCallback((indexOrFn: number | ((prev: number) => number)) => {
+    setSearchState((prev) => ({
+      ...prev,
+      convId: selectedConversationId,
+      matchIndex: typeof indexOrFn === 'function' ? indexOrFn(prev.matchIndex) : indexOrFn,
+    }));
+  }, [selectedConversationId]);
+
+  // Compute search matches across all messages
+  const searchMatches = useMemo(() => {
+    if (!searchQuery) return { total: 0, messageOffsets: [] as number[] };
+
+    let total = 0;
+    const messageOffsets: number[] = [];
+
+    for (const message of conversationMessages) {
+      messageOffsets.push(total);
+      total += countSearchMatches(message.content, searchQuery);
+    }
+
+    return { total, messageOffsets };
+  }, [conversationMessages, searchQuery]);
+
+  // Clamp currentMatchIndex to valid range (derived, not effect-based)
+  const clampedMatchIndex = searchMatches.total > 0
+    ? Math.min(currentMatchIndex, searchMatches.total - 1)
+    : 0;
+
+  // Search navigation handlers
+  const goToNextMatch = useCallback(() => {
+    if (searchMatches.total > 0) {
+      setCurrentMatchIndex((prev) => (prev + 1) % searchMatches.total);
+    }
+  }, [searchMatches.total, setCurrentMatchIndex]);
+
+  const goToPrevMatch = useCallback(() => {
+    if (searchMatches.total > 0) {
+      setCurrentMatchIndex((prev) => (prev - 1 + searchMatches.total) % searchMatches.total);
+    }
+  }, [searchMatches.total, setCurrentMatchIndex]);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+  }, []);
+
+  // Register keyboard shortcuts for search
+  useShortcut('searchChat', useCallback(() => {
+    setSearchOpen(true);
+  }, []));
+
+  useShortcut('searchNextMatch', useCallback(() => {
+    if (searchOpen) {
+      goToNextMatch();
+    }
+  }, [searchOpen, goToNextMatch]));
+
+  useShortcut('searchPrevMatch', useCallback(() => {
+    if (searchOpen) {
+      goToPrevMatch();
+    }
+  }, [searchOpen, goToPrevMatch]));
+
+  // Scroll to current match when it changes
+  useEffect(() => {
+    if (!searchQuery || searchMatches.total === 0) return;
+
+    // Find the mark element with the current match index
+    const matchElement = document.querySelector(`mark[data-match-index="${clampedMatchIndex}"]`);
+    if (matchElement) {
+      matchElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [clampedMatchIndex, searchQuery, searchMatches.total]);
 
 // Filter tabs for current session only (strict session isolation)
   // All tabs are now session-scoped - no more workspace-level tabs
@@ -720,6 +811,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
           {/* Messages */}
           <div className="relative flex-1 min-h-0">
+            {/* Chat Search Bar */}
+            <ChatSearchBar
+              isOpen={searchOpen}
+              onClose={closeSearch}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              currentMatchIndex={clampedMatchIndex}
+              totalMatches={searchMatches.total}
+              onNextMatch={goToNextMatch}
+              onPrevMatch={goToPrevMatch}
+            />
             <div
               ref={scrollContainerRef}
               onScroll={handleScroll}
@@ -735,6 +837,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                       key={message.id}
                       message={message}
                       isFirst={idx === 0}
+                      searchQuery={searchQuery}
+                      currentMatchIndex={clampedMatchIndex}
+                      matchOffset={searchMatches.messageOffsets[idx] ?? 0}
                     />
                   ))}
                   {/* Streaming message */}
@@ -827,7 +932,21 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
   );
 }
 
-const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message: Message; isFirst: boolean }) {
+interface MessageBlockProps {
+  message: Message;
+  isFirst: boolean;
+  searchQuery?: string;
+  currentMatchIndex?: number;
+  matchOffset?: number;
+}
+
+const MessageBlock = memo(function MessageBlock({
+  message,
+  isFirst,
+  searchQuery = '',
+  currentMatchIndex = 0,
+  matchOffset = 0,
+}: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const copyContent = useCallback(async () => {
@@ -837,6 +956,12 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
       setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
     }
   }, [message.content]);
+
+  // Highlighted content for plain text messages
+  const highlightedContent = useMemo(() => {
+    if (!searchQuery) return null;
+    return highlightSearchMatches(message.content, searchQuery, currentMatchIndex, matchOffset);
+  }, [message.content, searchQuery, currentMatchIndex, matchOffset]);
 
   // System messages (setup info, etc.)
   if (message.role === 'system') {
@@ -850,7 +975,9 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
     // Fallback for system messages without setup info
     return (
       <div className={cn('py-2', !isFirst && 'pt-3')}>
-        <div className="text-xs text-muted-foreground italic">{message.content}</div>
+        <div className="text-xs text-muted-foreground italic">
+          {highlightedContent || message.content}
+        </div>
       </div>
     );
   }
@@ -859,7 +986,9 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
         <div className="max-w-[85%] border border-purple-400/20 bg-purple-500/10 rounded-2xl rounded-br-md px-4 py-2">
-          <p className="text-sm leading-relaxed">{message.content}</p>
+          <p className="text-sm leading-relaxed">
+            {highlightedContent || message.content}
+          </p>
         </div>
       </div>
     );
@@ -932,11 +1061,14 @@ const MessageBlock = memo(function MessageBlock({ message, isFirst }: { message:
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if message content/id changed or isFirst changed
+  // Custom comparison: only re-render if message content/id changed, isFirst changed, or search changed
   return prevProps.message.id === nextProps.message.id &&
          prevProps.message.content === nextProps.message.content &&
          prevProps.message.timestamp === nextProps.message.timestamp &&
-         prevProps.isFirst === nextProps.isFirst;
+         prevProps.isFirst === nextProps.isFirst &&
+         prevProps.searchQuery === nextProps.searchQuery &&
+         prevProps.currentMatchIndex === nextProps.currentMatchIndex &&
+         prevProps.matchOffset === nextProps.matchOffset;
 });
 
 function VerificationBlock({ results }: { results: VerificationResult[] }) {
