@@ -45,19 +45,35 @@ ResizablePanel.displayName = "ResizablePanel"
 
 function ResizableHandle({
   withHandle,
+  direction,
   className,
   ...props
 }: React.ComponentProps<typeof Separator> & {
   withHandle?: boolean
+  direction?: "horizontal" | "vertical"
 }) {
+  // Separator orientation is opposite of panel group direction
+  // horizontal group = vertical separator (col-resize cursor)
+  // vertical group = horizontal separator (row-resize cursor)
+  const isVerticalSeparator = direction === "horizontal"
+
   return (
     <Separator
       className={cn(
-        "relative flex items-center justify-center bg-border hover:bg-primary/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        // Horizontal separator (for vertical panel group) - full width, thin height
-        "aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:cursor-row-resize",
-        // Vertical separator (for horizontal panel group) - full height, thin width
-        "aria-[orientation=vertical]:w-px aria-[orientation=vertical]:h-full aria-[orientation=vertical]:cursor-col-resize",
+        "relative z-10 flex items-center justify-center bg-transparent outline-none",
+        // Visible line via pseudo-element
+        "after:absolute after:bg-border hover:after:bg-primary/50",
+        isVerticalSeparator ? [
+          // Vertical separator (for horizontal panel group)
+          // 6px wide hit area, negative margins to not affect layout
+          "w-[6px] -mx-[2.5px] h-full !cursor-col-resize",
+          "after:w-px after:h-full",
+        ] : [
+          // Horizontal separator (for vertical panel group)
+          // 6px tall hit area, negative margins to not affect layout
+          "h-[6px] -my-[2.5px] w-full !cursor-row-resize",
+          "after:h-px after:w-full",
+        ],
         className
       )}
       {...props}

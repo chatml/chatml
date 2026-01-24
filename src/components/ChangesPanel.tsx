@@ -632,7 +632,7 @@ export function ChangesPanel({
           )}
         </ResizablePanel>
 
-        <ResizableHandle />
+        <ResizableHandle direction="vertical" />
 
         {/* Bottom Panel - Todos/MCP/History */}
         <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
