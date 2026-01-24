@@ -151,7 +151,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
           ptyRef.current = pty;
 
           // PTY output -> Terminal
-          pty.onData((data: string) => {
+          pty.onData((data: Uint8Array) => {
             if (!cleanupCalled) {
               terminal.write(data);
             }
