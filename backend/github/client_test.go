@@ -8,7 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExchangeCode(t *testing.T) {
@@ -206,4 +210,326 @@ func TestExchangeCode_WithPKCE(t *testing.T) {
 	if !strings.Contains(receivedBody, "code_verifier=test_verifier_abc123") {
 		t.Errorf("Request body missing code_verifier, got: %s", receivedBody)
 	}
+}
+
+// ============================================================================
+// Additional Tests
+// ============================================================================
+
+func TestNewClient(t *testing.T) {
+	client := NewClient("my-client-id", "my-client-secret")
+
+	require.NotNil(t, client)
+	require.Equal(t, "my-client-id", client.clientID)
+	require.Equal(t, "my-client-secret", client.clientSecret)
+	require.Equal(t, "https://github.com", client.baseURL)
+	require.Equal(t, "https://api.github.com", client.apiURL)
+	require.NotNil(t, client.httpClient)
+}
+
+func TestClient_ExchangeCode_MissingClientID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Server should not be called when client ID is missing")
+	}))
+	defer server.Close()
+
+	client := NewClient("", "test_client_secret")
+	client.baseURL = server.URL
+
+	_, err := client.ExchangeCode(context.Background(), "test_code", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "GITHUB_CLIENT_ID not configured")
+}
+
+func TestClient_ExchangeCode_MissingClientSecret(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Server should not be called when client secret is missing")
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "")
+	client.baseURL = server.URL
+
+	_, err := client.ExchangeCode(context.Background(), "test_code", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "GITHUB_CLIENT_SECRET not configured")
+}
+
+func TestClient_ExchangeCode_NetworkError(t *testing.T) {
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = "http://localhost:99999" // Invalid port
+
+	_, err := client.ExchangeCode(context.Background(), "test_code", "")
+	require.Error(t, err)
+}
+
+func TestClient_ExchangeCode_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("not valid json"))
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+
+	_, err := client.ExchangeCode(context.Background(), "test_code", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decoding")
+}
+
+func TestClient_ExchangeCode_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "token"})
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := client.ExchangeCode(ctx, "test_code", "")
+	require.Error(t, err)
+}
+
+func TestClient_GetUser_Unauthorized(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"message": "Bad credentials"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+
+	_, err := client.GetUser(context.Background(), "invalid_token")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "401")
+}
+
+func TestClient_GetUser_NetworkError(t *testing.T) {
+	client := NewClient("", "")
+	client.apiURL = "http://localhost:99999" // Invalid port
+
+	_, err := client.GetUser(context.Background(), "test_token")
+	require.Error(t, err)
+}
+
+func TestClient_GetUser_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("not valid json"))
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+
+	_, err := client.GetUser(context.Background(), "test_token")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decoding")
+}
+
+func TestClient_SetToken_GetToken(t *testing.T) {
+	client := NewClient("", "")
+
+	require.Empty(t, client.GetToken())
+
+	client.SetToken("my-test-token")
+	require.Equal(t, "my-test-token", client.GetToken())
+
+	client.SetToken("updated-token")
+	require.Equal(t, "updated-token", client.GetToken())
+}
+
+func TestClient_SetUser_GetStoredUser(t *testing.T) {
+	client := NewClient("", "")
+
+	require.Nil(t, client.GetStoredUser())
+
+	user := &User{
+		Login:     "testuser",
+		Name:      "Test User",
+		AvatarURL: "https://example.com/avatar.png",
+	}
+	client.SetUser(user)
+
+	stored := client.GetStoredUser()
+	require.NotNil(t, stored)
+	require.Equal(t, "testuser", stored.Login)
+	require.Equal(t, "Test User", stored.Name)
+	require.Equal(t, "https://example.com/avatar.png", stored.AvatarURL)
+
+	// Verify it's a copy (modifying original doesn't affect stored)
+	user.Name = "Modified"
+	stored2 := client.GetStoredUser()
+	require.Equal(t, "Test User", stored2.Name)
+
+	// Verify returned is a copy (modifying returned doesn't affect stored)
+	stored.Name = "Also Modified"
+	stored3 := client.GetStoredUser()
+	require.Equal(t, "Test User", stored3.Name)
+}
+
+func TestClient_SetUser_Nil(t *testing.T) {
+	client := NewClient("", "")
+
+	client.SetUser(&User{Login: "test"})
+	require.NotNil(t, client.GetStoredUser())
+
+	client.SetUser(nil)
+	require.Nil(t, client.GetStoredUser())
+}
+
+func TestClient_ClearAuth(t *testing.T) {
+	client := NewClient("", "")
+
+	client.SetToken("test-token")
+	client.SetUser(&User{Login: "testuser"})
+
+	require.NotEmpty(t, client.GetToken())
+	require.NotNil(t, client.GetStoredUser())
+
+	client.ClearAuth()
+
+	require.Empty(t, client.GetToken())
+	require.Nil(t, client.GetStoredUser())
+}
+
+func TestClient_IsAuthenticated_True(t *testing.T) {
+	client := NewClient("", "")
+
+	client.SetToken("test-token")
+	require.True(t, client.IsAuthenticated())
+}
+
+func TestClient_IsAuthenticated_False(t *testing.T) {
+	client := NewClient("", "")
+
+	require.False(t, client.IsAuthenticated())
+
+	client.SetToken("")
+	require.False(t, client.IsAuthenticated())
+}
+
+func TestClient_ConcurrentAccess(t *testing.T) {
+	client := NewClient("", "")
+
+	var wg sync.WaitGroup
+	const numGoroutines = 100
+
+	// Concurrent token access
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			// Mix of reads and writes
+			if id%2 == 0 {
+				client.SetToken("token-" + string(rune('0'+id%10)))
+			} else {
+				_ = client.GetToken()
+			}
+		}(i)
+	}
+
+	// Concurrent user access
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			if id%2 == 0 {
+				client.SetUser(&User{Login: "user-" + string(rune('0'+id%10))})
+			} else {
+				_ = client.GetStoredUser()
+			}
+		}(i)
+	}
+
+	// Concurrent authentication check
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = client.IsAuthenticated()
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestClient_SetBaseURL(t *testing.T) {
+	client := NewClient("", "")
+	require.Equal(t, "https://github.com", client.baseURL)
+
+	client.SetBaseURL("https://github.example.com")
+	require.Equal(t, "https://github.example.com", client.baseURL)
+}
+
+func TestClient_SetAPIURL(t *testing.T) {
+	client := NewClient("", "")
+	require.Equal(t, "https://api.github.com", client.apiURL)
+
+	client.SetAPIURL("https://api.github.example.com")
+	require.Equal(t, "https://api.github.example.com", client.apiURL)
+}
+
+func TestUser_Struct(t *testing.T) {
+	user := User{
+		Login:     "octocat",
+		Name:      "The Octocat",
+		AvatarURL: "https://github.com/images/error/octocat_happy.gif",
+	}
+
+	require.Equal(t, "octocat", user.Login)
+	require.Equal(t, "The Octocat", user.Name)
+	require.Equal(t, "https://github.com/images/error/octocat_happy.gif", user.AvatarURL)
+}
+
+func TestUser_JSONSerialization(t *testing.T) {
+	user := User{
+		Login:     "octocat",
+		Name:      "The Octocat",
+		AvatarURL: "https://github.com/images/error/octocat_happy.gif",
+	}
+
+	data, err := json.Marshal(user)
+	require.NoError(t, err)
+
+	var decoded User
+	err = json.Unmarshal(data, &decoded)
+	require.NoError(t, err)
+
+	require.Equal(t, user.Login, decoded.Login)
+	require.Equal(t, user.Name, decoded.Name)
+	require.Equal(t, user.AvatarURL, decoded.AvatarURL)
+}
+
+func TestClient_GetUser_Success_FullFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/user", r.URL.Path)
+		require.Equal(t, "Bearer test_token", r.Header.Get("Authorization"))
+		require.Equal(t, "application/json", r.Header.Get("Accept"))
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"login":      "octocat",
+			"name":       "The Octocat",
+			"avatar_url": "https://github.com/images/error/octocat_happy.gif",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+
+	user, err := client.GetUser(context.Background(), "test_token")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, "octocat", user.Login)
+	require.Equal(t, "The Octocat", user.Name)
+	require.Equal(t, "https://github.com/images/error/octocat_happy.gif", user.AvatarURL)
 }
