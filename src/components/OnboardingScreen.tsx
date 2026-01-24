@@ -14,11 +14,12 @@ export function OnboardingScreen() {
     oauthError,
     startOAuth,
     cancelOAuth,
-    setAuthenticated,
     completeOAuth,
     failOAuth,
+    setAuthenticated,
   } = useAuthStore();
 
+  // Dev mode paste feature state
   const [showDevPaste, setShowDevPaste] = useState(false);
   const [devCallbackUrl, setDevCallbackUrl] = useState('');
   const [devProcessing, setDevProcessing] = useState(false);
