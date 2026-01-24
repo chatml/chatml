@@ -21,6 +21,7 @@ export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 
 export interface DropdownAction {
   label: string;
   message: string;
+  description?: string;
   icon?: LucideIcon;
 }
 

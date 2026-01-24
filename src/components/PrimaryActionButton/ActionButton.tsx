@@ -102,16 +102,24 @@ export function ActionButton({
               <ChevronDown className="size-3" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="min-w-[280px]">
             {action.dropdownActions?.map((dropdownAction) => {
               const DropdownIcon = dropdownAction.icon;
               return (
                 <DropdownMenuItem
                   key={dropdownAction.label}
                   onClick={() => handleDropdownClick(dropdownAction.message)}
+                  className={dropdownAction.description ? 'flex-col items-start py-2' : ''}
                 >
-                  {DropdownIcon && <DropdownIcon className="size-4 mr-2" />}
-                  {dropdownAction.label}
+                  <div className="flex items-center gap-2">
+                    {DropdownIcon && <DropdownIcon className="size-4" />}
+                    <span className="font-medium">{dropdownAction.label}</span>
+                  </div>
+                  {dropdownAction.description && (
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {dropdownAction.description}
+                    </p>
+                  )}
                 </DropdownMenuItem>
               );
             })}

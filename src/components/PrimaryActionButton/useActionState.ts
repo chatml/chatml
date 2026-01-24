@@ -191,14 +191,26 @@ export function useActionState(
     if (session?.prStatus === 'open') {
       return {
         type: 'view-pr',
-        label: 'View PR',
-        icon: ExternalLink,
+        label: 'Merge PR',
+        icon: GitMerge,
         variant: 'success',
-        prUrl: session.prUrl,
+        message: 'Squash and merge the pull request',
         dropdownActions: [
-          { label: 'Request Review', message: 'Request a review on the PR', icon: UserPlus },
-          { label: 'Merge PR', message: 'Merge the pull request', icon: CheckCircle },
-          { label: 'Close PR', message: 'Close the pull request without merging', icon: XOctagon },
+          {
+            label: 'Create a merge commit',
+            message: 'Merge the pull request with a merge commit',
+            description: 'All commits from this branch will be added to the base branch via a merge commit.',
+          },
+          {
+            label: 'Squash and merge',
+            message: 'Squash and merge the pull request',
+            description: 'The commits from this branch will be combined into one commit in the base branch.',
+          },
+          {
+            label: 'Rebase and merge',
+            message: 'Rebase and merge the pull request',
+            description: 'The commits from this branch will be rebased and added to the base branch.',
+          },
         ],
       };
     }
