@@ -51,6 +51,12 @@
   --text-xs: 11px;           /* Was 13px */
   --text-micro: 10px;        /* Was 12px */
 
+  /* Status Text Colors */
+  --text-success: #22c55e;   /* green-500 */
+  --text-error: #ef4444;     /* red-500 */
+  --text-warning: #eab308;   /* yellow-500 */
+  --text-info: #3b82f6;      /* blue-500 */
+
   /* Letter Spacing */
   --tracking-display: -0.02em;
   --tracking-tight: -0.01em;
@@ -113,6 +119,12 @@
 }
 
 .dark {
+  /* Status Text Colors (same in dark mode) */
+  --text-success: #22c55e;   /* green-500 */
+  --text-error: #ef4444;     /* red-500 */
+  --text-warning: #eab308;   /* yellow-500 */
+  --text-info: #3b82f6;      /* blue-500 */
+
   /* Main backgrounds */
   --background: #141414;           /* RGB(20,20,20) - sidebar/panels */
   --chat-background: #181818;      /* RGB(24,24,24) - chat area */
@@ -219,6 +231,12 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-surface-4: var(--surface-4);
+
+  /* Status Text Colors */
+  --color-text-success: var(--text-success);
+  --color-text-error: var(--text-error);
+  --color-text-warning: var(--text-warning);
+  --color-text-info: var(--text-info);
 
   /* Typography */
   --font-family-display: var(--font-display);

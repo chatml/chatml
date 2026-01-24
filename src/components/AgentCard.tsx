@@ -93,7 +93,7 @@ export function AgentCard({ agent, runs = [], isSelected, onClick }: AgentCardPr
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn('h-2 w-2 rounded-full flex-shrink-0', getStatusColor())} />
-          <span className="font-medium text-sm text-zinc-100 truncate">
+          <span className="font-medium text-sm text-foreground truncate">
             {agent.definition?.name || agent.id}
           </span>
         </div>

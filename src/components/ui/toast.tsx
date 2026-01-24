@@ -94,8 +94,8 @@ const ToastIcon: Record<ToastType, React.ElementType> = {
 // Colors for each toast type
 const toastStyles: Record<ToastType, string> = {
   error: 'bg-destructive/10 border-destructive/30 text-destructive',
-  success: 'bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400',
-  info: 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400',
+  success: 'bg-text-success/10 border-text-success/30 text-text-success',
+  info: 'bg-text-info/10 border-text-info/30 text-text-info',
 };
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) {
@@ -138,7 +138,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
         {toast.title && (
           <p className="text-sm font-medium">{toast.title}</p>
         )}
-        <p className={cn('text-sm', toast.title && 'text-foreground/80')}>
+        <p className={cn('text-sm', toast.title && 'text-foreground')}>
           {toast.message}
         </p>
       </div>

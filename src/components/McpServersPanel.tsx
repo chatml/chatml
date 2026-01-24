@@ -10,20 +10,20 @@ import type { McpServerStatus } from '@/lib/types';
 const STATUS_CONFIG = {
   connected: {
     icon: CheckCircle2,
-    color: 'text-green-500',
-    bgColor: 'bg-green-500/10',
+    color: 'text-text-success',
+    bgColor: 'bg-text-success/10',
     label: 'Connected',
   },
   failed: {
     icon: XCircle,
-    color: 'text-red-500',
-    bgColor: 'bg-red-500/10',
+    color: 'text-text-error',
+    bgColor: 'bg-text-error/10',
     label: 'Failed',
   },
   'needs-auth': {
     icon: AlertCircle,
-    color: 'text-yellow-500',
-    bgColor: 'bg-yellow-500/10',
+    color: 'text-text-warning',
+    bgColor: 'bg-text-warning/10',
     label: 'Needs Auth',
   },
   pending: {

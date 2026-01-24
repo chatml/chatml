@@ -96,7 +96,7 @@ export function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
       >
         {/* Status */}
         {summary.success ? (
-          <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+          <CheckCircle2 className="w-3 h-3 text-text-success shrink-0" />
         ) : (
           <XCircle className="w-3 h-3 text-destructive shrink-0" />
         )}
