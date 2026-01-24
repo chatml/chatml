@@ -90,6 +90,27 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Approve plan',
     category: 'Chat',
   },
+  {
+    id: 'searchChat',
+    key: 'f',
+    modifiers: ['meta'],
+    label: 'Search conversation',
+    category: 'Chat',
+  },
+  {
+    id: 'searchNextMatch',
+    key: 'g',
+    modifiers: ['meta'],
+    label: 'Next search match',
+    category: 'Chat',
+  },
+  {
+    id: 'searchPrevMatch',
+    key: 'g',
+    modifiers: ['meta', 'shift'],
+    label: 'Previous search match',
+    category: 'Chat',
+  },
 
   // Terminal shortcuts are handled directly by xterm.js and are listed here
   // for documentation purposes only. They are not registered via useShortcut
