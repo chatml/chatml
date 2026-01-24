@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -21,19 +20,13 @@ import (
 func setupTestManager(t *testing.T) (*Manager, *store.SQLiteStore) {
 	t.Helper()
 
-	// Create temp directory for HOME
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-
-	sqliteStore, err := store.NewSQLiteStore()
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
 	require.NoError(t, err)
 
 	worktreeManager := git.NewWorktreeManager()
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
-		os.Setenv("HOME", origHome)
 	})
 
 	manager := NewManager(sqliteStore, worktreeManager)

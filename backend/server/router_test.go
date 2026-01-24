@@ -18,7 +18,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	t.Helper()
 
 	// Create in-memory store
-	s, err := store.NewSQLiteStore()
+	s, err := store.NewSQLiteStoreInMemory()
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 

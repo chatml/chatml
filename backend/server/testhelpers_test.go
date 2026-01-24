@@ -22,17 +22,11 @@ import (
 func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 	t.Helper()
 
-	// Create temp directory for HOME
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-
-	sqliteStore, err := store.NewSQLiteStore()
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
-		os.Setenv("HOME", origHome)
 	})
 
 	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil)
@@ -45,12 +39,7 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteStore, *agent.Manager) {
 	t.Helper()
 
-	// Create temp directory for HOME
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-
-	sqliteStore, err := store.NewSQLiteStore()
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
 	require.NoError(t, err)
 
 	worktreeManager := git.NewWorktreeManager()
@@ -58,7 +47,6 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
-		os.Setenv("HOME", origHome)
 	})
 
 	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil)

@@ -69,6 +69,29 @@ func NewSQLiteStore() (*SQLiteStore, error) {
 	return s, nil
 }
 
+// NewSQLiteStoreInMemory creates an in-memory SQLite store for testing
+func NewSQLiteStoreInMemory() (*SQLiteStore, error) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, err
+	}
+
+	// Single connection for in-memory databases
+	db.SetMaxOpenConns(1)
+
+	s := &SQLiteStore{
+		db:     db,
+		dbPath: ":memory:",
+	}
+
+	if err := s.initSchema(); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return s, nil
+}
+
 // Close closes the database connection
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
