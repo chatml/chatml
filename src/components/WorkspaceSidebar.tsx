@@ -314,10 +314,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   return (
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
-      {/* Gradient orb behind traffic lights - macOS only */}
-      {isMacOS && (
-        <div className="absolute -top-4 -left-4 w-20 h-20 bg-primary/45 rounded-full blur-[25px] pointer-events-none" />
-      )}
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
@@ -346,7 +342,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
           className={cn(
             'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
             activeTab === 'workspaces'
-              ? 'text-foreground border-b-2 border-primary'
+              ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -358,7 +354,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
           className={cn(
             'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
             activeTab === 'agents'
-              ? 'text-foreground border-b-2 border-primary'
+              ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -635,12 +631,12 @@ function SortableWorkspaceItem({
             )}
           >
             <div
-              className="w-6 h-6 rounded-md bg-primary/15 flex items-center justify-center text-[11px] font-semibold text-primary shrink-0 cursor-grab active:cursor-grabbing"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-primary/60"
               {...attributes}
               {...listeners}
               onClick={(e) => e.stopPropagation()}
             >
-              {getInitial(workspace.name)}
+              <Folder className="w-4 h-4" />
             </div>
             <span className="text-[12px] font-medium truncate">
               {workspace.name}
@@ -737,10 +733,10 @@ function SortableWorkspaceItem({
                     <ContextMenuTrigger asChild>
                       <div
                         className={cn(
-                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5 transition-colors',
+                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5',
                           isSessionSelected
-                            ? 'bg-sidebar-accent shadow-sm'
-                            : 'hover:bg-sidebar-accent/50'
+                            ? 'bg-surface-2 hover:bg-surface-3'
+                            : 'hover:bg-surface-2'
                         )}
                         onClick={() => onSelectSession(session.id)}
                       >
@@ -754,7 +750,10 @@ function SortableWorkspaceItem({
                               ) : (
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
-                              <span className="text-[12px] font-normal truncate flex-1 w-0 text-foreground/80">
+                              <span className={cn(
+                                "text-[12px] font-normal truncate flex-1 w-0",
+                                isSessionSelected ? "text-foreground" : "text-foreground/60"
+                              )}>
                                 {session.branch || session.name}
                               </span>
                               {/* Pinned indicator - fade out on hover */}
