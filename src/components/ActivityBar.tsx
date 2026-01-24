@@ -56,10 +56,7 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
                   {isActive && (
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-gradient-to-b from-primary to-purple-500 rounded-r" />
                   )}
-                  <Icon className={cn(
-                    "h-5 w-5 transition-transform duration-200",
-                    !isActive && "group-hover:scale-110"
-                  )} />
+                  <Icon className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right" className="flex items-center gap-2">
