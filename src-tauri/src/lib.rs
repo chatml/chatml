@@ -14,6 +14,39 @@ use tauri_plugin_decorum::WebviewWindowExt;
 
 use state::AppState;
 
+/// Fixed application-specific salt for Stronghold key derivation.
+///
+/// IMPORTANT: This salt value is PERMANENT and must NEVER be changed.
+/// Changing it would invalidate all existing Stronghold vaults, making
+/// stored credentials inaccessible. If a salt change is ever required,
+/// implement a migration strategy that re-encrypts existing vaults.
+///
+/// Note: Stronghold requires deterministic output for the same password,
+/// so we use a fixed salt. The salt is application-specific to prevent
+/// cross-application attacks.
+const STRONGHOLD_SALT: &[u8; 16] = b"chatml-stronghld";
+
+/// Derive a 32-byte key from a password using Argon2id.
+/// This is used for Stronghold vault encryption.
+pub fn derive_stronghold_key(password: &str) -> Vec<u8> {
+    use argon2::{Algorithm, Argon2, Params, Version};
+
+    // Configure Argon2id with fast parameters for development
+    // - 4 MiB memory (m_cost = 4096 KiB)
+    // - 1 iteration (t_cost)
+    // - 1 degree of parallelism (p_cost)
+    // - 32 bytes output for encryption key
+    let params = Params::new(4096, 1, 1, Some(32)).expect("Invalid Argon2 parameters");
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+    let mut output = [0u8; 32];
+    argon2
+        .hash_password_into(password.as_bytes(), STRONGHOLD_SALT, &mut output)
+        .expect("Argon2 hashing failed");
+
+    output.to_vec()
+}
+
 /// Initialize Sentry for crash reporting (only in release builds with DSN set)
 fn init_sentry() -> Option<sentry::ClientInitGuard> {
     let dsn = std::env::var("SENTRY_DSN").ok()?;
@@ -76,34 +109,7 @@ pub fn run() {
                 // BREAKING CHANGE: This Argon2id implementation replaces the previous
                 // DefaultHasher-based approach. Existing Stronghold vaults created with
                 // earlier versions will be inaccessible and must be reset/recreated.
-                //
-                // Use Argon2id with OWASP-recommended parameters for password hashing.
-                // This is a proper KDF suitable for deriving encryption keys from passwords.
-                use argon2::{Algorithm, Argon2, Params, Version};
-
-                // Fixed application-specific salt for deterministic key derivation.
-                // Note: Stronghold requires deterministic output for the same password,
-                // so we use a fixed salt. The salt is application-specific to prevent
-                // cross-application attacks. This approach is suitable for local apps
-                // with per-user Stronghold files; if the threat model changes to include
-                // server-side storage, this should be revisited.
-                const APP_SALT: &[u8; 16] = b"chatml-stronghld";
-
-                // Configure Argon2id with fast parameters for development
-                // TODO: Consider increasing for production if needed
-                // - 4 MiB memory (m_cost = 4096 KiB) - reduced from 19456
-                // - 1 iteration (t_cost) - reduced from 2
-                // - 1 degree of parallelism (p_cost)
-                // - 32 bytes output for encryption key
-                let params = Params::new(4096, 1, 1, Some(32)).expect("Invalid Argon2 parameters");
-                let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-
-                let mut output = [0u8; 32];
-                argon2
-                    .hash_password_into(password.as_bytes(), APP_SALT, &mut output)
-                    .expect("Argon2 hashing failed");
-
-                output.to_vec()
+                derive_stronghold_key(password)
             })
             .build(),
         )
@@ -262,4 +268,41 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stronghold_key_derivation_deterministic() {
+        let key1 = derive_stronghold_key("test-password");
+        let key2 = derive_stronghold_key("test-password");
+        assert_eq!(key1, key2, "Same password should produce same key");
+    }
+
+    #[test]
+    fn test_stronghold_key_derivation_output_length() {
+        let key = derive_stronghold_key("any-password");
+        assert_eq!(key.len(), 32, "Key should be 32 bytes for encryption");
+    }
+
+    #[test]
+    fn test_stronghold_key_derivation_different_passwords() {
+        let key1 = derive_stronghold_key("password1");
+        let key2 = derive_stronghold_key("password2");
+        assert_ne!(key1, key2, "Different passwords should produce different keys");
+    }
+
+    #[test]
+    fn test_stronghold_salt_length() {
+        assert_eq!(STRONGHOLD_SALT.len(), 16, "Salt should be 16 bytes");
+    }
+
+    #[test]
+    fn test_stronghold_key_derivation_empty_password() {
+        // Empty password should still work (even if not recommended)
+        let key = derive_stronghold_key("");
+        assert_eq!(key.len(), 32);
+    }
 }

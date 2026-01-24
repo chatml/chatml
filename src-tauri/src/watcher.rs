@@ -28,6 +28,21 @@ const IGNORED_DIRECTORIES: &[&str] = &[
     "venv",
 ];
 
+/// Check if a path should be ignored based on directory patterns.
+///
+/// This function checks if any segment of the path matches an ignored directory.
+/// The pattern requires the directory to appear as a complete path segment (surrounded
+/// by path separators), so it will match `/project/.git/config` but NOT `/project/.git`
+/// (without trailing content). This is intentional because file watcher events always
+/// include a filename after the directory, so bare directory paths won't occur.
+pub(crate) fn should_ignore_path(path: &str) -> bool {
+    IGNORED_DIRECTORIES.iter().any(|dir| {
+        let unix_pattern = format!("/{}/", dir);
+        let windows_pattern = format!("\\{}\\", dir);
+        path.contains(&unix_pattern) || path.contains(&windows_pattern)
+    })
+}
+
 /// Start watching a workspace directory for file changes
 pub fn watch_workspace(
     app: &tauri::AppHandle,
@@ -105,13 +120,7 @@ pub fn watch_workspace(
                             let event_path = event.path.to_string_lossy().to_string();
 
                             // Skip ignored directories (configurable list)
-                            let should_skip = IGNORED_DIRECTORIES.iter().any(|dir| {
-                                let unix_pattern = format!("/{}/", dir);
-                                let windows_pattern = format!("\\{}\\", dir);
-                                event_path.contains(&unix_pattern)
-                                    || event_path.contains(&windows_pattern)
-                            });
-                            if should_skip {
+                            if should_ignore_path(&event_path) {
                                 continue;
                             }
 
@@ -183,4 +192,67 @@ pub fn unwatch_workspace(workspace_id: &str) -> AppResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    fn test_ignored_directory_git() {
+        assert!(should_ignore_path("/home/user/project/.git/objects/abc"));
+        assert!(should_ignore_path("C:\\Users\\dev\\project\\.git\\config"));
+    }
+
+    #[test]
+    fn test_ignored_directory_node_modules() {
+        assert!(should_ignore_path("/project/node_modules/lodash/index.js"));
+        assert!(should_ignore_path("D:\\app\\node_modules\\react\\package.json"));
+    }
+
+    #[test]
+    fn test_ignored_directory_target() {
+        assert!(should_ignore_path("/rust-project/target/debug/binary"));
+    }
+
+    #[test]
+    fn test_ignored_directory_next() {
+        assert!(should_ignore_path("/app/.next/static/chunks/main.js"));
+    }
+
+    #[test]
+    fn test_ignored_directory_pycache() {
+        assert!(should_ignore_path("/python-app/__pycache__/module.pyc"));
+    }
+
+    #[test]
+    fn test_not_ignored_regular_path() {
+        assert!(!should_ignore_path("/home/user/project/src/main.rs"));
+        assert!(!should_ignore_path("/app/components/Button.tsx"));
+    }
+
+    #[test]
+    fn test_not_ignored_partial_match() {
+        // Should NOT match if directory name is part of filename
+        assert!(!should_ignore_path("/project/target_config.json"));
+        assert!(!should_ignore_path("/project/my-git-helper/file.txt"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_unwatch_nonexistent_workspace_ok() {
+        // Unwatching a workspace that doesn't exist should succeed
+        let result = unwatch_workspace("nonexistent-workspace-12345");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ignored_directories_list_is_populated() {
+        // Ensure we have a reasonable set of ignored directories
+        assert!(IGNORED_DIRECTORIES.len() >= 5);
+        assert!(IGNORED_DIRECTORIES.contains(&".git"));
+        assert!(IGNORED_DIRECTORIES.contains(&"node_modules"));
+        assert!(IGNORED_DIRECTORIES.contains(&"target"));
+    }
 }
