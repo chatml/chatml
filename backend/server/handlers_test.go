@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -871,6 +872,12 @@ func TestCreateSession_DuplicateUserProvidedName(t *testing.T) {
 	// Create a real git repo
 	repoPath := createTestGitRepo(t)
 	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Clean up test session directory after test
+	t.Cleanup(func() {
+		workspacesDir, _ := git.WorkspacesBaseDir()
+		os.RemoveAll(filepath.Join(workspacesDir, "my-session"))
+	})
 
 	// Create first session with explicit name
 	body, _ := json.Marshal(CreateSessionRequest{Name: "my-session"})
