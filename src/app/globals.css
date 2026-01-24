@@ -40,16 +40,16 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Typography Scale (slightly enlarged for better readability) */
-  --text-display-lg: 38px;
-  --text-display: 32px;
-  --text-display-sm: 26px;
-  --text-xl: 22px;
-  --text-lg: 19px;
-  --text-base: 17px;
-  --text-sm: 15px;
-  --text-xs: 13px;
-  --text-micro: 12px;
+  /* Typography Scale (Cursor-inspired compact sizing) */
+  --text-display-lg: 32px;   /* Was 38px */
+  --text-display: 26px;      /* Was 32px */
+  --text-display-sm: 22px;   /* Was 26px */
+  --text-xl: 18px;           /* Was 22px */
+  --text-lg: 16px;           /* Was 19px */
+  --text-base: 14px;         /* Was 17px */
+  --text-sm: 13px;           /* Was 15px */
+  --text-xs: 11px;           /* Was 13px */
+  --text-micro: 10px;        /* Was 12px */
 
   /* Letter Spacing */
   --tracking-display: -0.02em;
@@ -112,51 +112,63 @@
 }
 
 .dark {
-  --background: oklch(0.16 0.004 280);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.19 0.006 280);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.28 0.012 280);
-  --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.65 0.2 280);
+  /* Backgrounds - Darker, more neutral (Cursor-inspired) */
+  --background: oklch(0.13 0.002 280);      /* Main bg: ~#181818 */
+  --foreground: oklch(0.88 0 0);            /* Primary text: ~#dedede */
+  --card: oklch(0.15 0.003 280);            /* Cards: ~#1c1c1c */
+  --card-foreground: oklch(0.88 0 0);
+  --popover: oklch(0.18 0.004 280);         /* Popovers: ~#222222 */
+  --popover-foreground: oklch(0.88 0 0);
+
+  /* Accent - Muted Purple */
+  --primary: oklch(0.55 0.12 280);          /* Muted purple */
   --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.25 0.008 280);
-  --secondary-foreground: oklch(0.95 0 0);
-  --muted: oklch(0.22 0.006 280);
-  --muted-foreground: oklch(0.65 0.015 280);
-  --accent: oklch(0.35 0.12 280);
-  --accent-foreground: oklch(0.95 0 0);
+
+  /* Secondary/Muted - For hover states */
+  --secondary: oklch(0.18 0.004 280);
+  --secondary-foreground: oklch(0.88 0 0);
+  --muted: oklch(0.16 0.003 280);
+  --muted-foreground: oklch(0.55 0.008 280);/* Secondary text: ~#707078 */
+
+  /* Accent for selections/hover */
+  --accent: oklch(0.22 0.06 280);           /* Subtle purple tint */
+  --accent-foreground: oklch(0.88 0 0);
+
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.28 0.008 280);
-  --input: oklch(0.22 0.006 280);
-  --ring: oklch(0.65 0.2 280);
+
+  /* Borders - More subtle */
+  --border: oklch(0.20 0.004 280);          /* Borders: ~#282828 */
+  --input: oklch(0.16 0.004 280);           /* Input bg: ~#1c1c1c */
+  --ring: oklch(0.50 0.10 280);             /* Focus ring */
 
   /* Semantic AI Colors (dark mode) */
   --ai-thinking: oklch(0.75 0.15 85);
-  --ai-active: oklch(0.65 0.2 280);
+  --ai-active: oklch(0.55 0.12 280);
   --ai-success: oklch(0.72 0.15 165);
   --ai-error: oklch(0.65 0.2 25);
 
-  /* Surface Hierarchy (dark mode) */
-  --surface-0: oklch(0.16 0.004 280);
-  --surface-1: oklch(0.19 0.006 280);
-  --surface-2: oklch(0.22 0.008 280);
-  --surface-3: oklch(0.25 0.01 280);
-  --surface-4: oklch(0.28 0.012 280);
+  /* Surface Hierarchy (dark mode) - Subtle elevation */
+  --surface-0: oklch(0.11 0.002 280);       /* Deepest */
+  --surface-1: oklch(0.13 0.002 280);
+  --surface-2: oklch(0.15 0.003 280);
+  --surface-3: oklch(0.17 0.004 280);
+  --surface-4: oklch(0.19 0.005 280);       /* Elevated */
 
-  --chart-1: oklch(0.65 0.2 280);
+  --chart-1: oklch(0.55 0.12 280);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.14 0.004 280);
-  --sidebar-foreground: oklch(0.90 0 0);
-  --sidebar-primary: oklch(0.65 0.2 280);
+
+  /* Sidebar - Slightly darker than main */
+  --sidebar: oklch(0.11 0.002 280);         /* Sidebar: ~#141414 */
+  --sidebar-foreground: oklch(0.82 0 0);    /* Sidebar text: ~#c8c8c8 */
+  --sidebar-primary: oklch(0.55 0.12 280);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.006 280);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: oklch(0.25 0.008 280);
-  --sidebar-ring: oklch(0.65 0.2 280);
+  --sidebar-accent: oklch(0.16 0.003 280);  /* Hover: ~#1a1a1a */
+  --sidebar-accent-foreground: oklch(0.88 0 0);
+  --sidebar-border: oklch(0.18 0.004 280);  /* Border: ~#202020 */
+  --sidebar-ring: oklch(0.50 0.10 280);
 }
 
 @theme inline {
@@ -222,7 +234,7 @@
     @apply border-border outline-ring/50;
   }
   html {
-    font-size: 106.25%; /* 17px base instead of 16px */
+    font-size: 100%;  /* Was 106.25% - now standard 16px base */
   }
   html, body {
     @apply bg-background text-foreground;
