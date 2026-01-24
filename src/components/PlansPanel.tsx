@@ -52,7 +52,7 @@ function PlanRow({ plan }: { plan: PlanDocument }) {
 
   return (
     <div
-      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer group"
+      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-2 cursor-pointer group"
     >
       <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">

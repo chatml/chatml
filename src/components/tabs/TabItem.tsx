@@ -84,7 +84,7 @@ export const TabItem = memo(function TabItem({
             // Inactive state
             !isActive && [
               'text-muted-foreground',
-              'hover:text-foreground hover:bg-muted/50',
+              'hover:text-foreground hover:bg-surface-1',
             ],
             // Session tab subtle distinction
             tab.group === 'session' && !isActive && 'opacity-90'
@@ -126,7 +126,7 @@ export const TabItem = memo(function TabItem({
                 aria-label={`Close ${tab.label}`}
                 className={cn(
                   'flex items-center justify-center w-4 h-4 rounded-sm',
-                  'hover:bg-muted-foreground/20 hover:text-destructive',
+                  'hover:bg-surface-2 hover:text-destructive',
                   showCloseButton ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 )}
                 onClick={handleClose}

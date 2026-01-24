@@ -881,7 +881,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   return (
-    <div className="pt-1 px-4 pb-4">
+    <div className="pt-1 px-3 pb-3">
       {/* Plan Approval Bar */}
       {awaitingPlanApproval && (
         <div className="space-y-1.5 mb-2">
@@ -903,7 +903,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-7 gap-1.5 text-xs bg-background hover:bg-muted"
+                className="h-7 gap-1.5 text-xs bg-background hover:bg-surface-2"
                 onClick={handleApprovePlan}
                 disabled={isApproving}
               >
@@ -933,10 +933,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
         )}
       <div className={cn(
-        'relative rounded-lg border border-border bg-background transition-all duration-200',
+        'relative rounded-lg border border-[#434343] bg-input',
         isStreaming && !awaitingPlanApproval && 'border-transparent',
         awaitingPlanApproval && 'border-transparent',
-        !isStreaming && !awaitingPlanApproval && 'hover:bg-surface-1 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
         {/* Drag overlay - file attachments coming soon */}

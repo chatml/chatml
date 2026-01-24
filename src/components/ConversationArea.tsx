@@ -1150,7 +1150,7 @@ function FileChangesBlock({ changes }: { changes: FileChange[] }) {
           {changes.map((change, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-muted/50 cursor-pointer"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-surface-2 cursor-pointer"
             >
               <FileCode className="w-3 h-3 text-muted-foreground shrink-0" />
               <span className="flex-1 truncate">{change.path}</span>

@@ -138,7 +138,7 @@
 
   /* Borders - Very subtle like Cursor */
   --border: #2a2a2a;
-  --input: #141414;                         /* Input matches background */
+  --input: #212121;                         /* RGB(33,33,33) */
   --ring: oklch(0.50 0.10 280);             /* Focus ring keeps purple */
 
   /* Semantic AI Colors (dark mode) */
@@ -147,12 +147,12 @@
   --ai-success: oklch(0.72 0.15 165);
   --ai-error: oklch(0.65 0.2 25);
 
-  /* Surfaces - All same as background #141414 (flat) */
+  /* Surfaces - Hierarchy from background #141414 */
   --surface-0: #141414;                     /* Same as background */
-  --surface-1: #141414;                     /* Same as background */
-  --surface-2: #1a1a1a;                     /* Slight elevation */
-  --surface-3: #1f1f1f;
-  --surface-4: #252525;
+  --surface-1: #1D1D1D;                     /* Subtle hover - RGB(29,29,29) */
+  --surface-2: #2C2D2D;                     /* Toolbar/ghost hover - RGB(44,45,45) */
+  --surface-3: #3a3a3a;                     /* Elevated */
+  --surface-4: #454545;
 
   --chart-1: oklch(0.55 0.12 280);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -165,7 +165,7 @@
   --sidebar-foreground: oklch(0.75 0 0);    /* Slightly dimmer text */
   --sidebar-primary: oklch(0.55 0.12 280);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.18 0 0);        /* Hover state */
+  --sidebar-accent: #1D1D1D;                /* Subtle hover - RGB(29,29,29) */
   --sidebar-accent-foreground: oklch(0.9 0 0);
   --sidebar-border: #2a2a2a;
   --sidebar-ring: oklch(0.50 0.10 280);

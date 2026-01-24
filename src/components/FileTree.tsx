@@ -110,7 +110,7 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
     <div>
       <div
         className={cn(
-          'flex items-center gap-1.5 py-0.5 px-1 hover:bg-accent/50 cursor-pointer text-xs rounded-sm transition-colors',
+          'flex items-center gap-1.5 py-0.5 px-1 hover:bg-surface-2 cursor-pointer text-xs rounded-sm transition-colors',
           isHidden && 'text-muted-foreground/75'
         )}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}

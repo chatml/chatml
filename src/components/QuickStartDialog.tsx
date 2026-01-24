@@ -141,7 +141,7 @@ export function QuickStartDialog({ isOpen, onClose }: QuickStartDialogProps) {
                     'flex items-center gap-3 px-4 py-3 rounded-lg border text-left transition-colors flex-1',
                     template === 'empty'
                       ? 'border-primary/50 bg-primary/5'
-                      : 'border-border hover:bg-accent/50'
+                      : 'border-border hover:bg-surface-2'
                   )}
                 >
                   <div className="w-10 h-10 rounded-md bg-muted/50 flex items-center justify-center shrink-0">
@@ -160,7 +160,7 @@ export function QuickStartDialog({ isOpen, onClose }: QuickStartDialogProps) {
                     'flex items-center gap-3 px-4 py-3 rounded-lg border text-left transition-colors flex-1',
                     template === 'nextjs'
                       ? 'border-primary/50 bg-primary/5'
-                      : 'border-border hover:bg-accent/50'
+                      : 'border-border hover:bg-surface-2'
                   )}
                 >
                   <div className="w-10 h-10 rounded-md bg-muted/50 flex items-center justify-center shrink-0">

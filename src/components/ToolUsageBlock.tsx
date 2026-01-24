@@ -216,7 +216,7 @@ export function ToolUsageBlock({
       <CollapsibleTrigger
         className={cn(
           'flex items-center gap-1.5 text-[11px] w-full rounded px-1.5 py-1 transition-colors',
-          'hover:bg-muted/50',
+          'hover:bg-surface-2',
           isActive && 'bg-primary/5'
         )}
       >

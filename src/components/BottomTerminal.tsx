@@ -82,7 +82,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
               onClick={() => setActiveTerminal(sessionId, terminal.id)}
               className={cn(
                 'flex items-center gap-1 px-2 py-1 text-xs rounded-sm shrink-0',
-                'hover:bg-accent/50 transition-colors',
+                'hover:bg-surface-2 transition-colors',
                 activeId === terminal.id
                   ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground'

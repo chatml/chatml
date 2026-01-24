@@ -865,7 +865,7 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
 
   return (
     <div
-      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-accent/50 cursor-pointer w-full max-w-full"
+      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-surface-2 cursor-pointer w-full max-w-full"
       onClick={onSelect}
       title={change.path}
     >

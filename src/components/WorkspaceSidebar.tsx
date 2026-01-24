@@ -336,11 +336,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex border-b">
+      <div className="flex border-b h-[33px]">
         <button
           onClick={() => setActiveTab('workspaces')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 h-full text-[11px] font-medium transition-colors',
             activeTab === 'workspaces'
               ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
@@ -352,7 +352,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         <button
           onClick={() => setActiveTab('agents')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 h-full text-[11px] font-medium transition-colors',
             activeTab === 'agents'
               ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
@@ -626,8 +626,8 @@ function SortableWorkspaceItem({
           <div
             className={cn(
               'group flex items-center gap-1.5 px-1 py-1.5 rounded-md cursor-pointer',
-              'hover:bg-sidebar-accent/50 transition-colors',
-              isDragging && 'bg-sidebar-accent'
+              'hover:bg-surface-1 transition-colors',
+              isDragging && 'bg-surface-2'
             )}
           >
             <div
@@ -652,7 +652,7 @@ function SortableWorkspaceItem({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 hover:bg-sidebar-accent"
+                className="h-6 w-6 hover:bg-surface-1"
                 onClick={(e) => {
                   e.stopPropagation();
                   onCreateSession();
@@ -665,7 +665,7 @@ function SortableWorkspaceItem({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 hover:bg-sidebar-accent"
+                    className="h-6 w-6 hover:bg-surface-1"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
@@ -736,7 +736,7 @@ function SortableWorkspaceItem({
                           'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5',
                           isSessionSelected
                             ? 'bg-surface-2 hover:bg-surface-3'
-                            : 'hover:bg-surface-2'
+                            : 'hover:bg-surface-1'
                         )}
                         onClick={() => onSelectSession(session.id)}
                       >
@@ -774,7 +774,7 @@ function SortableWorkspaceItem({
                               <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   className={cn(
-                                    "p-0.5 rounded hover:bg-sidebar-accent hover:text-foreground",
+                                    "p-0.5 rounded hover:bg-surface-1 hover:text-foreground",
                                     session.pinned ? "text-primary" : "text-muted-foreground"
                                   )}
                                   onClick={(e) => {
@@ -785,7 +785,7 @@ function SortableWorkspaceItem({
                                   <Pin className="h-2.5 w-2.5" />
                                 </button>
                                 <button
-                                  className="p-0.5 rounded hover:bg-sidebar-accent text-muted-foreground hover:text-foreground"
+                                  className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     onArchiveSession(session.id);
