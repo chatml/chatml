@@ -465,7 +465,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'changes' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 gap-1 shrink-0"
+          className={cn("h-6 text-xs px-2 gap-1 shrink-0", selectedTab !== 'changes' && "text-muted-foreground")}
           onClick={() => setSelectedTab('changes')}
         >
           Changes
@@ -478,7 +478,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'review' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 shrink-0"
+          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'review' && "text-muted-foreground")}
           onClick={() => setSelectedTab('review')}
         >
           Review
@@ -486,7 +486,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 shrink-0"
+          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'checks' && "text-muted-foreground")}
           onClick={() => setSelectedTab('checks')}
         >
           Checks
@@ -494,7 +494,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 shrink-0"
+          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'files' && "text-muted-foreground")}
           onClick={() => setSelectedTab('files')}
         >
           Files
@@ -682,12 +682,22 @@ const SortableTabButton = memo(function SortableTabButton({
     listeners,
     setNodeRef,
     transform,
+    isDragging,
   } = useSortable({ id });
 
-  // Simple inline transform, no transition - instant swap
-  const style: React.CSSProperties | undefined = transform
-    ? { transform: `translateX(${transform.x}px)` }
-    : undefined;
+  // Style for dragging - z-index and transform
+  const style: React.CSSProperties | undefined = {
+    transform: transform ? `translateX(${transform.x}px)` : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    position: isDragging ? 'relative' : undefined,
+  };
+
+  // Prevent click from firing after drag ends
+  const handleClick = useCallback(() => {
+    if (!isDragging) {
+      onClick();
+    }
+  }, [isDragging, onClick]);
 
   return (
     <Button
@@ -697,9 +707,12 @@ const SortableTabButton = memo(function SortableTabButton({
       {...listeners}
       variant={isActive ? 'secondary' : 'ghost'}
       size="sm"
-      // Disable button's transition-all and active:scale to prevent conflicts with drag
-      className="h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100"
-      onClick={onClick}
+      className={cn(
+        "h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100",
+        !isActive && "text-muted-foreground",
+        isDragging && "bg-surface-2 shadow-md opacity-90"
+      )}
+      onClick={handleClick}
     >
       {label}
       {badge !== undefined && badge > 0 && (
