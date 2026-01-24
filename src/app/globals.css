@@ -539,7 +539,14 @@
   display: none;
 }
 
-/* Plan approval border styling */
+/* Plan mode animated border - marching ants SVG animation */
+@keyframes marching-ants-dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Plan approval border styling (awaiting approval state) */
 .plan-approval-border {
   position: relative;
 }
