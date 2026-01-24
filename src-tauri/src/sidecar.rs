@@ -21,8 +21,15 @@ const PORT_WAIT_TIMEOUT_MS: u64 = 5000;
 const PORT_CHECK_INTERVAL_MS: u64 = 100;
 
 /// Check if a port is available for binding
-fn is_port_available(port: u16) -> bool {
+pub(crate) fn is_port_available(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Generate a cryptographically secure authentication token
+/// Returns a URL-safe base64-encoded 32-byte random token
+pub(crate) fn generate_auth_token() -> String {
+    let token_bytes: [u8; 32] = rand::thread_rng().gen();
+    URL_SAFE_NO_PAD.encode(token_bytes)
 }
 
 /// Wait for a port to become available, with timeout
@@ -102,8 +109,7 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
         .map_err(|e| AppError::Sidecar(format!("Failed to create sidecar command: {}", e)))?;
 
     // Generate authentication token for backend API security
-    let token_bytes: [u8; 32] = rand::thread_rng().gen();
-    let auth_token = URL_SAFE_NO_PAD.encode(token_bytes);
+    let auth_token = generate_auth_token();
     state.set_auth_token(auth_token.clone());
     sidecar_command = sidecar_command.env("CHATML_AUTH_TOKEN", &auth_token);
 
@@ -215,4 +221,83 @@ pub async fn restart_sidecar_async(app: tauri::AppHandle, state: Arc<AppState>) 
     spawn_sidecar(&app, &state)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::net::TcpListener;
+
+    #[test]
+    fn test_is_port_available_with_free_port() {
+        // Use port 0 to get an available port from the OS
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Drop the listener to free the port
+        drop(listener);
+        // Now it should be available
+        assert!(is_port_available(port));
+    }
+
+    #[test]
+    fn test_is_port_available_with_bound_port() {
+        // Bind to a port
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // While bound, it should NOT be available
+        assert!(!is_port_available(port));
+        // Clean up
+        drop(listener);
+    }
+
+    #[test]
+    fn test_wait_for_port_available_immediate() {
+        // Get a free port
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        // Should succeed immediately
+        let result = wait_for_port_available(port);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_auth_token_format() {
+        let token = generate_auth_token();
+        // URL-safe base64 only contains these characters
+        let valid_chars: HashSet<char> =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                .chars()
+                .collect();
+        for c in token.chars() {
+            assert!(
+                valid_chars.contains(&c),
+                "Token contains invalid character: {}",
+                c
+            );
+        }
+    }
+
+    #[test]
+    fn test_auth_token_length() {
+        let token = generate_auth_token();
+        // 32 bytes encoded in base64 (no padding) = 43 characters
+        assert_eq!(token.len(), 43);
+    }
+
+    #[test]
+    fn test_auth_token_uniqueness() {
+        let token1 = generate_auth_token();
+        let token2 = generate_auth_token();
+        assert_ne!(token1, token2, "Tokens should be unique");
+    }
+
+    #[test]
+    fn test_auth_token_decodes_to_32_bytes() {
+        let token = generate_auth_token();
+        let decoded = URL_SAFE_NO_PAD.decode(&token).unwrap();
+        assert_eq!(decoded.len(), 32);
+    }
 }

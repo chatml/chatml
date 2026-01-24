@@ -66,3 +66,61 @@ pub fn get_auth_token(state: State<'_, Arc<AppState>>) -> Result<String, String>
 pub fn get_pending_oauth_callback(state: State<'_, Arc<AppState>>) -> Option<String> {
     state.take_pending_oauth_callback()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Note: Testing Tauri commands directly requires the Tauri State wrapper,
+    // which is difficult to mock. Instead, we test the underlying AppState
+    // operations that the commands delegate to.
+
+    #[test]
+    fn test_mark_app_ready_logic() {
+        let state = Arc::new(AppState::new());
+        assert!(!state.is_ready());
+        state.mark_ready();
+        assert!(state.is_ready());
+    }
+
+    #[test]
+    fn test_set_minimize_to_tray_logic() {
+        let state = Arc::new(AppState::new());
+        assert!(!state.should_minimize_to_tray());
+        state.set_minimize_to_tray(true);
+        assert!(state.should_minimize_to_tray());
+        state.set_minimize_to_tray(false);
+        assert!(!state.should_minimize_to_tray());
+    }
+
+    #[test]
+    fn test_get_auth_token_returns_none_when_not_set() {
+        let state = Arc::new(AppState::new());
+        assert!(state.get_auth_token().is_none());
+    }
+
+    #[test]
+    fn test_get_auth_token_returns_value_when_set() {
+        let state = Arc::new(AppState::new());
+        state.set_auth_token("test-token-123".to_string());
+        assert_eq!(state.get_auth_token(), Some("test-token-123".to_string()));
+    }
+
+    #[test]
+    fn test_pending_oauth_callback_lifecycle() {
+        let state = Arc::new(AppState::new());
+
+        // Initially no callback
+        assert!(state.take_pending_oauth_callback().is_none());
+
+        // Set a callback
+        state.set_pending_oauth_callback("chatml://oauth?code=abc".to_string());
+
+        // Take consumes it
+        let callback = state.take_pending_oauth_callback();
+        assert_eq!(callback, Some("chatml://oauth?code=abc".to_string()));
+
+        // Second take returns None (already consumed)
+        assert!(state.take_pending_oauth_callback().is_none());
+    }
+}
