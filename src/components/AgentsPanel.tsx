@@ -53,11 +53,11 @@ export function AgentsPanel() {
   const getStatusColor = (status: Agent['status']) => {
     switch (status) {
       case 'running':
-        return 'text-green-500';
+        return 'text-text-success';
       case 'paused':
-        return 'text-yellow-500';
+        return 'text-text-warning';
       case 'error':
-        return 'text-red-500';
+        return 'text-text-error';
       default:
         return 'text-muted-foreground';
     }

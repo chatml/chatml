@@ -51,6 +51,13 @@
   --text-xs: 11px;           /* Was 13px */
   --text-micro: 10px;        /* Was 12px */
 
+  /* Semantic Typography */
+  --text-menu: var(--text-sm);        /* Menu items, dropdowns, context menus */
+  --text-menu-label: var(--text-xs);  /* Menu section labels */
+
+  /* Menu Colors */
+  --menu-hover: oklch(0.94 0.02 280); /* Light mode menu hover */
+
   /* Status Text Colors */
   --text-success: #22c55e;   /* green-500 */
   --text-error: #ef4444;     /* red-500 */
@@ -148,6 +155,9 @@
   --accent: oklch(0.22 0.04 280);           /* Very subtle purple on hover */
   --accent-foreground: oklch(0.9 0 0);
 
+  /* Menu Colors */
+  --menu-hover: oklch(0.28 0.03 280);       /* More visible menu hover */
+
   --destructive: oklch(0.704 0.191 22.216);
 
   /* Borders - Very subtle like Cursor */
@@ -201,6 +211,7 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-menu-hover: var(--menu-hover);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -539,7 +550,14 @@
   display: none;
 }
 
-/* Plan approval border styling */
+/* Plan mode animated border - marching ants SVG animation */
+@keyframes marching-ants-dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Plan approval border styling (awaiting approval state) */
 .plan-approval-border {
   position: relative;
 }

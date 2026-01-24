@@ -126,7 +126,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'error' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'error' && 'text-red-500')}
+          className={cn('h-5 text-[11px] px-1.5', filter === 'error' && 'text-text-error')}
           onClick={() => setFilter('error')}
         >
           <AlertCircle className="h-3 w-3 mr-0.5" />
@@ -135,7 +135,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'warning' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'warning' && 'text-yellow-500')}
+          className={cn('h-5 text-[11px] px-1.5', filter === 'warning' && 'text-text-warning')}
           onClick={() => setFilter('warning')}
         >
           <AlertTriangle className="h-3 w-3 mr-0.5" />
@@ -144,7 +144,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'info' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'info' && 'text-blue-500')}
+          className={cn('h-5 text-[11px] px-1.5', filter === 'info' && 'text-text-info')}
           onClick={() => setFilter('info')}
         >
           <Info className="h-3 w-3 mr-0.5" />
@@ -204,9 +204,9 @@ function ReviewCommentCard({
   }[comment.severity];
 
   const severityColor = {
-    error: 'text-red-500 bg-red-500/10 border-red-500/20',
-    warning: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20',
-    info: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+    error: 'text-text-error bg-red-500/10 border-red-500/20',
+    warning: 'text-text-warning bg-yellow-500/10 border-yellow-500/20',
+    info: 'text-text-info bg-blue-500/10 border-blue-500/20',
     suggestion: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
   }[comment.severity];
 

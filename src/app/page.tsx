@@ -930,7 +930,7 @@ export default function Home() {
                 </div>
               </ResizablePanel>
 
-              <ResizableHandle />
+              <ResizableHandle direction="horizontal" />
             </>
           )}
 
@@ -968,7 +968,7 @@ export default function Home() {
               </ResizablePanel>
 
               {/* Bottom Terminal - always mounted to preserve PTY session */}
-              {showBottomTerminal && <ResizableHandle />}
+              {showBottomTerminal && <ResizableHandle direction="vertical" />}
               {selectedSession && (
                 <ResizablePanel
                   id="bottom-terminal"
@@ -994,7 +994,7 @@ export default function Home() {
           {/* Right Sidebar (hidden in zen mode or when no session selected) */}
           {showRightSidebar && !zenMode && selectedSessionId && (
             <>
-              <ResizableHandle />
+              <ResizableHandle direction="horizontal" />
 
               {/* Right Sidebar */}
               <ResizablePanel

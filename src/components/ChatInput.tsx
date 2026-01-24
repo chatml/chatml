@@ -928,14 +928,38 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         'relative',
         awaitingPlanApproval && 'plan-approval-border'
       )}>
+        {/* Animated marching ants border for plan mode */}
+        {planModeEnabled && !isStreaming && (
+          <svg
+            className="absolute -inset-[1px] w-[calc(100%+2px)] h-[calc(100%+2px)] pointer-events-none z-10"
+            preserveAspectRatio="none"
+          >
+            <rect
+              x="1"
+              y="1"
+              width="calc(100% - 2px)"
+              height="calc(100% - 2px)"
+              rx="8"
+              ry="8"
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeDasharray="6 4"
+              strokeOpacity="0.6"
+              style={{ animation: 'marching-ants-dash 1s linear infinite' }}
+            />
+          </svg>
+        )}
         {/* Gradient border for streaming state (static for performance) */}
         {isStreaming && !awaitingPlanApproval && (
           <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
         )}
+      {/* Intentional: hardcoded border color for specific visual weight */}
       <div className={cn(
         'relative rounded-lg border border-[#434343] bg-input',
         isStreaming && !awaitingPlanApproval && 'border-transparent',
         awaitingPlanApproval && 'border-transparent',
+        planModeEnabled && !isStreaming && 'border-transparent',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
         {/* Drag overlay - file attachments coming soon */}

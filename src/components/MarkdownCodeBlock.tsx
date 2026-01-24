@@ -51,7 +51,7 @@ function CodeBlockWithCopy({ children, code, ...rest }: React.HTMLAttributes<HTM
         title={copied ? 'Copied!' : 'Copy code'}
       >
         {copied ? (
-          <Check className="w-4 h-4 text-green-500" />
+          <Check className="w-4 h-4 text-text-success" />
         ) : (
           <Copy className="w-4 h-4 text-muted-foreground" />
         )}

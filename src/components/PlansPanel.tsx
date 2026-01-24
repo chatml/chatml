@@ -46,8 +46,8 @@ export function PlansPanel() {
 function PlanRow({ plan }: { plan: PlanDocument }) {
   const statusColors = {
     draft: 'text-muted-foreground',
-    active: 'text-blue-500',
-    completed: 'text-green-500',
+    active: 'text-text-info',
+    completed: 'text-text-success',
   };
 
   return (
