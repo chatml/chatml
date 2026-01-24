@@ -58,6 +58,8 @@ export function OnboardingScreen() {
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center bg-surface-0 overflow-hidden">
+      {/* Draggable region for window management */}
+      <div data-tauri-drag-region className="absolute top-0 left-0 right-0 h-11 z-50" />
       {/* Gradient background (static for performance) */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Large blur orbs */}
