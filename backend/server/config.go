@@ -37,11 +37,29 @@ type GitHubConfig struct {
 	ClientSecret string
 }
 
-// LoadGitHubConfig loads GitHub OAuth config from environment variables
+// Build-time variables for GitHub OAuth (set via -ldflags)
+// Example: go build -ldflags "-X github.com/chatml/chatml-backend/server.githubClientID=xxx"
+var (
+	githubClientID     string
+	githubClientSecret string
+)
+
+// LoadGitHubConfig loads GitHub OAuth config.
+// Priority: environment variables > build-time embedded values
 func LoadGitHubConfig() GitHubConfig {
+	clientID := os.Getenv("GITHUB_CLIENT_ID")
+	if clientID == "" {
+		clientID = githubClientID
+	}
+
+	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
+	if clientSecret == "" {
+		clientSecret = githubClientSecret
+	}
+
 	return GitHubConfig{
-		ClientID:     os.Getenv("GITHUB_CLIENT_ID"),
-		ClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 	}
 }
 

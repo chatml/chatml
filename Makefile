@@ -10,13 +10,24 @@ deps:
 		npm install; \
 	fi
 
-# Build Go backend for current platform
+# Build Go backend for current platform (development - uses env vars at runtime)
 backend:
 	cd backend && go build -o ../src-tauri/binaries/chatml-backend-$(TARGET)
 
+# Build Go backend with embedded credentials (production - uses build-time vars)
+# Requires GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET env vars
+backend-release:
+	@if [ -z "$$GITHUB_CLIENT_ID" ]; then echo "Error: GITHUB_CLIENT_ID not set"; exit 1; fi
+	@if [ -z "$$GITHUB_CLIENT_SECRET" ]; then echo "Error: GITHUB_CLIENT_SECRET not set"; exit 1; fi
+	cd backend && go build -ldflags "\
+		-X 'github.com/chatml/chatml-backend/server.githubClientID=$$GITHUB_CLIENT_ID' \
+		-X 'github.com/chatml/chatml-backend/server.githubClientSecret=$$GITHUB_CLIENT_SECRET'" \
+		-o ../src-tauri/binaries/chatml-backend-$(TARGET)
+
 # Development mode (auto-installs deps if needed)
+# Trap SIGINT/SIGTERM to kill all child processes in the process group
 dev: deps backend
-	npm run tauri:dev
+	@trap 'kill 0' INT TERM; npm run tauri:dev & wait
 
 # Production build (auto-installs deps if needed)
 build: deps backend

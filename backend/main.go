@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
@@ -23,6 +25,10 @@ import (
 )
 
 func main() {
+	// Create root context that cancels on SIGINT/SIGTERM
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "9876"
@@ -39,7 +45,7 @@ func main() {
 
 	// Clean up orphaned worktrees from previous crashes or failed session creations
 	// Use a timeout to prevent startup from hanging indefinitely on git lock issues
-	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	cleanupCtx, cleanupCancel := context.WithTimeout(ctx, 30*time.Second)
 	if err := cleanup.CleanOrphanedWorktrees(cleanupCtx, s, wm); err != nil {
 		log.Printf("Warning: orphan cleanup failed: %v", err)
 		// Non-fatal - continue startup
@@ -87,7 +93,10 @@ func main() {
 				}
 			}()
 
-			ctx := context.Background()
+			// Check if we're shutting down
+			if ctx.Err() != nil {
+				return
+			}
 
 			// Extract display name from the new branch
 			newName := naming.ExtractSessionNameFromBranch(event.NewBranch)
@@ -137,10 +146,10 @@ func main() {
 		defer branchWatcher.Close()
 
 		// Initialize watches for existing sessions
-		repos, listErr := s.ListRepos(context.Background())
+		repos, listErr := s.ListRepos(ctx)
 		if listErr == nil {
 			for _, repo := range repos {
-				sessions, sessErr := s.ListSessions(context.Background(), repo.ID)
+				sessions, sessErr := s.ListSessions(ctx, repo.ID)
 				if sessErr != nil {
 					continue
 				}
@@ -159,8 +168,31 @@ func main() {
 
 	router := server.NewRouter(s, hub, agentMgr, ghClient, orch, branchWatcher)
 
-	log.Printf("ChatML backend starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, router); err != nil {
-		log.Fatal(err)
+	// Create HTTP server with graceful shutdown support
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: router,
 	}
+
+	// Start server in goroutine
+	go func() {
+		log.Printf("ChatML backend starting on port %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+	log.Println("Shutdown signal received, stopping server...")
+
+	// Give outstanding requests a short deadline to complete
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server shutdown error: %v", err)
+	}
+
+	log.Println("Server stopped")
 }
