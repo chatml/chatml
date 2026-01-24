@@ -39,11 +39,13 @@ export function McpServersPanel() {
 
   if (!mcpServers || mcpServers.length === 0) {
     return (
-      <EmptyState
-        icon={Server}
-        title="No MCP servers"
-        description="Servers will appear when agent starts"
-      />
+      <div className="h-full flex items-center justify-center">
+        <EmptyState
+          icon={Server}
+          title="No MCP servers"
+          description="Servers will appear when agent starts"
+        />
+      </div>
     );
   }
 

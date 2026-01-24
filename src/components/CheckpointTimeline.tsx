@@ -38,11 +38,13 @@ export function CheckpointTimeline() {
 
   if (checkpoints.length === 0) {
     return (
-      <EmptyState
-        icon={History}
-        title="No checkpoints yet"
-        description="Checkpoints are created at message boundaries"
-      />
+      <div className="h-full flex items-center justify-center">
+        <EmptyState
+          icon={History}
+          title="No checkpoints yet"
+          description="Checkpoints are created at message boundaries"
+        />
+      </div>
     );
   }
 

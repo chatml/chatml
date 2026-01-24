@@ -3,7 +3,7 @@
 import { useAppStore } from '@/stores/appStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Circle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Circle, CheckCircle2, Loader2, ListTodo } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentTodoItem } from '@/lib/types';
 
@@ -13,38 +13,24 @@ export function TodoPanel() {
   // Get todos for current conversation
   const currentAgentTodos = selectedConversationId ? agentTodos[selectedConversationId] || [] : [];
 
-  // Calculate counts
-  const agentCompleted = currentAgentTodos.filter((t) => t.status === 'completed').length;
-  const agentTotal = currentAgentTodos.length;
+  if (currentAgentTodos.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <EmptyState
+          icon={ListTodo}
+          title="No agent tasks yet"
+          description="Tasks will appear when the agent is working"
+        />
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className="h-full">
-      <div className="py-1 px-2">
-        {/* Header */}
-        <div className="flex items-center gap-1 py-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide">
-          <span>Agent Tasks</span>
-          {agentTotal > 0 && (
-            <span className="ml-auto text-[11px] font-normal normal-case tracking-normal text-muted-foreground">
-              {agentCompleted}/{agentTotal}
-            </span>
-          )}
-        </div>
-
-        {/* Tasks */}
-        <div className="space-y-0.5">
-          {currentAgentTodos.length === 0 ? (
-            <EmptyState
-              icon={Circle}
-              title="No agent tasks yet"
-              description="Tasks will appear when the agent is working"
-              className="py-8"
-            />
-          ) : (
-            currentAgentTodos.map((todo, index) => (
-              <AgentTodoRow key={`${todo.content}-${index}`} todo={todo} />
-            ))
-          )}
-        </div>
+      <div className="py-1 px-2 space-y-0.5">
+        {currentAgentTodos.map((todo, index) => (
+          <AgentTodoRow key={`${todo.content}-${index}`} todo={todo} />
+        ))}
       </div>
     </ScrollArea>
   );

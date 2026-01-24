@@ -15,6 +15,7 @@ import { useGitStatus } from '@/hooks/useGitStatus';
 import { usePRStatus } from '@/hooks/usePRStatus';
 
 import { McpServersPanel } from '@/components/McpServersPanel';
+import { PlansPanel } from '@/components/PlansPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
 import { Button } from '@/components/ui/button';
 import {
@@ -627,6 +628,7 @@ export function ChangesPanel() {
             {/* Tab content */}
             <div className="flex-1 min-h-0">
               {bottomTab === 'todos' && <TodoPanel />}
+              {bottomTab === 'plans' && <PlansPanel />}
               {bottomTab === 'budget' && <BudgetStatusPanel />}
               {bottomTab === 'mcp' && <McpServersPanel />}
               {bottomTab === 'history' && <CheckpointTimeline />}
@@ -641,6 +643,7 @@ export function ChangesPanel() {
 // Bottom panel tabs configuration
 const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisible?: boolean }> = {
   todos: { label: 'Tasks', alwaysVisible: true },
+  plans: { label: 'Plans' },
   history: { label: 'Checkpoints' },
   budget: { label: 'Budget' },
   mcp: { label: 'MCP' },

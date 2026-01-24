@@ -4,13 +4,13 @@ import { type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const emptyStateVariants = cva(
-  'flex flex-col items-center justify-center text-muted-foreground animate-fade-in',
+  'flex flex-col items-center text-muted-foreground h-full',
   {
     variants: {
       size: {
-        sm: 'p-3 gap-1.5',
-        default: 'p-4 gap-2',
-        lg: 'p-6 gap-3',
+        sm: 'px-4 pt-8 gap-2',
+        default: 'px-6 pt-12 gap-2',
+        lg: 'px-8 pt-16 gap-3',
       },
     },
     defaultVariants: {
@@ -20,7 +20,7 @@ const emptyStateVariants = cva(
 );
 
 const emptyStateIconVariants = cva(
-  'rounded-lg bg-muted/50 flex items-center justify-center',
+  'rounded-lg bg-muted/50 flex items-center justify-center shrink-0',
   {
     variants: {
       size: {
@@ -36,7 +36,7 @@ const emptyStateIconVariants = cva(
 );
 
 const emptyStateIconInnerVariants = cva(
-  'text-muted-foreground/50',
+  'text-muted-foreground/60',
   {
     variants: {
       size: {
@@ -64,15 +64,15 @@ export function EmptyState({
   title,
   description,
   className,
-  size,
+  size = 'default',
   action,
 }: EmptyStateProps) {
   return (
-    <div className={cn(emptyStateVariants({ size }), 'h-full', className)}>
+    <div className={cn(emptyStateVariants({ size }), className)}>
       <div className={cn(emptyStateIconVariants({ size }))}>
         <Icon className={cn(emptyStateIconInnerVariants({ size }))} />
       </div>
-      <div className="text-center">
+      <div className="text-center max-w-[280px]">
         <p className={cn(
           'font-medium',
           size === 'sm' && 'text-xs',
@@ -83,8 +83,8 @@ export function EmptyState({
         </p>
         {description && (
           <p className={cn(
-            'text-muted-foreground/70 mt-0.5',
-            size === 'sm' && 'text-[10px]',
+            'text-muted-foreground/70 mt-1',
+            size === 'sm' && 'text-[11px]',
             size === 'default' && 'text-xs',
             size === 'lg' && 'text-sm'
           )}>
@@ -93,7 +93,7 @@ export function EmptyState({
         )}
       </div>
       {action && (
-        <div className="mt-2">
+        <div className="mt-3">
           {action}
         </div>
       )}
