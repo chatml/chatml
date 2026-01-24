@@ -266,6 +266,41 @@ export async function getGitStatus(workspaceId: string, sessionId: string): Prom
   return handleResponse<GitStatusDTO>(res);
 }
 
+// PR Details types
+export type CheckStatus = 'pending' | 'success' | 'failure' | 'none';
+
+export interface CheckDetail {
+  name: string;
+  status: string;
+  conclusion: string;
+}
+
+export interface PRDetails {
+  number: number;
+  state: string;
+  title: string;
+  htmlUrl: string;
+  mergeable: boolean | null;
+  mergeableState: string;
+  checkStatus: CheckStatus;
+  checkDetails: CheckDetail[];
+}
+
+export async function getPRStatus(workspaceId: string, sessionId: string): Promise<PRDetails | null> {
+  try {
+    const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/pr-status`);
+    if (res.status === 404) {
+      return null; // No PR found
+    }
+    return handleResponse<PRDetails>(res);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function sendSessionMessage(
   workspaceId: string,
   sessionId: string,

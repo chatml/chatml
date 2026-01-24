@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
@@ -10,10 +10,37 @@ import { TodoPanel } from '@/components/TodoPanel';
 import { CheckpointTimeline } from '@/components/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
+import { PrimaryActionButton } from '@/components/PrimaryActionButton';
+import { useGitStatus } from '@/hooks/useGitStatus';
+import { usePRStatus } from '@/hooks/usePRStatus';
 
 import { McpServersPanel } from '@/components/McpServersPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu';
+import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, DEFAULT_BOTTOM_TAB_ORDER } from '@/stores/settingsStore';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -270,6 +297,16 @@ export function ChangesPanel() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
 
+  // Fetch git status for the primary action button
+  const { status: gitStatus } = useGitStatus(selectedWorkspaceId, selectedSessionId);
+
+  // Fetch PR details for the primary action button
+  const { prDetails } = usePRStatus(
+    selectedWorkspaceId,
+    selectedSessionId,
+    currentSession?.prStatus
+  );
+
   // Fetch files from session's worktree when session changes or tab switches to files
   useEffect(() => {
     if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
@@ -349,8 +386,7 @@ export function ChangesPanel() {
         className={cn(
           'h-11 flex items-center gap-2 px-3 border-b shrink-0',
           hasActivePR && 'bg-green-500/15 border-green-500/30',
-          hasConflictOrFailure && 'bg-red-500/15 border-red-500/30',
-          !hasActivePR && !hasConflictOrFailure && 'bg-muted/30'
+          hasConflictOrFailure && 'bg-red-500/15 border-red-500/30'
         )}
       >
         {hasActivePR ? (
@@ -400,22 +436,13 @@ export function ChangesPanel() {
           <Eye className="h-3.5 w-3.5" />
           Review
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'h-7 text-xs gap-1.5 border border-transparent transition-colors',
-            hasActivePR && 'text-green-600 dark:text-green-400 hover:border-green-500/50 hover:bg-green-500/10',
-            hasConflictOrFailure && 'text-red-600 dark:text-red-400 hover:border-red-500/50 hover:bg-red-500/10',
-            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:border-primary/50 hover:bg-primary/10'
-          )}
-        >
-          <GitPullRequest className="h-3.5 w-3.5" />
-          Create PR
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <MoreVertical className="h-3.5 w-3.5" />
-        </Button>
+        <PrimaryActionButton
+          workspaceId={selectedWorkspaceId}
+          session={currentSession}
+          onSendMessage={handleGitActionMessage}
+          gitStatus={gitStatus}
+          prDetails={prDetails}
+        />
       </div>
 
       {/* Tabs Row */}
@@ -455,17 +482,26 @@ export function ChangesPanel() {
           className="h-6 text-xs px-2 shrink-0"
           onClick={() => setSelectedTab('files')}
         >
-          All files
+          Files
         </Button>
         <div className="flex-1 min-w-0" />
-        <div className="flex items-center shrink-0">
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            <SplitSquareHorizontal className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            <Search className="h-3 w-3" />
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>
+              <SplitSquareHorizontal className="h-4 w-4 mr-2" />
+              Split View
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
+              <Search className="h-4 w-4 mr-2" />
+              Search Files
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Resizable content area */}
@@ -583,47 +619,184 @@ export function ChangesPanel() {
         <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
           <div className="flex flex-col h-full">
             {/* Tabs Row - matching top panel style */}
-            <div className="flex items-center gap-0.5 px-1.5 py-1 border-t shrink-0">
-              <Button
-                variant={bottomTab === 'todos' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2 gap-1 shrink-0"
-                onClick={() => setBottomTab('todos')}
-              >
-                Todos
-                {totalPendingTodos > 0 && (
-                  <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[11px]">
-                    {totalPendingTodos}
-                  </span>
-                )}
-              </Button>
-              <Button
-                variant={bottomTab === 'mcp' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2 shrink-0"
-                onClick={() => setBottomTab('mcp')}
-              >
-                MCP
-              </Button>
-              <Button
-                variant={bottomTab === 'history' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2 shrink-0"
-                onClick={() => setBottomTab('history')}
-              >
-                History
-              </Button>
-            </div>
-            <BudgetStatusPanel />
+            <BottomPanelTabs
+              bottomTab={bottomTab}
+              setBottomTab={setBottomTab}
+              totalPendingTodos={totalPendingTodos}
+            />
             {/* Tab content */}
             <div className="flex-1 min-h-0">
               {bottomTab === 'todos' && <TodoPanel />}
+              {bottomTab === 'budget' && <BudgetStatusPanel />}
               {bottomTab === 'mcp' && <McpServersPanel />}
               {bottomTab === 'history' && <CheckpointTimeline />}
             </div>
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+    </div>
+  );
+}
+
+// Bottom panel tabs configuration
+const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisible?: boolean }> = {
+  todos: { label: 'Tasks', alwaysVisible: true },
+  history: { label: 'Checkpoints' },
+  budget: { label: 'Budget' },
+  mcp: { label: 'MCP' },
+};
+
+// Sortable tab button component
+const SortableTabButton = memo(function SortableTabButton({
+  id,
+  label,
+  isActive,
+  onClick,
+  badge,
+}: {
+  id: string;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+  badge?: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+  } = useSortable({ id });
+
+  // Simple inline transform, no transition - instant swap
+  const style: React.CSSProperties | undefined = transform
+    ? { transform: `translateX(${transform.x}px)` }
+    : undefined;
+
+  return (
+    <Button
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      variant={isActive ? 'secondary' : 'ghost'}
+      size="sm"
+      // Disable button's transition-all and active:scale to prevent conflicts with drag
+      className="h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100"
+      onClick={onClick}
+    >
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
+          {badge}
+        </span>
+      )}
+    </Button>
+  );
+});
+
+function BottomPanelTabs({
+  bottomTab,
+  setBottomTab,
+  totalPendingTodos,
+}: {
+  bottomTab: string;
+  setBottomTab: (tab: string) => void;
+  totalPendingTodos: number;
+}) {
+  // Use individual selectors to prevent unnecessary re-renders
+  const hiddenBottomTabs = useSettingsStore((s) => s.hiddenBottomTabs);
+  const toggleBottomTab = useSettingsStore((s) => s.toggleBottomTab);
+  const bottomTabOrder = useSettingsStore((s) => s.bottomTabOrder);
+  const setBottomTabOrder = useSettingsStore((s) => s.setBottomTabOrder);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Memoize visible tab IDs to prevent SortableContext re-renders
+  const visibleTabIds = useMemo(() =>
+    bottomTabOrder.filter((tabId) => {
+      const config = BOTTOM_TABS_CONFIG[tabId];
+      return config && (config.alwaysVisible || !hiddenBottomTabs.includes(tabId as BottomPanelTab));
+    }),
+    [bottomTabOrder, hiddenBottomTabs]
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = bottomTabOrder.indexOf(active.id as AllBottomPanelTab);
+      const newIndex = bottomTabOrder.indexOf(over.id as AllBottomPanelTab);
+      const newOrder = arrayMove(bottomTabOrder, oldIndex, newIndex);
+      setBottomTabOrder(newOrder);
+    }
+  }, [bottomTabOrder, setBottomTabOrder]);
+
+  return (
+    <div className="flex items-center gap-0.5 px-1.5 py-1 border-t shrink-0">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={visibleTabIds}
+          strategy={horizontalListSortingStrategy}
+        >
+          {visibleTabIds.map((tabId) => (
+            <SortableTabButton
+              key={tabId}
+              id={tabId}
+              label={BOTTOM_TABS_CONFIG[tabId].label}
+              isActive={bottomTab === tabId}
+              onClick={() => setBottomTab(tabId)}
+              badge={tabId === 'todos' ? totalPendingTodos : undefined}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Settings dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 shrink-0"
+          >
+            <MoreVertical className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {DEFAULT_BOTTOM_TAB_ORDER.map((tabId) => {
+            const config = BOTTOM_TABS_CONFIG[tabId];
+            return (
+              <DropdownMenuCheckboxItem
+                key={tabId}
+                checked={config.alwaysVisible || !hiddenBottomTabs.includes(tabId as BottomPanelTab)}
+                disabled={config.alwaysVisible}
+                onCheckedChange={() => {
+                  if (!config.alwaysVisible) {
+                    toggleBottomTab(tabId as BottomPanelTab);
+                  }
+                }}
+              >
+                {config.label}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

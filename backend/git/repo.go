@@ -538,3 +538,45 @@ func (rm *RepoManager) getStashCount(ctx context.Context, repoPath string) (int,
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	return len(lines), nil
 }
+
+// GetGitHubRemote extracts the GitHub owner and repo name from the origin remote URL
+func (rm *RepoManager) GetGitHubRemote(ctx context.Context, repoPath string) (owner, repo string, err error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "remote", "get-url", "origin")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get origin remote: %w", err)
+	}
+
+	remoteURL := strings.TrimSpace(string(out))
+
+	// Parse various GitHub URL formats:
+	// - https://github.com/owner/repo.git
+	// - git@github.com:owner/repo.git
+	// - ssh://git@github.com/owner/repo.git
+
+	// Remove .git suffix if present
+	remoteURL = strings.TrimSuffix(remoteURL, ".git")
+
+	// Handle SSH format: git@github.com:owner/repo
+	if strings.HasPrefix(remoteURL, "git@github.com:") {
+		parts := strings.TrimPrefix(remoteURL, "git@github.com:")
+		ownerRepo := strings.Split(parts, "/")
+		if len(ownerRepo) >= 2 {
+			return ownerRepo[0], ownerRepo[1], nil
+		}
+	}
+
+	// Handle HTTPS format: https://github.com/owner/repo
+	if strings.Contains(remoteURL, "github.com/") {
+		parts := strings.Split(remoteURL, "github.com/")
+		if len(parts) >= 2 {
+			ownerRepo := strings.Split(parts[1], "/")
+			if len(ownerRepo) >= 2 {
+				return ownerRepo[0], ownerRepo[1], nil
+			}
+		}
+	}
+
+	return "", "", fmt.Errorf("unable to parse GitHub remote URL: %s", remoteURL)
+}
