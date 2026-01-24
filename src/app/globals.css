@@ -51,6 +51,10 @@
   --text-xs: 11px;           /* Was 13px */
   --text-micro: 10px;        /* Was 12px */
 
+  /* Semantic Typography */
+  --text-menu: var(--text-sm);        /* Menu items, dropdowns, context menus */
+  --text-menu-label: var(--text-xs);  /* Menu section labels */
+
   /* Status Text Colors */
   --text-success: #22c55e;   /* green-500 */
   --text-error: #ef4444;     /* red-500 */
