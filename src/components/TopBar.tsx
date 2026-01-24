@@ -1,7 +1,9 @@
 'use client';
 
 import { useWorkspaceSelection, useTotalCost } from '@/stores/selectors';
+import { useUIStore } from '@/stores/uiStore';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +48,7 @@ export function TopBar({
   // Use optimized selectors to prevent unnecessary re-renders
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const totalCost = useTotalCost();
+  const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
@@ -57,7 +60,7 @@ export function TopBar({
 
   if (!selectedWorkspace || !selectedSession) {
     return (
-      <div data-tauri-drag-region className={`h-11 flex items-center border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
+      <div data-tauri-drag-region className={cn("h-11 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
         {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
         {!showLeftSidebar && onToggleLeftSidebar && (
           <Button
@@ -87,7 +90,7 @@ export function TopBar({
   }
 
   return (
-    <div data-tauri-drag-region className={`h-11 flex items-center border-b bg-muted/30 shrink-0 ${!showLeftSidebar ? 'pl-20' : ''}`}>
+    <div data-tauri-drag-region className={cn("h-11 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
       {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
       {!showLeftSidebar && onToggleLeftSidebar && (
         <Button

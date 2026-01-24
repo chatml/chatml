@@ -19,6 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useUIStore } from '@/stores/uiStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -136,6 +137,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     updateSession,
     removeWorkspace,
   } = useAppStore();
+
+  const leftToolbarBg = useUIStore((state) => state.toolbarBackgrounds.left);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -317,7 +320,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       )}
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className="relative h-11 pl-20 pr-3 flex items-center justify-between border-b shrink-0">
+      <div data-tauri-drag-region className={cn("relative h-11 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
         <span className="text-lg font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
         {onToggleSidebar && (
           <Tooltip>

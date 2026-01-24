@@ -46,7 +46,7 @@ function generateState(): string {
   return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Store state temporarily for verification
+// Store state temporarily for verification (also in sessionStorage for persistence across refreshes)
 let pendingOAuthState: string | null = null;
 
 // OAuth timeout duration (2 minutes)
@@ -85,6 +85,11 @@ export function cancelOAuthFlow(): void {
   pendingOAuthState = null;
 }
 
+// Try to restore state from sessionStorage on module load
+if (typeof window !== 'undefined') {
+  pendingOAuthState = sessionStorage.getItem('oauth_state');
+}
+
 /**
  * Start the GitHub OAuth flow
  * Opens browser to GitHub authorization page
@@ -92,6 +97,10 @@ export function cancelOAuthFlow(): void {
 export async function startOAuthFlow(): Promise<void> {
   // Clear any previous pending state
   pendingOAuthState = generateState();
+  // Persist state to sessionStorage in case app refreshes
+  if (typeof window !== 'undefined') {
+    sessionStorage.setItem('oauth_state', pendingOAuthState);
+  }
 
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
@@ -138,12 +147,26 @@ export async function handleOAuthCallback(url: string): Promise<{ token: string;
     throw new Error('No authorization code received from GitHub.');
   }
 
-  if (state !== pendingOAuthState) {
+  // Also check sessionStorage for state (in case module variable was lost)
+  const storedState = typeof window !== 'undefined'
+    ? sessionStorage.getItem('oauth_state')
+    : null;
+
+  if (state !== pendingOAuthState && state !== storedState) {
     pendingOAuthState = null;
+    console.warn('OAuth state mismatch', {
+      received: state,
+      expected: pendingOAuthState,
+      stored: storedState
+    });
     throw new Error('Security error: state mismatch. Please try again.');
   }
 
   pendingOAuthState = null;
+  // Clear from sessionStorage
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('oauth_state');
+  }
 
   // Exchange code for token via backend
   const res = await fetch(`${API_BASE}/api/auth/github/callback`, {
@@ -252,19 +275,27 @@ export async function clearToken(): Promise<void> {
 
 /**
  * Send token to backend (on app startup)
+ * Returns null if token validation fails (expired, revoked, etc.)
  */
-export async function sendTokenToBackend(token: string): Promise<{ user: GitHubUser }> {
-  const res = await fetch(`${API_BASE}/api/auth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
+export async function sendTokenToBackend(token: string): Promise<{ user: GitHubUser } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
 
-  if (!res.ok) {
-    throw new Error('Token validation failed');
+    if (!res.ok) {
+      // Token is invalid - this is expected if token expired/revoked
+      // Don't log as error since this is a normal flow
+      return null;
+    }
+
+    return res.json();
+  } catch {
+    // Network error or backend not reachable
+    return null;
   }
-
-  return res.json();
 }
 
 /**
@@ -294,14 +325,14 @@ export async function initAuth(): Promise<AuthStatus> {
     return { authenticated: false };
   }
 
-  try {
-    const { user } = await sendTokenToBackend(token);
-    return { authenticated: true, user };
-  } catch {
-    // Token invalid, clear it
-    await clearToken();
-    return { authenticated: false };
+  const result = await sendTokenToBackend(token);
+  if (result) {
+    return { authenticated: true, user: result.user };
   }
+
+  // Token invalid, clear it silently
+  await clearToken();
+  return { authenticated: false };
 }
 
 /**
