@@ -58,6 +58,8 @@ const spotlightCommandStyles = cn(
   "[&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4"
 )
 
+type CommandFilter = React.ComponentProps<typeof CommandPrimitive>["filter"]
+
 function CommandDialog({
   title = "Command Palette",
   description = "Search for a command to run...",
@@ -65,6 +67,8 @@ function CommandDialog({
   className,
   showCloseButton = true,
   variant = "centered",
+  filter,
+  shouldFilter,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
@@ -72,6 +76,8 @@ function CommandDialog({
   className?: string
   showCloseButton?: boolean
   variant?: CommandDialogVariant
+  filter?: CommandFilter
+  shouldFilter?: boolean
 }) {
   const isSpotlight = variant === "spotlight"
 
@@ -99,7 +105,7 @@ function CommandDialog({
               className
             )}
           >
-            <Command className={spotlightCommandStyles}>
+            <Command className={spotlightCommandStyles} filter={filter} shouldFilter={shouldFilter}>
               {children}
             </Command>
             {showCloseButton && (
@@ -118,7 +124,7 @@ function CommandDialog({
           className={cn("overflow-hidden p-0", className)}
           showCloseButton={showCloseButton}
         >
-          <Command className={centeredCommandStyles}>
+          <Command className={centeredCommandStyles} filter={filter} shouldFilter={shouldFilter}>
             {children}
           </Command>
         </DialogContent>
