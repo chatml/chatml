@@ -79,15 +79,27 @@ jobs:
 
       - name: Build Go backend (macOS ARM64)
         if: matrix.target == 'aarch64-apple-darwin'
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
         run: |
           cd backend
-          GOOS=darwin GOARCH=arm64 go build -o ../src-tauri/binaries/chatml-backend-aarch64-apple-darwin ./cmd/chatml
+          GOOS=darwin GOARCH=arm64 go build -ldflags "\
+            -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+            -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'" \
+            -o ../src-tauri/binaries/chatml-backend-aarch64-apple-darwin .
 
       - name: Build Go backend (macOS x64)
         if: matrix.target == 'x86_64-apple-darwin'
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
         run: |
           cd backend
-          GOOS=darwin GOARCH=amd64 go build -o ../src-tauri/binaries/chatml-backend-x86_64-apple-darwin ./cmd/chatml
+          GOOS=darwin GOARCH=amd64 go build -ldflags "\
+            -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+            -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'" \
+            -o ../src-tauri/binaries/chatml-backend-x86_64-apple-darwin .
 
       - name: Sign Go backend sidecar (macOS)
         env:
@@ -124,6 +136,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GitHub OAuth (embedded in frontend at build time)
+          NEXT_PUBLIC_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           # Tauri update signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
