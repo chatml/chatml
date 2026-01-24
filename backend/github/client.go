@@ -46,11 +46,15 @@ func NewClient(clientID, clientSecret string) *Client {
 }
 
 // ExchangeCode exchanges an OAuth code for an access token
-func (c *Client) ExchangeCode(ctx context.Context, code string) (string, error) {
+// If codeVerifier is provided, it's included for PKCE validation
+func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier string) (string, error) {
 	data := url.Values{}
 	data.Set("client_id", c.clientID)
 	data.Set("client_secret", c.clientSecret)
 	data.Set("code", code)
+	if codeVerifier != "" {
+		data.Set("code_verifier", codeVerifier)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST",
 		c.baseURL+"/login/oauth/access_token",

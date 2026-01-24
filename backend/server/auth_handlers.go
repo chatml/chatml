@@ -20,7 +20,8 @@ func NewAuthHandlers(ghClient *github.Client) *AuthHandlers {
 
 // GitHubCallbackRequest is the request body for OAuth callback
 type GitHubCallbackRequest struct {
-	Code string `json:"code"`
+	Code         string `json:"code"`
+	CodeVerifier string `json:"code_verifier,omitempty"` // PKCE code verifier
 }
 
 // GitHubCallbackResponse is the response for OAuth callback
@@ -54,8 +55,8 @@ func (h *AuthHandlers) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange code for token
-	token, err := h.ghClient.ExchangeCode(r.Context(), req.Code)
+	// Exchange code for token (with PKCE verifier if provided)
+	token, err := h.ghClient.ExchangeCode(r.Context(), req.Code, req.CodeVerifier)
 	if err != nil {
 		writeBadGateway(w, "failed to exchange code", err)
 		return

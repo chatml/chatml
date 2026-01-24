@@ -30,7 +30,7 @@ func TestExchangeCode(t *testing.T) {
 	client := NewClient("test_client_id", "test_client_secret")
 	client.baseURL = server.URL // Override for testing
 
-	token, err := client.ExchangeCode(context.Background(), "test_code")
+	token, err := client.ExchangeCode(context.Background(), "test_code", "")
 	if err != nil {
 		t.Fatalf("ExchangeCode failed: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestExchangeCode_OAuthError(t *testing.T) {
 	client := NewClient("test_client_id", "test_client_secret")
 	client.baseURL = server.URL
 
-	_, err := client.ExchangeCode(context.Background(), "invalid_code")
+	_, err := client.ExchangeCode(context.Background(), "invalid_code", "")
 	if err == nil {
 		t.Fatal("Expected error for OAuth error response, got nil")
 	}
@@ -116,7 +116,7 @@ func TestExchangeCode_Non200Status(t *testing.T) {
 	client := NewClient("test_client_id", "test_client_secret")
 	client.baseURL = server.URL
 
-	_, err := client.ExchangeCode(context.Background(), "test_code")
+	_, err := client.ExchangeCode(context.Background(), "test_code", "")
 	if err == nil {
 		t.Fatal("Expected error for non-200 status, got nil")
 	}
@@ -151,7 +151,7 @@ func TestExchangeCode_VerifyRequest(t *testing.T) {
 	client := NewClient("test_client_id", "test_client_secret")
 	client.baseURL = server.URL
 
-	_, err := client.ExchangeCode(context.Background(), "test_code_123")
+	_, err := client.ExchangeCode(context.Background(), "test_code_123", "")
 	if err != nil {
 		t.Fatalf("ExchangeCode failed: %v", err)
 	}
@@ -170,5 +170,40 @@ func TestExchangeCode_VerifyRequest(t *testing.T) {
 	}
 	if !strings.Contains(receivedBody, "code=test_code_123") {
 		t.Errorf("Request body missing code, got: %s", receivedBody)
+	}
+}
+
+func TestExchangeCode_WithPKCE(t *testing.T) {
+	// Mock GitHub OAuth server that verifies PKCE code_verifier is included
+	var receivedBody string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			body, _ := io.ReadAll(r.Body)
+			receivedBody = string(body)
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"access_token": "gho_test_token",
+				"token_type":   "bearer",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+
+	// Test with PKCE code verifier
+	_, err := client.ExchangeCode(context.Background(), "test_code", "test_verifier_abc123")
+	if err != nil {
+		t.Fatalf("ExchangeCode with PKCE failed: %v", err)
+	}
+
+	// Verify code_verifier is included in request
+	if !strings.Contains(receivedBody, "code_verifier=test_verifier_abc123") {
+		t.Errorf("Request body missing code_verifier, got: %s", receivedBody)
 	}
 }

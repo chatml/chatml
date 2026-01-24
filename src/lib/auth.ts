@@ -39,15 +39,29 @@ export interface AuthStatus {
   user?: GitHubUser;
 }
 
-// Generate random state for CSRF protection
-function generateState(): string {
-  const array = new Uint8Array(32);
+// Generate random string for state/PKCE
+function generateRandomString(length: number): string {
+  const array = new Uint8Array(length);
   crypto.getRandomValues(array);
   return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Store state temporarily for verification (also in sessionStorage for persistence across refreshes)
+
+// Generate PKCE code challenge from verifier (S256 method)
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  // Base64url encode (no padding)
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+// Store state and verifier temporarily for verification
 let pendingOAuthState: string | null = null;
+let pendingCodeVerifier: string | null = null;
 
 // OAuth timeout duration (2 minutes)
 export const OAUTH_TIMEOUT_MS = 120000;
@@ -83,23 +97,35 @@ export function isOAuthPending(): boolean {
  */
 export function cancelOAuthFlow(): void {
   pendingOAuthState = null;
+  pendingCodeVerifier = null;
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('oauth_state');
+    sessionStorage.removeItem('oauth_code_verifier');
+  }
 }
 
-// Try to restore state from sessionStorage on module load
+// Try to restore state and verifier from sessionStorage on module load
 if (typeof window !== 'undefined') {
   pendingOAuthState = sessionStorage.getItem('oauth_state');
+  pendingCodeVerifier = sessionStorage.getItem('oauth_code_verifier');
 }
 
 /**
- * Start the GitHub OAuth flow
+ * Start the GitHub OAuth flow with PKCE
  * Opens browser to GitHub authorization page
  */
 export async function startOAuthFlow(): Promise<void> {
-  // Clear any previous pending state
-  pendingOAuthState = generateState();
-  // Persist state to sessionStorage in case app refreshes
+  // Generate state and PKCE code verifier (32 bytes = 64 hex chars, within 43-128 range)
+  pendingOAuthState = generateRandomString(32);
+  pendingCodeVerifier = generateRandomString(32);
+
+  // Generate code challenge from verifier
+  const codeChallenge = await generateCodeChallenge(pendingCodeVerifier);
+
+  // Persist to sessionStorage in case app refreshes
   if (typeof window !== 'undefined') {
     sessionStorage.setItem('oauth_state', pendingOAuthState);
+    sessionStorage.setItem('oauth_code_verifier', pendingCodeVerifier);
   }
 
   const params = new URLSearchParams({
@@ -107,6 +133,8 @@ export async function startOAuthFlow(): Promise<void> {
     redirect_uri: GITHUB_REDIRECT_URI,
     scope: GITHUB_SCOPES,
     state: pendingOAuthState,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
   });
 
   const authUrl = `https://github.com/login/oauth/authorize?${params}`;
@@ -162,17 +190,23 @@ export async function handleOAuthCallback(url: string): Promise<{ token: string;
     throw new Error('Security error: state mismatch. Please try again.');
   }
 
+  // Get the code verifier before clearing
+  const codeVerifier = pendingCodeVerifier ||
+    (typeof window !== 'undefined' ? sessionStorage.getItem('oauth_code_verifier') : null);
+
+  // Clear state and verifier
   pendingOAuthState = null;
-  // Clear from sessionStorage
+  pendingCodeVerifier = null;
   if (typeof window !== 'undefined') {
     sessionStorage.removeItem('oauth_state');
+    sessionStorage.removeItem('oauth_code_verifier');
   }
 
-  // Exchange code for token via backend
+  // Exchange code for token via backend (with PKCE verifier)
   const res = await fetch(`${API_BASE}/api/auth/github/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, code_verifier: codeVerifier }),
   });
 
   if (!res.ok) {
