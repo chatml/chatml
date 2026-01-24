@@ -16,7 +16,7 @@ export type PrimaryActionType =
   | 'archive-session'
   | 'disabled';
 
-export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info';
+export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info' | 'secondary';
 
 export interface DropdownAction {
   label: string;

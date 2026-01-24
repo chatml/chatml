@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
@@ -22,7 +22,25 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu';
+import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, DEFAULT_BOTTOM_TAB_ORDER } from '@/stores/settingsStore';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -43,7 +61,6 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useUIStore } from '@/stores/uiStore';
 import type { FileTab } from '@/lib/types';
 
 // Common binary file extensions
@@ -77,7 +94,6 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
-  const rightToolbarBg = useUIStore((state) => state.toolbarBackgrounds.right);
   const { openFileTab, updateFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
@@ -370,8 +386,7 @@ export function ChangesPanel() {
         className={cn(
           'h-11 flex items-center gap-2 px-3 border-b shrink-0',
           hasActivePR && 'bg-green-500/15 border-green-500/30',
-          hasConflictOrFailure && 'bg-red-500/15 border-red-500/30',
-          !hasActivePR && !hasConflictOrFailure && rightToolbarBg
+          hasConflictOrFailure && 'bg-red-500/15 border-red-500/30'
         )}
       >
         {hasActivePR ? (
@@ -604,47 +619,184 @@ export function ChangesPanel() {
         <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
           <div className="flex flex-col h-full">
             {/* Tabs Row - matching top panel style */}
-            <div className="flex items-center gap-0.5 px-1.5 py-1 border-t shrink-0">
-              <Button
-                variant={bottomTab === 'todos' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2 gap-1 shrink-0"
-                onClick={() => setBottomTab('todos')}
-              >
-                Todos
-                {totalPendingTodos > 0 && (
-                  <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[11px]">
-                    {totalPendingTodos}
-                  </span>
-                )}
-              </Button>
-              <Button
-                variant={bottomTab === 'mcp' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2 shrink-0"
-                onClick={() => setBottomTab('mcp')}
-              >
-                MCP
-              </Button>
-              <Button
-                variant={bottomTab === 'history' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="h-6 text-xs px-2 shrink-0"
-                onClick={() => setBottomTab('history')}
-              >
-                History
-              </Button>
-            </div>
-            <BudgetStatusPanel />
+            <BottomPanelTabs
+              bottomTab={bottomTab}
+              setBottomTab={setBottomTab}
+              totalPendingTodos={totalPendingTodos}
+            />
             {/* Tab content */}
             <div className="flex-1 min-h-0">
               {bottomTab === 'todos' && <TodoPanel />}
+              {bottomTab === 'budget' && <BudgetStatusPanel />}
               {bottomTab === 'mcp' && <McpServersPanel />}
               {bottomTab === 'history' && <CheckpointTimeline />}
             </div>
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+    </div>
+  );
+}
+
+// Bottom panel tabs configuration
+const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisible?: boolean }> = {
+  todos: { label: 'Tasks', alwaysVisible: true },
+  history: { label: 'Checkpoints' },
+  budget: { label: 'Budget' },
+  mcp: { label: 'MCP' },
+};
+
+// Sortable tab button component
+const SortableTabButton = memo(function SortableTabButton({
+  id,
+  label,
+  isActive,
+  onClick,
+  badge,
+}: {
+  id: string;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+  badge?: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+  } = useSortable({ id });
+
+  // Simple inline transform, no transition - instant swap
+  const style: React.CSSProperties | undefined = transform
+    ? { transform: `translateX(${transform.x}px)` }
+    : undefined;
+
+  return (
+    <Button
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      variant={isActive ? 'secondary' : 'ghost'}
+      size="sm"
+      // Disable button's transition-all and active:scale to prevent conflicts with drag
+      className="h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100"
+      onClick={onClick}
+    >
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
+          {badge}
+        </span>
+      )}
+    </Button>
+  );
+});
+
+function BottomPanelTabs({
+  bottomTab,
+  setBottomTab,
+  totalPendingTodos,
+}: {
+  bottomTab: string;
+  setBottomTab: (tab: string) => void;
+  totalPendingTodos: number;
+}) {
+  // Use individual selectors to prevent unnecessary re-renders
+  const hiddenBottomTabs = useSettingsStore((s) => s.hiddenBottomTabs);
+  const toggleBottomTab = useSettingsStore((s) => s.toggleBottomTab);
+  const bottomTabOrder = useSettingsStore((s) => s.bottomTabOrder);
+  const setBottomTabOrder = useSettingsStore((s) => s.setBottomTabOrder);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Memoize visible tab IDs to prevent SortableContext re-renders
+  const visibleTabIds = useMemo(() =>
+    bottomTabOrder.filter((tabId) => {
+      const config = BOTTOM_TABS_CONFIG[tabId];
+      return config && (config.alwaysVisible || !hiddenBottomTabs.includes(tabId as BottomPanelTab));
+    }),
+    [bottomTabOrder, hiddenBottomTabs]
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = bottomTabOrder.indexOf(active.id as AllBottomPanelTab);
+      const newIndex = bottomTabOrder.indexOf(over.id as AllBottomPanelTab);
+      const newOrder = arrayMove(bottomTabOrder, oldIndex, newIndex);
+      setBottomTabOrder(newOrder);
+    }
+  }, [bottomTabOrder, setBottomTabOrder]);
+
+  return (
+    <div className="flex items-center gap-0.5 px-1.5 py-1 border-t shrink-0">
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={visibleTabIds}
+          strategy={horizontalListSortingStrategy}
+        >
+          {visibleTabIds.map((tabId) => (
+            <SortableTabButton
+              key={tabId}
+              id={tabId}
+              label={BOTTOM_TABS_CONFIG[tabId].label}
+              isActive={bottomTab === tabId}
+              onClick={() => setBottomTab(tabId)}
+              badge={tabId === 'todos' ? totalPendingTodos : undefined}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Settings dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 shrink-0"
+          >
+            <MoreVertical className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {DEFAULT_BOTTOM_TAB_ORDER.map((tabId) => {
+            const config = BOTTOM_TABS_CONFIG[tabId];
+            return (
+              <DropdownMenuCheckboxItem
+                key={tabId}
+                checked={config.alwaysVisible || !hiddenBottomTabs.includes(tabId as BottomPanelTab)}
+                disabled={config.alwaysVisible}
+                onCheckedChange={() => {
+                  if (!config.alwaysVisible) {
+                    toggleBottomTab(tabId as BottomPanelTab);
+                  }
+                }}
+              >
+                {config.label}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

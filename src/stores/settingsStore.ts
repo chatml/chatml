@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+// Bottom panel tab IDs that can be toggled (Tasks is always visible)
+export type BottomPanelTab = 'history' | 'budget' | 'mcp';
+
+// All bottom panel tabs including the always-visible Tasks
+export type AllBottomPanelTab = 'todos' | BottomPanelTab;
+
+// Default tab order
+export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'history', 'budget', 'mcp'];
+
 interface SettingsState {
   // Chat settings
   confirmCloseActiveTab: boolean;
@@ -17,6 +26,8 @@ interface SettingsState {
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   showBottomTerminal: boolean;
   zenMode: boolean; // Distraction-free mode that hides sidebars
+  hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
+  bottomTabOrder: AllBottomPanelTab[]; // Order of bottom panel tabs
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
@@ -31,6 +42,8 @@ interface SettingsState {
   setZenMode: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
+  toggleBottomTab: (tab: BottomPanelTab) => void;
+  setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -48,6 +61,8 @@ export const useSettingsStore = create<SettingsState>()(
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       showBottomTerminal: false,
       zenMode: false,
+      hiddenBottomTabs: [], // All tabs visible by default
+      bottomTabOrder: DEFAULT_BOTTOM_TAB_ORDER, // Default tab order
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -70,6 +85,13 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           collapsedWorkspaces: state.collapsedWorkspaces.filter((id) => id !== workspaceId),
         })),
+      toggleBottomTab: (tab) =>
+        set((state) => ({
+          hiddenBottomTabs: state.hiddenBottomTabs.includes(tab)
+            ? state.hiddenBottomTabs.filter((t) => t !== tab)
+            : [...state.hiddenBottomTabs, tab],
+        })),
+      setBottomTabOrder: (order) => set({ bottomTabOrder: order }),
     }),
     {
       name: 'chatml-settings',

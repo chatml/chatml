@@ -79,7 +79,7 @@ export function useActionState(
         type: 'create-pr',
         label: 'Create PR',
         icon: GitPullRequest,
-        variant: 'default',
+        variant: 'secondary',
         message: 'Create a pull request',
       };
     }
@@ -208,7 +208,7 @@ export function useActionState(
       type: 'create-pr',
       label: 'Create PR',
       icon: GitPullRequest,
-      variant: 'default',
+      variant: 'secondary',
       message: 'Create a pull request',
       dropdownActions: [
         { label: 'Create PR in Draft', message: 'Create a draft pull request', icon: FileEdit },

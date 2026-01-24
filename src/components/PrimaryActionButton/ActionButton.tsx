@@ -69,6 +69,7 @@ export function ActionButton({
       success: 'border-l-emerald-400/40',
       warning: 'border-l-yellow-400/40',
       info: 'border-l-blue-400/40',
+      secondary: 'border-l-secondary-foreground/10',
     }[action.variant] || 'border-l-primary/30';
 
     return (
