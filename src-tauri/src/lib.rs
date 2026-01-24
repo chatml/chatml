@@ -291,7 +291,10 @@ mod tests {
     fn test_stronghold_key_derivation_different_passwords() {
         let key1 = derive_stronghold_key("password1");
         let key2 = derive_stronghold_key("password2");
-        assert_ne!(key1, key2, "Different passwords should produce different keys");
+        assert_ne!(
+            key1, key2,
+            "Different passwords should produce different keys"
+        );
     }
 
     #[test]

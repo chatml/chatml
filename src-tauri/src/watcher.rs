@@ -208,7 +208,9 @@ mod tests {
     #[test]
     fn test_ignored_directory_node_modules() {
         assert!(should_ignore_path("/project/node_modules/lodash/index.js"));
-        assert!(should_ignore_path("D:\\app\\node_modules\\react\\package.json"));
+        assert!(should_ignore_path(
+            "D:\\app\\node_modules\\react\\package.json"
+        ));
     }
 
     #[test]
