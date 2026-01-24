@@ -903,7 +903,7 @@ export default function Home() {
   return (
     <ToastProvider>
       <TooltipProvider>
-        <div className="h-screen overflow-hidden flex relative">
+        <div className="h-screen overflow-hidden flex relative bg-background">
         {/* Main Layout */}
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* Left Sidebar - Workspaces (hidden in zen mode) */}

@@ -933,10 +933,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
         )}
       <div className={cn(
-        'relative rounded-lg border backdrop-blur-sm bg-surface-1/50 transition-all duration-200',
+        'relative rounded-lg border border-border bg-background transition-all duration-200',
         isStreaming && !awaitingPlanApproval && 'border-transparent',
         awaitingPlanApproval && 'border-transparent',
-        !isStreaming && !awaitingPlanApproval && 'hover:bg-surface-2/50 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50',
+        !isStreaming && !awaitingPlanApproval && 'hover:bg-surface-1 focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
         {/* Drag overlay - file attachments coming soon */}

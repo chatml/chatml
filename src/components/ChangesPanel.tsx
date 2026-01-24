@@ -392,7 +392,7 @@ export function ChangesPanel({
   }, [selectedSessionId, currentSession?.worktreePath, debouncedFetchChanges]);
 
   return (
-    <div className="flex flex-col h-full border-l">
+    <div className="flex flex-col h-full">
       {/* Top Bar - changes based on session state */}
       <div
         className={cn(
@@ -761,7 +761,7 @@ function BottomPanelTabs({
   }, [bottomTabOrder, setBottomTabOrder]);
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 border-t shrink-0">
+    <div className="flex items-center gap-0.5 px-1.5 py-1 shrink-0">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

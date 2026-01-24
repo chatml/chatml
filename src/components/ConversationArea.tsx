@@ -919,7 +919,7 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
         <p className="text-sm text-muted-foreground mb-6">
           Describe your task below. An AI agent will work on it in an isolated git branch.
         </p>
-        <div className="text-left bg-surface-1/50 backdrop-blur-sm rounded-lg p-4 space-y-3 border border-border/50">
+        <div className="text-left bg-background rounded-lg p-4 space-y-3 border border-border">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Example tasks</p>
           <div className="space-y-2 text-sm stagger-children">
             <p className="text-muted-foreground">&quot;Add user authentication with JWT tokens&quot;</p>
@@ -995,7 +995,7 @@ const MessageBlock = memo(function MessageBlock({
   }
 
   return (
-    <div className={cn('py-2', !isFirst && 'border-t border-border/50')}>
+    <div className={cn('py-2', !isFirst && 'border-t border-border')}>
       <div className="space-y-1.5">
           {/* Tool Usage History */}
           {message.toolUsage && message.toolUsage.length > 0 && (
