@@ -77,9 +77,9 @@ export function useActionState(
     if (!gitStatus) {
       return {
         type: 'create-pr',
-        label: 'Create PR',
+        label: 'New Pull Request',
         icon: GitPullRequest,
-        variant: 'secondary',
+        variant: 'success',
         message: 'Create a pull request',
       };
     }
@@ -218,9 +218,9 @@ export function useActionState(
     // Priority 8: Clean state - ready to create PR
     return {
       type: 'create-pr',
-      label: 'Create PR',
+      label: 'New Pull Request',
       icon: GitPullRequest,
-      variant: 'secondary',
+      variant: 'success',
       message: 'Create a pull request',
       dropdownActions: [
         { label: 'Create PR in Draft', message: 'Create a draft pull request', icon: FileEdit },
