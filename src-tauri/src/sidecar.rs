@@ -114,11 +114,26 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     }
 
     // Pass GitHub OAuth credentials to sidecar (if set)
-    if let Ok(client_id) = std::env::var("GITHUB_CLIENT_ID") {
+    let has_client_id = if let Ok(client_id) = std::env::var("GITHUB_CLIENT_ID") {
         sidecar_command = sidecar_command.env("GITHUB_CLIENT_ID", &client_id);
-    }
-    if let Ok(client_secret) = std::env::var("GITHUB_CLIENT_SECRET") {
+        true
+    } else {
+        false
+    };
+    let has_client_secret = if let Ok(client_secret) = std::env::var("GITHUB_CLIENT_SECRET") {
         sidecar_command = sidecar_command.env("GITHUB_CLIENT_SECRET", &client_secret);
+        true
+    } else {
+        false
+    };
+    if !has_client_id || !has_client_secret {
+        log::warn!(
+            "GitHub OAuth credentials not fully configured - client_id={}, client_secret={}",
+            has_client_id,
+            has_client_secret
+        );
+    } else {
+        log::info!("GitHub OAuth credentials passed to sidecar");
     }
 
     let (mut rx, child) = sidecar_command

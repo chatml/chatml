@@ -60,3 +60,9 @@ pub fn get_auth_token(state: State<'_, Arc<AppState>>) -> Result<String, String>
         .get_auth_token()
         .ok_or_else(|| "Auth token not available".to_string())
 }
+
+/// Get and consume any pending OAuth callback URL
+#[tauri::command]
+pub fn get_pending_oauth_callback(state: State<'_, Arc<AppState>>) -> Option<String> {
+    state.take_pending_oauth_callback()
+}
