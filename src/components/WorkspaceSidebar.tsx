@@ -320,8 +320,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       )}
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className={cn("relative h-11 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
-        <span className="text-lg font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
+      <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
+        <span className="text-base font-extrabold"><span className="text-foreground">chat</span><span className="text-purple-500">ml</span></span>
         {onToggleSidebar && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -344,25 +344,25 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         <button
           onClick={() => setActiveTab('workspaces')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
             activeTab === 'workspaces'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <Layers className="h-3.5 w-3.5" />
+          <Layers className="h-3 w-3" />
           Workspaces
         </button>
         <button
           onClick={() => setActiveTab('agents')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium transition-colors',
             activeTab === 'agents'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <Bot className="h-3.5 w-3.5" />
+          <Bot className="h-3 w-3" />
           Agents
         </button>
       </div>
@@ -630,7 +630,7 @@ function SortableWorkspaceItem({
           <div
             className={cn(
               'group flex items-center gap-1.5 px-1 py-1.5 rounded-md cursor-pointer',
-              'hover:bg-sidebar-accent transition-colors',
+              'hover:bg-sidebar-accent/50 transition-colors',
               isDragging && 'bg-sidebar-accent'
             )}
           >
@@ -642,7 +642,7 @@ function SortableWorkspaceItem({
             >
               {getInitial(workspace.name)}
             </div>
-            <span className="text-sm font-medium truncate">
+            <span className="text-[12px] font-medium truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -703,7 +703,7 @@ function SortableWorkspaceItem({
         <CollapsibleContent>
           <div className="ml-5 overflow-hidden">
             {sessions.length === 0 ? (
-              <div className="py-2 px-2 text-xs text-muted-foreground/70">
+              <div className="py-2 px-2 text-[10px] text-muted-foreground/70">
                 No active sessions
               </div>
             ) : (
@@ -754,7 +754,7 @@ function SortableWorkspaceItem({
                               ) : (
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
-                              <span className="text-sm font-normal truncate flex-1 w-0 text-foreground/80">
+                              <span className="text-[12px] font-normal truncate flex-1 w-0 text-foreground/80">
                                 {session.branch || session.name}
                               </span>
                               {/* Pinned indicator - fade out on hover */}
@@ -798,7 +798,7 @@ function SortableWorkspaceItem({
                             </div>
                           </div>
                           {/* Second line: session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>

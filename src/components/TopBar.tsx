@@ -31,19 +31,26 @@ import {
   Calendar,
   Layers,
 } from 'lucide-react';
+import { AppSettingsMenu } from '@/components/AppSettingsMenu';
 
 interface TopBarProps {
   showLeftSidebar?: boolean;
   showRightSidebar?: boolean;
   onToggleLeftSidebar?: () => void;
   onToggleRightSidebar?: () => void;
+  onOpenSettings?: () => void;
+  onOpenShortcuts?: () => void;
+  onOpenWorkspaces?: () => void;
 }
 
 export function TopBar({
   showLeftSidebar = true,
   showRightSidebar = true,
   onToggleLeftSidebar,
-  onToggleRightSidebar
+  onToggleRightSidebar,
+  onOpenSettings,
+  onOpenShortcuts,
+  onOpenWorkspaces,
 }: TopBarProps) {
   // Use optimized selectors to prevent unnecessary re-renders
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
@@ -60,29 +67,29 @@ export function TopBar({
 
   if (!selectedWorkspace || !selectedSession) {
     return (
-      <div data-tauri-drag-region className={cn("h-11 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
+      <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
         {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
         {!showLeftSidebar && onToggleLeftSidebar && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 ml-1"
+            className="h-6 w-6 ml-1"
             onClick={onToggleLeftSidebar}
             title="Show sidebar (⌘B)"
           >
-            <PanelLeft className="h-4 w-4" />
+            <PanelLeft className="h-3.5 w-3.5" />
           </Button>
         )}
         {/* Navigation buttons - tight together */}
         <div className={`flex items-center ${!showLeftSidebar ? 'ml-1' : 'ml-0.5'}`}>
           <Button variant="ghost" size="icon" className="h-6 w-6 p-0" disabled>
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
           <Button variant="ghost" size="icon" className="h-6 w-6 p-0" disabled>
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <span className="text-sm text-muted-foreground ml-2">
+        <span className="text-[12px] text-muted-foreground ml-2">
           Select a session to get started
         </span>
       </div>
@@ -90,32 +97,32 @@ export function TopBar({
   }
 
   return (
-    <div data-tauri-drag-region className={cn("h-11 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
+    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
       {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
       {!showLeftSidebar && onToggleLeftSidebar && (
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 ml-1"
+          className="h-6 w-6 ml-1"
           onClick={onToggleLeftSidebar}
           title="Show sidebar (⌘B)"
         >
-          <PanelLeft className="h-4 w-4" />
+          <PanelLeft className="h-3.5 w-3.5" />
         </Button>
       )}
 
       {/* Navigation buttons - tight together, close to divider */}
       <div className={`flex items-center ${!showLeftSidebar ? 'ml-1' : 'ml-0.5'}`}>
         <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
         <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </div>
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1 ml-2 text-sm">
+      <div className="flex items-center gap-1 ml-2 text-[12px]">
         <HoverCard>
           <HoverCardTrigger asChild>
             <span className="text-purple-400 font-medium cursor-default hover:text-purple-300 transition-colors">
@@ -184,7 +191,7 @@ export function TopBar({
       <div className="flex-1" />
 
       {/* Cost */}
-      <div className="text-xs text-muted-foreground font-mono px-2">
+      <div className="text-[10px] text-muted-foreground font-mono px-2">
         {formatCost(totalCost)}
       </div>
 
@@ -193,12 +200,22 @@ export function TopBar({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 mr-1"
+          className="h-6 w-6"
           onClick={onToggleRightSidebar}
           title="Show sidebar (⌘⌥B)"
         >
-          <PanelRight className="h-4 w-4" />
+          <PanelRight className="h-3.5 w-3.5" />
         </Button>
+      )}
+
+      {/* App Settings Menu - shown when right sidebar is hidden */}
+      {!showRightSidebar && onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (
+        <AppSettingsMenu
+          onOpenSettings={onOpenSettings}
+          onOpenShortcuts={onOpenShortcuts}
+          onOpenWorkspaces={onOpenWorkspaces}
+          className="mr-1"
+        />
       )}
     </div>
   );

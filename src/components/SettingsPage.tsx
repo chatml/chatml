@@ -61,24 +61,24 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { id: 'chat', label: 'Chat', icon: <MessageSquare className="w-4 h-4" /> },
-  { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
-  { id: 'git', label: 'Git', icon: <GitBranch className="w-4 h-4" /> },
-  { id: 'env', label: 'Env', icon: <FileCode className="w-4 h-4" /> },
-  { id: 'claude-code', label: 'Claude Code', icon: <Bot className="w-4 h-4" /> },
-  { id: 'account', label: 'Account', icon: <User className="w-4 h-4" /> },
+  { id: 'chat', label: 'Chat', icon: <MessageSquare className="w-3.5 h-3.5" /> },
+  { id: 'appearance', label: 'Appearance', icon: <Palette className="w-3.5 h-3.5" /> },
+  { id: 'git', label: 'Git', icon: <GitBranch className="w-3.5 h-3.5" /> },
+  { id: 'env', label: 'Env', icon: <FileCode className="w-3.5 h-3.5" /> },
+  { id: 'claude-code', label: 'Claude Code', icon: <Bot className="w-3.5 h-3.5" /> },
+  { id: 'account', label: 'Account', icon: <User className="w-3.5 h-3.5" /> },
 ];
 
 const moreNavItems: NavItem[] = [
-  { id: 'experimental', label: 'Experimental', icon: <Beaker className="w-4 h-4" /> },
-  { id: 'feedback', label: 'Feedback', icon: <MessageCircle className="w-4 h-4" /> },
-  { id: 'updates', label: 'Check for updates', icon: <RefreshCw className="w-4 h-4" /> },
-  { id: 'advanced', label: 'Advanced', icon: <Settings2 className="w-4 h-4" /> },
+  { id: 'experimental', label: 'Experimental', icon: <Beaker className="w-3.5 h-3.5" /> },
+  { id: 'feedback', label: 'Feedback', icon: <MessageCircle className="w-3.5 h-3.5" /> },
+  { id: 'updates', label: 'Check for updates', icon: <RefreshCw className="w-3.5 h-3.5" /> },
+  { id: 'advanced', label: 'Advanced', icon: <Settings2 className="w-3.5 h-3.5" /> },
 ];
 
 const externalLinks = [
-  { label: 'Changelog', icon: <FileText className="w-4 h-4" />, url: '#' },
-  { label: 'Docs', icon: <BookOpen className="w-4 h-4" />, url: '#' },
+  { label: 'Changelog', icon: <FileText className="w-3.5 h-3.5" />, url: '#' },
+  { label: 'Docs', icon: <BookOpen className="w-3.5 h-3.5" />, url: '#' },
 ];
 
 export function SettingsPage({ onBack }: SettingsPageProps) {
@@ -89,7 +89,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       {/* Settings Sidebar */}
       <div className="w-56 border-r bg-sidebar flex flex-col">
         {/* Back button - with padding for macOS traffic lights */}
-        <div data-tauri-drag-region className="h-11 pl-20 pr-3 flex items-center border-b shrink-0">
+        <div data-tauri-drag-region className="h-10 pl-20 pr-3 flex items-center border-b shrink-0">
           <Button
             variant="ghost"
             size="sm"
@@ -111,7 +111,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   variant={selectedCategory === item.id ? 'secondary' : 'ghost'}
                   size="sm"
                   className={cn(
-                    'w-full justify-start gap-2 h-8',
+                    'w-full justify-start gap-2 h-7 text-[12px]',
                     selectedCategory === item.id && 'bg-sidebar-accent'
                   )}
                   onClick={() => setSelectedCategory(item.id)}
@@ -124,7 +124,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
             {/* More section */}
             <div className="mt-6">
-              <span className="text-xs font-medium text-muted-foreground px-2">More</span>
+              <span className="text-[10px] font-medium text-muted-foreground px-2 uppercase tracking-wider">More</span>
               <div className="mt-2 space-y-0.5">
                 {moreNavItems.map((item) => (
                   <Button
@@ -132,7 +132,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     variant={selectedCategory === item.id ? 'secondary' : 'ghost'}
                     size="sm"
                     className={cn(
-                      'w-full justify-start gap-2 h-8',
+                      'w-full justify-start gap-2 h-7 text-[12px]',
                       selectedCategory === item.id && 'bg-sidebar-accent'
                     )}
                     onClick={() => setSelectedCategory(item.id)}
@@ -146,7 +146,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     key={link.label}
                     variant="ghost"
                     size="sm"
-                    className="w-full justify-start gap-2 h-8"
+                    className="w-full justify-start gap-2 h-7 text-[12px]"
                     onClick={() => window.open(link.url, '_blank')}
                   >
                     {link.icon}
@@ -163,7 +163,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       {/* Settings Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {/* Drag region for window - matches sidebar header height */}
-        <div data-tauri-drag-region className="h-11 shrink-0 border-b" />
+        <div data-tauri-drag-region className="h-10 shrink-0 border-b" />
 
         <ScrollArea className="flex-1">
           <div className="max-w-2xl mx-auto py-8 px-8">
@@ -195,11 +195,11 @@ function SettingsRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between py-4 border-b border-border/50">
+    <div className="flex items-center justify-between py-3 border-b border-border/50">
       <div className="flex-1 pr-4">
-        <h4 className="text-sm font-medium">{title}</h4>
+        <h4 className="text-[13px] font-medium">{title}</h4>
         {description && (
-          <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
+          <p className="text-[12px] text-muted-foreground mt-0.5">{description}</p>
         )}
       </div>
       <div className="shrink-0">{children}</div>
@@ -214,7 +214,7 @@ function ChatSettings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Chat</h2>
+      <h2 className="text-xl font-semibold mb-5">Chat</h2>
 
       <SettingsRow title="Default model" description="Model for new chats">
         <div className="flex gap-2">
@@ -353,7 +353,7 @@ function AppearanceSettings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Appearance</h2>
+      <h2 className="text-xl font-semibold mb-5">Appearance</h2>
       <SettingsRow title="Theme" description="Choose your preferred theme">
         <Select defaultValue="system">
           <SelectTrigger className="w-32">
@@ -414,7 +414,7 @@ function GitSettings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Git</h2>
+      <h2 className="text-xl font-semibold mb-5">Git</h2>
 
       {/* Branch name prefix */}
       <div className="py-4 border-b border-border/50">
@@ -525,7 +525,7 @@ AWS_PROFILE=default`);
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Environment variables</h2>
+      <h2 className="text-xl font-semibold mb-2">Environment variables</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Useful for using third-party providers like Bedrock or Vertex.
       </p>
@@ -571,7 +571,7 @@ AWS_PROFILE=default`);
 function ClaudeCodeSettings() {
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Claude Code</h2>
+      <h2 className="text-xl font-semibold mb-5">Claude Code</h2>
       <SettingsRow
         title="Auto-approve safe commands"
         description="Automatically approve read-only commands"
@@ -612,7 +612,7 @@ function AccountSettings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Account</h2>
+      <h2 className="text-xl font-semibold mb-5">Account</h2>
 
       {/* User profile */}
       <div className="flex items-center gap-4 pb-6 border-b border-border/50">
@@ -721,7 +721,7 @@ function AccountSettings() {
 function ExperimentalSettings() {
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Experimental</h2>
+      <h2 className="text-xl font-semibold mb-5">Experimental</h2>
       <p className="text-sm text-muted-foreground mb-4">
         These features are experimental and may change or be removed.
       </p>
@@ -738,7 +738,7 @@ function ExperimentalSettings() {
 function FeedbackSettings() {
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Feedback</h2>
+      <h2 className="text-xl font-semibold mb-5">Feedback</h2>
       <p className="text-sm text-muted-foreground">
         Help us improve ChatML by sharing your feedback.
       </p>
@@ -749,7 +749,7 @@ function FeedbackSettings() {
 function UpdatesSettings() {
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Updates</h2>
+      <h2 className="text-xl font-semibold mb-5">Updates</h2>
       <p className="text-sm text-muted-foreground">
         ChatML is up to date.
       </p>
@@ -769,7 +769,7 @@ function AdvancedSettings() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-6">Advanced</h2>
+      <h2 className="text-xl font-semibold mb-5">Advanced</h2>
 
       {/* Minimize to tray */}
       <SettingsRow

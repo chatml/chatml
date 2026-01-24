@@ -11,6 +11,7 @@ import { CheckpointTimeline } from '@/components/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/GitStatusSection';
 import { PrimaryActionButton } from '@/components/PrimaryActionButton';
+import { AppSettingsMenu } from '@/components/AppSettingsMenu';
 import { useGitStatus } from '@/hooks/useGitStatus';
 import { usePRStatus } from '@/hooks/usePRStatus';
 
@@ -92,7 +93,17 @@ function isBinaryFile(filename: string): boolean {
 // Maximum file size for diff viewing (2MB)
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
-export function ChangesPanel() {
+interface ChangesPanelProps {
+  onOpenSettings?: () => void;
+  onOpenShortcuts?: () => void;
+  onOpenWorkspaces?: () => void;
+}
+
+export function ChangesPanel({
+  onOpenSettings,
+  onOpenShortcuts,
+  onOpenWorkspaces,
+}: ChangesPanelProps = {}) {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { openFileTab, updateFileTab } = useFileTabState();
@@ -385,15 +396,15 @@ export function ChangesPanel() {
       {/* Top Bar - changes based on session state */}
       <div
         className={cn(
-          'h-11 flex items-center gap-2 px-3 border-b shrink-0',
+          'h-10 flex items-center gap-2 px-3 border-b shrink-0',
           hasActivePR && 'bg-green-500/15 border-green-500/30',
           hasConflictOrFailure && 'bg-red-500/15 border-red-500/30'
         )}
       >
         {hasActivePR ? (
           <>
-            <GitPullRequest className="h-4 w-4 text-green-500 shrink-0" />
-            <span className="text-sm font-medium text-green-600 dark:text-green-400 truncate">
+            <GitPullRequest className="h-3.5 w-3.5 text-green-500 shrink-0" />
+            <span className="text-[12px] font-medium text-green-600 dark:text-green-400 truncate">
               PR #{currentSession?.prNumber}
             </span>
             {currentSession?.prUrl && (
@@ -409,14 +420,14 @@ export function ChangesPanel() {
           </>
         ) : hasConflictOrFailure ? (
           <>
-            <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-            <span className="text-sm font-medium text-red-600 dark:text-red-400 truncate">
+            <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+            <span className="text-[12px] font-medium text-red-600 dark:text-red-400 truncate">
               {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
             </span>
           </>
         ) : (
           <>
-            <span className="text-sm font-medium text-muted-foreground truncate">
+            <span className="text-[12px] font-medium text-muted-foreground truncate">
               {currentSession?.status === 'active' ? 'Working...' :
                currentSession?.status === 'done' ? 'Completed' :
                currentSession?.status === 'error' ? 'Error' : 'Ready'}
@@ -444,6 +455,13 @@ export function ChangesPanel() {
           gitStatus={gitStatus}
           prDetails={prDetails}
         />
+        {onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (
+          <AppSettingsMenu
+            onOpenSettings={onOpenSettings}
+            onOpenShortcuts={onOpenShortcuts}
+            onOpenWorkspaces={onOpenWorkspaces}
+          />
+        )}
       </div>
 
       {/* Tabs Row */}
@@ -559,7 +577,7 @@ export function ChangesPanel() {
                       <>
                         {untracked.length > 0 && (
                           <>
-                            <div className="px-2 py-1 text-[11px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide">
+                            <div className="px-2 py-1 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wider">
                               Untracked
                             </div>
                             {untracked.map((change) => (
@@ -576,7 +594,7 @@ export function ChangesPanel() {
                         {tracked.length > 0 && (
                           <>
                             <div className={cn(
-                              "px-2 py-1 text-[11px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wide",
+                              "px-2 py-1 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wider",
                               untracked.length > 0 && "mt-2"
                             )}>
                               Changed
