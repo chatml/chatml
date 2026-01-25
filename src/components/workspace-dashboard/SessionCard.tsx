@@ -70,13 +70,24 @@ export function SessionCard({ session, onJumpToSession }: SessionCardProps) {
 
   const prStatus = getPRStatusInfo();
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onJumpToSession();
+    }
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       className={cn(
         'group border rounded-lg bg-card cursor-pointer transition-colors hover:bg-surface-1',
+        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
         session.status === 'error' && 'border-red-500/30'
       )}
       onClick={onJumpToSession}
+      onKeyDown={handleKeyDown}
     >
       <div className="p-3">
         {/* First row: Status dot, branch name, pinned indicator, task description */}

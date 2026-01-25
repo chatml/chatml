@@ -112,7 +112,20 @@ export function useDashboardData(workspaceId: string): DashboardData {
 
       // Then by status priority
       const statusOrder: Record<string, number> = { active: 0, idle: 1, done: 2, error: 3 };
-      const statusDiff = (statusOrder[a.status] ?? 999) - (statusOrder[b.status] ?? 999);
+      const aOrder = statusOrder[a.status];
+      const bOrder = statusOrder[b.status];
+
+      // Log unexpected status values in development
+      if (process.env.NODE_ENV === 'development') {
+        if (aOrder === undefined) {
+          console.warn(`[useDashboardData] Unexpected session status: "${a.status}" for session ${a.id}`);
+        }
+        if (bOrder === undefined) {
+          console.warn(`[useDashboardData] Unexpected session status: "${b.status}" for session ${b.id}`);
+        }
+      }
+
+      const statusDiff = (aOrder ?? 999) - (bOrder ?? 999);
       if (statusDiff !== 0) return statusDiff;
 
       // Then by most recently updated

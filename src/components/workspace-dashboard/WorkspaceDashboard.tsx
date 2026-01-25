@@ -7,6 +7,7 @@ import { useDashboardData } from './useDashboardData';
 import { AlertsSection } from './AlertsSection';
 import { StatsOverview } from './StatsOverview';
 import { SessionCard } from './SessionCard';
+import { DashboardCharts } from './DashboardCharts';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Layers, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -44,8 +45,9 @@ export function WorkspaceDashboard({
   );
 
   const handleRefresh = useCallback(() => {
-    // Data is kept in sync via WebSocket, so this provides visual feedback
-    // to reassure users that the view is current (no actual refresh needed)
+    // Data is kept fresh via WebSocket - this button provides visual feedback
+    // confirming the view is current. The spinning animation reassures users
+    // without requiring an actual network call.
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 500);
   }, []);
@@ -66,6 +68,7 @@ export function WorkspaceDashboard({
           title="Refresh"
         >
           <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+          <span className="sr-only">Refresh view (data synced automatically)</span>
         </Button>
       }
     >
@@ -93,6 +96,9 @@ export function WorkspaceDashboard({
 
         {/* Stats overview */}
         {stats.total > 0 && <StatsOverview stats={stats} />}
+
+        {/* Charts section */}
+        {sessions.length > 0 && <DashboardCharts sessions={sessions} />}
 
         {/* Sessions list */}
         {sessions.length > 0 ? (
