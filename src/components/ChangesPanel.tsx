@@ -376,13 +376,22 @@ export function ChangesPanel({
       if (isMounted) {
         cleanupRef.current = unlisten;
       } else {
-        unlisten();
+        // Component unmounted before listener was ready - clean up safely
+        try {
+          unlisten();
+        } catch {
+          // Ignore errors if listener wasn't fully registered
+        }
       }
     });
 
     return () => {
       isMounted = false;
-      cleanupRef.current?.();
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // Ignore errors if listener cleanup fails
+      }
       // Stop watching this session's worktree
       unwatchWorkspace(selectedSessionId);
       // Clear any pending debounce timeout
