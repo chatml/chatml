@@ -1,4 +1,4 @@
-.PHONY: build build-debug dev backend clean init deps install-debug
+.PHONY: build build-debug dev backend agent-runner clean init deps install-debug
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -18,6 +18,10 @@ deps:
 backend:
 	cd backend && go build -o ../src-tauri/binaries/chatml-backend-$(TARGET)
 
+# Build agent-runner TypeScript
+agent-runner:
+	cd agent-runner && npm install && npm run build
+
 # Build Go backend with embedded credentials (production - uses build-time vars)
 # Requires GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET env vars
 backend-release:
@@ -31,17 +35,17 @@ backend-release:
 # Development mode (auto-installs deps if needed)
 # Trap SIGINT/SIGTERM to kill all child processes in the process group
 # Note: .env file is auto-loaded and exported (see -include .env above)
-dev: deps backend
+dev: deps backend agent-runner
 	@trap 'kill 0' INT TERM; npm run tauri:dev & wait
 
 # Production build (auto-installs deps if needed)
-build: deps backend
+build: deps backend agent-runner
 	npm run tauri:build
 
 # Debug build (for testing deep links, OAuth, etc.)
 # Note: The updater plugin fails without a valid signing key, but we only need the .app bundle
 # We capture the exit code and only fail if both the build failed AND no .app was created
-build-debug: deps backend
+build-debug: deps backend agent-runner
 	@npm run tauri build -- --debug --bundles app; \
 	BUILD_EXIT=$$?; \
 	if [ ! -d src-tauri/target/debug/bundle/macos/chatml.app ]; then \
@@ -60,7 +64,7 @@ install-debug: build-debug
 	@echo "Installed! Run 'open /Applications/chatml.app' to test deep links"
 
 # Initialize fresh worktree - explicit setup command
-init: deps backend
+init: deps backend agent-runner
 	@echo "Worktree initialized. Run 'make dev' to start development."
 
 # Clean build artifacts
@@ -70,3 +74,5 @@ clean:
 	rm -rf backend/chatml-backend
 	rm -rf out
 	rm -rf .next
+	rm -rf agent-runner/dist
+	rm -rf agent-runner/node_modules
