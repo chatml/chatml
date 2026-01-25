@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/FullContentLayout';
@@ -43,8 +43,10 @@ export function PRDashboard({
   const selectSession = useAppStore((s) => s.selectSession);
   const setContentView = useSettingsStore((s) => s.setContentView);
 
-  // Track if this is the first render to avoid duplicate fetches
-  const isFirstRender = useRef(true);
+  // Sync filter when navigating from different workspace PR items
+  useEffect(() => {
+    setWorkspaceFilter(initialWorkspaceId || 'all');
+  }, [initialWorkspaceId, setWorkspaceFilter]);
 
   const fetchPRs = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -77,15 +79,6 @@ export function PRDashboard({
 
     return () => clearInterval(interval);
   }, [fetchPRs]);
-
-  // Refresh when filter changes (skip initial render since useEffect above handles it)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    fetchPRs();
-  }, [workspaceFilter, fetchPRs]);
 
   const handleRefresh = () => {
     fetchPRs(true);
@@ -123,7 +116,7 @@ export function PRDashboard({
     >
       <div className="p-4 space-y-4">
         {/* Filters */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 pb-3 border-b border-border/50">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Filter:</span>
             <Select value={workspaceFilter} onValueChange={setWorkspaceFilter}>
@@ -141,9 +134,13 @@ export function PRDashboard({
             </Select>
           </div>
 
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>Open ({openPRs.length})</span>
-            <span>Draft ({draftPRs.length})</span>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 dark:text-green-400">
+              {openPRs.length} Open
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+              {draftPRs.length} Draft
+            </span>
           </div>
         </div>
 
@@ -160,10 +157,12 @@ export function PRDashboard({
             </Button>
           </div>
         ) : prs.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <GitPullRequest className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium">No pull requests</p>
-            <p className="text-sm mt-1">
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="rounded-full bg-muted/50 p-4 mb-4">
+              <GitPullRequest className="h-8 w-8 text-muted-foreground/50" />
+            </div>
+            <p className="text-base font-medium text-foreground">No pull requests</p>
+            <p className="text-sm text-muted-foreground mt-1">
               {workspaceFilter === 'all'
                 ? 'No open pull requests found across your workspaces.'
                 : 'No open pull requests found for this workspace.'}
