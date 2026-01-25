@@ -233,26 +233,30 @@ export function FileHistoryPanel() {
   return (
     <div ref={containerRef} className="h-full overflow-auto" onScroll={handleScroll}>
       <div style={{ height: totalHeight, position: 'relative' }}>
-        {visibleCommits.map((commit, index) => (
-          <div
-            key={commit.sha}
-            style={{
-              position: 'absolute',
-              top: offsetTop + index * ITEM_HEIGHT,
-              left: 0,
-              right: 0,
-              height: ITEM_HEIGHT,
-            }}
-          >
-            <CommitRow commit={commit} onClick={() => handleCommitClick(commit)} />
-          </div>
-        ))}
+        {visibleCommits.map((commit, index) => {
+          const actualIndex = startIndex + index;
+          const isLast = actualIndex === commits.length - 1;
+          return (
+            <div
+              key={commit.sha}
+              style={{
+                position: 'absolute',
+                top: offsetTop + index * ITEM_HEIGHT,
+                left: 0,
+                right: 0,
+                height: ITEM_HEIGHT,
+              }}
+            >
+              <CommitRow commit={commit} onClick={() => handleCommitClick(commit)} isLast={isLast} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function CommitRow({ commit, onClick }: { commit: FileCommitDTO; onClick: () => void }) {
+function CommitRow({ commit, onClick, isLast }: { commit: FileCommitDTO; onClick: () => void; isLast: boolean }) {
   const timeAgo = useMemo(() => formatRelativeTime(commit.timestamp), [commit.timestamp]);
 
   return (
@@ -260,8 +264,15 @@ function CommitRow({ commit, onClick }: { commit: FileCommitDTO; onClick: () => 
       className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-2 cursor-pointer group h-full"
       onClick={onClick}
     >
-      <GitCommitHorizontal className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
+      {/* Timeline node with connecting line */}
+      <div className="relative shrink-0 flex flex-col items-center">
+        <GitCommitHorizontal className="w-4 h-4 text-blue-500 relative z-10" />
+        {/* Vertical line connecting to next commit */}
+        {!isLast && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 w-0.5 bg-blue-500/40 h-[calc(56px-16px)]" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0 mt-0.5">
         <div className="text-xs font-medium truncate" title={commit.message}>
           {commit.message}
         </div>
