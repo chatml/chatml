@@ -111,7 +111,6 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
     <div className="flex flex-col h-full">
       {/* Filter bar */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b shrink-0">
-        <Filter className="h-3 w-3 text-muted-foreground mr-1" />
         <Button
           variant={filter === 'all' ? 'secondary' : 'ghost'}
           size="sm"
@@ -159,6 +158,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
+        <Filter className="h-3 w-3 text-muted-foreground ml-auto" />
       </div>
 
       {/* Comments list */}
