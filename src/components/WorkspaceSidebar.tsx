@@ -318,7 +318,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
-        <span className="text-2xl font-extrabold"><span className="text-foreground">chat</span><span className="text-violet-500">ml</span></span>
+        <span className="text-2xl font-extrabold"><span className="text-muted-foreground">chat</span><span className="text-violet-400/80">ml</span></span>
         {onToggleSidebar && (
           <Tooltip>
             <TooltipTrigger asChild>
