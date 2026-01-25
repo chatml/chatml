@@ -84,7 +84,7 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
   const CheckIcon = checkSummary.icon;
 
   return (
-    <div className="border rounded-lg bg-card">
+    <div className="border rounded-lg bg-card hover:bg-surface-1 transition-colors">
       <div className="p-3">
         {/* First row: Status icon, title, PR number, session name */}
         <div className="flex items-start gap-2">
