@@ -13,6 +13,12 @@ export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 
 // Theme options
 export type ThemeOption = 'system' | 'light' | 'dark';
 
+// Content view types for Full Content Area pattern
+export type ContentView =
+  | { type: 'conversation' }
+  | { type: 'workspace-dashboard'; workspaceId: string }
+  | { type: 'pr-dashboard'; workspaceId?: string };
+
 interface SettingsState {
   // Chat settings
   confirmCloseActiveTab: boolean;
@@ -32,6 +38,8 @@ interface SettingsState {
   zenMode: boolean; // Distraction-free mode that hides sidebars
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
   bottomTabOrder: AllBottomPanelTab[]; // Order of bottom panel tabs
+  // Full Content Area view state (not persisted - always starts in conversation view)
+  contentView: ContentView;
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
@@ -49,6 +57,7 @@ interface SettingsState {
   expandWorkspace: (workspaceId: string) => void;
   toggleBottomTab: (tab: BottomPanelTab) => void;
   setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
+  setContentView: (view: ContentView) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -69,6 +78,7 @@ export const useSettingsStore = create<SettingsState>()(
       zenMode: false,
       hiddenBottomTabs: [], // All tabs visible by default
       bottomTabOrder: DEFAULT_BOTTOM_TAB_ORDER, // Default tab order
+      contentView: { type: 'conversation' }, // Always start in conversation view
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -99,9 +109,16 @@ export const useSettingsStore = create<SettingsState>()(
             : [...state.hiddenBottomTabs, tab],
         })),
       setBottomTabOrder: (order) => set({ bottomTabOrder: order }),
+      setContentView: (view) => set({ contentView: view }),
     }),
     {
       name: 'chatml-settings',
+      // Exclude contentView from persistence - always start in conversation view
+      partialize: (state) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { contentView, ...rest } = state;
+        return rest;
+      },
       // Merge persisted state with defaults to handle new tabs added after initial save
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<SettingsState>;

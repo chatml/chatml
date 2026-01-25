@@ -2395,3 +2395,183 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, prDetails)
 }
+
+// PRDashboardItem represents a PR in the dashboard
+type PRDashboardItem struct {
+	// PR metadata
+	Number         int           `json:"number"`
+	Title          string        `json:"title"`
+	State          string        `json:"state"`
+	HTMLURL        string        `json:"htmlUrl"`
+	IsDraft        bool          `json:"isDraft"`
+	Mergeable      *bool         `json:"mergeable"`
+	MergeableState string        `json:"mergeableState"`
+	CheckStatus    string        `json:"checkStatus"`
+	CheckDetails   []interface{} `json:"checkDetails"`
+
+	// Branch info
+	Branch     string `json:"branch"`
+	BaseBranch string `json:"baseBranch"`
+
+	// Session info (if created from ChatML)
+	SessionID   string `json:"sessionId,omitempty"`
+	SessionName string `json:"sessionName,omitempty"`
+
+	// Workspace info
+	WorkspaceID   string `json:"workspaceId"`
+	WorkspaceName string `json:"workspaceName"`
+	RepoOwner     string `json:"repoOwner"`
+	RepoName      string `json:"repoName"`
+
+	// Counts for summary
+	ChecksTotal  int `json:"checksTotal"`
+	ChecksPassed int `json:"checksPassed"`
+	ChecksFailed int `json:"checksFailed"`
+}
+
+// ListPRs returns all PRs across workspaces with their status
+func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Optional workspace filter
+	workspaceID := r.URL.Query().Get("workspaceId")
+
+	// Get all repos (or specific repo if filtered)
+	var repos []*models.Repo
+	var err error
+
+	if workspaceID != "" {
+		repo, err := h.store.GetRepo(ctx, workspaceID)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+		if repo == nil {
+			writeNotFound(w, "workspace")
+			return
+		}
+		repos = []*models.Repo{repo}
+	} else {
+		repos, err = h.store.ListRepos(ctx)
+		if err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	// Collect all PRs
+	var prItems []PRDashboardItem
+
+	for _, repo := range repos {
+		// Get GitHub remote info for this repo
+		owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
+		if err != nil {
+			// Skip repos without GitHub remote
+			continue
+		}
+
+		// List sessions for this repo
+		sessions, err := h.store.ListSessions(ctx, repo.ID)
+		if err != nil {
+			continue
+		}
+
+		// Filter to sessions with PRs
+		for _, session := range sessions {
+			if session.PRStatus == "" || session.PRStatus == "none" || session.PRNumber == 0 {
+				continue
+			}
+
+			// Only include open PRs (for dashboard view)
+			if session.PRStatus != "open" {
+				continue
+			}
+
+			// Get PR details from GitHub
+			var prItem PRDashboardItem
+
+			if h.ghClient != nil {
+				prDetails, err := h.ghClient.GetPRDetails(ctx, owner, repoName, session.PRNumber)
+				if err == nil && prDetails != nil {
+					prItem = PRDashboardItem{
+						Number:         prDetails.Number,
+						Title:          prDetails.Title,
+						State:          prDetails.State,
+						HTMLURL:        prDetails.HTMLURL,
+						Mergeable:      prDetails.Mergeable,
+						MergeableState: prDetails.MergeableState,
+						CheckStatus:    string(prDetails.CheckStatus),
+						Branch:         session.Branch,
+						BaseBranch:     repo.Branch, // Default branch
+						SessionID:      session.ID,
+						SessionName:    session.Name,
+						WorkspaceID:    repo.ID,
+						WorkspaceName:  repo.Name,
+						RepoOwner:      owner,
+						RepoName:       repoName,
+					}
+
+					// Convert check details to interface slice
+					for _, check := range prDetails.CheckDetails {
+						prItem.CheckDetails = append(prItem.CheckDetails, check)
+					}
+
+					// Calculate counts
+					prItem.ChecksTotal = len(prDetails.CheckDetails)
+					for _, check := range prDetails.CheckDetails {
+						if check.Status == "completed" {
+							if check.Conclusion == "success" || check.Conclusion == "neutral" || check.Conclusion == "skipped" {
+								prItem.ChecksPassed++
+							} else {
+								prItem.ChecksFailed++
+							}
+						}
+					}
+				} else {
+					// Fallback to session data if GitHub API fails
+					prItem = PRDashboardItem{
+						Number:        session.PRNumber,
+						Title:         session.Task,
+						State:         session.PRStatus,
+						HTMLURL:       session.PRUrl,
+						CheckStatus:   "unknown",
+						Branch:        session.Branch,
+						BaseBranch:    repo.Branch,
+						SessionID:     session.ID,
+						SessionName:   session.Name,
+						WorkspaceID:   repo.ID,
+						WorkspaceName: repo.Name,
+						RepoOwner:     owner,
+						RepoName:      repoName,
+					}
+				}
+			} else {
+				// No GitHub client - use session data
+				prItem = PRDashboardItem{
+					Number:        session.PRNumber,
+					Title:         session.Task,
+					State:         session.PRStatus,
+					HTMLURL:       session.PRUrl,
+					CheckStatus:   "unknown",
+					Branch:        session.Branch,
+					BaseBranch:    repo.Branch,
+					SessionID:     session.ID,
+					SessionName:   session.Name,
+					WorkspaceID:   repo.ID,
+					WorkspaceName: repo.Name,
+					RepoOwner:     owner,
+					RepoName:      repoName,
+				}
+			}
+
+			prItems = append(prItems, prItem)
+		}
+	}
+
+	// Return empty array instead of null
+	if prItems == nil {
+		prItems = []PRDashboardItem{}
+	}
+
+	writeJSON(w, prItems)
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
@@ -33,6 +33,8 @@ import { FilePicker } from '@/components/FilePicker';
 // import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { FullContentLayout } from '@/components/FullContentLayout';
+import { PRDashboard } from '@/components/PRDashboard';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
@@ -128,7 +130,11 @@ export default function Home() {
   const leftSidebarRef = useRef<HTMLDivElement>(null);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
+  const contentView = useSettingsStore((s) => s.contentView);
   const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode } = useSettingsStore();
+
+  // Determine if we're in a Full Content view (not conversation)
+  const isFullContentView = contentView.type !== 'conversation';
 
   const {
     isLoading: authLoading,
@@ -938,10 +944,34 @@ export default function Home() {
           {/* Main Content */}
           <ResizablePanel id="main-content" defaultSize={48} minSize={30}>
             <ResizablePanelGroup direction="vertical">
-              {/* Conversation Area */}
+              {/* Main Content Area */}
               <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
                 {isLoadingData ? (
                   <ConversationSkeleton />
+                ) : isFullContentView ? (
+                  // Full Content Views (PR Dashboard, Workspace Dashboard, etc.)
+                  <ErrorBoundary section="FullContent">
+                    {contentView.type === 'pr-dashboard' && (
+                      <PRDashboard
+                        initialWorkspaceId={contentView.workspaceId}
+                        onOpenSettings={() => setShowSettings(true)}
+                        onOpenShortcuts={() => setShowShortcuts(true)}
+                        showLeftSidebar={showLeftSidebar}
+                      />
+                    )}
+                    {contentView.type === 'workspace-dashboard' && (
+                      <FullContentLayout
+                        title="Dashboard"
+                        onOpenSettings={() => setShowSettings(true)}
+                        onOpenShortcuts={() => setShowShortcuts(true)}
+                        showLeftSidebar={showLeftSidebar}
+                      >
+                        <div className="p-4 text-muted-foreground">
+                          Workspace Dashboard coming soon...
+                        </div>
+                      </FullContentLayout>
+                    )}
+                  </ErrorBoundary>
                 ) : !selectedSessionId ? (
                   <EmptyView
                     onOpenProject={handleOpenProject}
@@ -994,8 +1024,8 @@ export default function Home() {
             </ResizablePanelGroup>
           </ResizablePanel>
 
-          {/* Right Sidebar (hidden in zen mode or when no session selected) */}
-          {showRightSidebar && !zenMode && selectedSessionId && (
+          {/* Right Sidebar (hidden in zen mode, full content view, or when no session selected) */}
+          {showRightSidebar && !zenMode && !isFullContentView && selectedSessionId && (
             <>
               <ResizableHandle direction="horizontal" />
 

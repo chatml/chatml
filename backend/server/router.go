@@ -57,6 +57,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// Rate limiter for comment operations
 	commentRateLimiter := httprate.LimitByIP(60, 1*time.Minute) // 60 comments per minute
 
+	// PR Dashboard endpoint
+	r.Get("/api/prs", h.ListPRs)
+
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {
 		r.Get("/", h.ListRepos)
