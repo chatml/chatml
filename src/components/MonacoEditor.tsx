@@ -345,6 +345,8 @@ export function MonacoDiffEditor({
       language={language}
       original={oldContent}
       modified={newContent}
+      originalModelPath={`original://${filename}`}
+      modifiedModelPath={`modified://${filename}`}
       theme={activeTheme}
       loading={<EditorLoading />}
       onMount={handleMount}
