@@ -711,26 +711,31 @@ function SortableWorkspaceItem({
         {/* Workspace Navigation + Sessions */}
         <CollapsibleContent>
           <div className="ml-5 overflow-hidden">
-            {/* Fixed Navigation Items */}
-            <div className="border-b border-border/50 pb-1 mb-1">
+            {/* Fixed Navigation Items - less indented than sessions */}
+            <div className="pb-1 -ml-2">
               <div
-                className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-surface-1"
+                className="group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-surface-1"
                 onClick={onOpenDashboard}
               >
-                <LayoutDashboard className="w-3.5 h-3.5 text-muted-foreground" />
+                <LayoutDashboard className="w-3.5 h-3.5 text-blue-400/70" />
                 <span className="text-[length:var(--text-sm)] text-muted-foreground group-hover:text-foreground">
                   Dashboard
                 </span>
               </div>
               <div
-                className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-surface-1"
+                className="group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-surface-1"
                 onClick={onOpenPRs}
               >
-                <GitPullRequest className="w-3.5 h-3.5 text-muted-foreground" />
+                <GitPullRequest className="w-3.5 h-3.5 text-violet-400/70" />
                 <span className="text-[length:var(--text-sm)] text-muted-foreground group-hover:text-foreground">
                   Pull Requests
                 </span>
               </div>
+            </div>
+
+            {/* Sessions Header */}
+            <div className="px-2 pt-1 pb-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+              Sessions
             </div>
 
             {/* Sessions */}
