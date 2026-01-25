@@ -102,6 +102,24 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'chatml-settings',
+      // Merge persisted state with defaults to handle new tabs added after initial save
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<SettingsState>;
+        const merged = { ...currentState, ...persisted };
+
+        // Ensure bottomTabOrder includes all tabs from DEFAULT_BOTTOM_TAB_ORDER
+        // This handles the case where new tabs are added after the user's settings were saved
+        if (persisted.bottomTabOrder) {
+          const existingOrder = persisted.bottomTabOrder;
+          const missingTabs = DEFAULT_BOTTOM_TAB_ORDER.filter(
+            (tab) => !existingOrder.includes(tab)
+          );
+          // Append missing tabs to the end of the user's existing order
+          merged.bottomTabOrder = [...existingOrder, ...missingTabs];
+        }
+
+        return merged;
+      },
     }
   )
 );
