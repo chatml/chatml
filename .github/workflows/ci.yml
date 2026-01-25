@@ -34,7 +34,8 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.json'
-              - 'vite.config.ts'
+              - 'vitest.config.ts'
+              - 'vitest.setup.ts'
               - '.github/workflows/ci.yml'
             tauri:
               - 'src-tauri/**'
@@ -61,6 +62,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Test
+        run: npm run test:run
 
       - name: Build
         run: npm run build
