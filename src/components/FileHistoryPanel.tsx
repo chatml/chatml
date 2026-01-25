@@ -124,16 +124,19 @@ export function FileHistoryPanel() {
   }, []);
 
   // Calculate virtual window
-  const { startIndex, endIndex, paddingTop, paddingBottom } = useMemo(() => {
+  const { startIndex, endIndex, offsetTop, totalHeight } = useMemo(() => {
+    const total = commits.length * ITEM_HEIGHT;
+    // If container height isn't measured yet, render enough items to fill a reasonable viewport
+    const effectiveHeight = containerHeight || 400;
     const start = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
-    const visibleCount = Math.ceil(containerHeight / ITEM_HEIGHT) + OVERSCAN * 2;
+    const visibleCount = Math.ceil(effectiveHeight / ITEM_HEIGHT) + OVERSCAN * 2;
     const end = Math.min(commits.length, start + visibleCount);
 
     return {
       startIndex: start,
       endIndex: end,
-      paddingTop: start * ITEM_HEIGHT,
-      paddingBottom: Math.max(0, (commits.length - end) * ITEM_HEIGHT),
+      offsetTop: start * ITEM_HEIGHT,
+      totalHeight: total,
     };
   }, [scrollTop, containerHeight, commits.length]);
 
@@ -229,12 +232,21 @@ export function FileHistoryPanel() {
 
   return (
     <div ref={containerRef} className="h-full overflow-auto" onScroll={handleScroll}>
-      <div style={{ height: commits.length * ITEM_HEIGHT }}>
-        <div style={{ paddingTop, paddingBottom }}>
-          {visibleCommits.map((commit) => (
-            <CommitRow key={commit.sha} commit={commit} onClick={() => handleCommitClick(commit)} />
-          ))}
-        </div>
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        {visibleCommits.map((commit, index) => (
+          <div
+            key={commit.sha}
+            style={{
+              position: 'absolute',
+              top: offsetTop + index * ITEM_HEIGHT,
+              left: 0,
+              right: 0,
+              height: ITEM_HEIGHT,
+            }}
+          >
+            <CommitRow commit={commit} onClick={() => handleCommitClick(commit)} />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -245,8 +257,7 @@ function CommitRow({ commit, onClick }: { commit: FileCommitDTO; onClick: () => 
 
   return (
     <div
-      className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-2 cursor-pointer group"
-      style={{ height: ITEM_HEIGHT }}
+      className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-2 cursor-pointer group h-full"
       onClick={onClick}
     >
       <GitCommitHorizontal className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
