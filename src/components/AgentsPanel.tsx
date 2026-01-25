@@ -155,7 +155,7 @@ export function AgentsPanel() {
                         <DropdownMenuItem>View logs</DropdownMenuItem>
                         <DropdownMenuItem>Open session</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive">
-                          <Square className="h-3.5 w-3.5 mr-2" />
+                          <Square className="size-3.5" />
                           Stop agent
                         </DropdownMenuItem>
                       </DropdownMenuContent>

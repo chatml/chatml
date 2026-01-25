@@ -157,7 +157,7 @@ export function HistoryPanel() {
                         <DropdownMenuItem>Open</DropdownMenuItem>
                         <DropdownMenuItem>Copy link</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive">
-                          <Trash2 className="h-3.5 w-3.5 mr-2" />
+                          <Trash2 className="size-3.5" />
                           Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>

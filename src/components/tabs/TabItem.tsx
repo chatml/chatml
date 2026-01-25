@@ -144,7 +144,7 @@ export const TabItem = memo(function TabItem({
         {tab.type === 'conversation' && onRename && (
           <>
             <ContextMenuItem onClick={onRename}>
-              <Pencil className="mr-2 h-4 w-4" />
+              <Pencil className="size-4" />
               Rename
             </ContextMenuItem>
             <ContextMenuSeparator />
@@ -152,7 +152,7 @@ export const TabItem = memo(function TabItem({
         )}
 
         <ContextMenuItem onClick={() => onClose()}>
-          <X className="mr-2 h-4 w-4" />
+          <X className="size-4" />
           Close
         </ContextMenuItem>
 
@@ -175,12 +175,12 @@ export const TabItem = memo(function TabItem({
             <ContextMenuItem onClick={() => onPin(!tab.isPinned)}>
               {tab.isPinned ? (
                 <>
-                  <PinOff className="mr-2 h-4 w-4" />
+                  <PinOff className="size-4" />
                   Unpin
                 </>
               ) : (
                 <>
-                  <Pin className="mr-2 h-4 w-4" />
+                  <Pin className="size-4" />
                   Pin
                 </>
               )}

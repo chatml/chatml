@@ -48,6 +48,7 @@
   --text-lg: 16px;           /* Was 19px */
   --text-base: 14px;         /* Was 17px */
   --text-sm: 13px;           /* Was 15px */
+  --text-caption: 12px;      /* Captions, labels, secondary info */
   --text-xs: 11px;           /* Was 13px */
   --text-micro: 10px;        /* Was 12px */
 

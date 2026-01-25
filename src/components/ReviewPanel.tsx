@@ -111,22 +111,21 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
     <div className="flex flex-col h-full">
       {/* Filter bar */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b shrink-0">
-        <Filter className="h-3 w-3 text-muted-foreground mr-1" />
         <Button
           variant={filter === 'all' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-5 text-[11px] px-1.5"
+          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter !== 'all' && 'text-muted-foreground')}
           onClick={() => setFilter('all')}
         >
           All
           {counts.all > 0 && (
-            <span className="ml-1 text-[10px] opacity-70">{counts.all}</span>
+            <span className="ml-1 text-[length:var(--text-micro)] opacity-70">{counts.all}</span>
           )}
         </Button>
         <Button
           variant={filter === 'error' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'error' && 'text-text-error')}
+          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'error' ? 'text-text-error' : 'text-muted-foreground')}
           onClick={() => setFilter('error')}
         >
           <AlertCircle className="h-3 w-3 mr-0.5" />
@@ -135,7 +134,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'warning' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'warning' && 'text-text-warning')}
+          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'warning' ? 'text-text-warning' : 'text-muted-foreground')}
           onClick={() => setFilter('warning')}
         >
           <AlertTriangle className="h-3 w-3 mr-0.5" />
@@ -144,7 +143,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'info' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'info' && 'text-text-info')}
+          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'info' ? 'text-text-info' : 'text-muted-foreground')}
           onClick={() => setFilter('info')}
         >
           <Info className="h-3 w-3 mr-0.5" />
@@ -153,12 +152,13 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'suggestion' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[11px] px-1.5', filter === 'suggestion' && 'text-purple-500')}
+          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'suggestion' ? 'text-purple-500' : 'text-muted-foreground')}
           onClick={() => setFilter('suggestion')}
         >
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
+        <Filter className="h-3 w-3 text-muted-foreground ml-auto" />
       </div>
 
       {/* Comments list */}
@@ -170,7 +170,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
           </div>
         </div>
       ) : (
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="p-2 space-y-2">
             {filteredComments.map((comment) => (
               <ReviewCommentCard

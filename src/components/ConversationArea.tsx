@@ -1037,11 +1037,11 @@ const MessageBlock = memo(function MessageBlock({
               </ContextMenuTrigger>
               <ContextMenuContent>
                 <ContextMenuItem onClick={copyContent}>
-                  <Copy className="mr-2 h-4 w-4" />
+                  <Copy className="size-4" />
                   Copy
                 </ContextMenuItem>
                 <ContextMenuItem onClick={copyContent}>
-                  <FileText className="mr-2 h-4 w-4" />
+                  <FileText className="size-4" />
                   Copy as Markdown
                 </ContextMenuItem>
               </ContextMenuContent>

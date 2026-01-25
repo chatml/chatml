@@ -401,6 +401,22 @@ export function ChangesPanel({
           hasConflictOrFailure && 'bg-text-error/15 border-text-error/30'
         )}
       >
+        {/* Review Button - icon only */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-7 w-7 transition-colors',
+            hasActivePR && 'text-text-success hover:bg-text-success/10',
+            hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
+            !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
+          )}
+          title="Review changes"
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+
+        {/* PR Status or Conflict indicator */}
         {hasActivePR ? (
           <>
             <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0" />
@@ -418,36 +434,16 @@ export function ChangesPanel({
               </Button>
             )}
           </>
-        ) : hasConflictOrFailure ? (
+        ) : hasConflictOrFailure && (
           <>
             <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0" />
             <span className="text-[12px] font-medium text-text-error truncate">
               {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
             </span>
           </>
-        ) : (
-          <>
-            <span className="text-[12px] font-medium text-muted-foreground truncate">
-              {currentSession?.status === 'active' ? 'Working...' :
-               currentSession?.status === 'done' ? 'Completed' :
-               currentSession?.status === 'error' ? 'Error' : 'Ready'}
-            </span>
-          </>
         )}
+
         <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'h-7 text-xs gap-1.5 border border-transparent transition-colors',
-            hasActivePR && 'text-text-success hover:border-text-success/50 hover:bg-text-success/10',
-            hasConflictOrFailure && 'text-text-error hover:border-text-error/50 hover:bg-text-error/10',
-            !hasActivePR && !hasConflictOrFailure && 'text-primary hover:border-primary/50 hover:bg-primary/10'
-          )}
-        >
-          <Eye className="h-3.5 w-3.5" />
-          Review
-        </Button>
         <PrimaryActionButton
           workspaceId={selectedWorkspaceId}
           session={currentSession}
@@ -469,7 +465,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'changes' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 gap-1 shrink-0"
+          className={cn("h-6 text-xs px-2 gap-1 shrink-0", selectedTab !== 'changes' && "text-muted-foreground")}
           onClick={() => setSelectedTab('changes')}
         >
           Changes
@@ -482,7 +478,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'review' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 shrink-0"
+          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'review' && "text-muted-foreground")}
           onClick={() => setSelectedTab('review')}
         >
           Review
@@ -490,7 +486,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 shrink-0"
+          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'checks' && "text-muted-foreground")}
           onClick={() => setSelectedTab('checks')}
         >
           Checks
@@ -498,7 +494,7 @@ export function ChangesPanel({
         <Button
           variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
           size="sm"
-          className="h-6 text-xs px-2 shrink-0"
+          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'files' && "text-muted-foreground")}
           onClick={() => setSelectedTab('files')}
         >
           Files
@@ -512,11 +508,11 @@ export function ChangesPanel({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem>
-              <SplitSquareHorizontal className="h-4 w-4 mr-2" />
+              <SplitSquareHorizontal className="size-4" />
               Split View
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
-              <Search className="h-4 w-4 mr-2" />
+              <Search className="size-4" />
               Search Files
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -540,12 +536,14 @@ export function ChangesPanel({
                 </div>
               </div>
             ) : (
-              <FileTree
-                files={files}
-                onFileSelect={handleFileSelect}
-                workspacePath={currentSession?.worktreePath}
-                workspaceName={currentWorkspace?.name}
-              />
+              <div className="h-full min-h-0">
+                <FileTree
+                  files={files}
+                  onFileSelect={handleFileSelect}
+                  workspacePath={currentSession?.worktreePath}
+                  workspaceName={currentWorkspace?.name}
+                />
+              </div>
             )
           ) : selectedTab === 'changes' ? (
             changesLoading ? (
@@ -686,12 +684,22 @@ const SortableTabButton = memo(function SortableTabButton({
     listeners,
     setNodeRef,
     transform,
+    isDragging,
   } = useSortable({ id });
 
-  // Simple inline transform, no transition - instant swap
-  const style: React.CSSProperties | undefined = transform
-    ? { transform: `translateX(${transform.x}px)` }
-    : undefined;
+  // Style for dragging - z-index and transform
+  const style: React.CSSProperties | undefined = {
+    transform: transform ? `translateX(${transform.x}px)` : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    position: isDragging ? 'relative' : undefined,
+  };
+
+  // Prevent click from firing after drag ends
+  const handleClick = useCallback(() => {
+    if (!isDragging) {
+      onClick();
+    }
+  }, [isDragging, onClick]);
 
   return (
     <Button
@@ -701,9 +709,12 @@ const SortableTabButton = memo(function SortableTabButton({
       {...listeners}
       variant={isActive ? 'secondary' : 'ghost'}
       size="sm"
-      // Disable button's transition-all and active:scale to prevent conflicts with drag
-      className="h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100"
-      onClick={onClick}
+      className={cn(
+        "h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100",
+        !isActive && "text-muted-foreground",
+        isDragging && "bg-surface-2 shadow-md opacity-90"
+      )}
+      onClick={handleClick}
     >
       {label}
       {badge !== undefined && badge > 0 && (

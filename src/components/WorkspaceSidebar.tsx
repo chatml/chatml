@@ -340,7 +340,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         <button
           onClick={() => setActiveTab('workspaces')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 h-full text-[11px] font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 h-full text-[length:var(--text-xs)] font-medium transition-colors',
             activeTab === 'workspaces'
               ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
@@ -352,7 +352,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         <button
           onClick={() => setActiveTab('agents')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 h-full text-[11px] font-medium transition-colors',
+            'flex-1 flex items-center justify-center gap-1.5 h-full text-[length:var(--text-xs)] font-medium transition-colors',
             activeTab === 'agents'
               ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
@@ -384,7 +384,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         size="sm"
                         className="text-xs"
                       >
-                        <Plus className="w-4 h-4 mr-2" />
+                        <Plus className="size-4" />
                         Add project
                       </Button>
                     </DropdownMenuTrigger>
@@ -638,7 +638,7 @@ function SortableWorkspaceItem({
             >
               <Folder className="w-4 h-4" />
             </div>
-            <span className="text-[12px] font-medium truncate">
+            <span className="text-[length:var(--text-base)] font-medium truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -673,20 +673,20 @@ function SortableWorkspaceItem({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem>
-                    <FolderOpen className="h-4 w-4 mr-2" />
+                    <FolderOpen className="size-4" />
                     Open in Finder
                   </DropdownMenuItem>
                   <DropdownMenuItem>
-                    <Terminal className="h-4 w-4 mr-2" />
+                    <Terminal className="size-4" />
                     Open in Terminal
                   </DropdownMenuItem>
                   <DropdownMenuItem>
-                    <Copy className="h-4 w-4 mr-2" />
+                    <Copy className="size-4" />
                     Copy path
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-destructive" onClick={onRemoveWorkspace}>
-                    <Trash2 className="h-4 w-4 mr-2" />
+                    <Trash2 className="size-4" />
                     Remove
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -699,7 +699,7 @@ function SortableWorkspaceItem({
         <CollapsibleContent>
           <div className="ml-5 overflow-hidden">
             {sessions.length === 0 ? (
-              <div className="py-2 px-2 text-[10px] text-muted-foreground/70">
+              <div className="py-2 px-2 text-[length:var(--text-micro)] text-muted-foreground/70">
                 No active sessions
               </div>
             ) : (
@@ -751,7 +751,7 @@ function SortableWorkspaceItem({
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
                               <span className={cn(
-                                "text-[12px] font-normal truncate flex-1 w-0",
+                                "text-[length:var(--text-sm)] font-normal truncate flex-1 w-0",
                                 isSessionSelected ? "text-foreground" : "text-foreground/60"
                               )}>
                                 {session.branch || session.name}
@@ -765,7 +765,7 @@ function SortableWorkspaceItem({
                             <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[10px] px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                <span className="text-[length:var(--text-micro)] px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-text-success">+{session.stats!.additions}</span>
                                   <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                                 </span>
@@ -797,7 +797,7 @@ function SortableWorkspaceItem({
                             </div>
                           </div>
                           {/* Second line: session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
+                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-xs)] text-muted-foreground">
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>

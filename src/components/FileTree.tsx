@@ -71,7 +71,7 @@ export function FileTree({ files, onFileSelect, workspacePath, workspaceName }: 
       </div>
 
       {/* File tree content */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="py-1">
           {files.map((node) => (
             <FileTreeNode

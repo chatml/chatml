@@ -1,6 +1,6 @@
 'use client';
 
-import { useWorkspaceSelection, useTotalCost } from '@/stores/selectors';
+import { useWorkspaceSelection } from '@/stores/selectors';
 import { useUIStore } from '@/stores/uiStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -54,16 +54,11 @@ export function TopBar({
 }: TopBarProps) {
   // Use optimized selectors to prevent unnecessary re-renders
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
-  const totalCost = useTotalCost();
   const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
   const workspaceSessionCount = sessions.filter((s) => s.workspaceId === selectedWorkspaceId && !s.archived).length;
-
-  const formatCost = (cost: number) => {
-    return `$${cost.toFixed(2)}`;
-  };
 
   if (!selectedWorkspace || !selectedSession) {
     return (
@@ -167,20 +162,20 @@ export function TopBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem>
-              <Code className="h-4 w-4 mr-2" />
+              <Code className="size-4" />
               VS Code
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <FolderOpen className="h-4 w-4 mr-2" />
+              <FolderOpen className="size-4" />
               Finder
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <Terminal className="h-4 w-4 mr-2" />
+              <Terminal className="size-4" />
               Terminal
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
-              <ExternalLink className="h-4 w-4 mr-2" />
+              <ExternalLink className="size-4" />
               GitHub
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -190,9 +185,11 @@ export function TopBar({
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Cost */}
-      <div className="text-[10px] text-muted-foreground font-mono px-2">
-        {formatCost(totalCost)}
+      {/* Session Status */}
+      <div className="text-[11px] text-muted-foreground px-2">
+        {selectedSession?.status === 'active' ? 'Working...' :
+         selectedSession?.status === 'done' ? 'Completed' :
+         selectedSession?.status === 'error' ? 'Error' : 'Ready'}
       </div>
 
       {/* Toggle Right Sidebar Button - only shown when sidebar is hidden */}

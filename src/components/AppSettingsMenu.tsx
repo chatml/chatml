@@ -160,19 +160,19 @@ export function AppSettingsMenu({
 
         {/* Navigation Items */}
         <DropdownMenuItem onClick={onOpenShortcuts}>
-          <Keyboard className="h-4 w-4 mr-2" />
+          <Keyboard className="size-4" />
           Keyboard Shortcuts
           <span className="ml-auto text-xs text-muted-foreground">⌘/</span>
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={onOpenSettings}>
-          <Settings className="h-4 w-4 mr-2" />
+          <Settings className="size-4" />
           Settings
           <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={onOpenWorkspaces}>
-          <FolderOpen className="h-4 w-4 mr-2" />
+          <FolderOpen className="size-4" />
           Manage Workspaces
         </DropdownMenuItem>
 
@@ -180,24 +180,24 @@ export function AppSettingsMenu({
 
         {/* Updates & Help */}
         <DropdownMenuItem>
-          <RefreshCw className="h-4 w-4 mr-2" />
+          <RefreshCw className="size-4" />
           Check for Updates
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={() => window.open('https://docs.chatml.dev', '_blank')}>
-          <BookOpen className="h-4 w-4 mr-2" />
+          <BookOpen className="size-4" />
           Documentation
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={() => window.open('https://chatml.dev/changelog', '_blank')}>
-          <FileText className="h-4 w-4 mr-2" />
+          <FileText className="size-4" />
           Changelog
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={() => window.open('https://github.com/chatml/chatml/issues', '_blank')}>
-          <MessageCircle className="h-4 w-4 mr-2" />
+          <MessageCircle className="size-4" />
           Send Feedback
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
         </DropdownMenuItem>
@@ -206,7 +206,7 @@ export function AppSettingsMenu({
 
         {/* Sign Out */}
         <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
-          <LogOut className="h-4 w-4 mr-2" />
+          <LogOut className="size-4" />
           Sign Out
         </DropdownMenuItem>
       </DropdownMenuContent>

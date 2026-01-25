@@ -46,12 +46,12 @@ export function CommandPalette({ onAddRepo, onSpawnAgent }: CommandPaletteProps)
 
         <CommandGroup heading="Actions">
           <CommandItem onSelect={() => runCommand(onAddRepo)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="size-4" />
             Add Repository
           </CommandItem>
           {selectedRepoId && onSpawnAgent && (
             <CommandItem onSelect={() => runCommand(onSpawnAgent)}>
-              <Bot className="mr-2 h-4 w-4" />
+              <Bot className="size-4" />
               Spawn New Agent
             </CommandItem>
           )}
@@ -66,7 +66,7 @@ export function CommandPalette({ onAddRepo, onSpawnAgent }: CommandPaletteProps)
                   key={repo.id}
                   onSelect={() => runCommand(() => selectRepo(repo.id))}
                 >
-                  <FolderGit2 className="mr-2 h-4 w-4" />
+                  <FolderGit2 className="size-4" />
                   <span className="flex-1">{repo.name}</span>
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <GitBranch className="h-3 w-3" />

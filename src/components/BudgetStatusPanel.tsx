@@ -1,6 +1,7 @@
 'use client';
 
 import { useAppStore } from '@/stores/appStore';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertCircle, DollarSign, RefreshCw, Brain, Gauge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -39,7 +40,8 @@ export function BudgetStatusPanel() {
   const thinkingPercent = maxThinkingTokens ? (currentThinkingTokens / maxThinkingTokens) * 100 : 0;
 
   return (
-    <div className="p-3 space-y-3">
+    <ScrollArea className="h-full">
+      <div className="p-3 space-y-3">
       {limitExceeded && (
         <div className="flex items-center gap-2 p-2 bg-destructive/10 text-destructive rounded-md text-xs">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -128,6 +130,7 @@ export function BudgetStatusPanel() {
           No budget limits configured for this session
         </p>
       )}
-    </div>
+      </div>
+    </ScrollArea>
   );
 }
