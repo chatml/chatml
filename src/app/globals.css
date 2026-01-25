@@ -268,6 +268,10 @@
   }
   html {
     font-size: 100%;  /* Was 106.25% - now standard 16px base */
+    background-color: #141414; /* Dark fallback - matches Tauri window, prevents white flash on resize */
+  }
+  html:not(.dark) {
+    background-color: #ffffff; /* Light mode override */
   }
   html, body {
     @apply bg-background text-foreground;
