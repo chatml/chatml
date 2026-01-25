@@ -213,7 +213,7 @@ export function TopBar({
           size="icon"
           className={cn('h-6 w-6', showBottomPanel && 'bg-surface-2')}
           onClick={onToggleBottomPanel}
-          title="Toggle terminal (⌃`)"
+          title="Toggle terminal (⌘J)"
         >
           <PanelBottom className="h-3.5 w-3.5" />
         </Button>

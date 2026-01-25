@@ -718,8 +718,9 @@ export default function Home() {
           setShowRightSidebar((prev) => !prev);
         }
       }
-      // Ctrl+` to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
-      if (e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+      // Ctrl+` or Cmd+J to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
+      if ((e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) ||
+          (e.key === 'j' && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey)) {
         e.preventDefault();
         setShowBottomTerminal(!showBottomTerminalRef.current);
       }
