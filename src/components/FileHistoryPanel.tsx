@@ -260,7 +260,7 @@ function CommitRow({ commit, onClick, isLast }: { commit: FileCommitDTO; onClick
   const timeAgo = useMemo(() => formatRelativeTime(commit.timestamp), [commit.timestamp]);
 
   return (
-    <div className="flex items-start gap-2 px-2 py-1 h-full">
+    <div className="flex items-start gap-1 px-2 py-1 h-full">
       {/* Timeline node with connecting line */}
       <div className="relative shrink-0 flex flex-col items-center pt-1">
         <GitCommitHorizontal className="w-4 h-4 text-blue-500 relative z-10" />
