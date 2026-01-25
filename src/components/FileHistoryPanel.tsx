@@ -260,19 +260,20 @@ function CommitRow({ commit, onClick, isLast }: { commit: FileCommitDTO; onClick
   const timeAgo = useMemo(() => formatRelativeTime(commit.timestamp), [commit.timestamp]);
 
   return (
-    <div
-      className="flex items-start gap-2 px-2 py-1.5 hover:bg-surface-2 cursor-pointer group h-full"
-      onClick={onClick}
-    >
+    <div className="flex items-start gap-2 px-2 py-1 h-full">
       {/* Timeline node with connecting line */}
-      <div className="relative shrink-0 flex flex-col items-center">
+      <div className="relative shrink-0 flex flex-col items-center pt-1">
         <GitCommitHorizontal className="w-4 h-4 text-blue-500 relative z-10" />
         {/* Vertical line connecting to next commit */}
         {!isLast && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 w-0.5 bg-blue-500/40 h-[calc(56px-16px)]" />
+          <div className="absolute top-5 left-1/2 -translate-x-1/2 w-0.5 bg-blue-500/40 h-[calc(56px-20px)]" />
         )}
       </div>
-      <div className="flex-1 min-w-0 mt-0.5">
+      {/* Card content */}
+      <div
+        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md hover:bg-surface-2 cursor-pointer group"
+        onClick={onClick}
+      >
         <div className="text-xs font-medium truncate" title={commit.message}>
           {commit.message}
         </div>
