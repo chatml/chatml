@@ -162,20 +162,20 @@ export function TopBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem>
-              <Code className="h-4 w-4 mr-2" />
+              <Code className="size-4" />
               VS Code
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <FolderOpen className="h-4 w-4 mr-2" />
+              <FolderOpen className="size-4" />
               Finder
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <Terminal className="h-4 w-4 mr-2" />
+              <Terminal className="size-4" />
               Terminal
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
-              <ExternalLink className="h-4 w-4 mr-2" />
+              <ExternalLink className="size-4" />
               GitHub
             </DropdownMenuItem>
           </DropdownMenuContent>

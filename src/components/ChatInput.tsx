@@ -1044,7 +1044,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                   key={model.id}
                   onClick={() => setSelectedModel(model)}
                 >
-                  <model.icon className="h-3.5 w-3.5 mr-2" />
+                  <model.icon className="size-3.5" />
                   {model.name}
                 </DropdownMenuItem>
               ))}
@@ -1095,18 +1095,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem>
-                <Paperclip className="h-4 w-4 mr-2" />
+                <Paperclip className="size-4" />
                 Add attachment
                 <span className="ml-auto text-xs text-muted-foreground">⌘U</span>
               </DropdownMenuItem>
               <DropdownMenuItem>
-                <Link className="h-4 w-4 mr-2" />
+                <Link className="size-4" />
                 Link Linear issue
                 <span className="ml-auto text-xs text-muted-foreground">⌘I</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
-                <FolderSymlink className="h-4 w-4 mr-2" />
+                <FolderSymlink className="size-4" />
                 Link workspaces
               </DropdownMenuItem>
             </DropdownMenuContent>

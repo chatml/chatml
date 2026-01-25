@@ -11,19 +11,19 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "bg-red-600/80 text-white font-semibold border-red-600/80 hover:bg-red-600 hover:border-red-600 dark:bg-red-700/70 dark:hover:bg-red-600/80 dark:border-red-700/70 dark:hover:border-red-600/80",
         outline:
           "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-muted-foreground/40 dark:hover:bg-input/50",
         success:
           "bg-emerald-600/80 text-white font-semibold border-emerald-600/80 hover:bg-emerald-600 hover:border-emerald-600 dark:bg-emerald-700/70 dark:hover:bg-emerald-600/80 dark:border-emerald-700/70 dark:hover:border-emerald-600/80",
         warning:
-          "bg-yellow-600 text-white hover:bg-yellow-700 dark:bg-yellow-600 dark:hover:bg-yellow-500",
+          "bg-yellow-600/80 text-white font-semibold border-yellow-600/80 hover:bg-yellow-600 hover:border-yellow-600 dark:bg-yellow-700/70 dark:hover:bg-yellow-600/80 dark:border-yellow-700/70 dark:hover:border-yellow-600/80",
         info:
-          "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500",
+          "bg-blue-600/80 text-white font-semibold border-blue-600/80 hover:bg-blue-600 hover:border-blue-600 dark:bg-blue-700/70 dark:hover:bg-blue-600/80 dark:border-blue-700/70 dark:hover:border-blue-600/80",
         secondary:
           "bg-secondary text-secondary-foreground border border-border hover:bg-secondary-foreground/10 dark:bg-[#2a2a2a] dark:hover:bg-[#333]",
         ghost:
-          "border border-transparent hover:bg-surface-2 hover:text-foreground",
+          "border border-transparent hover:bg-foreground/5 hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         gradient:
           "bg-gradient-to-r from-primary to-purple-500 text-primary-foreground hover:from-primary/90 hover:to-purple-500/90 shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30",

@@ -169,19 +169,19 @@ export function ConversationTabs({ sessionId, onNewConversation }: ConversationT
             </ContextMenuTrigger>
             <ContextMenuContent>
               <ContextMenuItem onClick={() => handleRename(conv.id)}>
-                <Pencil className="mr-2 h-4 w-4" />
+                <Pencil className="size-4" />
                 Rename
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={() => handleRemoveConversation(conv.id)}>
-                <X className="mr-2 h-4 w-4" />
+                <X className="size-4" />
                 Close
               </ContextMenuItem>
               <ContextMenuItem
                 onClick={() => handleCloseOthers(conv.id)}
                 disabled={sessionConversations.length <= 1}
               >
-                <XCircle className="mr-2 h-4 w-4" />
+                <XCircle className="size-4" />
                 Close Others
               </ContextMenuItem>
             </ContextMenuContent>

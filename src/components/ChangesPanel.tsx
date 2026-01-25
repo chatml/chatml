@@ -508,11 +508,11 @@ export function ChangesPanel({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem>
-              <SplitSquareHorizontal className="h-4 w-4 mr-2" />
+              <SplitSquareHorizontal className="size-4" />
               Split View
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
-              <Search className="h-4 w-4 mr-2" />
+              <Search className="size-4" />
               Search Files
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -536,12 +536,14 @@ export function ChangesPanel({
                 </div>
               </div>
             ) : (
-              <FileTree
-                files={files}
-                onFileSelect={handleFileSelect}
-                workspacePath={currentSession?.worktreePath}
-                workspaceName={currentWorkspace?.name}
-              />
+              <div className="h-full min-h-0">
+                <FileTree
+                  files={files}
+                  onFileSelect={handleFileSelect}
+                  workspacePath={currentSession?.worktreePath}
+                  workspaceName={currentWorkspace?.name}
+                />
+              </div>
             )
           ) : selectedTab === 'changes' ? (
             changesLoading ? (

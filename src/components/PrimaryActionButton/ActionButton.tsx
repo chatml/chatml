@@ -102,7 +102,7 @@ export function ActionButton({
               <ChevronDown className="size-3" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[280px]">
+          <DropdownMenuContent align="end">
             {action.dropdownActions?.map((dropdownAction) => {
               const DropdownIcon = dropdownAction.icon;
               return (
