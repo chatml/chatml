@@ -27,17 +27,27 @@ import {
   Code,
   PanelLeft,
   PanelRight,
+  PanelBottom,
   Folder,
   Calendar,
   Layers,
+  MoreVertical,
+  Settings,
+  Keyboard,
+  Sparkles,
+  BookOpen,
+  MessageCircle,
 } from 'lucide-react';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { AppSettingsMenu } from '@/components/AppSettingsMenu';
 
 interface TopBarProps {
   showLeftSidebar?: boolean;
   showRightSidebar?: boolean;
+  showBottomPanel?: boolean;
   onToggleLeftSidebar?: () => void;
   onToggleRightSidebar?: () => void;
+  onToggleBottomPanel?: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   onOpenWorkspaces?: () => void;
@@ -46,8 +56,10 @@ interface TopBarProps {
 export function TopBar({
   showLeftSidebar = true,
   showRightSidebar = true,
+  showBottomPanel = false,
   onToggleLeftSidebar,
   onToggleRightSidebar,
+  onToggleBottomPanel,
   onOpenSettings,
   onOpenShortcuts,
   onOpenWorkspaces,
@@ -55,6 +67,8 @@ export function TopBar({
   // Use optimized selectors to prevent unnecessary re-renders
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
+  const zenMode = useSettingsStore((s) => s.zenMode);
+  const setZenMode = useSettingsStore((s) => s.setZenMode);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
@@ -92,7 +106,7 @@ export function TopBar({
   }
 
   return (
-    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
+    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0 pr-1", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
       {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
       {!showLeftSidebar && onToggleLeftSidebar && (
         <Button
@@ -192,18 +206,74 @@ export function TopBar({
          selectedSession?.status === 'error' ? 'Error' : 'Ready'}
       </div>
 
-      {/* Toggle Right Sidebar Button - only shown when sidebar is hidden */}
-      {!showRightSidebar && onToggleRightSidebar && (
+      {/* Panel Toggle Buttons */}
+      <div className="flex items-center gap-0.5">
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
+          className={cn('h-6 w-6', showBottomPanel && 'bg-surface-2')}
+          onClick={onToggleBottomPanel}
+          title="Toggle terminal (⌘J)"
+        >
+          <PanelBottom className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn('h-6 w-6', showRightSidebar && 'bg-surface-2')}
           onClick={onToggleRightSidebar}
-          title="Show sidebar (⌘⌥B)"
+          title="Toggle right sidebar (⌘⌥B)"
         >
           <PanelRight className="h-3.5 w-3.5" />
         </Button>
-      )}
+
+        {/* More Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              title="More options"
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onOpenSettings}>
+              <Settings className="size-4" />
+              Settings
+              <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onOpenShortcuts}>
+              <Keyboard className="size-4" />
+              Keyboard Shortcuts
+              <span className="ml-auto text-xs text-muted-foreground">⌘/</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onOpenWorkspaces}>
+              <FolderOpen className="size-4" />
+              Manage Workspaces
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setZenMode(!zenMode)}>
+              <Sparkles className="size-4" />
+              {zenMode ? 'Exit Zen Mode' : 'Enter Zen Mode'}
+              <span className="ml-auto text-xs text-muted-foreground">⌘⇧Z</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => window.open('https://docs.chatml.dev', '_blank')}>
+              <BookOpen className="size-4" />
+              Documentation
+              <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.open('https://github.com/chatml/chatml/issues', '_blank')}>
+              <MessageCircle className="size-4" />
+              Send Feedback
+              <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {/* App Settings Menu - shown when right sidebar is hidden */}
       {!showRightSidebar && onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (

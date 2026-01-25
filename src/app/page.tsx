@@ -718,8 +718,9 @@ export default function Home() {
           setShowRightSidebar((prev) => !prev);
         }
       }
-      // Ctrl+` to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
-      if (e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+      // Ctrl+` or Cmd+J to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
+      if ((e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) ||
+          (e.key === 'j' && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey)) {
         e.preventDefault();
         setShowBottomTerminal(!showBottomTerminalRef.current);
       }
@@ -952,8 +953,10 @@ export default function Home() {
                     <TopBar
                       showLeftSidebar={showLeftSidebar || zenMode}
                       showRightSidebar={showRightSidebar || zenMode}
+                      showBottomPanel={showBottomTerminal}
                       onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
                       onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+                      onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
                       onOpenSettings={() => setShowSettings(true)}
                       onOpenShortcuts={() => setShowShortcuts(true)}
                       onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
@@ -972,9 +975,9 @@ export default function Home() {
               {selectedSession && (
                 <ResizablePanel
                   id="bottom-terminal"
-                  defaultSize={showBottomTerminal ? "150px" : "0px"}
-                  minSize={showBottomTerminal ? "100px" : "0px"}
-                  maxSize={showBottomTerminal ? "500px" : "0px"}
+                  defaultSize={showBottomTerminal ? "120px" : "0px"}
+                  minSize={showBottomTerminal ? "80px" : "0px"}
+                  maxSize={showBottomTerminal ? "400px" : "0px"}
                   style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
                 >
                   <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
