@@ -974,9 +974,9 @@ export default function Home() {
               {selectedSession && (
                 <ResizablePanel
                   id="bottom-terminal"
-                  defaultSize={showBottomTerminal ? "150px" : "0px"}
-                  minSize={showBottomTerminal ? "100px" : "0px"}
-                  maxSize={showBottomTerminal ? "500px" : "0px"}
+                  defaultSize={showBottomTerminal ? "120px" : "0px"}
+                  minSize={showBottomTerminal ? "80px" : "0px"}
+                  maxSize={showBottomTerminal ? "400px" : "0px"}
                   style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
                 >
                   <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>

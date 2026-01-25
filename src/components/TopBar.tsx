@@ -106,7 +106,7 @@ export function TopBar({
   }
 
   return (
-    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
+    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0 pr-1", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
       {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
       {!showLeftSidebar && onToggleLeftSidebar && (
         <Button
