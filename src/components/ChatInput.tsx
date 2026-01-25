@@ -577,6 +577,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ghostTextRef = useRef<HTMLSpanElement>(null);
 
@@ -1005,6 +1006,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
             className={cn(
               'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
@@ -1015,10 +1018,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             )}
             disabled={!selectedSessionId || isSending || isStreaming}
           />
-          {/* Cmd+L hint */}
-          <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
-            ⌘L to focus
-          </div>
+          {/* Cmd+L hint - hidden when focused */}
+          {!isFocused && (
+            <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
+              ⌘L to focus
+            </div>
+          )}
           {/* Tab hint when suggestion is visible */}
           {suggestion && (
             <div className="absolute bottom-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
