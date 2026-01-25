@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
@@ -33,8 +33,8 @@ import { FilePicker } from '@/components/FilePicker';
 // import { UpdateChecker } from '@/components/UpdateChecker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { FullContentLayout } from '@/components/FullContentLayout';
 import { PRDashboard } from '@/components/PRDashboard';
+import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
@@ -1027,16 +1027,13 @@ export default function Home() {
                   />
                 )}
                 {contentView.type === 'workspace-dashboard' && (
-                  <FullContentLayout
-                    title="Dashboard"
+                  <WorkspaceDashboard
+                    workspaceId={contentView.workspaceId}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenShortcuts={() => setShowShortcuts(true)}
                     showLeftSidebar={!leftSidebarCollapsed}
-                  >
-                    <div className="p-4 text-muted-foreground">
-                      Workspace Dashboard coming soon...
-                    </div>
-                  </FullContentLayout>
+                    onCreateSession={handleNewSession}
+                  />
                 )}
               </ErrorBoundary>
             ) : (
