@@ -13,6 +13,7 @@ import {
 
 const ITEM_HEIGHT = 56; // Estimated height per commit row in pixels
 const OVERSCAN = 5; // Extra items to render above/below viewport
+const FOOTER_HEIGHT = 48; // Height for end of history message
 
 /**
  * Format a relative time string from an ISO timestamp.
@@ -124,19 +125,24 @@ export function FileHistoryPanel() {
   }, []);
 
   // Calculate virtual window
-  const { startIndex, endIndex, offsetTop, totalHeight } = useMemo(() => {
-    const total = commits.length * ITEM_HEIGHT;
+  const { startIndex, endIndex, offsetTop, totalHeight, showFooter } = useMemo(() => {
+    const itemsHeight = commits.length * ITEM_HEIGHT;
+    const total = commits.length > 0 ? itemsHeight + FOOTER_HEIGHT : 0;
     // If container height isn't measured yet, render enough items to fill a reasonable viewport
     const effectiveHeight = containerHeight || 400;
     const start = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
     const visibleCount = Math.ceil(effectiveHeight / ITEM_HEIGHT) + OVERSCAN * 2;
     const end = Math.min(commits.length, start + visibleCount);
 
+    // Show footer when scrolled near the bottom
+    const footerVisible = scrollTop + effectiveHeight >= itemsHeight;
+
     return {
       startIndex: start,
       endIndex: end,
       offsetTop: start * ITEM_HEIGHT,
       totalHeight: total,
+      showFooter: footerVisible && commits.length > 0,
     };
   }, [scrollTop, containerHeight, commits.length]);
 
@@ -251,6 +257,21 @@ export function FileHistoryPanel() {
             </div>
           );
         })}
+        {/* End of history message */}
+        {showFooter && (
+          <div
+            style={{
+              position: 'absolute',
+              top: commits.length * ITEM_HEIGHT,
+              left: 0,
+              right: 0,
+              height: FOOTER_HEIGHT,
+            }}
+            className="flex items-center justify-center text-xs text-muted-foreground/60"
+          >
+            — Beginning of file history —
+          </div>
+        )}
       </div>
     </div>
   );
