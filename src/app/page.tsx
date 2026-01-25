@@ -43,7 +43,9 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type PanelImperativeHandle,
 } from '@/components/ui/resizable';
+import { cn } from '@/lib/utils';
 
 // Pre-computed skeleton widths (avoids Math.random() during render)
 const SKELETON_WIDTHS = [72, 88, 65, 81];
@@ -119,15 +121,45 @@ export default function Home() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showLeftSidebar, setShowLeftSidebar] = useState(true);
-  const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const leftSidebarRef = useRef<HTMLDivElement>(null);
+
+  // Panel refs for imperative collapse/expand
+  const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
+  const rightSidebarPanelRef = useRef<PanelImperativeHandle>(null);
+  const leftSidebarDomRef = useRef<HTMLDivElement>(null);
+
+  // Pre-zen mode state for restoration
+  const preZenStateRef = useRef({ left: false, right: false });
+
+  // Toggle functions for sidebars
+  const toggleLeftSidebar = useCallback(() => {
+    const panel = leftSidebarPanelRef.current;
+    if (!panel) return;
+
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, []);
+
+  const toggleRightSidebar = useCallback(() => {
+    const panel = rightSidebarPanelRef.current;
+    if (!panel) return;
+
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, []);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
@@ -230,22 +262,53 @@ export default function Home() {
     zenModeRef.current = zenMode;
   }, [zenMode]);
 
+  // Track previous zen mode state to detect transitions
+  const prevZenModeRef = useRef(zenMode);
+
+  // Handle zen mode collapse/expand - only on zen mode TRANSITIONS
+  useEffect(() => {
+    const wasZenMode = prevZenModeRef.current;
+    prevZenModeRef.current = zenMode;
+
+    // Entering zen mode
+    if (zenMode && !wasZenMode) {
+      // Save current collapsed state before entering zen mode
+      preZenStateRef.current = {
+        left: leftSidebarCollapsed,
+        right: rightSidebarCollapsed,
+      };
+      // Collapse both sidebars in zen mode
+      leftSidebarPanelRef.current?.collapse();
+      rightSidebarPanelRef.current?.collapse();
+    }
+    // Exiting zen mode
+    else if (!zenMode && wasZenMode) {
+      // Restore pre-zen state when exiting zen mode
+      if (!preZenStateRef.current.left) {
+        leftSidebarPanelRef.current?.expand();
+      }
+      if (!preZenStateRef.current.right) {
+        rightSidebarPanelRef.current?.expand();
+      }
+    }
+  }, [zenMode, leftSidebarCollapsed, rightSidebarCollapsed]);
+
   // Track left sidebar width for overlay positioning
   useEffect(() => {
-    const el = leftSidebarRef.current;
+    const el = leftSidebarDomRef.current;
     if (!el) return;
 
     const observer = new ResizeObserver(() => {
-      // Use offsetWidth to include padding/borders
-      setSidebarWidth(el.offsetWidth);
+      // Use offsetWidth to include padding/borders, but 0 when collapsed
+      setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
     });
     observer.observe(el);
 
     // Initial measurement
-    setSidebarWidth(el.offsetWidth);
+    setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
 
     return () => observer.disconnect();
-  }, []);
+  }, [leftSidebarCollapsed]);
 
   const {
     workspaces,
@@ -715,13 +778,13 @@ export default function Home() {
       // Cmd+B to toggle left sidebar
       if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        setShowLeftSidebar((prev) => !prev);
+        toggleLeftSidebar();
       }
       // Cmd+Option+B to toggle right sidebar (only when session is selected)
       if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey) {
         e.preventDefault();
         if (selectedSessionIdRef.current) {
-          setShowRightSidebar((prev) => !prev);
+          toggleRightSidebar();
         }
       }
       // Ctrl+` or Cmd+J to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
@@ -790,7 +853,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -817,12 +880,12 @@ export default function Home() {
           saveCurrentTab();
           break;
         case 'toggle_left_sidebar':
-          setShowLeftSidebar((prev) => !prev);
+          toggleLeftSidebar();
           break;
         case 'toggle_right_sidebar':
           // Only toggle right sidebar if a session is selected
           if (selectedSessionIdRef.current) {
-            setShowRightSidebar((prev) => !prev);
+            toggleRightSidebar();
           }
           break;
         case 'toggle_terminal':
@@ -850,7 +913,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal, saveCurrentTab]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar]);
 
   // Handle window close confirmation
   useEffect(() => {
@@ -911,145 +974,165 @@ export default function Home() {
     <ToastProvider>
       <TooltipProvider>
         <div className="h-screen overflow-hidden flex relative bg-background">
-        {/* Main Layout */}
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
-          {/* Left Sidebar - Workspaces (hidden in zen mode) */}
-          {showLeftSidebar && !zenMode && (
-            <>
-              <ResizablePanel
-                id="left-sidebar"
-                defaultSize={22}
-                minSize="200px"
-                maxSize="400px"
-              >
-                <div ref={leftSidebarRef} className="h-full">
-                  <ErrorBoundary section="Sidebar">
-                    <WorkspaceSidebar
-                      onOpenProject={handleOpenProject}
-                      onCloneFromUrl={() => setShowCloneFromUrl(true)}
-                      onQuickStart={() => setShowQuickStart(true)}
-                      onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
-                      onSessionSelected={() => setShowWorkspaceManagement(false)}
-                      onOpenSettings={() => setShowSettings(true)}
-                      onToggleSidebar={() => setShowLeftSidebar(false)}
-                    />
-                  </ErrorBoundary>
-                </div>
-              </ResizablePanel>
+        {/* OUTER GROUP: Left Sidebar | Main Content */}
+        <ResizablePanelGroup
+          direction="horizontal"
+          className="flex-1"
+        >
+          {/* Left Sidebar - Always rendered, collapsible */}
+          <ResizablePanel
+            ref={leftSidebarPanelRef}
+            id="left-sidebar"
+            defaultSize={22}
+            minSize="200px"
+            maxSize="400px"
+            collapsible={true}
+            collapsedSize={0}
+            onResize={(size) => setLeftSidebarCollapsed(size.asPercentage === 0)}
+            className={cn(zenMode && "hidden")}
+          >
+            <div ref={leftSidebarDomRef} className="h-full">
+              <ErrorBoundary section="Sidebar">
+                <WorkspaceSidebar
+                  onOpenProject={handleOpenProject}
+                  onCloneFromUrl={() => setShowCloneFromUrl(true)}
+                  onQuickStart={() => setShowQuickStart(true)}
+                  onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
+                  onSessionSelected={() => setShowWorkspaceManagement(false)}
+                  onOpenSettings={() => setShowSettings(true)}
+                  onToggleSidebar={toggleLeftSidebar}
+                />
+              </ErrorBoundary>
+            </div>
+          </ResizablePanel>
 
-              <ResizableHandle direction="horizontal" />
-            </>
-          )}
+          <ResizableHandle
+            direction="horizontal"
+            className={cn((leftSidebarCollapsed || zenMode) && "hidden")}
+          />
 
-          {/* Main Content */}
-          <ResizablePanel id="main-content" defaultSize={48} minSize={30}>
-            <ResizablePanelGroup direction="vertical">
-              {/* Main Content Area */}
-              <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
-                {isLoadingData ? (
-                  <ConversationSkeleton />
-                ) : isFullContentView ? (
-                  // Full Content Views (PR Dashboard, Workspace Dashboard, etc.)
-                  <ErrorBoundary section="FullContent">
-                    {contentView.type === 'pr-dashboard' && (
-                      <PRDashboard
-                        initialWorkspaceId={contentView.workspaceId}
-                        onOpenSettings={() => setShowSettings(true)}
-                        onOpenShortcuts={() => setShowShortcuts(true)}
-                        showLeftSidebar={showLeftSidebar}
-                      />
-                    )}
-                    {contentView.type === 'workspace-dashboard' && (
-                      <FullContentLayout
-                        title="Dashboard"
-                        onOpenSettings={() => setShowSettings(true)}
-                        onOpenShortcuts={() => setShowShortcuts(true)}
-                        showLeftSidebar={showLeftSidebar}
-                      >
-                        <div className="p-4 text-muted-foreground">
-                          Workspace Dashboard coming soon...
-                        </div>
-                      </FullContentLayout>
-                    )}
-                  </ErrorBoundary>
-                ) : !selectedSessionId ? (
-                  <EmptyView
-                    onOpenProject={handleOpenProject}
-                    onCloneFromUrl={() => setShowCloneFromUrl(true)}
-                    onQuickStart={() => setShowQuickStart(true)}
+          {/* Main Content - Full content views OR inner horizontal split */}
+          <ResizablePanel id="main-content" defaultSize={78} minSize={30}>
+            {isLoadingData ? (
+              <ConversationSkeleton />
+            ) : isFullContentView ? (
+              // Full Content Views take entire main content area
+              <ErrorBoundary section="FullContent">
+                {contentView.type === 'pr-dashboard' && (
+                  <PRDashboard
+                    initialWorkspaceId={contentView.workspaceId}
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
                   />
-                ) : (
-                  <div className="flex flex-col h-full">
-                    <TopBar
-                      showLeftSidebar={showLeftSidebar || zenMode}
-                      showRightSidebar={showRightSidebar || zenMode}
-                      showBottomPanel={showBottomTerminal}
-                      onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
-                      onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
-                      onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                )}
+                {contentView.type === 'workspace-dashboard' && (
+                  <FullContentLayout
+                    title="Dashboard"
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
+                  >
+                    <div className="p-4 text-muted-foreground">
+                      Workspace Dashboard coming soon...
+                    </div>
+                  </FullContentLayout>
+                )}
+              </ErrorBoundary>
+            ) : (
+              // INNER GROUP: Conversation + Terminal | Right Sidebar
+              <ResizablePanelGroup
+                direction="horizontal"
+                className="h-full"
+              >
+                {/* Inner Content - Contains vertical split */}
+                <ResizablePanel id="inner-content" defaultSize={78} minSize={30}>
+                  {/* VERTICAL GROUP: Conversation | Bottom Terminal */}
+                  <ResizablePanelGroup direction="vertical" className="h-full">
+                    {/* Conversation Area */}
+                    <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
+                      {selectedSessionId ? (
+                        <div className="flex flex-col h-full">
+                          <TopBar
+                            showLeftSidebar={!leftSidebarCollapsed || zenMode}
+                            showRightSidebar={!rightSidebarCollapsed || zenMode}
+                            showBottomPanel={showBottomTerminal}
+                            onToggleLeftSidebar={toggleLeftSidebar}
+                            onToggleRightSidebar={toggleRightSidebar}
+                            onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                            onOpenSettings={() => setShowSettings(true)}
+                            onOpenShortcuts={() => setShowShortcuts(true)}
+                            onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
+                          />
+                          <ErrorBoundary section="Conversation">
+                            <ConversationArea>
+                              <ChatInput />
+                            </ConversationArea>
+                          </ErrorBoundary>
+                        </div>
+                      ) : null}
+                    </ResizablePanel>
+
+                    {/* Bottom Terminal - always mounted to preserve PTY session */}
+                    {showBottomTerminal && <ResizableHandle direction="vertical" />}
+                    {selectedSession && (
+                      <ResizablePanel
+                        id="bottom-terminal"
+                        defaultSize={showBottomTerminal ? "120px" : "0px"}
+                        minSize={showBottomTerminal ? "80px" : "0px"}
+                        maxSize={showBottomTerminal ? "400px" : "0px"}
+                        style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
+                      >
+                        <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
+                          <ErrorBoundary section="Terminal">
+                            <BottomTerminal
+                              sessionId={selectedSession.id}
+                              workspacePath={selectedSession.worktreePath}
+                              onHide={() => setShowBottomTerminal(false)}
+                            />
+                          </ErrorBoundary>
+                        </div>
+                      </ResizablePanel>
+                    )}
+                  </ResizablePanelGroup>
+                </ResizablePanel>
+
+                <ResizableHandle
+                  direction="horizontal"
+                  className={cn(
+                    (rightSidebarCollapsed || zenMode || !selectedSessionId) && "hidden"
+                  )}
+                />
+
+                {/* Right Sidebar - Nested inside main content, collapsible */}
+                <ResizablePanel
+                  ref={rightSidebarPanelRef}
+                  id="right-sidebar"
+                  defaultSize={22}
+                  minSize="250px"
+                  maxSize="500px"
+                  collapsible={true}
+                  collapsedSize={0}
+                  onResize={(size) => setRightSidebarCollapsed(size.asPercentage === 0)}
+                  className={cn(
+                    (zenMode || !selectedSessionId) && "hidden"
+                  )}
+                >
+                  <ErrorBoundary section="Changes">
+                    <ChangesPanel
                       onOpenSettings={() => setShowSettings(true)}
                       onOpenShortcuts={() => setShowShortcuts(true)}
                       onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
                     />
-                    <ErrorBoundary section="Conversation">
-                      <ConversationArea>
-                        <ChatInput />
-                      </ConversationArea>
-                    </ErrorBoundary>
-                  </div>
-                )}
-              </ResizablePanel>
-
-              {/* Bottom Terminal - always mounted to preserve PTY session */}
-              {showBottomTerminal && <ResizableHandle direction="vertical" />}
-              {selectedSession && (
-                <ResizablePanel
-                  id="bottom-terminal"
-                  defaultSize={showBottomTerminal ? "120px" : "0px"}
-                  minSize={showBottomTerminal ? "80px" : "0px"}
-                  maxSize={showBottomTerminal ? "400px" : "0px"}
-                  style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
-                >
-                  <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
-                    <ErrorBoundary section="Terminal">
-                      <BottomTerminal
-                        sessionId={selectedSession.id}
-                        workspacePath={selectedSession.worktreePath}
-                        onHide={() => setShowBottomTerminal(false)}
-                      />
-                    </ErrorBoundary>
-                  </div>
+                  </ErrorBoundary>
                 </ResizablePanel>
-              )}
-            </ResizablePanelGroup>
+              </ResizablePanelGroup>
+            )}
           </ResizablePanel>
-
-          {/* Right Sidebar (hidden in zen mode, full content view, or when no session selected) */}
-          {showRightSidebar && !zenMode && !isFullContentView && selectedSessionId && (
-            <>
-              <ResizableHandle direction="horizontal" />
-
-              {/* Right Sidebar */}
-              <ResizablePanel
-                id="right-sidebar"
-                defaultSize={22}
-                minSize="250px"
-                maxSize="500px"
-              >
-                <ErrorBoundary section="Changes">
-                  <ChangesPanel
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
-                  />
-                </ErrorBoundary>
-              </ResizablePanel>
-            </>
-          )}
         </ResizablePanelGroup>
 
         {/* Empty View Overlay - covers main content and right sidebar when no session selected */}
-        {!selectedSessionId && !showWorkspaceManagement && !showSettings && (
+        {!selectedSessionId && !isFullContentView && !showWorkspaceManagement && !showSettings && (
           <div
             className="absolute inset-0 z-10 bg-background"
             style={{ left: sidebarWidth + 5 }}

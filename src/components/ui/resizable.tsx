@@ -32,7 +32,7 @@ function ResizablePanelGroup({
 const ResizablePanel = React.forwardRef<
   PanelImperativeHandle,
   React.ComponentProps<typeof Panel>
->(({ className, ...props }, ref) => {
+>(({ className, panelRef: _panelRef, ...props }, ref) => {
   return (
     <Panel
       panelRef={ref}
@@ -88,3 +88,4 @@ function ResizableHandle({
 }
 
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle }
+export type { PanelImperativeHandle }
