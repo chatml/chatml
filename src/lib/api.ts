@@ -343,6 +343,51 @@ export async function getPRStatus(workspaceId: string, sessionId: string): Promi
   }
 }
 
+// PR Dashboard types
+export interface CheckDetail {
+  name: string;
+  status: string; // "queued", "in_progress", "completed"
+  conclusion: string; // "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
+}
+
+export interface PRDashboardItem {
+  // PR metadata
+  number: number;
+  title: string;
+  state: string;
+  htmlUrl: string;
+  isDraft: boolean;
+  mergeable: boolean | null;
+  mergeableState: string;
+  checkStatus: string;
+  checkDetails: CheckDetail[];
+
+  // Branch info
+  branch: string;
+  baseBranch: string;
+
+  // Session info (if created from ChatML)
+  sessionId?: string;
+  sessionName?: string;
+
+  // Workspace info
+  workspaceId: string;
+  workspaceName: string;
+  repoOwner: string;
+  repoName: string;
+
+  // Counts for summary
+  checksTotal: number;
+  checksPassed: number;
+  checksFailed: number;
+}
+
+export async function getPRs(workspaceId?: string): Promise<PRDashboardItem[]> {
+  const params = workspaceId ? `?workspaceId=${workspaceId}` : '';
+  const res = await fetchWithAuth(`${API_BASE}/api/prs${params}`);
+  return handleResponse<PRDashboardItem[]>(res);
+}
+
 export async function sendSessionMessage(
   workspaceId: string,
   sessionId: string,

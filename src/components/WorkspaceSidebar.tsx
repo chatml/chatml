@@ -70,6 +70,7 @@ import {
   Bot,
   Search,
   X,
+  LayoutDashboard,
 } from 'lucide-react';
 import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
@@ -159,7 +160,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, setContentView } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -427,6 +428,14 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
                         onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
+                        onOpenDashboard={() => {
+                          selectWorkspace(workspace.id);
+                          setContentView({ type: 'workspace-dashboard', workspaceId: workspace.id });
+                        }}
+                        onOpenPRs={() => {
+                          selectWorkspace(workspace.id);
+                          setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
+                        }}
                         getStatusColor={getStatusColor}
                         formatTimeAgo={formatTimeAgo}
                         getInitial={getInitial}
@@ -583,6 +592,8 @@ interface SortableWorkspaceItemProps {
   onArchiveSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
   onRemoveWorkspace: () => void;
+  onOpenDashboard: () => void;
+  onOpenPRs: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -599,6 +610,8 @@ function SortableWorkspaceItem({
   onArchiveSession,
   onPinSession,
   onRemoveWorkspace,
+  onOpenDashboard,
+  onOpenPRs,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -695,9 +708,32 @@ function SortableWorkspaceItem({
           </div>
         </CollapsibleTrigger>
 
-        {/* Sessions */}
+        {/* Workspace Navigation + Sessions */}
         <CollapsibleContent>
           <div className="ml-5 overflow-hidden">
+            {/* Fixed Navigation Items */}
+            <div className="border-b border-border/50 pb-1 mb-1">
+              <div
+                className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-surface-1"
+                onClick={onOpenDashboard}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-[length:var(--text-sm)] text-muted-foreground group-hover:text-foreground">
+                  Dashboard
+                </span>
+              </div>
+              <div
+                className="group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-surface-1"
+                onClick={onOpenPRs}
+              >
+                <GitPullRequest className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-[length:var(--text-sm)] text-muted-foreground group-hover:text-foreground">
+                  Pull Requests
+                </span>
+              </div>
+            </div>
+
+            {/* Sessions */}
             {sessions.length === 0 ? (
               <div className="py-2 px-2 text-[length:var(--text-micro)] text-muted-foreground/70">
                 No active sessions
