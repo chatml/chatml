@@ -1,7 +1,6 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { useUIStore } from '@/stores/uiStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  ArrowLeft,
   Settings,
   Keyboard,
   MoreVertical,
@@ -40,12 +38,7 @@ export function FullContentLayout({
   onOpenShortcuts,
   showLeftSidebar = true,
 }: FullContentLayoutProps) {
-  const setContentView = useSettingsStore((s) => s.setContentView);
   const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
-
-  const handleBack = () => {
-    setContentView({ type: 'conversation' });
-  };
 
   return (
     <div className="flex flex-col h-full">
@@ -58,19 +51,8 @@ export function FullContentLayout({
           !showLeftSidebar && 'pl-20'
         )}
       >
-        {/* Back Button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 ml-2"
-          onClick={handleBack}
-          title="Back to conversation"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-        </Button>
-
         {/* Title */}
-        <h1 className="text-sm font-medium ml-2">{title}</h1>
+        <h1 className="text-sm font-medium ml-3">{title}</h1>
 
         {/* Spacer */}
         <div className="flex-1" />

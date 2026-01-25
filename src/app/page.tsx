@@ -1011,132 +1011,128 @@ export default function Home() {
             className={cn((leftSidebarCollapsed || zenMode) && "hidden")}
           />
 
-          {/* Main Content - Contains inner horizontal split */}
+          {/* Main Content - Full content views OR inner horizontal split */}
           <ResizablePanel id="main-content" defaultSize={78} minSize={30}>
-            {/* INNER GROUP: Inner Content | Right Sidebar */}
-            <ResizablePanelGroup
-              direction="horizontal"
-              className="h-full"
-            >
-              {/* Inner Content - Contains vertical split */}
-              <ResizablePanel id="inner-content" defaultSize={78} minSize={30}>
-                {/* VERTICAL GROUP: Conversation | Bottom Terminal */}
-                <ResizablePanelGroup direction="vertical" className="h-full">
-                  {/* Main Content Area */}
-                  <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
-                    {isLoadingData ? (
-                      <ConversationSkeleton />
-                    ) : isFullContentView ? (
-                      // Full Content Views (PR Dashboard, Workspace Dashboard, etc.)
-                      <ErrorBoundary section="FullContent">
-                        {contentView.type === 'pr-dashboard' && (
-                          <PRDashboard
-                            initialWorkspaceId={contentView.workspaceId}
-                            onOpenSettings={() => setShowSettings(true)}
-                            onOpenShortcuts={() => setShowShortcuts(true)}
-                            showLeftSidebar={!leftSidebarCollapsed}
-                          />
-                        )}
-                        {contentView.type === 'workspace-dashboard' && (
-                          <FullContentLayout
-                            title="Dashboard"
-                            onOpenSettings={() => setShowSettings(true)}
-                            onOpenShortcuts={() => setShowShortcuts(true)}
-                            showLeftSidebar={!leftSidebarCollapsed}
-                          >
-                            <div className="p-4 text-muted-foreground">
-                              Workspace Dashboard coming soon...
-                            </div>
-                          </FullContentLayout>
-                        )}
-                      </ErrorBoundary>
-                    ) : !selectedSessionId ? (
-                      <EmptyView
-                        onOpenProject={handleOpenProject}
-                        onCloneFromUrl={() => setShowCloneFromUrl(true)}
-                        onQuickStart={() => setShowQuickStart(true)}
-                      />
-                    ) : (
-                      <div className="flex flex-col h-full">
-                        <TopBar
-                          showLeftSidebar={!leftSidebarCollapsed || zenMode}
-                          showRightSidebar={!rightSidebarCollapsed || zenMode}
-                          showBottomPanel={showBottomTerminal}
-                          onToggleLeftSidebar={toggleLeftSidebar}
-                          onToggleRightSidebar={toggleRightSidebar}
-                          onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
-                          onOpenSettings={() => setShowSettings(true)}
-                          onOpenShortcuts={() => setShowShortcuts(true)}
-                          onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
-                        />
-                        <ErrorBoundary section="Conversation">
-                          <ConversationArea>
-                            <ChatInput />
-                          </ConversationArea>
-                        </ErrorBoundary>
-                      </div>
-                    )}
-                  </ResizablePanel>
-
-                  {/* Bottom Terminal - always mounted to preserve PTY session */}
-                  {showBottomTerminal && <ResizableHandle direction="vertical" />}
-                  {selectedSession && (
-                    <ResizablePanel
-                      id="bottom-terminal"
-                      defaultSize={showBottomTerminal ? "120px" : "0px"}
-                      minSize={showBottomTerminal ? "80px" : "0px"}
-                      maxSize={showBottomTerminal ? "400px" : "0px"}
-                      style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
-                    >
-                      <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
-                        <ErrorBoundary section="Terminal">
-                          <BottomTerminal
-                            sessionId={selectedSession.id}
-                            workspacePath={selectedSession.worktreePath}
-                            onHide={() => setShowBottomTerminal(false)}
-                          />
-                        </ErrorBoundary>
-                      </div>
-                    </ResizablePanel>
-                  )}
-                </ResizablePanelGroup>
-              </ResizablePanel>
-
-              <ResizableHandle
-                direction="horizontal"
-                className={cn(
-                  (rightSidebarCollapsed || zenMode || isFullContentView || !selectedSessionId) && "hidden"
-                )}
-              />
-
-              {/* Right Sidebar - Nested inside main content, collapsible */}
-              <ResizablePanel
-                ref={rightSidebarPanelRef}
-                id="right-sidebar"
-                defaultSize={22}
-                minSize="250px"
-                maxSize="500px"
-                collapsible={true}
-                collapsedSize={0}
-                onResize={(size) => setRightSidebarCollapsed(size.asPercentage === 0)}
-                className={cn(
-                  (zenMode || isFullContentView || !selectedSessionId) && "hidden"
-                )}
-              >
-                <ErrorBoundary section="Changes">
-                  <ChangesPanel
+            {isLoadingData ? (
+              <ConversationSkeleton />
+            ) : isFullContentView ? (
+              // Full Content Views take entire main content area
+              <ErrorBoundary section="FullContent">
+                {contentView.type === 'pr-dashboard' && (
+                  <PRDashboard
+                    initialWorkspaceId={contentView.workspaceId}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenShortcuts={() => setShowShortcuts(true)}
-                    onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
                   />
-                </ErrorBoundary>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                )}
+                {contentView.type === 'workspace-dashboard' && (
+                  <FullContentLayout
+                    title="Dashboard"
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
+                  >
+                    <div className="p-4 text-muted-foreground">
+                      Workspace Dashboard coming soon...
+                    </div>
+                  </FullContentLayout>
+                )}
+              </ErrorBoundary>
+            ) : (
+              // INNER GROUP: Conversation + Terminal | Right Sidebar
+              <ResizablePanelGroup
+                direction="horizontal"
+                className="h-full"
+              >
+                {/* Inner Content - Contains vertical split */}
+                <ResizablePanel id="inner-content" defaultSize={78} minSize={30}>
+                  {/* VERTICAL GROUP: Conversation | Bottom Terminal */}
+                  <ResizablePanelGroup direction="vertical" className="h-full">
+                    {/* Conversation Area */}
+                    <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
+                      {selectedSessionId ? (
+                        <div className="flex flex-col h-full">
+                          <TopBar
+                            showLeftSidebar={!leftSidebarCollapsed || zenMode}
+                            showRightSidebar={!rightSidebarCollapsed || zenMode}
+                            showBottomPanel={showBottomTerminal}
+                            onToggleLeftSidebar={toggleLeftSidebar}
+                            onToggleRightSidebar={toggleRightSidebar}
+                            onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                            onOpenSettings={() => setShowSettings(true)}
+                            onOpenShortcuts={() => setShowShortcuts(true)}
+                            onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
+                          />
+                          <ErrorBoundary section="Conversation">
+                            <ConversationArea>
+                              <ChatInput />
+                            </ConversationArea>
+                          </ErrorBoundary>
+                        </div>
+                      ) : null}
+                    </ResizablePanel>
+
+                    {/* Bottom Terminal - always mounted to preserve PTY session */}
+                    {showBottomTerminal && <ResizableHandle direction="vertical" />}
+                    {selectedSession && (
+                      <ResizablePanel
+                        id="bottom-terminal"
+                        defaultSize={showBottomTerminal ? "120px" : "0px"}
+                        minSize={showBottomTerminal ? "80px" : "0px"}
+                        maxSize={showBottomTerminal ? "400px" : "0px"}
+                        style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
+                      >
+                        <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
+                          <ErrorBoundary section="Terminal">
+                            <BottomTerminal
+                              sessionId={selectedSession.id}
+                              workspacePath={selectedSession.worktreePath}
+                              onHide={() => setShowBottomTerminal(false)}
+                            />
+                          </ErrorBoundary>
+                        </div>
+                      </ResizablePanel>
+                    )}
+                  </ResizablePanelGroup>
+                </ResizablePanel>
+
+                <ResizableHandle
+                  direction="horizontal"
+                  className={cn(
+                    (rightSidebarCollapsed || zenMode || !selectedSessionId) && "hidden"
+                  )}
+                />
+
+                {/* Right Sidebar - Nested inside main content, collapsible */}
+                <ResizablePanel
+                  ref={rightSidebarPanelRef}
+                  id="right-sidebar"
+                  defaultSize={22}
+                  minSize="250px"
+                  maxSize="500px"
+                  collapsible={true}
+                  collapsedSize={0}
+                  onResize={(size) => setRightSidebarCollapsed(size.asPercentage === 0)}
+                  className={cn(
+                    (zenMode || !selectedSessionId) && "hidden"
+                  )}
+                >
+                  <ErrorBoundary section="Changes">
+                    <ChangesPanel
+                      onOpenSettings={() => setShowSettings(true)}
+                      onOpenShortcuts={() => setShowShortcuts(true)}
+                      onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
+                    />
+                  </ErrorBoundary>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            )}
           </ResizablePanel>
         </ResizablePanelGroup>
 
         {/* Empty View Overlay - covers main content and right sidebar when no session selected */}
-        {!selectedSessionId && !showWorkspaceManagement && !showSettings && (
+        {!selectedSessionId && !isFullContentView && !showWorkspaceManagement && !showSettings && (
           <div
             className="absolute inset-0 z-10 bg-background"
             style={{ left: sidebarWidth + 5 }}
