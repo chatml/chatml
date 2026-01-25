@@ -76,6 +76,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/sessions/{sessionId}/git-status", h.GetSessionGitStatus)
 		r.Get("/{id}/sessions/{sessionId}/pr-status", h.GetSessionPRStatus)
 		r.Get("/{id}/sessions/{sessionId}/diff", h.GetSessionFileDiff)
+		r.Get("/{id}/sessions/{sessionId}/file-history", h.GetSessionFileHistory)
+		r.Get("/{id}/sessions/{sessionId}/file-at-ref", h.GetSessionFileAtRef)
 		r.Get("/{id}/sessions/{sessionId}/file", h.GetSessionFileContent)
 		r.Get("/{id}/sessions/{sessionId}/files", h.ListSessionFiles)
 		r.With(messageRateLimiter).Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)

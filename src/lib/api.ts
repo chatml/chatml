@@ -266,6 +266,48 @@ export async function getGitStatus(workspaceId: string, sessionId: string): Prom
   return handleResponse<GitStatusDTO>(res);
 }
 
+// File commit history types
+export interface FileCommitDTO {
+  sha: string;
+  shortSha: string;
+  message: string;
+  author: string;
+  email: string;
+  timestamp: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface FileHistoryResponse {
+  commits: FileCommitDTO[];
+  total: number;
+}
+
+export async function getFileCommitHistory(
+  workspaceId: string,
+  sessionId: string,
+  filePath: string
+): Promise<FileHistoryResponse> {
+  const params = new URLSearchParams({ path: filePath });
+  const res = await fetchWithAuth(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file-history?${params.toString()}`
+  );
+  return handleResponse<FileHistoryResponse>(res);
+}
+
+export async function getFileAtCommit(
+  workspaceId: string,
+  sessionId: string,
+  filePath: string,
+  commitSha: string
+): Promise<FileContentDTO> {
+  const params = new URLSearchParams({ path: filePath, ref: commitSha });
+  const res = await fetchWithAuth(
+    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file-at-ref?${params.toString()}`
+  );
+  return handleResponse<FileContentDTO>(res);
+}
+
 // PR Details types
 export type CheckStatus = 'pending' | 'success' | 'failure' | 'none';
 

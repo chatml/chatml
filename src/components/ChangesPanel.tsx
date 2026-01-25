@@ -18,6 +18,7 @@ import { usePRStatus } from '@/hooks/usePRStatus';
 import { McpServersPanel } from '@/components/McpServersPanel';
 import { PlansPanel } from '@/components/PlansPanel';
 import { ReviewPanel } from '@/components/ReviewPanel';
+import { FileHistoryPanel } from '@/components/FileHistoryPanel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -648,6 +649,7 @@ export function ChangesPanel({
               {bottomTab === 'budget' && <BudgetStatusPanel />}
               {bottomTab === 'mcp' && <McpServersPanel />}
               {bottomTab === 'history' && <CheckpointTimeline />}
+              {bottomTab === 'file-history' && <FileHistoryPanel />}
             </div>
           </div>
         </ResizablePanel>
@@ -661,6 +663,7 @@ const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisib
   todos: { label: 'Tasks', alwaysVisible: true },
   plans: { label: 'Plans' },
   history: { label: 'Checkpoints' },
+  'file-history': { label: 'File History' },
   budget: { label: 'Budget' },
   mcp: { label: 'MCP' },
 };

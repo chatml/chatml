@@ -939,6 +939,105 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+// FileHistoryResponse represents the commit history for a file
+type FileHistoryResponse struct {
+	Commits []git.FileCommit `json:"commits"`
+	Total   int              `json:"total"`
+}
+
+// GetSessionFileHistory returns the commit history for a specific file in a session's worktree
+func (h *Handlers) GetSessionFileHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		writeValidationError(w, "path parameter is required")
+		return
+	}
+
+	// Validate and clean the path to prevent directory traversal attacks
+	cleanPath, err := validatePath(session.WorktreePath, filePath)
+	if err != nil {
+		writeValidationError(w, "invalid path")
+		return
+	}
+
+	commits, err := h.repoManager.GetFileCommitHistory(ctx, session.WorktreePath, cleanPath)
+	if err != nil {
+		// Empty history is valid for new files
+		log.Printf("[handlers] Debug: failed to get file history for %s: %v (returning empty)", cleanPath, err)
+		commits = []git.FileCommit{}
+	}
+
+	writeJSON(w, FileHistoryResponse{
+		Commits: commits,
+		Total:   len(commits),
+	})
+}
+
+// GetSessionFileAtRef returns the content of a file at a specific git ref (commit SHA)
+func (h *Handlers) GetSessionFileAtRef(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		writeValidationError(w, "path parameter is required")
+		return
+	}
+
+	ref := r.URL.Query().Get("ref")
+	if ref == "" {
+		writeValidationError(w, "ref parameter is required")
+		return
+	}
+
+	// Validate ref format early for better error messages
+	if err := git.ValidateGitRef(ref); err != nil {
+		writeValidationError(w, "invalid commit reference format")
+		return
+	}
+
+	// Validate and clean the path to prevent directory traversal attacks
+	cleanPath, err := validatePath(session.WorktreePath, filePath)
+	if err != nil {
+		writeValidationError(w, "invalid path")
+		return
+	}
+
+	content, err := h.repoManager.GetFileAtRef(ctx, session.WorktreePath, ref, cleanPath)
+	if err != nil {
+		writeInternalError(w, "failed to read file at ref", err)
+		return
+	}
+
+	writeJSON(w, FileContentResponse{
+		Path:    cleanPath,
+		Name:    filepath.Base(cleanPath),
+		Content: content,
+		Size:    int64(len(content)),
+	})
+}
+
 type SendMessageRequest struct {
 	Content string `json:"content"`
 }
