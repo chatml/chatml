@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,12 +39,13 @@ func NewRepoManager() *RepoManager {
 	return &RepoManager{}
 }
 
-// validateGitRef validates a git reference (branch, tag, commit SHA) to prevent command injection.
+// ValidateGitRef validates a git reference (branch, tag, commit SHA) to prevent command injection.
 // Valid refs contain only alphanumeric characters, hyphens, underscores, forward slashes, dots, and tildes.
 // Rejects refs starting with hyphen (could be interpreted as flags) or containing shell metacharacters.
+// Exported for use by handlers that need early validation with better error messages.
 var validGitRefPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.\-/~^@{}]*$`)
 
-func validateGitRef(ref string) error {
+func ValidateGitRef(ref string) error {
 	if ref == "" {
 		return fmt.Errorf("empty git ref")
 	}
@@ -84,7 +86,7 @@ func (rm *RepoManager) GetRepoName(path string) string {
 
 // GetFileAtRef returns the content of a file at a specific git ref (branch, tag, or commit)
 func (rm *RepoManager) GetFileAtRef(ctx context.Context, repoPath, ref, filePath string) (string, error) {
-	if err := validateGitRef(ref); err != nil {
+	if err := ValidateGitRef(ref); err != nil {
 		return "", fmt.Errorf("invalid ref: %w", err)
 	}
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "show", fmt.Sprintf("%s:%s", ref, filePath))
@@ -98,7 +100,7 @@ func (rm *RepoManager) GetFileAtRef(ctx context.Context, repoPath, ref, filePath
 
 // GetChangedFiles returns a list of files that have changed compared to a base ref
 func (rm *RepoManager) GetChangedFiles(ctx context.Context, repoPath, baseRef string) ([]string, error) {
-	if err := validateGitRef(baseRef); err != nil {
+	if err := ValidateGitRef(baseRef); err != nil {
 		return nil, fmt.Errorf("invalid base ref: %w", err)
 	}
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--name-only", baseRef)
@@ -128,7 +130,7 @@ type FileChange struct {
 
 // GetChangedFilesWithStats returns files changed compared to a base ref with addition/deletion counts
 func (rm *RepoManager) GetChangedFilesWithStats(ctx context.Context, repoPath, baseRef string) ([]FileChange, error) {
-	if err := validateGitRef(baseRef); err != nil {
+	if err := ValidateGitRef(baseRef); err != nil {
 		return nil, fmt.Errorf("invalid base ref: %w", err)
 	}
 	// First get the diff stats
@@ -223,6 +225,99 @@ func (rm *RepoManager) GetUntrackedFiles(ctx context.Context, repoPath string) (
 	}
 
 	return untracked, nil
+}
+
+// FileCommit represents a commit that touched a specific file
+type FileCommit struct {
+	SHA       string    `json:"sha"`
+	ShortSHA  string    `json:"shortSha"`
+	Message   string    `json:"message"`
+	Author    string    `json:"author"`
+	Email     string    `json:"email"`
+	Timestamp time.Time `json:"timestamp"`
+	Additions int       `json:"additions"`
+	Deletions int       `json:"deletions"`
+}
+
+// GetFileCommitHistory returns the commit history for a specific file
+// Uses --follow to track file renames
+func (rm *RepoManager) GetFileCommitHistory(ctx context.Context, repoPath, filePath string) ([]FileCommit, error) {
+	// Build git log command with custom format
+	// Format: SHA|ShortSHA|AuthorName|AuthorEmail|Timestamp|Subject
+	args := []string{
+		"log",
+		"--follow",
+		"--pretty=format:%H|%h|%an|%ae|%aI|%s",
+		"--numstat",
+		"--",
+		filePath,
+	}
+
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, args...)
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var commits []FileCommit
+	lines := strings.Split(string(out), "\n")
+
+	var current *FileCommit
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Check if this is a commit line (contains 5 pipes for our format)
+		if strings.Count(line, "|") == 5 {
+			// Save previous commit if exists
+			if current != nil {
+				commits = append(commits, *current)
+			}
+
+			parts := strings.SplitN(line, "|", 6)
+			if len(parts) != 6 {
+				continue
+			}
+
+			timestamp, _ := time.Parse(time.RFC3339, parts[4])
+			current = &FileCommit{
+				SHA:       parts[0],
+				ShortSHA:  parts[1],
+				Author:    parts[2],
+				Email:     parts[3],
+				Timestamp: timestamp,
+				Message:   parts[5],
+			}
+		} else if current != nil {
+			// Parse numstat line: additions deletions filename
+			// With --follow, renames may produce multiple stat lines per commit.
+			// We accumulate values to capture total changes for the file.
+			statParts := strings.Fields(line)
+			if len(statParts) >= 2 {
+				// Handle binary files (shown as "-")
+				if statParts[0] != "-" {
+					if additions, err := strconv.Atoi(statParts[0]); err == nil {
+						current.Additions += additions
+					}
+				}
+				if statParts[1] != "-" {
+					if deletions, err := strconv.Atoi(statParts[1]); err == nil {
+						current.Deletions += deletions
+					}
+				}
+			}
+		}
+	}
+
+	// Don't forget the last commit
+	if current != nil {
+		commits = append(commits, *current)
+	}
+
+	return commits, nil
 }
 
 // HasMergeConflicts checks if there are any merge conflicts in the repo
@@ -382,7 +477,7 @@ func (rm *RepoManager) getSyncStatus(ctx context.Context, repoPath, baseBranch s
 	}
 
 	// Validate base branch ref
-	if err := validateGitRef(baseBranch); err != nil {
+	if err := ValidateGitRef(baseBranch); err != nil {
 		return status, fmt.Errorf("invalid base branch: %w", err)
 	}
 
