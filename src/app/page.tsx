@@ -952,8 +952,10 @@ export default function Home() {
                     <TopBar
                       showLeftSidebar={showLeftSidebar || zenMode}
                       showRightSidebar={showRightSidebar || zenMode}
+                      showBottomPanel={showBottomTerminal}
                       onToggleLeftSidebar={() => setShowLeftSidebar((prev) => !prev)}
                       onToggleRightSidebar={() => setShowRightSidebar((prev) => !prev)}
+                      onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
                       onOpenSettings={() => setShowSettings(true)}
                       onOpenShortcuts={() => setShowShortcuts(true)}
                       onOpenWorkspaces={() => setShowWorkspaceManagement(true)}

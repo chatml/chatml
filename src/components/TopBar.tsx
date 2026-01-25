@@ -27,6 +27,7 @@ import {
   Code,
   PanelLeft,
   PanelRight,
+  PanelBottom,
   Folder,
   Calendar,
   Layers,
@@ -36,8 +37,10 @@ import { AppSettingsMenu } from '@/components/AppSettingsMenu';
 interface TopBarProps {
   showLeftSidebar?: boolean;
   showRightSidebar?: boolean;
+  showBottomPanel?: boolean;
   onToggleLeftSidebar?: () => void;
   onToggleRightSidebar?: () => void;
+  onToggleBottomPanel?: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   onOpenWorkspaces?: () => void;
@@ -46,8 +49,10 @@ interface TopBarProps {
 export function TopBar({
   showLeftSidebar = true,
   showRightSidebar = true,
+  showBottomPanel = false,
   onToggleLeftSidebar,
   onToggleRightSidebar,
+  onToggleBottomPanel,
   onOpenSettings,
   onOpenShortcuts,
   onOpenWorkspaces,
@@ -192,18 +197,27 @@ export function TopBar({
          selectedSession?.status === 'error' ? 'Error' : 'Ready'}
       </div>
 
-      {/* Toggle Right Sidebar Button - only shown when sidebar is hidden */}
-      {!showRightSidebar && onToggleRightSidebar && (
+      {/* Panel Toggle Buttons */}
+      <div className="flex items-center gap-0.5 mr-1">
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
+          className={cn('h-6 w-6', showBottomPanel && 'bg-surface-2')}
+          onClick={onToggleBottomPanel}
+          title="Toggle terminal (⌃`)"
+        >
+          <PanelBottom className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn('h-6 w-6', showRightSidebar && 'bg-surface-2')}
           onClick={onToggleRightSidebar}
-          title="Show sidebar (⌘⌥B)"
+          title="Toggle right sidebar (⌘⌥B)"
         >
           <PanelRight className="h-3.5 w-3.5" />
         </Button>
-      )}
+      </div>
 
       {/* App Settings Menu - shown when right sidebar is hidden */}
       {!showRightSidebar && onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (
