@@ -168,6 +168,79 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 	return details, nil
 }
 
+// PRListItem represents a pull request in a list response
+type PRListItem struct {
+	Number  int    `json:"number"`
+	State   string `json:"state"`
+	Title   string `json:"title"`
+	HTMLURL string `json:"htmlUrl"`
+	IsDraft bool   `json:"isDraft"`
+	Branch  string `json:"branch"`
+	HeadSHA string `json:"headSha"`
+}
+
+// githubPRListItem represents a PR in the GitHub API list response
+type githubPRListItem struct {
+	Number  int    `json:"number"`
+	State   string `json:"state"`
+	Title   string `json:"title"`
+	HTMLURL string `json:"html_url"`
+	Draft   bool   `json:"draft"`
+	Head    struct {
+		Ref string `json:"ref"`
+		SHA string `json:"sha"`
+	} `json:"head"`
+}
+
+// ListOpenPRs lists all open pull requests for a repository
+func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListItem, error) {
+	token := c.GetToken()
+	if token == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	// Fetch open PRs (includes drafts)
+	prsURL := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&per_page=100", c.apiURL, owner, repo)
+	req, err := http.NewRequestWithContext(ctx, "GET", prsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating PRs request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching PRs: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var ghPRs []githubPRListItem
+	if err := json.NewDecoder(resp.Body).Decode(&ghPRs); err != nil {
+		return nil, fmt.Errorf("decoding PRs: %w", err)
+	}
+
+	prs := make([]PRListItem, len(ghPRs))
+	for i, pr := range ghPRs {
+		prs[i] = PRListItem{
+			Number:  pr.Number,
+			State:   pr.State,
+			Title:   pr.Title,
+			HTMLURL: pr.HTMLURL,
+			IsDraft: pr.Draft,
+			Branch:  pr.Head.Ref,
+			HeadSHA: pr.Head.SHA,
+		}
+	}
+
+	return prs, nil
+}
+
 // githubSearchResult represents the GitHub API response for PR search
 type githubSearchResult struct {
 	TotalCount int `json:"total_count"`

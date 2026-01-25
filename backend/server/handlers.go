@@ -213,6 +213,7 @@ type Handlers struct {
 	branchWatcher    *branch.Watcher
 	hub              *Hub // For broadcasting WebSocket events
 	ghClient         *github.Client
+	prCache          *github.PRCache
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -243,6 +244,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		branchWatcher:    bw,
 		hub:              hub,
 		ghClient:         ghClient,
+		prCache:          github.NewPRCache(30 * time.Second), // Cache PR data for 30 seconds
 	}
 }
 
@@ -2429,9 +2431,15 @@ type PRDashboardItem struct {
 	ChecksFailed int `json:"checksFailed"`
 }
 
-// ListPRs returns all PRs across workspaces with their status
+// ListPRs returns all open PRs across workspaces fetched directly from GitHub
 func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	// Check if GitHub client is available
+	if h.ghClient == nil {
+		writeJSON(w, []PRDashboardItem{})
+		return
+	}
 
 	// Optional workspace filter
 	workspaceID := r.URL.Query().Get("workspaceId")
@@ -2470,97 +2478,78 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// List sessions for this repo
-		sessions, err := h.store.ListSessions(ctx, repo.ID)
-		if err != nil {
-			continue
+		// Check PR cache first
+		ghPRs, cacheHit := h.prCache.Get(owner, repoName)
+		if !cacheHit {
+			// Fetch all open PRs directly from GitHub
+			ghPRs, err = h.ghClient.ListOpenPRs(ctx, owner, repoName)
+			if err != nil {
+				// Log error but continue with other repos
+				continue
+			}
+			// Cache the result
+			h.prCache.Set(owner, repoName, ghPRs)
 		}
 
-		// Filter to sessions with PRs
-		for _, session := range sessions {
-			if session.PRStatus == "" || session.PRStatus == "none" || session.PRNumber == 0 {
-				continue
+		// List sessions to match PRs with sessions by branch
+		sessions, err := h.store.ListSessions(ctx, repo.ID)
+		if err != nil {
+			sessions = nil // Continue without session matching
+		}
+
+		// Build a map of branch -> session for quick lookup
+		sessionByBranch := make(map[string]*models.Session)
+		if sessions != nil {
+			for _, session := range sessions {
+				sessionByBranch[session.Branch] = session
+			}
+		}
+
+		// Process each PR from GitHub
+		for _, ghPR := range ghPRs {
+			prItem := PRDashboardItem{
+				Number:        ghPR.Number,
+				Title:         ghPR.Title,
+				State:         ghPR.State,
+				HTMLURL:       ghPR.HTMLURL,
+				IsDraft:       ghPR.IsDraft,
+				Branch:        ghPR.Branch,
+				BaseBranch:    repo.Branch, // Default branch
+				WorkspaceID:   repo.ID,
+				WorkspaceName: repo.Name,
+				RepoOwner:     owner,
+				RepoName:      repoName,
+				CheckStatus:   "unknown",
 			}
 
-			// Only include open PRs (for dashboard view)
-			if session.PRStatus != "open" {
-				continue
+			// Check if there's a matching session by branch
+			if session, ok := sessionByBranch[ghPR.Branch]; ok {
+				prItem.SessionID = session.ID
+				prItem.SessionName = session.Name
 			}
 
-			// Get PR details from GitHub
-			var prItem PRDashboardItem
+			// Get detailed PR info (mergeable state, checks)
+			prDetails, err := h.ghClient.GetPRDetails(ctx, owner, repoName, ghPR.Number)
+			if err == nil && prDetails != nil {
+				prItem.Mergeable = prDetails.Mergeable
+				prItem.MergeableState = prDetails.MergeableState
+				prItem.CheckStatus = string(prDetails.CheckStatus)
 
-			if h.ghClient != nil {
-				prDetails, err := h.ghClient.GetPRDetails(ctx, owner, repoName, session.PRNumber)
-				if err == nil && prDetails != nil {
-					prItem = PRDashboardItem{
-						Number:         prDetails.Number,
-						Title:          prDetails.Title,
-						State:          prDetails.State,
-						HTMLURL:        prDetails.HTMLURL,
-						Mergeable:      prDetails.Mergeable,
-						MergeableState: prDetails.MergeableState,
-						CheckStatus:    string(prDetails.CheckStatus),
-						Branch:         session.Branch,
-						BaseBranch:     repo.Branch, // Default branch
-						SessionID:      session.ID,
-						SessionName:    session.Name,
-						WorkspaceID:    repo.ID,
-						WorkspaceName:  repo.Name,
-						RepoOwner:      owner,
-						RepoName:       repoName,
-					}
+				// Convert check details
+				for _, check := range prDetails.CheckDetails {
+					prItem.CheckDetails = append(prItem.CheckDetails, check)
+				}
 
-					// Convert check details to interface slice
-					for _, check := range prDetails.CheckDetails {
-						prItem.CheckDetails = append(prItem.CheckDetails, check)
-					}
-
-					// Calculate counts
-					prItem.ChecksTotal = len(prDetails.CheckDetails)
-					for _, check := range prDetails.CheckDetails {
-						if check.Status == "completed" {
-							if check.Conclusion == "success" || check.Conclusion == "neutral" || check.Conclusion == "skipped" {
-								prItem.ChecksPassed++
-							} else {
-								prItem.ChecksFailed++
-							}
+				// Calculate counts
+				prItem.ChecksTotal = len(prDetails.CheckDetails)
+				for _, check := range prDetails.CheckDetails {
+					if check.Status == "completed" {
+						if check.Conclusion == "success" || check.Conclusion == "neutral" || check.Conclusion == "skipped" {
+							prItem.ChecksPassed++
+						} else {
+							prItem.ChecksFailed++
 						}
 					}
-				} else {
-					// Fallback to session data if GitHub API fails
-					prItem = PRDashboardItem{
-						Number:        session.PRNumber,
-						Title:         session.Task,
-						State:         session.PRStatus,
-						HTMLURL:       session.PRUrl,
-						CheckStatus:   "unknown",
-						Branch:        session.Branch,
-						BaseBranch:    repo.Branch,
-						SessionID:     session.ID,
-						SessionName:   session.Name,
-						WorkspaceID:   repo.ID,
-						WorkspaceName: repo.Name,
-						RepoOwner:     owner,
-						RepoName:      repoName,
-					}
-				}
-			} else {
-				// No GitHub client - use session data
-				prItem = PRDashboardItem{
-					Number:        session.PRNumber,
-					Title:         session.Task,
-					State:         session.PRStatus,
-					HTMLURL:       session.PRUrl,
-					CheckStatus:   "unknown",
-					Branch:        session.Branch,
-					BaseBranch:    repo.Branch,
-					SessionID:     session.ID,
-					SessionName:   session.Name,
-					WorkspaceID:   repo.ID,
-					WorkspaceName: repo.Name,
-					RepoOwner:     owner,
-					RepoName:      repoName,
 				}
 			}
 
