@@ -72,7 +72,7 @@ export function TerminalOutput({ sessionId, type, className }: TerminalOutputPro
         ref={containerRef}
         className={cn(
           'h-full w-full bg-background overflow-hidden',
-          '[&_.xterm]:h-full [&_.xterm]:p-2',
+          '[&_.xterm]:h-full [&_.xterm]:p-2 [&_.xterm]:bg-background',
           '[&_.xterm-viewport]:!overflow-y-auto',
           '[&_.xterm-screen]:h-full',
           !hasOutput && 'opacity-50'

@@ -555,23 +555,22 @@
   display: none;
 }
 
-/* Xterm scrollbar styling - dark pastel purple */
-.xterm-viewport::-webkit-scrollbar {
-  width: 10px;
+/* Xterm background fix - match app background */
+.xterm,
+.xterm-viewport,
+.xterm-screen,
+.xterm-rows,
+.xterm-helper-textarea,
+.xterm-cursor-layer,
+.xterm-text-layer {
+  background-color: #141414 !important;
 }
 
-.xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
+/* Ensure canvas elements have correct background */
+.xterm canvas {
+  background-color: #141414 !important;
 }
 
-.xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.4);
-  border-radius: 5px;
-}
-
-.xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.6);
-}
 
 /* Plan mode animated border - marching ants SVG animation */
 @keyframes marching-ants-dash {

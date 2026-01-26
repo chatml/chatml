@@ -125,7 +125,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
       </div>
 
       {/* Terminal content */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative bg-background">
         {instances.length === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
             Click + to create a terminal
@@ -135,7 +135,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
             <div
               key={terminal.id}
               className={cn(
-                'absolute inset-0',
+                'absolute inset-0 bg-background',
                 activeId === terminal.id ? 'block' : 'hidden'
               )}
             >
