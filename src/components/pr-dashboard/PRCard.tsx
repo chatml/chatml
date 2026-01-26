@@ -130,7 +130,7 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
               </Button>
             )}
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="h-7 text-xs"
               onClick={() => window.open(pr.htmlUrl, '_blank')}
