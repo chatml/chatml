@@ -175,10 +175,8 @@ pub fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
                 let marker = content[i + 1];
                 // SOF0, SOF1, SOF2 markers contain dimensions
                 if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
-                    let height =
-                        u16::from_be_bytes([content[i + 5], content[i + 6]]) as u32;
-                    let width =
-                        u16::from_be_bytes([content[i + 7], content[i + 8]]) as u32;
+                    let height = u16::from_be_bytes([content[i + 5], content[i + 6]]) as u32;
+                    let width = u16::from_be_bytes([content[i + 7], content[i + 8]]) as u32;
                     return Ok(ImageDimensions { width, height });
                 }
                 // Skip to next marker
@@ -220,8 +218,10 @@ pub fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
             // Skip to frame header (starts with 0x9D 0x01 0x2A)
             for i in 20..content.len() - 6 {
                 if content[i..i + 3] == [0x9D, 0x01, 0x2A] {
-                    let width = u16::from_le_bytes([content[i + 3], content[i + 4]]) as u32 & 0x3FFF;
-                    let height = u16::from_le_bytes([content[i + 5], content[i + 6]]) as u32 & 0x3FFF;
+                    let width =
+                        u16::from_le_bytes([content[i + 3], content[i + 4]]) as u32 & 0x3FFF;
+                    let height =
+                        u16::from_le_bytes([content[i + 5], content[i + 6]]) as u32 & 0x3FFF;
                     return Ok(ImageDimensions { width, height });
                 }
             }
