@@ -45,6 +45,11 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   ResizablePanelGroup,
@@ -111,7 +116,7 @@ export function ChangesPanel({
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
-  const [selectedTab, setSelectedTab] = useState('changes');
+  const [selectedTab, setSelectedTab] = useState('files');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -200,15 +205,17 @@ export function ChangesPanel({
     // Fetch file content from session's worktree (not main repo)
     try {
       const fileData = await getSessionFileContent(selectedWorkspaceId, selectedSessionId, path);
+      const isEmpty = fileData.content === '' || fileData.content === undefined;
       updateFileTab(tabId, {
-        content: fileData.content,
-        originalContent: fileData.content, // Store original for dirty detection
+        content: fileData.content ?? '',
+        originalContent: fileData.content ?? '', // Store original for dirty detection
+        isEmpty,
         isLoading: false,
       });
     } catch (error) {
       console.error('Failed to load file:', error);
       updateFileTab(tabId, {
-        content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        loadError: error instanceof Error ? error.message : 'Unknown error',
         isLoading: false,
       });
     }
@@ -279,7 +286,7 @@ export function ChangesPanel({
     } catch (error) {
       console.error('Failed to load diff:', error);
       updateFileTab(tabId, {
-        content: `// Error loading diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        loadError: error instanceof Error ? error.message : 'Unknown error',
         isLoading: false,
       });
     }
@@ -405,67 +412,90 @@ export function ChangesPanel({
       <div
         data-tauri-drag-region
         className={cn(
-          'h-10 flex items-center gap-2 px-3 border-b shrink-0',
+          'h-10 flex items-center gap-2 px-3 border-b shrink-0 overflow-hidden @container',
           hasActivePR && 'bg-text-success/15 border-text-success/30',
           hasConflictOrFailure && 'bg-text-error/15 border-text-error/30'
         )}
       >
-        {/* Review Button - icon only */}
+        {/* Review Button - icon only with tooltip when narrow, label when wide */}
+        {/* Narrow: icon + tooltip */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-7 px-2 gap-1.5 transition-colors shrink-0 @[280px]:hidden',
+                hasActivePR && 'text-text-success hover:bg-text-success/10',
+                hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
+                !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Eye className="h-3.5 w-3.5 shrink-0" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Review Changes</TooltipContent>
+        </Tooltip>
+        {/* Wide: icon + label, no tooltip needed */}
         <Button
           variant="ghost"
-          size="icon"
+          size="sm"
           className={cn(
-            'h-7 w-7 transition-colors',
+            'h-7 px-2 gap-1.5 transition-colors shrink-0 hidden @[280px]:flex',
             hasActivePR && 'text-text-success hover:bg-text-success/10',
             hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
             !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
           )}
-          title="Review changes"
         >
-          <Eye className="h-4 w-4" />
+          <Eye className="h-3.5 w-3.5 shrink-0" />
+          Review
         </Button>
 
-        {/* PR Status or Conflict indicator */}
-        {hasActivePR ? (
-          <>
-            <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0" />
-            <span className="text-[12px] font-medium text-text-success truncate">
-              PR #{currentSession?.prNumber}
-            </span>
-            {currentSession?.prUrl && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-text-success hover:bg-text-success/20"
-                onClick={() => window.open(currentSession.prUrl, '_blank')}
-              >
-                <ExternalLink className="h-3 w-3" />
-              </Button>
-            )}
-          </>
-        ) : hasConflictOrFailure && (
-          <>
-            <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0" />
-            <span className="text-[12px] font-medium text-text-error truncate">
-              {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
-            </span>
-          </>
-        )}
+        {/* PR Status or Conflict indicator - truncates in middle */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          {hasActivePR ? (
+            <>
+              <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0" />
+              <span className="text-[12px] font-medium text-text-success truncate">
+                PR #{currentSession?.prNumber}
+              </span>
+              {currentSession?.prUrl && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-text-success hover:bg-text-success/20 shrink-0"
+                  onClick={() => window.open(currentSession.prUrl, '_blank')}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              )}
+            </>
+          ) : hasConflictOrFailure && (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0" />
+              <span className="text-[12px] font-medium text-text-error truncate">
+                {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
+              </span>
+            </>
+          )}
+        </div>
 
-        <div className="flex-1" />
-        <PrimaryActionButton
-          workspaceId={selectedWorkspaceId}
-          session={currentSession}
-          onSendMessage={handleGitActionMessage}
-          gitStatus={gitStatus}
-          prDetails={prDetails}
-        />
-        {onOpenSettings && onOpenShortcuts && (
-          <AppSettingsMenu
-            onOpenSettings={onOpenSettings}
-            onOpenShortcuts={onOpenShortcuts}
+        {/* Right side - always visible, pinned to right */}
+        <div className="flex items-center gap-1 shrink-0">
+          <PrimaryActionButton
+            workspaceId={selectedWorkspaceId}
+            session={currentSession}
+            onSendMessage={handleGitActionMessage}
+            gitStatus={gitStatus}
+            prDetails={prDetails}
           />
-        )}
+          {onOpenSettings && onOpenShortcuts && (
+            <AppSettingsMenu
+              onOpenSettings={onOpenSettings}
+              onOpenShortcuts={onOpenShortcuts}
+            />
+          )}
+        </div>
       </div>
 
       {/* Tabs Row */}
@@ -544,7 +574,7 @@ export function ChangesPanel({
                 </div>
               </div>
             ) : (
-              <div className="h-full min-h-0">
+              <div className="h-full min-h-0 p-1 overflow-hidden">
                 <FileTree
                   files={files}
                   onFileSelect={handleFileSelect}
@@ -567,7 +597,7 @@ export function ChangesPanel({
               </div>
             ) : (
               <ScrollArea className="h-full [&>div>div]:!block">
-                <div ref={changesContainerRef} className="py-1 overflow-hidden">
+                <div ref={changesContainerRef} className="p-1 pr-2 overflow-hidden">
                   {(() => {
                     const sortByPath = (a: FileChangeDTO, b: FileChangeDTO) => {
                       const aIsRoot = !a.path.includes('/');
@@ -583,8 +613,8 @@ export function ChangesPanel({
                       <>
                         {untracked.length > 0 && (
                           <>
-                            <div className="px-2 py-1 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wider">
-                              Untracked
+                            <div className="px-2 py-1 text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+                              UNTRACKED
                             </div>
                             {untracked.map((change) => (
                               <FileChangeRow
@@ -599,12 +629,11 @@ export function ChangesPanel({
                         )}
                         {tracked.length > 0 && (
                           <>
-                            <div className={cn(
-                              "px-2 py-1 text-[10px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wider",
-                              untracked.length > 0 && "mt-2"
-                            )}>
-                              Changed
-                            </div>
+                            {untracked.length > 0 && (
+                              <div className="px-2 py-1 mt-2 text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+                                CHANGED
+                              </div>
+                            )}
                             {tracked.map((change) => (
                               <FileChangeRow
                                 key={change.path}
@@ -886,7 +915,7 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
 
   return (
     <div
-      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-surface-2 cursor-pointer w-full max-w-full"
+      className="group flex items-center gap-1.5 px-2 py-0.5 hover:bg-surface-2 cursor-pointer w-full max-w-full rounded-sm transition-colors"
       onClick={onSelect}
       title={change.path}
     >
@@ -898,7 +927,7 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
             {smartTruncateDir(dirPath)}/
           </span>
         )}
-        <span className="text-xs font-medium truncate">{fileName}</span>
+        <span className="text-sm font-medium truncate">{fileName}</span>
       </div>
       {/* Stats - always visible */}
       {hasStats && (
@@ -918,7 +947,6 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
           <span className="text-[10px] font-medium">{commentStats.unresolved}</span>
         </span>
       )}
-      <Checkbox className="h-3.5 w-3.5 shrink-0" />
-    </div>
+          </div>
   );
 }

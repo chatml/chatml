@@ -120,7 +120,11 @@ export function useFileWatcher() {
           cleanupRef.current = unlisten;
         } else {
           // Component unmounted before listener was registered - clean up immediately
-          unlisten();
+          try {
+            unlisten();
+          } catch {
+            // Ignore errors if listener wasn't fully registered
+          }
         }
       })
       .catch((err) => {
@@ -132,7 +136,11 @@ export function useFileWatcher() {
 
     return () => {
       isMounted = false;
-      cleanupRef.current?.();
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // Ignore errors if listener cleanup fails
+      }
     };
   }, [handleFileChange, showError]);
 }

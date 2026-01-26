@@ -12,7 +12,7 @@ const Terminal = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-full bg-black/90 flex items-center justify-center">
+      <div className="h-full bg-background flex items-center justify-center">
         <span className="text-xs text-muted-foreground">Loading terminal...</span>
       </div>
     ),
@@ -125,7 +125,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
       </div>
 
       {/* Terminal content */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative bg-background">
         {instances.length === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
             Click + to create a terminal
@@ -135,7 +135,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
             <div
               key={terminal.id}
               className={cn(
-                'absolute inset-0',
+                'absolute inset-0 bg-background',
                 activeId === terminal.id ? 'block' : 'hidden'
               )}
             >

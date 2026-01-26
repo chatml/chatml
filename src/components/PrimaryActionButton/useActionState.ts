@@ -67,6 +67,7 @@ export function useActionState(
       return {
         type: 'archive-session',
         label: 'Archive Session',
+        shortLabel: 'Archive',
         icon: Archive,
         variant: 'default',
         sessionId: session.id,
@@ -85,6 +86,7 @@ export function useActionState(
       return {
         type: 'resolve-conflicts',
         label: 'Resolve Conflicts',
+        shortLabel: 'Resolve',
         icon: XCircle,
         variant: 'destructive',
         message: 'Resolve the merge conflicts',
@@ -125,6 +127,7 @@ export function useActionState(
       return {
         type: 'sync-branch',
         label: 'Sync Branch',
+        shortLabel: 'Sync',
         icon: GitBranch,
         variant: 'info',
         message: `Rebase my branch on ${sync.baseBranch}`,
@@ -140,8 +143,9 @@ export function useActionState(
       return {
         type: 'commit-changes',
         label: 'Commit Changes',
+        shortLabel: 'Commit',
         icon: GitCommit,
-        variant: 'default',
+        variant: 'purple',
         message: 'Commit my changes',
         dropdownActions: [
           { label: 'Commit & Push', message: 'Commit my changes and push to remote', icon: Rocket },
@@ -156,6 +160,7 @@ export function useActionState(
       return {
         type: 'push-changes',
         label: 'Push Changes',
+        shortLabel: 'Push',
         icon: Upload,
         variant: 'default',
         message: 'Push my commits',
@@ -215,6 +220,7 @@ export function useActionState(
       return {
         type: 'create-pr',
         label: 'New Pull Request',
+        shortLabel: 'New PR',
         icon: GitPullRequest,
         variant: 'success',
         message: 'Create a pull request',

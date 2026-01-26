@@ -7,7 +7,29 @@ import { FullContentLayout } from '@/components/FullContentLayout';
 import { PRCard } from '@/components/pr-dashboard/PRCard';
 import { getPRs, type PRDashboardItem } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Loader2, GitPullRequest } from 'lucide-react';
+import {
+  RefreshCw,
+  Loader2,
+  GitPullRequest,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  Terminal,
+  Settings2,
+  ExternalLink,
+  GitBranch,
+  Copy,
+  Star,
+  Archive,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CardErrorFallback } from '@/components/ErrorFallbacks';
@@ -87,12 +109,60 @@ export function PRDashboard({
   return (
     <FullContentLayout
       title={
-        <>
+        <span className="flex items-center gap-1.5">
           Pull Requests
           {workspace && (
-            <span className="text-muted-foreground font-normal ml-2">{workspace.name}</span>
+            <>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-sm font-medium text-purple-300/80 hover:bg-purple-500/20 transition-colors focus:outline-none">
+                    <Folder className="h-3 w-3" />
+                    <span className="truncate max-w-[200px]">{workspace.name}</span>
+                    <ChevronDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem>
+                    <FolderOpen className="size-4" />
+                    Open in Finder
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Terminal className="size-4" />
+                    Open in Terminal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Copy className="size-4" />
+                    Copy Path
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <GitBranch className="size-4" />
+                    View All Branches
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <ExternalLink className="size-4" />
+                    Open on GitHub
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <Star className="size-4" />
+                    Add to Favorites
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Archive className="size-4" />
+                    Archive Workspace
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <Settings2 className="size-4" />
+                    Workspace Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           )}
-        </>
+        </span>
       }
       onOpenSettings={onOpenSettings}
       onOpenShortcuts={onOpenShortcuts}

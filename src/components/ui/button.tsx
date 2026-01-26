@@ -20,6 +20,8 @@ const buttonVariants = cva(
           "bg-yellow-600/80 text-white font-semibold border-yellow-600/80 hover:bg-yellow-600 hover:border-yellow-600 dark:bg-yellow-700/70 dark:hover:bg-yellow-600/80 dark:border-yellow-700/70 dark:hover:border-yellow-600/80",
         info:
           "bg-blue-600/80 text-white font-semibold border-blue-600/80 hover:bg-blue-600 hover:border-blue-600 dark:bg-blue-700/70 dark:hover:bg-blue-600/80 dark:border-blue-700/70 dark:hover:border-blue-600/80",
+        purple:
+          "bg-purple-600/80 text-white font-semibold border-purple-600/80 hover:bg-purple-600 hover:border-purple-600 dark:bg-purple-700/70 dark:hover:bg-purple-600/80 dark:border-purple-700/70 dark:hover:border-purple-600/80",
         secondary:
           "bg-secondary text-secondary-foreground border border-border hover:bg-secondary-foreground/10 dark:bg-[#2a2a2a] dark:hover:bg-[#333]",
         ghost:
