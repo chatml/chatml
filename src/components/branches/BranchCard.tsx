@@ -2,12 +2,14 @@
 
 import { GitBranch, Check, ArrowRight, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AuthorAvatar } from '@/components/ui/author-avatar';
 import { cn } from '@/lib/utils';
 import type { BranchDTO } from '@/lib/api';
 
 interface BranchCardProps {
   branch: BranchDTO;
   currentBranch: string;
+  avatarUrl?: string;
   onJumpToSession?: () => void;
   onViewOnGitHub?: () => void;
 }
@@ -31,6 +33,7 @@ function formatTimeAgo(dateStr: string): string {
 export function BranchCard({
   branch,
   currentBranch,
+  avatarUrl,
   onJumpToSession,
   onViewOnGitHub,
 }: BranchCardProps) {
@@ -140,7 +143,10 @@ export function BranchCard({
       {/* Row 2: Metadata - author, date, ahead/behind */}
       <div className="flex items-center gap-2 mt-1.5 ml-6 text-xs text-muted-foreground">
         {branch.lastAuthor && (
-          <span className="truncate max-w-[120px]">{branch.lastAuthor}</span>
+          <span className="flex items-center gap-1.5 truncate max-w-[150px]">
+            <AuthorAvatar name={branch.lastAuthor} avatarUrl={avatarUrl} size="sm" />
+            <span className="truncate">{branch.lastAuthor}</span>
+          </span>
         )}
 
         {branch.lastCommitDate && (

@@ -216,3 +216,70 @@ func (c *Client) SetBaseURL(url string) {
 func (c *Client) SetAPIURL(url string) {
 	c.apiURL = url
 }
+
+// SearchUserResult represents a user from the GitHub search API
+type SearchUserResult struct {
+	Login     string `json:"login"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// SearchUsersResponse represents the response from GitHub's user search API
+type SearchUsersResponse struct {
+	TotalCount int                `json:"total_count"`
+	Items      []SearchUserResult `json:"items"`
+}
+
+// GetAvatarByEmail searches for a GitHub user by email and returns their avatar URL.
+// Returns empty string if no user is found.
+// Uses authenticated requests if a token is available (higher rate limits).
+func (c *Client) GetAvatarByEmail(ctx context.Context, email string) (string, error) {
+	if email == "" {
+		return "", nil
+	}
+
+	// Build search query: email must be in the user's public email
+	query := url.QueryEscape(email + " in:email")
+	searchURL := fmt.Sprintf("%s/search/users?q=%s&per_page=1", c.apiURL, query)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	// Use token if available for higher rate limits
+	token := c.GetToken()
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("searching users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle rate limiting
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		return "", fmt.Errorf("rate limited by GitHub API")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result SearchUsersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decoding response: %w", err)
+	}
+
+	// No users found
+	if result.TotalCount == 0 || len(result.Items) == 0 {
+		return "", nil
+	}
+
+	return result.Items[0].AvatarURL, nil
+}

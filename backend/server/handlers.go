@@ -215,6 +215,7 @@ type Handlers struct {
 	hub              *Hub // For broadcasting WebSocket events
 	ghClient         *github.Client
 	prCache          *github.PRCache
+	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
 }
 
@@ -247,7 +248,8 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		prWatcher:        prw,
 		hub:              hub,
 		ghClient:         ghClient,
-		prCache:          github.NewPRCache(30 * time.Second), // Cache PR data for 30 seconds
+		prCache:          github.NewPRCache(30 * time.Second),   // Cache PR data for 30 seconds
+		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
 	}
 }
@@ -693,15 +695,16 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	for _, branch := range branchResult.Branches {
 		bws := models.BranchWithSession{
 			BranchInfo: models.BranchInfo{
-				Name:           branch.Name,
-				IsRemote:       branch.IsRemote,
-				IsHead:         branch.IsHead,
-				LastCommitSHA:  branch.LastCommitSHA,
-				LastCommitDate: branch.LastCommitDate,
-				LastAuthor:     branch.LastAuthor,
-				AheadMain:      branch.AheadMain,
-				BehindMain:     branch.BehindMain,
-				Prefix:         branch.Prefix,
+				Name:            branch.Name,
+				IsRemote:        branch.IsRemote,
+				IsHead:          branch.IsHead,
+				LastCommitSHA:   branch.LastCommitSHA,
+				LastCommitDate:  branch.LastCommitDate,
+				LastAuthor:      branch.LastAuthor,
+				LastAuthorEmail: branch.LastAuthorEmail,
+				AheadMain:       branch.AheadMain,
+				BehindMain:      branch.BehindMain,
+				Prefix:          branch.Prefix,
 			},
 		}
 
@@ -733,6 +736,68 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, response)
+}
+
+// GetAvatars returns GitHub avatar URLs for a batch of email addresses
+// GET /api/avatars?emails=email1@example.com,email2@example.com
+func (h *Handlers) GetAvatars(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Parse emails from query parameter
+	emailsParam := r.URL.Query().Get("emails")
+	if emailsParam == "" {
+		writeJSON(w, map[string]interface{}{"avatars": map[string]string{}})
+		return
+	}
+
+	emails := strings.Split(emailsParam, ",")
+	if len(emails) == 0 {
+		writeJSON(w, map[string]interface{}{"avatars": map[string]string{}})
+		return
+	}
+
+	// Limit batch size to prevent abuse
+	if len(emails) > 50 {
+		emails = emails[:50]
+	}
+
+	// Check cache for existing entries
+	cached, needLookup := h.avatarCache.GetMultiple(emails)
+
+	// If we have all entries cached, return immediately
+	if len(needLookup) == 0 {
+		writeJSON(w, map[string]interface{}{"avatars": cached})
+		return
+	}
+
+	// Look up missing emails from GitHub API
+	for _, email := range needLookup {
+		email = strings.TrimSpace(email)
+		if email == "" {
+			continue
+		}
+
+		avatarURL, err := h.ghClient.GetAvatarByEmail(ctx, email)
+		if err != nil {
+			// Log error but continue - don't fail the whole batch
+			logger.Handlers.Debugf("Failed to get avatar for %s: %v", email, err)
+			// Cache as not found to avoid repeated failed lookups
+			h.avatarCache.SetNotFound(email)
+			cached[email] = ""
+			continue
+		}
+
+		if avatarURL == "" {
+			// No user found - cache as not found
+			h.avatarCache.SetNotFound(email)
+			cached[email] = ""
+		} else {
+			h.avatarCache.Set(email, avatarURL)
+			cached[email] = avatarURL
+		}
+	}
+
+	writeJSON(w, map[string]interface{}{"avatars": cached})
 }
 
 type CreateSessionRequest struct {

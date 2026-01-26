@@ -637,15 +637,16 @@ func (rm *RepoManager) getStashCount(ctx context.Context, repoPath string) (int,
 
 // branchInfo is an internal struct for branch data during processing
 type branchInfo struct {
-	Name           string
-	IsRemote       bool
-	IsHead         bool
-	LastCommitSHA  string
-	LastCommitDate time.Time
-	LastAuthor     string
-	AheadMain      int
-	BehindMain     int
-	Prefix         string
+	Name            string
+	IsRemote        bool
+	IsHead          bool
+	LastCommitSHA   string
+	LastCommitDate  time.Time
+	LastAuthor      string
+	LastAuthorEmail string
+	AheadMain       int
+	BehindMain      int
+	Prefix          string
 }
 
 // BranchListOptions controls branch listing behavior
@@ -676,8 +677,8 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 	}
 
 	// Get all branches with metadata
-	// Format: refname|objectname|committerdate|authorname|HEAD
-	args := []string{"branch", "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso-strict)|%(authorname)|%(HEAD)"}
+	// Format: refname|objectname|committerdate|authorname|authoremail|HEAD
+	args := []string{"branch", "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso-strict)|%(authorname)|%(authoremail)|%(HEAD)"}
 	if opts.IncludeRemote {
 		args = append(args, "-a")
 	}
@@ -698,7 +699,7 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 		}
 
 		parts := strings.Split(line, "|")
-		if len(parts) < 5 {
+		if len(parts) < 6 {
 			continue
 		}
 
@@ -706,7 +707,8 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 		commitSHA := parts[1]
 		dateStr := parts[2]
 		author := parts[3]
-		isHead := strings.TrimSpace(parts[4]) == "*"
+		authorEmail := strings.Trim(parts[4], "<>") // Remove angle brackets from email
+		isHead := strings.TrimSpace(parts[5]) == "*"
 
 		// Filter by search term if provided
 		if opts.Search != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(opts.Search)) {
@@ -743,13 +745,14 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 		}
 
 		allBranches = append(allBranches, branchInfo{
-			Name:           name,
-			IsRemote:       isRemote,
-			IsHead:         isHead,
-			LastCommitSHA:  commitSHA,
-			LastCommitDate: commitDate,
-			LastAuthor:     author,
-			Prefix:         prefix,
+			Name:            name,
+			IsRemote:        isRemote,
+			IsHead:          isHead,
+			LastCommitSHA:   commitSHA,
+			LastCommitDate:  commitDate,
+			LastAuthor:      author,
+			LastAuthorEmail: authorEmail,
+			Prefix:          prefix,
 		})
 	}
 

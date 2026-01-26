@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/FullContentLayout';
 import { BranchCard } from '@/components/branches/BranchCard';
 import { listBranches, type BranchDTO, type BranchListResponse } from '@/lib/api';
+import { useAvatars } from '@/hooks/useAvatars';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -181,6 +182,21 @@ export function BranchesDashboard({
     return sortGroupKeys(Array.from(groupedOtherBranches.keys()));
   }, [groupedOtherBranches]);
 
+  // Collect all unique author emails from branches
+  const authorEmails = useMemo(() => {
+    if (!branchData) return [];
+    const emails = new Set<string>();
+    for (const branch of [...branchData.sessionBranches, ...branchData.otherBranches]) {
+      if (branch.lastAuthorEmail) {
+        emails.add(branch.lastAuthorEmail);
+      }
+    }
+    return Array.from(emails);
+  }, [branchData]);
+
+  // Fetch avatars for all author emails
+  const avatars = useAvatars(authorEmails);
+
   // Calculate total pages
   const totalPages = branchData ? Math.ceil(branchData.total / PAGE_SIZE) : 0;
 
@@ -301,6 +317,7 @@ export function BranchesDashboard({
                       <BranchCard
                         branch={branch}
                         currentBranch={branchData.currentBranch}
+                        avatarUrl={branch.lastAuthorEmail ? avatars[branch.lastAuthorEmail.toLowerCase()] : undefined}
                         onJumpToSession={
                           branch.sessionId
                             ? () => handleJumpToSession(branch.sessionId!)
@@ -353,6 +370,7 @@ export function BranchesDashboard({
                                 <BranchCard
                                   branch={branch}
                                   currentBranch={branchData.currentBranch}
+                                  avatarUrl={branch.lastAuthorEmail ? avatars[branch.lastAuthorEmail.toLowerCase()] : undefined}
                                 />
                               </ErrorBoundary>
                             ))}
