@@ -9,6 +9,8 @@ import { getPRs, type PRDashboardItem } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2, GitPullRequest } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { CardErrorFallback } from '@/components/ErrorFallbacks';
 
 interface PRDashboardProps {
   initialWorkspaceId?: string;
@@ -131,15 +133,20 @@ export function PRDashboard({
         ) : (
           <div className="space-y-3">
             {prs.map((pr) => (
-              <PRCard
+              <ErrorBoundary
                 key={`${pr.workspaceId}-${pr.number}`}
-                pr={pr}
-                onJumpToSession={
-                  pr.sessionId
-                    ? () => handleJumpToSession(pr.workspaceId, pr.sessionId!)
-                    : undefined
-                }
-              />
+                section="PRCard"
+                fallback={<CardErrorFallback message={`Error loading PR #${pr.number}`} />}
+              >
+                <PRCard
+                  pr={pr}
+                  onJumpToSession={
+                    pr.sessionId
+                      ? () => handleJumpToSession(pr.workspaceId, pr.sessionId!)
+                      : undefined
+                  }
+                />
+              </ErrorBoundary>
             ))}
           </div>
         )}

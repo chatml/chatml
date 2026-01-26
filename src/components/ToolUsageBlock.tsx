@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface ToolUsageBlockProps {
   id: string;
@@ -334,59 +335,68 @@ export function ToolUsageBlock({
 
       {showExpandable && (
         <CollapsibleContent>
-          <div className="mt-0.5 ml-4 space-y-1.5">
-            {/* Summary */}
-            {summary && (
-              <div className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/30">
-                {summary}
+          <ErrorBoundary
+            section="ToolDetails"
+            fallback={
+              <div className="mt-0.5 ml-4 px-2 py-1 text-[10px] text-muted-foreground">
+                Unable to display tool details
               </div>
-            )}
-
-            {/* Full command for Bash tools */}
-            {isBashTool && fullTarget && (
-              <div className="rounded border bg-muted p-2">
-                <div className="text-[9px] text-muted-foreground/60 mb-1">Command</div>
-                <pre className="font-mono text-[10px] text-text-success whitespace-pre-wrap break-all">
-                  $ {fullTarget}
-                </pre>
-              </div>
-            )}
-
-            {/* stdout output */}
-            {stdout && (
-              <div className="rounded border bg-muted p-2">
-                <div className="text-[9px] text-muted-foreground/60 mb-1">Output</div>
-                <pre className="font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
-                  {stdout}
-                </pre>
-              </div>
-            )}
-
-            {/* stderr output */}
-            {stderr && (
-              <div className="rounded border border-text-error/30 bg-text-error/10 p-2">
-                <div className="text-[9px] text-text-error/60 mb-1">Error Output</div>
-                <pre className="font-mono text-[10px] text-text-error whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
-                  {stderr}
-                </pre>
-              </div>
-            )}
-
-            {/* Additional parameters (structured display) */}
-            {additionalParams.length > 0 && (
-              <div className="rounded border bg-muted/30 p-2">
-                <div className="text-[9px] text-muted-foreground/60 mb-1">Parameters</div>
-                <div className="space-y-0.5">
-                  {additionalParams.map(({ key, value }) => (
-                    <div key={key} className="flex gap-2 text-[10px]">
-                      <span className="text-muted-foreground font-medium shrink-0">{key}:</span>
-                      <span className="text-foreground/80 font-mono break-all">{value}</span>
-                    </div>
-                  ))}
+            }
+          >
+            <div className="mt-0.5 ml-4 space-y-1.5">
+              {/* Summary */}
+              {summary && (
+                <div className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/30">
+                  {summary}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+
+              {/* Full command for Bash tools */}
+              {isBashTool && fullTarget && (
+                <div className="rounded border bg-muted p-2">
+                  <div className="text-[9px] text-muted-foreground/60 mb-1">Command</div>
+                  <pre className="font-mono text-[10px] text-text-success whitespace-pre-wrap break-all">
+                    $ {fullTarget}
+                  </pre>
+                </div>
+              )}
+
+              {/* stdout output */}
+              {stdout && (
+                <div className="rounded border bg-muted p-2">
+                  <div className="text-[9px] text-muted-foreground/60 mb-1">Output</div>
+                  <pre className="font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                    {stdout}
+                  </pre>
+                </div>
+              )}
+
+              {/* stderr output */}
+              {stderr && (
+                <div className="rounded border border-text-error/30 bg-text-error/10 p-2">
+                  <div className="text-[9px] text-text-error/60 mb-1">Error Output</div>
+                  <pre className="font-mono text-[10px] text-text-error whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                    {stderr}
+                  </pre>
+                </div>
+              )}
+
+              {/* Additional parameters (structured display) */}
+              {additionalParams.length > 0 && (
+                <div className="rounded border bg-muted/30 p-2">
+                  <div className="text-[9px] text-muted-foreground/60 mb-1">Parameters</div>
+                  <div className="space-y-0.5">
+                    {additionalParams.map(({ key, value }) => (
+                      <div key={key} className="flex gap-2 text-[10px]">
+                        <span className="text-muted-foreground font-medium shrink-0">{key}:</span>
+                        <span className="text-foreground/80 font-mono break-all">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </ErrorBoundary>
         </CollapsibleContent>
       )}
     </Collapsible>

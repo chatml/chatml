@@ -4,8 +4,10 @@ import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { createRoot } from 'react-dom/client';
-import { Loader2 } from 'lucide-react';
+import { Loader2, FileCode } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { BlockErrorFallback } from '@/components/ErrorFallbacks';
 import { registerMonacoTheme } from '@/lib/monacoThemes';
 import { getMonacoLanguage } from '@/lib/languageMapping';
 import { CommentZoneManager } from '@/lib/monaco/CommentZoneManager';
@@ -120,55 +122,66 @@ export function MonacoEditor({
   }
 
   return (
-    <Editor
-      height="100%"
-      language={language}
-      value={content}
-      onChange={handleChange}
-      onMount={handleMount}
-      theme={activeTheme}
-      loading={<EditorLoading />}
-      options={{
-        readOnly,
-        minimap: { enabled: false },
-        lineNumbers: 'on',
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        fontSize: 12,
-        fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
-        lineHeight: 18,
-        padding: { top: 8, bottom: 8 },
-        renderLineHighlight: readOnly ? 'none' : 'line',
-        cursorStyle: readOnly ? 'block' : 'line',
-        cursorBlinking: readOnly ? 'solid' : 'blink',
-        wordWrap: wordWrap ? 'on' : 'off',
-        folding: true,
-        foldingStrategy: 'indentation',
-        showFoldingControls: 'mouseover',
-        bracketPairColorization: { enabled: true },
-        scrollbar: {
-          vertical: 'auto',
-          horizontal: 'auto',
-          verticalScrollbarSize: 10,
-          horizontalScrollbarSize: 10,
-        },
-        overviewRulerBorder: false,
-        hideCursorInOverviewRuler: true,
-        contextmenu: !readOnly,
-        // Enable find widget (Cmd/Ctrl+F)
-        find: {
-          addExtraSpaceOnTop: false,
-          autoFindInSelection: 'multiline',
-          seedSearchStringFromSelection: 'selection',
-        },
-        // Enable IntelliSense features for editable editors
-        quickSuggestions: !readOnly,
-        suggestOnTriggerCharacters: !readOnly,
-        acceptSuggestionOnEnter: readOnly ? 'off' : 'on',
-        tabCompletion: readOnly ? 'off' : 'on',
-        parameterHints: { enabled: !readOnly },
-      }}
-    />
+    <ErrorBoundary
+      section="MonacoEditor"
+      fallback={
+        <BlockErrorFallback
+          icon={FileCode}
+          title="Editor failed to load"
+          description="There was an error initializing the code editor"
+        />
+      }
+    >
+      <Editor
+        height="100%"
+        language={language}
+        value={content}
+        onChange={handleChange}
+        onMount={handleMount}
+        theme={activeTheme}
+        loading={<EditorLoading />}
+        options={{
+          readOnly,
+          minimap: { enabled: false },
+          lineNumbers: 'on',
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          fontSize: 12,
+          fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace)',
+          lineHeight: 18,
+          padding: { top: 8, bottom: 8 },
+          renderLineHighlight: readOnly ? 'none' : 'line',
+          cursorStyle: readOnly ? 'block' : 'line',
+          cursorBlinking: readOnly ? 'solid' : 'blink',
+          wordWrap: wordWrap ? 'on' : 'off',
+          folding: true,
+          foldingStrategy: 'indentation',
+          showFoldingControls: 'mouseover',
+          bracketPairColorization: { enabled: true },
+          scrollbar: {
+            vertical: 'auto',
+            horizontal: 'auto',
+            verticalScrollbarSize: 10,
+            horizontalScrollbarSize: 10,
+          },
+          overviewRulerBorder: false,
+          hideCursorInOverviewRuler: true,
+          contextmenu: !readOnly,
+          // Enable find widget (Cmd/Ctrl+F)
+          find: {
+            addExtraSpaceOnTop: false,
+            autoFindInSelection: 'multiline',
+            seedSearchStringFromSelection: 'selection',
+          },
+          // Enable IntelliSense features for editable editors
+          quickSuggestions: !readOnly,
+          suggestOnTriggerCharacters: !readOnly,
+          acceptSuggestionOnEnter: readOnly ? 'off' : 'on',
+          tabCompletion: readOnly ? 'off' : 'on',
+          parameterHints: { enabled: !readOnly },
+        }}
+      />
+    </ErrorBoundary>
   );
 }
 
@@ -340,18 +353,29 @@ export function MonacoDiffEditor({
   }
 
   return (
-    <DiffEditor
-      height="100%"
-      language={language}
-      original={oldContent}
-      modified={newContent}
-      originalModelPath={`original://${filename}`}
-      modifiedModelPath={`modified://${filename}`}
-      theme={activeTheme}
-      loading={<EditorLoading />}
-      onMount={handleMount}
-      options={options}
-    />
+    <ErrorBoundary
+      section="MonacoDiffEditor"
+      fallback={
+        <BlockErrorFallback
+          icon={FileCode}
+          title="Diff editor failed to load"
+          description="There was an error initializing the diff editor"
+        />
+      }
+    >
+      <DiffEditor
+        height="100%"
+        language={language}
+        original={oldContent}
+        modified={newContent}
+        originalModelPath={`original://${filename}`}
+        modifiedModelPath={`modified://${filename}`}
+        theme={activeTheme}
+        loading={<EditorLoading />}
+        onMount={handleMount}
+        options={options}
+      />
+    </ErrorBoundary>
   );
 }
 

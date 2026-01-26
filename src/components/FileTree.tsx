@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/tauri';
 import { getFileIcon, getFolderIcon, getIconifyName, preloadFolderIcons } from '@/lib/vscodeIcons';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Preload folder icons on module load to prevent flicker
 let iconsPreloaded = false;
@@ -123,7 +124,7 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
             ) : (
               <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
             )}
-            <Icon
+            <SafeIcon
               icon={getIconifyName(getFolderIcon(node.name, isExpanded))}
               className={cn('w-4 h-4 shrink-0', isHidden && 'opacity-50')}
             />
@@ -139,16 +140,41 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
       {node.isDir && isExpanded && node.children && (
         <div>
           {node.children.map((child) => (
-            <FileTreeNode
+            <ErrorBoundary
               key={child.path}
-              node={child}
-              depth={depth + 1}
-              onFileSelect={onFileSelect}
-            />
+              section="FileTreeNode"
+              fallback={
+                <div
+                  className="flex items-center gap-1.5 py-0.5 px-1 text-xs text-destructive/70"
+                  style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  <span className="truncate">Error: {child.name}</span>
+                </div>
+              }
+            >
+              <FileTreeNode
+                node={child}
+                depth={depth + 1}
+                onFileSelect={onFileSelect}
+              />
+            </ErrorBoundary>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+// Safe icon wrapper that catches rendering errors
+function SafeIcon({ icon, className }: { icon: string; className?: string }) {
+  return (
+    <ErrorBoundary
+      section="Icon"
+      fallback={<div className={cn('w-4 h-4 rounded bg-muted', className)} title="Icon unavailable" />}
+    >
+      <Icon icon={icon} className={className} />
+    </ErrorBoundary>
   );
 }
 
@@ -157,7 +183,7 @@ export function FileIcon({ filename, className }: { filename: string; className?
   const iconName = getFileIcon(filename);
 
   return (
-    <Icon
+    <SafeIcon
       icon={getIconifyName(iconName)}
       className={cn('w-4 h-4 shrink-0', className)}
     />
