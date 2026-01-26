@@ -20,6 +20,17 @@ export type ContentView =
   | { type: 'pr-dashboard'; workspaceId?: string }
   | { type: 'session-manager' };
 
+// Panel layout type - maps panel id to size (percentage)
+export type PanelLayout = Record<string, number>;
+
+// Default panel layouts
+export const DEFAULT_LAYOUTS = {
+  outer: { 'left-sidebar': 22, 'main-content': 78 },
+  inner: { 'inner-content': 72, 'right-sidebar': 28 },
+  vertical: { 'conversation': 70, 'bottom-terminal': 30 },
+  changes: { 'file-list': 65, 'terminal': 35 },
+} as const;
+
 interface SettingsState {
   // Chat settings
   confirmCloseActiveTab: boolean;
@@ -41,6 +52,11 @@ interface SettingsState {
   bottomTabOrder: AllBottomPanelTab[]; // Order of bottom panel tabs
   // Full Content Area view state (not persisted - always starts in conversation view)
   contentView: ContentView;
+  // Panel layouts (persisted)
+  layoutOuter: PanelLayout | undefined;
+  layoutInner: PanelLayout | undefined;
+  layoutVertical: PanelLayout | undefined;
+  layoutChanges: PanelLayout | undefined;
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
@@ -59,6 +75,11 @@ interface SettingsState {
   toggleBottomTab: (tab: BottomPanelTab) => void;
   setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
   setContentView: (view: ContentView) => void;
+  setLayoutOuter: (layout: PanelLayout) => void;
+  setLayoutInner: (layout: PanelLayout) => void;
+  setLayoutVertical: (layout: PanelLayout) => void;
+  setLayoutChanges: (layout: PanelLayout) => void;
+  resetLayouts: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -80,6 +101,10 @@ export const useSettingsStore = create<SettingsState>()(
       hiddenBottomTabs: [], // All tabs visible by default
       bottomTabOrder: DEFAULT_BOTTOM_TAB_ORDER, // Default tab order
       contentView: { type: 'conversation' }, // Always start in conversation view
+      layoutOuter: undefined, // Use defaults until user resizes
+      layoutInner: undefined,
+      layoutVertical: undefined,
+      layoutChanges: undefined,
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -111,6 +136,16 @@ export const useSettingsStore = create<SettingsState>()(
         })),
       setBottomTabOrder: (order) => set({ bottomTabOrder: order }),
       setContentView: (view) => set({ contentView: view }),
+      setLayoutOuter: (layout) => set({ layoutOuter: layout }),
+      setLayoutInner: (layout) => set({ layoutInner: layout }),
+      setLayoutVertical: (layout) => set({ layoutVertical: layout }),
+      setLayoutChanges: (layout) => set({ layoutChanges: layout }),
+      resetLayouts: () => set({
+        layoutOuter: undefined,
+        layoutInner: undefined,
+        layoutVertical: undefined,
+        layoutChanges: undefined,
+      }),
     }),
     {
       name: 'chatml-settings',

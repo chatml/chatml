@@ -172,7 +172,14 @@ export default function Home() {
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
   const { error: showError } = useToast();
-  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode, setContentView } = useSettingsStore();
+  const {
+    showBottomTerminal, setShowBottomTerminal,
+    zenMode, setZenMode,
+    setContentView,
+    layoutOuter, setLayoutOuter,
+    layoutInner, setLayoutInner,
+    resetLayouts,
+  } = useSettingsStore();
 
   // Determine if we're in a Full Content view (not conversation or session-manager overlay)
   // Also treat as full content view when no session is selected (to show welcome screen)
@@ -832,6 +839,13 @@ export default function Home() {
           setZenMode(!zenModeRef.current);
         }
       }
+      // Cmd+Shift+R to reset all panel layouts to defaults
+      if (e.key === 'r' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        resetLayouts();
+        // Force page reload to apply default layouts
+        window.location.reload();
+      }
       // Escape to close session manager or exit zen mode
       if (e.key === 'Escape') {
         if (contentViewRef.current.type === 'session-manager') {
@@ -846,7 +860,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -965,6 +979,8 @@ export default function Home() {
         <ResizablePanelGroup
           direction="horizontal"
           className="flex-1"
+          defaultLayout={layoutOuter}
+          onLayoutChange={setLayoutOuter}
         >
           {/* Left Sidebar - Always rendered, collapsible, hidden for global-workspace-manager */}
           <ResizablePanel
@@ -1040,11 +1056,16 @@ export default function Home() {
               <ResizablePanelGroup
                 direction="horizontal"
                 className="h-full"
+                defaultLayout={layoutInner}
+                onLayoutChange={setLayoutInner}
               >
                 {/* Inner Content - Contains vertical split */}
-                <ResizablePanel id="inner-content" defaultSize={78} minSize={30}>
+                <ResizablePanel id="inner-content" minSize={30}>
                   {/* VERTICAL GROUP: Conversation | Bottom Terminal */}
-                  <ResizablePanelGroup direction="vertical" className="h-full">
+                  <ResizablePanelGroup
+                    direction="vertical"
+                    className="h-full"
+                  >
                     {/* Conversation Area */}
                     <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
                       {selectedSessionId ? (
@@ -1103,7 +1124,7 @@ export default function Home() {
                 <ResizablePanel
                   ref={rightSidebarPanelRef}
                   id="right-sidebar"
-                  defaultSize={22}
+                  defaultSize="280px"
                   minSize="250px"
                   maxSize="500px"
                   collapsible={true}
