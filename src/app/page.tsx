@@ -16,7 +16,7 @@ import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useShortcut } from '@/hooks/useShortcut';
-import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { getDashboardData, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO, type SessionWithConversationsDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
@@ -426,56 +426,27 @@ export default function Home() {
   }), [messageToMessage]);
 
   // Load data from backend (only when connected)
+  // Uses a single batch endpoint to fetch all workspaces, sessions, and conversations
   useEffect(() => {
     if (!backendConnected) return;
 
     async function loadData() {
       setIsLoadingData(true);
       try {
-        // Fetch repos from backend
-        const repos = await listRepos();
-        const mappedWorkspaces = repos.map(repoToWorkspace);
+        // Single API call to fetch all data (eliminates N+1 queries)
+        const dashboardData = await getDashboardData();
+
+        // Map workspaces
+        const mappedWorkspaces = dashboardData.workspaces.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
-        // Fetch sessions for all workspaces in parallel
-        const sessionResults = await Promise.all(
-          repos.map(repo => listSessions(repo.id))
-        );
-        const allSessions = sessionResults.flatMap(sessions =>
-          sessions.map(s => sessionToWorktreeSession(s))
-        );
+        // Map sessions (stats already come from backend if available)
+        const allSessions = dashboardData.sessions.map(s => sessionToWorktreeSession(s));
+        setSessions(allSessions);
 
-        // Fetch file changes for all sessions to compute stats
-        const sessionsWithStats = await Promise.all(
-          allSessions.map(async (session) => {
-            try {
-              const changes = await getSessionChanges(session.workspaceId, session.id);
-              if (changes && changes.length > 0) {
-                const stats = changes.reduce(
-                  (acc, change) => ({
-                    additions: acc.additions + change.additions,
-                    deletions: acc.deletions + change.deletions,
-                  }),
-                  { additions: 0, deletions: 0 }
-                );
-                return { ...session, stats };
-              }
-            } catch {
-              // Ignore errors fetching changes
-            }
-            return session;
-          })
-        );
-        setSessions(sessionsWithStats);
-
-        // Fetch conversations for all sessions in parallel
-        const conversationResults = await Promise.all(
-          allSessions.map(session =>
-            listConversations(session.workspaceId, session.id)
-          )
-        );
-        const allConversations = conversationResults.flatMap(convs =>
-          convs.map(conversationToConversation)
+        // Map conversations (already included in the batch response)
+        const allConversations = dashboardData.sessions.flatMap(s =>
+          s.conversations.map(conversationToConversation)
         );
         setConversations(allConversations);
 
