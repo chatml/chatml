@@ -361,7 +361,10 @@ mod tests {
     #[test]
     fn test_parse_port_line_invalid() {
         assert_eq!(parse_port_line("some other output"), None);
-        assert_eq!(parse_port_line("ChatML backend starting on port 9876"), None);
+        assert_eq!(
+            parse_port_line("ChatML backend starting on port 9876"),
+            None
+        );
         assert_eq!(parse_port_line("CHATML_PORT="), None);
         assert_eq!(parse_port_line("CHATML_PORT=abc"), None);
         assert_eq!(parse_port_line(""), None);
