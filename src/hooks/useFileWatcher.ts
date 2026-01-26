@@ -10,6 +10,7 @@ import {
   sendNotification,
 } from '@/lib/tauri';
 import { getRepoFileContent } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 
 /**
  * Hook to watch for file changes in the selected workspace
@@ -24,6 +25,7 @@ export function useFileWatcher() {
     fileTabs,
     updateFileTab,
   } = useAppStore();
+  const { error: showError } = useToast();
 
   // Track the currently watched workspace to avoid duplicate watches
   const watchedWorkspaceRef = useRef<string | null>(null);
@@ -112,18 +114,25 @@ export function useFileWatcher() {
     const cleanupRef = { current: null as (() => void) | null };
     let isMounted = true;
 
-    listenForFileChanges(handleFileChange).then((unlisten) => {
-      if (isMounted) {
-        cleanupRef.current = unlisten;
-      } else {
-        // Component unmounted before listener was registered - clean up immediately
-        unlisten();
-      }
-    });
+    listenForFileChanges(handleFileChange)
+      .then((unlisten) => {
+        if (isMounted) {
+          cleanupRef.current = unlisten;
+        } else {
+          // Component unmounted before listener was registered - clean up immediately
+          unlisten();
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to initialize file watcher:', err);
+        if (isMounted) {
+          showError("File watching unavailable. External file changes won't be detected.");
+        }
+      });
 
     return () => {
       isMounted = false;
       cleanupRef.current?.();
     };
-  }, [handleFileChange]);
+  }, [handleFileChange, showError]);
 }
