@@ -12,8 +12,10 @@ use tauri_plugin_shell::ShellExt;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-/// Port used by the ChatML backend sidecar
-pub const SIDECAR_PORT: u16 = 9876;
+/// Default port used by the ChatML backend sidecar
+pub const DEFAULT_SIDECAR_PORT: u16 = 9876;
+/// Protocol prefix for port announcement in backend stdout
+const PORT_LINE_PREFIX: &str = "CHATML_PORT=";
 
 /// Maximum time to wait for port to become available (in milliseconds)
 const PORT_WAIT_TIMEOUT_MS: u64 = 5000;
@@ -23,6 +25,14 @@ const PORT_CHECK_INTERVAL_MS: u64 = 100;
 /// Check if a port is available for binding
 pub(crate) fn is_port_available(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Parse port from backend stdout line
+/// Returns Some(port) if the line matches "CHATML_PORT=<number>"
+fn parse_port_line(line: &str) -> Option<u16> {
+    line.trim()
+        .strip_prefix(PORT_LINE_PREFIX)
+        .and_then(|s| s.parse().ok())
 }
 
 /// Generate a cryptographically secure authentication token
@@ -98,10 +108,10 @@ pub fn kill_stored_sidecar(state: &AppState) {
 pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult<CommandChild> {
     // Clean up any existing processes before spawning
     kill_stored_sidecar(state);
-    kill_process_on_port(SIDECAR_PORT);
+    kill_process_on_port(DEFAULT_SIDECAR_PORT);
 
     // Wait for port to become available instead of fixed delay
-    wait_for_port_available(SIDECAR_PORT)?;
+    wait_for_port_available(DEFAULT_SIDECAR_PORT)?;
 
     let mut sidecar_command = app
         .shell()
@@ -149,17 +159,45 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // Store the PID for later cleanup
     state.set_sidecar_pid(Some(child.pid()));
 
-    // Clone app handle for the monitoring task
+    // Note: We intentionally do NOT set a default port here.
+    // The port is only set when we capture it from the backend's stdout (CHATML_PORT=).
+    // This ensures the frontend waits for the actual port before making API calls,
+    // avoiding requests to a potentially wrong port during startup.
+
+    // Clone app handle and state for the monitoring task
     let app_handle = app.clone();
+    let state_clone = Arc::clone(state);
 
     // Spawn a task to monitor sidecar output
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
 
+        // Track whether we've captured the port (it should be the first stdout line)
+        let mut port_captured = false;
+
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
-                    log::debug!("[sidecar stdout] {}", String::from_utf8_lossy(&line));
+                    let line_str = String::from_utf8_lossy(&line);
+
+                    // Try to capture port from the first stdout line
+                    if !port_captured {
+                        if let Some(port) = parse_port_line(&line_str) {
+                            log::info!("Captured backend port: {}", port);
+                            state_clone.set_sidecar_port(port);
+                            port_captured = true;
+
+                            // Emit port event to frontend
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                if let Err(e) = window.emit("backend-port", port) {
+                                    log::warn!("Failed to emit backend-port event: {}", e);
+                                }
+                            }
+                            continue; // Don't log the port protocol line
+                        }
+                    }
+
+                    log::debug!("[sidecar stdout] {}", line_str);
                 }
                 CommandEvent::Stderr(line) => {
                     let line_str = String::from_utf8_lossy(&line);
@@ -185,6 +223,8 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
                         payload.code,
                         payload.signal
                     );
+                    // Clear the port since sidecar is no longer running
+                    state_clone.clear_sidecar_port();
                     // Notify frontend that sidecar died
                     if let Some(window) = app_handle.get_webview_window("main") {
                         if let Err(e) = window.emit("sidecar-terminated", payload.code) {
@@ -207,13 +247,13 @@ pub async fn restart_sidecar_async(app: tauri::AppHandle, state: Arc<AppState>) 
 
     // Clean up existing sidecar process
     kill_stored_sidecar(&state);
-    kill_process_on_port(SIDECAR_PORT);
+    kill_process_on_port(DEFAULT_SIDECAR_PORT);
 
     // Wait for port in blocking context (can't use TcpListener in async directly).
     // Note: The double `?` below handles two error types:
     //   - First `?` propagates JoinError from spawn_blocking
     //   - Second `?` propagates AppError from wait_for_port_available
-    tauri::async_runtime::spawn_blocking(|| wait_for_port_available(SIDECAR_PORT))
+    tauri::async_runtime::spawn_blocking(|| wait_for_port_available(DEFAULT_SIDECAR_PORT))
         .await
         .map_err(|e| AppError::Sidecar(format!("Failed during port wait: {}", e)))??;
 
@@ -299,5 +339,37 @@ mod tests {
         let token = generate_auth_token();
         let decoded = URL_SAFE_NO_PAD.decode(&token).unwrap();
         assert_eq!(decoded.len(), 32);
+    }
+
+    #[test]
+    fn test_parse_port_line_valid() {
+        assert_eq!(parse_port_line("CHATML_PORT=9876"), Some(9876));
+        assert_eq!(parse_port_line("CHATML_PORT=9877"), Some(9877));
+        assert_eq!(parse_port_line("CHATML_PORT=9899"), Some(9899));
+    }
+
+    #[test]
+    fn test_parse_port_line_with_whitespace() {
+        assert_eq!(parse_port_line("  CHATML_PORT=9876"), Some(9876));
+        assert_eq!(parse_port_line("CHATML_PORT=9876\n"), Some(9876));
+        assert_eq!(parse_port_line("  CHATML_PORT=9876  \n"), Some(9876));
+    }
+
+    #[test]
+    fn test_parse_port_line_invalid() {
+        assert_eq!(parse_port_line("some other output"), None);
+        assert_eq!(
+            parse_port_line("ChatML backend starting on port 9876"),
+            None
+        );
+        assert_eq!(parse_port_line("CHATML_PORT="), None);
+        assert_eq!(parse_port_line("CHATML_PORT=abc"), None);
+        assert_eq!(parse_port_line(""), None);
+    }
+
+    #[test]
+    fn test_parse_port_line_wrong_prefix() {
+        assert_eq!(parse_port_line("PORT=9876"), None);
+        assert_eq!(parse_port_line("chatml_port=9876"), None); // Case sensitive
     }
 }

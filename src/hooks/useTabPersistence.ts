@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { listFileTabs, saveFileTabs, FileTabDTO, API_BASE } from '@/lib/api';
+import { listFileTabs, saveFileTabs, FileTabDTO, getApiBase } from '@/lib/api';
 import type { FileTab } from '@/lib/types';
 
 // Debounce delay for saving tabs (ms)
@@ -150,7 +150,7 @@ export function useTabPersistence() {
       const tabDTOs = workspaceTabs.map(tabToDTO);
 
       // Use sendBeacon for reliable delivery during page unload
-      const url = `${API_BASE}/api/repos/${selectedWorkspaceId}/tabs`;
+      const url = `${getApiBase()}/api/repos/${selectedWorkspaceId}/tabs`;
       const data = JSON.stringify({ tabs: tabDTOs });
       navigator.sendBeacon(url, data);
     };

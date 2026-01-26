@@ -7,6 +7,7 @@ import { checkHealthWithRetry } from '@/lib/api';
 import { isTauri, safeListen, markAppReady, restartSidecar } from '@/lib/tauri';
 import { SIDECAR_RESTART_DELAY_MS } from '@/lib/constants';
 import { initAuthToken, clearAuthTokenCache } from '@/lib/auth-token';
+import { clearBackendPortCache } from '@/lib/backend-port';
 
 interface BackendStatusProps {
   onConnected: () => void;
@@ -94,8 +95,9 @@ export function BackendStatus({
     setIsRestarting(true);
     setSidecarLogs([]);
     setError(null);
-    // Clear cached auth token since sidecar will generate a new one
+    // Clear cached auth token and port since sidecar will generate new ones
     clearAuthTokenCache();
+    clearBackendPortCache();
 
     const success = await restartSidecar();
     if (success) {
