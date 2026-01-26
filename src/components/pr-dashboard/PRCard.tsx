@@ -49,8 +49,7 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
   const allPassed = hasChecks && !hasFailures && !hasPending;
   const hasConflicts = pr.mergeableState === 'dirty' || pr.mergeable === false;
 
-  // Determine status icon and color
-  // Note: Backend currently only returns open PRs
+  // Determine status icon and color based on check status
   const getStatusInfo = () => {
     if (pr.isDraft) {
       return {
@@ -59,9 +58,16 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
         label: 'Draft',
       };
     }
+    // Color based on check status
+    let color = 'text-green-500'; // Default: all passed or no checks
+    if (hasFailures) {
+      color = 'text-red-500';
+    } else if (hasPending) {
+      color = 'text-yellow-500';
+    }
     return {
       icon: GitPullRequest,
-      color: 'text-green-500',
+      color,
       label: 'Open',
     };
   };
