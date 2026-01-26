@@ -11,8 +11,11 @@ import {
   Rows,
   Send,
   Loader2,
+  FileCode,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { BlockErrorFallback } from '@/components/ErrorFallbacks';
 
 // Pre-computed skeleton widths (avoids Math.random() during render)
 const DIFF_SKELETON_WIDTHS = [52, 78, 45, 89, 63, 71, 48, 85, 56, 74, 42, 82];
@@ -264,15 +267,26 @@ export function DiffViewer({
 
       {/* Diff content */}
       <div className="flex-1 overflow-auto min-h-0">
-        <DiffView
-          diffFile={diffFile}
-          diffViewMode={viewMode === 'split' ? DiffModeEnum.Split : DiffModeEnum.Unified}
-          diffViewHighlight
-          diffViewAddWidget={!!onAddComment}
-          renderWidgetLine={renderWidgetLine}
-          onAddWidgetClick={handleAddWidgetClick}
-          diffViewFontSize={12}
-        />
+        <ErrorBoundary
+          section="DiffView"
+          fallback={
+            <BlockErrorFallback
+              icon={FileCode}
+              title="Unable to render diff"
+              description="There was an error displaying the file differences"
+            />
+          }
+        >
+          <DiffView
+            diffFile={diffFile}
+            diffViewMode={viewMode === 'split' ? DiffModeEnum.Split : DiffModeEnum.Unified}
+            diffViewHighlight
+            diffViewAddWidget={!!onAddComment}
+            renderWidgetLine={renderWidgetLine}
+            onAddWidgetClick={handleAddWidgetClick}
+            diffViewFontSize={12}
+          />
+        </ErrorBoundary>
       </div>
     </div>
   );
