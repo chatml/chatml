@@ -239,6 +239,21 @@ func (s *SQLiteStore) runMigrations() error {
 		log.Printf("[sqlite] Migration: Added pinned column to sessions")
 	}
 
+	// Migration: Add archived column to sessions if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'archived'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
+		if err != nil {
+			return err
+		}
+		log.Printf("[sqlite] Migration: Added archived column to sessions")
+	}
+
 	// Migration: Add run_summary column to messages if it doesn't exist
 	err = s.db.QueryRow(`
 		SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'run_summary'
@@ -466,44 +481,43 @@ func (s *SQLiteStore) DeleteRepo(ctx context.Context, id string) error {
 // ============================================================================
 
 func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) error {
-	statsAdditions, statsDeletions := 0, 0
-	if session.Stats != nil {
-		statsAdditions = session.Stats.Additions
-		statsDeletions = session.Stats.Deletions
-	}
+	return RetryDBExec(ctx, "AddSession", DefaultRetryConfig(), func(ctx context.Context) error {
+		statsAdditions, statsDeletions := 0, 0
+		if session.Stats != nil {
+			statsAdditions = session.Stats.Additions
+			statsDeletions = session.Stats.Deletions
+		}
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, task,
-			status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
-			has_check_failures, stats_additions, stats_deletions, pinned, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		session.ID, session.WorkspaceID, session.Name, session.Branch,
-		session.WorktreePath, session.BaseCommitSHA, session.Task, session.Status, session.AgentID,
-		session.PRStatus, session.PRUrl, session.PRNumber,
-		boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
-		statsAdditions, statsDeletions, boolToInt(session.Pinned),
-		session.CreatedAt, session.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("AddSession: %w", err)
-	}
-	return nil
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, task,
+				status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
+				has_check_failures, stats_additions, stats_deletions, pinned, archived, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			session.ID, session.WorkspaceID, session.Name, session.Branch,
+			session.WorktreePath, session.BaseCommitSHA, session.Task, session.Status, session.AgentID,
+			session.PRStatus, session.PRUrl, session.PRNumber,
+			boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
+			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
+			session.CreatedAt, session.UpdatedAt)
+		return err
+	})
 }
 
 func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
-	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
+	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
 	var agentID sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, pinned, created_at, updated_at
+			stats_additions, stats_deletions, pinned, archived, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-		&pinned, &session.CreatedAt, &session.UpdatedAt)
+		&pinned, &archived, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -514,6 +528,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 	session.HasMergeConflict = intToBool(hasMergeConflict)
 	session.HasCheckFailures = intToBool(hasCheckFailures)
 	session.Pinned = intToBool(pinned)
+	session.Archived = intToBool(archived)
 	if agentID.Valid {
 		session.AgentID = agentID.String
 	}
@@ -527,11 +542,56 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 	return &session, nil
 }
 
+// GetSessionWithWorkspace fetches a session with its workspace data in a single JOIN query
+// This eliminates the N+1 pattern of fetching session then workspace separately
+func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*models.SessionWithWorkspace, error) {
+	var result models.SessionWithWorkspace
+	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
+	var agentID sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT s.id, s.workspace_id, s.name, s.branch, s.worktree_path, s.base_commit_sha,
+			s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number,
+			s.has_merge_conflict, s.has_check_failures, s.stats_additions, s.stats_deletions,
+			s.pinned, s.created_at, s.updated_at,
+			r.path, r.branch
+		FROM sessions s
+		JOIN repos r ON s.workspace_id = r.id
+		WHERE s.id = ?`, id).Scan(
+		&result.ID, &result.WorkspaceID, &result.Name, &result.Branch,
+		&result.WorktreePath, &result.BaseCommitSHA, &result.Task, &result.Status, &agentID,
+		&result.PRStatus, &result.PRUrl, &result.PRNumber,
+		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+		&pinned, &result.CreatedAt, &result.UpdatedAt,
+		&result.WorkspacePath, &result.WorkspaceBranch)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetSessionWithWorkspace: %w", err)
+	}
+
+	result.HasMergeConflict = intToBool(hasMergeConflict)
+	result.HasCheckFailures = intToBool(hasCheckFailures)
+	result.Pinned = intToBool(pinned)
+	if agentID.Valid {
+		result.AgentID = agentID.String
+	}
+	if statsAdditions > 0 || statsDeletions > 0 {
+		result.Stats = &models.SessionStats{
+			Additions: statsAdditions,
+			Deletions: statsDeletions,
+		}
+	}
+
+	return &result, nil
+}
+
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, pinned, created_at, updated_at
+			stats_additions, stats_deletions, pinned, archived, created_at, updated_at
 		FROM sessions WHERE workspace_id = ?
 		ORDER BY pinned DESC, created_at DESC`, workspaceID)
 	if err != nil {
@@ -542,7 +602,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]*
 	sessions := []*models.Session{}
 	for rows.Next() {
 		var session models.Session
-		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
+		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
 		var agentID sql.NullString
 
 		if err := rows.Scan(
@@ -550,13 +610,14 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]*
 			&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-			&pinned, &session.CreatedAt, &session.UpdatedAt); err != nil {
+			&pinned, &archived, &session.CreatedAt, &session.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ListSessions scan: %w", err)
 		}
 
 		session.HasMergeConflict = intToBool(hasMergeConflict)
 		session.HasCheckFailures = intToBool(hasCheckFailures)
 		session.Pinned = intToBool(pinned)
+		session.Archived = intToBool(archived)
 		if agentID.Valid {
 			session.AgentID = agentID.String
 		}
@@ -575,8 +636,58 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]*
 	return sessions, nil
 }
 
+// ListAllSessions returns all sessions across all workspaces
+// Used for dashboard data loading to avoid N queries for N workspaces
+func (s *SQLiteStore) ListAllSessions(ctx context.Context) ([]*models.Session, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+			stats_additions, stats_deletions, pinned, created_at, updated_at
+		FROM sessions
+		ORDER BY pinned DESC, created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("ListAllSessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := []*models.Session{}
+	for rows.Next() {
+		var session models.Session
+		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
+		var agentID sql.NullString
+
+		if err := rows.Scan(
+			&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
+			&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
+			&session.PRStatus, &session.PRUrl, &session.PRNumber,
+			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+			&pinned, &session.CreatedAt, &session.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("ListAllSessions scan: %w", err)
+		}
+
+		session.HasMergeConflict = intToBool(hasMergeConflict)
+		session.HasCheckFailures = intToBool(hasCheckFailures)
+		session.Pinned = intToBool(pinned)
+		if agentID.Valid {
+			session.AgentID = agentID.String
+		}
+		if statsAdditions > 0 || statsDeletions > 0 {
+			session.Stats = &models.SessionStats{
+				Additions: statsAdditions,
+				Deletions: statsDeletions,
+			}
+		}
+
+		sessions = append(sessions, &session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListAllSessions rows: %w", err)
+	}
+	return sessions, nil
+}
+
 func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func(*models.Session)) error {
-	// Read current state
+	// Read current state outside retry to avoid stale data on retry
 	session, err := s.getSessionNoLock(ctx, id)
 	if err != nil {
 		return err
@@ -589,47 +700,46 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 	updates(session)
 	session.UpdatedAt = time.Now()
 
-	// Write back
+	// Write back with retry for transient errors
 	statsAdditions, statsDeletions := 0, 0
 	if session.Stats != nil {
 		statsAdditions = session.Stats.Additions
 		statsDeletions = session.Stats.Deletions
 	}
 
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE sessions SET
-			name = ?, branch = ?, worktree_path = ?, task = ?,
-			status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
-			pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
-			stats_additions = ?, stats_deletions = ?, pinned = ?, updated_at = ?
-		WHERE id = ?`,
-		session.Name, session.Branch, session.WorktreePath, session.Task,
-		session.Status, session.AgentID, session.PRStatus, session.PRUrl,
-		session.PRNumber, boolToInt(session.HasMergeConflict),
-		boolToInt(session.HasCheckFailures),
-		statsAdditions, statsDeletions, boolToInt(session.Pinned),
-		session.UpdatedAt, id)
-	if err != nil {
-		return fmt.Errorf("UpdateSession: %w", err)
-	}
-	return nil
+	return RetryDBExec(ctx, "UpdateSession", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE sessions SET
+				name = ?, branch = ?, worktree_path = ?, task = ?,
+				status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
+				pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
+				stats_additions = ?, stats_deletions = ?, pinned = ?, archived = ?, updated_at = ?
+			WHERE id = ?`,
+			session.Name, session.Branch, session.WorktreePath, session.Task,
+			session.Status, session.AgentID, session.PRStatus, session.PRUrl,
+			session.PRNumber, boolToInt(session.HasMergeConflict),
+			boolToInt(session.HasCheckFailures),
+			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
+			session.UpdatedAt, id)
+		return err
+	})
 }
 
 func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
-	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
+	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
 	var agentID sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, pinned, created_at, updated_at
+			stats_additions, stats_deletions, pinned, archived, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-		&pinned, &session.CreatedAt, &session.UpdatedAt)
+		&pinned, &archived, &session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -640,6 +750,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 	session.HasMergeConflict = intToBool(hasMergeConflict)
 	session.HasCheckFailures = intToBool(hasCheckFailures)
 	session.Pinned = intToBool(pinned)
+	session.Archived = intToBool(archived)
 	if agentID.Valid {
 		session.AgentID = agentID.String
 	}
@@ -738,15 +849,14 @@ func (s *SQLiteStore) DeleteAgent(ctx context.Context, id string) error {
 // ============================================================================
 
 func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversation) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO conversations (id, session_id, type, name, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		conv.ID, conv.SessionID, conv.Type, conv.Name,
-		conv.Status, conv.CreatedAt, conv.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("AddConversation: %w", err)
-	}
-	return nil
+	return RetryDBExec(ctx, "AddConversation", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO conversations (id, session_id, type, name, status, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			conv.ID, conv.SessionID, conv.Type, conv.Name,
+			conv.Status, conv.CreatedAt, conv.UpdatedAt)
+		return err
+	})
 }
 
 func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.Conversation, error) {
@@ -877,6 +987,79 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 	}
 
 	return convs, nil
+}
+
+// ListConversationsForSessions returns conversations for multiple sessions in a single batch query.
+// Returns a map of sessionID -> conversations.
+// Uses 3 queries total (1 for conversations + 1 for all messages + 1 for all tool actions).
+func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionIDs []string) (map[string][]*models.Conversation, error) {
+	result := make(map[string][]*models.Conversation)
+
+	// Initialize result map with empty slices for all session IDs
+	for _, sid := range sessionIDs {
+		result[sid] = []*models.Conversation{}
+	}
+
+	if len(sessionIDs) == 0 {
+		return result, nil
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(sessionIDs))
+	args := make([]interface{}, len(sessionIDs))
+	for i, id := range sessionIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	// Query all conversations for all sessions in one query
+	query := fmt.Sprintf(`
+		SELECT id, session_id, type, name, status, created_at, updated_at
+		FROM conversations WHERE session_id IN (%s)`, strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ListConversationsForSessions: %w", err)
+	}
+
+	convMap := make(map[string]*models.Conversation)
+	convIDs := []string{}
+
+	for rows.Next() {
+		var conv models.Conversation
+		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
+			&conv.Status, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("ListConversationsForSessions scan: %w", err)
+		}
+		// Initialize slices to empty (not nil) so JSON serializes as [] not null
+		conv.Messages = []models.Message{}
+		conv.ToolSummary = []models.ToolAction{}
+		convMap[conv.ID] = &conv
+		convIDs = append(convIDs, conv.ID)
+		result[conv.SessionID] = append(result[conv.SessionID], &conv)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListConversationsForSessions rows: %w", err)
+	}
+
+	// Early return if no conversations found
+	if len(convIDs) == 0 {
+		return result, nil
+	}
+
+	// Load all messages for all conversations in one query
+	if err := s.loadMessagesForConversations(ctx, convMap, convIDs); err != nil {
+		return nil, err
+	}
+
+	// Load all tool actions for all conversations in one query
+	if err := s.loadToolActionsForConversations(ctx, convMap, convIDs); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // loadMessagesForConversations loads messages for multiple conversations in a single query
@@ -1076,17 +1259,7 @@ func (s *SQLiteStore) DeleteConversation(ctx context.Context, id string) error {
 }
 
 func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID string, msg models.Message) error {
-	// Get next position
-	var maxPos sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT MAX(position) FROM messages WHERE conversation_id = ?`, convID).Scan(&maxPos); err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("AddMessageToConversation get position: %w", err)
-	}
-	nextPos := 0
-	if maxPos.Valid {
-		nextPos = int(maxPos.Int64) + 1
-	}
-
-	// Serialize setupInfo if present
+	// Serialize setupInfo if present (outside retry - deterministic)
 	var setupInfoJSON sql.NullString
 	if msg.SetupInfo != nil {
 		data, err := json.Marshal(msg.SetupInfo)
@@ -1096,7 +1269,7 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		setupInfoJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
-	// Serialize runSummary if present
+	// Serialize runSummary if present (outside retry - deterministic)
 	var runSummaryJSON sql.NullString
 	if msg.RunSummary != nil {
 		data, err := json.Marshal(msg.RunSummary)
@@ -1106,35 +1279,67 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		runSummaryJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary, timestamp, position)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON, msg.Timestamp, nextPos)
-	if err != nil {
-		return fmt.Errorf("AddMessageToConversation: %w", err)
-	}
-	return nil
+	return RetryDBExec(ctx, "AddMessageToConversation", DefaultRetryConfig(), func(ctx context.Context) error {
+		// Use transaction to make position query + insert atomic
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
+
+		// Get next position within transaction
+		var maxPos sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT MAX(position) FROM messages WHERE conversation_id = ?`, convID).Scan(&maxPos); err != nil && err != sql.ErrNoRows {
+			tx.Rollback()
+			return fmt.Errorf("get position: %w", err)
+		}
+		nextPos := 0
+		if maxPos.Valid {
+			nextPos = int(maxPos.Int64) + 1
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary, timestamp, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON, msg.Timestamp, nextPos)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		return tx.Commit()
+	})
 }
 
 func (s *SQLiteStore) AddToolActionToConversation(ctx context.Context, convID string, action models.ToolAction) error {
-	// Get next position
-	var maxPos sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT MAX(position) FROM tool_actions WHERE conversation_id = ?`, convID).Scan(&maxPos); err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("AddToolActionToConversation get position: %w", err)
-	}
-	nextPos := 0
-	if maxPos.Valid {
-		nextPos = int(maxPos.Int64) + 1
-	}
+	return RetryDBExec(ctx, "AddToolActionToConversation", DefaultRetryConfig(), func(ctx context.Context) error {
+		// Use transaction to make position query + insert atomic
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
 
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO tool_actions (id, conversation_id, tool, target, success, position)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		action.ID, convID, action.Tool, action.Target, boolToInt(action.Success), nextPos)
-	if err != nil {
-		return fmt.Errorf("AddToolActionToConversation: %w", err)
-	}
-	return nil
+		// Get next position within transaction
+		var maxPos sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `SELECT MAX(position) FROM tool_actions WHERE conversation_id = ?`, convID).Scan(&maxPos); err != nil && err != sql.ErrNoRows {
+			tx.Rollback()
+			return fmt.Errorf("get position: %w", err)
+		}
+		nextPos := 0
+		if maxPos.Valid {
+			nextPos = int(maxPos.Int64) + 1
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO tool_actions (id, conversation_id, tool, target, success, position)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			action.ID, convID, action.Tool, action.Target, boolToInt(action.Success), nextPos)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+
+		return tx.Commit()
+	})
 }
 
 // ============================================================================
@@ -1269,75 +1474,77 @@ func (s *SQLiteStore) DeleteAllFileTabsForWorkspace(ctx context.Context, workspa
 // SaveFileTabs atomically saves a workspace's file tabs, removing any tabs not in the list.
 // Uses a transaction for atomic updates to prevent partial saves on failure.
 func (s *SQLiteStore) SaveFileTabs(ctx context.Context, workspaceID string, tabs []*models.FileTab) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("SaveFileTabs begin: %w", err)
-	}
-
-	// Collect current tab IDs for deletion of removed tabs
-	currentTabIDs := make([]string, len(tabs))
-	for i, tab := range tabs {
-		currentTabIDs[i] = tab.ID
-	}
-
-	// Delete tabs that are no longer in the list (more efficient than delete-all)
-	if len(currentTabIDs) > 0 {
-		// Build placeholders for IN clause dynamically.
-		// This is safe because we only generate "?" placeholders (not user input),
-		// and actual values are passed via parameterized args.
-		placeholders := "?"
-		for i := 1; i < len(currentTabIDs); i++ {
-			placeholders += ",?"
-		}
-		args := make([]interface{}, len(currentTabIDs)+1)
-		args[0] = workspaceID
-		for i, id := range currentTabIDs {
-			args[i+1] = id
-		}
-		_, err = tx.ExecContext(ctx, `DELETE FROM file_tabs WHERE workspace_id = ? AND id NOT IN (`+placeholders+`)`, args...)
-	} else {
-		// No tabs - delete all for this workspace
-		_, err = tx.ExecContext(ctx, `DELETE FROM file_tabs WHERE workspace_id = ?`, workspaceID)
-	}
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("SaveFileTabs delete: %w", err)
-	}
-
-	// Upsert all tabs (insert or update if exists)
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO file_tabs (id, workspace_id, session_id, path, view_mode, is_pinned, position, opened_at, last_accessed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			view_mode = excluded.view_mode,
-			is_pinned = excluded.is_pinned,
-			position = excluded.position,
-			last_accessed_at = excluded.last_accessed_at`)
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("SaveFileTabs prepare: %w", err)
-	}
-	defer stmt.Close()
-
-	for i, tab := range tabs {
-		var sessionID sql.NullString
-		if tab.SessionID != "" {
-			sessionID = sql.NullString{String: tab.SessionID, Valid: true}
+	return RetryDBExec(ctx, "SaveFileTabs", DefaultRetryConfig(), func(ctx context.Context) error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
 		}
 
-		_, err = stmt.ExecContext(ctx,
-			tab.ID, tab.WorkspaceID, sessionID, tab.Path, tab.ViewMode,
-			boolToInt(tab.IsPinned), i, tab.OpenedAt, tab.LastAccessedAt)
+		// Collect current tab IDs for deletion of removed tabs
+		currentTabIDs := make([]string, len(tabs))
+		for i, tab := range tabs {
+			currentTabIDs[i] = tab.ID
+		}
+
+		// Delete tabs that are no longer in the list (more efficient than delete-all)
+		if len(currentTabIDs) > 0 {
+			// Build placeholders for IN clause dynamically.
+			// This is safe because we only generate "?" placeholders (not user input),
+			// and actual values are passed via parameterized args.
+			placeholders := "?"
+			for i := 1; i < len(currentTabIDs); i++ {
+				placeholders += ",?"
+			}
+			args := make([]interface{}, len(currentTabIDs)+1)
+			args[0] = workspaceID
+			for i, id := range currentTabIDs {
+				args[i+1] = id
+			}
+			_, err = tx.ExecContext(ctx, `DELETE FROM file_tabs WHERE workspace_id = ? AND id NOT IN (`+placeholders+`)`, args...)
+		} else {
+			// No tabs - delete all for this workspace
+			_, err = tx.ExecContext(ctx, `DELETE FROM file_tabs WHERE workspace_id = ?`, workspaceID)
+		}
 		if err != nil {
 			tx.Rollback()
-			return fmt.Errorf("SaveFileTabs upsert: %w", err)
+			return fmt.Errorf("delete: %w", err)
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("SaveFileTabs commit: %w", err)
-	}
-	return nil
+		// Upsert all tabs (insert or update if exists)
+		stmt, err := tx.PrepareContext(ctx, `
+			INSERT INTO file_tabs (id, workspace_id, session_id, path, view_mode, is_pinned, position, opened_at, last_accessed_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				view_mode = excluded.view_mode,
+				is_pinned = excluded.is_pinned,
+				position = excluded.position,
+				last_accessed_at = excluded.last_accessed_at`)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("prepare: %w", err)
+		}
+		defer stmt.Close()
+
+		for i, tab := range tabs {
+			var sessionID sql.NullString
+			if tab.SessionID != "" {
+				sessionID = sql.NullString{String: tab.SessionID, Valid: true}
+			}
+
+			_, err = stmt.ExecContext(ctx,
+				tab.ID, tab.WorkspaceID, sessionID, tab.Path, tab.ViewMode,
+				boolToInt(tab.IsPinned), i, tab.OpenedAt, tab.LastAccessedAt)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("upsert: %w", err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit: %w", err)
+		}
+		return nil
+	})
 }
 
 // ============================================================================

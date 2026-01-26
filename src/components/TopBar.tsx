@@ -50,7 +50,6 @@ interface TopBarProps {
   onToggleBottomPanel?: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
-  onOpenWorkspaces?: () => void;
 }
 
 export function TopBar({
@@ -62,13 +61,13 @@ export function TopBar({
   onToggleBottomPanel,
   onOpenSettings,
   onOpenShortcuts,
-  onOpenWorkspaces,
 }: TopBarProps) {
   // Use optimized selectors to prevent unnecessary re-renders
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
+  const setContentView = useSettingsStore((s) => s.setContentView);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
@@ -251,14 +250,14 @@ export function TopBar({
               <span className="ml-auto text-xs text-muted-foreground">⌘/</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onOpenWorkspaces}>
-              <FolderOpen className="size-4" />
-              Manage Workspaces
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setZenMode(!zenMode)}>
               <Sparkles className="size-4" />
               {zenMode ? 'Exit Zen Mode' : 'Enter Zen Mode'}
-              <span className="ml-auto text-xs text-muted-foreground">⌘⇧Z</span>
+              <span className="ml-auto text-xs text-muted-foreground">⌘.</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setContentView({ type: 'session-manager' })}>
+              <Layers className="size-4" />
+              Session Manager
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => window.open('https://docs.chatml.dev', '_blank')}>
@@ -276,11 +275,10 @@ export function TopBar({
       </div>
 
       {/* App Settings Menu - shown when right sidebar is hidden */}
-      {!showRightSidebar && onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (
+      {!showRightSidebar && onOpenSettings && onOpenShortcuts && (
         <AppSettingsMenu
           onOpenSettings={onOpenSettings}
           onOpenShortcuts={onOpenShortcuts}
-          onOpenWorkspaces={onOpenWorkspaces}
           className="mr-1"
         />
       )}

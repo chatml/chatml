@@ -28,6 +28,7 @@ type Session struct {
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
 	Pinned           bool          `json:"pinned,omitempty"`
+	Archived         bool          `json:"archived,omitempty"`
 	AutoNamed        bool          `json:"autoNamed,omitempty"` // True if session was auto-renamed based on context
 	CreatedAt        time.Time     `json:"createdAt"`
 	UpdatedAt        time.Time     `json:"updatedAt"`
@@ -36,6 +37,14 @@ type Session struct {
 type SessionStats struct {
 	Additions int `json:"additions"`
 	Deletions int `json:"deletions"`
+}
+
+// SessionWithWorkspace combines session data with its parent workspace info
+// for efficient single-query fetches that need both session and workspace data
+type SessionWithWorkspace struct {
+	Session
+	WorkspacePath   string `json:"workspacePath"`
+	WorkspaceBranch string `json:"workspaceBranch"`
 }
 
 type Agent struct {

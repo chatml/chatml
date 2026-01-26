@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
-	"github.com/chatml/chatml-backend/orchestrator"
 	"github.com/chatml/chatml-backend/server"
 	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
@@ -58,30 +56,8 @@ func main() {
 	ghConfig := server.LoadGitHubConfig()
 	ghClient := github.NewClient(ghConfig.ClientID, ghConfig.ClientSecret)
 
-	// Agent orchestrator
-	agentsDir := os.Getenv("CHATML_AGENTS_DIR")
-	if agentsDir == "" {
-		// Default to agents/ directory relative to working directory
-		// In production, this should be configured explicitly
-		wd, _ := os.Getwd()
-		agentsDir = filepath.Join(wd, "..", "agents")
-	}
-
-	orch := orchestrator.New(s, orchestrator.Config{
-		AgentsDir: agentsDir,
-	})
-
-	// Subscribe orchestrator events to WebSocket hub
-	orch.Subscribe(func(event orchestrator.Event) {
-		hub.BroadcastJSON(event)
-	})
-
-	// Start orchestrator
-	if err := orch.Start(); err != nil {
-		log.Printf("Warning: Failed to start orchestrator: %v", err)
-		// Don't fatal - app can still work without orchestrator
-	}
-	defer orch.Stop()
+	// Agent orchestrator disabled - feature hidden for later release
+	// To re-enable: uncomment orchestrator initialization and pass orch to NewRouter
 
 	// Branch watcher for instant detection of git branch changes
 	branchWatcher, err := branch.NewWatcher(func(event branch.BranchChangeEvent) {
@@ -166,7 +142,7 @@ func main() {
 
 	go hub.Run()
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, orch, branchWatcher)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{

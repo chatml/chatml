@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Layers, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCallback, useState } from 'react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { BlockErrorFallback, CardErrorFallback } from '@/components/ErrorFallbacks';
 
 interface WorkspaceDashboardProps {
   workspaceId: string;
@@ -98,7 +100,14 @@ export function WorkspaceDashboard({
         {stats.total > 0 && <StatsOverview stats={stats} />}
 
         {/* Charts section */}
-        {sessions.length > 0 && <DashboardCharts sessions={sessions} />}
+        {sessions.length > 0 && (
+          <ErrorBoundary
+            section="DashboardCharts"
+            fallback={<BlockErrorFallback title="Unable to load charts" className="h-[200px]" />}
+          >
+            <DashboardCharts sessions={sessions} />
+          </ErrorBoundary>
+        )}
 
         {/* Sessions list */}
         {sessions.length > 0 ? (
@@ -108,11 +117,16 @@ export function WorkspaceDashboard({
             </h2>
             <div className="space-y-2">
               {sessions.map((session) => (
-                <SessionCard
+                <ErrorBoundary
                   key={session.id}
-                  session={session}
-                  onJumpToSession={() => handleJumpToSession(session.id)}
-                />
+                  section="SessionCard"
+                  fallback={<CardErrorFallback message="Error loading session" />}
+                >
+                  <SessionCard
+                    session={session}
+                    onJumpToSession={() => handleJumpToSession(session.id)}
+                  />
+                </ErrorBoundary>
               ))}
             </div>
           </div>

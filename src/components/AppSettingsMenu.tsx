@@ -23,7 +23,6 @@ import {
 import {
   Settings,
   Keyboard,
-  FolderOpen,
   RefreshCw,
   BookOpen,
   FileText,
@@ -34,6 +33,7 @@ import {
   Moon,
   Monitor,
   Sparkles,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/lib/auth';
@@ -41,14 +41,12 @@ import { logout } from '@/lib/auth';
 interface AppSettingsMenuProps {
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
-  onOpenWorkspaces: () => void;
   className?: string;
 }
 
 export function AppSettingsMenu({
   onOpenSettings,
   onOpenShortcuts,
-  onOpenWorkspaces,
   className,
 }: AppSettingsMenuProps) {
   const user = useAuthStore((s) => s.user);
@@ -56,6 +54,7 @@ export function AppSettingsMenu({
   const { theme, setTheme } = useTheme();
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
+  const setContentView = useSettingsStore((s) => s.setContentView);
 
   const handleSignOut = async () => {
     try {
@@ -171,9 +170,9 @@ export function AppSettingsMenu({
           <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={onOpenWorkspaces}>
-          <FolderOpen className="size-4" />
-          Manage Workspaces
+        <DropdownMenuItem onClick={() => setContentView({ type: 'session-manager' })}>
+          <Layers className="size-4" />
+          Session Manager
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

@@ -37,6 +37,14 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+// Helper to handle API responses for void-returning operations
+async function handleVoidResponse(res: Response, errorMessage: string = 'Operation failed'): Promise<void> {
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || errorMessage, res.status, text);
+  }
+}
+
 // Backend DTOs
 export interface RepoDTO {
   id: string;
@@ -85,7 +93,20 @@ export async function addRepo(path: string): Promise<RepoDTO> {
 }
 
 export async function deleteRepo(id: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
+  await handleVoidResponse(res, 'Failed to delete workspace');
+}
+
+export interface RepoDetailsDTO extends RepoDTO {
+  remoteUrl?: string;
+  githubOwner?: string;
+  githubRepo?: string;
+  workspacesPath?: string;
+}
+
+export async function getRepoDetails(id: string): Promise<RepoDetailsDTO> {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${id}/details`);
+  return handleResponse<RepoDetailsDTO>(res);
 }
 
 export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
@@ -178,6 +199,7 @@ export interface SessionDTO {
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -213,7 +235,8 @@ export async function updateSession(
 }
 
 export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
+  await handleVoidResponse(res, 'Failed to delete session');
 }
 
 export interface FileChangeDTO {
@@ -419,7 +442,8 @@ export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO
 }
 
 export async function stopAgent(agentId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/stop`, { method: 'POST' });
+  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/stop`, { method: 'POST' });
+  await handleVoidResponse(res, 'Failed to stop agent');
 }
 
 export async function getAgentDiff(agentId: string): Promise<string> {
@@ -428,11 +452,13 @@ export async function getAgentDiff(agentId: string): Promise<string> {
 }
 
 export async function mergeAgent(agentId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/merge`, { method: 'POST' });
+  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/merge`, { method: 'POST' });
+  await handleVoidResponse(res, 'Failed to merge agent changes');
 }
 
 export async function deleteAgent(agentId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/agents/${agentId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}`, { method: 'DELETE' });
+  await handleVoidResponse(res, 'Failed to delete agent');
 }
 
 export async function checkHealth(): Promise<boolean> {
@@ -595,11 +621,13 @@ export async function sendConversationMessage(
 }
 
 export async function stopConversation(convId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/stop`, { method: 'POST' });
+  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/stop`, { method: 'POST' });
+  await handleVoidResponse(res, 'Failed to stop conversation');
 }
 
 export async function deleteConversation(convId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
+  await handleVoidResponse(res, 'Failed to delete conversation');
 }
 
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
@@ -659,7 +687,8 @@ export async function saveFileTabs(
 }
 
 export async function deleteFileTab(workspaceId: string, tabId: string): Promise<void> {
-  await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs/${tabId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs/${tabId}`, { method: 'DELETE' });
+  await handleVoidResponse(res, 'Failed to delete file tab');
 }
 
 // File save function
@@ -778,4 +807,24 @@ export async function deleteReviewComment(
     const text = await res.text();
     throw new ApiError(text || 'Delete failed', res.status, text);
   }
+}
+
+// Dashboard data types - for efficient batch loading of initial data
+export interface SessionWithConversationsDTO extends SessionDTO {
+  conversations: ConversationDTO[];
+}
+
+export interface DashboardDataDTO {
+  workspaces: RepoDTO[];
+  sessions: SessionWithConversationsDTO[];
+}
+
+/**
+ * Fetches all workspaces, sessions, and conversations in a single request.
+ * This eliminates the N+1 pattern of fetching sessions per workspace and conversations per session.
+ * Uses only 4 database queries regardless of data volume (1 for repos + 1 for sessions + 3 for conversations batch).
+ */
+export async function getDashboardData(): Promise<DashboardDataDTO> {
+  const res = await fetchWithAuth(`${API_BASE}/api/dashboard/data`);
+  return handleResponse<DashboardDataDTO>(res);
 }

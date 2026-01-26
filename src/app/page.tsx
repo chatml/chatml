@@ -16,10 +16,10 @@ import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useShortcut } from '@/hooks/useShortcut';
-import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
-import { WorkspaceManagement } from '@/components/WorkspaceManagement';
+import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { SettingsPage } from '@/components/SettingsPage';
 import { TopBar } from '@/components/TopBar';
 import { ConversationArea } from '@/components/ConversationArea';
@@ -35,8 +35,9 @@ import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PRDashboard } from '@/components/PRDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
+import { SessionManager } from '@/components/session-manager';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { ToastProvider } from '@/components/ui/toast';
+import { ToastProvider, useToast } from '@/components/ui/toast';
 import { StreamingWarningHandler } from '@/components/StreamingWarningHandler';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import { EmptyView } from '@/components/EmptyView';
@@ -117,10 +118,16 @@ function ConversationSkeleton() {
 }
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
   const [backendConnected, setBackendConnected] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // Prevent hydration mismatch - render nothing until client-side mounted
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
-  const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
+  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -164,10 +171,11 @@ export default function Home() {
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
-  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode } = useSettingsStore();
+  const { error: showError } = useToast();
+  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode, setContentView } = useSettingsStore();
 
-  // Determine if we're in a Full Content view (not conversation)
-  const isFullContentView = contentView.type !== 'conversation';
+  // Determine if we're in a Full Content view (not conversation or session-manager overlay)
+  const isFullContentView = contentView.type !== 'conversation' && contentView.type !== 'session-manager';
 
   const {
     isLoading: authLoading,
@@ -262,6 +270,11 @@ export default function Home() {
   useEffect(() => {
     zenModeRef.current = zenMode;
   }, [zenMode]);
+
+  const contentViewRef = useRef(contentView);
+  useEffect(() => {
+    contentViewRef.current = contentView;
+  }, [contentView]);
 
   // Track previous zen mode state to detect transitions
   const prevZenModeRef = useRef(zenMode);
@@ -392,6 +405,7 @@ export default function Home() {
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
     pinned: session.pinned,
+    archived: session.archived,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   }), []);
@@ -427,56 +441,27 @@ export default function Home() {
   }), [messageToMessage]);
 
   // Load data from backend (only when connected)
+  // Uses a single batch endpoint to fetch all workspaces, sessions, and conversations
   useEffect(() => {
     if (!backendConnected) return;
 
     async function loadData() {
       setIsLoadingData(true);
       try {
-        // Fetch repos from backend
-        const repos = await listRepos();
-        const mappedWorkspaces = repos.map(repoToWorkspace);
+        // Single API call to fetch all data (eliminates N+1 queries)
+        const dashboardData = await getDashboardData();
+
+        // Map workspaces
+        const mappedWorkspaces = dashboardData.workspaces.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
-        // Fetch sessions for all workspaces in parallel
-        const sessionResults = await Promise.all(
-          repos.map(repo => listSessions(repo.id))
-        );
-        const allSessions = sessionResults.flatMap(sessions =>
-          sessions.map(s => sessionToWorktreeSession(s))
-        );
+        // Map sessions (stats already come from backend if available)
+        const allSessions = dashboardData.sessions.map(s => sessionToWorktreeSession(s));
+        setSessions(allSessions);
 
-        // Fetch file changes for all sessions to compute stats
-        const sessionsWithStats = await Promise.all(
-          allSessions.map(async (session) => {
-            try {
-              const changes = await getSessionChanges(session.workspaceId, session.id);
-              if (changes && changes.length > 0) {
-                const stats = changes.reduce(
-                  (acc, change) => ({
-                    additions: acc.additions + change.additions,
-                    deletions: acc.deletions + change.deletions,
-                  }),
-                  { additions: 0, deletions: 0 }
-                );
-                return { ...session, stats };
-              }
-            } catch {
-              // Ignore errors fetching changes
-            }
-            return session;
-          })
-        );
-        setSessions(sessionsWithStats);
-
-        // Fetch conversations for all sessions in parallel
-        const conversationResults = await Promise.all(
-          allSessions.map(session =>
-            listConversations(session.workspaceId, session.id)
-          )
-        );
-        const allConversations = conversationResults.flatMap(convs =>
-          convs.map(conversationToConversation)
+        // Map conversations (already included in the batch response)
+        const allConversations = dashboardData.sessions.flatMap(s =>
+          s.conversations.map(conversationToConversation)
         );
         setConversations(allConversations);
 
@@ -608,8 +593,9 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Failed to close tab:', error);
+      showError('Failed to close conversation. Please try again.');
     }
-  }, [selectedSessionId, conversations, removeConversation, selectConversation]);
+  }, [selectedSessionId, conversations, removeConversation, selectConversation, showError]);
 
   const handleCloseTab = useCallback(async () => {
     if (!selectedConversationId) return;
@@ -845,16 +831,21 @@ export default function Home() {
           setZenMode(!zenModeRef.current);
         }
       }
-      // Escape to exit zen mode (only when zen mode is active)
-      if (e.key === 'Escape' && zenModeRef.current) {
-        e.preventDefault();
-        setZenMode(false);
+      // Escape to close session manager or exit zen mode
+      if (e.key === 'Escape') {
+        if (contentViewRef.current.type === 'session-manager') {
+          e.preventDefault();
+          setContentView({ type: 'conversation' });
+        } else if (zenModeRef.current) {
+          e.preventDefault();
+          setZenMode(false);
+        }
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -933,23 +924,16 @@ export default function Home() {
     };
   }, []);
 
-  // Handle selecting a session from workspace management view
-  const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
-    selectWorkspace(workspaceId);
-    selectSession(sessionId);
-    // Select first conversation for that session
-    const sessionConvs = conversations.filter((c) => c.sessionId === sessionId);
-    if (sessionConvs.length > 0) {
-      selectConversation(sessionConvs[0].id);
-    }
-    // Exit workspace management view
-    setShowWorkspaceManagement(false);
-  }, [conversations, selectWorkspace, selectSession, selectConversation]);
+  // Don't render anything until client-side mounted - prevents hydration flash
+  // Body background (set by ThemeScript) shows through
+  if (!mounted) {
+    return null;
+  }
 
-  // Show loading while checking auth
+  // Show loading while checking auth - transparent to let body bg show through
   if (authLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -975,13 +959,13 @@ export default function Home() {
     <ToastProvider>
       <StreamingWarningHandler />
       <TooltipProvider>
-        <div className="h-screen overflow-hidden flex relative bg-background">
+        <div className="h-screen overflow-hidden flex relative">
         {/* OUTER GROUP: Left Sidebar | Main Content */}
         <ResizablePanelGroup
           direction="horizontal"
           className="flex-1"
         >
-          {/* Left Sidebar - Always rendered, collapsible */}
+          {/* Left Sidebar - Always rendered, collapsible, hidden for global-workspace-manager */}
           <ResizablePanel
             ref={leftSidebarPanelRef}
             id="left-sidebar"
@@ -999,9 +983,11 @@ export default function Home() {
                   onOpenProject={handleOpenProject}
                   onCloneFromUrl={() => setShowCloneFromUrl(true)}
                   onQuickStart={() => setShowQuickStart(true)}
-                  onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
-                  onSessionSelected={() => setShowWorkspaceManagement(false)}
                   onOpenSettings={() => setShowSettings(true)}
+                  onOpenWorkspaceSettings={(workspaceId) => {
+                    expandWorkspace(workspaceId);
+                    setShowWorkspaceSettings(workspaceId);
+                  }}
                   onToggleSidebar={toggleLeftSidebar}
                 />
               </ErrorBoundary>
@@ -1061,7 +1047,6 @@ export default function Home() {
                             onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
                             onOpenSettings={() => setShowSettings(true)}
                             onOpenShortcuts={() => setShowShortcuts(true)}
-                            onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
                           />
                           <ErrorBoundary section="Conversation">
                             <ConversationArea>
@@ -1121,7 +1106,6 @@ export default function Home() {
                     <ChangesPanel
                       onOpenSettings={() => setShowSettings(true)}
                       onOpenShortcuts={() => setShowShortcuts(true)}
-                      onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
                     />
                   </ErrorBoundary>
                 </ResizablePanel>
@@ -1131,7 +1115,7 @@ export default function Home() {
         </ResizablePanelGroup>
 
         {/* Empty View Overlay - covers main content and right sidebar when no session selected */}
-        {!selectedSessionId && !isFullContentView && !showWorkspaceManagement && !showSettings && (
+        {!selectedSessionId && !isFullContentView && !showSettings && (
           <div
             className="absolute inset-0 z-10 bg-background"
             style={{ left: sidebarWidth + 5 }}
@@ -1144,15 +1128,15 @@ export default function Home() {
           </div>
         )}
 
-        {/* Workspace Management Overlay - covers main content and right sidebar */}
-        {showWorkspaceManagement && (
-          <div
-            className="absolute inset-0 z-10 bg-background"
-            style={{ left: sidebarWidth + 5 }}
-          >
-            <WorkspaceManagement
-              onSelectSession={handleSelectSessionFromManagement}
-              onBack={() => setShowWorkspaceManagement(false)}
+        {/* Session Manager Overlay - full screen */}
+        {contentView.type === 'session-manager' && (
+          <div className="absolute inset-0 z-20 bg-background">
+            <SessionManager
+              onOpenSettings={() => setShowSettings(true)}
+              onOpenShortcuts={() => setShowShortcuts(true)}
+              onOpenProject={handleOpenProject}
+              onCloneFromUrl={() => setShowCloneFromUrl(true)}
+              onClose={() => setContentView({ type: 'conversation' })}
             />
           </div>
         )}
@@ -1161,6 +1145,16 @@ export default function Home() {
         {showSettings && (
           <div className="absolute inset-0 z-20 bg-background">
             <SettingsPage onBack={() => setShowSettings(false)} />
+          </div>
+        )}
+
+        {/* Workspace Settings Overlay - full screen */}
+        {showWorkspaceSettings && (
+          <div className="absolute inset-0 z-20 bg-background">
+            <WorkspaceSettings
+              workspaceId={showWorkspaceSettings}
+              onBack={() => setShowWorkspaceSettings(null)}
+            />
           </div>
         )}
 

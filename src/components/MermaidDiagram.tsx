@@ -6,6 +6,7 @@ import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pa
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, Undo2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface MermaidDiagramProps {
   code: string;
@@ -135,38 +136,52 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
     );
   }
 
+  // ErrorBoundary catches unexpected render errors (e.g., in TransformWrapper/zoom controls)
+  // while the error state above handles Mermaid parsing/syntax errors
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/30 overflow-hidden my-4">
-      <TransformWrapper
-        initialScale={1}
-        minScale={0.5}
-        maxScale={3}
-        centerOnInit
-        wheel={{ disabled: true }}
-      >
-        {/* Header with controls */}
-        <div className="flex items-center px-2 py-1.5 border-b border-border/50 bg-muted/50">
-          <ZoomControls />
-          <div className="flex-1" />
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-            Mermaid
-          </span>
+    <ErrorBoundary
+      section="MermaidDiagram"
+      fallback={
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 my-4">
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="w-4 h-4" />
+            <span>Failed to render diagram</span>
+          </div>
         </div>
-
-        {/* Diagram area */}
-        <TransformComponent
-          wrapperClass="!w-full"
-          contentClass="!w-full flex items-center justify-center"
+      }
+    >
+      <div className="rounded-lg border border-border/50 bg-muted/30 overflow-hidden my-4">
+        <TransformWrapper
+          initialScale={1}
+          minScale={0.5}
+          maxScale={3}
+          centerOnInit
+          wheel={{ disabled: true }}
         >
-          <div
-            className={cn(
-              'p-2 min-h-[100px] flex items-center justify-center',
-              '[&_svg]:max-w-full [&_svg]:h-auto'
-            )}
-            dangerouslySetInnerHTML={{ __html: svg || '' }}
-          />
-        </TransformComponent>
-      </TransformWrapper>
-    </div>
+          {/* Header with controls */}
+          <div className="flex items-center px-2 py-1.5 border-b border-border/50 bg-muted/50">
+            <ZoomControls />
+            <div className="flex-1" />
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+              Mermaid
+            </span>
+          </div>
+
+          {/* Diagram area */}
+          <TransformComponent
+            wrapperClass="!w-full"
+            contentClass="!w-full flex items-center justify-center"
+          >
+            <div
+              className={cn(
+                'p-2 min-h-[100px] flex items-center justify-center',
+                '[&_svg]:max-w-full [&_svg]:h-auto'
+              )}
+              dangerouslySetInnerHTML={{ __html: svg || '' }}
+            />
+          </TransformComponent>
+        </TransformWrapper>
+      </div>
+    </ErrorBoundary>
   );
 }

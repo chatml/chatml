@@ -9,14 +9,13 @@ import {
 import {
   FolderGit2,
   Search,
-  Bot,
   History,
   HelpCircle,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type ActivityView = 'workspaces' | 'search' | 'agents' | 'history';
+export type ActivityView = 'workspaces' | 'search' | 'history';
 
 interface ActivityBarProps {
   activeView: ActivityView;
@@ -26,8 +25,7 @@ interface ActivityBarProps {
 const activities: { id: ActivityView; icon: React.ElementType; label: string; shortcut: string }[] = [
   { id: 'workspaces', icon: FolderGit2, label: 'Workspaces', shortcut: '⌘1' },
   { id: 'search', icon: Search, label: 'Search', shortcut: '⌘2' },
-  { id: 'agents', icon: Bot, label: 'Agents', shortcut: '⌘3' },
-  { id: 'history', icon: History, label: 'History', shortcut: '⌘4' },
+  { id: 'history', icon: History, label: 'History', shortcut: '⌘3' },
 ];
 
 export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {

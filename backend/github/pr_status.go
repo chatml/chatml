@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"sync"
 )
 
 // CheckStatus represents the aggregated status of CI checks
@@ -166,6 +168,48 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 	}
 
 	return details, nil
+}
+
+// GetPRDetailsBatch fetches details for multiple PRs concurrently with rate limiting.
+// Returns a map of PR number -> PRDetails and a slice of PR numbers that failed to fetch.
+// Uses goroutines with a semaphore to avoid overwhelming the GitHub API (default maxConcurrent is 5).
+func (c *Client) GetPRDetailsBatch(ctx context.Context, owner, repo string, prNumbers []int, maxConcurrent int) (map[int]*PRDetails, []int) {
+	if maxConcurrent <= 0 {
+		maxConcurrent = 5 // default concurrent limit
+	}
+
+	results := make(map[int]*PRDetails)
+	var failedPRs []int
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrent)
+
+	for _, prNum := range prNumbers {
+		wg.Add(1)
+
+		go func(num int) {
+			defer wg.Done()
+
+			// Acquire semaphore inside goroutine so all workers spawn immediately and self-limit
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			details, err := c.GetPRDetails(ctx, owner, repo, num)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				log.Printf("[github] Failed to fetch PR #%d details for %s/%s: %v", num, owner, repo, err)
+				failedPRs = append(failedPRs, num)
+				return
+			}
+			if details != nil {
+				results[num] = details
+			}
+		}(prNum)
+	}
+
+	wg.Wait()
+	return results, failedPRs
 }
 
 // PRListItem represents a pull request in a list response

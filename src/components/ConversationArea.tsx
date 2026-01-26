@@ -66,6 +66,8 @@ import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation } from '@/lib/api';
 import { Terminal } from 'lucide-react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { BlockErrorFallback, InlineErrorFallback } from '@/components/ErrorFallbacks';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -768,28 +770,54 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               </div>
             ) : currentFileTab.viewMode === 'diff' && currentFileTab.diff ? (
               // Diff view - uses CodeViewer with oldContent for diff mode
-              <CodeViewer
-                content={currentFileTab.diff.newContent}
-                oldContent={currentFileTab.diff.oldContent}
-                filename={currentFileTab.name}
-                isLoading={currentFileTab.isLoading}
-                onStateChange={handleEditorStateChange}
-                initialCursorPosition={currentFileTab.cursorPosition}
-                initialScrollPosition={currentFileTab.scrollPosition}
-                comments={reviewComments.filter((c) => c.filePath === currentFileTab.path)}
-                onResolveComment={handleResolveComment}
-                onDeleteComment={handleDeleteComment}
-              />
+              // key resets ErrorBoundary when switching files, clearing any previous error state
+              <ErrorBoundary
+                key={currentFileTab.id}
+                section="CodeViewer"
+                fallback={
+                  <BlockErrorFallback
+                    icon={FileCode}
+                    title="Unable to load diff"
+                    description="There was an error rendering the file diff"
+                  />
+                }
+              >
+                <CodeViewer
+                  content={currentFileTab.diff.newContent}
+                  oldContent={currentFileTab.diff.oldContent}
+                  filename={currentFileTab.name}
+                  isLoading={currentFileTab.isLoading}
+                  onStateChange={handleEditorStateChange}
+                  initialCursorPosition={currentFileTab.cursorPosition}
+                  initialScrollPosition={currentFileTab.scrollPosition}
+                  comments={reviewComments.filter((c) => c.filePath === currentFileTab.path)}
+                  onResolveComment={handleResolveComment}
+                  onDeleteComment={handleDeleteComment}
+                />
+              </ErrorBoundary>
             ) : (
               // Regular file view
-              <CodeViewer
-                content={currentFileTab.content || ''}
-                filename={currentFileTab.name}
-                isLoading={currentFileTab.isLoading}
-                onStateChange={handleEditorStateChange}
-                initialCursorPosition={currentFileTab.cursorPosition}
-                initialScrollPosition={currentFileTab.scrollPosition}
-              />
+              // key resets ErrorBoundary when switching files, clearing any previous error state
+              <ErrorBoundary
+                key={currentFileTab.id}
+                section="CodeViewer"
+                fallback={
+                  <BlockErrorFallback
+                    icon={FileCode}
+                    title="Unable to load file"
+                    description="There was an error rendering the file content"
+                  />
+                }
+              >
+                <CodeViewer
+                  content={currentFileTab.content || ''}
+                  filename={currentFileTab.name}
+                  isLoading={currentFileTab.isLoading}
+                  onStateChange={handleEditorStateChange}
+                  initialCursorPosition={currentFileTab.cursorPosition}
+                  initialScrollPosition={currentFileTab.scrollPosition}
+                />
+              </ErrorBoundary>
             )}
           </div>
           {/* No chat input when viewing files */}
@@ -844,7 +872,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   ))}
                   {/* Streaming message */}
                   {selectedConversationId && (
-                    <StreamingMessage conversationId={selectedConversationId} />
+                    <ErrorBoundary
+                      section="StreamingMessage"
+                      fallback={<InlineErrorFallback message="Error displaying streaming message" />}
+                    >
+                      <StreamingMessage conversationId={selectedConversationId} />
+                    </ErrorBoundary>
                   )}
                 </>
               )}
@@ -999,7 +1032,12 @@ const MessageBlock = memo(function MessageBlock({
       <div className="space-y-1.5">
           {/* Tool Usage History */}
           {message.toolUsage && message.toolUsage.length > 0 && (
-            <ToolUsageHistory tools={message.toolUsage} />
+            <ErrorBoundary
+              section="ToolUsage"
+              fallback={<InlineErrorFallback message="Unable to display tool usage" />}
+            >
+              <ToolUsageHistory tools={message.toolUsage} />
+            </ErrorBoundary>
           )}
 
           {/* Verification Results */}
@@ -1013,13 +1051,22 @@ const MessageBlock = memo(function MessageBlock({
               <ContextMenuTrigger asChild>
                 <div className="group relative">
                   <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeHighlight]}
-                      components={{ pre: MarkdownPre, code: MarkdownCode }}
+                    <ErrorBoundary
+                      section="MessageContent"
+                      fallback={
+                        <div className="text-sm text-muted-foreground italic">
+                          Unable to render message content
+                        </div>
+                      }
                     >
-                      {message.content}
-                    </ReactMarkdown>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{ pre: MarkdownPre, code: MarkdownCode }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </ErrorBoundary>
                   </div>
                   <Button
                     variant="ghost"

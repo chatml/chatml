@@ -60,11 +60,15 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// PR Dashboard endpoint
 	r.Get("/api/prs", h.ListPRs)
 
+	// Dashboard data endpoint - fetches all workspaces, sessions, and conversations in one request
+	r.Get("/api/dashboard/data", h.GetDashboardData)
+
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {
 		r.Get("/", h.ListRepos)
 		r.Post("/", h.AddRepo)
 		r.Get("/{id}", h.GetRepo)
+		r.Get("/{id}/details", h.GetRepoDetails)
 		r.Delete("/{id}", h.DeleteRepo)
 		r.Get("/{id}/files", h.ListRepoFiles)
 		r.Get("/{id}/file", h.GetRepoFileContent)

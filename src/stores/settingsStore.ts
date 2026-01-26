@@ -17,7 +17,8 @@ export type ThemeOption = 'system' | 'light' | 'dark';
 export type ContentView =
   | { type: 'conversation' }
   | { type: 'workspace-dashboard'; workspaceId: string }
-  | { type: 'pr-dashboard'; workspaceId?: string };
+  | { type: 'pr-dashboard'; workspaceId?: string }
+  | { type: 'session-manager' };
 
 interface SettingsState {
   // Chat settings
