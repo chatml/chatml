@@ -847,7 +847,7 @@ function SortableWorkspaceItem({
                             </div>
                           </div>
                           {/* Second line: session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-xs)] text-muted-foreground">
+                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-sm)] text-muted-foreground">
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>
