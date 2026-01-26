@@ -111,7 +111,7 @@ export function ChangesPanel({
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
-  const [selectedTab, setSelectedTab] = useState('changes');
+  const [selectedTab, setSelectedTab] = useState('files');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);

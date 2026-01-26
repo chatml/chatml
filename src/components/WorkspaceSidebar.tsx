@@ -110,7 +110,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const [searchTerm, setSearchTerm] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [addTooltipOpen, setAddTooltipOpen] = useState(false);
-  const [isShimmering, setIsShimmering] = useState(false);
   const addMenuClosedRef = useRef(false);
   const { error: showError } = useToast();
 
@@ -314,11 +313,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
-        <span
-          className={cn("text-[22px] font-extrabold brand-shimmer cursor-pointer select-none", isShimmering && "shimmer-active")}
-          onClick={() => setIsShimmering(!isShimmering)}
-        >
-          <span className="text-muted-foreground">chat</span><span className="text-violet-400/80">ml</span>
+        <span className="text-[22px] font-extrabold select-none">
+          <span className="text-muted-foreground">chat</span><span className="text-[oklch(0.45_0.08_280)]">ml</span>
         </span>
         {onToggleSidebar && (
           <Tooltip>
@@ -338,8 +334,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       </div>
 
       {/* Workspace List */}
-      <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden [&>[data-slot=scroll-area-viewport]>div]:!h-full">
-            <div className="py-2 px-1 h-full w-full flex flex-col">
+      <ScrollArea className="flex-1 min-h-0 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
+            <div className="py-2 pl-1 pr-2 flex flex-col">
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
@@ -455,7 +451,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       </ScrollArea>
 
       {/* Footer */}
-      <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
+      <div className="p-2 border-t border-sidebar-border flex items-center gap-1 shrink-0">
         <Tooltip
           open={addTooltipOpen}
           onOpenChange={(open) => {
@@ -691,9 +687,9 @@ function SortableWorkspaceItem({
 
         {/* Workspace Navigation + Sessions */}
         <CollapsibleContent>
-          <div className="ml-5 overflow-hidden">
+          <div className="ml-2 overflow-hidden">
             {/* Fixed Navigation Items - less indented than sessions */}
-            <div className="pb-1 -ml-2">
+            <div className="pb-1">
               {(() => {
                 const isDashboardSelected = contentView.type === 'workspace-dashboard' && contentView.workspaceId === workspace.id;
                 const isPRsSelected = contentView.type === 'pr-dashboard' && contentView.workspaceId === workspace.id;
@@ -789,23 +785,36 @@ function SortableWorkspaceItem({
                     <ContextMenuTrigger asChild>
                       <div
                         className={cn(
-                          'group flex items-start gap-2 px-2 py-2 rounded-md cursor-pointer my-0.5',
+                          'group flex items-start gap-1 pl-0 pr-2 py-2 rounded-md cursor-pointer my-0.5',
                           isSessionSelected
                             ? 'bg-surface-2 hover:bg-surface-3'
                             : 'hover:bg-surface-1'
                         )}
                         onClick={() => onSelectSession(session.id)}
                       >
+                        {/* Status indicator column */}
+                        <div className="w-3.5 shrink-0 flex items-center justify-center pt-0.5">
+                          {session.status === 'active' && (
+                            <div className="session-active-indicator">
+                              <div className="bar" />
+                              <div className="bar" />
+                              <div className="bar" />
+                            </div>
+                          )}
+                        </div>
+                        {/* Git icon column */}
+                        <div className="w-4 shrink-0 flex items-start justify-center pt-0.5">
+                          {hasPR ? (
+                            <GitPullRequest className="w-3.5 h-3.5 text-purple-500" />
+                          ) : (
+                            <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
-                          {/* First line: icon + branch name + stats/actions */}
+                          {/* First line: branch name + stats/actions */}
                           <div className="flex items-center gap-1.5">
                             {/* Branch name container - grows and truncates */}
                             <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-                              {hasPR ? (
-                                <GitPullRequest className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                              ) : (
-                                <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                              )}
                               <span className={cn(
                                 "text-[length:var(--text-base)] font-normal truncate flex-1 w-0",
                                 isSessionSelected ? "text-foreground" : "text-foreground/60"
