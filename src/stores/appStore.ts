@@ -108,6 +108,7 @@ interface AppState {
   removeSession: (id: string) => void;
   selectSession: (id: string | null) => void;
   archiveSession: (id: string) => void;
+  unarchiveSession: (id: string) => void;
 
   // Conversation actions
   setConversations: (conversations: Conversation[]) => void;
@@ -391,71 +392,44 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   archiveSession: (id) => set((state) => {
     const session = state.sessions.find((s) => s.id === id);
+    if (!session) return state;
 
-    // Remove the session entirely
-    const updatedSessions = state.sessions.filter((s) => s.id !== id);
+    // Mark the session as archived
+    const updatedSessions = state.sessions.map((s) =>
+      s.id === id ? { ...s, archived: true } : s
+    );
 
-    // Remove conversations and messages for this session
-    const updatedConversations = state.conversations.filter((c) => c.sessionId !== id);
-    const sessionConvIds = state.conversations.filter((c) => c.sessionId === id).map((c) => c.id);
-    const updatedMessages = state.messages.filter((m) => !sessionConvIds.includes(m.conversationId));
-
-// Clean up streaming state, active tools, and agent todos for all session conversations
-    const cleanedStreamingState = { ...state.streamingState };
-    const cleanedActiveTools = { ...state.activeTools };
-    const cleanedAgentTodos = { ...state.agentTodos };
-    for (const convId of sessionConvIds) {
-      delete cleanedStreamingState[convId];
-      delete cleanedActiveTools[convId];
-      delete cleanedAgentTodos[convId];
-    }
-
-    // Clean up custom todos and session outputs
-    const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
-    const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
-
-    // Close only tabs that belong to this session (keep workspace tabs)
-    const updatedFileTabs = state.fileTabs.filter((t) => t.sessionId !== id);
-
-    // If this was the selected session, select another session in the same workspace
+    // If this was the selected session, select another non-archived session in the same workspace
     let newSelectedSessionId = state.selectedSessionId;
     let newSelectedConversationId = state.selectedConversationId;
-    let newSelectedFileTabId = state.selectedFileTabId;
 
     if (state.selectedSessionId === id) {
       const otherSessions = updatedSessions.filter(
-        (s) => s.workspaceId === session?.workspaceId
+        (s) => s.workspaceId === session.workspaceId && !s.archived
       );
       newSelectedSessionId = otherSessions[0]?.id || null;
 
       // Find first conversation for new session
       if (newSelectedSessionId) {
-        const sessionConvs = updatedConversations.filter(c => c.sessionId === newSelectedSessionId);
+        const sessionConvs = state.conversations.filter(c => c.sessionId === newSelectedSessionId);
         newSelectedConversationId = sessionConvs[0]?.id || null;
       } else {
         newSelectedConversationId = null;
-      }
-
-      // Update selected file tab if it was closed
-      if (!updatedFileTabs.some(t => t.id === state.selectedFileTabId)) {
-        newSelectedFileTabId = updatedFileTabs[0]?.id || null;
       }
     }
 
     return {
       sessions: updatedSessions,
-      conversations: updatedConversations,
-      messages: updatedMessages,
-      fileTabs: updatedFileTabs,
       selectedSessionId: newSelectedSessionId,
       selectedConversationId: newSelectedConversationId,
-streamingState: cleanedStreamingState,
-      activeTools: cleanedActiveTools,
-      agentTodos: cleanedAgentTodos,
-      customTodos: remainingCustomTodos,
-      sessionOutputs: remainingSessionOutputs,
-      selectedFileTabId: newSelectedFileTabId,
     };
+  }),
+  unarchiveSession: (id) => set((state) => {
+    // Mark the session as not archived
+    const updatedSessions = state.sessions.map((s) =>
+      s.id === id ? { ...s, archived: false } : s
+    );
+    return { sessions: updatedSessions };
   }),
 
   // Conversation actions

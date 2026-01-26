@@ -97,13 +97,11 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 interface ChangesPanelProps {
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
-  onOpenWorkspaces?: () => void;
 }
 
 export function ChangesPanel({
   onOpenSettings,
   onOpenShortcuts,
-  onOpenWorkspaces,
 }: ChangesPanelProps = {}) {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
@@ -461,11 +459,10 @@ export function ChangesPanel({
           gitStatus={gitStatus}
           prDetails={prDetails}
         />
-        {onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (
+        {onOpenSettings && onOpenShortcuts && (
           <AppSettingsMenu
             onOpenSettings={onOpenSettings}
             onOpenShortcuts={onOpenShortcuts}
-            onOpenWorkspaces={onOpenWorkspaces}
           />
         )}
       </div>

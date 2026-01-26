@@ -50,7 +50,6 @@ interface TopBarProps {
   onToggleBottomPanel?: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
-  onOpenWorkspaces?: () => void;
 }
 
 export function TopBar({
@@ -62,7 +61,6 @@ export function TopBar({
   onToggleBottomPanel,
   onOpenSettings,
   onOpenShortcuts,
-  onOpenWorkspaces,
 }: TopBarProps) {
   // Use optimized selectors to prevent unnecessary re-renders
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
@@ -251,10 +249,6 @@ export function TopBar({
               <span className="ml-auto text-xs text-muted-foreground">⌘/</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onOpenWorkspaces}>
-              <FolderOpen className="size-4" />
-              Manage Workspaces
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setZenMode(!zenMode)}>
               <Sparkles className="size-4" />
               {zenMode ? 'Exit Zen Mode' : 'Enter Zen Mode'}
@@ -276,11 +270,10 @@ export function TopBar({
       </div>
 
       {/* App Settings Menu - shown when right sidebar is hidden */}
-      {!showRightSidebar && onOpenSettings && onOpenShortcuts && onOpenWorkspaces && (
+      {!showRightSidebar && onOpenSettings && onOpenShortcuts && (
         <AppSettingsMenu
           onOpenSettings={onOpenSettings}
           onOpenShortcuts={onOpenShortcuts}
-          onOpenWorkspaces={onOpenWorkspaces}
           className="mr-1"
         />
       )}

@@ -349,6 +349,48 @@ func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, repo)
 }
 
+// RepoDetailsResponse extends the basic repo info with remote origin details
+type RepoDetailsResponse struct {
+	*models.Repo
+	RemoteURL      string `json:"remoteUrl,omitempty"`
+	GitHubOwner    string `json:"githubOwner,omitempty"`
+	GitHubRepo     string `json:"githubRepo,omitempty"`
+	WorkspacesPath string `json:"workspacesPath,omitempty"`
+}
+
+func (h *Handlers) GetRepoDetails(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "repo")
+		return
+	}
+
+	response := &RepoDetailsResponse{Repo: repo}
+
+	// Try to get remote origin URL
+	rm := git.NewRepoManager()
+	owner, repoName, err := rm.GetGitHubRemote(ctx, repo.Path)
+	if err == nil {
+		response.GitHubOwner = owner
+		response.GitHubRepo = repoName
+		response.RemoteURL = fmt.Sprintf("https://github.com/%s/%s", owner, repoName)
+	}
+
+	// Get workspaces base directory
+	workspacesDir, err := git.WorkspacesBaseDir()
+	if err == nil {
+		response.WorkspacesPath = workspacesDir
+	}
+
+	writeJSON(w, response)
+}
+
 func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")

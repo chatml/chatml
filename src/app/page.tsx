@@ -19,7 +19,7 @@ import { useShortcut } from '@/hooks/useShortcut';
 import { listRepos, listSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
-import { WorkspaceManagement } from '@/components/WorkspaceManagement';
+import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { SettingsPage } from '@/components/SettingsPage';
 import { TopBar } from '@/components/TopBar';
 import { ConversationArea } from '@/components/ConversationArea';
@@ -119,7 +119,7 @@ export default function Home() {
   const [backendConnected, setBackendConnected] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
-  const [showWorkspaceManagement, setShowWorkspaceManagement] = useState(false);
+  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -391,6 +391,7 @@ export default function Home() {
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
     pinned: session.pinned,
+    archived: session.archived,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   }), []);
@@ -932,19 +933,6 @@ export default function Home() {
     };
   }, []);
 
-  // Handle selecting a session from workspace management view
-  const handleSelectSessionFromManagement = useCallback((workspaceId: string, sessionId: string) => {
-    selectWorkspace(workspaceId);
-    selectSession(sessionId);
-    // Select first conversation for that session
-    const sessionConvs = conversations.filter((c) => c.sessionId === sessionId);
-    if (sessionConvs.length > 0) {
-      selectConversation(sessionConvs[0].id);
-    }
-    // Exit workspace management view
-    setShowWorkspaceManagement(false);
-  }, [conversations, selectWorkspace, selectSession, selectConversation]);
-
   // Show loading while checking auth
   if (authLoading) {
     return (
@@ -997,9 +985,11 @@ export default function Home() {
                   onOpenProject={handleOpenProject}
                   onCloneFromUrl={() => setShowCloneFromUrl(true)}
                   onQuickStart={() => setShowQuickStart(true)}
-                  onShowWorkspaceManagement={() => setShowWorkspaceManagement(true)}
-                  onSessionSelected={() => setShowWorkspaceManagement(false)}
                   onOpenSettings={() => setShowSettings(true)}
+                  onOpenWorkspaceSettings={(workspaceId) => {
+                    expandWorkspace(workspaceId);
+                    setShowWorkspaceSettings(workspaceId);
+                  }}
                   onToggleSidebar={toggleLeftSidebar}
                 />
               </ErrorBoundary>
@@ -1059,7 +1049,6 @@ export default function Home() {
                             onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
                             onOpenSettings={() => setShowSettings(true)}
                             onOpenShortcuts={() => setShowShortcuts(true)}
-                            onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
                           />
                           <ErrorBoundary section="Conversation">
                             <ConversationArea>
@@ -1119,7 +1108,6 @@ export default function Home() {
                     <ChangesPanel
                       onOpenSettings={() => setShowSettings(true)}
                       onOpenShortcuts={() => setShowShortcuts(true)}
-                      onOpenWorkspaces={() => setShowWorkspaceManagement(true)}
                     />
                   </ErrorBoundary>
                 </ResizablePanel>
@@ -1129,7 +1117,7 @@ export default function Home() {
         </ResizablePanelGroup>
 
         {/* Empty View Overlay - covers main content and right sidebar when no session selected */}
-        {!selectedSessionId && !isFullContentView && !showWorkspaceManagement && !showSettings && (
+        {!selectedSessionId && !isFullContentView && !showSettings && (
           <div
             className="absolute inset-0 z-10 bg-background"
             style={{ left: sidebarWidth + 5 }}
@@ -1142,23 +1130,20 @@ export default function Home() {
           </div>
         )}
 
-        {/* Workspace Management Overlay - covers main content and right sidebar */}
-        {showWorkspaceManagement && (
-          <div
-            className="absolute inset-0 z-10 bg-background"
-            style={{ left: sidebarWidth + 5 }}
-          >
-            <WorkspaceManagement
-              onSelectSession={handleSelectSessionFromManagement}
-              onBack={() => setShowWorkspaceManagement(false)}
-            />
-          </div>
-        )}
-
         {/* Settings Overlay - full screen */}
         {showSettings && (
           <div className="absolute inset-0 z-20 bg-background">
             <SettingsPage onBack={() => setShowSettings(false)} />
+          </div>
+        )}
+
+        {/* Workspace Settings Overlay - full screen */}
+        {showWorkspaceSettings && (
+          <div className="absolute inset-0 z-20 bg-background">
+            <WorkspaceSettings
+              workspaceId={showWorkspaceSettings}
+              onBack={() => setShowWorkspaceSettings(null)}
+            />
           </div>
         )}
 
