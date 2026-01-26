@@ -403,6 +403,7 @@ export function ChangesPanel({
     <div className="flex flex-col h-full">
       {/* Top Bar - changes based on session state */}
       <div
+        data-tauri-drag-region
         className={cn(
           'h-10 flex items-center gap-2 px-3 border-b shrink-0',
           hasActivePR && 'bg-text-success/15 border-text-success/30',

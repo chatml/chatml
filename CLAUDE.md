@@ -87,6 +87,18 @@ mcp__linear__get_issue id="CHA-123"
 | Medium (3) | Normal priority |
 | Low (4) | Nice to have |
 
+## Git Workflow
+
+**NEVER make changes directly on `main`.** Always create a feature branch first:
+
+```bash
+git checkout -b fix/description-of-change
+# or
+git checkout -b feature/description-of-change
+```
+
+Then make changes, commit, push, and create a PR.
+
 ## Verification Checklist
 
 Run before completing any task:
