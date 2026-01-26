@@ -615,13 +615,16 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 	return &result, nil
 }
 
-func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
-			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, pinned, archived, created_at, updated_at
-		FROM sessions WHERE workspace_id = ?
-		ORDER BY pinned DESC, created_at DESC`, workspaceID)
+func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, includeArchived bool) ([]*models.Session, error) {
+	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+		stats_additions, stats_deletions, pinned, archived, created_at, updated_at
+		FROM sessions WHERE workspace_id = ?`
+	if !includeArchived {
+		query += " AND archived = 0"
+	}
+	query += " ORDER BY pinned DESC, created_at DESC"
+	rows, err := s.db.QueryContext(ctx, query, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("ListSessions: %w", err)
 	}
@@ -666,13 +669,16 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]*
 
 // ListAllSessions returns all sessions across all workspaces
 // Used for dashboard data loading to avoid N queries for N workspaces
-func (s *SQLiteStore) ListAllSessions(ctx context.Context) ([]*models.Session, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
-			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
-			stats_additions, stats_deletions, pinned, created_at, updated_at
-		FROM sessions
-		ORDER BY pinned DESC, created_at DESC`)
+func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool) ([]*models.Session, error) {
+	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+		stats_additions, stats_deletions, pinned, archived, created_at, updated_at
+		FROM sessions`
+	if !includeArchived {
+		query += " WHERE archived = 0"
+	}
+	query += " ORDER BY pinned DESC, created_at DESC"
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("ListAllSessions: %w", err)
 	}
@@ -681,7 +687,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context) ([]*models.Session, e
 	sessions := []*models.Session{}
 	for rows.Next() {
 		var session models.Session
-		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned int
+		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
 		var agentID sql.NullString
 
 		if err := rows.Scan(
@@ -689,13 +695,14 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context) ([]*models.Session, e
 			&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-			&pinned, &session.CreatedAt, &session.UpdatedAt); err != nil {
+			&pinned, &archived, &session.CreatedAt, &session.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ListAllSessions scan: %w", err)
 		}
 
 		session.HasMergeConflict = intToBool(hasMergeConflict)
 		session.HasCheckFailures = intToBool(hasCheckFailures)
 		session.Pinned = intToBool(pinned)
+		session.Archived = intToBool(archived)
 		if agentID.Valid {
 			session.AgentID = agentID.String
 		}

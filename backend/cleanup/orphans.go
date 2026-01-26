@@ -15,7 +15,7 @@ import (
 // Store defines the minimal interface needed for orphan cleanup.
 type Store interface {
 	ListRepos(ctx context.Context) ([]*models.Repo, error)
-	ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error)
+	ListSessions(ctx context.Context, workspaceID string, includeArchived bool) ([]*models.Session, error)
 	GetSession(ctx context.Context, sessionID string) (*models.Session, error)
 }
 
@@ -110,7 +110,8 @@ func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, re
 	}
 
 	// Get all sessions from the database for this repo
-	sessions, err := store.ListSessions(ctx, repo.ID)
+	// Include archived sessions since we need to check all tracked worktrees
+	sessions, err := store.ListSessions(ctx, repo.ID, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}

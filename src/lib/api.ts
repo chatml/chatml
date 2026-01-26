@@ -221,8 +221,9 @@ export interface SessionDTO {
   updatedAt: string;
 }
 
-export async function listSessions(workspaceId: string): Promise<SessionDTO[]> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`);
+export async function listSessions(workspaceId: string, includeArchived?: boolean): Promise<SessionDTO[]> {
+  const params = includeArchived ? '?includeArchived=true' : '';
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions${params}`);
   return handleResponse<SessionDTO[]>(res);
 }
 

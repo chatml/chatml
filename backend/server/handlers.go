@@ -444,7 +444,8 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch all sessions across all workspaces in a single query
-	allSessions, err := h.store.ListAllSessions(ctx)
+	// Pass false to exclude archived sessions from dashboard data
+	allSessions, err := h.store.ListAllSessions(ctx, false)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -607,7 +608,8 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	workspaceID := chi.URLParam(r, "id")
-	sessions, err := h.store.ListSessions(ctx, workspaceID)
+	includeArchived := r.URL.Query().Get("includeArchived") == "true"
+	sessions, err := h.store.ListSessions(ctx, workspaceID, includeArchived)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -991,6 +993,8 @@ type UpdateSessionRequest struct {
 	PRNumber         *int    `json:"prNumber,omitempty"`
 	HasMergeConflict *bool   `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures *bool   `json:"hasCheckFailures,omitempty"`
+	Pinned           *bool   `json:"pinned,omitempty"`
+	Archived         *bool   `json:"archived,omitempty"`
 }
 
 func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -1046,6 +1050,12 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.HasCheckFailures != nil {
 			s.HasCheckFailures = *req.HasCheckFailures
+		}
+		if req.Pinned != nil {
+			s.Pinned = *req.Pinned
+		}
+		if req.Archived != nil {
+			s.Archived = *req.Archived
 		}
 		s.UpdatedAt = time.Now()
 	}); err != nil {
@@ -2797,7 +2807,8 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// List sessions to match PRs with sessions by branch
-		sessions, err := h.store.ListSessions(ctx, repo.ID)
+		// Include archived sessions since PRs may still be associated with them
+		sessions, err := h.store.ListSessions(ctx, repo.ID, true)
 		if err != nil {
 			sessions = nil // Continue without session matching
 		}

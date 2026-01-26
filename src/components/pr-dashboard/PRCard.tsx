@@ -23,6 +23,9 @@ import {
   Clock,
   AlertTriangle,
   ArrowRight,
+  GitMerge,
+  Wrench,
+  Loader2,
 } from 'lucide-react';
 
 function BranchBadge({ name }: { name: string }) {
@@ -46,9 +49,11 @@ async function openInBrowser(url: string) {
 interface PRCardProps {
   pr: PRDashboardItem;
   onJumpToSession?: () => void;
+  onSendMessage?: (message: string) => void;
+  isSendingMessage?: boolean;
 }
 
-export function PRCard({ pr, onJumpToSession }: PRCardProps) {
+export function PRCard({ pr, onJumpToSession, onSendMessage, isSendingMessage }: PRCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const hasChecks = pr.checksTotal > 0;
@@ -122,6 +127,60 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
   const checkSummary = getCheckSummary();
   const CheckIcon = checkSummary.icon;
 
+  // Determine primary action based on PR state
+  const getPrimaryAction = () => {
+    // Draft PRs - no action for now
+    if (pr.isDraft) {
+      return null;
+    }
+    // Conflicts take priority
+    if (hasConflicts) {
+      return {
+        label: 'Resolve Conflicts',
+        message: 'Please resolve the merge conflicts in this PR.',
+        icon: AlertTriangle,
+        variant: 'warning' as const,
+      };
+    }
+    // Failed checks
+    if (hasFailures) {
+      return {
+        label: 'Fix Failures',
+        message: 'Please fix the failing CI checks in this PR.',
+        icon: Wrench,
+        variant: 'warning' as const,
+      };
+    }
+    // Pending checks - no action, just wait
+    if (hasPending) {
+      return null;
+    }
+    // All passed, no conflicts - ready to merge
+    if (allPassed || !hasChecks) {
+      return {
+        label: 'Merge PR',
+        message: 'Please merge this PR.',
+        icon: GitMerge,
+        variant: 'success' as const,
+      };
+    }
+    return null;
+  };
+
+  const primaryAction = getPrimaryAction();
+
+  const handleActionClick = () => {
+    if (!primaryAction) return;
+
+    if (onSendMessage) {
+      // Has a session - send message to agent
+      onSendMessage(primaryAction.message);
+    } else {
+      // No session - open GitHub
+      openInBrowser(pr.htmlUrl);
+    }
+  };
+
   return (
     <div className="border rounded-lg bg-card hover:bg-surface-1 transition-colors">
       <div className="p-3">
@@ -130,8 +189,8 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
           <StatusIcon className={cn('h-4 w-4 mt-0.5 shrink-0', statusInfo.color)} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-sm truncate">{pr.title}</span>
-              <span className="text-xs text-muted-foreground shrink-0">#{pr.number}</span>
+              <span className="font-medium text-base truncate">{pr.title}</span>
+              <span className="text-sm text-muted-foreground shrink-0">#{pr.number}</span>
               {pr.sessionName && (
                 <span className="text-xs bg-surface-2 px-1.5 py-0.5 rounded shrink-0">
                   {pr.sessionName}
@@ -163,6 +222,22 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
                 onClick={onJumpToSession}
               >
                 Go to Session
+              </Button>
+            )}
+            {primaryAction && (
+              <Button
+                variant={primaryAction.variant}
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={handleActionClick}
+                disabled={isSendingMessage}
+              >
+                {isSendingMessage ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <primaryAction.icon className="h-3.5 w-3.5" />
+                )}
+                {primaryAction.label}
               </Button>
             )}
             <Tooltip>

@@ -266,6 +266,172 @@ func TestGetSession_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
+func TestUpdateSession_Archive(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Archive the session
+	archived := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify session is archived in response
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.True(t, gotSession.Archived)
+
+	// Verify persisted in DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.True(t, sess.Archived)
+}
+
+func TestUpdateSession_Unarchive(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// First archive the session
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-1", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// Unarchive the session
+	archived := false
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify session is unarchived
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.False(t, gotSession.Archived)
+}
+
+func TestUpdateSession_Pin(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Pin the session
+	pinned := true
+	body, _ := json.Marshal(UpdateSessionRequest{Pinned: &pinned})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify session is pinned
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.True(t, gotSession.Pinned)
+}
+
+func TestUpdateSession_ArchiveAndPin(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Set both archived and pinned in one request
+	archived := true
+	pinned := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived, Pinned: &pinned})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.True(t, gotSession.Archived)
+	assert.True(t, gotSession.Pinned)
+}
+
+func TestListSessions_ExcludesArchivedByDefault(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestSession(t, s, "sess-2", "ws-1")
+
+	// Archive sess-2
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-2", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// List sessions without includeArchived param
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.ListSessions(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var sessions []*models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &sessions)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, "sess-1", sessions[0].ID)
+}
+
+func TestListSessions_IncludesArchivedWhenRequested(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestSession(t, s, "sess-2", "ws-1")
+
+	// Archive sess-2
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-2", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// List sessions with includeArchived=true
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions?includeArchived=true", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.ListSessions(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var sessions []*models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &sessions)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 2)
+}
+
 // ============================================================================
 // Conversation Handler Tests
 // ============================================================================
