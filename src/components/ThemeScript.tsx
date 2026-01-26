@@ -2,16 +2,20 @@
  * ThemeScript - Prevents flash of wrong theme on app startup
  *
  * This component renders an inline script that runs synchronously in the <head>
- * before CSS is parsed. It reads the theme preference from localStorage and
- * immediately applies the correct class and background color to prevent any
- * visible flash.
+ * before the body is parsed. It reads the theme preference and immediately
+ * applies the correct class and background color.
  */
 export function ThemeScript() {
+  // Critical CSS: default to dark background (matches Tauri window)
+  // NO light mode fallback here - we handle that in the script
+  // This ensures dark bg is shown until JS determines actual theme
+  const criticalCSS = `
+    html, body { background-color: #141414 !important; }
+  `;
+
   const script = `
 (function() {
-  // Must match next-themes storageKey (default: 'theme')
   var STORAGE_KEY = 'theme';
-  // Must match globals.css: .dark --background and light theme --background
   var DARK_BG = '#141414';
   var LIGHT_BG = '#ffffff';
 
@@ -26,20 +30,27 @@ export function ThemeScript() {
 
   var theme = getTheme();
   var html = document.documentElement;
+  var bg = theme === 'dark' ? DARK_BG : LIGHT_BG;
 
+  // Set class and inline style on html
   if (theme === 'dark') {
     html.classList.add('dark');
-    html.style.backgroundColor = DARK_BG;
   } else {
     html.classList.remove('dark');
-    html.style.backgroundColor = LIGHT_BG;
   }
+  html.style.backgroundColor = bg;
+
+  // Also inject a style tag for body since body doesn't exist yet
+  var style = document.createElement('style');
+  style.textContent = 'body { background-color: ' + bg + ' !important; }';
+  document.head.appendChild(style);
 })();
 `;
 
   return (
-    <script
-      dangerouslySetInnerHTML={{ __html: script }}
-    />
+    <>
+      <style dangerouslySetInnerHTML={{ __html: criticalCSS }} />
+      <script dangerouslySetInnerHTML={{ __html: script }} />
+    </>
   );
 }

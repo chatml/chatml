@@ -114,7 +114,7 @@ export function BackendStatus({
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-background">
+    <div className="h-screen flex items-center justify-center">
       <div className="text-center max-w-md px-6">
         {state === 'connecting' && (
           <>
