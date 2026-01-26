@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/logger"
+	"github.com/chatml/chatml-backend/models"
 )
 
 const (
@@ -67,11 +68,12 @@ type Process struct {
 
 // InputMessage represents a message sent to the agent runner via stdin
 type InputMessage struct {
-	Type           string `json:"type"`
-	Content        string `json:"content,omitempty"`
-	Model          string `json:"model,omitempty"`
-	PermissionMode string `json:"permissionMode,omitempty"`
-	CheckpointUuid string `json:"checkpointUuid,omitempty"`
+	Type           string              `json:"type"`
+	Content        string              `json:"content,omitempty"`
+	Model          string              `json:"model,omitempty"`
+	PermissionMode string              `json:"permissionMode,omitempty"`
+	CheckpointUuid string              `json:"checkpointUuid,omitempty"`
+	Attachments    []models.Attachment `json:"attachments,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -313,6 +315,15 @@ func (p *Process) SendMessage(content string) error {
 	return p.sendInput(InputMessage{
 		Type:    "message",
 		Content: content,
+	})
+}
+
+// SendMessageWithAttachments sends a user message with file attachments to the running agent process
+func (p *Process) SendMessageWithAttachments(content string, attachments []models.Attachment) error {
+	return p.sendInput(InputMessage{
+		Type:        "message",
+		Content:     content,
+		Attachments: attachments,
 	})
 }
 

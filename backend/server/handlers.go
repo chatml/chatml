@@ -1922,9 +1922,10 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreateConversationRequest struct {
-	Type              string `json:"type"`              // "task", "review", "chat"
-	Message           string `json:"message"`           // Initial message (optional)
-	MaxThinkingTokens int    `json:"maxThinkingTokens"` // Enable extended thinking (optional)
+	Type              string              `json:"type"`              // "task", "review", "chat"
+	Message           string              `json:"message"`           // Initial message (optional)
+	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
+	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
@@ -1953,9 +1954,10 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
+			Attachments:       req.Attachments,
 		}
 	}
 
@@ -1988,7 +1990,8 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 type SendConversationMessageRequest struct {
-	Content string `json:"content"`
+	Content     string              `json:"content"`
+	Attachments []models.Attachment `json:"attachments"` // File attachments (optional)
 }
 
 func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Request) {
@@ -2015,7 +2018,7 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.agentManager.SendConversationMessage(convID, req.Content); err != nil {
+	if err := h.agentManager.SendConversationMessage(convID, req.Content, req.Attachments); err != nil {
 		writeInternalError(w, "failed to send message", err)
 		return
 	}

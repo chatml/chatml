@@ -23,13 +23,16 @@ import {
   Plus,
   Link,
   FolderSymlink,
-  FileText,
   EyeOff,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
-import { listenForFileDrop, listenForDragEnter, listenForDragLeave } from '@/lib/tauri';
+import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
+import type { Attachment } from '@/lib/types';
+import { AttachmentGrid } from './AttachmentGrid';
+import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents } from '@/lib/attachments';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake },
@@ -579,6 +582,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ghostTextRef = useRef<HTMLSpanElement>(null);
 
@@ -633,12 +637,72 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     ? streamingState[selectedConversationId]?.awaitingPlanApproval
     : false;
 
+  // Textarea auto-grow configuration
+  const TEXTAREA_LIMITS = {
+    minHeight: 80,                    // Normal min height
+    minHeightWithAttachments: 60,     // Smaller when attachments take space
+    maxHeight: 200,                   // Max before scrolling
+  };
+
   useEffect(() => {
     if (textareaRef.current) {
+      const hasAttachments = attachments.length > 0;
+      const minH = hasAttachments ? TEXTAREA_LIMITS.minHeightWithAttachments : TEXTAREA_LIMITS.minHeight;
+
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+      const newHeight = Math.max(minH, Math.min(textareaRef.current.scrollHeight, TEXTAREA_LIMITS.maxHeight));
+      textareaRef.current.style.height = `${newHeight}px`;
+
+      // Enable scrolling once at max height
+      textareaRef.current.style.overflowY =
+        textareaRef.current.scrollHeight > TEXTAREA_LIMITS.maxHeight ? 'auto' : 'hidden';
     }
-  }, [message]);
+  }, [message, attachments.length]);
+
+  // Handle file drop processing
+  const handleFileDrop = useCallback(async (paths: string[]) => {
+    setIsDragOver(false);
+
+    const result = await processDroppedFiles(paths);
+
+    // Show errors
+    if (result.errors.length > 0) {
+      result.errors.forEach(err => showError(err));
+    }
+
+    // Validate total attachments
+    const newAttachments = [...attachments, ...result.attachments];
+    const validation = validateAttachments(newAttachments);
+    if (!validation.valid) {
+      showError(validation.error || 'Invalid attachments');
+      return;
+    }
+
+    setAttachments(newAttachments);
+  }, [attachments, showError]);
+
+  // Handle attachment removal
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  // Handle file picker
+  const handleOpenFilePicker = useCallback(async () => {
+    // Build file extensions filter
+    const allExtensions = Object.values(SUPPORTED_EXTENSIONS).flat().map(ext => ext.slice(1)); // Remove leading dot
+
+    const paths = await openFileDialog({
+      multiple: true,
+      filters: [
+        { name: 'Supported Files', extensions: allExtensions },
+      ],
+      title: 'Select files to attach',
+    });
+
+    if (paths && paths.length > 0) {
+      await handleFileDrop(paths);
+    }
+  }, [handleFileDrop]);
 
   // Listen for drag-drop events from Tauri
   useEffect(() => {
@@ -647,9 +711,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     let unlistenLeave: (() => void) | undefined;
 
     const setupListeners = async () => {
-      unlistenDrop = await listenForFileDrop(() => {
-        // File attachments not yet implemented - just clear drag state
-        setIsDragOver(false);
+      unlistenDrop = await listenForFileDrop((paths) => {
+        handleFileDrop(paths);
       });
       unlistenEnter = await listenForDragEnter(() => {
         setIsDragOver(true);
@@ -666,7 +729,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       unlistenEnter?.();
       unlistenLeave?.();
     };
-  }, []);
+  }, [handleFileDrop]);
 
   // Handler for toggling plan mode - also notifies the backend
   const handlePlanModeToggle = useCallback(async () => {
@@ -730,6 +793,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         handlePlanModeToggle();
       }
+      // Cmd+U to open file picker
+      if (e.code === 'KeyU' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        handleOpenFilePicker();
+      }
       // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
     };
 
@@ -748,13 +816,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [handlePlanModeToggle]);
+  }, [handlePlanModeToggle, handleOpenFilePicker]);
 
   const handleSubmit = async () => {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
     const content = message.trim();
+    const currentAttachments = [...attachments];
     setMessage('');
+    // Don't clear attachments yet - wait until API call succeeds
     setIsSending(true);
 
     // Notify parent to scroll to bottom when user submits a message
@@ -762,6 +832,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     window.dispatchEvent(new CustomEvent('chat-message-submitted'));
 
     try {
+      // Load base64 content for all attachments before sending
+      let loadedAttachments: Attachment[] = [];
+      if (currentAttachments.length > 0) {
+        try {
+          loadedAttachments = await loadAllAttachmentContents(currentAttachments);
+        } catch (err) {
+          showError(`Failed to load attachment content: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          setIsSending(false);
+          return;
+        }
+      }
+
       // Check if this is a new conversation (no messages yet) or no conversation selected
       // In either case, we need to create via API since local conversations don't exist on backend
       const conversationMessages = currentConversation
@@ -777,6 +859,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           message: content,
           // Pass thinking tokens when thinking mode is enabled
           maxThinkingTokens: thinkingEnabled ? DEFAULT_THINKING_TOKENS : undefined,
+          // Pass attachments with loaded content
+          attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
         });
 
         // Remove local placeholder conversation if it exists
@@ -797,12 +881,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           updatedAt: conv.updatedAt,
         });
 
-        // Add user message to store
+        // Add user message to store (without base64 data to save memory)
         addMessage({
           id: crypto.randomUUID(),
           conversationId: conv.id,
           role: 'user',
           content,
+          attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
           timestamp: new Date().toISOString(),
         });
 
@@ -812,12 +897,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         // Mark as streaming
         setStreaming(conv.id, true);
       } else {
-        // Add user message to store first
+        // Add user message to store first (without base64 data to save memory)
         addMessage({
           id: crypto.randomUUID(),
           conversationId: selectedConversationId,
           role: 'user',
           content,
+          attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
           timestamp: new Date().toISOString(),
         });
 
@@ -825,8 +911,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         setStreaming(selectedConversationId, true);
 
         // Send message to existing conversation
-        await sendConversationMessage(selectedConversationId, content);
+        await sendConversationMessage(
+          selectedConversationId,
+          content,
+          loadedAttachments.length > 0 ? loadedAttachments : undefined
+        );
       }
+
+      // Clear attachments only after successful send
+      setAttachments([]);
     } catch (error) {
       console.error('Failed to send message:', error);
       const convId = selectedConversationId;
@@ -966,14 +1059,23 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         planModeEnabled && !isStreaming && 'border-transparent',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>
-        {/* Drag overlay - file attachments coming soon */}
+        {/* Drag overlay - drop zone */}
         {isDragOver && (
-          <div className="absolute inset-0 bg-primary/10 rounded-lg flex items-center justify-center z-10 pointer-events-none">
-            <div className="flex items-center gap-2 text-muted-foreground font-medium">
-              <FileText className="w-5 h-5" />
-              File attachments coming soon
-            </div>
+          <div className="absolute inset-0 bg-background/95 rounded-lg border-2 border-dashed border-primary/50 flex flex-col items-center justify-center z-20 pointer-events-none">
+            <Upload className="w-8 h-8 text-muted-foreground mb-2" />
+            <span className="font-medium text-foreground">Drop files here</span>
+            <span className="text-xs text-muted-foreground mt-1">
+              Images, code, and text files (max 5MB each)
+            </span>
           </div>
+        )}
+
+        {/* Attachment grid */}
+        {attachments.length > 0 && (
+          <AttachmentGrid
+            attachments={attachments}
+            onRemove={handleRemoveAttachment}
+          />
         )}
 
         {/* Text Input with Cmd+L hint and ghost text */}
@@ -1102,7 +1204,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleOpenFilePicker}>
                 <Paperclip className="size-4" />
                 Add attachment
                 <span className="ml-auto text-xs text-muted-foreground">⌘U</span>

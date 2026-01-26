@@ -83,6 +83,21 @@ export interface SetupInfo {
   fileCount?: number;
 }
 
+// Attachment = File attached to a message
+export interface Attachment {
+  id: string;
+  type: 'file' | 'image';
+  name: string;              // Display filename
+  path?: string;             // Local file path (optional - may not exist for stored attachments)
+  mimeType: string;
+  size: number;              // bytes
+  lineCount?: number;        // For text/code files
+  width?: number;            // For images
+  height?: number;           // For images
+  base64Data?: string;       // Loaded on demand before send
+  preview?: string;          // Text preview (first N chars)
+}
+
 // Message = Individual message in a conversation
 export interface Message {
   id: string;
@@ -99,6 +114,8 @@ export interface Message {
   durationMs?: number;
   // Run summary at end of agent turn
   runSummary?: RunSummary;
+  // File attachments (images, code, text files)
+  attachments?: Attachment[];
 }
 
 // Run statistics from agent

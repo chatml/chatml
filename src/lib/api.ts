@@ -581,12 +581,27 @@ export interface RunSummaryDTO {
   errors?: unknown[];
 }
 
+export interface AttachmentDTO {
+  id: string;
+  type: 'file' | 'image';
+  name: string;
+  path?: string;
+  mimeType: string;
+  size: number;
+  lineCount?: number;
+  width?: number;
+  height?: number;
+  base64Data?: string;
+  preview?: string;
+}
+
 export interface MessageDTO {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   setupInfo?: SetupInfoDTO;
   runSummary?: RunSummaryDTO;
+  attachments?: AttachmentDTO[];
   timestamp: string;
 }
 
@@ -610,7 +625,12 @@ export async function listConversations(
 export async function createConversation(
   workspaceId: string,
   sessionId: string,
-  data: { type?: 'task' | 'review' | 'chat'; message?: string; maxThinkingTokens?: number }
+  data: {
+    type?: 'task' | 'review' | 'chat';
+    message?: string;
+    maxThinkingTokens?: number;
+    attachments?: AttachmentDTO[];
+  }
 ): Promise<ConversationDTO> {
   const res = await fetchWithAuth(
     `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`,
@@ -630,12 +650,13 @@ export async function getConversation(convId: string): Promise<ConversationDTO> 
 
 export async function sendConversationMessage(
   convId: string,
-  content: string
+  content: string,
+  attachments?: AttachmentDTO[]
 ): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, attachments }),
   });
   if (!res.ok) {
     const text = await res.text();

@@ -109,6 +109,21 @@ function emit(event: OutputEvent): void {
   console.log(JSON.stringify(event));
 }
 
+// Attachment type matching Go backend
+interface Attachment {
+  id: string;
+  type: "file" | "image";
+  name: string;
+  path?: string;
+  mimeType: string;
+  size: number;
+  lineCount?: number;
+  width?: number;
+  height?: number;
+  base64Data?: string;
+  preview?: string;
+}
+
 // Input message types from Go backend
 interface InputMessage {
   type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files";
@@ -116,6 +131,7 @@ interface InputMessage {
   model?: string;
   permissionMode?: string;
   checkpointUuid?: string; // For rewind_files
+  attachments?: Attachment[]; // File attachments
 }
 
 // Track if we've suggested a name yet
@@ -219,11 +235,52 @@ async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
         }
 
         if (input.type === "message" && input.content) {
+          // Build message content - simple string or multipart with attachments
+          let messageContent: string | Array<{type: string; [key: string]: unknown}> = input.content;
+
+          // If there are attachments, build multipart content
+          if (input.attachments && input.attachments.length > 0) {
+            const contentBlocks: Array<{type: string; [key: string]: unknown}> = [];
+
+            // Add text content first
+            if (input.content) {
+              contentBlocks.push({ type: "text", text: input.content });
+            }
+
+            // Add attachments
+            for (const attachment of input.attachments) {
+              if (attachment.type === "image" && attachment.base64Data) {
+                // Images sent as image content blocks
+                contentBlocks.push({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: attachment.mimeType,
+                    data: attachment.base64Data,
+                  }
+                });
+              } else if (attachment.base64Data) {
+                // Text/code files sent as text with file markers
+                let content = Buffer.from(attachment.base64Data, "base64").toString("utf-8");
+                // Escape any occurrences of the closing tag to prevent injection
+                content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
+                const lineInfo = attachment.lineCount ? ` lines="${attachment.lineCount}"` : "";
+                const pathInfo = attachment.path ? ` path="${attachment.path}"` : "";
+                contentBlocks.push({
+                  type: "text",
+                  text: `<attached_file name="${attachment.name}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
+                });
+              }
+            }
+
+            messageContent = contentBlocks;
+          }
+
           yield {
             type: "user",
             message: {
               role: "user",
-              content: input.content,
+              content: messageContent,
             },
             parent_tool_use_id: null,
             session_id: currentSessionId || "",
