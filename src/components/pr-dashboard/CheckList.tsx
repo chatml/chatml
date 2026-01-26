@@ -75,7 +75,7 @@ function CheckItem({ check }: CheckItemProps) {
       case 'action_required':
         return {
           icon: XCircle,
-          color: 'text-red-500',
+          color: 'text-red-500/70',
           label: 'Failed',
         };
       case 'cancelled':
