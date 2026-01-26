@@ -406,6 +406,44 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle session PR status update (background GitHub polling)
+        if (data.type === 'session_pr_update' && data.sessionId) {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload) {
+            type PRStatus = 'none' | 'open' | 'merged' | 'closed';
+            const validPRStatuses: PRStatus[] = ['none', 'open', 'merged', 'closed'];
+
+            const updates: {
+              prStatus?: PRStatus;
+              prNumber?: number;
+              prUrl?: string;
+              hasCheckFailures?: boolean;
+              hasMergeConflict?: boolean;
+            } = {};
+
+            if (typeof payload.prStatus === 'string' && validPRStatuses.includes(payload.prStatus as PRStatus)) {
+              updates.prStatus = payload.prStatus as PRStatus;
+            }
+            if (typeof payload.prNumber === 'number') {
+              updates.prNumber = payload.prNumber;
+            }
+            if (typeof payload.prUrl === 'string') {
+              updates.prUrl = payload.prUrl;
+            }
+            // Map checkStatus to hasCheckFailures
+            if (typeof payload.checkStatus === 'string') {
+              updates.hasCheckFailures = payload.checkStatus === 'failure';
+            }
+            // Map mergeable to hasMergeConflict
+            if (typeof payload.mergeable === 'boolean') {
+              updates.hasMergeConflict = !payload.mergeable;
+            }
+
+            updateSession(data.sessionId, updates);
+          }
+          return;
+        }
+
         // Legacy agent events - validate string payloads
         if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
           appendOutput(data.agentId, data.payload);

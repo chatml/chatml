@@ -211,6 +211,7 @@ type Handlers struct {
 	fileSizeConfig   FileSizeConfig
 	dirCache         *DirListingCache
 	branchWatcher    *branch.Watcher
+	prWatcher        *branch.PRWatcher
 	hub              *Hub // For broadcasting WebSocket events
 	ghClient         *github.Client
 	prCache          *github.PRCache
@@ -226,7 +227,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, hub *Hub, ghClient *github.Client, statsCache *SessionStatsCache) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, statsCache *SessionStatsCache) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -243,6 +244,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		fileSizeConfig:   LoadFileSizeConfig(),
 		dirCache:         NewDirListingCache(dirCacheConfig.TTL),
 		branchWatcher:    bw,
+		prWatcher:        prw,
 		hub:              hub,
 		ghClient:         ghClient,
 		prCache:          github.NewPRCache(30 * time.Second), // Cache PR data for 30 seconds
@@ -837,6 +839,11 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Start watching for PR status changes
+	if h.prWatcher != nil {
+		h.prWatcher.WatchSession(sess.ID, workspaceID, branchName, repo.Path, models.PRStatusNone)
+	}
+
 	// All operations succeeded - disable rollback
 	rollback = false
 	writeJSON(w, sess)
@@ -964,6 +971,11 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		// Stop watching for branch changes
 		if h.branchWatcher != nil {
 			h.branchWatcher.UnwatchSession(sessionID)
+		}
+
+		// Stop watching for PR status changes
+		if h.prWatcher != nil {
+			h.prWatcher.UnwatchSession(sessionID)
 		}
 
 		repo, err := h.store.GetRepo(ctx, sess.WorkspaceID)

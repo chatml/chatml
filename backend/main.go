@@ -223,7 +223,60 @@ func main() {
 
 	go hub.Run()
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, statsCache)
+	// PR watcher for background GitHub PR status monitoring
+	// Creates a watcher that polls GitHub for PR changes and broadcasts updates via WebSocket
+	prWatcher := branch.NewPRWatcher(ghClient, repoManager, s, func(event branch.PRChangeEvent) {
+		// Handle updates asynchronously to avoid blocking the watcher
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[pr-watcher] PANIC recovered: %v\n%s", r, debug.Stack())
+				}
+			}()
+
+			// Check if we're shutting down
+			if ctx.Err() != nil {
+				return
+			}
+
+			log.Printf("[pr-watcher] Broadcasting PR update for session %s: status=%s, pr=%d",
+				event.SessionID, event.PRStatus, event.PRNumber)
+
+			// Emit WebSocket event for frontend
+			hub.Broadcast(server.Event{
+				Type:      "session_pr_update",
+				SessionID: event.SessionID,
+				Payload: map[string]interface{}{
+					"prStatus":    event.PRStatus,
+					"prNumber":    event.PRNumber,
+					"prUrl":       event.PRUrl,
+					"checkStatus": event.CheckStatus,
+					"mergeable":   event.Mergeable,
+				},
+			})
+		}()
+	})
+	defer prWatcher.Close()
+
+	// Initialize PR watches for existing sessions
+	if ghClient.IsAuthenticated() {
+		repos, listErr := s.ListRepos(ctx)
+		if listErr == nil {
+			for _, repo := range repos {
+				sessions, sessErr := s.ListSessions(ctx, repo.ID)
+				if sessErr != nil {
+					continue
+				}
+				for _, sess := range sessions {
+					if sess.WorktreePath != "" && sess.Branch != "" {
+						prWatcher.WatchSession(sess.ID, sess.WorkspaceID, sess.Branch, repo.Path, sess.PRStatus)
+					}
+				}
+			}
+		}
+	}
+
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, statsCache)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
