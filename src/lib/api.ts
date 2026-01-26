@@ -88,6 +88,18 @@ export async function deleteRepo(id: string): Promise<void> {
   await fetchWithAuth(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
 }
 
+export interface RepoDetailsDTO extends RepoDTO {
+  remoteUrl?: string;
+  githubOwner?: string;
+  githubRepo?: string;
+  workspacesPath?: string;
+}
+
+export async function getRepoDetails(id: string): Promise<RepoDetailsDTO> {
+  const res = await fetchWithAuth(`${API_BASE}/api/repos/${id}/details`);
+  return handleResponse<RepoDetailsDTO>(res);
+}
+
 export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
   const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/files?depth=${depth}`);
   return handleResponse<FileNodeDTO[]>(res);
@@ -178,6 +190,7 @@ export interface SessionDTO {
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
 }

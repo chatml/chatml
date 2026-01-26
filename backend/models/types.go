@@ -28,6 +28,7 @@ type Session struct {
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
 	Pinned           bool          `json:"pinned,omitempty"`
+	Archived         bool          `json:"archived,omitempty"`
 	AutoNamed        bool          `json:"autoNamed,omitempty"` // True if session was auto-renamed based on context
 	CreatedAt        time.Time     `json:"createdAt"`
 	UpdatedAt        time.Time     `json:"updatedAt"`

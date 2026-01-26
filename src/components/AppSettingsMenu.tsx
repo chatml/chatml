@@ -23,7 +23,6 @@ import {
 import {
   Settings,
   Keyboard,
-  FolderOpen,
   RefreshCw,
   BookOpen,
   FileText,
@@ -41,14 +40,12 @@ import { logout } from '@/lib/auth';
 interface AppSettingsMenuProps {
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
-  onOpenWorkspaces: () => void;
   className?: string;
 }
 
 export function AppSettingsMenu({
   onOpenSettings,
   onOpenShortcuts,
-  onOpenWorkspaces,
   className,
 }: AppSettingsMenuProps) {
   const user = useAuthStore((s) => s.user);
@@ -169,11 +166,6 @@ export function AppSettingsMenu({
           <Settings className="size-4" />
           Settings
           <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem onClick={onOpenWorkspaces}>
-          <FolderOpen className="size-4" />
-          Manage Workspaces
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

@@ -59,6 +59,7 @@ import {
   Copy,
   Archive,
   Settings,
+  Settings2,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -94,9 +95,9 @@ interface WorkspaceSidebarProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
   onQuickStart: () => void;
-  onShowWorkspaceManagement?: () => void;
   onSessionSelected?: () => void;
   onOpenSettings?: () => void;
+  onOpenWorkspaceSettings?: (workspaceId: string) => void;
   onToggleSidebar?: () => void;
 }
 
@@ -109,7 +110,7 @@ const ADD_REPO_MENU_ITEMS = [
 
 type SidebarTab = 'workspaces' | 'agents';
 
-export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onShowWorkspaceManagement, onSessionSelected, onOpenSettings, onToggleSidebar }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings, onToggleSidebar }: WorkspaceSidebarProps) {
   const [activeTab, setActiveTab] = useState<SidebarTab>('workspaces');
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -266,8 +267,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     if (!session) return;
 
     try {
-      // Delete from backend
-      await deleteSessionApi(session.workspaceId, sessionId);
+      // Update backend to mark as archived
+      await updateSessionApi(session.workspaceId, sessionId, { archived: true });
       // Update local store
       archiveSession(sessionId);
     } catch (error) {
@@ -439,6 +440,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                           selectSession(null);
                           setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
                         }}
+                        onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}
                         contentView={contentView}
                         getStatusColor={getStatusColor}
                         formatTimeAgo={formatTimeAgo}
@@ -599,6 +601,7 @@ interface SortableWorkspaceItemProps {
   onRemoveWorkspace: () => void;
   onOpenDashboard: () => void;
   onOpenPRs: () => void;
+  onOpenWorkspaceSettings: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -618,6 +621,7 @@ function SortableWorkspaceItem({
   onRemoveWorkspace,
   onOpenDashboard,
   onOpenPRs,
+  onOpenWorkspaceSettings,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -690,7 +694,12 @@ function SortableWorkspaceItem({
                     <MoreHorizontal className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={onOpenWorkspaceSettings}>
+                    <Settings2 className="size-4" />
+                    Workspace Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem>
                     <FolderOpen className="size-4" />
                     Open in Finder
