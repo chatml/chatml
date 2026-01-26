@@ -67,7 +67,7 @@ function CheckItem({ check }: CheckItemProps) {
       case 'success':
         return {
           icon: CheckCircle2,
-          color: 'text-green-500',
+          color: 'text-muted-foreground',
           label: 'Passed',
         };
       case 'failure':
