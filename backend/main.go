@@ -255,10 +255,11 @@ func main() {
 		})
 
 		// Initialize watches for existing sessions
+		// Include archived sessions since we need to track all worktrees
 		repos, listErr := s.ListRepos(ctx)
 		if listErr == nil {
 			for _, repo := range repos {
-				sessions, sessErr := s.ListSessions(ctx, repo.ID)
+				sessions, sessErr := s.ListSessions(ctx, repo.ID, true)
 				if sessErr != nil {
 					continue
 				}
@@ -311,11 +312,12 @@ func main() {
 	defer prWatcher.Close()
 
 	// Initialize PR watches for existing sessions
+	// Include archived sessions since PRs may still exist for them
 	if ghClient.IsAuthenticated() {
 		repos, listErr := s.ListRepos(ctx)
 		if listErr == nil {
 			for _, repo := range repos {
-				sessions, sessErr := s.ListSessions(ctx, repo.ID)
+				sessions, sessErr := s.ListSessions(ctx, repo.ID, true)
 				if sessErr != nil {
 					continue
 				}

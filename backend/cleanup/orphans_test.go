@@ -26,8 +26,18 @@ func (m *mockStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
 	return m.repos, nil
 }
 
-func (m *mockStore) ListSessions(ctx context.Context, workspaceID string) ([]*models.Session, error) {
-	return m.sessions[workspaceID], nil
+func (m *mockStore) ListSessions(ctx context.Context, workspaceID string, includeArchived bool) ([]*models.Session, error) {
+	sessions := m.sessions[workspaceID]
+	if includeArchived {
+		return sessions, nil
+	}
+	var filtered []*models.Session
+	for _, s := range sessions {
+		if !s.Archived {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered, nil
 }
 
 func (m *mockStore) GetSession(ctx context.Context, sessionID string) (*models.Session, error) {

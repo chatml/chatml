@@ -308,7 +308,7 @@ func TestListSessions_ByWorkspace(t *testing.T) {
 	createTestSession(t, s, "s2", "ws-1")
 	createTestSession(t, s, "s3", "ws-2") // Different workspace
 
-	sessions, err := s.ListSessions(ctx, "ws-1")
+	sessions, err := s.ListSessions(ctx, "ws-1", true)
 	require.NoError(t, err)
 	assert.Len(t, sessions, 2)
 
@@ -350,7 +350,7 @@ func TestListSessions_PinnedFirst(t *testing.T) {
 	}
 	require.NoError(t, s.AddSession(ctx, s2))
 
-	sessions, err := s.ListSessions(ctx, "ws-1")
+	sessions, err := s.ListSessions(ctx, "ws-1", true)
 	require.NoError(t, err)
 	require.Len(t, sessions, 2)
 
@@ -366,10 +366,143 @@ func TestListSessions_Empty(t *testing.T) {
 	s := newTestStore(t)
 	createTestRepo(t, s, "ws-1")
 
-	sessions, err := s.ListSessions(ctx, "ws-1")
+	sessions, err := s.ListSessions(ctx, "ws-1", true)
 	require.NoError(t, err)
 	assert.NotNil(t, sessions)
 	assert.Empty(t, sessions)
+}
+
+func TestListSessions_FilterArchived(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	// Create 3 sessions
+	createTestSession(t, s, "s1", "ws-1")
+	createTestSession(t, s, "s2", "ws-1")
+	createTestSession(t, s, "s3", "ws-1")
+
+	// Archive s2
+	require.NoError(t, s.UpdateSession(ctx, "s2", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// Test without includeArchived (default: false)
+	sessions, err := s.ListSessions(ctx, "ws-1", false)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 2)
+	for _, sess := range sessions {
+		assert.False(t, sess.Archived, "Should not include archived sessions")
+	}
+
+	// Test with includeArchived=true
+	allSessions, err := s.ListSessions(ctx, "ws-1", true)
+	require.NoError(t, err)
+	assert.Len(t, allSessions, 3)
+}
+
+func TestListAllSessions_FilterArchived(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestRepo(t, s, "ws-2")
+
+	// Create sessions across repos
+	createTestSession(t, s, "s1", "ws-1")
+	createTestSession(t, s, "s2", "ws-1")
+	createTestSession(t, s, "s3", "ws-2")
+
+	// Archive s2
+	require.NoError(t, s.UpdateSession(ctx, "s2", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// Test filtering
+	sessions, err := s.ListAllSessions(ctx, false)
+	require.NoError(t, err)
+	assert.Len(t, sessions, 2)
+
+	allSessions, err := s.ListAllSessions(ctx, true)
+	require.NoError(t, err)
+	assert.Len(t, allSessions, 3)
+}
+
+func TestListAllSessions_ReadsArchivedField(t *testing.T) {
+	// This test verifies the archived field is correctly read from DB
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	createTestSession(t, s, "s1", "ws-1")
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// Fetch via ListAllSessions
+	sessions, err := s.ListAllSessions(ctx, true)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	// Verify archived field is populated correctly
+	assert.True(t, sessions[0].Archived, "Archived field should be read from DB")
+}
+
+func TestUpdateSession_SetArchived(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	sess := createTestSession(t, s, "s1", "ws-1")
+
+	// Initially not archived
+	assert.False(t, sess.Archived)
+
+	// Archive it
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.Archived = true
+	}))
+
+	// Verify persisted
+	fetched, err := s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.True(t, fetched.Archived)
+
+	// Unarchive it
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.Archived = false
+	}))
+
+	fetched, err = s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.False(t, fetched.Archived)
+}
+
+func TestUpdateSession_SetPinned(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	sess := createTestSession(t, s, "s1", "ws-1")
+
+	// Initially not pinned
+	assert.False(t, sess.Pinned)
+
+	// Pin it
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.Pinned = true
+	}))
+
+	// Verify persisted
+	fetched, err := s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.True(t, fetched.Pinned)
+
+	// Unpin it
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.Pinned = false
+	}))
+
+	fetched, err = s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.False(t, fetched.Pinned)
 }
 
 func TestUpdateSession_PartialUpdate(t *testing.T) {
