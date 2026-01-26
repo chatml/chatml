@@ -237,3 +237,33 @@ type CommentStats struct {
 	Total      int    `json:"total"`
 	Unresolved int    `json:"unresolved"`
 }
+
+// BranchInfo represents metadata about a git branch
+type BranchInfo struct {
+	Name           string    `json:"name"`
+	IsRemote       bool      `json:"isRemote"`
+	IsHead         bool      `json:"isHead"`
+	LastCommitSHA  string    `json:"lastCommitSha"`
+	LastCommitDate time.Time `json:"lastCommitDate"`
+	LastAuthor     string    `json:"lastAuthor"`
+	AheadMain      int       `json:"aheadMain"`
+	BehindMain     int       `json:"behindMain"`
+	Prefix         string    `json:"prefix"` // e.g., "feature", "fix", "session"
+}
+
+// BranchWithSession combines branch info with optional session linkage
+type BranchWithSession struct {
+	BranchInfo
+	SessionID     string `json:"sessionId,omitempty"`
+	SessionName   string `json:"sessionName,omitempty"`
+	SessionStatus string `json:"sessionStatus,omitempty"`
+}
+
+// BranchListResponse is the response structure for the branches endpoint
+type BranchListResponse struct {
+	SessionBranches []BranchWithSession `json:"sessionBranches"`
+	OtherBranches   []BranchWithSession `json:"otherBranches"`
+	CurrentBranch   string              `json:"currentBranch"`
+	Total           int                 `json:"total"`
+	HasMore         bool                `json:"hasMore"`
+}

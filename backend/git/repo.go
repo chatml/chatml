@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -632,6 +633,193 @@ func (rm *RepoManager) getStashCount(ctx context.Context, repoPath string) (int,
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	return len(lines), nil
+}
+
+// branchInfo is an internal struct for branch data during processing
+type branchInfo struct {
+	Name           string
+	IsRemote       bool
+	IsHead         bool
+	LastCommitSHA  string
+	LastCommitDate time.Time
+	LastAuthor     string
+	AheadMain      int
+	BehindMain     int
+	Prefix         string
+}
+
+// BranchListOptions controls branch listing behavior
+type BranchListOptions struct {
+	IncludeRemote bool
+	Limit         int
+	Offset        int
+	Search        string
+	SortBy        string // "name" or "date"
+	SortDesc      bool
+}
+
+// BranchListResult contains paginated branch results
+type BranchListResult struct {
+	Branches []branchInfo `json:"branches"`
+	Total    int          `json:"total"`
+	HasMore  bool         `json:"hasMore"`
+}
+
+// ListBranches returns all branches in a repository with metadata
+func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts BranchListOptions) (*BranchListResult, error) {
+	// Set defaults
+	if opts.Limit <= 0 {
+		opts.Limit = 50
+	}
+	if opts.SortBy == "" {
+		opts.SortBy = "date"
+	}
+
+	// Get all branches with metadata
+	// Format: refname|objectname|committerdate|authorname|HEAD
+	args := []string{"branch", "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso-strict)|%(authorname)|%(HEAD)"}
+	if opts.IncludeRemote {
+		args = append(args, "-a")
+	}
+
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, args...)
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list branches: %w", err)
+	}
+
+	// Parse branch output
+	var allBranches []branchInfo
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, "|")
+		if len(parts) < 5 {
+			continue
+		}
+
+		name := parts[0]
+		commitSHA := parts[1]
+		dateStr := parts[2]
+		author := parts[3]
+		isHead := strings.TrimSpace(parts[4]) == "*"
+
+		// Filter by search term if provided
+		if opts.Search != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(opts.Search)) {
+			continue
+		}
+
+		// Determine if remote branch
+		isRemote := strings.HasPrefix(name, "origin/") || strings.HasPrefix(name, "remotes/")
+
+		// Skip HEAD pointer for remote branches
+		if name == "origin/HEAD" || strings.HasSuffix(name, "/HEAD") {
+			continue
+		}
+
+		// Parse commit date
+		var commitDate time.Time
+		if dateStr != "" {
+			commitDate, _ = time.Parse(time.RFC3339, dateStr)
+		}
+
+		// Extract prefix (e.g., "feature" from "feature/my-branch")
+		prefix := ""
+		if idx := strings.Index(name, "/"); idx > 0 {
+			prefix = name[:idx]
+			// For remote branches like "origin/feature/foo", get the second part
+			if prefix == "origin" || prefix == "remotes" {
+				rest := name[idx+1:]
+				if idx2 := strings.Index(rest, "/"); idx2 > 0 {
+					prefix = rest[:idx2]
+				} else {
+					prefix = ""
+				}
+			}
+		}
+
+		allBranches = append(allBranches, branchInfo{
+			Name:           name,
+			IsRemote:       isRemote,
+			IsHead:         isHead,
+			LastCommitSHA:  commitSHA,
+			LastCommitDate: commitDate,
+			LastAuthor:     author,
+			Prefix:         prefix,
+		})
+	}
+
+	// Sort branches using O(n log n) sort
+	sortBranches(allBranches, opts.SortBy, opts.SortDesc)
+
+	// Apply pagination first
+	total := len(allBranches)
+	start := opts.Offset
+	if start > total {
+		start = total
+	}
+	end := start + opts.Limit
+	if end > total {
+		end = total
+	}
+
+	paginated := allBranches[start:end]
+
+	// Get ahead/behind counts only for the paginated branches (performance optimization)
+	for i := range paginated {
+		ahead, behind := rm.getAheadBehind(ctx, repoPath, paginated[i].Name)
+		paginated[i].AheadMain = ahead
+		paginated[i].BehindMain = behind
+	}
+
+	return &BranchListResult{
+		Branches: paginated,
+		Total:    total,
+		HasMore:  end < total,
+	}, nil
+}
+
+// sortBranches sorts branches by the specified field using O(n log n) sort
+func sortBranches(branches []branchInfo, sortBy string, desc bool) {
+	sort.Slice(branches, func(i, j int) bool {
+		if sortBy == "date" {
+			if desc {
+				return branches[i].LastCommitDate.After(branches[j].LastCommitDate)
+			}
+			return branches[i].LastCommitDate.Before(branches[j].LastCommitDate)
+		}
+		// sortBy == "name"
+		if desc {
+			return branches[i].Name > branches[j].Name
+		}
+		return branches[i].Name < branches[j].Name
+	})
+}
+
+// getAheadBehind returns the number of commits ahead and behind origin/main for a branch
+func (rm *RepoManager) getAheadBehind(ctx context.Context, repoPath, branchName string) (ahead, behind int) {
+	// Try origin/main first, then main
+	bases := []string{"origin/main", "main", "origin/master", "master"}
+	for _, base := range bases {
+		cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-list", "--left-right", "--count", base+"..."+branchName)
+		out, err := cmd.Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+
+		parts := strings.Fields(string(out))
+		if len(parts) >= 2 {
+			fmt.Sscanf(parts[0], "%d", &behind)
+			fmt.Sscanf(parts[1], "%d", &ahead)
+			return ahead, behind
+		}
+	}
+	return 0, 0
 }
 
 // GetGitHubRemote extracts the GitHub owner and repo name from the origin remote URL

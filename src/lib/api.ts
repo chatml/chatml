@@ -256,6 +256,66 @@ export async function deleteSession(workspaceId: string, sessionId: string): Pro
   await handleVoidResponse(res, 'Failed to delete session');
 }
 
+// Branch types
+export interface BranchDTO {
+  name: string;
+  isRemote: boolean;
+  isHead: boolean;
+  lastCommitSha: string;
+  lastCommitDate: string;
+  lastAuthor: string;
+  aheadMain: number;
+  behindMain: number;
+  prefix: string;
+  // Session linkage (optional)
+  sessionId?: string;
+  sessionName?: string;
+  sessionStatus?: string;
+}
+
+export interface BranchListResponse {
+  sessionBranches: BranchDTO[];
+  otherBranches: BranchDTO[];
+  currentBranch: string;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface BranchListParams {
+  includeRemote?: boolean;
+  limit?: number;
+  offset?: number;
+  search?: string;
+  sortBy?: 'name' | 'date';
+}
+
+export async function listBranches(
+  workspaceId: string,
+  params?: BranchListParams
+): Promise<BranchListResponse> {
+  const queryParams = new URLSearchParams();
+  if (params?.includeRemote !== undefined) {
+    queryParams.set('includeRemote', String(params.includeRemote));
+  }
+  if (params?.limit !== undefined) {
+    queryParams.set('limit', String(params.limit));
+  }
+  if (params?.offset !== undefined) {
+    queryParams.set('offset', String(params.offset));
+  }
+  if (params?.search) {
+    queryParams.set('search', params.search);
+  }
+  if (params?.sortBy) {
+    queryParams.set('sortBy', params.sortBy);
+  }
+
+  const queryString = queryParams.toString();
+  const url = `${getApiBase()}/api/repos/${workspaceId}/branches${queryString ? `?${queryString}` : ''}`;
+  const res = await fetchWithAuth(url);
+  return handleResponse<BranchListResponse>(res);
+}
+
 export interface FileChangeDTO {
   path: string;
   additions: number;

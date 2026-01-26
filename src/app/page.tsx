@@ -34,6 +34,7 @@ import { FilePicker } from '@/components/FilePicker';
 import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PRDashboard } from '@/components/PRDashboard';
+import { BranchesDashboard } from '@/components/BranchesDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { SessionManager } from '@/components/session-manager';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -1010,6 +1011,14 @@ export default function Home() {
                 {contentView.type === 'pr-dashboard' && (
                   <PRDashboard
                     initialWorkspaceId={contentView.workspaceId}
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
+                  />
+                )}
+                {contentView.type === 'branches' && (
+                  <BranchesDashboard
+                    workspaceId={contentView.workspaceId}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenShortcuts={() => setShowShortcuts(true)}
                     showLeftSidebar={!leftSidebarCollapsed}
