@@ -792,3 +792,23 @@ export async function deleteReviewComment(
     throw new ApiError(text || 'Delete failed', res.status, text);
   }
 }
+
+// Dashboard data types - for efficient batch loading of initial data
+export interface SessionWithConversationsDTO extends SessionDTO {
+  conversations: ConversationDTO[];
+}
+
+export interface DashboardDataDTO {
+  workspaces: RepoDTO[];
+  sessions: SessionWithConversationsDTO[];
+}
+
+/**
+ * Fetches all workspaces, sessions, and conversations in a single request.
+ * This eliminates the N+1 pattern of fetching sessions per workspace and conversations per session.
+ * Uses only 4 database queries regardless of data volume (1 for repos + 1 for sessions + 3 for conversations batch).
+ */
+export async function getDashboardData(): Promise<DashboardDataDTO> {
+  const res = await fetchWithAuth(`${API_BASE}/api/dashboard/data`);
+  return handleResponse<DashboardDataDTO>(res);
+}

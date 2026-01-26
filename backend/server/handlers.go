@@ -248,6 +248,43 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 	}
 }
 
+// getSessionAndWorkspace fetches session and workspace data in a single query.
+// Returns the session with embedded workspace info, the working path, and base ref.
+// This helper eliminates the N+1 pattern of fetching session then workspace separately.
+func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string) (
+	session *models.SessionWithWorkspace,
+	workingPath string,
+	baseRef string,
+	err error,
+) {
+	session, err = h.store.GetSessionWithWorkspace(ctx, sessionID)
+	if err != nil {
+		return nil, "", "", err
+	}
+	if session == nil {
+		return nil, "", "", nil
+	}
+
+	// Use worktree path if set, otherwise fall back to workspace path
+	workingPath = session.WorktreePath
+	if workingPath == "" {
+		workingPath = session.WorkspacePath
+	}
+
+	// Determine base ref: prefer BaseCommitSHA, fall back to workspace branch, then "main".
+	// Note: WorkspaceBranch is the repo's default branch (e.g., "main", "master") stored
+	// at workspace creation time - it's not a remote tracking ref like "origin/main".
+	baseRef = session.BaseCommitSHA
+	if baseRef == "" {
+		baseRef = session.WorkspaceBranch
+		if baseRef == "" {
+			baseRef = "main"
+		}
+	}
+
+	return session, workingPath, baseRef, nil
+}
+
 // validatePath ensures the requested path stays within the base directory
 // Returns the cleaned path if valid, or an error if the path escapes the base
 func validatePath(basePath, requestedPath string) (string, error) {
@@ -332,6 +369,78 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, repos)
+}
+
+// DashboardData represents the combined data for initial dashboard load
+type DashboardData struct {
+	Workspaces []*models.Repo              `json:"workspaces"`
+	Sessions   []*SessionWithConversations `json:"sessions"`
+}
+
+// SessionWithConversations embeds session data with its conversations
+type SessionWithConversations struct {
+	*models.Session
+	Conversations []*models.Conversation `json:"conversations"`
+}
+
+// GetDashboardData returns all workspaces, sessions, and conversations in a single request.
+// This eliminates the N+1 pattern of fetching sessions per workspace and conversations per session.
+func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Fetch all repos in a single query
+	repos, err := h.store.ListRepos(ctx)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Fetch all sessions across all workspaces in a single query
+	allSessions, err := h.store.ListAllSessions(ctx)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Early return if no sessions
+	if len(allSessions) == 0 {
+		writeJSON(w, DashboardData{
+			Workspaces: repos,
+			Sessions:   []*SessionWithConversations{},
+		})
+		return
+	}
+
+	// Get all session IDs for batch conversation fetch
+	sessionIDs := make([]string, len(allSessions))
+	for i, s := range allSessions {
+		sessionIDs[i] = s.ID
+	}
+
+	// Batch fetch all conversations for all sessions (uses 3 queries internally)
+	convsBySession, err := h.store.ListConversationsForSessions(ctx, sessionIDs)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Build response combining sessions with their conversations
+	sessionsWithConvs := make([]*SessionWithConversations, len(allSessions))
+	for i, session := range allSessions {
+		convs := convsBySession[session.ID]
+		if convs == nil {
+			convs = []*models.Conversation{}
+		}
+		sessionsWithConvs[i] = &SessionWithConversations{
+			Session:       session,
+			Conversations: convs,
+		}
+	}
+
+	writeJSON(w, DashboardData{
+		Workspaces: repos,
+		Sessions:   sessionsWithConvs,
+	})
 }
 
 func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
@@ -796,7 +905,9 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session, err := h.store.GetSession(ctx, sessionID)
+
+	// Use single JOIN query to get session + workspace data
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -806,31 +917,8 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the workspace to find the base branch
-	workspace, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if workspace == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Use worktree path if set, otherwise fall back to workspace path
-	workingPath := session.WorktreePath
-	if workingPath == "" {
-		workingPath = workspace.Path
-	}
-
-	// Determine base branch
-	baseBranch := workspace.Branch
-	if baseBranch == "" {
-		baseBranch = "main"
-	}
-
 	// Get comprehensive git status
-	status, err := h.repoManager.GetStatus(ctx, workingPath, baseBranch)
+	status, err := h.repoManager.GetStatus(ctx, workingPath, baseRef)
 	if err != nil {
 		writeInternalError(w, "failed to get git status", err)
 		return
@@ -843,7 +931,9 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session, err := h.store.GetSession(ctx, sessionID)
+
+	// Use single JOIN query to get session + workspace data
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -851,32 +941,6 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	if session == nil {
 		writeNotFound(w, "session")
 		return
-	}
-
-	// Get the workspace to find the base branch
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Use the base commit SHA if available, otherwise fall back to repo branch for old sessions
-	baseRef := session.BaseCommitSHA
-	if baseRef == "" {
-		baseRef = repo.Branch
-		if baseRef == "" {
-			baseRef = "main"
-		}
-	}
-
-	// Use worktree path if set, otherwise fall back to repo path
-	workingPath := session.WorktreePath
-	if workingPath == "" {
-		workingPath = repo.Path
 	}
 
 	// Get changed files in the session's worktree compared to base ref
@@ -902,7 +966,9 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
-	session, err := h.store.GetSession(ctx, sessionID)
+
+	// Use single JOIN query to get session + workspace data
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -912,36 +978,10 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the workspace to find the base branch
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		writeValidationError(w, "path parameter is required")
 		return
-	}
-
-	// Use the base commit SHA if available, otherwise fall back to repo branch for old sessions
-	baseRef := session.BaseCommitSHA
-	if baseRef == "" {
-		baseRef = repo.Branch
-		if baseRef == "" {
-			baseRef = "main"
-		}
-	}
-
-	// Use worktree path if set, otherwise fall back to repo path
-	workingPath := session.WorktreePath
-	if workingPath == "" {
-		workingPath = repo.Path
 	}
 
 	// Validate and clean the path
@@ -2547,6 +2587,15 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Collect all PR numbers for batch fetching
+		prNumbers := make([]int, len(ghPRs))
+		for i, pr := range ghPRs {
+			prNumbers[i] = pr.Number
+		}
+
+		// Batch fetch all PR details concurrently (max 5 parallel requests)
+		prDetailsMap, _ := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+
 		// Process each PR from GitHub
 		for _, ghPR := range ghPRs {
 			prItem := PRDashboardItem{
@@ -2570,9 +2619,8 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 				prItem.SessionName = session.Name
 			}
 
-			// Get detailed PR info (mergeable state, checks)
-			prDetails, err := h.ghClient.GetPRDetails(ctx, owner, repoName, ghPR.Number)
-			if err == nil && prDetails != nil {
+			// Use batch-fetched PR details
+			if prDetails, ok := prDetailsMap[ghPR.Number]; ok && prDetails != nil {
 				prItem.Mergeable = prDetails.Mergeable
 				prItem.MergeableState = prDetails.MergeableState
 				prItem.CheckStatus = string(prDetails.CheckStatus)

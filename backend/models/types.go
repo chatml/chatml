@@ -39,6 +39,14 @@ type SessionStats struct {
 	Deletions int `json:"deletions"`
 }
 
+// SessionWithWorkspace combines session data with its parent workspace info
+// for efficient single-query fetches that need both session and workspace data
+type SessionWithWorkspace struct {
+	Session
+	WorkspacePath   string `json:"workspacePath"`
+	WorkspaceBranch string `json:"workspaceBranch"`
+}
+
 type Agent struct {
 	ID        string    `json:"id"`
 	RepoID    string    `json:"repoId"`
