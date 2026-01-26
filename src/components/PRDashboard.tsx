@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/FullContentLayout';
 import { PRCard } from '@/components/pr-dashboard/PRCard';
-import { getPRs, type PRDashboardItem } from '@/lib/api';
+import { getPRs, sendSessionMessage, type PRDashboardItem } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   RefreshCw,
@@ -51,6 +51,7 @@ export function PRDashboard({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendingMessageFor, setSendingMessageFor] = useState<string | null>(null);
 
   const workspaces = useAppStore((s) => s.workspaces);
   const selectWorkspace = useAppStore((s) => s.selectWorkspace);
@@ -100,6 +101,24 @@ export function PRDashboard({
     selectWorkspace(workspaceId);
     selectSession(sessionId);
     setContentView({ type: 'conversation' });
+  };
+
+  const handleSendMessage = async (pr: PRDashboardItem, message: string) => {
+    if (!pr.sessionId) return;
+
+    const prKey = `${pr.workspaceId}-${pr.number}`;
+    setSendingMessageFor(prKey);
+
+    try {
+      await sendSessionMessage(pr.workspaceId, pr.sessionId, message);
+      // Navigate to the session after sending
+      handleJumpToSession(pr.workspaceId, pr.sessionId);
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      // Could add toast notification here
+    } finally {
+      setSendingMessageFor(null);
+    }
   };
 
   // Group PRs by status
@@ -222,6 +241,12 @@ export function PRDashboard({
                       ? () => handleJumpToSession(pr.workspaceId, pr.sessionId!)
                       : undefined
                   }
+                  onSendMessage={
+                    pr.sessionId
+                      ? (message) => handleSendMessage(pr, message)
+                      : undefined
+                  }
+                  isSendingMessage={sendingMessageFor === `${pr.workspaceId}-${pr.number}`}
                 />
               </ErrorBoundary>
             ))}
