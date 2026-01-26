@@ -621,7 +621,7 @@ function SortableWorkspaceItem({
             >
               <Folder className="w-4 h-4" />
             </div>
-            <span className="text-[length:var(--text-lg)] font-semibold truncate">
+            <span className="text-[length:var(--text-base)] font-semibold truncate">
               {workspace.name}
             </span>
             <ChevronDown
