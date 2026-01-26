@@ -340,13 +340,21 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       {/* Tab Switcher */}
       <div className="flex border-b h-[33px]">
         <button
-          onClick={() => setActiveTab('workspaces')}
+          onClick={() => {
+            if (activeTab === 'workspaces') {
+              // If already on workspaces tab, open session manager
+              setContentView({ type: 'session-manager' });
+            } else {
+              setActiveTab('workspaces');
+            }
+          }}
           className={cn(
             'flex-1 flex items-center justify-center gap-1.5 h-full text-[length:var(--text-xs)] font-medium transition-colors',
             activeTab === 'workspaces'
               ? 'text-foreground border-b border-primary/50'
               : 'text-muted-foreground hover:text-foreground'
           )}
+          title={activeTab === 'workspaces' ? 'Open Session Manager' : undefined}
         >
           <Layers className="h-3 w-3" />
           Workspaces

@@ -33,6 +33,7 @@ import {
   Moon,
   Monitor,
   Sparkles,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/lib/auth';
@@ -53,6 +54,7 @@ export function AppSettingsMenu({
   const { theme, setTheme } = useTheme();
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
+  const setContentView = useSettingsStore((s) => s.setContentView);
 
   const handleSignOut = async () => {
     try {
@@ -166,6 +168,11 @@ export function AppSettingsMenu({
           <Settings className="size-4" />
           Settings
           <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem onClick={() => setContentView({ type: 'session-manager' })}>
+          <Layers className="size-4" />
+          Session Manager
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
