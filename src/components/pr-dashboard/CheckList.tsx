@@ -32,6 +32,20 @@ interface CheckItemProps {
   check: CheckDetail;
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) {
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
 function CheckItem({ check }: CheckItemProps) {
   const getStatusInfo = () => {
     if (check.status !== 'completed') {
@@ -98,7 +112,12 @@ function CheckItem({ check }: CheckItemProps) {
     <div className="flex items-center gap-2 text-xs py-0.5">
       <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
       <span className="truncate flex-1">{check.name}</span>
-      <span className={cn('shrink-0', statusInfo.color)}>{statusInfo.label}</span>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {check.durationSeconds !== undefined && (
+          <span className="text-muted-foreground">{formatDuration(check.durationSeconds)}</span>
+        )}
+        <span className={statusInfo.color}>{statusInfo.label}</span>
+      </div>
     </div>
   );
 }
