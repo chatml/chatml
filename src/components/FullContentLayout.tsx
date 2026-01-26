@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 interface FullContentLayoutProps {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   headerActions?: ReactNode;
   onOpenSettings?: () => void;

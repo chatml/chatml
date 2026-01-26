@@ -1,9 +1,26 @@
 import { HEALTH_CHECK_REQUEST_TIMEOUT_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
+import { getBackendPortSync, getBackendPort, initBackendPort } from '@/lib/backend-port';
 
-// API base URL - configurable via environment variable for non-Tauri builds
+// Re-export for convenience
+export { initBackendPort };
+
+// Get API base URL dynamically based on the backend port
+export function getApiBase(): string {
+  if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
+    const port = getBackendPortSync();
+    return `http://localhost:${port}`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
+}
+
+/**
+ * @deprecated Use `getApiBase()` instead. This static export is evaluated at module
+ * load time with the default port and will NOT reflect dynamically allocated ports
+ * in Tauri builds. Only kept for backwards compatibility with external consumers.
+ */
 export const API_BASE = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
-  ? 'http://localhost:9876'  // Tauri always uses localhost sidecar
+  ? 'http://localhost:9876'  // Default - does NOT update for dynamic ports!
   : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876');
 
 // Custom error class for API errors
@@ -72,13 +89,13 @@ export interface FileNodeDTO {
 }
 
 export async function listRepos(): Promise<RepoDTO[]> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos`);
   return handleResponse<RepoDTO[]>(res);
 }
 
 export async function addRepo(path: string): Promise<RepoDTO> {
   try {
-    const res = await fetchWithAuth(`${API_BASE}/api/repos`, {
+    const res = await fetchWithAuth(`${getApiBase()}/api/repos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
@@ -93,7 +110,7 @@ export async function addRepo(path: string): Promise<RepoDTO> {
 }
 
 export async function deleteRepo(id: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${id}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${id}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete workspace');
 }
 
@@ -105,12 +122,12 @@ export interface RepoDetailsDTO extends RepoDTO {
 }
 
 export async function getRepoDetails(id: string): Promise<RepoDetailsDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${id}/details`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${id}/details`);
   return handleResponse<RepoDetailsDTO>(res);
 }
 
 export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/files?depth=${depth}`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/files?depth=${depth}`);
   return handleResponse<FileNodeDTO[]>(res);
 }
 
@@ -122,7 +139,7 @@ export interface FileContentDTO {
 }
 
 export async function getRepoFileContent(repoId: string, filePath: string): Promise<FileContentDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/file?path=${encodeURIComponent(filePath)}`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/file?path=${encodeURIComponent(filePath)}`);
   return handleResponse<FileContentDTO>(res);
 }
 
@@ -140,7 +157,7 @@ export async function getFileDiff(repoId: string, filePath: string, baseBranch?:
   if (baseBranch) {
     params.append('base', baseBranch);
   }
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/diff?${params.toString()}`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/diff?${params.toString()}`);
   return handleResponse<FileDiffDTO>(res);
 }
 
@@ -151,7 +168,7 @@ export async function getSessionFileDiff(
 ): Promise<FileDiffDTO> {
   const params = new URLSearchParams({ path: filePath });
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`
   );
   return handleResponse<FileDiffDTO>(res);
 }
@@ -163,7 +180,7 @@ export async function getSessionFileContent(
   filePath: string
 ): Promise<FileContentDTO> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file?path=${encodeURIComponent(filePath)}`
   );
   return handleResponse<FileContentDTO>(res);
 }
@@ -174,7 +191,7 @@ export async function listSessionFiles(
   depth: number | 'all' = 'all'
 ): Promise<FileNodeDTO[]> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/files?maxDepth=${depth}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/files?maxDepth=${depth}`
   );
   return handleResponse<FileNodeDTO[]>(res);
 }
@@ -205,7 +222,7 @@ export interface SessionDTO {
 }
 
 export async function listSessions(workspaceId: string): Promise<SessionDTO[]> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`);
   return handleResponse<SessionDTO[]>(res);
 }
 
@@ -213,7 +230,7 @@ export async function createSession(
   workspaceId: string,
   data: { name?: string; branch?: string; worktreePath?: string; task?: string } = {}
 ): Promise<SessionDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -226,7 +243,7 @@ export async function updateSession(
   sessionId: string,
   updates: Partial<Omit<SessionDTO, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt'>>
 ): Promise<SessionDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
@@ -235,7 +252,7 @@ export async function updateSession(
 }
 
 export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete session');
 }
 
@@ -247,7 +264,7 @@ export interface FileChangeDTO {
 }
 
 export async function getSessionChanges(workspaceId: string, sessionId: string): Promise<FileChangeDTO[]> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/changes`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/changes`);
   return handleResponse<FileChangeDTO[]>(res);
 }
 
@@ -285,7 +302,7 @@ export interface GitStatusDTO {
 }
 
 export async function getGitStatus(workspaceId: string, sessionId: string): Promise<GitStatusDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/git-status`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/git-status`);
   return handleResponse<GitStatusDTO>(res);
 }
 
@@ -313,7 +330,7 @@ export async function getFileCommitHistory(
 ): Promise<FileHistoryResponse> {
   const params = new URLSearchParams({ path: filePath });
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file-history?${params.toString()}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file-history?${params.toString()}`
   );
   return handleResponse<FileHistoryResponse>(res);
 }
@@ -326,7 +343,7 @@ export async function getFileAtCommit(
 ): Promise<FileContentDTO> {
   const params = new URLSearchParams({ path: filePath, ref: commitSha });
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/file-at-ref?${params.toString()}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/file-at-ref?${params.toString()}`
   );
   return handleResponse<FileContentDTO>(res);
 }
@@ -338,6 +355,7 @@ export interface CheckDetail {
   name: string;
   status: string;
   conclusion: string;
+  durationSeconds?: number;
 }
 
 export interface PRDetails {
@@ -353,7 +371,7 @@ export interface PRDetails {
 
 export async function getPRStatus(workspaceId: string, sessionId: string): Promise<PRDetails | null> {
   try {
-    const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/pr-status`);
+    const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr-status`);
     if (res.status === 404) {
       return null; // No PR found
     }
@@ -371,6 +389,7 @@ export interface CheckDetail {
   name: string;
   status: string; // "queued", "in_progress", "completed"
   conclusion: string; // "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
+  durationSeconds?: number; // Duration in seconds (only for completed checks)
 }
 
 export interface PRDashboardItem {
@@ -407,7 +426,7 @@ export interface PRDashboardItem {
 
 export async function getPRs(workspaceId?: string): Promise<PRDashboardItem[]> {
   const params = workspaceId ? `?workspaceId=${workspaceId}` : '';
-  const res = await fetchWithAuth(`${API_BASE}/api/prs${params}`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/prs${params}`);
   return handleResponse<PRDashboardItem[]>(res);
 }
 
@@ -416,7 +435,7 @@ export async function sendSessionMessage(
   sessionId: string,
   content: string
 ): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/message`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
@@ -428,12 +447,12 @@ export async function sendSessionMessage(
 }
 
 export async function listAgents(repoId: string): Promise<AgentDTO[]> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/agents`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/agents`);
   return handleResponse<AgentDTO[]>(res);
 }
 
 export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${repoId}/agents`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ task }),
@@ -442,28 +461,28 @@ export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO
 }
 
 export async function stopAgent(agentId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/stop`, { method: 'POST' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}/stop`, { method: 'POST' });
   await handleVoidResponse(res, 'Failed to stop agent');
 }
 
 export async function getAgentDiff(agentId: string): Promise<string> {
-  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/diff`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}/diff`);
   return res.text();
 }
 
 export async function mergeAgent(agentId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}/merge`, { method: 'POST' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}/merge`, { method: 'POST' });
   await handleVoidResponse(res, 'Failed to merge agent changes');
 }
 
 export async function deleteAgent(agentId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/agents/${agentId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete agent');
 }
 
 export async function checkHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/health`);
+    const res = await fetch(`${getApiBase()}/health`);
     return res.ok;
   } catch {
     return false;
@@ -487,13 +506,17 @@ export async function checkHealthWithRetry(
   initialDelay: number = 500,
   onAttempt?: (attempt: number) => void
 ): Promise<HealthCheckResult> {
+  // Ensure we have the backend port before making health checks
+  // This is especially important for Tauri builds with dynamic port allocation
+  await getBackendPort();
+
   let delay = initialDelay;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     onAttempt?.(attempt);
 
     try {
-      const res = await fetch(`${API_BASE}/health`, {
+      const res = await fetch(`${getApiBase()}/health`, {
         signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS)
       });
 
@@ -594,7 +617,7 @@ export async function listConversations(
   sessionId: string
 ): Promise<ConversationDTO[]> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`
   );
   return handleResponse<ConversationDTO[]>(res);
 }
@@ -610,7 +633,7 @@ export async function createConversation(
   }
 ): Promise<ConversationDTO> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`,
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/conversations`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -621,7 +644,7 @@ export async function createConversation(
 }
 
 export async function getConversation(convId: string): Promise<ConversationDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`);
   return handleResponse<ConversationDTO>(res);
 }
 
@@ -630,7 +653,7 @@ export async function sendConversationMessage(
   content: string,
   attachments?: AttachmentDTO[]
 ): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/messages`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, attachments }),
@@ -642,17 +665,17 @@ export async function sendConversationMessage(
 }
 
 export async function stopConversation(convId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/stop`, { method: 'POST' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/stop`, { method: 'POST' });
   await handleVoidResponse(res, 'Failed to stop conversation');
 }
 
 export async function deleteConversation(convId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete conversation');
 }
 
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/plan-mode`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/plan-mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
@@ -664,7 +687,7 @@ export async function setConversationPlanMode(convId: string, enabled: boolean):
 }
 
 export async function approvePlan(convId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/conversations/${convId}/approve-plan`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/approve-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -688,7 +711,7 @@ export interface FileTabDTO {
 }
 
 export async function listFileTabs(workspaceId: string): Promise<FileTabDTO[]> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/tabs`);
   return handleResponse<FileTabDTO[]>(res);
 }
 
@@ -696,7 +719,7 @@ export async function saveFileTabs(
   workspaceId: string,
   tabs: FileTabDTO[]
 ): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/tabs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tabs }),
@@ -708,7 +731,7 @@ export async function saveFileTabs(
 }
 
 export async function deleteFileTab(workspaceId: string, tabId: string): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/tabs/${tabId}`, { method: 'DELETE' });
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/tabs/${tabId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete file tab');
 }
 
@@ -720,7 +743,7 @@ export async function saveFile(
   sessionId?: string
 ): Promise<void> {
   const params = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
-  const res = await fetchWithAuth(`${API_BASE}/api/repos/${workspaceId}/file/save${params}`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/file/save${params}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, content }),
@@ -760,7 +783,7 @@ export async function listReviewComments(
 ): Promise<ReviewCommentDTO[]> {
   const params = filePath ? `?filePath=${encodeURIComponent(filePath)}` : '';
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments${params}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments${params}`
   );
   return handleResponse<ReviewCommentDTO[]>(res);
 }
@@ -778,7 +801,7 @@ export async function createReviewComment(
   }
 ): Promise<ReviewCommentDTO> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments`,
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -793,7 +816,7 @@ export async function getReviewCommentStats(
   sessionId: string
 ): Promise<CommentStatsDTO[]> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/stats`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments/stats`
   );
   return handleResponse<CommentStatsDTO[]>(res);
 }
@@ -805,7 +828,7 @@ export async function updateReviewComment(
   data: { resolved?: boolean; resolvedBy?: string }
 ): Promise<ReviewCommentDTO> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -821,7 +844,7 @@ export async function deleteReviewComment(
   commentId: string
 ): Promise<void> {
   const res = await fetchWithAuth(
-    `${API_BASE}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,
     { method: 'DELETE' }
   );
   if (!res.ok) {
@@ -846,6 +869,6 @@ export interface DashboardDataDTO {
  * Uses only 4 database queries regardless of data volume (1 for repos + 1 for sessions + 3 for conversations batch).
  */
 export async function getDashboardData(): Promise<DashboardDataDTO> {
-  const res = await fetchWithAuth(`${API_BASE}/api/dashboard/data`);
+  const res = await fetchWithAuth(`${getApiBase()}/api/dashboard/data`);
   return handleResponse<DashboardDataDTO>(res);
 }

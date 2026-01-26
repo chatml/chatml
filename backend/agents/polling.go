@@ -3,9 +3,9 @@ package agents
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
 
@@ -121,7 +121,7 @@ func (pm *PollingManager) pollGitHub(ctx context.Context, source models.AgentPol
 
 	if pm.github.IsRateLimited(ghResult.RateLimit) {
 		result.RateLimited = true
-		log.Printf("[polling] GitHub rate limited, reset at %v", ghResult.RateLimit.Reset)
+		logger.Polling.Warnf("GitHub rate limited, reset at %v", ghResult.RateLimit.Reset)
 		return result
 	}
 

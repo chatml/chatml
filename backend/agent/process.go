@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
 
@@ -235,7 +235,7 @@ func (p *Process) Start() error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[process:%s] PANIC in stdout reader: %v\n%s", p.ID, r, debug.Stack())
+				logger.Process.Errorf("[%s] PANIC in stdout reader: %v\n%s", p.ID, r, debug.Stack())
 			}
 			outputWg.Done()
 		}()
@@ -249,7 +249,7 @@ func (p *Process) Start() error {
 				// Successfully queued
 			case <-time.After(processOutputTimeout):
 				// Buffer full after timeout - downstream reader is persistently slow
-				log.Printf("[process:%s] Output buffer full after %v timeout, dropping stdout message (slow reader)", p.ID, processOutputTimeout)
+				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stdout message (slow reader)", p.ID, processOutputTimeout)
 				// Emit warning to frontend (best-effort, non-blocking)
 				select {
 				case p.output <- bufferFullWarningJSON:
@@ -264,7 +264,7 @@ func (p *Process) Start() error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[process:%s] PANIC in stderr reader: %v\n%s", p.ID, r, debug.Stack())
+				logger.Process.Errorf("[%s] PANIC in stderr reader: %v\n%s", p.ID, r, debug.Stack())
 			}
 			outputWg.Done()
 		}()
@@ -275,7 +275,7 @@ func (p *Process) Start() error {
 				// Successfully queued
 			case <-time.After(processOutputTimeout):
 				// Buffer full after timeout - downstream reader is persistently slow
-				log.Printf("[process:%s] Output buffer full after %v timeout, dropping stderr message (slow reader)", p.ID, processOutputTimeout)
+				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stderr message (slow reader)", p.ID, processOutputTimeout)
 				// Emit warning to frontend (best-effort, non-blocking)
 				select {
 				case p.output <- bufferFullWarningJSON:
@@ -290,7 +290,7 @@ func (p *Process) Start() error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[process:%s] PANIC in completion handler: %v\n%s", p.ID, r, debug.Stack())
+				logger.Process.Errorf("[%s] PANIC in completion handler: %v\n%s", p.ID, r, debug.Stack())
 			}
 		}()
 

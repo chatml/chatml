@@ -137,6 +137,7 @@ pub fn run() {
             commands::watch_workspace,
             commands::unwatch_workspace,
             commands::get_auth_token,
+            commands::get_backend_port,
             commands::get_pending_oauth_callback,
             // File attachment commands
             commands::read_file_metadata,

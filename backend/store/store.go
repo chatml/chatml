@@ -2,11 +2,11 @@ package store
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
 
@@ -40,17 +40,17 @@ func New() *Store {
 	if err == nil {
 		dataDir := filepath.Join(homeDir, ".chatml")
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
-			log.Printf("[store] Failed to create data dir: %v", err)
+			logger.Store.Errorf("Failed to create data dir: %v", err)
 		}
 		s.dataPath = filepath.Join(dataDir, "data.json")
-		log.Printf("[store] Data path: %s", s.dataPath)
+		logger.Store.Infof("Data path: %s", s.dataPath)
 
 		// Load existing data
 		if err := s.load(); err != nil {
-			log.Printf("[store] Failed to load data: %v", err)
+			logger.Store.Errorf("Failed to load data: %v", err)
 		}
 	} else {
-		log.Printf("[store] Failed to get home dir: %v", err)
+		logger.Store.Errorf("Failed to get home dir: %v", err)
 	}
 
 	return s
@@ -130,9 +130,9 @@ func (s *Store) AddRepo(repo *models.Repo) {
 	s.repos[repo.ID] = repo
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after AddRepo: %v", err)
+		logger.Store.Errorf("Failed to save after AddRepo: %v", err)
 	} else {
-		log.Printf("[store] Saved %d repos to %s", len(s.repos), s.dataPath)
+		logger.Store.Infof("Saved %d repos to %s", len(s.repos), s.dataPath)
 	}
 }
 
@@ -177,7 +177,7 @@ func (s *Store) AddSession(session *models.Session) {
 	s.sessions[session.ID] = session
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after AddSession: %v", err)
+		logger.Store.Errorf("Failed to save after AddSession: %v", err)
 	}
 }
 
@@ -206,7 +206,7 @@ func (s *Store) UpdateSession(id string, updates func(*models.Session)) {
 	}
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after UpdateSession: %v", err)
+		logger.Store.Errorf("Failed to save after UpdateSession: %v", err)
 	}
 }
 
@@ -215,7 +215,7 @@ func (s *Store) DeleteSession(id string) {
 	delete(s.sessions, id)
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after DeleteSession: %v", err)
+		logger.Store.Errorf("Failed to save after DeleteSession: %v", err)
 	}
 }
 
@@ -269,7 +269,7 @@ func (s *Store) AddConversation(conv *models.Conversation) {
 	s.conversations[conv.ID] = conv
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after AddConversation: %v", err)
+		logger.Store.Errorf("Failed to save after AddConversation: %v", err)
 	}
 }
 
@@ -298,7 +298,7 @@ func (s *Store) UpdateConversation(id string, updates func(*models.Conversation)
 	}
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after UpdateConversation: %v", err)
+		logger.Store.Errorf("Failed to save after UpdateConversation: %v", err)
 	}
 }
 
@@ -307,7 +307,7 @@ func (s *Store) DeleteConversation(id string) {
 	delete(s.conversations, id)
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after DeleteConversation: %v", err)
+		logger.Store.Errorf("Failed to save after DeleteConversation: %v", err)
 	}
 }
 
@@ -318,7 +318,7 @@ func (s *Store) AddMessageToConversation(convID string, msg models.Message) {
 	}
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after AddMessageToConversation: %v", err)
+		logger.Store.Errorf("Failed to save after AddMessageToConversation: %v", err)
 	}
 }
 
@@ -329,6 +329,6 @@ func (s *Store) AddToolActionToConversation(convID string, action models.ToolAct
 	}
 	s.mu.Unlock()
 	if err := s.save(); err != nil {
-		log.Printf("[store] Failed to save after AddToolActionToConversation: %v", err)
+		logger.Store.Errorf("Failed to save after AddToolActionToConversation: %v", err)
 	}
 }

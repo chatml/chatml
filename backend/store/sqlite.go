@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	_ "modernc.org/sqlite"
 )
@@ -41,7 +41,7 @@ func NewSQLiteStore() (*SQLiteStore, error) {
 
 	dbPath := filepath.Join(dataDir, "chatml.db")
 
-	log.Printf("[sqlite] Opening database at %s", dbPath)
+	logger.SQLite.Infof("Opening database at %s", dbPath)
 
 	// Open database with optimized settings
 	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
@@ -202,7 +202,7 @@ func (s *SQLiteStore) initSchema() error {
 		return err
 	}
 
-	log.Printf("[sqlite] Schema initialized")
+	logger.SQLite.Infof("Schema initialized")
 	return nil
 }
 
@@ -221,7 +221,7 @@ func (s *SQLiteStore) runMigrations() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("[sqlite] Migration: Added setup_info column to messages")
+		logger.SQLite.Infof("Migration: Added setup_info column to messages")
 	}
 
 	// Migration: Add pinned column to sessions if it doesn't exist
@@ -236,7 +236,7 @@ func (s *SQLiteStore) runMigrations() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("[sqlite] Migration: Added pinned column to sessions")
+		logger.SQLite.Infof("Migration: Added pinned column to sessions")
 	}
 
 	// Migration: Add archived column to sessions if it doesn't exist
@@ -251,7 +251,7 @@ func (s *SQLiteStore) runMigrations() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("[sqlite] Migration: Added archived column to sessions")
+		logger.SQLite.Infof("Migration: Added archived column to sessions")
 	}
 
 	// Migration: Add run_summary column to messages if it doesn't exist
@@ -266,7 +266,7 @@ func (s *SQLiteStore) runMigrations() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("[sqlite] Migration: Added run_summary column to messages")
+		logger.SQLite.Infof("Migration: Added run_summary column to messages")
 	}
 
 	// Migration: Add base_commit_sha column to sessions if it doesn't exist
@@ -281,7 +281,7 @@ func (s *SQLiteStore) runMigrations() error {
 		if err != nil {
 			return err
 		}
-		log.Printf("[sqlite] Migration: Added base_commit_sha column to sessions")
+		logger.SQLite.Infof("Migration: Added base_commit_sha column to sessions")
 	}
 
 	// Migration: Create file_tabs table if it doesn't exist
@@ -309,7 +309,7 @@ func (s *SQLiteStore) runMigrations() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("[sqlite] Migration: file_tabs table ready")
+	logger.SQLite.Infof("Migration: file_tabs table ready")
 
 	// Migration: Create orchestrator_agents table if it doesn't exist
 	_, err = s.db.Exec(`
@@ -329,7 +329,7 @@ func (s *SQLiteStore) runMigrations() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("[sqlite] Migration: orchestrator_agents table ready")
+	logger.SQLite.Infof("Migration: orchestrator_agents table ready")
 
 	// Migration: Create agent_runs table if it doesn't exist
 	_, err = s.db.Exec(`
@@ -353,7 +353,7 @@ func (s *SQLiteStore) runMigrations() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("[sqlite] Migration: agent_runs table ready")
+	logger.SQLite.Infof("Migration: agent_runs table ready")
 
 	// Migration: Create review_comments table if it doesn't exist
 	_, err = s.db.Exec(`
@@ -384,7 +384,7 @@ func (s *SQLiteStore) runMigrations() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("[sqlite] Migration: review_comments table ready")
+	logger.SQLite.Infof("Migration: review_comments table ready")
 
 	// Migration: Create attachments table if it doesn't exist
 	_, err = s.db.Exec(`
@@ -412,7 +412,7 @@ func (s *SQLiteStore) runMigrations() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("[sqlite] Migration: attachments table ready")
+	logger.SQLite.Infof("Migration: attachments table ready")
 
 	return nil
 }

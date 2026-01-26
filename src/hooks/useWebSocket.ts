@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
+import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 
 // Type guards for WebSocket payload validation
 function isAgentEvent(payload: unknown): payload is AgentEvent {
@@ -49,10 +50,14 @@ function isValidConversationStatus(value: unknown): value is ConversationStatus 
   return typeof value === 'string' && VALID_CONVERSATION_STATUSES.includes(value as ConversationStatus);
 }
 
-// WebSocket URL - configurable via environment variable for non-Tauri builds
-const WS_URL = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
-  ? 'ws://localhost:9876/ws'  // Tauri always uses localhost sidecar
-  : (process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9876/ws');
+// Get WebSocket URL dynamically based on the backend port
+function getWsUrl(): string {
+  if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
+    const port = getBackendPortSync();
+    return `ws://localhost:${port}/ws`;
+  }
+  return process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9876/ws';
+}
 
 export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -335,10 +340,15 @@ export function useWebSocket(enabled: boolean = true) {
     if (!enabledRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
+    // Ensure we have the backend port before connecting
+    // This is especially important for Tauri builds with dynamic port allocation
+    await getBackendPort();
+
     // Fetch auth token (awaits if not yet cached, uses cache otherwise)
     // This ensures we always have the current token, even after sidecar restarts
     const token = await getAuthToken();
-    const wsUrl = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+    const baseWsUrl = getWsUrl();
+    const wsUrl = token ? `${baseWsUrl}?token=${encodeURIComponent(token)}` : baseWsUrl;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

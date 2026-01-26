@@ -67,6 +67,14 @@ pub fn get_auth_token(state: State<'_, Arc<AppState>>) -> Result<String, String>
         .ok_or_else(|| "Auth token not available".to_string())
 }
 
+/// Get the port the backend sidecar is running on
+#[tauri::command]
+pub fn get_backend_port(state: State<'_, Arc<AppState>>) -> Result<u16, String> {
+    state
+        .get_sidecar_port()
+        .ok_or_else(|| "Backend port not available yet".to_string())
+}
+
 /// Get and consume any pending OAuth callback URL
 #[tauri::command]
 pub fn get_pending_oauth_callback(state: State<'_, Arc<AppState>>) -> Option<String> {
@@ -296,6 +304,19 @@ mod tests {
         let state = Arc::new(AppState::new());
         state.set_auth_token("test-token-123".to_string());
         assert_eq!(state.get_auth_token(), Some("test-token-123".to_string()));
+    }
+
+    #[test]
+    fn test_get_backend_port_returns_none_when_not_set() {
+        let state = Arc::new(AppState::new());
+        assert!(state.get_sidecar_port().is_none());
+    }
+
+    #[test]
+    fn test_get_backend_port_returns_value_when_set() {
+        let state = Arc::new(AppState::new());
+        state.set_sidecar_port(9876);
+        assert_eq!(state.get_sidecar_port(), Some(9876));
     }
 
     #[test]

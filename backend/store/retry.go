@@ -3,11 +3,12 @@ package store
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"strings"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // RetryConfig holds configuration for database operation retries
@@ -84,7 +85,7 @@ func RetryDBOperation[T any](
 
 		if attempt < config.MaxRetries {
 			delay := calculateBackoff(attempt, config)
-			log.Printf("[db-retry] %s: transient error (attempt %d/%d), retrying in %v: %v",
+			logger.DBRetry.Warnf("%s: transient error (attempt %d/%d), retrying in %v: %v",
 				opName, attempt+1, totalAttempts, delay, lastErr)
 
 			select {

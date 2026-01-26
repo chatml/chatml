@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/chatml/chatml-backend/cleanup"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
 	"github.com/chatml/chatml-backend/server"
@@ -22,19 +25,68 @@ import (
 	"github.com/chatml/chatml-backend/store"
 )
 
+const (
+	// DefaultPort is the preferred port for the backend server
+	DefaultPort = 9876
+	// MinPort is the start of the port range for fallback
+	MinPort = 9876
+	// MaxPort is the end of the port range for fallback
+	// NOTE: If you change this range, you must also update the CSP in
+	// src-tauri/tauri.conf.json to include all ports in the range.
+	// CSP wildcards (localhost:*) are not supported.
+	MaxPort = 9899
+)
+
+// acquireListener finds an available port, trying the preferred port first,
+// then falling back to the range MinPort-MaxPort.
+// Returns the listener (caller must close) to avoid TOCTOU race conditions.
+func acquireListener(preferred int) (net.Listener, int, error) {
+	// Try preferred port first
+	if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", preferred)); err == nil {
+		return l, preferred, nil
+	}
+
+	// Try range from MinPort to MaxPort
+	for port := MinPort; port <= MaxPort; port++ {
+		if port == preferred {
+			continue // Already tried
+		}
+		if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
+			return l, port, nil
+		}
+	}
+
+	return nil, 0, fmt.Errorf("no available port in range %d-%d", MinPort, MaxPort)
+}
+
 func main() {
 	// Create root context that cancels on SIGINT/SIGTERM
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "9876"
+	// Determine preferred port from environment or use default
+	preferredPort := DefaultPort
+	if p := os.Getenv("PORT"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil {
+			preferredPort = parsed
+		}
 	}
+
+	// Acquire a listener on an available port (tries preferred first, then range)
+	// We keep the listener open to avoid TOCTOU race conditions where another
+	// process could claim the port between checking and binding.
+	listener, actualPort, err := acquireListener(preferredPort)
+	if err != nil {
+		logger.Main.Fatalf("Failed to acquire port: %v", err)
+	}
+
+	// Output port for Tauri to capture - MUST be first output line
+	// This protocol allows the Tauri wrapper to discover which port we bound to
+	fmt.Printf("CHATML_PORT=%d\n", actualPort)
 
 	s, err := store.NewSQLiteStore()
 	if err != nil {
-		log.Fatalf("Failed to initialize store: %v", err)
+		logger.Main.Fatalf("Failed to initialize store: %v", err)
 	}
 	defer s.Close()
 
@@ -45,7 +97,7 @@ func main() {
 	// Use a timeout to prevent startup from hanging indefinitely on git lock issues
 	cleanupCtx, cleanupCancel := context.WithTimeout(ctx, 30*time.Second)
 	if err := cleanup.CleanOrphanedWorktrees(cleanupCtx, s, wm); err != nil {
-		log.Printf("Warning: orphan cleanup failed: %v", err)
+		logger.Cleanup.Warnf("Orphan cleanup failed: %v", err)
 		// Non-fatal - continue startup
 	}
 	cleanupCancel()
@@ -72,7 +124,7 @@ func main() {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[branch-watcher] PANIC recovered: %v\n%s", r, debug.Stack())
+					logger.BranchWatcher.Errorf("PANIC recovered: %v\n%s", r, debug.Stack())
 				}
 			}()
 
@@ -94,7 +146,7 @@ func main() {
 				sess.Name = newName
 				sess.UpdatedAt = now
 			}); updateErr != nil {
-				log.Printf("[branch-watcher] Failed to update session %s: %v", event.SessionID, updateErr)
+				logger.BranchWatcher.Errorf("Failed to update session %s: %v", event.SessionID, updateErr)
 				return
 			}
 
@@ -103,11 +155,11 @@ func main() {
 				meta.Name = newName
 				meta.Branch = event.NewBranch
 				if err := session.WriteMetadata(meta); err != nil {
-					log.Printf("[branch-watcher] Failed to update metadata for %s: %v", event.SessionID, err)
+					logger.BranchWatcher.Errorf("Failed to update metadata for %s: %v", event.SessionID, err)
 				}
 			}
 
-			log.Printf("[branch-watcher] Updated session %s: branch=%q name=%q", event.SessionID, event.NewBranch, newName)
+			logger.BranchWatcher.Infof("Updated session %s: branch=%q name=%q", event.SessionID, event.NewBranch, newName)
 
 			// Emit WebSocket event for frontend
 			hub.Broadcast(server.Event{
@@ -122,7 +174,7 @@ func main() {
 		}()
 	})
 	if err != nil {
-		log.Printf("Warning: Failed to start branch watcher: %v", err)
+		logger.BranchWatcher.Warnf("Failed to start branch watcher: %v", err)
 		// Non-fatal - app can still work without instant branch detection
 	}
 	if branchWatcher != nil {
@@ -133,7 +185,7 @@ func main() {
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf("[stats-watcher] PANIC recovered: %v\n%s", r, debug.Stack())
+						logger.StatsWatcher.Errorf("PANIC recovered: %v\n%s", r, debug.Stack())
 					}
 				}()
 
@@ -213,7 +265,7 @@ func main() {
 				for _, sess := range sessions {
 					if sess.WorktreePath != "" {
 						if watchErr := branchWatcher.WatchSession(sess.ID, sess.WorktreePath, sess.Branch); watchErr != nil {
-							log.Printf("Warning: Failed to watch existing session %s: %v", sess.ID, watchErr)
+							logger.BranchWatcher.Warnf("Failed to watch existing session %s: %v", sess.ID, watchErr)
 						}
 					}
 				}
@@ -230,7 +282,7 @@ func main() {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[pr-watcher] PANIC recovered: %v\n%s", r, debug.Stack())
+					logger.PRWatcher.Errorf("PANIC recovered: %v\n%s", r, debug.Stack())
 				}
 			}()
 
@@ -239,7 +291,7 @@ func main() {
 				return
 			}
 
-			log.Printf("[pr-watcher] Broadcasting PR update for session %s: status=%s, pr=%d",
+			logger.PRWatcher.Infof("Broadcasting PR update for session %s: status=%s, pr=%d",
 				event.SessionID, event.PRStatus, event.PRNumber)
 
 			// Emit WebSocket event for frontend
@@ -280,29 +332,29 @@ func main() {
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
-		Addr:    ":" + port,
 		Handler: router,
 	}
 
-	// Start server in goroutine
+	// Start server in goroutine using the already-acquired listener
+	// This avoids TOCTOU race conditions since we keep the listener open
 	go func() {
-		log.Printf("ChatML backend starting on port %s", port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+		logger.Main.Infof("ChatML backend starting on port %d", actualPort)
+		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+			logger.Main.Fatalf("Server error: %v", err)
 		}
 	}()
 
 	// Wait for shutdown signal
 	<-ctx.Done()
-	log.Println("Shutdown signal received, stopping server...")
+	logger.Main.Info("Shutdown signal received, stopping server...")
 
 	// Give outstanding requests a short deadline to complete
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		logger.Main.Errorf("Server shutdown error: %v", err)
 	}
 
-	log.Println("Server stopped")
+	logger.Main.Info("Server stopped")
 }

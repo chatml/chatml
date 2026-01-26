@@ -3,10 +3,10 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/chatml/chatml-backend/agents"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
 
@@ -76,7 +76,7 @@ func New(store OrchestratorStore, config Config) *Orchestrator {
 
 // Start initializes the orchestrator and begins scheduling
 func (o *Orchestrator) Start() error {
-	log.Printf("[orchestrator] Starting...")
+	logger.Orchestrator.Info("Starting...")
 
 	// Load agent definitions from YAML files
 	if err := o.loadAgents(); err != nil {
@@ -86,17 +86,17 @@ func (o *Orchestrator) Start() error {
 	// Schedule enabled agents
 	o.scheduleAllAgents()
 
-	log.Printf("[orchestrator] Started with %d agents", len(o.agents))
+	logger.Orchestrator.Infof("Started with %d agents", len(o.agents))
 	return nil
 }
 
 // Stop shuts down the orchestrator
 func (o *Orchestrator) Stop() {
-	log.Printf("[orchestrator] Stopping...")
+	logger.Orchestrator.Info("Stopping...")
 	o.cancel()
 	o.scheduler.Stop()
 	o.runner.StopAll()
-	log.Printf("[orchestrator] Stopped")
+	logger.Orchestrator.Info("Stopped")
 }
 
 // loadAgents loads agent definitions and syncs with database
@@ -104,7 +104,7 @@ func (o *Orchestrator) loadAgents() error {
 	// Load from YAML files
 	yamlAgents, err := o.loader.LoadAll()
 	if err != nil {
-		log.Printf("[orchestrator] Warning: failed to load agent files: %v", err)
+		logger.Orchestrator.Warnf("Failed to load agent files: %v", err)
 		// Continue - we might have agents in the database
 	}
 
@@ -133,12 +133,12 @@ func (o *Orchestrator) loadAgents() error {
 
 			// Update the yaml path in case it changed
 			if err := o.store.UpsertOrchestratorAgent(o.ctx, yamlAgent); err != nil {
-				log.Printf("[orchestrator] Warning: failed to update agent %s: %v", yamlAgent.ID, err)
+				logger.Orchestrator.Warnf("Failed to update agent %s: %v", yamlAgent.ID, err)
 			}
 		} else {
 			// New agent - create in database
 			if err := o.store.CreateOrchestratorAgent(o.ctx, yamlAgent); err != nil {
-				log.Printf("[orchestrator] Warning: failed to create agent %s: %v", yamlAgent.ID, err)
+				logger.Orchestrator.Warnf("Failed to create agent %s: %v", yamlAgent.ID, err)
 			}
 		}
 
@@ -155,7 +155,7 @@ func (o *Orchestrator) loadAgents() error {
 	}
 	for _, dbAgent := range dbAgents {
 		if !yamlAgentIDs[dbAgent.ID] {
-			log.Printf("[orchestrator] Agent %s exists in database but has no YAML file", dbAgent.ID)
+			logger.Orchestrator.Warnf("Agent %s exists in database but has no YAML file", dbAgent.ID)
 			// Keep it in memory but mark as potentially orphaned
 			// Don't delete - user might want to keep the history
 			o.mu.Lock()
@@ -186,25 +186,25 @@ func (o *Orchestrator) onScheduledRun(agentID string) {
 	o.mu.RUnlock()
 
 	if !ok {
-		log.Printf("[orchestrator] Scheduled run for unknown agent: %s", agentID)
+		logger.Orchestrator.Warnf("Scheduled run for unknown agent: %s", agentID)
 		return
 	}
 
 	if !agent.Enabled {
-		log.Printf("[orchestrator] Skipping disabled agent: %s", agentID)
+		logger.Orchestrator.Debugf("Skipping disabled agent: %s", agentID)
 		return
 	}
 
 	// Start the run
 	_, err := o.runner.StartRun(o.ctx, agent, models.AgentTriggerPoll)
 	if err != nil {
-		log.Printf("[orchestrator] Failed to start scheduled run for agent %s: %v", agentID, err)
+		logger.Orchestrator.Errorf("Failed to start scheduled run for agent %s: %v", agentID, err)
 	}
 }
 
 // ReloadAgents reloads agent definitions from YAML files
 func (o *Orchestrator) ReloadAgents() error {
-	log.Printf("[orchestrator] Reloading agents...")
+	logger.Orchestrator.Info("Reloading agents...")
 
 	// Stop all schedulers
 	o.scheduler.Stop()
@@ -220,7 +220,7 @@ func (o *Orchestrator) ReloadAgents() error {
 	// Reschedule
 	o.scheduleAllAgents()
 
-	log.Printf("[orchestrator] Reloaded %d agents", len(o.agents))
+	logger.Orchestrator.Infof("Reloaded %d agents", len(o.agents))
 	return nil
 }
 

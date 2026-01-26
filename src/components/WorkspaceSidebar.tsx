@@ -621,7 +621,7 @@ function SortableWorkspaceItem({
             >
               <Folder className="w-4 h-4" />
             </div>
-            <span className="text-[length:var(--text-base)] font-medium truncate">
+            <span className="text-[length:var(--text-base)] font-semibold truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -707,7 +707,7 @@ function SortableWorkspaceItem({
                         isDashboardSelected ? "text-blue-400" : "text-blue-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-sm)]",
+                        "text-[length:var(--text-base)] font-medium",
                         isDashboardSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -729,7 +729,7 @@ function SortableWorkspaceItem({
                         isPRsSelected ? "text-violet-400" : "text-violet-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-sm)]",
+                        "text-[length:var(--text-base)] font-medium",
                         isPRsSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -801,7 +801,7 @@ function SortableWorkspaceItem({
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
                               <span className={cn(
-                                "text-[length:var(--text-sm)] font-normal truncate flex-1 w-0",
+                                "text-[length:var(--text-base)] font-normal truncate flex-1 w-0",
                                 isSessionSelected ? "text-foreground" : "text-foreground/60"
                               )}>
                                 {session.branch || session.name}
@@ -847,7 +847,7 @@ function SortableWorkspaceItem({
                             </div>
                           </div>
                           {/* Second line: session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-xs)] text-muted-foreground">
+                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-caption)] text-muted-foreground">
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>

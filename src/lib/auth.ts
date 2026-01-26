@@ -12,10 +12,16 @@
  */
 
 import { isTauri, safeListen, safeInvoke } from '@/lib/tauri';
+import { getBackendPortSync } from '@/lib/backend-port';
 
-const API_BASE = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
-  ? 'http://localhost:9876'
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876');
+// Get API base URL dynamically based on the backend port
+function getApiBase(): string {
+  if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
+    const port = getBackendPortSync();
+    return `http://localhost:${port}`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
+}
 
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';
@@ -213,7 +219,7 @@ export async function handleOAuthCallback(url: string): Promise<{ token: string;
 
   // Exchange code for token via backend (with PKCE verifier)
   console.log('[OAuth] Exchanging code for token via backend...');
-  const res = await fetch(`${API_BASE}/api/auth/github/callback`, {
+  const res = await fetch(`${getApiBase()}/api/auth/github/callback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, code_verifier: codeVerifier }),
@@ -317,7 +323,7 @@ export async function clearToken(): Promise<void> {
  */
 export async function sendTokenToBackend(token: string): Promise<{ user: GitHubUser } | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/token`, {
+    const res = await fetch(`${getApiBase()}/api/auth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
@@ -341,7 +347,7 @@ export async function sendTokenToBackend(token: string): Promise<{ user: GitHubU
  * Check auth status from backend
  */
 export async function getAuthStatus(): Promise<AuthStatus> {
-  const res = await fetch(`${API_BASE}/api/auth/status`);
+  const res = await fetch(`${getApiBase()}/api/auth/status`);
   return res.json();
 }
 
@@ -350,7 +356,7 @@ export async function getAuthStatus(): Promise<AuthStatus> {
  */
 export async function logout(): Promise<void> {
   await clearToken();
-  await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+  await fetch(`${getApiBase()}/api/auth/logout`, { method: 'POST' });
 }
 
 /**
