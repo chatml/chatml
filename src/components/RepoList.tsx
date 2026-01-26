@@ -14,6 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
 
 interface RepoListProps {
   onAddClick: () => void;
@@ -21,11 +22,17 @@ interface RepoListProps {
 
 export function RepoList({ onAddClick }: RepoListProps) {
   const { repos, selectedRepoId, selectRepo, removeRepo, agents } = useAppStore();
+  const { error: showError } = useToast();
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await deleteRepo(id);
-    removeRepo(id);
+    try {
+      await deleteRepo(id);
+      removeRepo(id);
+    } catch (error) {
+      console.error('Failed to delete repository:', error);
+      showError('Failed to remove repository. Please try again.');
+    }
   };
 
   const getRepoAgentCount = (repoId: string) => {
