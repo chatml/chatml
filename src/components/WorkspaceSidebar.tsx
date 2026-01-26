@@ -628,7 +628,11 @@ function SortableWorkspaceItem({
               {...listeners}
               onClick={(e) => e.stopPropagation()}
             >
-              <Folder className="w-4 h-4" />
+              {isExpanded ? (
+                <FolderOpen className="w-4 h-4" />
+              ) : (
+                <Folder className="w-4 h-4" />
+              )}
             </div>
             <span className="text-[length:var(--text-base)] font-semibold truncate">
               {workspace.name}
