@@ -86,7 +86,14 @@ export function PRDashboard({
 
   return (
     <FullContentLayout
-      title={workspace ? `${workspace.name} Pull Requests` : 'Pull Requests'}
+      title={
+        <>
+          Pull Requests
+          {workspace && (
+            <span className="text-muted-foreground font-normal ml-2">{workspace.name}</span>
+          )}
+        </>
+      }
       onOpenSettings={onOpenSettings}
       onOpenShortcuts={onOpenShortcuts}
       showLeftSidebar={showLeftSidebar}
