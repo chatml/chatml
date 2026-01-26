@@ -76,10 +76,28 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// No-op fallback for SSR/outside provider - logs to console instead
+const noopToast: ToastContextValue = {
+  toasts: [],
+  addToast: () => {},
+  removeToast: () => {},
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  error: (message: string, _title?: string) => console.error('[Toast]', message),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  success: (message: string, _title?: string) => console.log('[Toast]', message),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  info: (message: string, _title?: string) => console.info('[Toast]', message),
+};
+
 export function useToast() {
   const context = useContext(ToastContext);
+  // Return no-op fallback during SSR or when outside provider
+  // This prevents build errors while still logging messages
   if (!context) {
-    throw new Error('useToast must be used within a ToastProvider');
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('useToast called outside ToastProvider - using no-op fallback');
+    }
+    return noopToast;
   }
   return context;
 }
