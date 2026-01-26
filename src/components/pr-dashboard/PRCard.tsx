@@ -14,6 +14,7 @@ import {
 import {
   GitPullRequest,
   GitPullRequestDraft,
+  GitBranch,
   Github,
   ChevronDown,
   ChevronRight,
@@ -23,6 +24,15 @@ import {
   AlertTriangle,
   ArrowRight,
 } from 'lucide-react';
+
+function BranchBadge({ name }: { name: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-2 text-xs font-mono text-muted-foreground">
+      <GitBranch className="h-3 w-3" />
+      <span className="truncate max-w-[150px]">{name}</span>
+    </span>
+  );
+}
 
 async function openInBrowser(url: string) {
   if (isTauri()) {
@@ -130,10 +140,10 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
             </div>
 
             {/* Second row: Branch info, conflicts indicator */}
-            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-              <span className="truncate">
-                {pr.branch} <ArrowRight className="h-3 w-3 inline" /> {pr.baseBranch}
-              </span>
+            <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+              <BranchBadge name={pr.branch} />
+              <ArrowRight className="h-3 w-3 shrink-0" />
+              <BranchBadge name={pr.baseBranch} />
               {hasConflicts && (
                 <span className="flex items-center gap-1 text-yellow-500 shrink-0">
                   <AlertTriangle className="h-3 w-3" />
