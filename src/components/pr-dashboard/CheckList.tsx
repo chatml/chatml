@@ -111,13 +111,12 @@ function CheckItem({ check }: CheckItemProps) {
   return (
     <div className="flex items-center gap-2 text-xs py-0.5">
       <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
-      <span className="truncate flex-1">{check.name}</span>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {check.durationSeconds !== undefined && (
-          <span className="text-muted-foreground">{formatDuration(check.durationSeconds)}</span>
-        )}
-        <span className={statusInfo.color}>{statusInfo.label}</span>
-      </div>
+      <span className="truncate">{check.name}</span>
+      {check.durationSeconds !== undefined && (
+        <span className="text-muted-foreground shrink-0">{formatDuration(check.durationSeconds)}</span>
+      )}
+      <span className="flex-1" />
+      <span className={cn('shrink-0', statusInfo.color)}>{statusInfo.label}</span>
     </div>
   );
 }
