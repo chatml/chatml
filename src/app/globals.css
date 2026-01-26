@@ -571,6 +571,24 @@
   background-color: #141414 !important;
 }
 
+/* Style xterm's custom scrollbar to look more native */
+.xterm .scrollbar {
+  width: 8px !important;
+  background: transparent !important;
+}
+
+.xterm .scrollbar .slider {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 4px !important;
+  width: 6px !important;
+  margin-left: 1px !important;
+}
+
+.xterm .scrollbar .slider:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+
 
 /* Plan mode animated border - marching ants SVG animation */
 @keyframes marching-ants-dash {
