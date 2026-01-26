@@ -401,6 +401,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                           selectSession(null);
                           setContentView({ type: 'workspace-dashboard', workspaceId: workspace.id });
                         }}
+                        onOpenBranches={() => {
+                          selectWorkspace(workspace.id);
+                          selectSession(null);
+                          setContentView({ type: 'branches', workspaceId: workspace.id });
+                        }}
                         onOpenPRs={() => {
                           selectWorkspace(workspace.id);
                           selectSession(null);
@@ -562,6 +567,7 @@ interface SortableWorkspaceItemProps {
   onPinSession: (sessionId: string) => void;
   onRemoveWorkspace: () => void;
   onOpenDashboard: () => void;
+  onOpenBranches: () => void;
   onOpenPRs: () => void;
   onOpenWorkspaceSettings: () => void;
   getStatusColor: (status: string) => string;
@@ -582,6 +588,7 @@ function SortableWorkspaceItem({
   onPinSession,
   onRemoveWorkspace,
   onOpenDashboard,
+  onOpenBranches,
   onOpenPRs,
   onOpenWorkspaceSettings,
   getStatusColor,
@@ -692,6 +699,7 @@ function SortableWorkspaceItem({
             <div className="pb-1">
               {(() => {
                 const isDashboardSelected = contentView.type === 'workspace-dashboard' && contentView.workspaceId === workspace.id;
+                const isBranchesSelected = contentView.type === 'branches' && contentView.workspaceId === workspace.id;
                 const isPRsSelected = contentView.type === 'pr-dashboard' && contentView.workspaceId === workspace.id;
                 return (
                   <>
@@ -715,6 +723,28 @@ function SortableWorkspaceItem({
                           : "text-muted-foreground group-hover:text-foreground"
                       )}>
                         Dashboard
+                      </span>
+                    </div>
+                    <div
+                      className={cn(
+                        "group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer",
+                        isBranchesSelected
+                          ? "bg-surface-2 text-foreground"
+                          : "hover:bg-surface-1"
+                      )}
+                      onClick={onOpenBranches}
+                    >
+                      <GitBranch className={cn(
+                        "w-3.5 h-3.5",
+                        isBranchesSelected ? "text-green-400" : "text-green-400/70"
+                      )} />
+                      <span className={cn(
+                        "text-[length:var(--text-base)] font-medium",
+                        isBranchesSelected
+                          ? "text-foreground"
+                          : "text-muted-foreground group-hover:text-foreground"
+                      )}>
+                        Branches
                       </span>
                     </div>
                     <div

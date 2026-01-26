@@ -617,6 +617,124 @@ func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, sessions)
 }
 
+// ListBranches returns all branches for a workspace with session linkage
+// GET /api/repos/{id}/branches?includeRemote=true&limit=50&offset=0&search=&sortBy=date
+func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	// Get the workspace
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "workspace")
+		return
+	}
+
+	// Parse query parameters
+	query := r.URL.Query()
+	includeRemote := query.Get("includeRemote") != "false" // default true
+	limit := 50
+	if l := query.Get("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	offset := 0
+	if o := query.Get("offset"); o != "" {
+		fmt.Sscanf(o, "%d", &offset)
+	}
+	search := query.Get("search")
+	sortBy := query.Get("sortBy")
+	if sortBy == "" {
+		sortBy = "date"
+	}
+
+	// Get branches from git
+	repoMgr := git.NewRepoManager()
+	branchOpts := git.BranchListOptions{
+		IncludeRemote: includeRemote,
+		Limit:         limit,
+		Offset:        offset,
+		Search:        search,
+		SortBy:        sortBy,
+		SortDesc:      true, // Most recent first for date sort
+	}
+
+	branchResult, err := repoMgr.ListBranches(ctx, repo.Path, branchOpts)
+	if err != nil {
+		writeInternalError(w, "failed to list branches", err)
+		return
+	}
+
+	// Get current branch
+	currentBranch, _ := repoMgr.GetCurrentBranch(ctx, repo.Path)
+
+	// Get all non-archived sessions for this workspace to build branch -> session lookup
+	sessions, err := h.store.ListSessions(ctx, workspaceID, false)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Build branch -> session lookup map
+	branchToSession := make(map[string]*models.Session)
+	for _, sess := range sessions {
+		if sess.Branch != "" {
+			branchToSession[sess.Branch] = sess
+		}
+	}
+
+	// Separate branches into session-linked and other
+	var sessionBranches []models.BranchWithSession
+	var otherBranches []models.BranchWithSession
+
+	for _, branch := range branchResult.Branches {
+		bws := models.BranchWithSession{
+			BranchInfo: models.BranchInfo{
+				Name:           branch.Name,
+				IsRemote:       branch.IsRemote,
+				IsHead:         branch.IsHead,
+				LastCommitSHA:  branch.LastCommitSHA,
+				LastCommitDate: branch.LastCommitDate,
+				LastAuthor:     branch.LastAuthor,
+				AheadMain:      branch.AheadMain,
+				BehindMain:     branch.BehindMain,
+				Prefix:         branch.Prefix,
+			},
+		}
+
+		// Check if this branch has an associated session
+		if sess, ok := branchToSession[branch.Name]; ok {
+			bws.SessionID = sess.ID
+			bws.SessionName = sess.Name
+			bws.SessionStatus = sess.Status
+			sessionBranches = append(sessionBranches, bws)
+		} else {
+			otherBranches = append(otherBranches, bws)
+		}
+	}
+
+	response := models.BranchListResponse{
+		SessionBranches: sessionBranches,
+		OtherBranches:   otherBranches,
+		CurrentBranch:   currentBranch,
+		Total:           branchResult.Total,
+		HasMore:         branchResult.HasMore,
+	}
+
+	// Ensure empty slices are serialized as [] not null
+	if response.SessionBranches == nil {
+		response.SessionBranches = []models.BranchWithSession{}
+	}
+	if response.OtherBranches == nil {
+		response.OtherBranches = []models.BranchWithSession{}
+	}
+
+	writeJSON(w, response)
+}
+
 type CreateSessionRequest struct {
 	// Name is optional - if not provided, a city name will be auto-generated
 	Name string `json:"name,omitempty"`
