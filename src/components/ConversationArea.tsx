@@ -42,6 +42,8 @@ import {
   FileQuestion,
   FileText,
   BookOpen,
+  AlertCircle,
+  File,
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -449,20 +451,23 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     if (!currentFileTab || currentFileTab.isLoading) return;
 
     // For regular file view without content, load it from session's worktree
-    if (currentFileTab.viewMode !== 'diff' && !currentFileTab.content && !currentFileTab.isBinary && !currentFileTab.isTooLarge && currentFileTab.sessionId) {
+    // Use content === undefined to differentiate "not loaded" from "loaded but empty"
+    if (currentFileTab.viewMode !== 'diff' && currentFileTab.content === undefined && !currentFileTab.isBinary && !currentFileTab.isTooLarge && !currentFileTab.isEmpty && !currentFileTab.loadError && currentFileTab.sessionId) {
       const loadContent = async () => {
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
           const fileData = await getSessionFileContent(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
+          const isEmpty = fileData.content === '' || fileData.content === undefined;
           updateFileTab(currentFileTab.id, {
-            content: fileData.content,
-            originalContent: fileData.content,
+            content: fileData.content ?? '',
+            originalContent: fileData.content ?? '',
+            isEmpty,
             isLoading: false,
           });
         } catch (error) {
           console.error('Failed to load file:', error);
           updateFileTab(currentFileTab.id, {
-            content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            loadError: error instanceof Error ? error.message : 'Unknown error',
             isLoading: false,
           });
         }
@@ -471,7 +476,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
 
     // For diff view without diff content, load it
-    if (currentFileTab.viewMode === 'diff' && !currentFileTab.diff && !currentFileTab.isBinary && !currentFileTab.isTooLarge && currentFileTab.sessionId) {
+    if (currentFileTab.viewMode === 'diff' && !currentFileTab.diff && !currentFileTab.isBinary && !currentFileTab.isTooLarge && !currentFileTab.loadError && currentFileTab.sessionId) {
       const loadDiff = async () => {
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
@@ -486,7 +491,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         } catch (error) {
           console.error('Failed to load diff:', error);
           updateFileTab(currentFileTab.id, {
-            content: `// Error loading diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            loadError: error instanceof Error ? error.message : 'Unknown error',
             isLoading: false,
           });
         }
@@ -549,26 +554,29 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     if (!tab || tab.isLoading) return;
 
     // For regular file view without content, load it from session's worktree
-    if (tab.viewMode !== 'diff' && !tab.content && !tab.isBinary && !tab.isTooLarge && tab.sessionId) {
+    // Use content === undefined to differentiate "not loaded" from "loaded but empty"
+    if (tab.viewMode !== 'diff' && tab.content === undefined && !tab.isBinary && !tab.isTooLarge && !tab.isEmpty && !tab.loadError && tab.sessionId) {
       updateFileTab(id, { isLoading: true });
       try {
         const fileData = await getSessionFileContent(tab.workspaceId, tab.sessionId, tab.path);
+        const isEmpty = fileData.content === '' || fileData.content === undefined;
         updateFileTab(id, {
-          content: fileData.content,
-          originalContent: fileData.content,
+          content: fileData.content ?? '',
+          originalContent: fileData.content ?? '',
+          isEmpty,
           isLoading: false,
         });
       } catch (error) {
         console.error('Failed to load file:', error);
         updateFileTab(id, {
-          content: `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          loadError: error instanceof Error ? error.message : 'Unknown error',
           isLoading: false,
         });
       }
     }
 
     // For diff view without diff content, load it
-    if (tab.viewMode === 'diff' && !tab.diff && !tab.isBinary && !tab.isTooLarge && tab.sessionId) {
+    if (tab.viewMode === 'diff' && !tab.diff && !tab.isBinary && !tab.isTooLarge && !tab.loadError && tab.sessionId) {
       updateFileTab(id, { isLoading: true });
       try {
         const diffData = await getSessionFileDiff(tab.workspaceId, tab.sessionId, tab.path);
@@ -582,7 +590,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       } catch (error) {
         console.error('Failed to load diff:', error);
         updateFileTab(id, {
-          content: `// Error loading diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          loadError: error instanceof Error ? error.message : 'Unknown error',
           isLoading: false,
         });
       }
@@ -750,7 +758,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       {isFileActive && currentFileTab ? (
         <>
           <div className="flex-1 min-h-0">
-            {currentFileTab.isBinary ? (
+            {currentFileTab.loadError ? (
+              // Error loading file
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
+                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
+                  <p className="text-xs text-muted-foreground mb-2">Failed to load file</p>
+                  <p className="text-xs text-destructive/70">{currentFileTab.loadError}</p>
+                </div>
+              </div>
+            ) : currentFileTab.isBinary ? (
               // Binary file placeholder
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
@@ -766,6 +784,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
                   <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
                   <p className="text-xs text-muted-foreground">File is too large to display</p>
+                </div>
+              </div>
+            ) : currentFileTab.isEmpty ? (
+              // Empty file placeholder
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <File className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
+                  <p className="text-xs text-muted-foreground">This file is empty</p>
                 </div>
               </div>
             ) : currentFileTab.viewMode === 'diff' && currentFileTab.diff ? (

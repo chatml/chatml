@@ -69,6 +69,7 @@ export function ActionButton({
       success: 'border-l-emerald-400/40',
       warning: 'border-l-yellow-400/40',
       info: 'border-l-blue-400/40',
+      purple: 'border-l-purple-400/40',
       secondary: 'border-l-secondary-foreground/10',
     }[action.variant] || 'border-l-primary/30';
 
@@ -86,7 +87,14 @@ export function ActionButton({
           ) : (
             <Icon className="h-3.5 w-3.5" />
           )}
-          {action.label}
+          {action.shortLabel ? (
+            <>
+              <span className="@[280px]:hidden">{action.shortLabel}</span>
+              <span className="hidden @[280px]:inline">{action.label}</span>
+            </>
+          ) : (
+            action.label
+          )}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -148,7 +156,14 @@ export function ActionButton({
       ) : (
         <Icon className="h-3.5 w-3.5" />
       )}
-      {action.label}
+      {action.shortLabel ? (
+        <>
+          <span className="@[280px]:hidden">{action.shortLabel}</span>
+          <span className="hidden @[280px]:inline">{action.label}</span>
+        </>
+      ) : (
+        action.label
+      )}
     </Button>
   );
 }

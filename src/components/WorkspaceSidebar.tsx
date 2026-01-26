@@ -314,7 +314,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
         <span className="text-[22px] font-extrabold select-none">
-          <span className="text-muted-foreground">chat</span><span className="text-[oklch(0.45_0.08_280)]">ml</span>
+          <span className="text-muted-foreground">chat</span><span className="text-purple-600">ml</span>
         </span>
         {onToggleSidebar && (
           <Tooltip>
@@ -328,7 +328,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Hide sidebar (⌘B)</TooltipContent>
+            <TooltipContent side="bottom">Hide Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ B</span></TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -522,7 +522,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               <Settings className="w-4 h-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top">Settings (⌘,)</TooltipContent>
+          <TooltipContent side="top">Settings <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ ,</span></TooltipContent>
         </Tooltip>
       </div>
 

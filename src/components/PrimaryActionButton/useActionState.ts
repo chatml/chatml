@@ -140,8 +140,9 @@ export function useActionState(
       return {
         type: 'commit-changes',
         label: 'Commit Changes',
+        shortLabel: 'Commit',
         icon: GitCommit,
-        variant: 'default',
+        variant: 'purple',
         message: 'Commit my changes',
         dropdownActions: [
           { label: 'Commit & Push', message: 'Commit my changes and push to remote', icon: Rocket },

@@ -23,9 +23,9 @@ interface ActivityBarProps {
 }
 
 const activities: { id: ActivityView; icon: React.ElementType; label: string; shortcut: string }[] = [
-  { id: 'workspaces', icon: FolderGit2, label: 'Workspaces', shortcut: '⌘1' },
-  { id: 'search', icon: Search, label: 'Search', shortcut: '⌘2' },
-  { id: 'history', icon: History, label: 'History', shortcut: '⌘3' },
+  { id: 'workspaces', icon: FolderGit2, label: 'Workspaces', shortcut: '⌘ 1' },
+  { id: 'search', icon: Search, label: 'Search', shortcut: '⌘ 2' },
+  { id: 'history', icon: History, label: 'History', shortcut: '⌘ 3' },
 ];
 
 export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
@@ -57,9 +57,8 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
                   <Icon className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="flex items-center gap-2">
-                <span>{activity.label}</span>
-                <span className="text-muted-foreground text-xs">{activity.shortcut}</span>
+              <TooltipContent side="right">
+                {activity.label} <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">{activity.shortcut}</span>
               </TooltipContent>
             </Tooltip>
           );
@@ -78,9 +77,7 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
               <HelpCircle className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">
-            <span>Help</span>
-          </TooltipContent>
+          <TooltipContent side="right">Help</TooltipContent>
         </Tooltip>
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
@@ -92,9 +89,7 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
               <Settings className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">
-            <span>Settings</span>
-          </TooltipContent>
+          <TooltipContent side="right">Settings</TooltipContent>
         </Tooltip>
       </div>
     </div>

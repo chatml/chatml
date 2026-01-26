@@ -16,7 +16,7 @@ export type PrimaryActionType =
   | 'archive-session'
   | 'disabled';
 
-export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info' | 'secondary';
+export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info' | 'purple' | 'secondary';
 
 export interface DropdownAction {
   label: string;
@@ -28,6 +28,7 @@ export interface DropdownAction {
 export interface PrimaryAction {
   type: PrimaryActionType;
   label: string;
+  shortLabel?: string; // Shorter label for narrow containers
   icon: LucideIcon;
   variant: ButtonVariant;
   message?: string; // Message to send to agent (undefined for 'view-pr' and 'archive-session')

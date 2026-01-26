@@ -56,35 +56,18 @@ export function FileTree({ files, onFileSelect, workspacePath, workspaceName }: 
     : workspaceName || 'Files';
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header bar with path and VS Code link */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b bg-muted/30 shrink-0 min-h-[28px]">
-        <span className="text-[10px] text-muted-foreground truncate flex-1" title={workspacePath}>
-          {displayPath}
-        </span>
-        <button
-          onClick={handleOpenInVSCode}
-          className="text-[10px] text-primary/70 hover:text-primary transition-colors shrink-0"
-          title="⌘⇧O"
-        >
-          Open in VSCode
-        </button>
+    <ScrollArea className="h-full w-full">
+      <div className="py-1 pr-2">
+        {files.map((node) => (
+          <FileTreeNode
+            key={node.path}
+            node={node}
+            depth={0}
+            onFileSelect={onFileSelect}
+          />
+        ))}
       </div>
-
-      {/* File tree content */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="py-1">
-          {files.map((node) => (
-            <FileTreeNode
-              key={node.path}
-              node={node}
-              depth={0}
-              onFileSelect={onFileSelect}
-            />
-          ))}
-        </div>
-      </ScrollArea>
-    </div>
+    </ScrollArea>
   );
 }
 
@@ -111,7 +94,7 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
     <div>
       <div
         className={cn(
-          'flex items-center gap-1.5 py-0.5 px-1 hover:bg-surface-2 cursor-pointer text-xs rounded-sm transition-colors',
+          'flex items-center gap-1.5 py-0.5 px-1 hover:bg-surface-2 cursor-pointer text-sm rounded-sm transition-colors',
           isHidden && 'text-muted-foreground/75'
         )}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
@@ -145,7 +128,7 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
               section="FileTreeNode"
               fallback={
                 <div
-                  className="flex items-center gap-1.5 py-0.5 px-1 text-xs text-destructive/70"
+                  className="flex items-center gap-1.5 py-0.5 px-1 text-sm text-destructive/70"
                   style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
                 >
                   <AlertTriangle className="w-3 h-3" />

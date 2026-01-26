@@ -17,6 +17,11 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   ChevronLeft,
   ChevronRight,
   GitBranch,
@@ -37,6 +42,13 @@ import {
   Sparkles,
   BookOpen,
   MessageCircle,
+  Copy,
+  GitPullRequest,
+  GitCompare,
+  History,
+  Pencil,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { AppSettingsMenu } from '@/components/AppSettingsMenu';
@@ -130,10 +142,10 @@ export function TopBar({
       </div>
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1 ml-2 text-[12px]">
+      <div className="flex items-center gap-1.5 ml-2 text-sm">
         <HoverCard>
           <HoverCardTrigger asChild>
-            <span className="text-primary font-medium cursor-default hover:text-primary/80 transition-colors">
+            <span className="text-base text-primary font-semibold cursor-default hover:text-primary/80 transition-colors">
               {selectedWorkspace.name}
             </span>
           </HoverCardTrigger>
@@ -164,32 +176,63 @@ export function TopBar({
             </div>
           </HoverCardContent>
         </HoverCard>
-        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors">
-              <GitBranch className="h-3 w-3" />
-              <span className="text-xs">{selectedSession.branch}</span>
-              <ChevronDown className="h-2.5 w-2.5" />
+            <button className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-sm font-medium text-purple-300/80 hover:bg-purple-500/20 transition-colors focus:outline-none">
+              <GitBranch className="h-3.5 w-3.5" />
+              <span className="truncate max-w-[200px]">{selectedSession.branch}</span>
+              <ChevronDown className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="start" className="w-52">
             <DropdownMenuItem>
-              <Code className="size-4" />
-              VS Code
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <FolderOpen className="size-4" />
-              Finder
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Terminal className="size-4" />
-              Terminal
+              <Copy className="size-4" />
+              Copy Branch Name
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
+              <Code className="size-4" />
+              Open in VS Code
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <FolderOpen className="size-4" />
+              Reveal in Finder
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Terminal className="size-4" />
+              Open in Terminal
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <GitPullRequest className="size-4" />
+              Create Pull Request
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <GitCompare className="size-4" />
+              Compare with Main
+            </DropdownMenuItem>
+            <DropdownMenuItem>
               <ExternalLink className="size-4" />
-              GitHub
+              View on GitHub
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <History className="size-4" />
+              View Commit History
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <RefreshCw className="size-4" />
+              Sync with Remote
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Pencil className="size-4" />
+              Rename Branch
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive">
+              <Trash2 className="size-4" />
+              Delete Branch
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -207,24 +250,36 @@ export function TopBar({
 
       {/* Panel Toggle Buttons */}
       <div className="flex items-center gap-0.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-6 w-6', showBottomPanel && 'bg-surface-2')}
-          onClick={onToggleBottomPanel}
-          title="Toggle terminal (⌘J)"
-        >
-          <PanelBottom className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('h-6 w-6', showRightSidebar && 'bg-surface-2')}
-          onClick={onToggleRightSidebar}
-          title="Toggle right sidebar (⌘⌥B)"
-        >
-          <PanelRight className="h-3.5 w-3.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-6 w-6', showBottomPanel && 'bg-surface-2')}
+              onClick={onToggleBottomPanel}
+            >
+              <PanelBottom className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Toggle Terminal <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ J</span>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-6 w-6', showRightSidebar && 'bg-surface-2')}
+              onClick={onToggleRightSidebar}
+            >
+              <PanelRight className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘⇧ B</span>
+          </TooltipContent>
+        </Tooltip>
 
         {/* More Menu */}
         <DropdownMenu>
