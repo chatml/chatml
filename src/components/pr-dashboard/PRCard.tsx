@@ -5,6 +5,7 @@ import { type PRDashboardItem } from '@/lib/api';
 import { CheckList } from './CheckList';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isTauri } from '@/lib/tauri';
 import {
   GitPullRequest,
   GitPullRequestDraft,
@@ -17,6 +18,15 @@ import {
   AlertTriangle,
   ArrowRight,
 } from 'lucide-react';
+
+async function openInBrowser(url: string) {
+  if (isTauri()) {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
 
 interface PRCardProps {
   pr: PRDashboardItem;
@@ -132,8 +142,8 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs"
-              onClick={() => window.open(pr.htmlUrl, '_blank')}
+              className="h-7 text-xs hover:bg-surface-2 active:bg-surface-3"
+              onClick={() => openInBrowser(pr.htmlUrl)}
             >
               Open in
               <Github className="h-3 w-3 ml-1" />
