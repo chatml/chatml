@@ -30,12 +30,9 @@ pub(crate) fn is_port_available(port: u16) -> bool {
 /// Parse port from backend stdout line
 /// Returns Some(port) if the line matches "CHATML_PORT=<number>"
 fn parse_port_line(line: &str) -> Option<u16> {
-    let trimmed = line.trim();
-    if trimmed.starts_with(PORT_LINE_PREFIX) {
-        trimmed[PORT_LINE_PREFIX.len()..].parse().ok()
-    } else {
-        None
-    }
+    line.trim()
+        .strip_prefix(PORT_LINE_PREFIX)
+        .and_then(|s| s.parse().ok())
 }
 
 /// Generate a cryptographically secure authentication token
