@@ -64,7 +64,7 @@ export function Terminal({ sessionId, workspacePath, className, onExit }: Termin
     <div
       ref={containerRef}
       className={cn(
-        'h-full w-full bg-black/90 overflow-hidden',
+        'h-full w-full bg-background overflow-hidden',
         // Override xterm.js default styles
         '[&_.xterm]:h-full [&_.xterm]:p-2',
         '[&_.xterm-viewport]:!overflow-y-auto',
