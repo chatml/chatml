@@ -150,9 +150,6 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
                   Conflicts
                 </span>
               )}
-              {pr.workspaceName && (
-                <span className="shrink-0">{pr.workspaceName}</span>
-              )}
             </div>
           </div>
 
