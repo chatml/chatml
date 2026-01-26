@@ -202,22 +202,26 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 				continue
 			}
 
-			if newBranch != entry.LastBranch {
-				oldBranch := entry.LastBranch
-				entry.LastBranch = newBranch
-
-				log.Printf("[branch-watcher] Branch changed for session %s: %s -> %s",
-					sessionID, oldBranch, newBranch)
-
-				branchEvents = append(branchEvents, BranchChangeEvent{
-					SessionID: sessionID,
-					OldBranch: oldBranch,
-					NewBranch: newBranch,
-				})
-
-				// Branch change also invalidates stats
-				statsInvalidateSessions = append(statsInvalidateSessions, sessionID)
+			// Skip if branch is empty (can happen during file write race conditions)
+			// or if the branch hasn't actually changed
+			if newBranch == "" || newBranch == entry.LastBranch {
+				continue
 			}
+
+			oldBranch := entry.LastBranch
+			entry.LastBranch = newBranch
+
+			log.Printf("[branch-watcher] Branch changed for session %s: %s -> %s",
+				sessionID, oldBranch, newBranch)
+
+			branchEvents = append(branchEvents, BranchChangeEvent{
+				SessionID: sessionID,
+				OldBranch: oldBranch,
+				NewBranch: newBranch,
+			})
+
+			// Branch change also invalidates stats
+			statsInvalidateSessions = append(statsInvalidateSessions, sessionID)
 		}
 
 		// Handle index file changes (stats invalidation)
