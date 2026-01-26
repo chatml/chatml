@@ -29,7 +29,7 @@ function BranchBadge({ name }: { name: string }) {
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-xs font-mono text-purple-300/70">
       <GitBranch className="h-3 w-3" />
-      <span className="truncate max-w-[150px]">{name}</span>
+      <span className="truncate max-w-[200px]">{name}</span>
     </span>
   );
 }
