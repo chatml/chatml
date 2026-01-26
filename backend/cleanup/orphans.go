@@ -3,11 +3,11 @@ package cleanup
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/session"
 )
@@ -43,7 +43,7 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 	}
 
 	if len(repos) == 0 {
-		log.Println("[cleanup] No repos found, skipping orphan detection")
+		logger.Cleanup.Info("No repos found, skipping orphan detection")
 		return nil
 	}
 
@@ -52,12 +52,12 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 	for _, repo := range repos {
 		orphans, err := findOrphansForRepo(ctx, store, wm, repo, workspacesDir)
 		if err != nil {
-			log.Printf("[cleanup] Warning: failed to check repo %s: %v", repo.Path, err)
+			logger.Cleanup.Warnf("Failed to check repo %s: %v", repo.Path, err)
 			continue
 		}
 
 		for _, orphan := range orphans {
-			log.Printf("[cleanup] Removing orphaned worktree: %s", orphan.path)
+			logger.Cleanup.Infof("Removing orphaned worktree: %s", orphan.path)
 
 			// Delete session metadata file if it exists and we have the sessionID
 			if orphan.sessionID != "" {
@@ -66,7 +66,7 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 
 			// Remove the worktree and branch
 			if err := wm.RemoveAtPath(ctx, repo.Path, orphan.path, orphan.branch); err != nil {
-				log.Printf("[cleanup] Warning: failed to remove orphan %s: %v", orphan.path, err)
+				logger.Cleanup.Warnf("Failed to remove orphan %s: %v", orphan.path, err)
 				continue
 			}
 
@@ -75,7 +75,7 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 	}
 
 	if totalOrphans > 0 {
-		log.Printf("[cleanup] Removed %d orphaned worktree(s)", totalOrphans)
+		logger.Cleanup.Infof("Removed %d orphaned worktree(s)", totalOrphans)
 	}
 
 	// Also clean up stale session metadata files
@@ -84,9 +84,9 @@ func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager
 		return err == nil
 	})
 	if err != nil {
-		log.Printf("[cleanup] Warning: failed to clean stale metadata: %v", err)
+		logger.Cleanup.Warnf("Failed to clean stale metadata: %v", err)
 	} else if staleCount > 0 {
-		log.Printf("[cleanup] Removed %d stale session metadata file(s)", staleCount)
+		logger.Cleanup.Infof("Removed %d stale session metadata file(s)", staleCount)
 	}
 
 	return nil

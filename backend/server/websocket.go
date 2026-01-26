@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/subtle"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"runtime/debug"
@@ -11,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/gorilla/websocket"
 )
 
@@ -136,7 +136,7 @@ func (h *Hub) Run() {
 func (h *Hub) runLoop() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[websocket-hub] PANIC recovered: %v\n%s", r, debug.Stack())
+			logger.WebSocket.Errorf("Hub PANIC recovered: %v\n%s", r, debug.Stack())
 			// Log but continue - the outer loop will restart runLoop
 		}
 	}()
@@ -149,7 +149,7 @@ func (h *Hub) runLoop() {
 			count := len(h.clients)
 			h.metrics.recordClientConnect(count)
 			h.mu.Unlock()
-			log.Printf("Client connected, total: %d", count)
+			logger.WebSocket.Infof("Client connected, total: %d", count)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -164,7 +164,7 @@ func (h *Hub) runLoop() {
 			count := len(h.clients)
 			h.metrics.recordClientDisconnect(count)
 			h.mu.Unlock()
-			log.Printf("Client disconnected, total: %d", count)
+			logger.WebSocket.Infof("Client disconnected, total: %d", count)
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
@@ -177,11 +177,11 @@ func (h *Hub) runLoop() {
 					// Use CompareAndSwap to ensure only one eviction goroutine is spawned
 					if client.evicting.CompareAndSwap(false, true) {
 						h.metrics.recordClientDropped()
-						log.Printf("Client send buffer full, evicting slow client")
+						logger.WebSocket.Warnf("Client send buffer full, evicting slow client")
 						go func(c *Client) {
 							defer func() {
 								if r := recover(); r != nil {
-									log.Printf("[websocket-hub] PANIC in eviction goroutine: %v", r)
+									logger.WebSocket.Errorf("Hub PANIC in eviction goroutine: %v", r)
 								}
 							}()
 							h.unregister <- c
@@ -205,7 +205,7 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 
 	data, err := json.Marshal(event)
 	if err != nil {
-		log.Printf("Error marshaling event: %v", err)
+		logger.WebSocket.Errorf("Error marshaling event: %v", err)
 		return BroadcastResult{Delivered: false}
 	}
 
@@ -216,7 +216,7 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 	if bufferUsage > (bufferCapacity * 3 / 4) {
 		result.Backpressure = true
 		h.metrics.recordBackpressure()
-		log.Printf("Broadcast channel high utilization: %d/%d", bufferUsage, bufferCapacity)
+		logger.WebSocket.Warnf("Broadcast channel high utilization: %d/%d", bufferUsage, bufferCapacity)
 	}
 
 	// Try to send with timeout to allow Hub.Run() to catch up
@@ -228,7 +228,7 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 		// Channel still full after timeout - reader is persistently slow
 		result.Delivered = false
 		h.metrics.recordTimedOut()
-		log.Printf("WARN: Broadcast channel full after %v timeout, event dropped: type=%s", broadcastTimeout, event.Type)
+		logger.WebSocket.Warnf("Broadcast channel full after %v timeout, event dropped: type=%s", broadcastTimeout, event.Type)
 
 		// Emit rate-limited warning to frontend (max one per 5 seconds).
 		// This is best-effort: the warning is sent to the same channel that just
@@ -288,7 +288,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade error: %v", err)
+		logger.WebSocket.Errorf("WebSocket upgrade error: %v", err)
 		return
 	}
 
@@ -313,7 +313,7 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[websocket-client] PANIC in writePump: %v\n%s", r, debug.Stack())
+			logger.WebSocket.Errorf("Client PANIC in writePump: %v\n%s", r, debug.Stack())
 		}
 		ticker.Stop()
 		// Close connection to unblock readPump's ReadMessage call.
@@ -329,13 +329,13 @@ func (c *Client) writePump() {
 			if !ok {
 				// Hub closed the channel - client was unregistered
 				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					log.Printf("Error sending close message: %v", err)
+					logger.WebSocket.Errorf("Error sending close message: %v", err)
 				}
 				return
 			}
 
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-				log.Printf("Error writing message to client: %v", err)
+				logger.WebSocket.Errorf("Error writing message to client: %v", err)
 				return
 			}
 			c.hub.metrics.recordDelivered()
@@ -343,7 +343,7 @@ func (c *Client) writePump() {
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("Error sending ping to client: %v", err)
+				logger.WebSocket.Errorf("Error sending ping to client: %v", err)
 				return
 			}
 		}
@@ -355,7 +355,7 @@ func (c *Client) writePump() {
 func (c *Client) readPump() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[websocket-client] PANIC in readPump: %v\n%s", r, debug.Stack())
+			logger.WebSocket.Errorf("Client PANIC in readPump: %v\n%s", r, debug.Stack())
 		}
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -373,7 +373,7 @@ func (c *Client) readPump() {
 			// Log unexpected errors for debugging, but not normal disconnections
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) &&
 				!websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				log.Printf("Error reading from client: %v", err)
+				logger.WebSocket.Errorf("Error reading from client: %v", err)
 			}
 			break
 		}
