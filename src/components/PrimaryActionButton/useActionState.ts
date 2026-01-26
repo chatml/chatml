@@ -73,15 +73,9 @@ export function useActionState(
       };
     }
 
-    // If we don't have git status, show Create PR as default
+    // If we don't have git status yet, hide button until we know the state
     if (!gitStatus) {
-      return {
-        type: 'create-pr',
-        label: 'New Pull Request',
-        icon: GitPullRequest,
-        variant: 'success',
-        message: 'Create a pull request',
-      };
+      return null;
     }
 
     const { conflicts, inProgress, sync, workingDirectory } = gitStatus;
@@ -215,18 +209,24 @@ export function useActionState(
       };
     }
 
-    // Priority 8: Clean state - ready to create PR
-    return {
-      type: 'create-pr',
-      label: 'New Pull Request',
-      icon: GitPullRequest,
-      variant: 'success',
-      message: 'Create a pull request',
-      dropdownActions: [
-        { label: 'Create PR in Draft', message: 'Create a draft pull request', icon: FileEdit },
-        { label: 'Push Changes Only', message: 'Push my commits to the remote branch', icon: Upload },
-        { label: 'Squash & Create PR', message: 'Squash my commits into one and create a pull request', icon: GitMerge },
-      ],
-    };
+    // Priority 8: Clean state with commits ahead - ready to create PR
+    // Only show "Create PR" if we have commits ahead of the base branch
+    if (sync.aheadBy > 0) {
+      return {
+        type: 'create-pr',
+        label: 'New Pull Request',
+        icon: GitPullRequest,
+        variant: 'success',
+        message: 'Create a pull request',
+        dropdownActions: [
+          { label: 'Create PR in Draft', message: 'Create a draft pull request', icon: FileEdit },
+          { label: 'Push Changes Only', message: 'Push my commits to the remote branch', icon: Upload },
+          { label: 'Squash & Create PR', message: 'Squash my commits into one and create a pull request', icon: GitMerge },
+        ],
+      };
+    }
+
+    // Priority 9: Completely clean state - nothing to do, hide button
+    return null;
   }, [gitStatus, session, prDetails, isAgentWorking]);
 }
