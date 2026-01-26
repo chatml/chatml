@@ -6,6 +6,30 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { spawn, type IPty } from 'tauri-pty';
 
+// Platform detection with modern API fallback
+function detectPlatform(): 'windows' | 'unix' {
+  // Modern API (navigator.userAgentData)
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  if (uaData?.platform?.toLowerCase().includes('win')) return 'windows';
+
+  // Fallback to deprecated API
+  if (navigator.platform.toLowerCase().includes('win')) return 'windows';
+
+  return 'unix';
+}
+
+// Get shell fallback chain based on platform
+function getShellFallbackChain(): string[] {
+  if (detectPlatform() === 'windows') {
+    return ['powershell.exe', 'pwsh.exe', 'cmd.exe'];
+  }
+
+  // Unix (macOS/Linux): /bin/zsh -> /bin/bash -> /bin/sh
+  // Note: process.env.SHELL isn't available in browser/Tauri context,
+  // so we rely on a fixed fallback chain starting with common defaults.
+  return ['/bin/zsh', '/bin/bash', '/bin/sh'];
+}
+
 // Terminal theme matching the app's dark theme
 const terminalTheme = {
   background: 'rgba(0, 0, 0, 0.9)',
@@ -62,6 +86,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
 
   // Use refs to avoid effect reruns when props change
   const onExitRef = useRef(onExit);
+  // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest callback
   onExitRef.current = onExit;
 
   // Capture initial workspacePath - we don't want to reinit if it changes
@@ -128,60 +153,74 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
         }
       });
 
-      // Determine shell based on platform
-      const isWindows = navigator.platform.toLowerCase().includes('win');
-      const shell = isWindows ? 'powershell.exe' : process.env.SHELL || '/bin/zsh';
-
-      // Spawn PTY
+      // Spawn PTY with shell fallback chain
       const initPty = async () => {
         if (cleanupCalled) return;
 
-        try {
-          const pty = await spawn(shell, [], {
-            cols: terminal.cols || 80,
-            rows: terminal.rows || 24,
-            cwd: initialWorkspacePathRef.current || undefined,
-          });
+        const shellChain = getShellFallbackChain();
+        let lastError: unknown = null;
 
-          if (cleanupCalled) {
-            pty.kill();
-            return;
+        for (const shell of shellChain) {
+          if (cleanupCalled) return;
+
+          try {
+            const pty = await spawn(shell, [], {
+              cols: terminal.cols || 80,
+              rows: terminal.rows || 24,
+              cwd: initialWorkspacePathRef.current || undefined,
+            });
+
+            if (cleanupCalled) {
+              pty.kill();
+              return;
+            }
+
+            ptyRef.current = pty;
+
+            // PTY output -> Terminal
+            pty.onData((data) => {
+              if (!cleanupCalled) {
+                terminal.write(data);
+              }
+            });
+
+            // PTY exit event
+            pty.onExit((event: { exitCode: number }) => {
+              if (!cleanupCalled) {
+                terminal.write('\r\n[Process exited]\r\n');
+                onExitRef.current?.(event.exitCode);
+              }
+            });
+
+            // Terminal input -> PTY
+            terminal.onData((data: string) => {
+              if (!cleanupCalled && ptyRef.current) {
+                pty.write(data);
+              }
+            });
+
+            // Handle terminal resize
+            terminal.onResize(({ cols, rows }) => {
+              if (!cleanupCalled && ptyRef.current) {
+                pty.resize(cols, rows);
+              }
+            });
+
+            return; // Success - exit loop
+          } catch (err) {
+            lastError = err;
+            console.warn(`Failed to spawn shell "${shell}":`, err);
+            // Continue to next shell in fallback chain
           }
+        }
 
-          ptyRef.current = pty;
-
-          // PTY output -> Terminal
-          pty.onData((data) => {
-            if (!cleanupCalled) {
-              terminal.write(data);
-            }
-          });
-
-          // PTY exit event
-          pty.onExit((event: { exitCode: number }) => {
-            if (!cleanupCalled) {
-              terminal.write('\r\n[Process exited]\r\n');
-              onExitRef.current?.(event.exitCode);
-            }
-          });
-
-          // Terminal input -> PTY
-          terminal.onData((data: string) => {
-            if (!cleanupCalled && ptyRef.current) {
-              pty.write(data);
-            }
-          });
-
-          // Handle terminal resize
-          terminal.onResize(({ cols, rows }) => {
-            if (!cleanupCalled && ptyRef.current) {
-              pty.resize(cols, rows);
-            }
-          });
-        } catch (err) {
-          console.error('Failed to spawn PTY:', err);
-          if (!cleanupCalled) {
-            terminal.write(`\r\nError: Failed to spawn terminal: ${err}\r\n`);
+        // All shells failed
+        console.error('All shell fallbacks failed:', lastError);
+        if (!cleanupCalled) {
+          terminal.write(`\r\nError: Failed to spawn terminal.\r\n`);
+          terminal.write(`Tried: ${shellChain.join(', ')}\r\n`);
+          if (lastError instanceof Error) {
+            terminal.write(`Error: ${lastError.message}\r\n`);
           }
         }
       };
@@ -219,7 +258,6 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
       searchAddonRef.current = null;
       isInitializedRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount, props stored in refs
   }, []);
 
   // Fit terminal to container
