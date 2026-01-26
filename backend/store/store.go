@@ -187,13 +187,15 @@ func (s *Store) GetSession(id string) *models.Session {
 	return s.sessions[id]
 }
 
-func (s *Store) ListSessions(workspaceID string) []*models.Session {
+func (s *Store) ListSessions(workspaceID string, includeArchived bool) []*models.Session {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	sessions := make([]*models.Session, 0)
 	for _, session := range s.sessions {
 		if session.WorkspaceID == workspaceID {
-			sessions = append(sessions, session)
+			if includeArchived || !session.Archived {
+				sessions = append(sessions, session)
+			}
 		}
 	}
 	return sessions

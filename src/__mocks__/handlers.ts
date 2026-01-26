@@ -2,26 +2,75 @@ import { http, HttpResponse } from 'msw';
 
 const API_BASE = 'http://localhost:9876';
 
+// Mock session data for testing
+const mockSessions = [
+  {
+    id: 'session-1',
+    workspaceId: 'workspace-1',
+    name: 'Test Session',
+    branch: 'feature/test',
+    worktreePath: '/test/worktree',
+    status: 'idle' as const,
+    pinned: false,
+    archived: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'session-2',
+    workspaceId: 'workspace-1',
+    name: 'Archived Session',
+    branch: 'feature/archived',
+    worktreePath: '/test/worktree2',
+    status: 'idle' as const,
+    pinned: false,
+    archived: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 export const handlers = [
   // Health check
   http.get(`${API_BASE}/health`, () => {
     return HttpResponse.json({ status: 'ok' });
   }),
 
-  // List sessions
-  http.get(`${API_BASE}/api/repos/:workspaceId/sessions`, () => {
-    return HttpResponse.json([
-      {
-        id: 'session-1',
-        workspaceId: 'workspace-1',
-        name: 'Test Session',
-        branch: 'feature/test',
-        worktreePath: '/test/worktree',
-        status: 'idle',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    ]);
+  // List sessions with archive filtering
+  http.get(`${API_BASE}/api/repos/:workspaceId/sessions`, ({ request, params }) => {
+    const url = new URL(request.url);
+    const includeArchived = url.searchParams.get('includeArchived') === 'true';
+
+    let sessions = mockSessions.filter(s => s.workspaceId === params.workspaceId);
+    if (!includeArchived) {
+      sessions = sessions.filter(s => !s.archived);
+    }
+
+    return HttpResponse.json(sessions);
+  }),
+
+  // Update session (PATCH)
+  http.patch(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId`, async ({ request, params }) => {
+    const body = await request.json() as { archived?: boolean; pinned?: boolean; name?: string };
+    const session = mockSessions.find(s => s.id === params.sessionId);
+
+    if (!session) {
+      return HttpResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    // Apply updates
+    if (body.archived !== undefined) {
+      session.archived = body.archived;
+    }
+    if (body.pinned !== undefined) {
+      session.pinned = body.pinned;
+    }
+    if (body.name !== undefined) {
+      session.name = body.name;
+    }
+    session.updatedAt = new Date().toISOString();
+
+    return HttpResponse.json(session);
   }),
 
   // Create conversation
