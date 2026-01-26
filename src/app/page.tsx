@@ -35,6 +35,7 @@ import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PRDashboard } from '@/components/PRDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
+import { SessionManager } from '@/components/session-manager';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
@@ -163,10 +164,10 @@ export default function Home() {
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
-  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode } = useSettingsStore();
+  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode, setContentView } = useSettingsStore();
 
-  // Determine if we're in a Full Content view (not conversation)
-  const isFullContentView = contentView.type !== 'conversation';
+  // Determine if we're in a Full Content view (not conversation or session-manager overlay)
+  const isFullContentView = contentView.type !== 'conversation' && contentView.type !== 'session-manager';
 
   const {
     isLoading: authLoading,
@@ -261,6 +262,11 @@ export default function Home() {
   useEffect(() => {
     zenModeRef.current = zenMode;
   }, [zenMode]);
+
+  const contentViewRef = useRef(contentView);
+  useEffect(() => {
+    contentViewRef.current = contentView;
+  }, [contentView]);
 
   // Track previous zen mode state to detect transitions
   const prevZenModeRef = useRef(zenMode);
@@ -816,16 +822,21 @@ export default function Home() {
           setZenMode(!zenModeRef.current);
         }
       }
-      // Escape to exit zen mode (only when zen mode is active)
-      if (e.key === 'Escape' && zenModeRef.current) {
-        e.preventDefault();
-        setZenMode(false);
+      // Escape to close session manager or exit zen mode
+      if (e.key === 'Escape') {
+        if (contentViewRef.current.type === 'session-manager') {
+          e.preventDefault();
+          setContentView({ type: 'conversation' });
+        } else if (zenModeRef.current) {
+          e.preventDefault();
+          setZenMode(false);
+        }
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -938,7 +949,7 @@ export default function Home() {
           direction="horizontal"
           className="flex-1"
         >
-          {/* Left Sidebar - Always rendered, collapsible */}
+          {/* Left Sidebar - Always rendered, collapsible, hidden for global-workspace-manager */}
           <ResizablePanel
             ref={leftSidebarPanelRef}
             id="left-sidebar"
@@ -1097,6 +1108,19 @@ export default function Home() {
               onOpenProject={handleOpenProject}
               onCloneFromUrl={() => setShowCloneFromUrl(true)}
               onQuickStart={() => setShowQuickStart(true)}
+            />
+          </div>
+        )}
+
+        {/* Session Manager Overlay - full screen */}
+        {contentView.type === 'session-manager' && (
+          <div className="absolute inset-0 z-20 bg-background">
+            <SessionManager
+              onOpenSettings={() => setShowSettings(true)}
+              onOpenShortcuts={() => setShowShortcuts(true)}
+              onOpenProject={handleOpenProject}
+              onCloneFromUrl={() => setShowCloneFromUrl(true)}
+              onClose={() => setContentView({ type: 'conversation' })}
             />
           </div>
         )}
