@@ -96,6 +96,8 @@ const noopToast: ToastContextValue = {
   success: (message: string, _title?: string) => console.log('[Toast]', message),
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   info: (message: string, _title?: string) => console.info('[Toast]', message),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  warning: (message: string, _title?: string) => console.warn('[Toast]', message),
 };
 
 export function useToast() {
