@@ -116,8 +116,14 @@ function ConversationSkeleton() {
 }
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
   const [backendConnected, setBackendConnected] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // Prevent hydration mismatch - render nothing until client-side mounted
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -904,10 +910,16 @@ export default function Home() {
     };
   }, []);
 
-  // Show loading while checking auth
+  // Don't render anything until client-side mounted - prevents hydration flash
+  // Body background (set by ThemeScript) shows through
+  if (!mounted) {
+    return null;
+  }
+
+  // Show loading while checking auth - transparent to let body bg show through
   if (authLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -932,7 +944,7 @@ export default function Home() {
   return (
     <ToastProvider>
       <TooltipProvider>
-        <div className="h-screen overflow-hidden flex relative bg-background">
+        <div className="h-screen overflow-hidden flex relative">
         {/* OUTER GROUP: Left Sidebar | Main Content */}
         <ResizablePanelGroup
           direction="horizontal"
