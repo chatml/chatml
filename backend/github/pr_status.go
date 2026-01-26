@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/chatml/chatml-backend/logger"
 )
@@ -23,9 +24,10 @@ const (
 
 // CheckDetail represents a single CI check run
 type CheckDetail struct {
-	Name       string `json:"name"`
-	Status     string `json:"status"`     // "queued", "in_progress", "completed"
-	Conclusion string `json:"conclusion"` // "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
+	Name            string `json:"name"`
+	Status          string `json:"status"`                    // "queued", "in_progress", "completed"
+	Conclusion      string `json:"conclusion"`                // "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
+	DurationSeconds *int   `json:"durationSeconds,omitempty"` // Duration in seconds (only for completed checks)
 }
 
 // PRDetails contains detailed information about a pull request
@@ -57,9 +59,11 @@ type githubPR struct {
 type githubCheckRuns struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
-		Name       string  `json:"name"`
-		Status     string  `json:"status"`
-		Conclusion *string `json:"conclusion"`
+		Name        string  `json:"name"`
+		Status      string  `json:"status"`
+		Conclusion  *string `json:"conclusion"`
+		StartedAt   *string `json:"started_at"`
+		CompletedAt *string `json:"completed_at"`
 	} `json:"check_runs"`
 }
 
@@ -141,10 +145,22 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 					conclusion = *run.Conclusion
 				}
 
+				// Calculate duration for completed checks
+				var durationSeconds *int
+				if run.Status == "completed" && run.StartedAt != nil && run.CompletedAt != nil {
+					startTime, err1 := time.Parse(time.RFC3339, *run.StartedAt)
+					endTime, err2 := time.Parse(time.RFC3339, *run.CompletedAt)
+					if err1 == nil && err2 == nil {
+						duration := int(endTime.Sub(startTime).Seconds())
+						durationSeconds = &duration
+					}
+				}
+
 				details.CheckDetails = append(details.CheckDetails, CheckDetail{
-					Name:       run.Name,
-					Status:     run.Status,
-					Conclusion: conclusion,
+					Name:            run.Name,
+					Status:          run.Status,
+					Conclusion:      conclusion,
+					DurationSeconds: durationSeconds,
 				})
 
 				// Determine overall check status

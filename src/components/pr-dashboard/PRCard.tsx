@@ -5,10 +5,17 @@ import { type PRDashboardItem } from '@/lib/api';
 import { CheckList } from './CheckList';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isTauri } from '@/lib/tauri';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   GitPullRequest,
   GitPullRequestDraft,
-  ExternalLink,
+  GitBranch,
+  Github,
   ChevronDown,
   ChevronRight,
   Check,
@@ -17,6 +24,24 @@ import {
   AlertTriangle,
   ArrowRight,
 } from 'lucide-react';
+
+function BranchBadge({ name }: { name: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-xs font-mono text-purple-300/70">
+      <GitBranch className="h-3 w-3" />
+      <span className="truncate max-w-[300px]">{name}</span>
+    </span>
+  );
+}
+
+async function openInBrowser(url: string) {
+  if (isTauri()) {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
 
 interface PRCardProps {
   pr: PRDashboardItem;
@@ -34,8 +59,7 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
   const allPassed = hasChecks && !hasFailures && !hasPending;
   const hasConflicts = pr.mergeableState === 'dirty' || pr.mergeable === false;
 
-  // Determine status icon and color
-  // Note: Backend currently only returns open PRs
+  // Determine status icon and color based on check status and conflicts
   const getStatusInfo = () => {
     if (pr.isDraft) {
       return {
@@ -44,9 +68,24 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
         label: 'Draft',
       };
     }
+    // Conflicts take priority - show warning triangle
+    if (hasConflicts) {
+      return {
+        icon: AlertTriangle,
+        color: 'text-yellow-500',
+        label: 'Conflicts',
+      };
+    }
+    // Color based on check status
+    let color = 'text-green-500'; // Default: all passed or no checks
+    if (hasFailures) {
+      color = 'text-red-500';
+    } else if (hasPending) {
+      color = 'text-yellow-500';
+    }
     return {
       icon: GitPullRequest,
-      color: 'text-green-500',
+      color,
       label: 'Open',
     };
   };
@@ -101,18 +140,15 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
             </div>
 
             {/* Second row: Branch info, conflicts indicator */}
-            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-              <span className="truncate">
-                {pr.branch} <ArrowRight className="h-3 w-3 inline" /> {pr.baseBranch}
-              </span>
+            <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+              <BranchBadge name={pr.branch} />
+              <ArrowRight className="h-3 w-3 shrink-0" />
+              <BranchBadge name={pr.baseBranch} />
               {hasConflicts && (
                 <span className="flex items-center gap-1 text-yellow-500 shrink-0">
                   <AlertTriangle className="h-3 w-3" />
                   Conflicts
                 </span>
-              )}
-              {pr.workspaceName && (
-                <span className="shrink-0">{pr.workspaceName}</span>
               )}
             </div>
           </div>
@@ -129,15 +165,19 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
                 Go to Session
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => window.open(pr.htmlUrl, '_blank')}
-            >
-              <ExternalLink className="h-3 w-3 mr-1" />
-              GitHub
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs !bg-surface-2 hover:!bg-surface-3 active:!bg-surface-4 active:scale-95 transition-all"
+                  onClick={() => openInBrowser(pr.htmlUrl)}
+                >
+                  <Github className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open in GitHub</TooltipContent>
+            </Tooltip>
           </div>
         </div>
 

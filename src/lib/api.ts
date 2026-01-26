@@ -355,6 +355,7 @@ export interface CheckDetail {
   name: string;
   status: string;
   conclusion: string;
+  durationSeconds?: number;
 }
 
 export interface PRDetails {
@@ -388,6 +389,7 @@ export interface CheckDetail {
   name: string;
   status: string; // "queued", "in_progress", "completed"
   conclusion: string; // "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required"
+  durationSeconds?: number; // Duration in seconds (only for completed checks)
 }
 
 export interface PRDashboardItem {
