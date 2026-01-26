@@ -141,6 +141,7 @@ export default function Home() {
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const rightSidebarPanelRef = useRef<PanelImperativeHandle>(null);
+  const bottomTerminalPanelRef = useRef<PanelImperativeHandle>(null);
   const leftSidebarDomRef = useRef<HTMLDivElement>(null);
 
   // Pre-zen mode state for restoration
@@ -172,7 +173,15 @@ export default function Home() {
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
   const { error: showError } = useToast();
-  const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode, setContentView } = useSettingsStore();
+  const {
+    showBottomTerminal, setShowBottomTerminal,
+    zenMode, setZenMode,
+    setContentView,
+    layoutOuter, setLayoutOuter,
+    layoutInner, setLayoutInner,
+    layoutVertical, setLayoutVertical,
+    resetLayouts,
+  } = useSettingsStore();
 
   // Determine if we're in a Full Content view (not conversation or session-manager overlay)
   // Also treat as full content view when no session is selected (to show welcome screen)
@@ -307,6 +316,20 @@ export default function Home() {
       }
     }
   }, [zenMode, leftSidebarCollapsed, rightSidebarCollapsed]);
+
+  // Sync bottom terminal panel collapse state with showBottomTerminal
+  useEffect(() => {
+    const panel = bottomTerminalPanelRef.current;
+    if (!panel) return;
+
+    // Only act if the panel state doesn't match the desired state
+    const isCollapsed = panel.isCollapsed();
+    if (showBottomTerminal && isCollapsed) {
+      panel.expand();
+    } else if (!showBottomTerminal && !isCollapsed) {
+      panel.collapse();
+    }
+  }, [showBottomTerminal]);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
@@ -832,6 +855,13 @@ export default function Home() {
           setZenMode(!zenModeRef.current);
         }
       }
+      // Cmd+Shift+R to reset all panel layouts to defaults
+      if (e.key === 'r' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        resetLayouts();
+        // Force page reload to apply default layouts
+        window.location.reload();
+      }
       // Escape to close session manager or exit zen mode
       if (e.key === 'Escape') {
         if (contentViewRef.current.type === 'session-manager') {
@@ -846,7 +876,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -965,6 +995,8 @@ export default function Home() {
         <ResizablePanelGroup
           direction="horizontal"
           className="flex-1"
+          defaultLayout={layoutOuter}
+          onLayoutChange={setLayoutOuter}
         >
           {/* Left Sidebar - Always rendered, collapsible, hidden for global-workspace-manager */}
           <ResizablePanel
@@ -1040,13 +1072,20 @@ export default function Home() {
               <ResizablePanelGroup
                 direction="horizontal"
                 className="h-full"
+                defaultLayout={layoutInner}
+                onLayoutChange={setLayoutInner}
               >
                 {/* Inner Content - Contains vertical split */}
-                <ResizablePanel id="inner-content" defaultSize={78} minSize={30}>
+                <ResizablePanel id="inner-content" minSize={30}>
                   {/* VERTICAL GROUP: Conversation | Bottom Terminal */}
-                  <ResizablePanelGroup direction="vertical" className="h-full">
+                  <ResizablePanelGroup
+                    direction="vertical"
+                    className="h-full"
+                    defaultLayout={layoutVertical}
+                    onLayoutChange={setLayoutVertical}
+                  >
                     {/* Conversation Area */}
-                    <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
+                    <ResizablePanel id="conversation" minSize={20}>
                       {selectedSessionId ? (
                         <div className="flex flex-col h-full">
                           <TopBar
@@ -1069,25 +1108,32 @@ export default function Home() {
                     </ResizablePanel>
 
                     {/* Bottom Terminal - always mounted to preserve PTY session */}
-                    {showBottomTerminal && <ResizableHandle direction="vertical" />}
                     {selectedSession && (
-                      <ResizablePanel
-                        id="bottom-terminal"
-                        defaultSize={showBottomTerminal ? "120px" : "0px"}
-                        minSize={showBottomTerminal ? "80px" : "0px"}
-                        maxSize={showBottomTerminal ? "400px" : "0px"}
-                        style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
-                      >
-                        <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
-                          <ErrorBoundary section="Terminal">
-                            <BottomTerminal
-                              sessionId={selectedSession.id}
-                              workspacePath={selectedSession.worktreePath}
-                              onHide={() => setShowBottomTerminal(false)}
-                            />
-                          </ErrorBoundary>
-                        </div>
-                      </ResizablePanel>
+                      <>
+                        <ResizableHandle
+                          direction="vertical"
+                          className={cn(!showBottomTerminal && "hidden")}
+                        />
+                        <ResizablePanel
+                          ref={bottomTerminalPanelRef}
+                          id="bottom-terminal"
+                          defaultSize="180px"
+                          minSize="100px"
+                          maxSize="400px"
+                          collapsible={true}
+                          collapsedSize={0}
+                        >
+                          <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
+                            <ErrorBoundary section="Terminal">
+                              <BottomTerminal
+                                sessionId={selectedSession.id}
+                                workspacePath={selectedSession.worktreePath}
+                                onHide={() => setShowBottomTerminal(false)}
+                              />
+                            </ErrorBoundary>
+                          </div>
+                        </ResizablePanel>
+                      </>
                     )}
                   </ResizablePanelGroup>
                 </ResizablePanel>
@@ -1103,7 +1149,7 @@ export default function Home() {
                 <ResizablePanel
                   ref={rightSidebarPanelRef}
                   id="right-sidebar"
-                  defaultSize={22}
+                  defaultSize="280px"
                   minSize="250px"
                   maxSize="500px"
                   collapsible={true}

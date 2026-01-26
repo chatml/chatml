@@ -44,6 +44,13 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Show keyboard shortcuts',
     category: 'General',
   },
+  {
+    id: 'resetLayouts',
+    key: 'r',
+    modifiers: ['meta', 'shift'],
+    label: 'Reset panel layouts to defaults',
+    category: 'General',
+  },
 
   // Navigation
   {

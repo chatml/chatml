@@ -116,6 +116,8 @@ export function ChangesPanel({
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
+  const layoutChanges = useSettingsStore((s) => s.layoutChanges);
+  const setLayoutChanges = useSettingsStore((s) => s.setLayoutChanges);
   const [selectedTab, setSelectedTab] = useState('files');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -558,7 +560,12 @@ export function ChangesPanel({
       </div>
 
       {/* Resizable content area */}
-      <ResizablePanelGroup direction="vertical" className="flex-1 min-h-0">
+      <ResizablePanelGroup
+        direction="vertical"
+        className="flex-1 min-h-0"
+        defaultLayout={layoutChanges}
+        onLayoutChange={setLayoutChanges}
+      >
         {/* File List */}
         <ResizablePanel id="file-list" defaultSize="65%" minSize="20%">
           {selectedTab === 'files' ? (
