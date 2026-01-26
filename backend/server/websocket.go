@@ -105,12 +105,13 @@ func (m *HubMetrics) recordClientDisconnect(count int) {
 }
 
 type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte // Pre-serialized JSON bytes
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.RWMutex
-	metrics    *HubMetrics
+	clients         map[*Client]bool
+	broadcast       chan []byte // Pre-serialized JSON bytes
+	register        chan *Client
+	unregister      chan *Client
+	mu              sync.RWMutex
+	metrics         *HubMetrics
+	lastWarningTime atomic.Int64 // Rate-limit warning emissions (unix millis)
 }
 
 func NewHub() *Hub {
@@ -228,6 +229,33 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 		result.Delivered = false
 		h.metrics.recordTimedOut()
 		log.Printf("WARN: Broadcast channel full after %v timeout, event dropped: type=%s", broadcastTimeout, event.Type)
+
+		// Emit rate-limited warning to frontend (max one per 5 seconds).
+		// This is best-effort: the warning is sent to the same channel that just
+		// timed out, so it will likely fail (hit the default case) unless the
+		// channel drains between the timeout and this send. This is intentional -
+		// we don't want warning delivery to block or delay further processing.
+		// The frontend also debounces warnings (10s) as a second layer of protection.
+		now := time.Now().UnixMilli()
+		lastWarning := h.lastWarningTime.Load()
+		if now-lastWarning > 5000 && h.lastWarningTime.CompareAndSwap(lastWarning, now) {
+			warningEvent := Event{
+				Type: "streaming_warning",
+				Payload: map[string]interface{}{
+					"source":  "hub",
+					"reason":  "broadcast_timeout",
+					"message": "Some streaming events were dropped due to network congestion",
+				},
+			}
+			if warningData, err := json.Marshal(warningEvent); err == nil {
+				select {
+				case h.broadcast <- warningData:
+					// Warning sent (channel had space)
+				default:
+					// Channel still full - warning not sent, which is acceptable
+				}
+			}
+		}
 	}
 
 	return result

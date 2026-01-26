@@ -295,6 +295,17 @@ export function useWebSocket(enabled: boolean = true) {
         // Update conversation status to idle
         updateConversation(conversationId, { status: 'idle' });
         break;
+
+      case 'streaming_warning':
+        // Emit custom event for StreamingWarningHandler to display toast
+        window.dispatchEvent(new CustomEvent('streaming-warning', {
+          detail: {
+            source: event?.source,
+            reason: event?.reason,
+            message: event?.message || 'Some streaming data may have been lost',
+          }
+        }));
+        break;
     }
   }, [
     appendStreamingText,

@@ -37,6 +37,7 @@ import { PRDashboard } from '@/components/PRDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast';
+import { StreamingWarningHandler } from '@/components/StreamingWarningHandler';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import { EmptyView } from '@/components/EmptyView';
 import {
@@ -972,6 +973,7 @@ export default function Home() {
 
   return (
     <ToastProvider>
+      <StreamingWarningHandler />
       <TooltipProvider>
         <div className="h-screen overflow-hidden flex relative bg-background">
         {/* OUTER GROUP: Left Sidebar | Main Content */}

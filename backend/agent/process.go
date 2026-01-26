@@ -20,6 +20,10 @@ const (
 	// processOutputTimeout is how long to wait for buffer space before dropping
 	// a message from stdout/stderr. This gives slow consumers time to catch up.
 	processOutputTimeout = 5 * time.Second
+
+	// bufferFullWarningJSON is emitted to the frontend when messages are dropped
+	// due to a full output buffer. This is best-effort (non-blocking).
+	bufferFullWarningJSON = `{"type":"streaming_warning","source":"process","reason":"buffer_full","message":"Some streaming events were dropped due to slow processing"}`
 )
 
 // AgentRunnerPath can be set to override the default agent-runner location
@@ -243,6 +247,12 @@ func (p *Process) Start() error {
 			case <-time.After(processOutputTimeout):
 				// Buffer full after timeout - downstream reader is persistently slow
 				log.Printf("[process:%s] Output buffer full after %v timeout, dropping stdout message (slow reader)", p.ID, processOutputTimeout)
+				// Emit warning to frontend (best-effort, non-blocking)
+				select {
+				case p.output <- bufferFullWarningJSON:
+				default:
+					// Warning itself couldn't be queued
+				}
 			}
 		}
 	}()
@@ -263,6 +273,12 @@ func (p *Process) Start() error {
 			case <-time.After(processOutputTimeout):
 				// Buffer full after timeout - downstream reader is persistently slow
 				log.Printf("[process:%s] Output buffer full after %v timeout, dropping stderr message (slow reader)", p.ID, processOutputTimeout)
+				// Emit warning to frontend (best-effort, non-blocking)
+				select {
+				case p.output <- bufferFullWarningJSON:
+				default:
+					// Warning itself couldn't be queued
+				}
 			}
 		}
 	}()

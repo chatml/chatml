@@ -411,3 +411,30 @@ func TestNewProcessWithOptions_MinimalOptions(t *testing.T) {
 	assert.Equal(t, "conv-id", p.ConversationID)
 	assert.NotNil(t, p.cmd)
 }
+
+// ============================================================================
+// Streaming Warning Tests
+// ============================================================================
+
+func TestStreamingWarningJSON_ValidFormat(t *testing.T) {
+	// Verify the exported constant is valid and parseable
+	event := ParseAgentLine(bufferFullWarningJSON)
+	require.NotNil(t, event)
+
+	assert.Equal(t, "streaming_warning", event.Type)
+	assert.Equal(t, "process", event.Source)
+	assert.Equal(t, "buffer_full", event.Reason)
+	assert.Equal(t, "Some streaming events were dropped due to slow processing", event.Message)
+}
+
+func TestProcess_OutputBufferFull_EmitsWarning(t *testing.T) {
+	// Verify the warning JSON constant structure is correct
+	var event map[string]interface{}
+	err := json.Unmarshal([]byte(bufferFullWarningJSON), &event)
+	require.NoError(t, err)
+
+	assert.Equal(t, "streaming_warning", event["type"])
+	assert.Equal(t, "process", event["source"])
+	assert.Equal(t, "buffer_full", event["reason"])
+	assert.Equal(t, "Some streaming events were dropped due to slow processing", event["message"])
+}

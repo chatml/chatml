@@ -522,3 +522,35 @@ func TestTodoItem_Fields(t *testing.T) {
 	assert.Equal(t, "completed", result.Todos[2].Status)
 	assert.Equal(t, "Finished task 3", result.Todos[2].ActiveForm)
 }
+
+// ============================================================================
+// Streaming Warning Event Tests
+// ============================================================================
+
+func TestEventTypeStreamingWarning(t *testing.T) {
+	assert.Equal(t, "streaming_warning", EventTypeStreamingWarning)
+}
+
+func TestParseAgentLine_StreamingWarning(t *testing.T) {
+	line := `{"type":"streaming_warning","source":"hub","reason":"broadcast_timeout","message":"Some streaming events were dropped"}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypeStreamingWarning, event.Type)
+	assert.Equal(t, "hub", event.Source)
+	assert.Equal(t, "broadcast_timeout", event.Reason)
+	assert.Equal(t, "Some streaming events were dropped", event.Message)
+}
+
+func TestParseAgentLine_StreamingWarning_ProcessSource(t *testing.T) {
+	line := `{"type":"streaming_warning","source":"process","reason":"buffer_full","message":"Some streaming events were dropped due to slow processing"}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypeStreamingWarning, event.Type)
+	assert.Equal(t, "process", event.Source)
+	assert.Equal(t, "buffer_full", event.Reason)
+	assert.Equal(t, "Some streaming events were dropped due to slow processing", event.Message)
+}

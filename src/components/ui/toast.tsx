@@ -2,11 +2,11 @@
 
 import * as React from 'react';
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Toast types
-type ToastType = 'error' | 'success' | 'info';
+type ToastType = 'error' | 'success' | 'info' | 'warning';
 
 interface Toast {
   id: string;
@@ -24,6 +24,7 @@ interface ToastContextValue {
   error: (message: string, title?: string) => void;
   success: (message: string, title?: string) => void;
   info: (message: string, title?: string) => void;
+  warning: (message: string, title?: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -33,6 +34,7 @@ const DEFAULT_DURATION: Record<ToastType, number> = {
   error: 6000,
   success: 3000,
   info: 4000,
+  warning: 5000,
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -68,8 +70,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [addToast]
   );
 
+  const warning = useCallback(
+    (message: string, title?: string) => {
+      addToast({ type: 'warning', message, title, duration: DEFAULT_DURATION.warning });
+    },
+    [addToast]
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast, error, success, info }}>
+    <ToastContext.Provider value={{ toasts, addToast, removeToast, error, success, info, warning }}>
       {children}
       <Toaster />
     </ToastContext.Provider>
@@ -89,6 +98,7 @@ const ToastIcon: Record<ToastType, React.ElementType> = {
   error: AlertCircle,
   success: CheckCircle2,
   info: Info,
+  warning: AlertTriangle,
 };
 
 // Colors for each toast type
@@ -96,6 +106,7 @@ const toastStyles: Record<ToastType, string> = {
   error: 'bg-destructive/10 border-destructive/30 text-destructive',
   success: 'bg-text-success/10 border-text-success/30 text-text-success',
   info: 'bg-text-info/10 border-text-info/30 text-text-info',
+  warning: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400',
 };
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) {
