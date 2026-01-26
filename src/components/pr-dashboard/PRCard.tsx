@@ -49,13 +49,21 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
   const allPassed = hasChecks && !hasFailures && !hasPending;
   const hasConflicts = pr.mergeableState === 'dirty' || pr.mergeable === false;
 
-  // Determine status icon and color based on check status
+  // Determine status icon and color based on check status and conflicts
   const getStatusInfo = () => {
     if (pr.isDraft) {
       return {
         icon: GitPullRequestDraft,
         color: 'text-muted-foreground',
         label: 'Draft',
+      };
+    }
+    // Conflicts take priority - show warning triangle
+    if (hasConflicts) {
+      return {
+        icon: AlertTriangle,
+        color: 'text-yellow-500',
+        label: 'Conflicts',
       };
     }
     // Color based on check status
