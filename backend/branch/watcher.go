@@ -25,17 +25,19 @@ type WatchEntry struct {
 	WorktreePath string
 	GitDir       string // The actual gitdir path
 	HeadPath     string // Full path to HEAD file
+	IndexPath    string // Full path to index file (for stats invalidation)
 	LastBranch   string // Last known branch
 }
 
 // Watcher monitors git HEAD files for branch changes
 type Watcher struct {
-	mu       sync.RWMutex
-	watcher  *fsnotify.Watcher
-	sessions map[string]*WatchEntry // sessionID -> entry
-	onChange func(BranchChangeEvent)
-	ctx      context.Context
-	cancel   context.CancelFunc
+	mu                sync.RWMutex
+	watcher           *fsnotify.Watcher
+	sessions          map[string]*WatchEntry // sessionID -> entry
+	onChange          func(BranchChangeEvent)
+	onStatsInvalidate func(sessionID string) // Called when worktree files change
+	ctx               context.Context
+	cancel            context.CancelFunc
 }
 
 // NewWatcher creates a new branch watcher
@@ -91,6 +93,7 @@ func (w *Watcher) WatchSession(sessionID, worktreePath, currentBranch string) er
 		WorktreePath: worktreePath,
 		GitDir:       gitDir,
 		HeadPath:     headPath,
+		IndexPath:    filepath.Join(gitDir, "index"),
 		LastBranch:   currentBranch,
 	}
 
@@ -127,6 +130,14 @@ func (w *Watcher) UnwatchSession(sessionID string) {
 	log.Printf("[branch-watcher] Stopped watching session %s", sessionID)
 }
 
+// SetStatsInvalidateCallback sets the callback for stats invalidation
+// This is called when working tree files change (detected via git index changes)
+func (w *Watcher) SetStatsInvalidateCallback(cb func(sessionID string)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.onStatsInvalidate = cb
+}
+
 // Close stops the watcher
 func (w *Watcher) Close() error {
 	w.cancel()
@@ -155,10 +166,6 @@ func (w *Watcher) run() {
 
 // handleEvent processes a single fsnotify event
 func (w *Watcher) handleEvent(event fsnotify.Event) {
-	// Only care about HEAD file changes
-	if !strings.HasSuffix(event.Name, "HEAD") {
-		return
-	}
 	// Handle Write, Create, and Rename events
 	// Rename is needed because some editors (e.g., vim) use atomic saves
 	// which rename a temp file over the target file
@@ -169,41 +176,82 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		return
 	}
 
+	isHeadFile := strings.HasSuffix(event.Name, "HEAD")
+	isIndexFile := strings.HasSuffix(event.Name, "index")
+
+	// Only care about HEAD or index file changes
+	if !isHeadFile && !isIndexFile {
+		return
+	}
+
 	// Collect events to emit while holding the lock, then emit outside the lock
 	// to avoid blocking the event loop with slow callbacks
-	var events []BranchChangeEvent
+	var branchEvents []BranchChangeEvent
+	var statsInvalidateSessions []string
 
 	w.mu.Lock()
-	// Find which session(s) this HEAD file belongs to
+	onStatsInvalidate := w.onStatsInvalidate // Capture callback while holding lock
+
+	// Find which session(s) this file belongs to
 	for sessionID, entry := range w.sessions {
-		if entry.HeadPath == event.Name {
+		// Handle HEAD file changes (branch changes)
+		if isHeadFile && entry.HeadPath == event.Name {
 			newBranch, err := readCurrentBranch(entry.HeadPath)
 			if err != nil {
 				log.Printf("[branch-watcher] Failed to read branch for %s: %v", sessionID, err)
 				continue
 			}
 
-			if newBranch != entry.LastBranch {
-				oldBranch := entry.LastBranch
-				entry.LastBranch = newBranch
+			// Skip if branch is empty (can happen during file write race conditions)
+			// or if the branch hasn't actually changed
+			if newBranch == "" || newBranch == entry.LastBranch {
+				continue
+			}
 
-				log.Printf("[branch-watcher] Branch changed for session %s: %s -> %s",
-					sessionID, oldBranch, newBranch)
+			oldBranch := entry.LastBranch
+			entry.LastBranch = newBranch
 
-				events = append(events, BranchChangeEvent{
-					SessionID: sessionID,
-					OldBranch: oldBranch,
-					NewBranch: newBranch,
-				})
+			log.Printf("[branch-watcher] Branch changed for session %s: %s -> %s",
+				sessionID, oldBranch, newBranch)
+
+			branchEvents = append(branchEvents, BranchChangeEvent{
+				SessionID: sessionID,
+				OldBranch: oldBranch,
+				NewBranch: newBranch,
+			})
+
+			// Branch change also invalidates stats
+			statsInvalidateSessions = append(statsInvalidateSessions, sessionID)
+		}
+
+		// Handle index file changes (stats invalidation)
+		if isIndexFile && entry.IndexPath == event.Name {
+			// Only add if not already added from branch change
+			found := false
+			for _, sid := range statsInvalidateSessions {
+				if sid == sessionID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				statsInvalidateSessions = append(statsInvalidateSessions, sessionID)
 			}
 		}
 	}
 	w.mu.Unlock()
 
-	// Emit events outside the lock
+	// Emit branch change events outside the lock
 	if w.onChange != nil {
-		for _, evt := range events {
+		for _, evt := range branchEvents {
 			w.onChange(evt)
+		}
+	}
+
+	// Emit stats invalidation events outside the lock
+	if onStatsInvalidate != nil {
+		for _, sessionID := range statsInvalidateSessions {
+			onStatsInvalidate(sessionID)
 		}
 	}
 }

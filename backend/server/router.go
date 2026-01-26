@@ -17,10 +17,10 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, statsCache *SessionStatsCache) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, hub, ghClient)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, hub, ghClient, statsCache)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)

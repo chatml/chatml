@@ -31,8 +31,8 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	agentMgr := agent.NewManager(s, wm)
 	ghClient := github.NewClient("", "")
 
-	// Create router without orchestrator
-	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil)
+	// Create router without orchestrator, branch watcher, or stats cache
+	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil, nil)
 
 	return router, s
 }
