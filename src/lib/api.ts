@@ -265,6 +265,7 @@ export interface BranchDTO {
   lastCommitSha: string;
   lastCommitDate: string;
   lastAuthor: string;
+  lastAuthorEmail?: string;
   aheadMain: number;
   behindMain: number;
   prefix: string;
@@ -315,6 +316,22 @@ export async function listBranches(
   const url = `${getApiBase()}/api/repos/${workspaceId}/branches${queryString ? `?${queryString}` : ''}`;
   const res = await fetchWithAuth(url);
   return handleResponse<BranchListResponse>(res);
+}
+
+// Avatar types and API
+export interface AvatarResponse {
+  avatars: Record<string, string>;
+}
+
+export async function getAvatars(emails: string[]): Promise<Record<string, string>> {
+  if (emails.length === 0) {
+    return {};
+  }
+  const emailsParam = emails.join(',');
+  const url = `${getApiBase()}/api/avatars?emails=${encodeURIComponent(emailsParam)}`;
+  const res = await fetchWithAuth(url);
+  const response = await handleResponse<AvatarResponse>(res);
+  return response.avatars;
 }
 
 export interface FileChangeDTO {
