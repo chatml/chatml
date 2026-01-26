@@ -257,16 +257,6 @@ pub fn count_file_lines(path: String) -> Result<usize, String> {
     Ok(count)
 }
 
-/// Open file picker dialog for attachments
-#[tauri::command]
-pub async fn open_file_picker() -> Result<Vec<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-
-    // This requires access to app handle, so we'll implement this differently
-    // For now, return an error - the frontend will use the tauri dialog plugin directly
-    Err("Use tauri-plugin-dialog from frontend".to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
