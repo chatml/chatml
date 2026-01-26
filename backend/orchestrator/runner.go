@@ -3,12 +3,12 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/agents"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/google/uuid"
 )
@@ -73,7 +73,7 @@ func (r *Runner) StartRun(ctx context.Context, agent *models.OrchestratorAgent, 
 
 	// Clear any previous error
 	if err := r.store.ClearAgentError(ctx, agent.ID); err != nil {
-		log.Printf("[runner] Warning: failed to clear agent error: %v", err)
+		logger.Runner.Warnf("Failed to clear agent error: %v", err)
 	}
 
 	// Create run context with cancellation
@@ -116,16 +116,16 @@ func (r *Runner) executeRun(ctx context.Context, rc *RunContext) {
 	if err != nil {
 		resultStatus = models.AgentRunStatusFailed
 		resultSummary = fmt.Sprintf("Error: %v", err)
-		log.Printf("[runner] Agent %s run %s failed: %v", rc.Agent.ID, rc.Run.ID, err)
+		logger.Runner.Errorf("Agent %s run %s failed: %v", rc.Agent.ID, rc.Run.ID, err)
 
 		// Record the error
 		if storeErr := r.store.SetAgentError(context.Background(), rc.Agent.ID, err.Error()); storeErr != nil {
-			log.Printf("[runner] Warning: failed to set agent error: %v", storeErr)
+			logger.Runner.Warnf("Failed to set agent error: %v", storeErr)
 		}
 	} else {
 		resultStatus = models.AgentRunStatusCompleted
 		resultSummary = "Completed successfully"
-		log.Printf("[runner] Agent %s run %s completed", rc.Agent.ID, rc.Run.ID)
+		logger.Runner.Infof("Agent %s run %s completed", rc.Agent.ID, rc.Run.ID)
 	}
 
 	// Calculate duration
@@ -140,12 +140,12 @@ func (r *Runner) executeRun(ctx context.Context, rc *RunContext) {
 	rc.Run.CompletedAt = &now
 
 	if err := r.store.CompleteAgentRun(context.Background(), rc.Run.ID, resultStatus, resultSummary, cost, sessionsCreated); err != nil {
-		log.Printf("[runner] Warning: failed to complete agent run: %v", err)
+		logger.Runner.Warnf("Failed to complete agent run: %v", err)
 	}
 
 	// Record run statistics
 	if err := r.store.RecordAgentRun(context.Background(), rc.Agent.ID, cost); err != nil {
-		log.Printf("[runner] Warning: failed to record agent run stats: %v", err)
+		logger.Runner.Warnf("Failed to record agent run stats: %v", err)
 	}
 
 	// Publish completion event
@@ -183,7 +183,7 @@ func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 
 	for _, result := range results {
 		if result.Error != nil {
-			log.Printf("[runner] Agent %s: %s polling error: %v", agent.ID, result.Source, result.Error)
+			logger.Runner.Warnf("Agent %s: %s polling error: %v", agent.ID, result.Source, result.Error)
 			continue
 		}
 

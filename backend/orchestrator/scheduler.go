@@ -2,9 +2,10 @@ package orchestrator
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // SchedulerCallback is called when a scheduled agent should run
@@ -50,7 +51,7 @@ func (s *Scheduler) Schedule(agentID string, intervalMs int) {
 	}
 
 	if intervalMs <= 0 {
-		log.Printf("[scheduler] Agent %s has no polling interval, skipping", agentID)
+		logger.Scheduler.Debugf("Agent %s has no polling interval, skipping", agentID)
 		return
 	}
 
@@ -68,7 +69,7 @@ func (s *Scheduler) Schedule(agentID string, intervalMs int) {
 	// Start the ticker goroutine
 	go s.runTicker(agentID, at)
 
-	log.Printf("[scheduler] Scheduled agent %s with interval %v", agentID, interval)
+	logger.Scheduler.Infof("Scheduled agent %s with interval %v", agentID, interval)
 }
 
 // runTicker runs the ticker loop for an agent
@@ -96,7 +97,7 @@ func (s *Scheduler) Unschedule(agentID string) {
 		at.ticker.Stop()
 		close(at.stopCh)
 		delete(s.tickers, agentID)
-		log.Printf("[scheduler] Unscheduled agent %s", agentID)
+		logger.Scheduler.Infof("Unscheduled agent %s", agentID)
 	}
 }
 
@@ -156,5 +157,5 @@ func (s *Scheduler) Stop() {
 		delete(s.tickers, agentID)
 	}
 
-	log.Printf("[scheduler] Stopped all agents")
+	logger.Scheduler.Info("Stopped all agents")
 }

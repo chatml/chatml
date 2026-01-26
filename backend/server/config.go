@@ -1,10 +1,11 @@
 package server
 
 import (
-	"log"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // AllowedOrigins defines the allowed origins for CORS and WebSocket connections.
@@ -75,9 +76,9 @@ func LoadFileSizeConfig() FileSizeConfig {
 	if envSize := os.Getenv("CHATML_MAX_FILE_SIZE_MB"); envSize != "" {
 		mb, err := strconv.ParseInt(envSize, 10, 64)
 		if err != nil {
-			log.Printf("[config] Warning: invalid CHATML_MAX_FILE_SIZE_MB value %q (not a number), using default 50MB", envSize)
+			logger.Config.Warnf("Invalid CHATML_MAX_FILE_SIZE_MB value %q (not a number), using default 50MB", envSize)
 		} else if mb <= 0 {
-			log.Printf("[config] Warning: invalid CHATML_MAX_FILE_SIZE_MB value %d (must be positive), using default 50MB", mb)
+			logger.Config.Warnf("Invalid CHATML_MAX_FILE_SIZE_MB value %d (must be positive), using default 50MB", mb)
 		} else {
 			maxSize = mb * 1024 * 1024
 		}

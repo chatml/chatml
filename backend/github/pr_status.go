@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // CheckStatus represents the aggregated status of CI checks
@@ -214,7 +215,7 @@ func (c *Client) GetPRDetailsBatch(ctx context.Context, owner, repo string, prNu
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				log.Printf("[github] Failed to fetch PR #%d details for %s/%s: %v", num, owner, repo, err)
+				logger.GitHub.Errorf("Failed to fetch PR #%d details for %s/%s: %v", num, owner, repo, err)
 				failedPRs = append(failedPRs, num)
 				return
 			}

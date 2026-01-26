@@ -3,12 +3,12 @@ package branch
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -97,7 +97,7 @@ func (w *Watcher) WatchSession(sessionID, worktreePath, currentBranch string) er
 		LastBranch:   currentBranch,
 	}
 
-	log.Printf("[branch-watcher] Started watching session %s at %s", sessionID, headPath)
+	logger.BranchWatcher.Infof("Started watching session %s at %s", sessionID, headPath)
 	return nil
 }
 
@@ -122,12 +122,12 @@ func (w *Watcher) UnwatchSession(sessionID string) {
 	// Only remove watch if this is the last session using this gitdir
 	if count == 1 {
 		if err := w.watcher.Remove(entry.GitDir); err != nil {
-			log.Printf("[branch-watcher] Warning: failed to remove watch for %s: %v", entry.GitDir, err)
+			logger.BranchWatcher.Warnf("Failed to remove watch for %s: %v", entry.GitDir, err)
 		}
 	}
 
 	delete(w.sessions, sessionID)
-	log.Printf("[branch-watcher] Stopped watching session %s", sessionID)
+	logger.BranchWatcher.Infof("Stopped watching session %s", sessionID)
 }
 
 // SetStatsInvalidateCallback sets the callback for stats invalidation
@@ -159,7 +159,7 @@ func (w *Watcher) run() {
 			if !ok {
 				return
 			}
-			log.Printf("[branch-watcher] Error: %v", err)
+			logger.BranchWatcher.Errorf("Error: %v", err)
 		}
 	}
 }
@@ -198,7 +198,7 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 		if isHeadFile && entry.HeadPath == event.Name {
 			newBranch, err := readCurrentBranch(entry.HeadPath)
 			if err != nil {
-				log.Printf("[branch-watcher] Failed to read branch for %s: %v", sessionID, err)
+				logger.BranchWatcher.Errorf("Failed to read branch for %s: %v", sessionID, err)
 				continue
 			}
 
@@ -211,7 +211,7 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 			oldBranch := entry.LastBranch
 			entry.LastBranch = newBranch
 
-			log.Printf("[branch-watcher] Branch changed for session %s: %s -> %s",
+			logger.BranchWatcher.Infof("Branch changed for session %s: %s -> %s",
 				sessionID, oldBranch, newBranch)
 
 			branchEvents = append(branchEvents, BranchChangeEvent{
