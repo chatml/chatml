@@ -1117,8 +1117,8 @@ export default function Home() {
                         <ResizablePanel
                           ref={bottomTerminalPanelRef}
                           id="bottom-terminal"
-                          defaultSize="120px"
-                          minSize="80px"
+                          defaultSize="180px"
+                          minSize="100px"
                           maxSize="400px"
                           collapsible={true}
                           collapsedSize={0}
