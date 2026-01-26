@@ -118,13 +118,22 @@ export function useGitStatus(
       if (isMounted) {
         cleanupRef.current = unlisten;
       } else {
-        unlisten();
+        // Component unmounted before listener was set up - safely try to unlisten
+        try {
+          unlisten();
+        } catch {
+          // Ignore errors if listener was never fully registered
+        }
       }
     });
 
     return () => {
       isMounted = false;
-      cleanupRef.current?.();
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // Ignore errors during cleanup if listener state is inconsistent
+      }
     };
   }, [workspaceId, debouncedRefetch]);
 
