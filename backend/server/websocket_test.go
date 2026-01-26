@@ -699,3 +699,65 @@ func TestHandleWebSocket_TokenWithSpecialChars(t *testing.T) {
 
 	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
 }
+
+// ============================================================================
+// Streaming Warning Tests
+// ============================================================================
+
+func TestHub_Broadcast_EmitsWarningOnTimeout(t *testing.T) {
+	hub := NewHub()
+
+	// Fill channel to capacity
+	fillerData, _ := json.Marshal(Event{Type: "filler"})
+	for i := 0; i < 1024; i++ {
+		hub.broadcast <- fillerData
+	}
+
+	// Broadcast should timeout, then emit warning
+	result := hub.Broadcast(Event{Type: "dropped"})
+	assert.False(t, result.Delivered)
+
+	// Verify warning was attempted (rate-limited check)
+	// lastWarningTime should have been updated
+	assert.Greater(t, hub.lastWarningTime.Load(), int64(0))
+}
+
+func TestHub_Broadcast_WarningRateLimited(t *testing.T) {
+	hub := NewHub()
+
+	// Set last warning time to recent past (within rate limit window)
+	hub.lastWarningTime.Store(time.Now().UnixMilli())
+
+	// Fill channel
+	fillerData, _ := json.Marshal(Event{Type: "filler"})
+	for i := 0; i < 1024; i++ {
+		hub.broadcast <- fillerData
+	}
+
+	// Broadcast should timeout but NOT emit warning (rate limited)
+	initialTime := hub.lastWarningTime.Load()
+	hub.Broadcast(Event{Type: "dropped"})
+
+	// lastWarningTime should NOT have changed (rate limited)
+	assert.Equal(t, initialTime, hub.lastWarningTime.Load())
+}
+
+func TestHub_Broadcast_WarningAfterRateLimitExpires(t *testing.T) {
+	hub := NewHub()
+
+	// Set last warning time to 6 seconds ago (past 5s rate limit)
+	hub.lastWarningTime.Store(time.Now().Add(-6 * time.Second).UnixMilli())
+
+	// Fill channel
+	fillerData, _ := json.Marshal(Event{Type: "filler"})
+	for i := 0; i < 1024; i++ {
+		hub.broadcast <- fillerData
+	}
+
+	// Broadcast should timeout AND emit warning
+	oldTime := hub.lastWarningTime.Load()
+	hub.Broadcast(Event{Type: "dropped"})
+
+	// lastWarningTime should have been updated
+	assert.Greater(t, hub.lastWarningTime.Load(), oldTime)
+}

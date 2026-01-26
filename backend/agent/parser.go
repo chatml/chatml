@@ -199,6 +199,9 @@ const (
 	EventTypeCheckpointCreated = "checkpoint_created"
 	EventTypeFilesRewound      = "files_rewound"
 	EventTypeJsonParseError    = "json_parse_error"
+
+	// Warning events
+	EventTypeStreamingWarning = "streaming_warning"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
