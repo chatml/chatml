@@ -2,7 +2,7 @@
 
 import { type CheckDetail } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Check, X, Clock, CircleDot } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, CircleDot, CircleMinus } from 'lucide-react';
 
 interface CheckListProps {
   checks: CheckDetail[];
@@ -52,7 +52,7 @@ function CheckItem({ check }: CheckItemProps) {
     switch (check.conclusion) {
       case 'success':
         return {
-          icon: Check,
+          icon: CheckCircle2,
           color: 'text-green-500',
           label: 'Passed',
         };
@@ -60,25 +60,25 @@ function CheckItem({ check }: CheckItemProps) {
       case 'timed_out':
       case 'action_required':
         return {
-          icon: X,
+          icon: XCircle,
           color: 'text-red-500',
           label: 'Failed',
         };
       case 'cancelled':
         return {
-          icon: X,
+          icon: XCircle,
           color: 'text-muted-foreground',
           label: 'Cancelled',
         };
       case 'skipped':
         return {
-          icon: Check,
+          icon: CircleMinus,
           color: 'text-muted-foreground',
           label: 'Skipped',
         };
       case 'neutral':
         return {
-          icon: Check,
+          icon: CircleMinus,
           color: 'text-muted-foreground',
           label: 'Neutral',
         };
