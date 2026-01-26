@@ -9,6 +9,8 @@ pub struct AppState {
     pub minimize_to_tray: AtomicBool,
     /// PID of the backend sidecar process
     pub sidecar_pid: Mutex<Option<u32>>,
+    /// Port the backend sidecar is running on
+    pub sidecar_port: Mutex<Option<u16>>,
     /// Authentication token for backend API security
     pub auth_token: Mutex<Option<String>>,
     /// Pending OAuth callback URL (set by deep link handler, consumed by frontend)
@@ -27,6 +29,7 @@ impl AppState {
             app_ready: AtomicBool::new(false),
             minimize_to_tray: AtomicBool::new(false),
             sidecar_pid: Mutex::new(None),
+            sidecar_port: Mutex::new(None),
             auth_token: Mutex::new(None),
             pending_oauth_callback: Mutex::new(None),
         }
@@ -75,6 +78,38 @@ impl AppState {
                 log::warn!("sidecar_pid mutex poisoned: {}", e);
                 None
             }
+        }
+    }
+
+    /// Store the sidecar port
+    pub fn set_sidecar_port(&self, port: u16) {
+        match self.sidecar_port.lock() {
+            Ok(mut guard) => {
+                log::info!("Backend port set to: {}", port);
+                *guard = Some(port);
+            }
+            Err(e) => log::warn!("sidecar_port mutex poisoned: {}", e),
+        }
+    }
+
+    /// Get the sidecar port
+    pub fn get_sidecar_port(&self) -> Option<u16> {
+        match self.sidecar_port.lock() {
+            Ok(guard) => *guard,
+            Err(e) => {
+                log::warn!("sidecar_port mutex poisoned: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Clear the sidecar port (used when sidecar stops)
+    pub fn clear_sidecar_port(&self) {
+        match self.sidecar_port.lock() {
+            Ok(mut guard) => {
+                *guard = None;
+            }
+            Err(e) => log::warn!("sidecar_port mutex poisoned: {}", e),
         }
     }
 
@@ -187,6 +222,7 @@ mod tests {
         let state2 = AppState::default();
 
         assert_eq!(state1.get_auth_token(), state2.get_auth_token());
+        assert_eq!(state1.get_sidecar_port(), state2.get_sidecar_port());
         assert_eq!(state1.is_ready(), state2.is_ready());
         assert_eq!(
             state1.should_minimize_to_tray(),
@@ -227,5 +263,41 @@ mod tests {
 
         // After take, should be None
         assert!(state.take_sidecar_pid().is_none());
+    }
+
+    #[test]
+    fn test_new_state_has_no_sidecar_port() {
+        let state = AppState::new();
+        assert!(state.get_sidecar_port().is_none());
+    }
+
+    #[test]
+    fn test_set_and_get_sidecar_port() {
+        let state = AppState::new();
+
+        state.set_sidecar_port(9876);
+        assert_eq!(state.get_sidecar_port(), Some(9876));
+    }
+
+    #[test]
+    fn test_clear_sidecar_port() {
+        let state = AppState::new();
+
+        state.set_sidecar_port(9876);
+        assert_eq!(state.get_sidecar_port(), Some(9876));
+
+        state.clear_sidecar_port();
+        assert!(state.get_sidecar_port().is_none());
+    }
+
+    #[test]
+    fn test_sidecar_port_can_be_overwritten() {
+        let state = AppState::new();
+
+        state.set_sidecar_port(9876);
+        assert_eq!(state.get_sidecar_port(), Some(9876));
+
+        state.set_sidecar_port(9877);
+        assert_eq!(state.get_sidecar_port(), Some(9877));
     }
 }

@@ -6,9 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
 import { History, RotateCcw, Loader2 } from 'lucide-react';
-
-// API base URL - configurable via environment variable
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
+import { getApiBase } from '@/lib/api';
 
 export function CheckpointTimeline() {
   const { checkpoints, selectedConversationId } = useAppStore();
@@ -19,7 +17,7 @@ export function CheckpointTimeline() {
 
     setRewindingUuid(uuid);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/conversations/${selectedConversationId}/rewind`, {
+      const response = await fetch(`${getApiBase()}/api/conversations/${selectedConversationId}/rewind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ checkpointUuid: uuid }),
