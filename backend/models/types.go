@@ -109,14 +109,30 @@ type RunSummary struct {
 	Errors     []any     `json:"errors,omitempty"`
 }
 
+// Attachment represents a file attached to a message
+type Attachment struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`               // "file" or "image"
+	Name       string `json:"name"`               // Display filename
+	Path       string `json:"path,omitempty"`     // Local file path
+	MimeType   string `json:"mimeType"`           // MIME type
+	Size       int64  `json:"size"`               // Size in bytes
+	LineCount  int    `json:"lineCount,omitempty"`  // For text/code files
+	Width      int    `json:"width,omitempty"`      // For images
+	Height     int    `json:"height,omitempty"`     // For images
+	Base64Data string `json:"base64Data,omitempty"` // Base64-encoded content
+	Preview    string `json:"preview,omitempty"`    // Text preview
+}
+
 // Message represents a single message in a conversation
 type Message struct {
-	ID         string      `json:"id"`
-	Role       string      `json:"role"` // "user", "assistant", "system"
-	Content    string      `json:"content"`
-	SetupInfo  *SetupInfo  `json:"setupInfo,omitempty"`  // For system messages with setup info
-	RunSummary *RunSummary `json:"runSummary,omitempty"` // For assistant messages with run summary
-	Timestamp  time.Time   `json:"timestamp"`
+	ID          string       `json:"id"`
+	Role        string       `json:"role"` // "user", "assistant", "system"
+	Content     string       `json:"content"`
+	SetupInfo   *SetupInfo   `json:"setupInfo,omitempty"`   // For system messages with setup info
+	RunSummary  *RunSummary  `json:"runSummary,omitempty"`  // For assistant messages with run summary
+	Attachments []Attachment `json:"attachments,omitempty"` // File attachments
+	Timestamp   time.Time    `json:"timestamp"`
 }
 
 // ToolAction represents a tool usage record for the summary

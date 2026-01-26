@@ -137,7 +137,12 @@ pub fn run() {
             commands::watch_workspace,
             commands::unwatch_workspace,
             commands::get_auth_token,
-            commands::get_pending_oauth_callback
+            commands::get_pending_oauth_callback,
+            // File attachment commands
+            commands::read_file_metadata,
+            commands::read_file_as_base64,
+            commands::get_image_dimensions,
+            commands::count_file_lines
         ])
         .setup(move |app| {
             // Create and set the menu

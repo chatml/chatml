@@ -340,3 +340,104 @@ export async function readFromClipboard(): Promise<string | null> {
     return null;
   }
 }
+
+// ============================================
+// File Attachment Functions
+// ============================================
+
+export interface FileMetadata {
+  size: number;
+  isDirectory: boolean;
+  isFile: boolean;
+}
+
+export interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+/**
+ * Read file metadata (size, type)
+ */
+export async function readFileMetadata(path: string): Promise<FileMetadata | null> {
+  if (!isTauri()) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<FileMetadata>('read_file_metadata', { path });
+  } catch (e) {
+    console.error('Failed to read file metadata', e);
+    return null;
+  }
+}
+
+/**
+ * Read file content as base64
+ */
+export async function readFileAsBase64(path: string, maxSize?: number): Promise<string | null> {
+  if (!isTauri()) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<string>('read_file_as_base64', { path, maxSize });
+  } catch (e) {
+    console.error('Failed to read file as base64', e);
+    return null;
+  }
+}
+
+/**
+ * Get image dimensions (width, height)
+ */
+export async function getImageDimensions(path: string): Promise<ImageDimensions | null> {
+  if (!isTauri()) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<ImageDimensions>('get_image_dimensions', { path });
+  } catch (e) {
+    console.error('Failed to get image dimensions', e);
+    return null;
+  }
+}
+
+/**
+ * Count lines in a text file
+ */
+export async function countFileLines(path: string): Promise<number | null> {
+  if (!isTauri()) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<number>('count_file_lines', { path });
+  } catch (e) {
+    console.error('Failed to count file lines', e);
+    return null;
+  }
+}
+
+export interface FileDialogOptions {
+  multiple?: boolean;
+  filters?: Array<{ name: string; extensions: string[] }>;
+  defaultPath?: string;
+  title?: string;
+}
+
+/**
+ * Open native file picker dialog for attachments
+ */
+export async function openFileDialog(options?: FileDialogOptions): Promise<string[] | null> {
+  if (!isTauri()) return null;
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const result = await open({
+      directory: false,
+      multiple: options?.multiple ?? true,
+      filters: options?.filters,
+      defaultPath: options?.defaultPath,
+      title: options?.title || 'Select Files',
+    });
+    if (result === null) return null;
+    // Normalize to array
+    return Array.isArray(result) ? result : [result];
+  } catch (e) {
+    console.error('Failed to open file dialog', e);
+    return null;
+  }
+}

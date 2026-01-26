@@ -386,6 +386,34 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	log.Printf("[sqlite] Migration: review_comments table ready")
 
+	// Migration: Create attachments table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS attachments (
+			id TEXT PRIMARY KEY,
+			message_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			name TEXT NOT NULL,
+			path TEXT,
+			mime_type TEXT NOT NULL,
+			size INTEGER NOT NULL,
+			line_count INTEGER,
+			width INTEGER,
+			height INTEGER,
+			base64_data TEXT,
+			preview TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id)`)
+	if err != nil {
+		return err
+	}
+	log.Printf("[sqlite] Migration: attachments table ready")
+
 	return nil
 }
 
@@ -887,6 +915,7 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 		return nil, fmt.Errorf("GetConversation messages: %w", err)
 	}
 	defer rows.Close()
+	msgIndexByID := make(map[string]int)
 	for rows.Next() {
 		var msg models.Message
 		var setupInfoJSON sql.NullString
@@ -906,10 +935,18 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 				msg.RunSummary = &runSummary
 			}
 		}
+		msgIndexByID[msg.ID] = len(conv.Messages)
 		conv.Messages = append(conv.Messages, msg)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("GetConversation messages rows: %w", err)
+	}
+
+	// Load attachments for all messages
+	if len(conv.Messages) > 0 {
+		if err := s.loadAttachmentsForMessages(ctx, conv.Messages, msgIndexByID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Load tool actions
@@ -1083,6 +1120,13 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 	}
 	defer rows.Close()
 
+	// Track message locations for attachment loading
+	type msgLocation struct {
+		convID string
+		index  int
+	}
+	msgLocations := make(map[string]msgLocation)
+
 	for rows.Next() {
 		var convID string
 		var msg models.Message
@@ -1107,10 +1151,82 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 		}
 
 		if conv, ok := convMap[convID]; ok {
+			msgLocations[msg.ID] = msgLocation{convID: convID, index: len(conv.Messages)}
 			conv.Messages = append(conv.Messages, msg)
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Batch load attachments for all messages
+	if len(msgLocations) > 0 {
+		msgIDs := make([]string, 0, len(msgLocations))
+		for msgID := range msgLocations {
+			msgIDs = append(msgIDs, msgID)
+		}
+
+		attPlaceholders := make([]string, len(msgIDs))
+		attArgs := make([]interface{}, len(msgIDs))
+		for i, id := range msgIDs {
+			attPlaceholders[i] = "?"
+			attArgs[i] = id
+		}
+
+		attQuery := fmt.Sprintf(`
+			SELECT message_id, id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview
+			FROM attachments
+			WHERE message_id IN (%s)`, strings.Join(attPlaceholders, ","))
+
+		attRows, err := s.db.QueryContext(ctx, attQuery, attArgs...)
+		if err != nil {
+			return fmt.Errorf("loadMessagesForConversations attachments: %w", err)
+		}
+		defer attRows.Close()
+
+		for attRows.Next() {
+			var messageID string
+			var att models.Attachment
+			var path, base64Data, preview sql.NullString
+			var lineCount, width, height sql.NullInt64
+
+			if err := attRows.Scan(&messageID, &att.ID, &att.Type, &att.Name, &path, &att.MimeType,
+				&att.Size, &lineCount, &width, &height, &base64Data, &preview); err != nil {
+				return fmt.Errorf("loadMessagesForConversations attachment scan: %w", err)
+			}
+
+			if path.Valid {
+				att.Path = path.String
+			}
+			if base64Data.Valid {
+				att.Base64Data = base64Data.String
+			}
+			if preview.Valid {
+				att.Preview = preview.String
+			}
+			if lineCount.Valid {
+				att.LineCount = int(lineCount.Int64)
+			}
+			if width.Valid {
+				att.Width = int(width.Int64)
+			}
+			if height.Valid {
+				att.Height = int(height.Int64)
+			}
+
+			// Associate attachment with message
+			if loc, ok := msgLocations[messageID]; ok {
+				if conv, ok := convMap[loc.convID]; ok {
+					conv.Messages[loc.index].Attachments = append(conv.Messages[loc.index].Attachments, att)
+				}
+			}
+		}
+		if err := attRows.Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // loadToolActionsForConversations loads tool actions for multiple conversations in a single query
@@ -1146,6 +1262,76 @@ func (s *SQLiteStore) loadToolActionsForConversations(ctx context.Context, convM
 
 		if conv, ok := convMap[convID]; ok {
 			conv.ToolSummary = append(conv.ToolSummary, action)
+		}
+	}
+	return rows.Err()
+}
+
+// loadAttachmentsForMessages loads attachments for a slice of messages in a single batch query.
+// NOTE: This function mutates the messages slice directly by appending to the Attachments field
+// of each message. The msgIndexByID map is used to locate each message by its ID.
+func (s *SQLiteStore) loadAttachmentsForMessages(ctx context.Context, messages []models.Message, msgIndexByID map[string]int) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// Collect message IDs
+	msgIDs := make([]string, len(messages))
+	for i, msg := range messages {
+		msgIDs[i] = msg.ID
+	}
+
+	placeholders := make([]string, len(msgIDs))
+	args := make([]interface{}, len(msgIDs))
+	for i, id := range msgIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT message_id, id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview
+		FROM attachments
+		WHERE message_id IN (%s)`, strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("loadAttachmentsForMessages: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var messageID string
+		var att models.Attachment
+		var path, base64Data, preview sql.NullString
+		var lineCount, width, height sql.NullInt64
+
+		if err := rows.Scan(&messageID, &att.ID, &att.Type, &att.Name, &path, &att.MimeType,
+			&att.Size, &lineCount, &width, &height, &base64Data, &preview); err != nil {
+			return fmt.Errorf("loadAttachmentsForMessages scan: %w", err)
+		}
+
+		if path.Valid {
+			att.Path = path.String
+		}
+		if base64Data.Valid {
+			att.Base64Data = base64Data.String
+		}
+		if preview.Valid {
+			att.Preview = preview.String
+		}
+		if lineCount.Valid {
+			att.LineCount = int(lineCount.Int64)
+		}
+		if width.Valid {
+			att.Width = int(width.Int64)
+		}
+		if height.Valid {
+			att.Height = int(height.Int64)
+		}
+
+		// Associate attachment with message
+		if idx, ok := msgIndexByID[messageID]; ok {
+			messages[idx].Attachments = append(messages[idx].Attachments, att)
 		}
 	}
 	return rows.Err()
@@ -1205,6 +1391,7 @@ func (s *SQLiteStore) getConversationNoLock(ctx context.Context, id string) (*mo
 		return nil, fmt.Errorf("getConversationNoLock messages: %w", err)
 	}
 	defer rows.Close()
+	msgIndexByID := make(map[string]int)
 	for rows.Next() {
 		var msg models.Message
 		var setupInfoJSON sql.NullString
@@ -1224,7 +1411,15 @@ func (s *SQLiteStore) getConversationNoLock(ctx context.Context, id string) (*mo
 				msg.RunSummary = &runSummary
 			}
 		}
+		msgIndexByID[msg.ID] = len(conv.Messages)
 		conv.Messages = append(conv.Messages, msg)
+	}
+
+	// Load attachments for all messages
+	if len(conv.Messages) > 0 {
+		if err := s.loadAttachmentsForMessages(ctx, conv.Messages, msgIndexByID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Load tool actions
@@ -1769,4 +1964,113 @@ func (s *SQLiteStore) DeleteReviewCommentsForSession(ctx context.Context, sessio
 		return fmt.Errorf("DeleteReviewCommentsForSession: %w", err)
 	}
 	return nil
+}
+
+// ============================================================================
+// Attachment methods
+// ============================================================================
+
+// SaveAttachments saves attachments for a message
+func (s *SQLiteStore) SaveAttachments(ctx context.Context, messageID string, attachments []models.Attachment) error {
+	if len(attachments) == 0 {
+		return nil
+	}
+
+	return RetryDBExec(ctx, "SaveAttachments", DefaultRetryConfig(), func(ctx context.Context) error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
+
+		stmt, err := tx.PrepareContext(ctx, `
+			INSERT INTO attachments (id, message_id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("prepare: %w", err)
+		}
+		defer stmt.Close()
+
+		for _, att := range attachments {
+			var lineCount, width, height sql.NullInt64
+			if att.LineCount > 0 {
+				lineCount = sql.NullInt64{Int64: int64(att.LineCount), Valid: true}
+			}
+			if att.Width > 0 {
+				width = sql.NullInt64{Int64: int64(att.Width), Valid: true}
+			}
+			if att.Height > 0 {
+				height = sql.NullInt64{Int64: int64(att.Height), Valid: true}
+			}
+
+			var path, base64Data, preview sql.NullString
+			if att.Path != "" {
+				path = sql.NullString{String: att.Path, Valid: true}
+			}
+			if att.Base64Data != "" {
+				base64Data = sql.NullString{String: att.Base64Data, Valid: true}
+			}
+			if att.Preview != "" {
+				preview = sql.NullString{String: att.Preview, Valid: true}
+			}
+
+			_, err = stmt.ExecContext(ctx,
+				att.ID, messageID, att.Type, att.Name, path, att.MimeType,
+				att.Size, lineCount, width, height, base64Data, preview)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("insert: %w", err)
+			}
+		}
+
+		return tx.Commit()
+	})
+}
+
+// GetAttachmentsByMessageID retrieves all attachments for a message
+func (s *SQLiteStore) GetAttachmentsByMessageID(ctx context.Context, messageID string) ([]models.Attachment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview
+		FROM attachments WHERE message_id = ?`, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("GetAttachmentsByMessageID: %w", err)
+	}
+	defer rows.Close()
+
+	attachments := []models.Attachment{}
+	for rows.Next() {
+		var att models.Attachment
+		var path, base64Data, preview sql.NullString
+		var lineCount, width, height sql.NullInt64
+
+		if err := rows.Scan(&att.ID, &att.Type, &att.Name, &path, &att.MimeType,
+			&att.Size, &lineCount, &width, &height, &base64Data, &preview); err != nil {
+			return nil, fmt.Errorf("GetAttachmentsByMessageID scan: %w", err)
+		}
+
+		if path.Valid {
+			att.Path = path.String
+		}
+		if base64Data.Valid {
+			att.Base64Data = base64Data.String
+		}
+		if preview.Valid {
+			att.Preview = preview.String
+		}
+		if lineCount.Valid {
+			att.LineCount = int(lineCount.Int64)
+		}
+		if width.Valid {
+			att.Width = int(width.Int64)
+		}
+		if height.Valid {
+			att.Height = int(height.Int64)
+		}
+
+		attachments = append(attachments, att)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAttachmentsByMessageID rows: %w", err)
+	}
+	return attachments, nil
 }

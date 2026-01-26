@@ -79,7 +79,8 @@ func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 
 // StartConversationOptions contains optional parameters for starting a conversation
 type StartConversationOptions struct {
-	MaxThinkingTokens int // Enable extended thinking with this token budget
+	MaxThinkingTokens int                 // Enable extended thinking with this token budget
+	Attachments       []models.Attachment // File attachments for the initial message
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -176,17 +177,32 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 
 	// Send the initial message if provided
 	if initialMessage != "" {
-		// Store user message
-		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
-			ID:        uuid.New().String()[:8],
-			Role:      "user",
-			Content:   initialMessage,
-			Timestamp: time.Now(),
-		}); err != nil {
+		// Collect attachments from options
+		var attachments []models.Attachment
+		if opts != nil && len(opts.Attachments) > 0 {
+			attachments = opts.Attachments
+		}
+
+		// Store user message with attachments
+		msg := models.Message{
+			ID:          uuid.New().String()[:8],
+			Role:        "user",
+			Content:     initialMessage,
+			Attachments: attachments,
+			Timestamp:   time.Now(),
+		}
+		if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
 			log.Printf("[manager] failed to store initial user message: %v", err)
 		}
 
-		if err := proc.SendMessage(initialMessage); err != nil {
+		// Save attachments to database if any
+		if len(attachments) > 0 {
+			if err := m.store.SaveAttachments(ctx, msg.ID, attachments); err != nil {
+				log.Printf("[manager] failed to save attachments: %v", err)
+			}
+		}
+
+		if err := proc.SendMessageWithAttachments(initialMessage, attachments); err != nil {
 			return conv, fmt.Errorf("failed to send initial message: %w", err)
 		}
 	}
@@ -311,7 +327,7 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 }
 
 // SendConversationMessage sends a follow-up message to an existing conversation
-func (m *Manager) SendConversationMessage(convID, message string) error {
+func (m *Manager) SendConversationMessage(convID, message string, attachments []models.Attachment) error {
 	ctx := context.Background()
 	m.mu.RLock()
 	proc, ok := m.convProcesses[convID]
@@ -364,18 +380,27 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 		}
 	}
 
-	// Store user message
-	if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
-		ID:        uuid.New().String()[:8],
-		Role:      "user",
-		Content:   message,
-		Timestamp: time.Now(),
-	}); err != nil {
+	// Store user message with attachments
+	msg := models.Message{
+		ID:          uuid.New().String()[:8],
+		Role:        "user",
+		Content:     message,
+		Attachments: attachments,
+		Timestamp:   time.Now(),
+	}
+	if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
 		log.Printf("[manager] failed to store user message for conv %s: %v", convID, err)
 	}
 
-	// Send to process
-	return proc.SendMessage(message)
+	// Save attachments to database if any
+	if len(attachments) > 0 {
+		if err := m.store.SaveAttachments(ctx, msg.ID, attachments); err != nil {
+			log.Printf("[manager] failed to save attachments: %v", err)
+		}
+	}
+
+	// Send to process with attachments
+	return proc.SendMessageWithAttachments(message, attachments)
 }
 
 // RewindConversationFiles rewinds file changes in a conversation to a checkpoint
