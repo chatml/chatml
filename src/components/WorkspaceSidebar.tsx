@@ -110,6 +110,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const [searchTerm, setSearchTerm] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [addTooltipOpen, setAddTooltipOpen] = useState(false);
+  const [isShimmering, setIsShimmering] = useState(false);
   const addMenuClosedRef = useRef(false);
   const { error: showError } = useToast();
 
@@ -313,7 +314,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
       <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
-        <span className="text-[22px] font-extrabold"><span className="text-muted-foreground">chat</span><span className="text-violet-400/80">ml</span></span>
+        <span
+          className={cn("text-[22px] font-extrabold brand-shimmer cursor-pointer select-none", isShimmering && "shimmer-active")}
+          onClick={() => setIsShimmering(!isShimmering)}
+        >
+          <span className="text-muted-foreground">chat</span><span className="text-violet-400/80">ml</span>
+        </span>
         {onToggleSidebar && (
           <Tooltip>
             <TooltipTrigger asChild>

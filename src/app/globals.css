@@ -590,6 +590,44 @@
 
 
 
+/* Brand shimmer effect - continuous shimmering when active */
+@keyframes brand-shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.brand-shimmer {
+  position: relative;
+  display: inline-block;
+}
+
+.brand-shimmer.shimmer-active {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 35%,
+    rgba(255, 255, 255, 0.9) 50%,
+    currentColor 65%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: brand-shimmer 2s linear infinite;
+}
+
+.brand-shimmer.shimmer-active span {
+  background: inherit;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* Plan mode animated border - marching ants SVG animation */
 @keyframes marching-ants-dash {
   to {
