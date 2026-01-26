@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/branch"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
@@ -66,7 +66,7 @@ func (m *SessionLockManager) Unlock(path string) {
 	entry, ok := m.locks[path]
 	if !ok {
 		m.mu.Unlock()
-		log.Printf("[SessionLockManager] Warning: attempted to unlock non-existent path: %s", path)
+		logger.Handlers.Warnf("SessionLockManager: attempted to unlock non-existent path: %s", path)
 		return
 	}
 	entry.refCount--
@@ -232,7 +232,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
 	if err != nil {
-		log.Printf("[handlers] Warning: failed to get workspaces base directory: %v (session name cache will be disabled)", err)
+		logger.Handlers.Warnf("Failed to get workspaces base directory: %v (session name cache will be disabled)", err)
 	}
 	return &Handlers{
 		store:            s,
@@ -736,7 +736,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		// Rollback: remove the atomically created directory and cache entry
 		h.sessionNameCache.Remove(sessionName)
 		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
-			log.Printf("[handlers] Warning: failed to rollback session directory %s: %v", sessionPath, removeErr)
+			logger.Handlers.Warnf("Failed to rollback session directory %s: %v", sessionPath, removeErr)
 		}
 		writeInternalError(w, "failed to create worktree", err)
 		return
@@ -834,7 +834,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Start watching for branch changes
 	if h.branchWatcher != nil {
 		if err := h.branchWatcher.WatchSession(sess.ID, worktreePath, branchName); err != nil {
-			log.Printf("[handlers] Warning: failed to start branch watching for session %s: %v", sess.ID, err)
+			logger.Handlers.Warnf("Failed to start branch watching for session %s: %v", sess.ID, err)
 			// Non-fatal - session works without instant branch detection
 		}
 	}
@@ -1161,7 +1161,7 @@ func (h *Handlers) GetSessionFileHistory(w http.ResponseWriter, r *http.Request)
 	commits, err := h.repoManager.GetFileCommitHistory(ctx, session.WorktreePath, cleanPath)
 	if err != nil {
 		// Empty history is valid for new files
-		log.Printf("[handlers] Debug: failed to get file history for %s: %v (returning empty)", cleanPath, err)
+		logger.Handlers.Debugf("Failed to get file history for %s: %v (returning empty)", cleanPath, err)
 		commits = []git.FileCommit{}
 	}
 

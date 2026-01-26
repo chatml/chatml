@@ -2,8 +2,9 @@ package server
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // APIError represents a structured error response
@@ -26,7 +27,7 @@ const (
 // writeError writes a JSON error response and logs the internal error server-side
 func writeError(w http.ResponseWriter, status int, code string, userMsg string, internalErr error) {
 	if internalErr != nil {
-		log.Printf("[error] code=%s status=%d msg=%q internal_err=%v", code, status, userMsg, internalErr)
+		logger.Error.Errorf("code=%s status=%d msg=%q internal_err=%v", code, status, userMsg, internalErr)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -35,7 +36,7 @@ func writeError(w http.ResponseWriter, status int, code string, userMsg string, 
 		Error: userMsg,
 		Code:  code,
 	}); err != nil {
-		log.Printf("[error] failed to encode error response: %v", err)
+		logger.Error.Errorf("Failed to encode error response: %v", err)
 	}
 }
 

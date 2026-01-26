@@ -2,11 +2,11 @@ package branch
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/github"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
 
@@ -99,7 +99,7 @@ func (w *PRWatcher) WatchSession(sessionID, workspaceID, branch, repoPath, curre
 		LastChecked: time.Time{}, // Force immediate check
 	}
 
-	log.Printf("[pr-watcher] Started watching session %s (branch: %s)", sessionID, branch)
+	logger.PRWatcher.Infof("Started watching session %s (branch: %s)", sessionID, branch)
 }
 
 // UnwatchSession stops watching a session for PR status changes
@@ -109,7 +109,7 @@ func (w *PRWatcher) UnwatchSession(sessionID string) {
 
 	if _, exists := w.sessions[sessionID]; exists {
 		delete(w.sessions, sessionID)
-		log.Printf("[pr-watcher] Stopped watching session %s", sessionID)
+		logger.PRWatcher.Infof("Stopped watching session %s", sessionID)
 	}
 }
 
@@ -122,14 +122,14 @@ func (w *PRWatcher) UpdateSessionBranch(sessionID, newBranch string) {
 		entry.Branch = newBranch
 		// Reset last checked to trigger re-check
 		entry.LastChecked = time.Time{}
-		log.Printf("[pr-watcher] Updated branch for session %s: %s", sessionID, newBranch)
+		logger.PRWatcher.Infof("Updated branch for session %s: %s", sessionID, newBranch)
 	}
 }
 
 // Close stops the PR watcher
 func (w *PRWatcher) Close() error {
 	w.cancel()
-	log.Printf("[pr-watcher] Closed")
+	logger.PRWatcher.Info("Closed")
 	return nil
 }
 
@@ -231,7 +231,7 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 		// Get open PRs for this repo (one API call per repo)
 		openPRs, err := w.ghClient.ListOpenPRs(w.ctx, key.owner, key.repo)
 		if err != nil {
-			log.Printf("[pr-watcher] Failed to list PRs for %s/%s: %v", key.owner, key.repo, err)
+			logger.PRWatcher.Errorf("Failed to list PRs for %s/%s: %v", key.owner, key.repo, err)
 			continue
 		}
 
@@ -329,7 +329,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 	entry.LastChecked = time.Now()
 	w.mu.Unlock()
 
-	log.Printf("[pr-watcher] PR status changed for session %s: status=%s, pr=%d, checks=%s",
+	logger.PRWatcher.Infof("PR status changed for session %s: status=%s, pr=%d, checks=%s",
 		entry.SessionID, newStatus, prNumber, checkStatus)
 
 	// Update database
@@ -343,7 +343,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 				sess.HasMergeConflict = !*mergeable
 			}
 		}); err != nil {
-			log.Printf("[pr-watcher] Failed to update session %s in DB: %v", entry.SessionID, err)
+			logger.PRWatcher.Errorf("Failed to update session %s in DB: %v", entry.SessionID, err)
 		}
 	}
 

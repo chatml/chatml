@@ -3,13 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
@@ -160,7 +160,7 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 		if updateErr := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 			c.Status = models.ConversationStatusIdle
 		}); updateErr != nil {
-			log.Printf("[manager] failed to update conversation status on start error: %v", updateErr)
+			logger.Manager.Errorf("Failed to update conversation status on start error: %v", updateErr)
 		}
 		if m.onConversationStatus != nil {
 			m.onConversationStatus(convID, models.ConversationStatusIdle)
@@ -183,7 +183,7 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 			Content:   initialMessage,
 			Timestamp: time.Now(),
 		}); err != nil {
-			log.Printf("[manager] failed to store initial user message: %v", err)
+			logger.Manager.Errorf("Failed to store initial user message: %v", err)
 		}
 
 		if err := proc.SendMessage(initialMessage); err != nil {
@@ -223,7 +223,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 				Target:  event.Summary,
 				Success: event.Success,
 			}); err != nil {
-				log.Printf("[manager] failed to store tool action for conv %s: %v", convID, err)
+				logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
 			}
 
 		case EventTypeNameSuggestion:
@@ -234,7 +234,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 				c.UpdatedAt = time.Now()
 				sessionID = c.SessionID
 			}); err != nil {
-				log.Printf("[manager] failed to update conversation name for %s: %v", convID, err)
+				logger.Manager.Errorf("Failed to update conversation name for %s: %v", convID, err)
 			}
 
 			// Also update session name if it hasn't been auto-named yet
@@ -251,7 +251,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 					Content:   currentAssistantMessage,
 					Timestamp: time.Now(),
 				}); err != nil {
-					log.Printf("[manager] failed to store assistant message for conv %s: %v", convID, err)
+					logger.Manager.Errorf("Failed to store assistant message for conv %s: %v", convID, err)
 				}
 				currentAssistantMessage = ""
 			}
@@ -280,7 +280,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 			Content:   currentAssistantMessage,
 			Timestamp: time.Now(),
 		}); err != nil {
-			log.Printf("[manager] failed to store final assistant message for conv %s: %v", convID, err)
+			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}
 	}
 }
@@ -302,7 +302,7 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 		c.Status = newStatus
 		c.UpdatedAt = time.Now()
 	}); err != nil {
-		log.Printf("[manager] failed to update conversation status on completion for %s: %v", convID, err)
+		logger.Manager.Errorf("Failed to update conversation status on completion for %s: %v", convID, err)
 	}
 
 	if m.onConversationStatus != nil {
@@ -357,7 +357,7 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 			c.Status = models.ConversationStatusActive
 			c.UpdatedAt = time.Now()
 		}); err != nil {
-			log.Printf("[manager] failed to update conversation status to active: %v", err)
+			logger.Manager.Errorf("Failed to update conversation status to active: %v", err)
 		}
 		if m.onConversationStatus != nil {
 			m.onConversationStatus(convID, models.ConversationStatusActive)
@@ -371,7 +371,7 @@ func (m *Manager) SendConversationMessage(convID, message string) error {
 		Content:   message,
 		Timestamp: time.Now(),
 	}); err != nil {
-		log.Printf("[manager] failed to store user message for conv %s: %v", convID, err)
+		logger.Manager.Errorf("Failed to store user message for conv %s: %v", convID, err)
 	}
 
 	// Send to process
@@ -438,7 +438,7 @@ func (m *Manager) StopConversation(convID string) {
 		c.Status = models.ConversationStatusIdle
 		c.UpdatedAt = time.Now()
 	}); err != nil {
-		log.Printf("[manager] failed to update conversation status on stop: %v", err)
+		logger.Manager.Errorf("Failed to update conversation status on stop: %v", err)
 	}
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, models.ConversationStatusIdle)
@@ -454,7 +454,7 @@ func (m *Manager) CompleteConversation(convID string) {
 		c.Status = models.ConversationStatusCompleted
 		c.UpdatedAt = time.Now()
 	}); err != nil {
-		log.Printf("[manager] failed to update conversation status to completed: %v", err)
+		logger.Manager.Errorf("Failed to update conversation status to completed: %v", err)
 	}
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, models.ConversationStatusCompleted)
@@ -553,7 +553,7 @@ func formatSessionName(name string) string {
 func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedName string) {
 	sess, err := m.store.GetSession(ctx, sessionID)
 	if err != nil {
-		log.Printf("[manager] failed to get session %s for auto-naming: %v", sessionID, err)
+		logger.Manager.Errorf("Failed to get session %s for auto-naming: %v", sessionID, err)
 		return
 	}
 	if sess == nil {
@@ -568,7 +568,7 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 	// Format the name like a branch name
 	formattedName := formatSessionName(suggestedName)
 	if formattedName == "" {
-		log.Printf("[manager] skipping auto-name for session %s: could not extract meaningful name from %q", sessionID, suggestedName)
+		logger.Manager.Infof("Skipping auto-name for session %s: could not extract meaningful name from %q", sessionID, suggestedName)
 		return
 	}
 
@@ -577,10 +577,10 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 	newBranchName := fmt.Sprintf("session/%s", formattedName)
 
 	if err := m.worktreeManager.RenameBranch(ctx, sess.WorktreePath, oldBranchName, newBranchName); err != nil {
-		log.Printf("[manager] failed to rename branch for session %s: %v", sessionID, err)
+		logger.Manager.Errorf("Failed to rename branch for session %s: %v", sessionID, err)
 		// Continue anyway - the session name update is still useful
 	} else {
-		log.Printf("[manager] renamed branch for session %s: %q -> %q", sessionID, oldBranchName, newBranchName)
+		logger.Manager.Infof("Renamed branch for session %s: %q -> %q", sessionID, oldBranchName, newBranchName)
 	}
 
 	// Update session name, branch, and mark as auto-named
@@ -591,7 +591,7 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		s.AutoNamed = true
 		s.UpdatedAt = now
 	}); err != nil {
-		log.Printf("[manager] failed to auto-name session %s: %v", sessionID, err)
+		logger.Manager.Errorf("Failed to auto-name session %s: %v", sessionID, err)
 		return
 	}
 
@@ -600,11 +600,11 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		meta.Name = formattedName
 		meta.Branch = newBranchName
 		if err := session.WriteMetadata(meta); err != nil {
-			log.Printf("[manager] failed to update session metadata for %s: %v", sessionID, err)
+			logger.Manager.Errorf("Failed to update session metadata for %s: %v", sessionID, err)
 		}
 	}
 
-	log.Printf("[manager] auto-named session %s: %q (from %q)", sessionID, formattedName, suggestedName)
+	logger.Manager.Infof("Auto-named session %s: %q (from %q)", sessionID, formattedName, suggestedName)
 
 	// Emit session event for WebSocket broadcast
 	if m.onSessionEvent != nil {
@@ -650,7 +650,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 
 	if err := proc.Start(); err != nil {
 		if updateErr := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); updateErr != nil {
-			log.Printf("[manager] failed to update agent status on start error: %v", updateErr)
+			logger.Manager.Errorf("Failed to update agent status on start error: %v", updateErr)
 		}
 		if m.onStatus != nil {
 			m.onStatus(agentID, models.StatusError)
@@ -659,7 +659,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	}
 
 	if err := m.store.UpdateAgentStatus(ctx, agentID, models.StatusRunning); err != nil {
-		log.Printf("[manager] failed to update agent status to running: %v", err)
+		logger.Manager.Errorf("Failed to update agent status to running: %v", err)
 	}
 	if m.onStatus != nil {
 		m.onStatus(agentID, models.StatusRunning)
@@ -682,14 +682,14 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 		<-proc.Done()
 		if proc.ExitError() != nil {
 			if err := m.store.UpdateAgentStatus(bgCtx, agentID, models.StatusError); err != nil {
-				log.Printf("[manager] failed to update agent status on error exit: %v", err)
+				logger.Manager.Errorf("Failed to update agent status on error exit: %v", err)
 			}
 			if m.onStatus != nil {
 				m.onStatus(agentID, models.StatusError)
 			}
 		} else {
 			if err := m.store.UpdateAgentStatus(bgCtx, agentID, models.StatusDone); err != nil {
-				log.Printf("[manager] failed to update agent status to done: %v", err)
+				logger.Manager.Errorf("Failed to update agent status to done: %v", err)
 			}
 			if m.onStatus != nil {
 				m.onStatus(agentID, models.StatusDone)
@@ -699,7 +699,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 
 	if err := proc.SendMessage(task); err != nil {
 		if updateErr := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); updateErr != nil {
-			log.Printf("[manager] failed to update agent status on send error: %v", updateErr)
+			logger.Manager.Errorf("Failed to update agent status on send error: %v", updateErr)
 		}
 		if m.onStatus != nil {
 			m.onStatus(agentID, models.StatusError)
@@ -731,7 +731,7 @@ func (m *Manager) StopAgent(agentID string) {
 
 	// Update status only if we performed the stop
 	if err := m.store.UpdateAgentStatus(ctx, agentID, models.StatusError); err != nil {
-		log.Printf("[manager] failed to update agent status on stop: %v", err)
+		logger.Manager.Errorf("Failed to update agent status on stop: %v", err)
 	}
 	if m.onStatus != nil {
 		m.onStatus(agentID, models.StatusError)
