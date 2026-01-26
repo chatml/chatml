@@ -29,7 +29,7 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 		sqliteStore.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, nil)
 
 	return handlers, sqliteStore
 }
@@ -49,7 +49,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 		sqliteStore.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, nil)
 
 	return handlers, sqliteStore, agentManager
 }
