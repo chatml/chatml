@@ -1,11 +1,15 @@
 'use client';
 
 import { Folder, Globe, SquarePlus, Sparkles } from 'lucide-react';
+import { FullContentLayout } from './FullContentLayout';
 
 interface EmptyViewProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
   onQuickStart: () => void;
+  onOpenSettings?: () => void;
+  onOpenShortcuts?: () => void;
+  showLeftSidebar?: boolean;
 }
 
 const ACTION_CARDS = [
@@ -14,7 +18,14 @@ const ACTION_CARDS = [
   { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
 ] as const;
 
-export function EmptyView({ onOpenProject, onCloneFromUrl, onQuickStart }: EmptyViewProps) {
+export function EmptyView({
+  onOpenProject,
+  onCloneFromUrl,
+  onQuickStart,
+  onOpenSettings,
+  onOpenShortcuts,
+  showLeftSidebar = true,
+}: EmptyViewProps) {
   const handleCardClick = (key: string) => {
     switch (key) {
       case 'open':
@@ -30,7 +41,13 @@ export function EmptyView({ onOpenProject, onCloneFromUrl, onQuickStart }: Empty
   };
 
   return (
-    <div className="h-full flex flex-col items-center justify-center bg-background">
+    <FullContentLayout
+      title="Welcome"
+      onOpenSettings={onOpenSettings}
+      onOpenShortcuts={onOpenShortcuts}
+      showLeftSidebar={showLeftSidebar}
+    >
+      <div className="h-full flex flex-col items-center justify-center bg-background">
       {/* Logo */}
       <div className="mb-12">
         <div className="relative">
@@ -58,6 +75,7 @@ export function EmptyView({ onOpenProject, onCloneFromUrl, onQuickStart }: Empty
           </button>
         ))}
       </div>
-    </div>
+      </div>
+    </FullContentLayout>
   );
 }
