@@ -801,7 +801,7 @@ function SortableWorkspaceItem({
                                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                               )}
                               <span className={cn(
-                                "text-[length:var(--text-sm)] font-normal truncate flex-1 w-0",
+                                "text-[length:var(--text-base)] font-normal truncate flex-1 w-0",
                                 isSessionSelected ? "text-foreground" : "text-foreground/60"
                               )}>
                                 {session.branch || session.name}
