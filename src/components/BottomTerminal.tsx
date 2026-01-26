@@ -12,7 +12,7 @@ const Terminal = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-full bg-black/90 flex items-center justify-center">
+      <div className="h-full bg-background flex items-center justify-center">
         <span className="text-xs text-muted-foreground">Loading terminal...</span>
       </div>
     ),
