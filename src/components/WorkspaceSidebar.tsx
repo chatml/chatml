@@ -707,7 +707,7 @@ function SortableWorkspaceItem({
                         isDashboardSelected ? "text-blue-400" : "text-blue-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-sm)] font-medium",
+                        "text-[length:var(--text-base)] font-medium",
                         isDashboardSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -729,7 +729,7 @@ function SortableWorkspaceItem({
                         isPRsSelected ? "text-violet-400" : "text-violet-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-sm)] font-medium",
+                        "text-[length:var(--text-base)] font-medium",
                         isPRsSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
