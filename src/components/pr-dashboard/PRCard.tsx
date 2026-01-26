@@ -7,6 +7,11 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/tauri';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   GitPullRequest,
   GitPullRequestDraft,
   Github,
@@ -139,14 +144,19 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
                 Go to Session
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs !bg-surface-2 hover:!bg-surface-3 active:!bg-surface-4 active:scale-95 transition-all"
-              onClick={() => openInBrowser(pr.htmlUrl)}
-            >
-              <Github className="h-3.5 w-3.5" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs !bg-surface-2 hover:!bg-surface-3 active:!bg-surface-4 active:scale-95 transition-all"
+                  onClick={() => openInBrowser(pr.htmlUrl)}
+                >
+                  <Github className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open in GitHub</TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
