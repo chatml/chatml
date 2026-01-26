@@ -145,8 +145,7 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
               className="h-7 text-xs !bg-surface-2 hover:!bg-surface-3 active:!bg-surface-4 active:scale-95 transition-all"
               onClick={() => openInBrowser(pr.htmlUrl)}
             >
-              Open in
-              <Github className="h-3 w-3 ml-1" />
+              <Github className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
