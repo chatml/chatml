@@ -36,7 +36,7 @@ const terminalTheme = {
   foreground: '#4ade80', // green-400
   cursor: '#4ade80',
   cursorAccent: '#000000',
-  selectionBackground: 'rgba(74, 222, 128, 0.3)',
+  selectionBackground: 'rgba(139, 92, 246, 0.3)',
   // Standard 16 ANSI colors
   black: '#000000',
   red: '#ef4444',

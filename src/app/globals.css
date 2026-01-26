@@ -555,6 +555,24 @@
   display: none;
 }
 
+/* Xterm scrollbar styling - dark pastel purple */
+.xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.4);
+  border-radius: 5px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.6);
+}
+
 /* Plan mode animated border - marching ants SVG animation */
 @keyframes marching-ants-dash {
   to {
