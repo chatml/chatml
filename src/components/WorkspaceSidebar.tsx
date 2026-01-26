@@ -53,7 +53,6 @@ import {
   FolderPlus,
   ChevronDown,
   FolderOpen,
-  Layers,
   Terminal,
   Trash2,
   Copy,
@@ -68,12 +67,10 @@ import {
   Folder,
   Globe,
   SquarePlus,
-  Bot,
   Search,
   X,
   LayoutDashboard,
 } from 'lucide-react';
-import { AgentSidebar } from './AgentSidebar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -108,10 +105,7 @@ const ADD_REPO_MENU_ITEMS = [
   { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
 ] as const;
 
-type SidebarTab = 'workspaces' | 'agents';
-
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings, onToggleSidebar }: WorkspaceSidebarProps) {
-  const [activeTab, setActiveTab] = useState<SidebarTab>('workspaces');
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -337,46 +331,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         )}
       </div>
 
-      {/* Tab Switcher */}
-      <div className="flex border-b h-[33px]">
-        <button
-          onClick={() => {
-            if (activeTab === 'workspaces') {
-              // If already on workspaces tab, open session manager
-              setContentView({ type: 'session-manager' });
-            } else {
-              setActiveTab('workspaces');
-            }
-          }}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 h-full text-[length:var(--text-xs)] font-medium transition-colors',
-            activeTab === 'workspaces'
-              ? 'text-foreground border-b border-primary/50'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          title={activeTab === 'workspaces' ? 'Open Session Manager' : undefined}
-        >
-          <Layers className="h-3 w-3" />
-          Workspaces
-        </button>
-        <button
-          onClick={() => setActiveTab('agents')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 h-full text-[length:var(--text-xs)] font-medium transition-colors',
-            activeTab === 'agents'
-              ? 'text-foreground border-b border-primary/50'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Bot className="h-3 w-3" />
-          Agents
-        </button>
-      </div>
-
-      {activeTab === 'workspaces' ? (
-        <>
-          {/* Workspace List */}
-          <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden [&>[data-slot=scroll-area-viewport]>div]:!h-full">
+      {/* Workspace List */}
+      <ScrollArea className="flex-1 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden [&>[data-slot=scroll-area-viewport]>div]:!h-full">
             <div className="py-2 px-1 h-full w-full flex flex-col">
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
@@ -490,87 +446,83 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                 </ContextMenu>
               )}
             </div>
-          </ScrollArea>
+      </ScrollArea>
 
-          {/* Footer */}
-          <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
-            <Tooltip
-                open={addTooltipOpen}
-                onOpenChange={(open) => {
-                  if (open && (addMenuOpen || addMenuClosedRef.current)) {
-                    return;
-                  }
-                  setAddTooltipOpen(open);
-                }}
-              >
-              <DropdownMenu open={addMenuOpen} onOpenChange={(open) => {
-                setAddMenuOpen(open);
-                if (open) {
-                  setAddTooltipOpen(false);
-                } else {
-                  addMenuClosedRef.current = true;
-                  setTimeout(() => { addMenuClosedRef.current = false; }, 200);
-                }
-              }}>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-48">
-                  {ADD_REPO_MENU_ITEMS.map((item) => (
-                    <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <TooltipContent side="top">Add project</TooltipContent>
-            </Tooltip>
-            {/* Search input */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search sessions..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full h-8 pl-7 pr-7 text-sm bg-sidebar-accent/50 border border-sidebar-border rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
+      {/* Footer */}
+      <div className="p-2 border-t border-sidebar-border flex items-center gap-1">
+        <Tooltip
+          open={addTooltipOpen}
+          onOpenChange={(open) => {
+            if (open && (addMenuOpen || addMenuClosedRef.current)) {
+              return;
+            }
+            setAddTooltipOpen(open);
+          }}
+        >
+          <DropdownMenu open={addMenuOpen} onOpenChange={(open) => {
+            setAddMenuOpen(open);
+            if (open) {
+              setAddTooltipOpen(false);
+            } else {
+              addMenuClosedRef.current = true;
+              setTimeout(() => { addMenuClosedRef.current = false; }, 200);
+            }
+          }}>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                  onClick={onOpenSettings}
                 >
-                  <Settings className="w-4 h-4" />
+                  <Plus className="w-4 h-4" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Settings (⌘,)</TooltipContent>
-            </Tooltip>
-          </div>
-        </>
-      ) : (
-        <AgentSidebar className="flex-1" />
-      )}
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-48">
+              {ADD_REPO_MENU_ITEMS.map((item) => (
+                <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <TooltipContent side="top">Add project</TooltipContent>
+        </Tooltip>
+        {/* Search input */}
+        <div className="flex-1 relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search sessions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full h-8 pl-7 pr-7 text-sm bg-sidebar-accent/50 border border-sidebar-border rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+              onClick={onOpenSettings}
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Settings (⌘,)</TooltipContent>
+        </Tooltip>
+      </div>
 
       {/* Remove workspace confirmation dialog */}
       <Dialog open={workspaceToRemove !== null} onOpenChange={(open) => !open && setWorkspaceToRemove(null)}>
