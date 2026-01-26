@@ -141,6 +141,7 @@ export default function Home() {
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const rightSidebarPanelRef = useRef<PanelImperativeHandle>(null);
+  const bottomTerminalPanelRef = useRef<PanelImperativeHandle>(null);
   const leftSidebarDomRef = useRef<HTMLDivElement>(null);
 
   // Pre-zen mode state for restoration
@@ -178,6 +179,7 @@ export default function Home() {
     setContentView,
     layoutOuter, setLayoutOuter,
     layoutInner, setLayoutInner,
+    layoutVertical, setLayoutVertical,
     resetLayouts,
   } = useSettingsStore();
 
@@ -314,6 +316,20 @@ export default function Home() {
       }
     }
   }, [zenMode, leftSidebarCollapsed, rightSidebarCollapsed]);
+
+  // Sync bottom terminal panel collapse state with showBottomTerminal
+  useEffect(() => {
+    const panel = bottomTerminalPanelRef.current;
+    if (!panel) return;
+
+    // Only act if the panel state doesn't match the desired state
+    const isCollapsed = panel.isCollapsed();
+    if (showBottomTerminal && isCollapsed) {
+      panel.expand();
+    } else if (!showBottomTerminal && !isCollapsed) {
+      panel.collapse();
+    }
+  }, [showBottomTerminal]);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
@@ -1065,9 +1081,11 @@ export default function Home() {
                   <ResizablePanelGroup
                     direction="vertical"
                     className="h-full"
+                    defaultLayout={layoutVertical}
+                    onLayoutChange={setLayoutVertical}
                   >
                     {/* Conversation Area */}
-                    <ResizablePanel id="conversation" defaultSize={showBottomTerminal ? 70 : 100} minSize={20}>
+                    <ResizablePanel id="conversation" minSize={20}>
                       {selectedSessionId ? (
                         <div className="flex flex-col h-full">
                           <TopBar
@@ -1090,25 +1108,32 @@ export default function Home() {
                     </ResizablePanel>
 
                     {/* Bottom Terminal - always mounted to preserve PTY session */}
-                    {showBottomTerminal && <ResizableHandle direction="vertical" />}
                     {selectedSession && (
-                      <ResizablePanel
-                        id="bottom-terminal"
-                        defaultSize={showBottomTerminal ? "120px" : "0px"}
-                        minSize={showBottomTerminal ? "80px" : "0px"}
-                        maxSize={showBottomTerminal ? "400px" : "0px"}
-                        style={{ overflow: showBottomTerminal ? 'visible' : 'hidden' }}
-                      >
-                        <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
-                          <ErrorBoundary section="Terminal">
-                            <BottomTerminal
-                              sessionId={selectedSession.id}
-                              workspacePath={selectedSession.worktreePath}
-                              onHide={() => setShowBottomTerminal(false)}
-                            />
-                          </ErrorBoundary>
-                        </div>
-                      </ResizablePanel>
+                      <>
+                        <ResizableHandle
+                          direction="vertical"
+                          className={cn(!showBottomTerminal && "hidden")}
+                        />
+                        <ResizablePanel
+                          ref={bottomTerminalPanelRef}
+                          id="bottom-terminal"
+                          defaultSize="120px"
+                          minSize="80px"
+                          maxSize="400px"
+                          collapsible={true}
+                          collapsedSize={0}
+                        >
+                          <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
+                            <ErrorBoundary section="Terminal">
+                              <BottomTerminal
+                                sessionId={selectedSession.id}
+                                workspacePath={selectedSession.worktreePath}
+                                onHide={() => setShowBottomTerminal(false)}
+                              />
+                            </ErrorBoundary>
+                          </div>
+                        </ResizablePanel>
+                      </>
                     )}
                   </ResizablePanelGroup>
                 </ResizablePanel>
