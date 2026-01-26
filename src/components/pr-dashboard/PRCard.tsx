@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import {
   GitPullRequest,
   GitPullRequestDraft,
-  ExternalLink,
+  Github,
   ChevronDown,
   ChevronRight,
   Check,
@@ -135,8 +135,8 @@ export function PRCard({ pr, onJumpToSession }: PRCardProps) {
               className="h-7 text-xs"
               onClick={() => window.open(pr.htmlUrl, '_blank')}
             >
-              <ExternalLink className="h-3 w-3 mr-1" />
-              GitHub
+              Open in
+              <Github className="h-3 w-3 ml-1" />
             </Button>
           </div>
         </div>
