@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -22,15 +25,64 @@ import (
 	"github.com/chatml/chatml-backend/store"
 )
 
+const (
+	// DefaultPort is the preferred port for the backend server
+	DefaultPort = 9876
+	// MinPort is the start of the port range for fallback
+	MinPort = 9876
+	// MaxPort is the end of the port range for fallback
+	// NOTE: If you change this range, you must also update the CSP in
+	// src-tauri/tauri.conf.json to include all ports in the range.
+	// CSP wildcards (localhost:*) are not supported.
+	MaxPort = 9899
+)
+
+// acquireListener finds an available port, trying the preferred port first,
+// then falling back to the range MinPort-MaxPort.
+// Returns the listener (caller must close) to avoid TOCTOU race conditions.
+func acquireListener(preferred int) (net.Listener, int, error) {
+	// Try preferred port first
+	if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", preferred)); err == nil {
+		return l, preferred, nil
+	}
+
+	// Try range from MinPort to MaxPort
+	for port := MinPort; port <= MaxPort; port++ {
+		if port == preferred {
+			continue // Already tried
+		}
+		if l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
+			return l, port, nil
+		}
+	}
+
+	return nil, 0, fmt.Errorf("no available port in range %d-%d", MinPort, MaxPort)
+}
+
 func main() {
 	// Create root context that cancels on SIGINT/SIGTERM
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "9876"
+	// Determine preferred port from environment or use default
+	preferredPort := DefaultPort
+	if p := os.Getenv("PORT"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil {
+			preferredPort = parsed
+		}
 	}
+
+	// Acquire a listener on an available port (tries preferred first, then range)
+	// We keep the listener open to avoid TOCTOU race conditions where another
+	// process could claim the port between checking and binding.
+	listener, actualPort, err := acquireListener(preferredPort)
+	if err != nil {
+		logger.Main.Fatalf("Failed to acquire port: %v", err)
+	}
+
+	// Output port for Tauri to capture - MUST be first output line
+	// This protocol allows the Tauri wrapper to discover which port we bound to
+	fmt.Printf("CHATML_PORT=%d\n", actualPort)
 
 	s, err := store.NewSQLiteStore()
 	if err != nil {
@@ -280,14 +332,14 @@ func main() {
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
-		Addr:    ":" + port,
 		Handler: router,
 	}
 
-	// Start server in goroutine
+	// Start server in goroutine using the already-acquired listener
+	// This avoids TOCTOU race conditions since we keep the listener open
 	go func() {
-		logger.Main.Infof("ChatML backend starting on port %s", port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Main.Infof("ChatML backend starting on port %d", actualPort)
+		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
 			logger.Main.Fatalf("Server error: %v", err)
 		}
 	}()

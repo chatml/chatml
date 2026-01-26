@@ -5,8 +5,16 @@ import type {
   AgentEvent,
   UpdateAgentRequest,
 } from '@/lib/agentTypes';
+import { getBackendPortSync } from '@/lib/backend-port';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
+// Get API base URL dynamically based on the backend port
+function getApiBase(): string {
+  if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
+    const port = getBackendPortSync();
+    return `http://localhost:${port}`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
+}
 
 interface AgentState {
   // State
@@ -43,7 +51,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   fetchAgents: async () => {
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_BASE}/api/orchestrator/agents`);
+      const res = await fetch(`${getApiBase()}/api/orchestrator/agents`);
       if (!res.ok) throw new Error('Failed to fetch agents');
       const agents = await res.json();
       set({ agents, isLoading: false });
@@ -55,7 +63,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   reloadAgents: async () => {
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_BASE}/api/orchestrator/agents/reload`, {
+      const res = await fetch(`${getApiBase()}/api/orchestrator/agents/reload`, {
         method: 'POST',
       });
       if (!res.ok) throw new Error('Failed to reload agents');
@@ -75,7 +83,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
   updateAgent: async (agentId, update) => {
     try {
-      const res = await fetch(`${API_BASE}/api/orchestrator/agents/${agentId}`, {
+      const res = await fetch(`${getApiBase()}/api/orchestrator/agents/${agentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(update),
@@ -96,7 +104,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   triggerRun: async (agentId) => {
     try {
       const res = await fetch(
-        `${API_BASE}/api/orchestrator/agents/${agentId}/run`,
+        `${getApiBase()}/api/orchestrator/agents/${agentId}/run`,
         { method: 'POST' }
       );
       if (!res.ok) throw new Error('Failed to trigger agent run');
@@ -123,7 +131,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   fetchRuns: async (agentId, limit = 20) => {
     try {
       const res = await fetch(
-        `${API_BASE}/api/orchestrator/agents/${agentId}/runs?limit=${limit}`
+        `${getApiBase()}/api/orchestrator/agents/${agentId}/runs?limit=${limit}`
       );
       if (!res.ok) throw new Error('Failed to fetch runs');
       const runs = await res.json();
@@ -139,7 +147,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   stopRun: async (agentId, runId) => {
     try {
       const res = await fetch(
-        `${API_BASE}/api/orchestrator/agents/${agentId}/runs/${runId}/stop`,
+        `${getApiBase()}/api/orchestrator/agents/${agentId}/runs/${runId}/stop`,
         { method: 'POST' }
       );
       if (!res.ok) throw new Error('Failed to stop run');

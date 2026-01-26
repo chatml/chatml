@@ -175,6 +175,7 @@ export default function Home() {
   const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode, setContentView } = useSettingsStore();
 
   // Determine if we're in a Full Content view (not conversation or session-manager overlay)
+  // Also treat as full content view when no session is selected (to show welcome screen)
   const isFullContentView = contentView.type !== 'conversation' && contentView.type !== 'session-manager';
 
   const {
@@ -1003,7 +1004,7 @@ export default function Home() {
           <ResizablePanel id="main-content" defaultSize={78} minSize={30}>
             {isLoadingData ? (
               <ConversationSkeleton />
-            ) : isFullContentView ? (
+            ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
               // Full Content Views take entire main content area
               <ErrorBoundary section="FullContent">
                 {contentView.type === 'pr-dashboard' && (
@@ -1021,6 +1022,16 @@ export default function Home() {
                     onOpenShortcuts={() => setShowShortcuts(true)}
                     showLeftSidebar={!leftSidebarCollapsed}
                     onCreateSession={handleNewSession}
+                  />
+                )}
+                {!selectedSessionId && contentView.type === 'conversation' && (
+                  <EmptyView
+                    onOpenProject={handleOpenProject}
+                    onCloneFromUrl={() => setShowCloneFromUrl(true)}
+                    onQuickStart={() => setShowQuickStart(true)}
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
               </ErrorBoundary>
@@ -1114,19 +1125,6 @@ export default function Home() {
           </ResizablePanel>
         </ResizablePanelGroup>
 
-        {/* Empty View Overlay - covers main content and right sidebar when no session selected */}
-        {!selectedSessionId && !isFullContentView && !showSettings && (
-          <div
-            className="absolute inset-0 z-10 bg-background"
-            style={{ left: sidebarWidth + 5 }}
-          >
-            <EmptyView
-              onOpenProject={handleOpenProject}
-              onCloneFromUrl={() => setShowCloneFromUrl(true)}
-              onQuickStart={() => setShowQuickStart(true)}
-            />
-          </div>
-        )}
 
         {/* Session Manager Overlay - full screen */}
         {contentView.type === 'session-manager' && (
