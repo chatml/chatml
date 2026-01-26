@@ -214,6 +214,7 @@ type Handlers struct {
 	hub              *Hub // For broadcasting WebSocket events
 	ghClient         *github.Client
 	prCache          *github.PRCache
+	statsCache       *SessionStatsCache
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -225,7 +226,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, hub *Hub, ghClient *github.Client) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, hub *Hub, ghClient *github.Client, statsCache *SessionStatsCache) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -245,6 +246,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		hub:              hub,
 		ghClient:         ghClient,
 		prCache:          github.NewPRCache(30 * time.Second), // Cache PR data for 30 seconds
+		statsCache:       statsCache,
 	}
 }
 
@@ -283,6 +285,50 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 	}
 
 	return session, workingPath, baseRef, nil
+}
+
+// computeSessionStats calculates total additions/deletions for a session's worktree.
+// Returns nil if the session has no worktree path or no changes.
+func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Session, workspaceBranch string) *models.SessionStats {
+	workingPath := session.WorktreePath
+	if workingPath == "" {
+		return nil
+	}
+
+	// Determine base ref: prefer BaseCommitSHA, fall back to workspace branch, then "main"
+	baseRef := session.BaseCommitSHA
+	if baseRef == "" {
+		baseRef = workspaceBranch
+		if baseRef == "" {
+			baseRef = "main"
+		}
+	}
+
+	// Get tracked changes
+	changes, err := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
+	if err != nil {
+		// Silently return nil on error - stats are optional
+		return nil
+	}
+
+	// Get untracked files
+	untracked, _ := h.repoManager.GetUntrackedFiles(ctx, workingPath)
+
+	// Sum up stats
+	var additions, deletions int
+	for _, c := range changes {
+		additions += c.Additions
+		deletions += c.Deletions
+	}
+	// Untracked files count as additions (new lines)
+	for _, u := range untracked {
+		additions += u.Additions
+	}
+
+	if additions == 0 && deletions == 0 {
+		return nil
+	}
+	return &models.SessionStats{Additions: additions, Deletions: deletions}
 }
 
 // validatePath ensures the requested path stays within the base directory
@@ -409,6 +455,50 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 			Sessions:   []*SessionWithConversations{},
 		})
 		return
+	}
+
+	// Build workspace map for branch lookup
+	workspaceByID := make(map[string]*models.Repo)
+	for _, repo := range repos {
+		workspaceByID[repo.ID] = repo
+	}
+
+	// Compute stats in parallel (bounded to 5 concurrent)
+	// Only compute stats if cache is available
+	if h.statsCache != nil {
+		sem := make(chan struct{}, 5)
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+
+		for _, session := range allSessions {
+			// Check cache first
+			if cached, ok := h.statsCache.Get(session.ID); ok {
+				session.Stats = cached
+				continue
+			}
+
+			wg.Add(1)
+			go func(s *models.Session) {
+				defer wg.Done()
+				sem <- struct{}{}        // Acquire
+				defer func() { <-sem }() // Release
+
+				workspace := workspaceByID[s.WorkspaceID]
+				workspaceBranch := ""
+				if workspace != nil {
+					workspaceBranch = workspace.Branch
+				}
+
+				stats := h.computeSessionStats(ctx, s, workspaceBranch)
+
+				mu.Lock()
+				s.Stats = stats
+				mu.Unlock()
+
+				h.statsCache.Set(s.ID, stats)
+			}(session)
+		}
+		wg.Wait()
 	}
 
 	// Get all session IDs for batch conversation fetch

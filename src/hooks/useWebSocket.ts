@@ -386,6 +386,15 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle session stats update (real-time stats from file watcher)
+        if (data.type === 'session_stats_update' && data.sessionId) {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          // stats can be null (no changes) or { additions: number, deletions: number }
+          const stats = payload?.stats as { additions: number; deletions: number } | null | undefined;
+          updateSession(data.sessionId, { stats: stats ?? undefined });
+          return;
+        }
+
         // Legacy agent events - validate string payloads
         if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
           appendOutput(data.agentId, data.payload);

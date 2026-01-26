@@ -56,6 +56,13 @@ func main() {
 	ghConfig := server.LoadGitHubConfig()
 	ghClient := github.NewClient(ghConfig.ClientID, ghConfig.ClientSecret)
 
+	// Session stats cache with 30 second TTL
+	statsCache := server.NewSessionStatsCache(30 * time.Second)
+	defer statsCache.Close()
+
+	// Repo manager for stats computation in callbacks
+	repoManager := git.NewRepoManager()
+
 	// Agent orchestrator disabled - feature hidden for later release
 	// To re-enable: uncomment orchestrator initialization and pass orch to NewRouter
 
@@ -121,6 +128,80 @@ func main() {
 	if branchWatcher != nil {
 		defer branchWatcher.Close()
 
+		// Set up stats invalidation callback for real-time stats updates
+		branchWatcher.SetStatsInvalidateCallback(func(sessionID string) {
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[stats-watcher] PANIC recovered: %v\n%s", r, debug.Stack())
+					}
+				}()
+
+				// Check if we're shutting down
+				if ctx.Err() != nil {
+					return
+				}
+
+				// Invalidate cache first
+				statsCache.Invalidate(sessionID)
+
+				// Get session and workspace data to recompute stats
+				sess, err := s.GetSession(ctx, sessionID)
+				if err != nil || sess == nil || sess.WorktreePath == "" {
+					return
+				}
+
+				// Get workspace for branch info
+				repo, err := s.GetRepo(ctx, sess.WorkspaceID)
+				if err != nil {
+					return
+				}
+
+				// Determine base ref
+				baseRef := sess.BaseCommitSHA
+				if baseRef == "" && repo != nil {
+					baseRef = repo.Branch
+				}
+				if baseRef == "" {
+					baseRef = "main"
+				}
+
+				// Compute stats
+				changes, err := repoManager.GetChangedFilesWithStats(ctx, sess.WorktreePath, baseRef)
+				if err != nil {
+					return
+				}
+				untracked, _ := repoManager.GetUntrackedFiles(ctx, sess.WorktreePath)
+
+				var additions, deletions int
+				for _, c := range changes {
+					additions += c.Additions
+					deletions += c.Deletions
+				}
+				for _, u := range untracked {
+					additions += u.Additions
+				}
+
+				var stats *models.SessionStats
+				if additions > 0 || deletions > 0 {
+					stats = &models.SessionStats{Additions: additions, Deletions: deletions}
+				}
+
+				// Update cache with new stats
+				statsCache.Set(sessionID, stats)
+
+				// Broadcast WebSocket event for real-time update
+				hub.Broadcast(server.Event{
+					Type:      "session_stats_update",
+					SessionID: sessionID,
+					Payload: map[string]interface{}{
+						"sessionId": sessionID,
+						"stats":     stats,
+					},
+				})
+			}()
+		})
+
 		// Initialize watches for existing sessions
 		repos, listErr := s.ListRepos(ctx)
 		if listErr == nil {
@@ -142,7 +223,7 @@ func main() {
 
 	go hub.Run()
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, statsCache)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
