@@ -28,6 +28,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave } from '@/lib/tauri';
 
 const MODELS = [
@@ -595,6 +596,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setStreaming,
     setAwaitingPlanApproval,
   } = useAppStore();
+  const { error: showError } = useToast();
 
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
@@ -852,6 +854,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       updateConversation(selectedConversationId, { status: 'idle' });
     } catch (error) {
       console.error('Failed to stop conversation:', error);
+      showError('Failed to stop conversation. Please try again.');
     }
   };
 

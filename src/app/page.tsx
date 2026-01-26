@@ -36,7 +36,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PRDashboard } from '@/components/PRDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { ToastProvider } from '@/components/ui/toast';
+import { ToastProvider, useToast } from '@/components/ui/toast';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import { EmptyView } from '@/components/EmptyView';
 import {
@@ -163,6 +163,7 @@ export default function Home() {
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const contentView = useSettingsStore((s) => s.contentView);
+  const { error: showError } = useToast();
   const { showBottomTerminal, setShowBottomTerminal, zenMode, setZenMode } = useSettingsStore();
 
   // Determine if we're in a Full Content view (not conversation)
@@ -579,8 +580,9 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Failed to close tab:', error);
+      showError('Failed to close conversation. Please try again.');
     }
-  }, [selectedSessionId, conversations, removeConversation, selectConversation]);
+  }, [selectedSessionId, conversations, removeConversation, selectConversation, showError]);
 
   const handleCloseTab = useCallback(async () => {
     if (!selectedConversationId) return;
