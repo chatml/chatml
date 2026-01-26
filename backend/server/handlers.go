@@ -671,8 +671,8 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	// Get current branch
 	currentBranch, _ := repoMgr.GetCurrentBranch(ctx, repo.Path)
 
-	// Get all sessions for this workspace to build branch -> session lookup
-	sessions, err := h.store.ListSessions(ctx, workspaceID)
+	// Get all non-archived sessions for this workspace to build branch -> session lookup
+	sessions, err := h.store.ListSessions(ctx, workspaceID, false)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -681,7 +681,7 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	// Build branch -> session lookup map
 	branchToSession := make(map[string]*models.Session)
 	for _, sess := range sessions {
-		if sess.Branch != "" && !sess.Archived {
+		if sess.Branch != "" {
 			branchToSession[sess.Branch] = sess
 		}
 	}
