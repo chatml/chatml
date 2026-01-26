@@ -16,7 +16,7 @@ import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getDashboardData, createSession, createConversation, deleteConversation, addRepo, getSessionChanges, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO, type SessionWithConversationsDTO } from '@/lib/api';
+import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/WorkspaceSidebar';
 import { WorkspaceManagement } from '@/components/WorkspaceManagement';
