@@ -31,6 +31,9 @@ const (
 	// MinPort is the start of the port range for fallback
 	MinPort = 9876
 	// MaxPort is the end of the port range for fallback
+	// NOTE: If you change this range, you must also update the CSP in
+	// src-tauri/tauri.conf.json to include all ports in the range.
+	// CSP wildcards (localhost:*) are not supported.
 	MaxPort = 9899
 )
 
