@@ -32,7 +32,7 @@ function getShellFallbackChain(): string[] {
 
 // Terminal theme matching the app's dark theme
 const terminalTheme = {
-  background: '#141414', // matches --background in dark mode
+  background: '#0f1111', // matches --background in dark mode
   foreground: '#4ade80', // green-400
   cursor: '#4ade80',
   cursorAccent: '#000000',

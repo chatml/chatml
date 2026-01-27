@@ -102,7 +102,7 @@ function DataTableRowComponent<T>(
       className={cn(
         'group cursor-pointer transition-colors border-b border-border/20',
         'hover:bg-white/[0.02]',
-        isSelected && 'bg-[#1E203D] hover:bg-[#252848]',
+        isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'
       )}
       onClick={handleClick}
@@ -116,7 +116,7 @@ function DataTableRowComponent<T>(
         <TableCell
           className={cn(
             'w-[24px] pl-2 pr-0 py-[9px] transition-colors',
-            isSelected && 'bg-[#1E203D]'
+            isSelected && 'bg-primary/15'
           )}
           onClick={handleCheckboxClick}
           onMouseEnter={() => setIsCheckboxHovered(true)}
@@ -235,7 +235,7 @@ export function DataTableSimpleRow<T>({
       className={cn(
         'group cursor-pointer transition-colors border-b border-border/20',
         'hover:bg-white/[0.02]',
-        isSelected && 'bg-[#1E203D] hover:bg-[#252848]',
+        isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'
       )}
       onClick={handleClick}
@@ -245,7 +245,7 @@ export function DataTableSimpleRow<T>({
         <TableCell
           className={cn(
             'w-[24px] pl-2 pr-0 py-[9px] transition-colors',
-            isSelected && 'bg-[#1E203D]'
+            isSelected && 'bg-primary/15'
           )}
           onClick={(e) => {
             e.stopPropagation();
