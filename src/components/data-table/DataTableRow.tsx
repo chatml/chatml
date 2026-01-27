@@ -114,10 +114,7 @@ function DataTableRowComponent<T>(
       {/* Selection checkbox column - Linear style */}
       {selectable && (
         <TableCell
-          className={cn(
-            'w-[24px] pl-2 pr-0 py-[9px] transition-colors',
-            isSelected && 'bg-primary/15'
-          )}
+          className="w-[24px] pl-2 pr-0 py-[9px] transition-colors"
           onClick={handleCheckboxClick}
           onMouseEnter={() => setIsCheckboxHovered(true)}
           onMouseLeave={() => setIsCheckboxHovered(false)}
@@ -243,10 +240,7 @@ export function DataTableSimpleRow<T>({
     >
       {selectable && (
         <TableCell
-          className={cn(
-            'w-[24px] pl-2 pr-0 py-[9px] transition-colors',
-            isSelected && 'bg-primary/15'
-          )}
+          className="w-[24px] pl-2 pr-0 py-[9px] transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect();

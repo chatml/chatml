@@ -174,7 +174,7 @@
 
   /* Surfaces - Hierarchy from background #0f1111 */
   --surface-0: #0f1111;                     /* Same as background */
-  --surface-1: #1D1D1D;                     /* Subtle hover - RGB(29,29,29) */
+  --surface-1: #1a1c1d;                     /* Subtle hover - RGB(26,28,29) */
   --surface-2: #2C2D2D;                     /* Toolbar/ghost hover - RGB(44,45,45) */
   --surface-3: #3a3a3a;                     /* Elevated */
   --surface-4: #454545;
