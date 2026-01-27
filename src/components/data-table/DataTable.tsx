@@ -356,7 +356,7 @@ export function DataTable<T>({
             <TableRow className="border-y border-border/30 hover:bg-transparent">
               {/* Selection header */}
               {selectable && (
-                <TableHead className="w-[40px] px-2">
+                <TableHead className="w-[32px] px-2">
                   <Checkbox
                     checked={selection.isAllSelected}
                     onCheckedChange={() => {
@@ -366,7 +366,7 @@ export function DataTable<T>({
                         selection.selectAll();
                       }
                     }}
-                    className="h-3.5 w-3.5"
+                    className="h-3.5 w-3.5 opacity-30 hover:opacity-100 transition-opacity"
                     aria-label="Select all"
                   />
                 </TableHead>

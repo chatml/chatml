@@ -93,7 +93,7 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
       )}
 
       {hasSession && branch.sessionName && (
-        <span className="text-xs text-purple-400 truncate max-w-[100px] shrink-0">
+        <span className="text-sm text-purple-400 truncate max-w-[100px] shrink-0">
           {branch.sessionName}
         </span>
       )}
@@ -505,6 +505,7 @@ export function BranchesDashboard({
               searchPlaceholder="Search..."
               searchValue={searchTerm}
               onSearchChange={setSearchTerm}
+              selectable
               emptyState={
                 <div className="text-center py-12 text-muted-foreground">
                   <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />

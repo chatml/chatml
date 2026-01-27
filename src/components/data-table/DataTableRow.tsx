@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useCallback } from 'react';
+import { forwardRef, useCallback, useState } from 'react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -61,6 +61,8 @@ function DataTableRowComponent<T>(
   }: DataTableRowComponentProps<T>,
   ref: React.ForwardedRef<HTMLTableRowElement>
 ) {
+  const [isCheckboxHovered, setIsCheckboxHovered] = useState(false);
+
   // Filter visible columns
   const displayColumns = visibleColumns
     ? columns.filter((col) => visibleColumns.has(col.id) || !col.hidden)
@@ -96,24 +98,37 @@ function DataTableRowComponent<T>(
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'cursor-pointer transition-colors border-b border-border/20',
+        'group cursor-pointer transition-colors border-b border-border/20',
         'hover:bg-white/[0.02]',
-        isSelected && 'bg-primary/5 hover:bg-primary/8',
+        isSelected && 'bg-[#1E203D] hover:bg-[#252848]',
         isFocused && 'bg-white/[0.02]'
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       tabIndex={isFocused ? 0 : -1}
     >
-      {/* Selection checkbox column */}
+      {/* Selection checkbox column - Linear style */}
       {selectable && (
         <TableCell
-          className="w-[40px] px-2 py-1.5"
+          className={cn(
+            'w-[32px] px-2 py-2.5 transition-colors',
+            isSelected && 'bg-[#1E203D]'
+          )}
           onClick={handleCheckboxClick}
+          onMouseEnter={() => setIsCheckboxHovered(true)}
+          onMouseLeave={() => setIsCheckboxHovered(false)}
         >
           <Checkbox
             checked={isSelected}
-            className="h-3.5 w-3.5"
+            className={cn(
+              'h-3.5 w-3.5 transition-all',
+              // Default: invisible
+              !isSelected && !isCheckboxHovered && 'opacity-0 group-hover:opacity-30',
+              // Checkbox cell hover: highlighted
+              !isSelected && isCheckboxHovered && 'opacity-100 border-primary',
+              // Selected: normal visibility
+              isSelected && 'opacity-100'
+            )}
             aria-label={`Select row ${rowId}`}
           />
         </TableCell>
@@ -124,7 +139,7 @@ function DataTableRowComponent<T>(
         <TableCell
           key={column.id}
           className={cn(
-            'py-1.5 px-2',
+            'py-2.5 px-2',
             getCellAlignment(column.align),
             column.width && `w-[${column.width}]`
           )}
@@ -188,6 +203,8 @@ export function DataTableSimpleRow<T>({
   selectable,
   visibleColumns,
 }: Omit<DataTableRowComponentProps<T>, 'contextMenuItems' | 'onDoubleClick' | 'index'>) {
+  const [isCheckboxHovered, setIsCheckboxHovered] = useState(false);
+
   const displayColumns = visibleColumns
     ? columns.filter((col) => visibleColumns.has(col.id) || !col.hidden)
     : columns.filter((col) => !col.hidden);
@@ -208,9 +225,9 @@ export function DataTableSimpleRow<T>({
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'cursor-pointer transition-colors border-b border-border/20',
+        'group cursor-pointer transition-colors border-b border-border/20',
         'hover:bg-white/[0.02]',
-        isSelected && 'bg-primary/5 hover:bg-primary/8',
+        isSelected && 'bg-[#1E203D] hover:bg-[#252848]',
         isFocused && 'bg-white/[0.02]'
       )}
       onClick={handleClick}
@@ -218,15 +235,25 @@ export function DataTableSimpleRow<T>({
     >
       {selectable && (
         <TableCell
-          className="w-[40px] px-2 py-1.5"
+          className={cn(
+            'w-[32px] px-2 py-2.5 transition-colors',
+            isSelected && 'bg-[#1E203D]'
+          )}
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect();
           }}
+          onMouseEnter={() => setIsCheckboxHovered(true)}
+          onMouseLeave={() => setIsCheckboxHovered(false)}
         >
           <Checkbox
             checked={isSelected}
-            className="h-3.5 w-3.5"
+            className={cn(
+              'h-3.5 w-3.5 transition-all',
+              !isSelected && !isCheckboxHovered && 'opacity-0 group-hover:opacity-30',
+              !isSelected && isCheckboxHovered && 'opacity-100 border-primary',
+              isSelected && 'opacity-100'
+            )}
             aria-label={`Select row ${rowId}`}
           />
         </TableCell>
@@ -234,7 +261,7 @@ export function DataTableSimpleRow<T>({
       {displayColumns.map((column) => (
         <TableCell
           key={column.id}
-          className={cn('py-1.5 px-2', getCellAlignment(column.align))}
+          className={cn('py-2.5 px-2', getCellAlignment(column.align))}
           style={{
             width: column.width,
             minWidth: column.minWidth,
