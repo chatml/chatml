@@ -35,6 +35,7 @@ import { BackendStatus } from '@/components/BackendStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PRDashboard } from '@/components/PRDashboard';
 import { BranchesDashboard } from '@/components/BranchesDashboard';
+import { RepositoriesDashboard } from '@/components/RepositoriesDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { SessionManager } from '@/components/session-manager';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -1053,6 +1054,17 @@ export default function Home() {
                     workspaceId={contentView.workspaceId}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
+                  />
+                )}
+                {contentView.type === 'repositories' && (
+                  <RepositoriesDashboard
+                    onOpenProject={handleOpenProject}
+                    onCloneFromUrl={() => setShowCloneFromUrl(true)}
+                    onQuickStart={() => setShowQuickStart(true)}
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    onOpenWorkspaceSettings={(workspaceId) => setShowWorkspaceSettings(workspaceId)}
                     showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
