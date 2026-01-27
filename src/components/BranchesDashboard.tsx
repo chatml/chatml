@@ -130,7 +130,7 @@ function AuthorCell({ branch, avatarUrl }: { branch: BranchDTO; avatarUrl?: stri
 
   return (
     <div className="flex items-center justify-center" title={branch.lastAuthor}>
-      <AuthorAvatar name={branch.lastAuthor} avatarUrl={avatarUrl} size="sm" />
+      <AuthorAvatar name={branch.lastAuthor} avatarUrl={avatarUrl} size="md" />
     </div>
   );
 }
