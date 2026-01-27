@@ -297,6 +297,7 @@ export function DataTable<T>({
         selection.toggleSelection(hoveredRowId);
       }
     },
+    hasHoveredRow: !!hoveredRowId,
     onSelectAll: selection.selectAll,
     onClearSelection: selection.clearSelection,
     onAction: () => {

@@ -15,6 +15,8 @@ interface UseDataTableKeyboardProps {
   onToggleSelection: () => void;
   /** Toggle selection for hovered row (X key) */
   onToggleHoveredSelection?: () => void;
+  /** Whether a row is currently being hovered */
+  hasHoveredRow?: boolean;
   /** Select all rows */
   onSelectAll: () => void;
   /** Clear selection */
@@ -50,6 +52,7 @@ export function useDataTableKeyboard({
   onFocusChange,
   onToggleSelection,
   onToggleHoveredSelection,
+  hasHoveredRow = false,
   onSelectAll,
   onClearSelection,
   onAction,
@@ -214,7 +217,7 @@ export function useDataTableKeyboard({
     ]
   );
 
-  // Set up global keyboard listener when container is focused
+  // Set up global keyboard listener
   useEffect(() => {
     if (!enabled) return;
 
@@ -222,7 +225,23 @@ export function useDataTableKeyboard({
     if (!container) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle if the container or a child is focused
+      // Don't capture if user is typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+
+      // Allow X key to work when hovering, even without focus
+      if ((e.key === 'x' || e.key === 'X') && hasHoveredRow && onToggleHoveredSelection) {
+        e.preventDefault();
+        onToggleHoveredSelection();
+        return;
+      }
+
+      // For other keys, only handle if the container or a child is focused
       if (!container.contains(document.activeElement)) {
         return;
       }
@@ -233,7 +252,7 @@ export function useDataTableKeyboard({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [enabled, containerRef, handleContainerKeyDown]);
+  }, [enabled, containerRef, handleContainerKeyDown, hasHoveredRow, onToggleHoveredSelection]);
 
   // Get props for a row
   const getRowProps = useCallback(
