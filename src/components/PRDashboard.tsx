@@ -149,7 +149,7 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="font-medium text-sm truncate" title={pr.title}>
+      <span className="font-medium truncate" title={pr.title}>
         {pr.title}
       </span>
       {pr.labels?.map((label) => {
@@ -157,7 +157,7 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
         return (
           <span
             key={label.name}
-            className="text-[10px] px-1.5 py-0.5 rounded shrink-0 font-medium whitespace-nowrap"
+            className="text-sm px-1.5 py-0.5 rounded shrink-0 font-medium whitespace-nowrap"
             style={{
               backgroundColor: labelStyles.backgroundColor,
               color: labelStyles.color,
@@ -175,12 +175,12 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 // Branch cell component
 function BranchCell({ pr }: { pr: PRWithStatus }) {
   return (
-    <div className="flex items-center gap-1.5 min-w-0 text-xs">
+    <div className="flex items-center gap-1.5 min-w-0 text-sm">
       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300/70 font-mono truncate" title={pr.branch}>
-        <GitBranch className="h-3 w-3 shrink-0" />
+        <GitBranch className="h-3.5 w-3.5 shrink-0" />
         {pr.branch}
       </span>
-      <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
       <span className="text-muted-foreground font-mono truncate" title={pr.baseBranch}>
         {pr.baseBranch}
       </span>
@@ -220,7 +220,7 @@ function getCheckStatusDisplay(status: string, conclusion: string) {
 // Checks cell component with hover popover
 function ChecksCell({ pr }: { pr: PRWithStatus }) {
   if (pr.checksTotal === 0) {
-    return <span className="text-xs text-muted-foreground">No checks</span>;
+    return <span className="text-sm text-muted-foreground">No checks</span>;
   }
 
   const hasFailures = pr.checksFailed > 0;
@@ -256,9 +256,9 @@ function ChecksCell({ pr }: { pr: PRWithStatus }) {
       <HoverCardTrigger asChild>
         <button
           type="button"
-          className={cn('flex items-center gap-1 text-xs cursor-pointer hover:underline underline-offset-2', color)}
+          className={cn('flex items-center gap-1.5 text-sm cursor-pointer hover:underline underline-offset-2', color)}
         >
-          <Icon className="h-3 w-3" />
+          <Icon className="h-4 w-4" />
           {text}
         </button>
       </HoverCardTrigger>
