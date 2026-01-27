@@ -144,6 +144,8 @@ export interface DataTableProps<T> {
   onSearchChange?: (value: string) => void;
   /** Custom class name for the container */
   className?: string;
+  /** Custom content for the left side of the toolbar */
+  toolbarLeftContent?: ReactNode;
 }
 
 // Filter option for the filter menu
@@ -288,4 +290,6 @@ export interface DataTableToolbarProps {
   selectedIds: Set<string>;
   /** Clear selection handler */
   onClearSelection: () => void;
+  /** Custom content for the left side of the toolbar */
+  leftContent?: ReactNode;
 }

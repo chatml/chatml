@@ -186,6 +186,7 @@ export function DataTable<T>({
   searchValue: controlledSearchValue,
   onSearchChange,
   className,
+  toolbarLeftContent,
 }: DataTableProps<T>) {
   // Internal state
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -385,6 +386,7 @@ export function DataTable<T>({
           bulkActions={bulkActions}
           selectedIds={selection.selectedIds}
           onClearSelection={selection.clearSelection}
+          leftContent={toolbarLeftContent}
         />
       )}
 
