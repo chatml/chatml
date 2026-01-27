@@ -354,7 +354,6 @@ export function BranchesDashboard({
       header: 'Last Commit',
       accessorKey: 'lastCommitSubject',
       cell: (branch) => <CommitCell branch={branch} />,
-      hidden: true, // Hidden by default, can be enabled in display options
       // No width = flexible, will truncate
     },
     {
