@@ -119,12 +119,9 @@ export function useFileWatcher() {
         if (isMounted) {
           cleanupRef.current = unlisten;
         } else {
-          // Component unmounted before listener was registered - clean up immediately
-          try {
-            unlisten();
-          } catch {
-            // Ignore errors if listener wasn't fully registered
-          }
+          // Component unmounted before listener was registered
+          // Store for cleanup - the cleanup function will handle it safely
+          cleanupRef.current = unlisten;
         }
       })
       .catch((err) => {
@@ -136,11 +133,15 @@ export function useFileWatcher() {
 
     return () => {
       isMounted = false;
-      try {
-        cleanupRef.current?.();
-      } catch {
-        // Ignore errors if listener cleanup fails
-      }
+      // Delay cleanup slightly to allow Tauri listener to fully register
+      // This prevents "listeners[eventId].handlerId is undefined" errors
+      setTimeout(() => {
+        try {
+          cleanupRef.current?.();
+        } catch {
+          // Ignore errors if listener cleanup fails
+        }
+      }, 10);
     };
   }, [handleFileChange, showError]);
 }
