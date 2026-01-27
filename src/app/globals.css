@@ -134,7 +134,7 @@
   --text-info: #3b82f6;      /* blue-500 */
 
   /* Main backgrounds */
-  --background: #141414;           /* RGB(20,20,20) - sidebar/panels */
+  --background: #0f1111;           /* RGB(15,17,17) - main background */
   --chat-background: #181818;      /* RGB(24,24,24) - chat area */
   --foreground: oklch(0.9 0 0);             /* ~#e5e5e5 - bright text */
   --card: #141414;                          /* Cards match background */
@@ -173,7 +173,7 @@
   --ai-error: oklch(0.65 0.2 25);
 
   /* Surfaces - Hierarchy from background #141414 */
-  --surface-0: #141414;                     /* Same as background */
+  --surface-0: #0f1111;                     /* Same as background */
   --surface-1: #1D1D1D;                     /* Subtle hover - RGB(29,29,29) */
   --surface-2: #2C2D2D;                     /* Toolbar/ghost hover - RGB(44,45,45) */
   --surface-3: #3a3a3a;                     /* Elevated */
