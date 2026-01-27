@@ -16,6 +16,7 @@ export type ThemeOption = 'system' | 'light' | 'dark';
 // Content view types for Full Content Area pattern
 export type ContentView =
   | { type: 'conversation' }
+  | { type: 'global-dashboard' }
   | { type: 'workspace-dashboard'; workspaceId: string }
   | { type: 'pr-dashboard'; workspaceId?: string }
   | { type: 'branches'; workspaceId: string }

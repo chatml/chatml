@@ -36,6 +36,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { PRDashboard } from '@/components/PRDashboard';
 import { BranchesDashboard } from '@/components/BranchesDashboard';
 import { RepositoriesDashboard } from '@/components/RepositoriesDashboard';
+import { GlobalDashboard } from '@/components/GlobalDashboard';
 import { WorkspaceDashboard } from '@/components/workspace-dashboard';
 import { SessionManager } from '@/components/session-manager';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -1041,6 +1042,13 @@ export default function Home() {
             ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
               // Full Content Views take entire main content area
               <ErrorBoundary section="FullContent">
+                {contentView.type === 'global-dashboard' && (
+                  <GlobalDashboard
+                    onOpenSettings={() => setShowSettings(true)}
+                    onOpenShortcuts={() => setShowShortcuts(true)}
+                    showLeftSidebar={!leftSidebarCollapsed}
+                  />
+                )}
                 {contentView.type === 'pr-dashboard' && (
                   <PRDashboard
                     initialWorkspaceId={contentView.workspaceId}
