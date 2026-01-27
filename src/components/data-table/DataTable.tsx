@@ -231,10 +231,10 @@ export function DataTable<T>({
       return null;
     }
     // User selected a specific grouping field
+    // Don't use sortOrder for user-selected groupings - sort alphabetically instead
     if (displayOptions.groupBy) {
       return {
         key: displayOptions.groupBy as keyof T,
-        sortOrder: groupBy?.sortOrder,
         defaultCollapsed: groupBy?.defaultCollapsed,
         getLabel: groupBy?.getLabel,
         getIcon: groupBy?.getIcon,
