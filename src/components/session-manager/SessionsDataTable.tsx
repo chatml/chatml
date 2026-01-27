@@ -105,7 +105,6 @@ export function SessionsDataTable({
         id: 'stats',
         header: 'Changes',
         width: '100px',
-        align: 'right',
         cell: (row) => <DiffStatsCell session={row.session} />,
       },
       {
@@ -113,7 +112,6 @@ export function SessionsDataTable({
         header: 'Updated',
         width: '90px',
         sortable: true,
-        align: 'right',
         accessorKey: (row) => new Date(row.session.updatedAt).getTime(),
         cell: (row) => <DateCell date={row.session.updatedAt} archived={row.session.archived} />,
       },
