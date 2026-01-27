@@ -111,7 +111,7 @@ function DataTableRowComponent<T>(
       {selectable && (
         <TableCell
           className={cn(
-            'w-[32px] px-2 py-2.5 transition-colors',
+            'w-[32px] px-2 py-[9px] transition-colors',
             isSelected && 'bg-[#1E203D]'
           )}
           onClick={handleCheckboxClick}
@@ -139,7 +139,7 @@ function DataTableRowComponent<T>(
         <TableCell
           key={column.id}
           className={cn(
-            'py-2.5 px-2',
+            'py-[9px] px-2',
             getCellAlignment(column.align),
             column.width && `w-[${column.width}]`
           )}
@@ -236,7 +236,7 @@ export function DataTableSimpleRow<T>({
       {selectable && (
         <TableCell
           className={cn(
-            'w-[32px] px-2 py-2.5 transition-colors',
+            'w-[32px] px-2 py-[9px] transition-colors',
             isSelected && 'bg-[#1E203D]'
           )}
           onClick={(e) => {
@@ -261,7 +261,7 @@ export function DataTableSimpleRow<T>({
       {displayColumns.map((column) => (
         <TableCell
           key={column.id}
-          className={cn('py-2.5 px-2', getCellAlignment(column.align))}
+          className={cn('py-[9px] px-2', getCellAlignment(column.align))}
           style={{
             width: column.width,
             minWidth: column.minWidth,
