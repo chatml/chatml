@@ -2,6 +2,36 @@
 
 ChatML is a native macOS desktop app for AI-assisted development. It uses isolated git worktrees to run parallel AI agent sessions. Polyglot architecture: Next.js frontend, Go backend, Tauri wrapper, Node.js agent runner.
 
+## Task Management (MANDATORY)
+
+**Before starting any work, ALWAYS create a task list using TaskCreate.** This provides visibility into what you're doing.
+
+### When to Create Tasks
+
+- ANY request that involves code changes
+- ANY request with multiple steps
+- Even "simple" styling changes (they often cascade)
+
+### Task Workflow
+
+1. **Analyze the request** - Break it down into discrete steps
+2. **Create tasks** - Use `TaskCreate` for each step with clear `subject` and `activeForm`
+3. **Work sequentially** - Update task to `in_progress` before starting, `completed` when done
+4. **Add discovered tasks** - If you find additional work needed, create new tasks
+
+### Example
+
+User: "Make the font larger and add a blue pill style"
+
+```
+TaskCreate: "Increase font size" (activeForm: "Increasing font size")
+TaskCreate: "Add blue pill styling" (activeForm: "Adding blue pill styling")
+```
+
+Then work through each task, updating status as you go.
+
+**This is not optional.** The user needs visibility into your progress.
+
 ## Tech Stack & Directory Structure
 
 | Directory | Tech | Purpose |
