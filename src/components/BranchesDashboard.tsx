@@ -4,30 +4,22 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/FullContentLayout';
-import { BranchCard } from '@/components/branches/BranchCard';
+import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
 import { listBranches, type BranchDTO, type BranchListResponse } from '@/lib/api';
 import { useAvatars } from '@/hooks/useAvatars';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { AuthorAvatar } from '@/components/ui/author-avatar';
 import {
   RefreshCw,
   Loader2,
   GitBranch,
   ChevronRight,
-  ChevronDown,
   Folder,
-  Search,
-  X,
   Check,
+  ArrowRight,
+  Copy,
 } from 'lucide-react';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { CardErrorFallback } from '@/components/ErrorFallbacks';
 
 interface BranchesDashboardProps {
   workspaceId: string;
@@ -36,52 +28,157 @@ interface BranchesDashboardProps {
   showLeftSidebar?: boolean;
 }
 
-// Group branches by prefix
-function groupBranchesByPrefix(branches: BranchDTO[]): Map<string, BranchDTO[]> {
-  const groups = new Map<string, BranchDTO[]>();
+// Format time ago helper
+function formatTimeAgo(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
 
-  for (const branch of branches) {
-    // Determine group key
-    let groupKey = branch.prefix || '(other)';
+  if (diffMins < 1) return 'now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  return `${diffMonths}mo ago`;
+}
 
-    // For remote branches, use "origin" as group
-    if (branch.isRemote && branch.name.startsWith('origin/')) {
-      groupKey = 'origin';
-    }
+// Branch icon cell component
+function BranchIconCell({ branch, currentBranch }: { branch: BranchDTO; currentBranch: string }) {
+  const isCurrentBranch = branch.name === currentBranch;
+  const hasSession = !!branch.sessionId;
+  const isRemote = branch.isRemote;
 
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
-    }
-    groups.get(groupKey)!.push(branch);
+  return (
+    <div className="flex items-center justify-center">
+      <GitBranch
+        className={cn(
+          'h-4 w-4',
+          hasSession ? 'text-purple-400' : isCurrentBranch ? 'text-green-400' : isRemote ? 'text-muted-foreground' : 'text-foreground/70'
+        )}
+      />
+    </div>
+  );
+}
+
+// Branch name cell component
+function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentBranch: string }) {
+  const isCurrentBranch = branch.name === currentBranch;
+  const hasSession = !!branch.sessionId;
+  const isRemote = branch.isRemote;
+
+  // Get branch display name (strip origin/ prefix for display)
+  const displayName = isRemote && branch.name.startsWith('origin/')
+    ? branch.name.slice(7)
+    : branch.name;
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span
+        className={cn(
+          'font-medium text-sm truncate',
+          isRemote && 'text-muted-foreground'
+        )}
+      >
+        {displayName}
+      </span>
+
+      {isCurrentBranch && (
+        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-green-500/10 text-green-500 border border-green-500/20 shrink-0">
+          <Check className="h-2.5 w-2.5" />
+          HEAD
+        </span>
+      )}
+
+      {hasSession && branch.sessionName && (
+        <span className="text-xs text-purple-400 truncate max-w-[100px] shrink-0">
+          {branch.sessionName}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Status badge cell component
+function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
+  if (!branch.sessionStatus) return null;
+
+  const statusStyles: Record<string, string> = {
+    active: 'bg-green-500/10 text-green-500 border-green-500/20',
+    idle: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    done: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+    error: 'bg-red-500/10 text-red-500 border-red-500/20',
+  };
+
+  return (
+    <span
+      className={cn(
+        'px-1.5 py-0.5 text-[10px] rounded border capitalize',
+        statusStyles[branch.sessionStatus] || 'bg-surface-2 text-muted-foreground'
+      )}
+    >
+      {branch.sessionStatus}
+    </span>
+  );
+}
+
+// Author cell component
+function AuthorCell({ branch, avatarUrl }: { branch: BranchDTO; avatarUrl?: string }) {
+  if (!branch.lastAuthor) return null;
+
+  return (
+    <span className="flex items-center gap-1.5 truncate max-w-[120px]">
+      <AuthorAvatar name={branch.lastAuthor} avatarUrl={avatarUrl} size="sm" />
+      <span className="truncate text-xs text-muted-foreground">{branch.lastAuthor}</span>
+    </span>
+  );
+}
+
+// Updated time cell component
+function UpdatedCell({ branch }: { branch: BranchDTO }) {
+  if (!branch.lastCommitDate) return null;
+  return (
+    <span className="text-xs text-muted-foreground">
+      {formatTimeAgo(branch.lastCommitDate)}
+    </span>
+  );
+}
+
+// Diff badge cell component
+function DiffBadgeCell({ branch }: { branch: BranchDTO }) {
+  if (branch.aheadMain === 0 && branch.behindMain === 0) return null;
+
+  return (
+    <span className="flex items-center gap-1 font-mono text-[10px]">
+      {branch.aheadMain > 0 && (
+        <span className="text-green-500">+{branch.aheadMain}</span>
+      )}
+      {branch.behindMain > 0 && (
+        <span className="text-red-500">-{branch.behindMain}</span>
+      )}
+      <span className="text-muted-foreground/50">main</span>
+    </span>
+  );
+}
+
+// Get group key for a branch
+function getBranchGroupKey(branch: BranchDTO): string {
+  // For remote branches, use "origin" as group
+  if (branch.isRemote && branch.name.startsWith('origin/')) {
+    return 'origin';
   }
-
-  return groups;
+  // For session branches, use "session" as group
+  if (branch.sessionId) {
+    return 'session';
+  }
+  // Otherwise use prefix or (other)
+  return branch.prefix || '(other)';
 }
 
 // Sort group keys with preferred order
-function sortGroupKeys(keys: string[]): string[] {
-  const preferredOrder = ['main', 'master', 'feature', 'fix', 'release', 'hotfix', 'session'];
-
-  return keys.sort((a, b) => {
-    const aIndex = preferredOrder.indexOf(a);
-    const bIndex = preferredOrder.indexOf(b);
-
-    // Both in preferred order - sort by that order
-    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-    // Only a in preferred order - a comes first
-    if (aIndex !== -1) return -1;
-    // Only b in preferred order - b comes first
-    if (bIndex !== -1) return 1;
-    // origin goes last
-    if (a === 'origin') return 1;
-    if (b === 'origin') return -1;
-    // (other) goes second to last
-    if (a === '(other)') return 1;
-    if (b === '(other)') return -1;
-    // Alphabetical for the rest
-    return a.localeCompare(b);
-  });
-}
+const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'release', 'hotfix', '(other)', 'origin'];
 
 export function BranchesDashboard({
   workspaceId,
@@ -96,7 +193,6 @@ export function BranchesDashboard({
   const [searchTerm, setSearchTerm] = useState('');
   const [showRemote, setShowRemote] = useState(true);
   const [page, setPage] = useState(0);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['origin']));
 
   const PAGE_SIZE = 50;
 
@@ -154,33 +250,17 @@ export function BranchesDashboard({
     fetchBranches(true);
   };
 
-  const handleJumpToSession = (sessionId: string) => {
+  const handleJumpToSession = useCallback((sessionId: string) => {
     selectWorkspace(workspaceId);
     selectSession(sessionId);
     setContentView({ type: 'conversation' });
-  };
+  }, [workspaceId, selectWorkspace, selectSession, setContentView]);
 
-  const toggleGroupCollapsed = (groupKey: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  };
-
-  // Group other branches by prefix
-  const groupedOtherBranches = useMemo(() => {
-    if (!branchData) return new Map<string, BranchDTO[]>();
-    return groupBranchesByPrefix(branchData.otherBranches);
+  // Combine all branches for the table
+  const allBranches = useMemo(() => {
+    if (!branchData) return [];
+    return [...branchData.sessionBranches, ...branchData.otherBranches];
   }, [branchData]);
-
-  const sortedGroupKeys = useMemo(() => {
-    return sortGroupKeys(Array.from(groupedOtherBranches.keys()));
-  }, [groupedOtherBranches]);
 
   // Collect all unique author emails from branches
   const authorEmails = useMemo(() => {
@@ -196,6 +276,135 @@ export function BranchesDashboard({
 
   // Fetch avatars for all author emails
   const avatars = useAvatars(authorEmails);
+
+  // Get avatar URL for a branch
+  const getAvatarUrl = useCallback((branch: BranchDTO) => {
+    return branch.lastAuthorEmail ? avatars[branch.lastAuthorEmail.toLowerCase()] : undefined;
+  }, [avatars]);
+
+  // Context menu actions for a branch
+  const getBranchContextMenu = useCallback((branch: BranchDTO): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+
+    // Session actions
+    if (branch.sessionId) {
+      items.push({
+        label: 'Go to session',
+        icon: <ArrowRight className="h-4 w-4" />,
+        shortcut: 'Enter',
+        onClick: () => handleJumpToSession(branch.sessionId!),
+      });
+      items.push({ label: '', onClick: () => {}, separator: true });
+    }
+
+    // Copy branch name
+    items.push({
+      label: 'Copy branch name',
+      icon: <Copy className="h-4 w-4" />,
+      shortcut: '⌘C',
+      onClick: () => navigator.clipboard.writeText(branch.name),
+    });
+
+    // View on GitHub (placeholder - would need repo info)
+    // items.push({
+    //   label: 'View on GitHub',
+    //   icon: <ExternalLink className="h-4 w-4" />,
+    //   onClick: () => {},
+    // });
+
+    return items;
+  }, [handleJumpToSession]);
+
+  // Define columns for the data table
+  const columns: Column<BranchDTO>[] = useMemo(() => [
+    {
+      id: 'icon',
+      header: '',
+      cell: (branch) => (
+        <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+      ),
+      width: '32px',
+    },
+    {
+      id: 'name',
+      header: 'Branch',
+      accessorKey: 'name',
+      cell: (branch) => (
+        <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+      ),
+      sortable: true,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessorKey: 'sessionStatus',
+      cell: (branch) => <StatusBadgeCell branch={branch} />,
+      width: '80px',
+    },
+    {
+      id: 'author',
+      header: 'Author',
+      accessorKey: 'lastAuthor',
+      cell: (branch) => <AuthorCell branch={branch} avatarUrl={getAvatarUrl(branch)} />,
+    },
+    {
+      id: 'updated',
+      header: 'Updated',
+      accessorKey: 'lastCommitDate',
+      cell: (branch) => <UpdatedCell branch={branch} />,
+      sortable: true,
+      width: '80px',
+    },
+    {
+      id: 'diff',
+      header: 'Diff',
+      cell: (branch) => <DiffBadgeCell branch={branch} />,
+      width: '80px',
+    },
+  ], [branchData?.currentBranch, getAvatarUrl]);
+
+  // Filter options
+  const filterOptions: FilterOption[] = useMemo(() => [
+    { column: 'name', label: 'Branch name', type: 'text' },
+    { column: 'lastAuthor', label: 'Author', type: 'text' },
+    {
+      column: 'sessionStatus',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: 'active', label: 'Active' },
+        { value: 'idle', label: 'Idle' },
+        { value: 'done', label: 'Done' },
+        { value: 'error', label: 'Error' },
+      ],
+    },
+  ], []);
+
+  // Display options configuration
+  const displayOptionsConfig: DisplayOptionsConfig = useMemo(() => ({
+    groupingOptions: [
+      { value: 'prefix', label: 'Branch prefix' },
+      { value: 'lastAuthor', label: 'Author' },
+    ],
+    sortingOptions: [
+      { value: 'name', label: 'Name' },
+      { value: 'lastCommitDate', label: 'Last updated' },
+      { value: 'lastAuthor', label: 'Author' },
+    ],
+    toggleableColumns: [
+      { id: 'status', label: 'Status' },
+      { id: 'author', label: 'Author' },
+      { id: 'updated', label: 'Updated' },
+      { id: 'diff', label: 'Diff' },
+    ],
+  }), []);
+
+  // Handle row click
+  const handleRowClick = useCallback((branch: BranchDTO) => {
+    if (branch.sessionId) {
+      handleJumpToSession(branch.sessionId);
+    }
+  }, [handleJumpToSession]);
 
   // Calculate total pages
   const totalPages = branchData ? Math.ceil(branchData.total / PAGE_SIZE) : 0;
@@ -220,66 +429,44 @@ export function BranchesDashboard({
       onOpenShortcuts={onOpenShortcuts}
       showLeftSidebar={showLeftSidebar}
       headerActions={
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          title="Refresh"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-        </Button>
-      }
-    >
-      <div className="p-4 space-y-4">
-        {/* Toolbar */}
-        <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search branches..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-8 h-8"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
+        <div className="flex items-center gap-2">
           {/* Remote toggle */}
           <Button
             variant={showRemote ? 'secondary' : 'ghost'}
             size="sm"
             onClick={() => setShowRemote(!showRemote)}
-            className="h-8 gap-1.5"
+            className="h-6 text-xs gap-1"
           >
-            {showRemote && <Check className="h-3.5 w-3.5" />}
+            {showRemote && <Check className="h-3 w-3" />}
             Remote
           </Button>
 
           {/* Stats */}
           {branchData && (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               {branchData.sessionBranches.length > 0 && (
-                <span className="mr-3">
+                <span className="mr-2">
                   Session ({branchData.sessionBranches.length})
                 </span>
               )}
               <span>Total ({branchData.total})</span>
             </div>
           )}
-        </div>
 
-        {/* Content */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+          </Button>
+        </div>
+      }
+    >
+      <div className="p-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -291,7 +478,7 @@ export function BranchesDashboard({
               Try Again
             </Button>
           </div>
-        ) : !branchData || (branchData.sessionBranches.length === 0 && branchData.otherBranches.length === 0) ? (
+        ) : !branchData || allBranches.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">No branches found</p>
@@ -300,88 +487,32 @@ export function BranchesDashboard({
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Session Branches Section */}
-            {branchData.sessionBranches.length > 0 && (
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 px-1">
-                  SESSION BRANCHES ({branchData.sessionBranches.length})
-                </h3>
-                <div className="space-y-2">
-                  {branchData.sessionBranches.map((branch) => (
-                    <ErrorBoundary
-                      key={branch.name}
-                      section="BranchCard"
-                      fallback={<CardErrorFallback message={`Error loading branch ${branch.name}`} />}
-                    >
-                      <BranchCard
-                        branch={branch}
-                        currentBranch={branchData.currentBranch}
-                        avatarUrl={branch.lastAuthorEmail ? avatars[branch.lastAuthorEmail.toLowerCase()] : undefined}
-                        onJumpToSession={
-                          branch.sessionId
-                            ? () => handleJumpToSession(branch.sessionId!)
-                            : undefined
-                        }
-                      />
-                    </ErrorBoundary>
-                  ))}
+          <div className="space-y-4">
+            <DataTable
+              data={allBranches}
+              columns={columns}
+              getRowId={(branch) => branch.name}
+              groupBy={{
+                key: getBranchGroupKey,
+                sortOrder: GROUP_SORT_ORDER,
+                defaultCollapsed: ['origin'],
+              }}
+              sortBy={{ column: 'lastCommitDate', direction: 'desc' }}
+              onRowClick={handleRowClick}
+              onRowContextMenu={getBranchContextMenu}
+              filterOptions={filterOptions}
+              displayOptionsConfig={displayOptionsConfig}
+              searchPlaceholder="Search branches..."
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              emptyState={
+                <div className="text-center py-12 text-muted-foreground">
+                  <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">No branches found</p>
+                  <p className="text-sm mt-1">Try adjusting your search or filters.</p>
                 </div>
-              </div>
-            )}
-
-            {/* Other Branches Section */}
-            {branchData.otherBranches.length > 0 && (
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 px-1">
-                  OTHER BRANCHES ({branchData.otherBranches.length})
-                </h3>
-                <div className="space-y-3">
-                  {sortedGroupKeys.map((groupKey) => {
-                    const branches = groupedOtherBranches.get(groupKey) || [];
-                    const isCollapsed = collapsedGroups.has(groupKey);
-
-                    return (
-                      <Collapsible
-                        key={groupKey}
-                        open={!isCollapsed}
-                        onOpenChange={() => toggleGroupCollapsed(groupKey)}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <button className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground hover:text-foreground w-full rounded hover:bg-surface-1 transition-colors">
-                            <ChevronDown
-                              className={cn(
-                                'h-4 w-4 transition-transform',
-                                isCollapsed && '-rotate-90'
-                              )}
-                            />
-                            <span className="font-medium">{groupKey}/</span>
-                            <span className="text-xs">({branches.length})</span>
-                          </button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div className="space-y-2 mt-2">
-                            {branches.map((branch) => (
-                              <ErrorBoundary
-                                key={branch.name}
-                                section="BranchCard"
-                                fallback={<CardErrorFallback message={`Error loading branch ${branch.name}`} />}
-                              >
-                                <BranchCard
-                                  branch={branch}
-                                  currentBranch={branchData.currentBranch}
-                                  avatarUrl={branch.lastAuthorEmail ? avatars[branch.lastAuthorEmail.toLowerCase()] : undefined}
-                                />
-                              </ErrorBoundary>
-                            ))}
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              }
+            />
 
             {/* Pagination */}
             {totalPages > 1 && (
