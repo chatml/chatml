@@ -176,12 +176,12 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 function BranchCell({ pr }: { pr: PRWithStatus }) {
   return (
     <div className="flex items-center gap-1.5 min-w-0 text-xs">
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300/70 font-mono truncate max-w-[120px]" title={pr.branch}>
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300/70 font-mono truncate" title={pr.branch}>
         <GitBranch className="h-3 w-3 shrink-0" />
         {pr.branch}
       </span>
       <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-      <span className="text-muted-foreground font-mono truncate max-w-[80px]" title={pr.baseBranch}>
+      <span className="text-muted-foreground font-mono truncate" title={pr.baseBranch}>
         {pr.baseBranch}
       </span>
     </div>
@@ -503,7 +503,6 @@ export function PRDashboard({
       header: 'Branch',
       accessorKey: 'branch',
       cell: (pr) => <BranchCell pr={pr} />,
-      minWidth: '200px',
     },
     {
       id: 'checks',
