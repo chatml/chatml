@@ -520,6 +520,7 @@ export function BranchesDashboard({
                 key: getBranchGroupKey,
                 sortOrder: GROUP_SORT_ORDER,
                 defaultCollapsed: ['origin'],
+                getLabel: (key) => key === '' ? '(None)' : key,
               }}
               sortBy={{ column: 'lastCommitDate', direction: 'desc' }}
               onRowClick={handleRowClick}
