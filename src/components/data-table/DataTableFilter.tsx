@@ -138,7 +138,7 @@ export function DataTableFilter({
         </div>
 
         {/* Filter options */}
-        <div className="py-1">
+        <div className="p-1">
           {filteredOptions.map((option) => {
             const selectedValues = getSelectedValues(option.column);
             const hasSelections = selectedValues.length > 0;
