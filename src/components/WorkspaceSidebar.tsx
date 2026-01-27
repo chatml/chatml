@@ -98,6 +98,30 @@ interface WorkspaceSidebarProps {
   onToggleSidebar?: () => void;
 }
 
+// Linear-style color palette for workspace indicators
+const WORKSPACE_COLORS = [
+  '#6366f1', // indigo
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#f43f5e', // rose
+  '#f97316', // orange
+  '#eab308', // yellow
+  '#22c55e', // green
+  '#14b8a6', // teal
+  '#06b6d4', // cyan
+  '#3b82f6', // blue
+];
+
+// Get consistent color for a workspace based on its ID
+function getWorkspaceColor(workspaceId: string): string {
+  let hash = 0;
+  for (let i = 0; i < workspaceId.length; i++) {
+    hash = ((hash << 5) - hash) + workspaceId.charCodeAt(i);
+    hash |= 0;
+  }
+  return WORKSPACE_COLORS[Math.abs(hash) % WORKSPACE_COLORS.length];
+}
+
 // Shared menu items for "Add project" dropdown
 const ADD_REPO_MENU_ITEMS = [
   { icon: Folder, label: 'Open project', key: 'open' },
@@ -312,7 +336,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between border-b shrink-0", leftToolbarBg)}>
+      <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between shrink-0", leftToolbarBg)}>
         <span className="text-[22px] font-extrabold select-none">
           <span className="text-muted-foreground">chat</span><span className="text-purple-600">ml</span>
         </span>
@@ -336,6 +360,18 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       {/* Workspace List */}
       <ScrollArea className="flex-1 min-h-0 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
             <div className="py-2 pl-1 pr-2 flex flex-col">
+              {/* Section Header */}
+              <div className="group/header px-2 pt-1 pb-2 flex items-center justify-between">
+                <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                  Repositories
+                </span>
+                <button
+                  onClick={() => setContentView({ type: 'repositories' })}
+                  className="text-[10px] font-medium text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100"
+                >
+                  Manage
+                </button>
+              </div>
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
@@ -623,16 +659,15 @@ function SortableWorkspaceItem({
             )}
           >
             <div
-              className="shrink-0 cursor-grab active:cursor-grabbing text-primary/60"
+              className="shrink-0 cursor-grab active:cursor-grabbing"
               {...attributes}
               {...listeners}
               onClick={(e) => e.stopPropagation()}
             >
-              {isExpanded ? (
-                <FolderOpen className="w-4 h-4" />
-              ) : (
-                <Folder className="w-4 h-4" />
-              )}
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: getWorkspaceColor(workspace.id) }}
+              />
             </div>
             <span className="text-[length:var(--text-base)] font-semibold truncate">
               {workspace.name}
