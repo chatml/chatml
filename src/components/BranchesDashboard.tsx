@@ -124,15 +124,14 @@ function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
   );
 }
 
-// Author cell component
+// Author cell component - avatar only with tooltip
 function AuthorCell({ branch, avatarUrl }: { branch: BranchDTO; avatarUrl?: string }) {
   if (!branch.lastAuthor) return null;
 
   return (
-    <span className="flex items-center gap-1.5 truncate max-w-[120px]">
+    <div className="flex items-center justify-center" title={branch.lastAuthor}>
       <AuthorAvatar name={branch.lastAuthor} avatarUrl={avatarUrl} size="sm" />
-      <span className="truncate text-xs text-muted-foreground">{branch.lastAuthor}</span>
-    </span>
+    </div>
   );
 }
 
@@ -342,18 +341,19 @@ export function BranchesDashboard({
       width: '80px',
     },
     {
-      id: 'author',
-      header: 'Author',
-      accessorKey: 'lastAuthor',
-      cell: (branch) => <AuthorCell branch={branch} avatarUrl={getAvatarUrl(branch)} />,
-    },
-    {
       id: 'updated',
       header: 'Updated',
       accessorKey: 'lastCommitDate',
       cell: (branch) => <UpdatedCell branch={branch} />,
       sortable: true,
       width: '80px',
+    },
+    {
+      id: 'author',
+      header: '',
+      accessorKey: 'lastAuthor',
+      cell: (branch) => <AuthorCell branch={branch} avatarUrl={getAvatarUrl(branch)} />,
+      width: '32px',
     },
     {
       id: 'diff',
