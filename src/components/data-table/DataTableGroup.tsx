@@ -15,6 +15,7 @@ import type { DataTableGroupProps } from './types';
 export function DataTableGroup({
   groupKey: _groupKey,
   label,
+  icon,
   count,
   isCollapsed,
   onToggle,
@@ -40,6 +41,9 @@ export function DataTableGroup({
               !isCollapsed && 'rotate-90'
             )}
           />
+
+          {/* Group icon (optional) */}
+          {icon}
 
           {/* Group label */}
           <span className="text-sm font-medium text-foreground">
