@@ -991,7 +991,7 @@ export default function Home() {
     <ToastProvider>
       <StreamingWarningHandler />
       <TooltipProvider>
-        <div className="h-screen overflow-hidden flex relative">
+        <div className="h-screen overflow-hidden flex relative bg-background">
         {/* OUTER GROUP: Left Sidebar | Main Content */}
         <ResizablePanelGroup
           direction="horizontal"

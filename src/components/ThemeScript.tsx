@@ -10,13 +10,13 @@ export function ThemeScript() {
   // NO light mode fallback here - we handle that in the script
   // This ensures dark bg is shown until JS determines actual theme
   const criticalCSS = `
-    html, body { background-color: #141414 !important; }
+    html, body { background-color: #0f1111 !important; }
   `;
 
   const script = `
 (function() {
   var STORAGE_KEY = 'theme';
-  var DARK_BG = '#141414';
+  var DARK_BG = '#0f1111';
   var LIGHT_BG = '#ffffff';
 
   function getTheme() {

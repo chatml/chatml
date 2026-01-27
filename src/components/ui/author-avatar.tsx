@@ -11,8 +11,8 @@ interface AuthorAvatarProps {
 
 export function AuthorAvatar({ name, avatarUrl, size = 'sm', className }: AuthorAvatarProps) {
   const sizeClasses = {
-    sm: 'h-5 w-5 text-[9px]',
-    md: 'h-6 w-6 text-[10px]',
+    sm: 'h-4 w-4 min-w-4 min-h-4 text-[8px]',
+    md: 'h-5 w-5 min-w-5 min-h-5 text-[9px]',
   };
 
   const initial = (name || '?')[0].toUpperCase();
@@ -23,7 +23,7 @@ export function AuthorAvatar({ name, avatarUrl, size = 'sm', className }: Author
       <img
         src={avatarUrl}
         alt={name}
-        className={cn('rounded-full shrink-0', sizeClasses[size], className)}
+        className={cn('rounded-full shrink-0 aspect-square object-cover', sizeClasses[size], className)}
       />
     );
   }
@@ -31,7 +31,7 @@ export function AuthorAvatar({ name, avatarUrl, size = 'sm', className }: Author
   return (
     <div
       className={cn(
-        'rounded-full bg-muted flex items-center justify-center shrink-0',
+        'rounded-full bg-muted flex items-center justify-center shrink-0 aspect-square',
         sizeClasses[size],
         className
       )}
