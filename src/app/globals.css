@@ -849,5 +849,5 @@
 
 /* Custom shadow for popovers - even shadow all around */
 @utility shadow-popover {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
