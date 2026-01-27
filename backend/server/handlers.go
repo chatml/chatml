@@ -313,7 +313,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		sessionNameCache: NewSessionNameCache(workspacesDir),
 		fileSizeConfig:   LoadFileSizeConfig(),
 		dirCache:         NewDirListingCache(dirCacheConfig.TTL),
-		branchCache:      NewBranchCache(30 * time.Second), // Cache branches for 30 seconds
+		branchCache:      NewBranchCache(5 * time.Minute), // Cache branches for 5 minutes
 		branchWatcher:    bw,
 		prWatcher:        prw,
 		hub:              hub,

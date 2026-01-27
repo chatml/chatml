@@ -1,28 +1,27 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Filter, Plus, X, ChevronDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useState, useMemo } from 'react';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+  Filter,
+  Check,
+  User,
+  GitBranch,
+  Activity,
+  FolderTree,
+  MapPin,
+  Search,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import type { FilterCondition, FilterOption } from './types';
 
@@ -33,85 +32,76 @@ interface DataTableFilterProps {
   onFilterChange: (filters: FilterCondition[]) => void;
   /** Available filter options */
   filterOptions: FilterOption[];
-  /** Whether the filter menu is open */
-  open?: boolean;
-  /** Open change handler */
-  onOpenChange?: (open: boolean) => void;
 }
 
-const OPERATORS = [
-  { value: 'contains', label: 'contains' },
-  { value: 'equals', label: 'equals' },
-  { value: 'startsWith', label: 'starts with' },
-  { value: 'endsWith', label: 'ends with' },
-  { value: 'isEmpty', label: 'is empty' },
-  { value: 'isNotEmpty', label: 'is not empty' },
-] as const;
+// Icon mapping for filter categories
+const FILTER_ICONS: Record<string, React.ReactNode> = {
+  status: <Activity className="h-4 w-4" />,
+  sessionStatus: <Activity className="h-4 w-4" />,
+  author: <User className="h-4 w-4" />,
+  lastAuthor: <User className="h-4 w-4" />,
+  location: <MapPin className="h-4 w-4" />,
+  prefix: <FolderTree className="h-4 w-4" />,
+  hasSession: <GitBranch className="h-4 w-4" />,
+  name: <GitBranch className="h-4 w-4" />,
+};
 
 export function DataTableFilter({
   filters,
   onFilterChange,
   filterOptions,
-  open,
-  onOpenChange,
 }: DataTableFilterProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const controlledOpen = open ?? isOpen;
-  const setOpen = onOpenChange ?? setIsOpen;
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Add a new filter condition
-  const addFilter = useCallback(
-    (column: string) => {
-      const option = filterOptions.find((o) => o.column === column);
-      if (!option) return;
+  // Get selected values for a column
+  const getSelectedValues = (column: string): string[] => {
+    return filters
+      .filter((f) => f.column === column)
+      .map((f) => String(f.value));
+  };
 
-      const newFilter: FilterCondition = {
-        column,
-        operator: 'contains',
-        value: '',
-      };
+  // Toggle a filter value
+  const toggleFilterValue = (column: string, value: string) => {
+    const existingFilter = filters.find(
+      (f) => f.column === column && String(f.value) === value
+    );
 
-      onFilterChange([...filters, newFilter]);
-    },
-    [filters, filterOptions, onFilterChange]
-  );
+    if (existingFilter) {
+      // Remove the filter
+      onFilterChange(
+        filters.filter((f) => !(f.column === column && String(f.value) === value))
+      );
+    } else {
+      // Add the filter
+      onFilterChange([
+        ...filters,
+        { column, operator: 'equals', value },
+      ]);
+    }
+  };
 
-  // Update a filter condition
-  const updateFilter = useCallback(
-    (index: number, updates: Partial<FilterCondition>) => {
-      const newFilters = [...filters];
-      newFilters[index] = { ...newFilters[index], ...updates };
-      onFilterChange(newFilters);
-    },
-    [filters, onFilterChange]
-  );
+  // Clear filters for a column
+  const clearColumnFilters = (column: string) => {
+    onFilterChange(filters.filter((f) => f.column !== column));
+  };
 
-  // Remove a filter condition
-  const removeFilter = useCallback(
-    (index: number) => {
-      const newFilters = filters.filter((_, i) => i !== index);
-      onFilterChange(newFilters);
-    },
-    [filters, onFilterChange]
-  );
+  // Count active filters
+  const activeFilterCount = filters.length;
 
-  // Clear all filters
-  const clearAllFilters = useCallback(() => {
-    onFilterChange([]);
-  }, [onFilterChange]);
-
-  // Get filter option by column
-  const getFilterOption = (column: string) =>
-    filterOptions.find((o) => o.column === column);
-
-  // Count active filters (excluding empty values)
-  const activeFilterCount = filters.filter(
-    (f) => f.value !== '' || f.operator === 'isEmpty' || f.operator === 'isNotEmpty'
-  ).length;
+  // Filter options by search query
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery) return filterOptions;
+    const query = searchQuery.toLowerCase();
+    return filterOptions.filter(
+      (opt) =>
+        opt.label.toLowerCase().includes(query) ||
+        opt.options?.some((o) => o.label.toLowerCase().includes(query))
+    );
+  }, [filterOptions, searchQuery]);
 
   return (
-    <Popover open={controlledOpen} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -128,147 +118,201 @@ export function DataTableFilter({
             </span>
           )}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-[380px] p-3"
-      >
-        {/* Filter conditions */}
-        <div className="space-y-2">
-          {filters.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-2">
-              No filters applied
-            </p>
-          ) : (
-            filters.map((filter, index) => {
-              const option = getFilterOption(filter.column);
-              const needsValue =
-                filter.operator !== 'isEmpty' && filter.operator !== 'isNotEmpty';
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[220px] p-0">
+        {/* Search input */}
+        <div className="p-2 border-b border-border/70">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Add Filter..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-8 pl-8 pr-8 text-[13px] bg-transparent border-none outline-none placeholder:text-muted-foreground text-foreground"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground bg-surface-2 px-1.5 py-0.5 rounded">
+              F
+            </span>
+          </div>
+        </div>
 
+        {/* Filter options */}
+        <div className="py-1">
+          {filteredOptions.map((option) => {
+            const selectedValues = getSelectedValues(option.column);
+            const hasSelections = selectedValues.length > 0;
+            const icon = FILTER_ICONS[option.column] || <Filter className="h-4 w-4" />;
+
+            // For select-type filters with predefined options
+            if (option.type === 'select' && option.options) {
               return (
-                <div
-                  key={`${filter.column}-${index}`}
-                  className="flex items-center gap-2"
-                >
-                  {/* Column selector */}
-                  <Select
-                    value={filter.column}
-                    onValueChange={(value) => updateFilter(index, { column: value })}
+                <DropdownMenuSub key={option.column}>
+                  <DropdownMenuSubTrigger
+                    className={cn(
+                      'px-3 py-2 text-[13px]',
+                      hasSelections && 'text-primary'
+                    )}
                   >
-                    <SelectTrigger className="h-8 w-[100px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filterOptions.map((opt) => (
-                        <SelectItem key={opt.column} value={opt.column}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Operator selector */}
-                  <Select
-                    value={filter.operator}
-                    onValueChange={(value) =>
-                      updateFilter(index, {
-                        operator: value as FilterCondition['operator'],
-                      })
-                    }
-                  >
-                    <SelectTrigger className="h-8 w-[100px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {OPERATORS.map((op) => (
-                        <SelectItem key={op.value} value={op.value}>
-                          {op.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Value input */}
-                  {needsValue && (
-                    option?.type === 'select' && option.options ? (
-                      <Select
-                        value={String(filter.value)}
-                        onValueChange={(value) => updateFilter(index, { value })}
-                      >
-                        <SelectTrigger className="h-8 flex-1 text-xs">
-                          <SelectValue placeholder="Select..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {option.options.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        type="text"
-                        value={String(filter.value)}
-                        onChange={(e) => updateFilter(index, { value: e.target.value })}
-                        className="h-8 flex-1 text-xs"
-                        placeholder="Value..."
-                      />
-                    )
-                  )}
-
-                  {/* Remove button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 shrink-0"
-                    onClick={() => removeFilter(index)}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
+                    <span className="text-muted-foreground">{icon}</span>
+                    <span className="flex-1">{option.label}</span>
+                    {hasSelections && (
+                      <span className="text-[11px] text-primary mr-1">
+                        {selectedValues.length}
+                      </span>
+                    )}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent sideOffset={2} className="w-[180px] p-0">
+                    <div className="py-1">
+                      {option.options.map((opt) => {
+                        const isSelected = selectedValues.includes(opt.value);
+                        return (
+                          <DropdownMenuItem
+                            key={opt.value}
+                            className="px-3 py-2 text-[13px]"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              toggleFilterValue(option.column, opt.value);
+                            }}
+                          >
+                            <div
+                              className={cn(
+                                'h-4 w-4 rounded border flex items-center justify-center',
+                                isSelected
+                                  ? 'bg-primary border-primary'
+                                  : 'border-border'
+                              )}
+                            >
+                              {isSelected && (
+                                <Check className="h-3 w-3 text-primary-foreground" />
+                              )}
+                            </div>
+                            <span>{opt.label}</span>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </div>
+                    {hasSelections && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="px-3 py-2 text-[13px] text-muted-foreground"
+                          onSelect={() => clearColumnFilters(option.column)}
+                        >
+                          Clear filter
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
               );
-            })
-          )}
-        </div>
+            }
 
-        <Separator className="my-2" />
-
-        {/* Add filter dropdown */}
-        <div className="flex items-center justify-between">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
-                <Plus className="h-3 w-3" />
-                Add filter
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {filterOptions.map((option) => (
-                <DropdownMenuItem
-                  key={option.column}
-                  onClick={() => addFilter(option.column)}
+            // For text-type filters (shows input in submenu)
+            return (
+              <DropdownMenuSub key={option.column}>
+                <DropdownMenuSubTrigger
+                  className={cn(
+                    'px-3 py-2 text-[13px]',
+                    hasSelections && 'text-primary'
+                  )}
                 >
-                  {option.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {filters.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-muted-foreground"
-              onClick={clearAllFilters}
-            >
-              Clear all
-            </Button>
-          )}
+                  <span className="text-muted-foreground">{icon}</span>
+                  <span className="flex-1">{option.label}</span>
+                  {hasSelections && (
+                    <span className="text-[11px] text-primary mr-1">
+                      {selectedValues.length}
+                    </span>
+                  )}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent sideOffset={2} className="w-[200px] p-2">
+                  <TextFilterInput
+                    column={option.column}
+                    filters={filters}
+                    onFilterChange={onFilterChange}
+                    placeholder={`Filter by ${option.label.toLowerCase()}...`}
+                  />
+                  {hasSelections && (
+                    <button
+                      type="button"
+                      className="w-full mt-2 px-2 py-1.5 text-[12px] text-muted-foreground hover:text-foreground text-left"
+                      onClick={() => clearColumnFilters(option.column)}
+                    >
+                      Clear filter
+                    </button>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })}
         </div>
-      </PopoverContent>
-    </Popover>
+
+        {/* Clear all filters */}
+        {activeFilterCount > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="p-1">
+              <DropdownMenuItem
+                className="px-3 py-2 text-[13px] text-muted-foreground"
+                onSelect={() => onFilterChange([])}
+              >
+                Clear all filters
+              </DropdownMenuItem>
+            </div>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// Text filter input component
+function TextFilterInput({
+  column,
+  filters,
+  onFilterChange,
+  placeholder,
+}: {
+  column: string;
+  filters: FilterCondition[];
+  onFilterChange: (filters: FilterCondition[]) => void;
+  placeholder: string;
+}) {
+  const [inputValue, setInputValue] = useState('');
+
+  const existingFilter = filters.find((f) => f.column === column);
+  const currentValue = existingFilter ? String(existingFilter.value) : '';
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim()) return;
+
+    // Update or add filter
+    if (existingFilter) {
+      onFilterChange(
+        filters.map((f) =>
+          f.column === column ? { ...f, value: inputValue.trim() } : f
+        )
+      );
+    } else {
+      onFilterChange([
+        ...filters,
+        { column, operator: 'contains', value: inputValue.trim() },
+      ]);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="text"
+        value={inputValue || currentValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        placeholder={placeholder}
+        className="w-full h-8 px-2 text-[13px] bg-surface-2 border border-border/50 rounded outline-none placeholder:text-muted-foreground text-foreground focus:border-border"
+        autoFocus
+      />
+    </form>
   );
 }
 

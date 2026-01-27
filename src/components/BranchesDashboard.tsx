@@ -184,7 +184,6 @@ function DiffBadgeCell({ branch }: { branch: BranchDTO }) {
       {branch.behindMain > 0 && (
         <span className="text-red-500">-{branch.behindMain}</span>
       )}
-      <span className="text-muted-foreground/50">main</span>
     </span>
   );
 }
@@ -395,8 +394,6 @@ export function BranchesDashboard({
 
   // Filter options
   const filterOptions: FilterOption[] = useMemo(() => [
-    { column: 'name', label: 'Branch name', type: 'text' },
-    { column: 'lastAuthor', label: 'Author', type: 'text' },
     {
       column: 'sessionStatus',
       label: 'Status',
@@ -408,6 +405,17 @@ export function BranchesDashboard({
         { value: 'error', label: 'Error' },
       ],
     },
+    {
+      column: 'location',
+      label: 'Location',
+      type: 'select',
+      options: [
+        { value: 'Local', label: 'Local' },
+        { value: 'Remote', label: 'Remote' },
+      ],
+    },
+    { column: 'lastAuthor', label: 'Author', type: 'text' },
+    { column: 'name', label: 'Branch name', type: 'text' },
   ], []);
 
   // Display options configuration
