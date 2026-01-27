@@ -353,7 +353,7 @@ export function DataTable<T>({
       ) : (
         <Table>
           <TableHeader>
-            <TableRow className="border-b border-border/30 hover:bg-transparent">
+            <TableRow className="border-y border-border/30 hover:bg-transparent">
               {/* Selection header */}
               {selectable && (
                 <TableHead className="w-[40px] px-2">

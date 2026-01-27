@@ -20,7 +20,7 @@ export function DataTableGroup({
 }: DataTableGroupProps) {
   return (
     <TableRow
-      className="bg-surface-2 hover:bg-surface-3 border-0 cursor-pointer select-none"
+      className="bg-surface-1 hover:bg-surface-2 border-y border-border/30 cursor-pointer select-none"
       onClick={onToggle}
     >
       <TableCell
@@ -89,7 +89,7 @@ export function DataTableGroupHeader({
       onClick={onToggle}
       className={cn(
         'flex items-center gap-1.5 w-full px-2 py-2 text-left',
-        'bg-surface-2 hover:bg-surface-3 transition-colors',
+        'bg-surface-1 hover:bg-surface-2 border-y border-border/30 transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
       )}
     >
