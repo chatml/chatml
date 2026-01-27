@@ -478,18 +478,17 @@ export function PRDashboard({
   // Define columns for the data table
   const columns: Column<PRWithStatus>[] = useMemo(() => [
     {
-      id: 'icon',
-      header: '',
-      cell: (pr) => <StatusIconCell pr={pr} />,
-      width: '40px',
-    },
-    {
       id: 'number',
       header: '#',
       accessorKey: 'number',
-      cell: (pr) => <PRNumberCell pr={pr} />,
+      cell: (pr) => (
+        <div className="flex items-center gap-1.5">
+          <StatusIconCell pr={pr} />
+          <PRNumberCell pr={pr} />
+        </div>
+      ),
       sortable: true,
-      width: '60px',
+      width: '80px',
     },
     {
       id: 'title',
