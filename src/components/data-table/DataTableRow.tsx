@@ -96,10 +96,10 @@ function DataTableRowComponent<T>(
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'cursor-pointer transition-colors',
-        'hover:bg-surface-1',
-        isSelected && 'bg-primary/5 hover:bg-primary/10',
-        isFocused && 'ring-1 ring-inset ring-primary/50'
+        'cursor-pointer transition-colors border-b border-border/20',
+        'hover:bg-white/[0.02]',
+        isSelected && 'bg-primary/5 hover:bg-primary/8',
+        isFocused && 'bg-white/[0.02]'
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -208,10 +208,10 @@ export function DataTableSimpleRow<T>({
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'cursor-pointer transition-colors',
-        'hover:bg-surface-1',
-        isSelected && 'bg-primary/5 hover:bg-primary/10',
-        isFocused && 'ring-1 ring-inset ring-primary/50'
+        'cursor-pointer transition-colors border-b border-border/20',
+        'hover:bg-white/[0.02]',
+        isSelected && 'bg-primary/5 hover:bg-primary/8',
+        isFocused && 'bg-white/[0.02]'
       )}
       onClick={handleClick}
       tabIndex={isFocused ? 0 : -1}

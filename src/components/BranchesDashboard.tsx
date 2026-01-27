@@ -466,7 +466,7 @@ export function BranchesDashboard({
         </div>
       }
     >
-      <div className="p-4">
+      <div className="px-4 pt-2 pb-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -487,7 +487,7 @@ export function BranchesDashboard({
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <>
             <DataTable
               data={allBranches}
               columns={columns}
@@ -502,7 +502,7 @@ export function BranchesDashboard({
               onRowContextMenu={getBranchContextMenu}
               filterOptions={filterOptions}
               displayOptionsConfig={displayOptionsConfig}
-              searchPlaceholder="Search branches..."
+              searchPlaceholder="Search..."
               searchValue={searchTerm}
               onSearchChange={setSearchTerm}
               emptyState={
@@ -516,24 +516,24 @@ export function BranchesDashboard({
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-4 border-t">
+              <div className="flex items-center justify-between pt-4 mt-4 border-t border-border/30">
                 <span className="text-sm text-muted-foreground">
-                  Showing {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, branchData.total)} of {branchData.total} branches
+                  Showing {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, branchData.total)} of {branchData.total}
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                     disabled={page === 0}
                   >
                     Previous
                   </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {page + 1} of {totalPages}
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {page + 1} / {totalPages}
                   </span>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
@@ -543,7 +543,7 @@ export function BranchesDashboard({
                 </div>
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </FullContentLayout>

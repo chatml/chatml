@@ -1,13 +1,13 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { TableRow, TableCell } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import type { DataTableGroupProps } from './types';
 
 export function DataTableGroup({
-  groupKey,
+  groupKey: _groupKey,
   label,
   count,
   isCollapsed,
@@ -20,14 +20,14 @@ export function DataTableGroup({
 }: DataTableGroupProps) {
   return (
     <TableRow
-      className="bg-surface-1 hover:bg-surface-2 border-y border-border/50 cursor-pointer select-none"
+      className="hover:bg-transparent border-0 cursor-pointer select-none"
       onClick={onToggle}
     >
       <TableCell
         colSpan={colSpan}
-        className="py-1.5 px-2"
+        className="py-2 px-2"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Checkbox for group selection */}
           {selectable && (
             <div
@@ -49,23 +49,20 @@ export function DataTableGroup({
           )}
 
           {/* Expand/collapse icon */}
-          <ChevronDown
+          <ChevronRight
             className={cn(
-              'h-4 w-4 text-muted-foreground transition-transform duration-200',
-              isCollapsed && '-rotate-90'
+              'h-3.5 w-3.5 text-muted-foreground transition-transform duration-150',
+              !isCollapsed && 'rotate-90'
             )}
           />
 
           {/* Group label */}
-          <span className="text-sm font-medium text-foreground">
+          <span className="text-sm text-muted-foreground">
             {label}
-            {groupKey !== label && (
-              <span className="text-muted-foreground">/</span>
-            )}
           </span>
 
-          {/* Count badge */}
-          <span className="text-xs text-muted-foreground tabular-nums">
+          {/* Count */}
+          <span className="text-xs text-muted-foreground/60 tabular-nums">
             {count}
           </span>
         </div>
@@ -76,7 +73,7 @@ export function DataTableGroup({
 
 // A simpler inline group header variant (not using table row)
 export function DataTableGroupHeader({
-  groupKey,
+  groupKey: _groupKey,
   label,
   count,
   isCollapsed,
@@ -91,9 +88,8 @@ export function DataTableGroupHeader({
       type="button"
       onClick={onToggle}
       className={cn(
-        'flex items-center gap-2 w-full px-2 py-1.5 text-left',
-        'bg-surface-1 hover:bg-surface-2 transition-colors',
-        'border-y border-border/50',
+        'flex items-center gap-1.5 w-full px-2 py-2 text-left',
+        'hover:bg-transparent transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
       )}
     >
@@ -118,23 +114,20 @@ export function DataTableGroupHeader({
       )}
 
       {/* Expand/collapse icon */}
-      <ChevronDown
+      <ChevronRight
         className={cn(
-          'h-4 w-4 text-muted-foreground transition-transform duration-200',
-          isCollapsed && '-rotate-90'
+          'h-3.5 w-3.5 text-muted-foreground transition-transform duration-150',
+          !isCollapsed && 'rotate-90'
         )}
       />
 
       {/* Group label */}
-      <span className="text-sm font-medium text-foreground">
+      <span className="text-sm text-muted-foreground">
         {label}
-        {groupKey !== label && (
-          <span className="text-muted-foreground">/</span>
-        )}
       </span>
 
-      {/* Count badge */}
-      <span className="text-xs text-muted-foreground tabular-nums ml-auto">
+      {/* Count */}
+      <span className="text-xs text-muted-foreground/60 tabular-nums">
         {count}
       </span>
     </button>

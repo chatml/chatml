@@ -351,47 +351,74 @@ export function DataTable<T>({
           </div>
         )
       ) : (
-        <div className="border rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-surface-1 hover:bg-surface-1">
-                {/* Selection header */}
-                {selectable && (
-                  <TableHead className="w-[40px] px-2">
-                    <Checkbox
-                      checked={selection.isAllSelected}
-                      onCheckedChange={() => {
-                        if (selection.isAllSelected) {
-                          selection.clearSelection();
-                        } else {
-                          selection.selectAll();
-                        }
-                      }}
-                      className="h-3.5 w-3.5"
-                      aria-label="Select all"
-                    />
-                  </TableHead>
-                )}
-                {/* Column headers */}
-                {visibleColumns.map((column) => (
-                  <TableHead
-                    key={column.id}
-                    className={cn(
-                      'text-xs font-medium',
-                      column.align === 'center' && 'text-center',
-                      column.align === 'right' && 'text-right'
-                    )}
-                    style={{
-                      width: column.width,
-                      minWidth: column.minWidth,
+        <Table>
+          <TableHeader>
+            <TableRow className="border-b border-border/30 hover:bg-transparent">
+              {/* Selection header */}
+              {selectable && (
+                <TableHead className="w-[40px] px-2">
+                  <Checkbox
+                    checked={selection.isAllSelected}
+                    onCheckedChange={() => {
+                      if (selection.isAllSelected) {
+                        selection.clearSelection();
+                      } else {
+                        selection.selectAll();
+                      }
                     }}
-                  >
+                    className="h-3.5 w-3.5"
+                    aria-label="Select all"
+                  />
+                </TableHead>
+              )}
+              {/* Column headers */}
+              {visibleColumns.map((column) => (
+                <TableHead
+                  key={column.id}
+                  className={cn(
+                    'text-xs font-normal text-muted-foreground h-8',
+                    column.align === 'center' && 'text-center',
+                    column.align === 'right' && 'text-right',
+                    column.sortable && 'cursor-pointer hover:text-foreground select-none'
+                  )}
+                  style={{
+                    width: column.width,
+                    minWidth: column.minWidth,
+                  }}
+                  onClick={() => {
+                    if (column.sortable) {
+                      const currentSort = displayOptions.sortBy;
+                      if (currentSort?.column === column.id) {
+                        if (currentSort.direction === 'asc') {
+                          handleDisplayChange({
+                            ...displayOptions,
+                            sortBy: { column: column.id, direction: 'desc' },
+                          });
+                        } else {
+                          handleDisplayChange({ ...displayOptions, sortBy: null });
+                        }
+                      } else {
+                        handleDisplayChange({
+                          ...displayOptions,
+                          sortBy: { column: column.id, direction: 'asc' },
+                        });
+                      }
+                    }
+                  }}
+                >
+                  <span className="flex items-center gap-1">
                     {column.header}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+                    {column.sortable && displayOptions.sortBy?.column === column.id && (
+                      <span className="text-foreground">
+                        {displayOptions.sortBy.direction === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </span>
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
               {groupedData.map((group) => {
                 const showGroupHeader = groupBy && group.key !== '__all__';
                 const groupContent: React.ReactNode[] = [];
@@ -447,7 +474,6 @@ export function DataTable<T>({
               })}
             </TableBody>
           </Table>
-        </div>
       )}
     </div>
   );
