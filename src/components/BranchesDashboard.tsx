@@ -124,7 +124,7 @@ function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
   return (
     <span
       className={cn(
-        'px-1.5 py-0.5 text-xs rounded border capitalize whitespace-nowrap',
+        'px-1.5 py-0.5 text-sm rounded border capitalize whitespace-nowrap',
         statusStyles[branch.sessionStatus] || 'bg-surface-2 text-muted-foreground'
       )}
     >
