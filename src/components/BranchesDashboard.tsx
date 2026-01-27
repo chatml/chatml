@@ -337,19 +337,14 @@ export function BranchesDashboard({
   // Define columns for the data table
   const columns: Column<BranchDTO>[] = useMemo(() => [
     {
-      id: 'icon',
-      header: '',
-      cell: (branch) => (
-        <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
-      ),
-      width: '40px',
-    },
-    {
       id: 'name',
       header: 'Branch',
       accessorKey: 'name',
       cell: (branch) => (
-        <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+        <div className="flex items-center gap-1.5">
+          <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+          <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+        </div>
       ),
       sortable: true,
       // No width = flexible, will truncate
