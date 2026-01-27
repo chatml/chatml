@@ -157,7 +157,7 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
         return (
           <span
             key={label.name}
-            className="text-xs px-1.5 py-0.5 rounded shrink-0 font-medium whitespace-nowrap"
+            className="text-sm px-1.5 py-0.5 rounded shrink-0 font-medium whitespace-nowrap"
             style={{
               backgroundColor: labelStyles.backgroundColor,
               color: labelStyles.color,
