@@ -92,27 +92,28 @@ export function MonacoEditor({
   useEffect(() => {
     return () => {
       if (editorRef.current && onStateChange) {
-        const position = editorRef.current.getPosition();
-        const scrollPosition = editorRef.current.getScrollTop();
-        const scrollLeft = editorRef.current.getScrollLeft();
+        try {
+          const position = editorRef.current.getPosition();
+          const scrollPosition = editorRef.current.getScrollTop();
+          const scrollLeft = editorRef.current.getScrollLeft();
 
-        onStateChange({
-          cursorPosition: position
-            ? { line: position.lineNumber, column: position.column }
-            : undefined,
-          scrollPosition: { top: scrollPosition, left: scrollLeft },
-        });
+          onStateChange({
+            cursorPosition: position
+              ? { line: position.lineNumber, column: position.column }
+              : undefined,
+            scrollPosition: { top: scrollPosition, left: scrollLeft },
+          });
+        } catch {
+          // Editor may be disposed during StrictMode double-mount
+        }
       }
     };
   }, [onStateChange]);
 
-  // Dispose editor on unmount to prevent memory leaks
+  // Clear ref on unmount (disposal is handled by @monaco-editor/react)
   useEffect(() => {
     return () => {
-      if (editorRef.current) {
-        editorRef.current.dispose();
-        editorRef.current = null;
-      }
+      editorRef.current = null;
     };
   }, []);
 
@@ -305,17 +306,15 @@ export function MonacoDiffEditor({
     }
   }, [comments]);
 
-  // Dispose editor and comment manager on unmount to prevent memory leaks
+  // Dispose comment manager and clear ref on unmount
+  // (editor disposal is handled by @monaco-editor/react)
   useEffect(() => {
     return () => {
       if (commentZoneManagerRef.current) {
         commentZoneManagerRef.current.dispose();
         commentZoneManagerRef.current = null;
       }
-      if (editorRef.current) {
-        editorRef.current.dispose();
-        editorRef.current = null;
-      }
+      editorRef.current = null;
     };
   }, []);
 
