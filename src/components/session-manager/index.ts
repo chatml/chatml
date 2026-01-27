@@ -1,5 +1,4 @@
 export { SessionManager } from './SessionManager';
 export { SessionManagerSidebar } from './SessionManagerSidebar';
-export { SessionsListView } from './SessionsListView';
-export { SessionRow } from './SessionRow';
+export { SessionsDataTable } from './SessionsDataTable';
 export { WorkspaceTreeItem } from './WorkspaceTreeItem';

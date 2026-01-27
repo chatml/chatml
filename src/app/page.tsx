@@ -1197,10 +1197,6 @@ export default function Home() {
         {contentView.type === 'session-manager' && (
           <div className="absolute inset-0 z-20 bg-background">
             <SessionManager
-              onOpenSettings={() => setShowSettings(true)}
-              onOpenShortcuts={() => setShowShortcuts(true)}
-              onOpenProject={handleOpenProject}
-              onCloneFromUrl={() => setShowCloneFromUrl(true)}
               onClose={() => setContentView({ type: 'conversation' })}
             />
           </div>
