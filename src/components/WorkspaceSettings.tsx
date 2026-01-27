@@ -57,7 +57,7 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
   }
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-full bg-content-background">
       {/* Left Sidebar */}
       <div className="w-56 border-r bg-sidebar flex flex-col">
         {/* Back button - with padding for macOS traffic lights */}

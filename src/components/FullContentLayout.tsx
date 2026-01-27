@@ -41,7 +41,7 @@ export function FullContentLayout({
   const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-content-background">
       {/* Header */}
       <div
         data-tauri-drag-region

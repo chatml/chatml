@@ -47,7 +47,7 @@ export function EmptyView({
       onOpenShortcuts={onOpenShortcuts}
       showLeftSidebar={showLeftSidebar}
     >
-      <div className="h-full flex flex-col items-center justify-center bg-background">
+      <div className="h-full flex flex-col items-center justify-center bg-content-background">
       {/* Logo */}
       <div className="mb-12">
         <div className="relative">

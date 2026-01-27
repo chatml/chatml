@@ -78,7 +78,8 @@
   --font-mono: "MesloLGS NF", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
 
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
+  --background: oklch(0.98 0 0);
+  --content-background: oklch(1 0 0);
   --chat-background: oklch(0.98 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -134,10 +135,11 @@
   --text-info: #3b82f6;      /* blue-500 */
 
   /* Main backgrounds */
-  --background: #0f1111;           /* RGB(15,17,17) - main background */
+  --background: #090909;           /* RGB(9,9,9) - app shell background */
+  --content-background: #0f1111;   /* RGB(15,17,17) - content area background */
   --chat-background: #181818;      /* RGB(24,24,24) - chat area */
   --foreground: oklch(0.9 0 0);             /* ~#e5e5e5 - bright text */
-  --card: #0f1111;                          /* Cards match background */
+  --card: #0f1111;                          /* Cards match content background */
   --card-foreground: oklch(0.9 0 0);
   --popover: oklch(0.14 0 0);               /* Slightly elevated for menus */
   --popover-foreground: oklch(0.9 0 0);
@@ -185,8 +187,8 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  /* Sidebar - Same as main background #0f1111 */
-  --sidebar: #0f1111;                       /* Same as main */
+  /* Sidebar - Matches main background */
+  --sidebar: #090909;                       /* Same as --background */
   --sidebar-foreground: oklch(0.75 0 0);    /* Slightly dimmer text */
   --sidebar-primary: oklch(0.55 0.12 280);
   --sidebar-primary-foreground: oklch(0.98 0 0);
@@ -198,6 +200,7 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-content-background: var(--content-background);
   --color-chat-background: var(--chat-background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

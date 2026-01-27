@@ -357,6 +357,32 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         )}
       </div>
 
+      {/* Global Navigation */}
+      <div className="px-3 py-2 border-b border-border/50">
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'global-dashboard'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={() => setContentView({ type: 'global-dashboard' })}
+        >
+          <LayoutDashboard className={cn(
+            "w-4 h-4",
+            contentView.type === 'global-dashboard' ? "text-blue-400" : "text-blue-400/70"
+          )} />
+          <span className={cn(
+            "text-[length:var(--text-base)] font-medium",
+            contentView.type === 'global-dashboard'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Dashboard
+          </span>
+        </div>
+      </div>
+
       {/* Workspace List */}
       <ScrollArea className="flex-1 min-h-0 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
             <div className="py-2 pl-1 pr-2 flex flex-col">
@@ -432,11 +458,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
                         onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
-                        onOpenDashboard={() => {
-                          selectWorkspace(workspace.id);
-                          selectSession(null);
-                          setContentView({ type: 'workspace-dashboard', workspaceId: workspace.id });
-                        }}
                         onOpenBranches={() => {
                           selectWorkspace(workspace.id);
                           selectSession(null);
@@ -602,7 +623,6 @@ interface SortableWorkspaceItemProps {
   onArchiveSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
   onRemoveWorkspace: () => void;
-  onOpenDashboard: () => void;
   onOpenBranches: () => void;
   onOpenPRs: () => void;
   onOpenWorkspaceSettings: () => void;
@@ -623,7 +643,6 @@ function SortableWorkspaceItem({
   onArchiveSession,
   onPinSession,
   onRemoveWorkspace,
-  onOpenDashboard,
   onOpenBranches,
   onOpenPRs,
   onOpenWorkspaceSettings,
@@ -653,7 +672,7 @@ function SortableWorkspaceItem({
         <CollapsibleTrigger asChild>
           <div
             className={cn(
-              'group flex items-center gap-1.5 px-1 py-1.5 rounded-md cursor-pointer',
+              'group flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-md cursor-pointer',
               'hover:bg-surface-1 transition-colors',
               isDragging && 'bg-surface-2'
             )}
@@ -733,37 +752,14 @@ function SortableWorkspaceItem({
 
         {/* Workspace Navigation + Sessions */}
         <CollapsibleContent>
-          <div className="ml-2 overflow-hidden">
+          <div className="ml-3 overflow-hidden">
             {/* Fixed Navigation Items - less indented than sessions */}
             <div className="pb-1">
               {(() => {
-                const isDashboardSelected = contentView.type === 'workspace-dashboard' && contentView.workspaceId === workspace.id;
                 const isBranchesSelected = contentView.type === 'branches' && contentView.workspaceId === workspace.id;
                 const isPRsSelected = contentView.type === 'pr-dashboard' && contentView.workspaceId === workspace.id;
                 return (
                   <>
-                    <div
-                      className={cn(
-                        "group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer",
-                        isDashboardSelected
-                          ? "bg-surface-2 text-foreground"
-                          : "hover:bg-surface-1"
-                      )}
-                      onClick={onOpenDashboard}
-                    >
-                      <LayoutDashboard className={cn(
-                        "w-3.5 h-3.5",
-                        isDashboardSelected ? "text-blue-400" : "text-blue-400/70"
-                      )} />
-                      <span className={cn(
-                        "text-[length:var(--text-base)] font-medium",
-                        isDashboardSelected
-                          ? "text-foreground"
-                          : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        Dashboard
-                      </span>
-                    </div>
                     <div
                       className={cn(
                         "group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer",
