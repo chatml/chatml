@@ -191,9 +191,6 @@ export function BranchesDashboard({
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showRemote, setShowRemote] = useState(true);
-  const [page, setPage] = useState(0);
-
-  const PAGE_SIZE = 50;
 
   const workspaces = useAppStore((s) => s.workspaces);
   const selectWorkspace = useAppStore((s) => s.selectWorkspace);
@@ -214,8 +211,6 @@ export function BranchesDashboard({
     try {
       const data = await listBranches(workspaceId, {
         includeRemote: showRemote,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
         search: searchTerm || undefined,
         sortBy: 'date',
       });
@@ -226,7 +221,7 @@ export function BranchesDashboard({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [workspaceId, showRemote, page, searchTerm]);
+  }, [workspaceId, showRemote, searchTerm]);
 
   // Initial fetch and auto-refresh
   useEffect(() => {
@@ -239,11 +234,6 @@ export function BranchesDashboard({
 
     return () => clearInterval(interval);
   }, [fetchBranches]);
-
-  // Reset page when search or remote filter changes
-  useEffect(() => {
-    setPage(0);
-  }, [searchTerm, showRemote]);
 
   const handleRefresh = () => {
     fetchBranches(true);
@@ -406,9 +396,6 @@ export function BranchesDashboard({
     }
   }, [handleJumpToSession]);
 
-  // Calculate total pages
-  const totalPages = branchData ? Math.ceil(branchData.total / PAGE_SIZE) : 0;
-
   return (
     <FullContentLayout
       title={
@@ -507,36 +494,6 @@ export function BranchesDashboard({
                 </div>
               }
             />
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-4 mt-4 border-t border-border/30">
-                <span className="text-sm text-muted-foreground">
-                  Showing {page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, branchData.total)} of {branchData.total}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    disabled={page === 0}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {page + 1} / {totalPages}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                    disabled={page >= totalPages - 1}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
