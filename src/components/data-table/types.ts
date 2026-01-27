@@ -214,6 +214,10 @@ export interface DataTableRowProps<T> {
   onClick?: () => void;
   /** Row double-click handler */
   onDoubleClick?: () => void;
+  /** Mouse enter handler for hover tracking */
+  onMouseEnter?: () => void;
+  /** Mouse leave handler for hover tracking */
+  onMouseLeave?: () => void;
   /** Context menu items */
   contextMenuItems?: ContextMenuItem[];
   /** Whether selection is enabled */

@@ -13,6 +13,8 @@ interface UseDataTableKeyboardProps {
   onFocusChange: (index: number) => void;
   /** Toggle selection for focused row */
   onToggleSelection: () => void;
+  /** Toggle selection for hovered row (X key) */
+  onToggleHoveredSelection?: () => void;
   /** Select all rows */
   onSelectAll: () => void;
   /** Clear selection */
@@ -47,6 +49,7 @@ export function useDataTableKeyboard({
   focusedIndex,
   onFocusChange,
   onToggleSelection,
+  onToggleHoveredSelection,
   onSelectAll,
   onClearSelection,
   onAction,
@@ -143,9 +146,13 @@ export function useDataTableKeyboard({
 
         case 'x':
         case 'X':
-          // Toggle selection (Linear-style)
+          // Toggle selection for hovered row (Linear-style)
           e.preventDefault();
-          onToggleSelection();
+          if (onToggleHoveredSelection) {
+            onToggleHoveredSelection();
+          } else {
+            onToggleSelection();
+          }
           break;
 
         case ' ':
@@ -198,6 +205,7 @@ export function useDataTableKeyboard({
       moveToLast,
       onAction,
       onToggleSelection,
+      onToggleHoveredSelection,
       onSelectAll,
       onClearSelection,
       onOpenFilter,

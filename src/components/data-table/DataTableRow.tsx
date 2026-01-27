@@ -55,6 +55,8 @@ function DataTableRowComponent<T>(
     onToggleSelect,
     onClick,
     onDoubleClick,
+    onMouseEnter,
+    onMouseLeave,
     contextMenuItems,
     selectable,
     visibleColumns,
@@ -105,6 +107,8 @@ function DataTableRowComponent<T>(
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       tabIndex={isFocused ? 0 : -1}
     >
       {/* Selection checkbox column - Linear style */}

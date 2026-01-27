@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
@@ -185,6 +185,7 @@ export function DataTable<T>({
   const [internalSortBy, setInternalSortBy] = useState<SortConfig | null>(initialSortBy ?? null);
   const [internalSearchValue, setInternalSearchValue] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({
     // '__none__' means no grouping (flat list), null means use prop-based grouping
     groupBy: '__none__',
@@ -289,6 +290,11 @@ export function DataTable<T>({
       if (focusedIndex >= 0 && focusedIndex < visibleRows.length) {
         const rowId = getRowId(visibleRows[focusedIndex].row);
         selection.toggleSelection(rowId);
+      }
+    },
+    onToggleHoveredSelection: () => {
+      if (hoveredRowId) {
+        selection.toggleSelection(hoveredRowId);
       }
     },
     onSelectAll: selection.selectAll,
@@ -487,6 +493,8 @@ export function DataTable<T>({
                         onToggleSelect={() => selection.toggleSelection(rowId)}
                         onClick={() => onRowClick?.(row)}
                         onDoubleClick={() => onRowDoubleClick?.(row)}
+                        onMouseEnter={() => setHoveredRowId(rowId)}
+                        onMouseLeave={() => setHoveredRowId(null)}
                         contextMenuItems={contextItems}
                         selectable={selectable}
                       />
