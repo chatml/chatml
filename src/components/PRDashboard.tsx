@@ -220,7 +220,7 @@ function getCheckStatusDisplay(status: string, conclusion: string) {
 // Checks cell component with hover popover
 function ChecksCell({ pr }: { pr: PRWithStatus }) {
   if (pr.checksTotal === 0) {
-    return <span className="text-xs text-muted-foreground">No checks</span>;
+    return <span className="text-sm text-muted-foreground">No checks</span>;
   }
 
   const hasFailures = pr.checksFailed > 0;
@@ -256,9 +256,9 @@ function ChecksCell({ pr }: { pr: PRWithStatus }) {
       <HoverCardTrigger asChild>
         <button
           type="button"
-          className={cn('flex items-center gap-1 text-xs cursor-pointer hover:underline underline-offset-2', color)}
+          className={cn('flex items-center gap-1.5 text-sm cursor-pointer hover:underline underline-offset-2', color)}
         >
-          <Icon className="h-3 w-3" />
+          <Icon className="h-4 w-4" />
           {text}
         </button>
       </HoverCardTrigger>
