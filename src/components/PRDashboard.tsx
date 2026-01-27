@@ -516,6 +516,7 @@ export function PRDashboard({
       accessorKey: 'sessionName',
       cell: (pr) => <SessionCell pr={pr} />,
       width: '120px',
+      hidden: true,
     },
     {
       id: 'repository',
