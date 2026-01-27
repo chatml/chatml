@@ -196,6 +196,19 @@ export function PRCard({ pr, onJumpToSession, onSendMessage, isSendingMessage }:
                   {pr.sessionName}
                 </span>
               )}
+              {pr.labels?.map((label) => (
+                <span
+                  key={label.name}
+                  className="text-xs px-1.5 py-0.5 rounded shrink-0 font-medium"
+                  style={{
+                    backgroundColor: `#${label.color}20`,
+                    color: `#${label.color}`,
+                    border: `1px solid #${label.color}40`,
+                  }}
+                >
+                  {label.name}
+                </span>
+              ))}
             </div>
 
             {/* Second row: Branch info, conflicts indicator */}

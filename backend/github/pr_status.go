@@ -229,15 +229,22 @@ func (c *Client) GetPRDetailsBatch(ctx context.Context, owner, repo string, prNu
 	return results, failedPRs
 }
 
+// PRLabel represents a label on a pull request
+type PRLabel struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
 // PRListItem represents a pull request in a list response
 type PRListItem struct {
-	Number  int    `json:"number"`
-	State   string `json:"state"`
-	Title   string `json:"title"`
-	HTMLURL string `json:"htmlUrl"`
-	IsDraft bool   `json:"isDraft"`
-	Branch  string `json:"branch"`
-	HeadSHA string `json:"headSha"`
+	Number  int       `json:"number"`
+	State   string    `json:"state"`
+	Title   string    `json:"title"`
+	HTMLURL string    `json:"htmlUrl"`
+	IsDraft bool      `json:"isDraft"`
+	Branch  string    `json:"branch"`
+	HeadSHA string    `json:"headSha"`
+	Labels  []PRLabel `json:"labels"`
 }
 
 // githubPRListItem represents a PR in the GitHub API list response
@@ -251,6 +258,10 @@ type githubPRListItem struct {
 		Ref string `json:"ref"`
 		SHA string `json:"sha"`
 	} `json:"head"`
+	Labels []struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	} `json:"labels"`
 }
 
 // ListOpenPRs lists all open pull requests for a repository
@@ -288,6 +299,13 @@ func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListI
 
 	prs := make([]PRListItem, len(ghPRs))
 	for i, pr := range ghPRs {
+		labels := make([]PRLabel, len(pr.Labels))
+		for j, label := range pr.Labels {
+			labels[j] = PRLabel{
+				Name:  label.Name,
+				Color: label.Color,
+			}
+		}
 		prs[i] = PRListItem{
 			Number:  pr.Number,
 			State:   pr.State,
@@ -296,6 +314,7 @@ func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListI
 			IsDraft: pr.Draft,
 			Branch:  pr.Head.Ref,
 			HeadSHA: pr.Head.SHA,
+			Labels:  labels,
 		}
 	}
 
