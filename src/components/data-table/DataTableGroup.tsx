@@ -2,7 +2,13 @@
 
 import { ChevronRight } from 'lucide-react';
 import { TableRow, TableCell } from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import type { DataTableGroupProps } from './types';
 
@@ -12,13 +18,12 @@ export function DataTableGroup({
   count,
   isCollapsed,
   onToggle,
+  onCollapseAll,
   colSpan,
   selectable,
-  allSelected,
-  someSelected,
   onSelectAll,
 }: DataTableGroupProps) {
-  return (
+  const rowContent = (
     <TableRow
       className="bg-surface-1 hover:bg-surface-2 border-y border-border/30 cursor-pointer select-none"
       onClick={onToggle}
@@ -28,26 +33,6 @@ export function DataTableGroup({
         className="py-2 px-2"
       >
         <div className="flex items-center gap-1.5">
-          {/* Checkbox for group selection */}
-          {selectable && (
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectAll?.();
-              }}
-              className="flex items-center"
-            >
-              <Checkbox
-                checked={allSelected}
-                className={cn(
-                  'h-3.5 w-3.5',
-                  someSelected && !allSelected && 'data-[state=checked]:bg-primary/50'
-                )}
-                aria-label={`Select all in ${label}`}
-              />
-            </div>
-          )}
-
           {/* Expand/collapse icon */}
           <ChevronRight
             className={cn(
@@ -69,6 +54,30 @@ export function DataTableGroup({
       </TableCell>
     </TableRow>
   );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{rowContent}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={onToggle}>
+          {isCollapsed ? 'Expand' : 'Collapse'}
+        </ContextMenuItem>
+        {onCollapseAll && (
+          <ContextMenuItem onClick={onCollapseAll}>
+            Collapse all
+          </ContextMenuItem>
+        )}
+        {selectable && onSelectAll && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={onSelectAll}>
+              Select all in group
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 }
 
 // A simpler inline group header variant (not using table row)
@@ -78,11 +87,7 @@ export function DataTableGroupHeader({
   count,
   isCollapsed,
   onToggle,
-  selectable,
-  allSelected,
-  someSelected,
-  onSelectAll,
-}: Omit<DataTableGroupProps, 'colSpan'>) {
+}: Omit<DataTableGroupProps, 'colSpan' | 'selectable' | 'allSelected' | 'someSelected' | 'onSelectAll' | 'onCollapseAll'>) {
   return (
     <button
       type="button"
@@ -93,26 +98,6 @@ export function DataTableGroupHeader({
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
       )}
     >
-      {/* Checkbox for group selection */}
-      {selectable && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelectAll?.();
-          }}
-          className="flex items-center"
-        >
-          <Checkbox
-            checked={allSelected}
-            className={cn(
-              'h-3.5 w-3.5',
-              someSelected && !allSelected && 'opacity-50'
-            )}
-            aria-label={`Select all in ${label}`}
-          />
-        </div>
-      )}
-
       {/* Expand/collapse icon */}
       <ChevronRight
         className={cn(

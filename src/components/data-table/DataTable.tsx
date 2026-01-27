@@ -294,6 +294,11 @@ export function DataTable<T>({
     });
   }, []);
 
+  // Collapse all groups
+  const collapseAllGroups = useCallback(() => {
+    setCollapsedGroups(new Set(groupedData.map((g) => g.key)));
+  }, [groupedData]);
+
   // Handle display options change
   const handleDisplayChange = useCallback((newOptions: DisplayOptions) => {
     setDisplayOptions(newOptions);
@@ -433,10 +438,9 @@ export function DataTable<T>({
                       count={group.rows.length}
                       isCollapsed={group.collapsed}
                       onToggle={() => toggleGroupCollapse(group.key)}
+                      onCollapseAll={collapseAllGroups}
                       colSpan={columnCount}
                       selectable={selectable}
-                      allSelected={selection.isGroupAllSelected(group.key)}
-                      someSelected={selection.isGroupSomeSelected(group.key)}
                       onSelectAll={() => selection.selectAllInGroup(group.key)}
                     />
                   );

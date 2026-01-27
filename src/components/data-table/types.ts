@@ -234,6 +234,8 @@ export interface DataTableGroupProps {
   isCollapsed: boolean;
   /** Toggle collapse handler */
   onToggle: () => void;
+  /** Collapse all groups handler */
+  onCollapseAll?: () => void;
   /** Column span */
   colSpan: number;
   /** Whether to show selection controls */
