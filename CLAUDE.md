@@ -89,7 +89,29 @@ mcp__linear__get_issue id="CHA-123"
 
 ## Git Workflow
 
-**NEVER make changes directly on `main`.** Always create a feature branch first:
+### ⛔ CRITICAL: Never Commit to Main
+
+**NEVER make changes directly on `main`.** This is a strict rule with no exceptions.
+
+### Pre-Commit Checklist (MANDATORY)
+
+**Before EVERY commit, you MUST run:**
+
+```bash
+git branch --show-current
+```
+
+**If the output is `main` or `master`, STOP and do this:**
+
+```bash
+git stash
+git checkout -b fix/description-of-change   # or feature/
+git stash pop
+```
+
+**Only then proceed with commit.**
+
+### Branch Naming
 
 ```bash
 git checkout -b fix/description-of-change
@@ -97,7 +119,16 @@ git checkout -b fix/description-of-change
 git checkout -b feature/description-of-change
 ```
 
-Then make changes, commit, push, and create a PR.
+### Workflow
+
+1. Check current branch (MANDATORY)
+2. Create feature branch if on main
+3. Make changes
+4. Commit
+5. Push
+6. Create PR
+
+**Treating this like a destructive operation - always verify the branch first.**
 
 ## Verification Checklist
 
