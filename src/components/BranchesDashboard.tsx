@@ -160,7 +160,7 @@ function CommitCell({ branch }: { branch: BranchDTO }) {
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <code className="text-[11px] font-mono text-muted-foreground/70 shrink-0 whitespace-nowrap">
+      <code className="text-xs font-mono text-muted-foreground shrink-0 whitespace-nowrap">
         {branch.lastCommitSha.slice(0, 7)}
       </code>
       {branch.lastCommitSubject && (
