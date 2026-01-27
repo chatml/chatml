@@ -79,7 +79,7 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
     <div className="flex items-center gap-2 min-w-0">
       <span
         className={cn(
-          'font-medium text-sm truncate min-w-0',
+          'font-medium truncate min-w-0',
           isRemote && 'text-muted-foreground'
         )}
         title={displayName}
@@ -124,7 +124,7 @@ function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
   return (
     <span
       className={cn(
-        'px-1.5 py-0.5 text-xs rounded border capitalize whitespace-nowrap',
+        'px-1.5 py-0.5 text-sm rounded border capitalize whitespace-nowrap',
         statusStyles[branch.sessionStatus] || 'bg-surface-2 text-muted-foreground'
       )}
     >
@@ -160,7 +160,7 @@ function CommitCell({ branch }: { branch: BranchDTO }) {
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <code className="text-[11px] font-mono text-muted-foreground/70 shrink-0 whitespace-nowrap">
+      <code className="px-1.5 py-0.5 text-xs font-mono rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 whitespace-nowrap">
         {branch.lastCommitSha.slice(0, 7)}
       </code>
       {branch.lastCommitSubject && (
@@ -177,7 +177,7 @@ function DiffBadgeCell({ branch }: { branch: BranchDTO }) {
   if (branch.aheadMain === 0 && branch.behindMain === 0) return null;
 
   return (
-    <span className="flex items-center gap-1 font-mono text-[10px] whitespace-nowrap">
+    <span className="flex items-center gap-1 font-mono text-xs whitespace-nowrap">
       {branch.aheadMain > 0 && (
         <span className="text-green-500">+{branch.aheadMain}</span>
       )}
@@ -198,12 +198,12 @@ function getBranchGroupKey(branch: BranchDTO): string {
   if (branch.sessionId) {
     return 'session';
   }
-  // Otherwise use prefix or (other)
-  return branch.prefix || '(other)';
+  // Otherwise use prefix or (None)
+  return branch.prefix || '(None)';
 }
 
-// Sort group keys with preferred order
-const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'release', 'hotfix', '(other)', 'origin'];
+// Sort group keys with preferred order - (None) and origin at the end
+const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'release', 'hotfix', 'origin', '(None)'];
 
 export function BranchesDashboard({
   workspaceId,
@@ -337,19 +337,14 @@ export function BranchesDashboard({
   // Define columns for the data table
   const columns: Column<BranchDTO>[] = useMemo(() => [
     {
-      id: 'icon',
-      header: '',
-      cell: (branch) => (
-        <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
-      ),
-      width: '40px',
-    },
-    {
       id: 'name',
       header: 'Branch',
       accessorKey: 'name',
       cell: (branch) => (
-        <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+        <div className="flex items-center gap-1.5">
+          <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+          <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+        </div>
       ),
       sortable: true,
       // No width = flexible, will truncate
@@ -359,7 +354,6 @@ export function BranchesDashboard({
       header: 'Last Commit',
       accessorKey: 'lastCommitSubject',
       cell: (branch) => <CommitCell branch={branch} />,
-      hidden: true, // Hidden by default, can be enabled in display options
       // No width = flexible, will truncate
     },
     {
@@ -526,6 +520,7 @@ export function BranchesDashboard({
                 key: getBranchGroupKey,
                 sortOrder: GROUP_SORT_ORDER,
                 defaultCollapsed: ['origin'],
+                getLabel: (key) => key === '' ? '(None)' : key,
               }}
               sortBy={{ column: 'lastCommitDate', direction: 'desc' }}
               onRowClick={handleRowClick}

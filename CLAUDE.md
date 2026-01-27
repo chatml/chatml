@@ -2,6 +2,36 @@
 
 ChatML is a native macOS desktop app for AI-assisted development. It uses isolated git worktrees to run parallel AI agent sessions. Polyglot architecture: Next.js frontend, Go backend, Tauri wrapper, Node.js agent runner.
 
+## Task Management (MANDATORY)
+
+**Before starting any work, ALWAYS create a task list using TaskCreate.** This provides visibility into what you're doing.
+
+### When to Create Tasks
+
+- ANY request that involves code changes
+- ANY request with multiple steps
+- Even "simple" styling changes (they often cascade)
+
+### Task Workflow
+
+1. **Analyze the request** - Break it down into discrete steps
+2. **Create tasks** - Use `TaskCreate` for each step with clear `subject` and `activeForm`
+3. **Work sequentially** - Update task to `in_progress` before starting, `completed` when done
+4. **Add discovered tasks** - If you find additional work needed, create new tasks
+
+### Example
+
+User: "Make the font larger and add a blue pill style"
+
+```
+TaskCreate: "Increase font size" (activeForm: "Increasing font size")
+TaskCreate: "Add blue pill styling" (activeForm: "Adding blue pill styling")
+```
+
+Then work through each task, updating status as you go.
+
+**This is not optional.** The user needs visibility into your progress.
+
 ## Tech Stack & Directory Structure
 
 | Directory | Tech | Purpose |
@@ -89,7 +119,29 @@ mcp__linear__get_issue id="CHA-123"
 
 ## Git Workflow
 
-**NEVER make changes directly on `main`.** Always create a feature branch first:
+### ⛔ CRITICAL: Never Commit to Main
+
+**NEVER make changes directly on `main`.** This is a strict rule with no exceptions.
+
+### Pre-Commit Checklist (MANDATORY)
+
+**Before EVERY commit, you MUST run:**
+
+```bash
+git branch --show-current
+```
+
+**If the output is `main` or `master`, STOP and do this:**
+
+```bash
+git stash
+git checkout -b fix/description-of-change   # or feature/
+git stash pop
+```
+
+**Only then proceed with commit.**
+
+### Branch Naming
 
 ```bash
 git checkout -b fix/description-of-change
@@ -97,7 +149,16 @@ git checkout -b fix/description-of-change
 git checkout -b feature/description-of-change
 ```
 
-Then make changes, commit, push, and create a PR.
+### Workflow
+
+1. Check current branch (MANDATORY)
+2. Create feature branch if on main
+3. Make changes
+4. Commit
+5. Push
+6. Create PR
+
+**Treating this like a destructive operation - always verify the branch first.**
 
 ## Verification Checklist
 

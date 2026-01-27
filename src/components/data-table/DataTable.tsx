@@ -55,7 +55,12 @@ function groupRows<T>(
       return a.localeCompare(b);
     });
   } else {
-    sortedKeys.sort((a, b) => a.localeCompare(b));
+    // Sort alphabetically, but empty strings go last
+    sortedKeys.sort((a, b) => {
+      if (a === '' && b !== '') return 1;
+      if (b === '' && a !== '') return -1;
+      return a.localeCompare(b);
+    });
   }
 
   return sortedKeys.map((key) => ({
@@ -181,6 +186,7 @@ export function DataTable<T>({
   searchValue: controlledSearchValue,
   onSearchChange,
   className,
+  toolbarLeftContent,
 }: DataTableProps<T>) {
   // Internal state
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -231,10 +237,10 @@ export function DataTable<T>({
       return null;
     }
     // User selected a specific grouping field
+    // Don't use sortOrder for user-selected groupings - sort alphabetically instead
     if (displayOptions.groupBy) {
       return {
         key: displayOptions.groupBy as keyof T,
-        sortOrder: groupBy?.sortOrder,
         defaultCollapsed: groupBy?.defaultCollapsed,
         getLabel: groupBy?.getLabel,
         getIcon: groupBy?.getIcon,
@@ -380,6 +386,7 @@ export function DataTable<T>({
           bulkActions={bulkActions}
           selectedIds={selection.selectedIds}
           onClearSelection={selection.clearSelection}
+          leftContent={toolbarLeftContent}
         />
       )}
 
