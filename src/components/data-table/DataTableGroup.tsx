@@ -42,12 +42,12 @@ export function DataTableGroup({
           />
 
           {/* Group label */}
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm font-medium text-foreground">
             {label}
           </span>
 
           {/* Count */}
-          <span className="text-xs text-muted-foreground/60 tabular-nums">
+          <span className="text-sm font-medium text-foreground/50 tabular-nums">
             {count}
           </span>
         </div>
@@ -107,12 +107,12 @@ export function DataTableGroupHeader({
       />
 
       {/* Group label */}
-      <span className="text-sm text-muted-foreground">
+      <span className="text-sm font-medium text-foreground">
         {label}
       </span>
 
       {/* Count */}
-      <span className="text-xs text-muted-foreground/60 tabular-nums">
+      <span className="text-sm font-medium text-foreground/50 tabular-nums">
         {count}
       </span>
     </button>
