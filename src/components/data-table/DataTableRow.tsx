@@ -122,8 +122,8 @@ function DataTableRowComponent<T>(
             checked={isSelected}
             className={cn(
               'h-3.5 w-3.5 transition-all',
-              // Default: invisible
-              !isSelected && !isCheckboxHovered && 'opacity-0 group-hover:opacity-30',
+              // Default: invisible, slightly visible on row hover
+              !isSelected && !isCheckboxHovered && 'opacity-0 group-hover:opacity-50',
               // Checkbox cell hover: highlighted
               !isSelected && isCheckboxHovered && 'opacity-100 border-primary',
               // Selected: normal visibility
@@ -250,7 +250,7 @@ export function DataTableSimpleRow<T>({
             checked={isSelected}
             className={cn(
               'h-3.5 w-3.5 transition-all',
-              !isSelected && !isCheckboxHovered && 'opacity-0 group-hover:opacity-30',
+              !isSelected && !isCheckboxHovered && 'opacity-0 group-hover:opacity-50',
               !isSelected && isCheckboxHovered && 'opacity-100 border-primary',
               isSelected && 'opacity-100'
             )}
