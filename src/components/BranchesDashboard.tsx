@@ -466,7 +466,7 @@ export function BranchesDashboard({
         </div>
       }
     >
-      <div className="px-4 pt-2 pb-4">
+      <div className="pt-2 pb-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
