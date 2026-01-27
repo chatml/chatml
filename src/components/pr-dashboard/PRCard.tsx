@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useTheme } from 'next-themes';
 import { type PRDashboardItem } from '@/lib/api';
 import { CheckList } from './CheckList';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/tauri';
+import { getLabelStyles } from '@/lib/label-colors';
 import {
   Tooltip,
   TooltipContent,
@@ -55,6 +57,8 @@ interface PRCardProps {
 
 export function PRCard({ pr, onJumpToSession, onSendMessage, isSendingMessage }: PRCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
 
   const hasChecks = pr.checksTotal > 0;
   const hasFailures = pr.checksFailed > 0;
@@ -196,19 +200,22 @@ export function PRCard({ pr, onJumpToSession, onSendMessage, isSendingMessage }:
                   {pr.sessionName}
                 </span>
               )}
-              {pr.labels?.map((label) => (
-                <span
-                  key={label.name}
-                  className="text-xs px-1.5 py-0.5 rounded shrink-0 font-medium"
-                  style={{
-                    backgroundColor: `#${label.color}20`,
-                    color: `#${label.color}`,
-                    border: `1px solid #${label.color}40`,
-                  }}
-                >
-                  {label.name}
-                </span>
-              ))}
+              {pr.labels?.map((label) => {
+                const labelStyles = getLabelStyles(label.color, isDark);
+                return (
+                  <span
+                    key={label.name}
+                    className="text-xs px-1.5 py-0.5 rounded shrink-0 font-medium"
+                    style={{
+                      backgroundColor: labelStyles.backgroundColor,
+                      color: labelStyles.color,
+                      border: `1px solid ${labelStyles.borderColor}`,
+                    }}
+                  >
+                    {label.name}
+                  </span>
+                );
+              })}
             </div>
 
             {/* Second row: Branch info, conflicts indicator */}
