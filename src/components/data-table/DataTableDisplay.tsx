@@ -45,8 +45,16 @@ export function DataTableDisplay({
 
   // Set grouping
   const setGroupBy = (value: string) => {
-    // Use '__none__' to explicitly mean "no grouping" (distinct from null which means "use default")
-    onChange({ ...options, groupBy: value === 'none' ? '__none__' : value });
+    // 'default' = null (use prop-based grouping)
+    // 'none' = '__none__' (no grouping)
+    // other = use that field as grouping key
+    if (value === 'default') {
+      onChange({ ...options, groupBy: null });
+    } else if (value === 'none') {
+      onChange({ ...options, groupBy: '__none__' });
+    } else {
+      onChange({ ...options, groupBy: value });
+    }
   };
 
   // Set sort column
@@ -112,13 +120,14 @@ export function DataTableDisplay({
                 <span>Grouping</span>
               </div>
               <Select
-                value={options.groupBy === '__none__' ? 'none' : (options.groupBy ?? 'none')}
+                value={options.groupBy === '__none__' ? 'none' : (options.groupBy ?? 'default')}
                 onValueChange={setGroupBy}
               >
                 <SelectTrigger className="w-[160px] h-8 text-[13px] bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
                   <SelectValue placeholder="No grouping" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="default">Default</SelectItem>
                   <SelectItem value="none">No grouping</SelectItem>
                   {config.groupingOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
