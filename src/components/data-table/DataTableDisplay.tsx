@@ -100,14 +100,14 @@ export function DataTableDisplay({
       <PopoverContent
         align="end"
         sideOffset={4}
-        className="w-[340px] p-0 bg-[#141419] border-[#2a2a3c] rounded-lg shadow-xl"
+        className="w-[340px] p-0"
       >
         {/* Grouping & Ordering section */}
         <div className="px-4 py-3 space-y-3">
           {/* Grouping */}
           {config.groupingOptions.length > 0 && (
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-[13px] text-[#8b8b9e]">
+              <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
                 <Layers className="h-4 w-4" />
                 <span>Grouping</span>
               </div>
@@ -115,10 +115,10 @@ export function DataTableDisplay({
                 value={options.groupBy === '__none__' ? 'none' : (options.groupBy ?? 'none')}
                 onValueChange={setGroupBy}
               >
-                <SelectTrigger className="w-[160px] h-8 text-[13px] bg-[#1e1e28] border-[#2a2a3c] rounded-md hover:bg-[#252530]">
+                <SelectTrigger className="w-[160px] h-8 text-[13px] bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
                   <SelectValue placeholder="No grouping" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#1e1e28] border-[#2a2a3c]">
+                <SelectContent>
                   <SelectItem value="none">No grouping</SelectItem>
                   {config.groupingOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
@@ -133,7 +133,7 @@ export function DataTableDisplay({
           {/* Ordering */}
           {config.sortingOptions.length > 0 && (
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-[13px] text-[#8b8b9e]">
+              <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
                 <ArrowUpDown className="h-4 w-4" />
                 <span>Ordering</span>
               </div>
@@ -142,10 +142,10 @@ export function DataTableDisplay({
                   value={options.sortBy?.column ?? 'none'}
                   onValueChange={setSortColumn}
                 >
-                  <SelectTrigger className="w-[120px] h-8 text-[13px] bg-[#1e1e28] border-[#2a2a3c] rounded-md hover:bg-[#252530]">
+                  <SelectTrigger className="w-[120px] h-8 text-[13px] bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
                     <SelectValue placeholder="Default" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1e1e28] border-[#2a2a3c]">
+                  <SelectContent>
                     <SelectItem value="none">Default</SelectItem>
                     {config.sortingOptions.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
@@ -161,8 +161,8 @@ export function DataTableDisplay({
                   className={cn(
                     'flex items-center justify-center h-8 w-8 rounded-md border transition-colors',
                     options.sortBy
-                      ? 'bg-[#1e1e28] border-[#2a2a3c] text-[#e0e0e8] hover:bg-[#252530]'
-                      : 'bg-[#1e1e28]/50 border-[#2a2a3c]/50 text-[#8b8b9e]/50 cursor-not-allowed'
+                      ? 'bg-surface-2 border-border/50 text-foreground hover:bg-surface-2/80'
+                      : 'bg-surface-2/50 border-border/30 text-muted-foreground/50 cursor-not-allowed'
                   )}
                   title={options.sortBy?.direction === 'asc' ? 'Ascending' : 'Descending'}
                 >
@@ -179,20 +179,20 @@ export function DataTableDisplay({
         </div>
 
         {/* Separator */}
-        <div className="h-px bg-[#2a2a3c]" />
+        <div className="h-px bg-border/50" />
 
         {/* List options section */}
         <div className="px-4 py-3 space-y-3">
-          <div className="text-[11px] font-medium text-[#6b6b7b] uppercase tracking-wide">
+          <div className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
             List options
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[13px] text-[#e0e0e8]">Show empty groups</span>
+            <span className="text-[13px] text-foreground">Show empty groups</span>
             <Switch
               checked={options.showEmptyGroups}
               onCheckedChange={toggleShowEmptyGroups}
               disabled={options.groupBy === '__none__'}
-              className="data-[state=checked]:bg-[#5e5ce6] data-[state=unchecked]:bg-[#2a2a3c]"
+              className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-surface-2"
             />
           </div>
         </div>
@@ -201,10 +201,10 @@ export function DataTableDisplay({
         {config.toggleableColumns.length > 0 && (
           <>
             {/* Separator */}
-            <div className="h-px bg-[#2a2a3c]" />
+            <div className="h-px bg-border/50" />
 
             <div className="px-4 py-3 space-y-3">
-              <div className="text-[11px] font-medium text-[#6b6b7b] uppercase tracking-wide">
+              <div className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
                 Display properties
               </div>
               <div className="flex flex-wrap gap-2">
@@ -218,8 +218,8 @@ export function DataTableDisplay({
                       className={cn(
                         'px-2.5 py-1 text-[13px] rounded-md border transition-all',
                         isActive
-                          ? 'bg-[#252530] border-[#3a3a4c] text-[#e0e0e8]'
-                          : 'bg-transparent border-[#2a2a3c] text-[#6b6b7b] hover:border-[#3a3a4c] hover:text-[#8b8b9e]'
+                          ? 'bg-surface-2 border-border/70 text-foreground'
+                          : 'bg-transparent border-border/50 text-muted-foreground hover:border-border/70 hover:text-foreground/80'
                       )}
                     >
                       {col.label}
