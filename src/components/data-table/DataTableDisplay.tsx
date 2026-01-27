@@ -1,25 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  SlidersHorizontal,
-  Layers,
-  ArrowUpDown,
-  ArrowDownWideNarrow,
-  Check,
-  Eye,
-} from 'lucide-react';
+import { SlidersHorizontal, Layers, ArrowUpDown, ArrowDownWideNarrow } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { DisplayOptions, DisplayOptionsConfig } from './types';
 
@@ -49,19 +45,32 @@ export function DataTableDisplay({
 
   // Set grouping
   const setGroupBy = (value: string) => {
+    // Use '__none__' to explicitly mean "no grouping" (distinct from null which means "use default")
     onChange({ ...options, groupBy: value === 'none' ? '__none__' : value });
   };
 
   // Set sort column
-  const setSortBy = (column: string, direction?: 'asc' | 'desc') => {
+  const setSortColumn = (column: string) => {
     if (column === 'none') {
       onChange({ ...options, sortBy: null });
     } else {
       onChange({
         ...options,
-        sortBy: { column, direction: direction ?? options.sortBy?.direction ?? 'desc' },
+        sortBy: { column, direction: options.sortBy?.direction ?? 'desc' },
       });
     }
+  };
+
+  // Toggle sort direction
+  const toggleSortDirection = () => {
+    if (!options.sortBy) return;
+    onChange({
+      ...options,
+      sortBy: {
+        ...options.sortBy,
+        direction: options.sortBy.direction === 'asc' ? 'desc' : 'asc',
+      },
+    });
   };
 
   // Toggle column visibility
@@ -75,269 +84,154 @@ export function DataTableDisplay({
     onChange({ ...options, visibleColumns: newVisibleColumns });
   };
 
-  // Get current grouping label
-  const currentGroupLabel = options.groupBy === '__none__' || !options.groupBy
-    ? null
-    : config.groupingOptions.find(o => o.value === options.groupBy)?.label;
-
-  // Get current sort label
-  const currentSortLabel = options.sortBy
-    ? config.sortingOptions.find(o => o.value === options.sortBy?.column)?.label
-    : null;
-
-  // Count active display customizations
-  const customizationCount = [
-    options.groupBy && options.groupBy !== '__none__',
-    options.sortBy,
-  ].filter(Boolean).length;
+  // Toggle show empty groups
+  const toggleShowEmptyGroups = () => {
+    onChange({ ...options, showEmptyGroups: !options.showEmptyGroups });
+  };
 
   return (
-    <DropdownMenu open={controlledOpen} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'h-8 gap-1.5',
-            customizationCount > 0 && 'text-primary'
-          )}
-        >
+    <Popover open={controlledOpen} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5">
           <SlidersHorizontal className="h-3.5 w-3.5" />
           Display
-          {customizationCount > 0 && (
-            <span className="rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
-              {customizationCount}
-            </span>
-          )}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[220px] p-1">
-        {/* Grouping submenu */}
-        {config.groupingOptions.length > 0 && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger
-              className={cn(
-                'px-3 py-2 text-[13px]',
-                currentGroupLabel && 'text-primary'
-              )}
-            >
-              <span className="text-muted-foreground">
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="w-[340px] p-0 bg-[#141419] border-[#2a2a3c] rounded-lg shadow-xl"
+      >
+        {/* Grouping & Ordering section */}
+        <div className="px-4 py-3 space-y-3">
+          {/* Grouping */}
+          {config.groupingOptions.length > 0 && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-[13px] text-[#8b8b9e]">
                 <Layers className="h-4 w-4" />
-              </span>
-              <span className="flex-1">Grouping</span>
-              {currentGroupLabel && (
-                <span className="text-[11px] text-primary mr-1">
-                  {currentGroupLabel}
-                </span>
-              )}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent sideOffset={-4} className="w-[180px] p-1">
-              <DropdownMenuItem
-                className="px-3 py-2 text-[13px]"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setGroupBy('none');
-                }}
+                <span>Grouping</span>
+              </div>
+              <Select
+                value={options.groupBy === '__none__' ? 'none' : (options.groupBy ?? 'none')}
+                onValueChange={setGroupBy}
               >
-                <div
-                  className={cn(
-                    'h-4 w-4 rounded border flex items-center justify-center',
-                    (!options.groupBy || options.groupBy === '__none__')
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}
-                >
-                  {(!options.groupBy || options.groupBy === '__none__') && (
-                    <Check className="h-3 w-3 text-primary-foreground" />
-                  )}
-                </div>
-                <span>No grouping</span>
-              </DropdownMenuItem>
-              {config.groupingOptions.map((opt) => {
-                const isSelected = options.groupBy === opt.value;
-                return (
-                  <DropdownMenuItem
-                    key={opt.value}
-                    className="px-3 py-2 text-[13px]"
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      setGroupBy(opt.value);
-                    }}
-                  >
-                    <div
-                      className={cn(
-                        'h-4 w-4 rounded border flex items-center justify-center',
-                        isSelected
-                          ? 'bg-primary border-primary'
-                          : 'border-border'
-                      )}
-                    >
-                      {isSelected && (
-                        <Check className="h-3 w-3 text-primary-foreground" />
-                      )}
-                    </div>
-                    <span>{opt.label}</span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
+                <SelectTrigger className="w-[160px] h-8 text-[13px] bg-[#1e1e28] border-[#2a2a3c] rounded-md hover:bg-[#252530]">
+                  <SelectValue placeholder="No grouping" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1e1e28] border-[#2a2a3c]">
+                  <SelectItem value="none">No grouping</SelectItem>
+                  {config.groupingOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-        {/* Ordering submenu */}
-        {config.sortingOptions.length > 0 && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger
-              className={cn(
-                'px-3 py-2 text-[13px]',
-                currentSortLabel && 'text-primary'
-              )}
-            >
-              <span className="text-muted-foreground">
+          {/* Ordering */}
+          {config.sortingOptions.length > 0 && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-[13px] text-[#8b8b9e]">
                 <ArrowUpDown className="h-4 w-4" />
-              </span>
-              <span className="flex-1">Ordering</span>
-              {currentSortLabel && (
-                <span className="text-[11px] text-primary mr-1 flex items-center gap-1">
-                  {currentSortLabel}
+                <span>Ordering</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Select
+                  value={options.sortBy?.column ?? 'none'}
+                  onValueChange={setSortColumn}
+                >
+                  <SelectTrigger className="w-[120px] h-8 text-[13px] bg-[#1e1e28] border-[#2a2a3c] rounded-md hover:bg-[#252530]">
+                    <SelectValue placeholder="Default" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1e1e28] border-[#2a2a3c]">
+                    <SelectItem value="none">Default</SelectItem>
+                    {config.sortingOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <button
+                  type="button"
+                  onClick={toggleSortDirection}
+                  disabled={!options.sortBy}
+                  className={cn(
+                    'flex items-center justify-center h-8 w-8 rounded-md border transition-colors',
+                    options.sortBy
+                      ? 'bg-[#1e1e28] border-[#2a2a3c] text-[#e0e0e8] hover:bg-[#252530]'
+                      : 'bg-[#1e1e28]/50 border-[#2a2a3c]/50 text-[#8b8b9e]/50 cursor-not-allowed'
+                  )}
+                  title={options.sortBy?.direction === 'asc' ? 'Ascending' : 'Descending'}
+                >
                   <ArrowDownWideNarrow
                     className={cn(
-                      'h-3 w-3',
+                      'h-4 w-4 transition-transform',
                       options.sortBy?.direction === 'asc' && 'rotate-180'
                     )}
                   />
-                </span>
-              )}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent sideOffset={-4} className="w-[180px] p-1">
-              <DropdownMenuItem
-                className="px-3 py-2 text-[13px]"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setSortBy('none');
-                }}
-              >
-                <div
-                  className={cn(
-                    'h-4 w-4 rounded border flex items-center justify-center',
-                    !options.sortBy
-                      ? 'bg-primary border-primary'
-                      : 'border-border'
-                  )}
-                >
-                  {!options.sortBy && (
-                    <Check className="h-3 w-3 text-primary-foreground" />
-                  )}
-                </div>
-                <span>Default</span>
-              </DropdownMenuItem>
-              {config.sortingOptions.map((opt) => {
-                const isSelected = options.sortBy?.column === opt.value;
-                return (
-                  <DropdownMenuItem
-                    key={opt.value}
-                    className="px-3 py-2 text-[13px]"
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      if (isSelected) {
-                        // Toggle direction if already selected
-                        setSortBy(opt.value, options.sortBy?.direction === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortBy(opt.value, 'desc');
-                      }
-                    }}
-                  >
-                    <div
-                      className={cn(
-                        'h-4 w-4 rounded border flex items-center justify-center',
-                        isSelected
-                          ? 'bg-primary border-primary'
-                          : 'border-border'
-                      )}
-                    >
-                      {isSelected && (
-                        <Check className="h-3 w-3 text-primary-foreground" />
-                      )}
-                    </div>
-                    <span className="flex-1">{opt.label}</span>
-                    {isSelected && (
-                      <ArrowDownWideNarrow
-                        className={cn(
-                          'h-3.5 w-3.5 text-muted-foreground',
-                          options.sortBy?.direction === 'asc' && 'rotate-180'
-                        )}
-                      />
-                    )}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* Columns submenu */}
+        {/* Separator */}
+        <div className="h-px bg-[#2a2a3c]" />
+
+        {/* List options section */}
+        <div className="px-4 py-3 space-y-3">
+          <div className="text-[11px] font-medium text-[#6b6b7b] uppercase tracking-wide">
+            List options
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] text-[#e0e0e8]">Show empty groups</span>
+            <Switch
+              checked={options.showEmptyGroups}
+              onCheckedChange={toggleShowEmptyGroups}
+              disabled={options.groupBy === '__none__'}
+              className="data-[state=checked]:bg-[#5e5ce6] data-[state=unchecked]:bg-[#2a2a3c]"
+            />
+          </div>
+        </div>
+
+        {/* Display properties (columns) */}
         {config.toggleableColumns.length > 0 && (
           <>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="px-3 py-2 text-[13px]">
-                <span className="text-muted-foreground">
-                  <Eye className="h-4 w-4" />
-                </span>
-                <span className="flex-1">Columns</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent sideOffset={-4} className="w-[180px] p-1">
+            {/* Separator */}
+            <div className="h-px bg-[#2a2a3c]" />
+
+            <div className="px-4 py-3 space-y-3">
+              <div className="text-[11px] font-medium text-[#6b6b7b] uppercase tracking-wide">
+                Display properties
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {config.toggleableColumns.map((col) => {
-                  const isVisible = options.visibleColumns.has(col.id);
+                  const isActive = options.visibleColumns.has(col.id);
                   return (
-                    <DropdownMenuItem
+                    <button
                       key={col.id}
-                      className="px-3 py-2 text-[13px]"
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        toggleColumn(col.id);
-                      }}
+                      type="button"
+                      onClick={() => toggleColumn(col.id)}
+                      className={cn(
+                        'px-2.5 py-1 text-[13px] rounded-md border transition-all',
+                        isActive
+                          ? 'bg-[#252530] border-[#3a3a4c] text-[#e0e0e8]'
+                          : 'bg-transparent border-[#2a2a3c] text-[#6b6b7b] hover:border-[#3a3a4c] hover:text-[#8b8b9e]'
+                      )}
                     >
-                      <div
-                        className={cn(
-                          'h-4 w-4 rounded border flex items-center justify-center',
-                          isVisible
-                            ? 'bg-primary border-primary'
-                            : 'border-border'
-                        )}
-                      >
-                        {isVisible && (
-                          <Check className="h-3 w-3 text-primary-foreground" />
-                        )}
-                      </div>
-                      <span>{col.label}</span>
-                    </DropdownMenuItem>
+                      {col.label}
+                    </button>
                   );
                 })}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+              </div>
+            </div>
           </>
         )}
-
-        {/* Reset option */}
-        {customizationCount > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="px-3 py-2 text-[13px] text-muted-foreground"
-              onSelect={() => {
-                onChange({
-                  ...options,
-                  groupBy: '__none__',
-                  sortBy: null,
-                });
-              }}
-            >
-              Reset display options
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }
 
