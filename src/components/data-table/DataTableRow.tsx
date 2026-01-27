@@ -65,7 +65,7 @@ function DataTableRowComponent<T>(
 
   // Filter visible columns
   const displayColumns = visibleColumns
-    ? columns.filter((col) => visibleColumns.has(col.id) || !col.hidden)
+    ? columns.filter((col) => visibleColumns.has(col.id))
     : columns.filter((col) => !col.hidden);
 
   const handleClick = useCallback(
@@ -111,7 +111,7 @@ function DataTableRowComponent<T>(
       {selectable && (
         <TableCell
           className={cn(
-            'w-[32px] px-2 py-[9px] transition-colors',
+            'w-[24px] pl-2 pr-0 py-[9px] transition-colors',
             isSelected && 'bg-[#1E203D]'
           )}
           onClick={handleCheckboxClick}
@@ -135,11 +135,15 @@ function DataTableRowComponent<T>(
       )}
 
       {/* Data columns */}
-      {displayColumns.map((column) => (
+      {displayColumns.map((column, index) => (
         <TableCell
           key={column.id}
           className={cn(
             'py-[9px] px-2',
+            // Reduce left padding on first column when checkbox is present
+            selectable && index === 0 && 'pl-1',
+            // Add extra right padding on last column
+            index === displayColumns.length - 1 && 'pr-4',
             getCellAlignment(column.align),
             column.width && `w-[${column.width}]`
           )}
@@ -206,7 +210,7 @@ export function DataTableSimpleRow<T>({
   const [isCheckboxHovered, setIsCheckboxHovered] = useState(false);
 
   const displayColumns = visibleColumns
-    ? columns.filter((col) => visibleColumns.has(col.id) || !col.hidden)
+    ? columns.filter((col) => visibleColumns.has(col.id))
     : columns.filter((col) => !col.hidden);
 
   const handleClick = useCallback(
@@ -236,7 +240,7 @@ export function DataTableSimpleRow<T>({
       {selectable && (
         <TableCell
           className={cn(
-            'w-[32px] px-2 py-[9px] transition-colors',
+            'w-[24px] pl-2 pr-0 py-[9px] transition-colors',
             isSelected && 'bg-[#1E203D]'
           )}
           onClick={(e) => {
@@ -258,10 +262,17 @@ export function DataTableSimpleRow<T>({
           />
         </TableCell>
       )}
-      {displayColumns.map((column) => (
+      {displayColumns.map((column, index) => (
         <TableCell
           key={column.id}
-          className={cn('py-[9px] px-2', getCellAlignment(column.align))}
+          className={cn(
+            'py-[9px] px-2',
+            // Reduce left padding on first column when checkbox is present
+            selectable && index === 0 && 'pl-1',
+            // Add extra right padding on last column
+            index === displayColumns.length - 1 && 'pr-4',
+            getCellAlignment(column.align)
+          )}
           style={{
             width: column.width,
             minWidth: column.minWidth,

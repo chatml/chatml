@@ -18,6 +18,7 @@ import {
   Check,
   ArrowRight,
   Copy,
+  Cloud,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -92,6 +93,13 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
         </span>
       )}
 
+      {isRemote && (
+        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+          <Cloud className="h-2.5 w-2.5" />
+          REMOTE
+        </span>
+      )}
+
       {hasSession && branch.sessionName && (
         <span className="text-sm text-purple-400 truncate max-w-[100px] shrink-0">
           {branch.sessionName}
@@ -115,7 +123,7 @@ function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
   return (
     <span
       className={cn(
-        'px-1.5 py-0.5 text-[10px] rounded border capitalize',
+        'px-1.5 py-0.5 text-xs rounded border capitalize',
         statusStyles[branch.sessionStatus] || 'bg-surface-2 text-muted-foreground'
       )}
     >
@@ -213,6 +221,7 @@ export function BranchesDashboard({
         includeRemote: showRemote,
         search: searchTerm || undefined,
         sortBy: 'date',
+        limit: 1000, // Fetch all branches
       });
       setBranchData(data);
     } catch (err) {
@@ -245,10 +254,13 @@ export function BranchesDashboard({
     setContentView({ type: 'conversation' });
   }, [workspaceId, selectWorkspace, selectSession, setContentView]);
 
-  // Combine all branches for the table
+  // Combine all branches for the table with computed location field
   const allBranches = useMemo(() => {
     if (!branchData) return [];
-    return [...branchData.sessionBranches, ...branchData.otherBranches];
+    return [...branchData.sessionBranches, ...branchData.otherBranches].map(branch => ({
+      ...branch,
+      location: branch.isRemote ? 'Remote' : 'Local',
+    }));
   }, [branchData]);
 
   // Collect all unique author emails from branches
@@ -344,6 +356,7 @@ export function BranchesDashboard({
       accessorKey: 'lastAuthor',
       cell: (branch) => <AuthorCell branch={branch} avatarUrl={getAvatarUrl(branch)} />,
       width: '32px',
+      minWidth: '32px',
     },
     {
       id: 'diff',
@@ -375,6 +388,7 @@ export function BranchesDashboard({
     groupingOptions: [
       { value: 'prefix', label: 'Branch prefix' },
       { value: 'lastAuthor', label: 'Author' },
+      { value: 'location', label: 'Location' },
     ],
     sortingOptions: [
       { value: 'name', label: 'Name' },

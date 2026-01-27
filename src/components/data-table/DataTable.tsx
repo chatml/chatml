@@ -186,7 +186,8 @@ export function DataTable<T>({
   const [internalSearchValue, setInternalSearchValue] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({
-    groupBy: groupBy ? String(groupBy.key) : null,
+    // '__none__' means no grouping (flat list), null means use prop-based grouping
+    groupBy: '__none__',
     sortBy: initialSortBy ?? null,
     visibleColumns: new Set(columns.filter((c) => !c.hidden).map((c) => c.id)),
     showEmptyGroups: groupBy?.showEmpty ?? false,
@@ -216,18 +217,37 @@ export function DataTable<T>({
     [processedData, getRowId]
   );
 
+  // Determine effective grouping based on displayOptions or prop
+  const effectiveGroupBy = useMemo<GroupConfig<T> | null>(() => {
+    // User explicitly selected "No grouping"
+    if (displayOptions.groupBy === '__none__') {
+      return null;
+    }
+    // User selected a specific grouping field
+    if (displayOptions.groupBy) {
+      return {
+        key: displayOptions.groupBy as keyof T,
+        sortOrder: groupBy?.sortOrder,
+        defaultCollapsed: groupBy?.defaultCollapsed,
+        showEmpty: displayOptions.showEmptyGroups,
+      };
+    }
+    // Fall back to prop-based grouping if no display option set (null/undefined)
+    return groupBy ?? null;
+  }, [displayOptions.groupBy, displayOptions.showEmptyGroups, groupBy]);
+
   // Group data if grouping is configured
   const groupedData = useMemo<GroupData<T>[]>(() => {
-    if (!groupBy) {
+    if (!effectiveGroupBy) {
       return [{ key: '__all__', label: '', rows: processedData, collapsed: false }];
     }
-    const groups = groupRows(processedData, groupBy);
+    const groups = groupRows(processedData, effectiveGroupBy);
     // Apply collapsed state
     return groups.map((g) => ({
       ...g,
       collapsed: collapsedGroups.has(g.key),
     }));
-  }, [processedData, groupBy, collapsedGroups]);
+  }, [processedData, effectiveGroupBy, collapsedGroups]);
 
   // Get grouped row IDs for selection
   const groupedRowIds = useMemo(() => {
@@ -425,7 +445,7 @@ export function DataTable<T>({
           </TableHeader>
           <TableBody>
               {groupedData.map((group) => {
-                const showGroupHeader = groupBy && group.key !== '__all__';
+                const showGroupHeader = effectiveGroupBy && group.key !== '__all__';
                 const groupContent: React.ReactNode[] = [];
 
                 // Group header
