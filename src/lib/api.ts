@@ -264,6 +264,7 @@ export interface BranchDTO {
   isHead: boolean;
   lastCommitSha: string;
   lastCommitDate: string;
+  lastCommitSubject: string;
   lastAuthor: string;
   lastAuthorEmail?: string;
   aheadMain: number;

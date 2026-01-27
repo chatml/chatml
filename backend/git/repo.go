@@ -635,18 +635,19 @@ func (rm *RepoManager) getStashCount(ctx context.Context, repoPath string) (int,
 	return len(lines), nil
 }
 
-// branchInfo is an internal struct for branch data during processing
-type branchInfo struct {
-	Name            string
-	IsRemote        bool
-	IsHead          bool
-	LastCommitSHA   string
-	LastCommitDate  time.Time
-	LastAuthor      string
-	LastAuthorEmail string
-	AheadMain       int
-	BehindMain      int
-	Prefix          string
+// BranchInfo contains metadata for a git branch
+type BranchInfo struct {
+	Name              string
+	IsRemote          bool
+	IsHead            bool
+	LastCommitSHA     string
+	LastCommitDate    time.Time
+	LastCommitSubject string
+	LastAuthor        string
+	LastAuthorEmail   string
+	AheadMain         int
+	BehindMain        int
+	Prefix            string
 }
 
 // BranchListOptions controls branch listing behavior
@@ -661,15 +662,15 @@ type BranchListOptions struct {
 
 // BranchListResult contains paginated branch results
 type BranchListResult struct {
-	Branches []branchInfo `json:"branches"`
+	Branches []BranchInfo `json:"branches"`
 	Total    int          `json:"total"`
 	HasMore  bool         `json:"hasMore"`
 }
 
 // ListBranches returns all branches in a repository with metadata
 func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts BranchListOptions) (*BranchListResult, error) {
-	// Set defaults
-	if opts.Limit <= 0 {
+	// Set defaults - Limit of 0 means no limit, negative means use default
+	if opts.Limit < 0 {
 		opts.Limit = 50
 	}
 	if opts.SortBy == "" {
@@ -677,8 +678,8 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 	}
 
 	// Get all branches with metadata
-	// Format: refname|objectname|committerdate|authorname|authoremail|HEAD
-	args := []string{"branch", "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso-strict)|%(authorname)|%(authoremail)|%(HEAD)"}
+	// Format: refname|objectname|committerdate|authorname|authoremail|HEAD|subject
+	args := []string{"branch", "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso-strict)|%(authorname)|%(authoremail)|%(HEAD)|%(subject)"}
 	if opts.IncludeRemote {
 		args = append(args, "-a")
 	}
@@ -691,7 +692,7 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 	}
 
 	// Parse branch output
-	var allBranches []branchInfo
+	var allBranches []BranchInfo
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	for _, line := range lines {
 		if line == "" {
@@ -699,7 +700,7 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 		}
 
 		parts := strings.Split(line, "|")
-		if len(parts) < 6 {
+		if len(parts) < 7 {
 			continue
 		}
 
@@ -709,6 +710,8 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 		author := parts[3]
 		authorEmail := strings.Trim(parts[4], "<>") // Remove angle brackets from email
 		isHead := strings.TrimSpace(parts[5]) == "*"
+		// Subject may contain | characters, so join the remaining parts
+		subject := strings.Join(parts[6:], "|")
 
 		// Filter by search term if provided
 		if opts.Search != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(opts.Search)) {
@@ -744,30 +747,36 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 			}
 		}
 
-		allBranches = append(allBranches, branchInfo{
-			Name:            name,
-			IsRemote:        isRemote,
-			IsHead:          isHead,
-			LastCommitSHA:   commitSHA,
-			LastCommitDate:  commitDate,
-			LastAuthor:      author,
-			LastAuthorEmail: authorEmail,
-			Prefix:          prefix,
+		allBranches = append(allBranches, BranchInfo{
+			Name:              name,
+			IsRemote:          isRemote,
+			IsHead:            isHead,
+			LastCommitSHA:     commitSHA,
+			LastCommitDate:    commitDate,
+			LastCommitSubject: subject,
+			LastAuthor:        author,
+			LastAuthorEmail:   authorEmail,
+			Prefix:            prefix,
 		})
 	}
 
 	// Sort branches using O(n log n) sort
 	sortBranches(allBranches, opts.SortBy, opts.SortDesc)
 
-	// Apply pagination first
+	// Apply pagination (Limit of 0 means no limit)
 	total := len(allBranches)
 	start := opts.Offset
 	if start > total {
 		start = total
 	}
-	end := start + opts.Limit
-	if end > total {
-		end = total
+	var end int
+	if opts.Limit == 0 {
+		end = total // No limit
+	} else {
+		end = start + opts.Limit
+		if end > total {
+			end = total
+		}
 	}
 
 	paginated := allBranches[start:end]
@@ -787,7 +796,7 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 }
 
 // sortBranches sorts branches by the specified field using O(n log n) sort
-func sortBranches(branches []branchInfo, sortBy string, desc bool) {
+func sortBranches(branches []BranchInfo, sortBy string, desc bool) {
 	sort.Slice(branches, func(i, j int) bool {
 		if sortBy == "date" {
 			if desc {

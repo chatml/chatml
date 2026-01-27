@@ -79,29 +79,30 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
     <div className="flex items-center gap-2 min-w-0">
       <span
         className={cn(
-          'font-medium text-sm truncate',
+          'font-medium text-sm truncate min-w-0',
           isRemote && 'text-muted-foreground'
         )}
+        title={displayName}
       >
         {displayName}
       </span>
 
       {isCurrentBranch && (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-green-500/10 text-green-500 border border-green-500/20 shrink-0">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-green-500/10 text-green-500 border border-green-500/20 shrink-0 whitespace-nowrap">
           <Check className="h-2.5 w-2.5" />
           HEAD
         </span>
       )}
 
       {isRemote && (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 whitespace-nowrap">
           <Cloud className="h-2.5 w-2.5" />
           REMOTE
         </span>
       )}
 
       {hasSession && branch.sessionName && (
-        <span className="text-sm text-purple-400 truncate max-w-[100px] shrink-0">
+        <span className="text-sm text-purple-400 truncate max-w-[80px] whitespace-nowrap" title={branch.sessionName}>
           {branch.sessionName}
         </span>
       )}
@@ -123,7 +124,7 @@ function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
   return (
     <span
       className={cn(
-        'px-1.5 py-0.5 text-xs rounded border capitalize',
+        'px-1.5 py-0.5 text-xs rounded border capitalize whitespace-nowrap',
         statusStyles[branch.sessionStatus] || 'bg-surface-2 text-muted-foreground'
       )}
     >
@@ -147,9 +148,27 @@ function AuthorCell({ branch, avatarUrl }: { branch: BranchDTO; avatarUrl?: stri
 function UpdatedCell({ branch }: { branch: BranchDTO }) {
   if (!branch.lastCommitDate) return null;
   return (
-    <span className="text-sm text-muted-foreground">
+    <span className="text-sm text-muted-foreground whitespace-nowrap">
       {formatTimeAgo(branch.lastCommitDate)}
     </span>
+  );
+}
+
+// Commit cell component - shows SHA and subject
+function CommitCell({ branch }: { branch: BranchDTO }) {
+  if (!branch.lastCommitSha) return null;
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <code className="text-[11px] font-mono text-muted-foreground/70 shrink-0 whitespace-nowrap">
+        {branch.lastCommitSha.slice(0, 7)}
+      </code>
+      {branch.lastCommitSubject && (
+        <span className="text-sm text-muted-foreground truncate min-w-0" title={branch.lastCommitSubject}>
+          {branch.lastCommitSubject}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -158,7 +177,7 @@ function DiffBadgeCell({ branch }: { branch: BranchDTO }) {
   if (branch.aheadMain === 0 && branch.behindMain === 0) return null;
 
   return (
-    <span className="flex items-center gap-1 font-mono text-[10px]">
+    <span className="flex items-center gap-1 font-mono text-[10px] whitespace-nowrap">
       {branch.aheadMain > 0 && (
         <span className="text-green-500">+{branch.aheadMain}</span>
       )}
@@ -324,7 +343,7 @@ export function BranchesDashboard({
       cell: (branch) => (
         <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
       ),
-      width: '32px',
+      width: '40px',
     },
     {
       id: 'name',
@@ -334,13 +353,22 @@ export function BranchesDashboard({
         <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
       ),
       sortable: true,
+      // No width = flexible, will truncate
+    },
+    {
+      id: 'commit',
+      header: 'Last Commit',
+      accessorKey: 'lastCommitSubject',
+      cell: (branch) => <CommitCell branch={branch} />,
+      hidden: true, // Hidden by default, can be enabled in display options
+      // No width = flexible, will truncate
     },
     {
       id: 'status',
       header: 'Status',
       accessorKey: 'sessionStatus',
       cell: (branch) => <StatusBadgeCell branch={branch} />,
-      width: '80px',
+      width: '70px',
     },
     {
       id: 'updated',
@@ -355,8 +383,7 @@ export function BranchesDashboard({
       header: '',
       accessorKey: 'lastAuthor',
       cell: (branch) => <AuthorCell branch={branch} avatarUrl={getAvatarUrl(branch)} />,
-      width: '32px',
-      minWidth: '32px',
+      width: '40px',
     },
     {
       id: 'diff',
@@ -396,6 +423,7 @@ export function BranchesDashboard({
       { value: 'lastAuthor', label: 'Author' },
     ],
     toggleableColumns: [
+      { id: 'commit', label: 'Last Commit' },
       { id: 'status', label: 'Status' },
       { id: 'author', label: 'Author' },
       { id: 'updated', label: 'Updated' },

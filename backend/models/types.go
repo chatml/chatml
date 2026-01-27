@@ -240,16 +240,17 @@ type CommentStats struct {
 
 // BranchInfo represents metadata about a git branch
 type BranchInfo struct {
-	Name            string    `json:"name"`
-	IsRemote        bool      `json:"isRemote"`
-	IsHead          bool      `json:"isHead"`
-	LastCommitSHA   string    `json:"lastCommitSha"`
-	LastCommitDate  time.Time `json:"lastCommitDate"`
-	LastAuthor      string    `json:"lastAuthor"`
-	LastAuthorEmail string    `json:"lastAuthorEmail,omitempty"`
-	AheadMain       int       `json:"aheadMain"`
-	BehindMain      int       `json:"behindMain"`
-	Prefix          string    `json:"prefix"` // e.g., "feature", "fix", "session"
+	Name              string    `json:"name"`
+	IsRemote          bool      `json:"isRemote"`
+	IsHead            bool      `json:"isHead"`
+	LastCommitSHA     string    `json:"lastCommitSha"`
+	LastCommitDate    time.Time `json:"lastCommitDate"`
+	LastCommitSubject string    `json:"lastCommitSubject"`
+	LastAuthor        string    `json:"lastAuthor"`
+	LastAuthorEmail   string    `json:"lastAuthorEmail,omitempty"`
+	AheadMain         int       `json:"aheadMain"`
+	BehindMain        int       `json:"behindMain"`
+	Prefix            string    `json:"prefix"` // e.g., "feature", "fix", "session"
 }
 
 // BranchWithSession combines branch info with optional session linkage

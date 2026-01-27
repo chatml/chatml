@@ -77,6 +77,74 @@ func (m *SessionLockManager) Unlock(path string) {
 	entry.mu.Unlock()
 }
 
+// BranchCache provides TTL-based caching for branch listing operations.
+// This reduces git operations for frequently accessed branch lists.
+type BranchCache struct {
+	mu      sync.RWMutex
+	entries map[string]*branchCacheEntry
+	ttl     time.Duration
+}
+
+type branchCacheEntry struct {
+	data      *git.BranchListResult
+	expiresAt time.Time
+}
+
+// NewBranchCache creates a new branch cache with the given TTL
+func NewBranchCache(ttl time.Duration) *BranchCache {
+	return &BranchCache{
+		entries: make(map[string]*branchCacheEntry),
+		ttl:     ttl,
+	}
+}
+
+// Get retrieves a cached branch list by key
+func (c *BranchCache) Get(key string) (*git.BranchListResult, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	entry, ok := c.entries[key]
+	if !ok {
+		return nil, false
+	}
+
+	if time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+
+	return entry.data, true
+}
+
+// Set stores a branch list in the cache
+func (c *BranchCache) Set(key string, data *git.BranchListResult) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.entries[key] = &branchCacheEntry{
+		data:      data,
+		expiresAt: time.Now().Add(c.ttl),
+	}
+}
+
+// Invalidate removes a specific cache entry
+func (c *BranchCache) Invalidate(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, key)
+}
+
+// InvalidateRepo removes all cache entries for a repo path
+func (c *BranchCache) InvalidateRepo(repoPath string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key := range c.entries {
+		if strings.HasPrefix(key, repoPath+":") {
+			delete(c.entries, key)
+		}
+	}
+}
+
 // DirListingCache provides TTL-based caching for directory listing operations.
 // This reduces filesystem operations for frequently accessed directory trees.
 type DirListingCache struct {
@@ -210,6 +278,7 @@ type Handlers struct {
 	sessionNameCache *SessionNameCache
 	fileSizeConfig   FileSizeConfig
 	dirCache         *DirListingCache
+	branchCache      *BranchCache
 	branchWatcher    *branch.Watcher
 	prWatcher        *branch.PRWatcher
 	hub              *Hub // For broadcasting WebSocket events
@@ -244,6 +313,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		sessionNameCache: NewSessionNameCache(workspacesDir),
 		fileSizeConfig:   LoadFileSizeConfig(),
 		dirCache:         NewDirListingCache(dirCacheConfig.TTL),
+		branchCache:      NewBranchCache(30 * time.Second), // Cache branches for 30 seconds
 		branchWatcher:    bw,
 		prWatcher:        prw,
 		hub:              hub,
@@ -653,21 +723,65 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 		sortBy = "date"
 	}
 
-	// Get branches from git
+	// Build cache key - cache the full list, apply filtering after
+	cacheKey := fmt.Sprintf("%s:remote=%v:sort=%s", repo.Path, includeRemote, sortBy)
+
 	repoMgr := git.NewRepoManager()
-	branchOpts := git.BranchListOptions{
-		IncludeRemote: includeRemote,
-		Limit:         limit,
-		Offset:        offset,
-		Search:        search,
-		SortBy:        sortBy,
-		SortDesc:      true, // Most recent first for date sort
+
+	// Check cache first
+	branchResult, cacheHit := h.branchCache.Get(cacheKey)
+	if !cacheHit {
+		// Get branches from git
+		branchOpts := git.BranchListOptions{
+			IncludeRemote: includeRemote,
+			Limit:         0, // Fetch all for caching
+			Offset:        0,
+			Search:        "", // Don't filter in git, we'll filter cached results
+			SortBy:        sortBy,
+			SortDesc:      true, // Most recent first for date sort
+		}
+
+		var err error
+		branchResult, err = repoMgr.ListBranches(ctx, repo.Path, branchOpts)
+		if err != nil {
+			writeInternalError(w, "failed to list branches", err)
+			return
+		}
+
+		// Cache the result
+		h.branchCache.Set(cacheKey, branchResult)
 	}
 
-	branchResult, err := repoMgr.ListBranches(ctx, repo.Path, branchOpts)
-	if err != nil {
-		writeInternalError(w, "failed to list branches", err)
-		return
+	// Apply search filter on cached results if needed
+	filteredBranches := branchResult.Branches
+	if search != "" {
+		searchLower := strings.ToLower(search)
+		var filtered []git.BranchInfo
+		for _, b := range branchResult.Branches {
+			if strings.Contains(strings.ToLower(b.Name), searchLower) {
+				filtered = append(filtered, b)
+			}
+		}
+		filteredBranches = filtered
+	}
+
+	// Apply pagination
+	total := len(filteredBranches)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	paginatedBranches := filteredBranches[start:end]
+
+	// Create result with pagination info
+	branchResult = &git.BranchListResult{
+		Branches: paginatedBranches,
+		Total:    total,
+		HasMore:  end < total,
 	}
 
 	// Get current branch
@@ -695,16 +809,17 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	for _, branch := range branchResult.Branches {
 		bws := models.BranchWithSession{
 			BranchInfo: models.BranchInfo{
-				Name:            branch.Name,
-				IsRemote:        branch.IsRemote,
-				IsHead:          branch.IsHead,
-				LastCommitSHA:   branch.LastCommitSHA,
-				LastCommitDate:  branch.LastCommitDate,
-				LastAuthor:      branch.LastAuthor,
-				LastAuthorEmail: branch.LastAuthorEmail,
-				AheadMain:       branch.AheadMain,
-				BehindMain:      branch.BehindMain,
-				Prefix:          branch.Prefix,
+				Name:              branch.Name,
+				IsRemote:          branch.IsRemote,
+				IsHead:            branch.IsHead,
+				LastCommitSHA:     branch.LastCommitSHA,
+				LastCommitDate:    branch.LastCommitDate,
+				LastCommitSubject: branch.LastCommitSubject,
+				LastAuthor:        branch.LastAuthor,
+				LastAuthorEmail:   branch.LastAuthorEmail,
+				AheadMain:         branch.AheadMain,
+				BehindMain:        branch.BehindMain,
+				Prefix:            branch.Prefix,
 			},
 		}
 

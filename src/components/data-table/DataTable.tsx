@@ -376,7 +376,7 @@ export function DataTable<T>({
           </div>
         )
       ) : (
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-y border-border/30 hover:bg-transparent">
               {/* Selection header */}
