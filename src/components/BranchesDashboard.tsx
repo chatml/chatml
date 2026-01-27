@@ -198,12 +198,12 @@ function getBranchGroupKey(branch: BranchDTO): string {
   if (branch.sessionId) {
     return 'session';
   }
-  // Otherwise use prefix or (other)
-  return branch.prefix || '(other)';
+  // Otherwise use prefix or (None)
+  return branch.prefix || '(None)';
 }
 
-// Sort group keys with preferred order
-const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'release', 'hotfix', '(other)', 'origin'];
+// Sort group keys with preferred order - (None) and origin at the end
+const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'release', 'hotfix', 'origin', '(None)'];
 
 export function BranchesDashboard({
   workspaceId,
