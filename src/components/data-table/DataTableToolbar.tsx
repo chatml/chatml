@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTableFilter } from './DataTableFilter';
+import { DataTableFilterBar } from './DataTableFilterBar';
 import { DataTableDisplay } from './DataTableDisplay';
 import type { DataTableToolbarProps } from './types';
 
@@ -22,47 +24,54 @@ export function DataTableToolbar({
   selectedIds,
   onClearSelection,
 }: DataTableToolbarProps) {
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+
   const hasFilters = filterOptions.length > 0;
   const hasDisplayOptions = !!displayOptionsConfig;
   const hasSelection = selectedCount > 0;
+  const hasActiveFilters = filters.length > 0;
 
   const hasSearch = !!searchPlaceholder;
 
   return (
-    <div className="flex items-center justify-between gap-4 pb-2 px-2">
-      {/* Left side: Filter and search */}
-      <div className="flex items-center gap-3">
-        {hasFilters && (
-          <DataTableFilter
-            filters={filters}
-            onFilterChange={onFilterChange}
-            filterOptions={filterOptions}
-          />
-        )}
-
-        {/* Inline search */}
-        {hasSearch && (
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="h-8 w-[200px] rounded-md border border-border/50 bg-transparent pl-8 pr-8 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+    <div className="space-y-2 pb-2 px-2">
+      {/* Main toolbar row */}
+      <div className="flex items-center justify-between gap-4">
+        {/* Left side: Filter and search */}
+        <div className="flex items-center gap-3">
+          {hasFilters && (
+            <DataTableFilter
+              filters={filters}
+              onFilterChange={onFilterChange}
+              filterOptions={filterOptions}
+              open={filterMenuOpen}
+              onOpenChange={setFilterMenuOpen}
             />
-            {searchValue && (
-              <button
-                type="button"
-                onClick={() => onSearchChange('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+
+          {/* Inline search */}
+          {hasSearch && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchValue}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="h-8 w-[200px] rounded-md border border-border/50 bg-transparent pl-8 pr-8 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              {searchValue && (
+                <button
+                  type="button"
+                  onClick={() => onSearchChange('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
       {/* Right side: Display options */}
       <div className="flex items-center gap-2">
@@ -106,6 +115,17 @@ export function DataTableToolbar({
           />
         )}
       </div>
+      </div>
+
+      {/* Filter bar - shows active filters */}
+      {hasActiveFilters && hasFilters && (
+        <DataTableFilterBar
+          filters={filters}
+          onFilterChange={onFilterChange}
+          filterOptions={filterOptions}
+          onAddFilter={() => setFilterMenuOpen(true)}
+        />
+      )}
     </div>
   );
 }

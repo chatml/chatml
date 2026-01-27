@@ -32,6 +32,10 @@ interface DataTableFilterProps {
   onFilterChange: (filters: FilterCondition[]) => void;
   /** Available filter options */
   filterOptions: FilterOption[];
+  /** Controlled open state */
+  open?: boolean;
+  /** Open change handler */
+  onOpenChange?: (open: boolean) => void;
 }
 
 // Icon mapping for filter categories
@@ -50,8 +54,15 @@ export function DataTableFilter({
   filters,
   onFilterChange,
   filterOptions,
+  open,
+  onOpenChange,
 }: DataTableFilterProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Support controlled and uncontrolled modes
+  const isOpen = open ?? internalOpen;
+  const setIsOpen = onOpenChange ?? setInternalOpen;
 
   // Get selected values for a column
   const getSelectedValues = (column: string): string[] => {
@@ -100,7 +111,7 @@ export function DataTableFilter({
   }, [filterOptions, searchQuery]);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"

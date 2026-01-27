@@ -6,6 +6,7 @@ export { DataTableRow, DataTableSimpleRow } from './DataTableRow';
 export { DataTableGroup, DataTableGroupHeader } from './DataTableGroup';
 export { DataTableToolbar, DataTableSearchBar, DataTableSelectionIndicator } from './DataTableToolbar';
 export { DataTableFilter, DataTableFilterButton } from './DataTableFilter';
+export { DataTableFilterBar } from './DataTableFilterBar';
 export { DataTableDisplay, DataTableDisplayButton } from './DataTableDisplay';
 
 // Hooks
