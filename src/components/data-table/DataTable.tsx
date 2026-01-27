@@ -376,7 +376,7 @@ export function DataTable<T>({
                 <TableHead
                   key={column.id}
                   className={cn(
-                    'text-xs font-normal text-muted-foreground h-8',
+                    'text-sm font-medium text-foreground/70 h-9',
                     column.align === 'center' && 'text-center',
                     column.align === 'right' && 'text-right',
                     column.sortable && 'cursor-pointer hover:text-foreground select-none'

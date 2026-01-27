@@ -139,7 +139,7 @@ function AuthorCell({ branch, avatarUrl }: { branch: BranchDTO; avatarUrl?: stri
 function UpdatedCell({ branch }: { branch: BranchDTO }) {
   if (!branch.lastCommitDate) return null;
   return (
-    <span className="text-xs text-muted-foreground">
+    <span className="text-sm text-muted-foreground">
       {formatTimeAgo(branch.lastCommitDate)}
     </span>
   );
