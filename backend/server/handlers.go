@@ -2781,15 +2781,16 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 // PRDashboardItem represents a PR in the dashboard
 type PRDashboardItem struct {
 	// PR metadata
-	Number         int           `json:"number"`
-	Title          string        `json:"title"`
-	State          string        `json:"state"`
-	HTMLURL        string        `json:"htmlUrl"`
-	IsDraft        bool          `json:"isDraft"`
-	Mergeable      *bool         `json:"mergeable"`
-	MergeableState string        `json:"mergeableState"`
-	CheckStatus    string        `json:"checkStatus"`
-	CheckDetails   []interface{} `json:"checkDetails"`
+	Number         int              `json:"number"`
+	Title          string           `json:"title"`
+	State          string           `json:"state"`
+	HTMLURL        string           `json:"htmlUrl"`
+	IsDraft        bool             `json:"isDraft"`
+	Mergeable      *bool            `json:"mergeable"`
+	MergeableState string           `json:"mergeableState"`
+	CheckStatus    string           `json:"checkStatus"`
+	CheckDetails   []interface{}    `json:"checkDetails"`
+	Labels         []github.PRLabel `json:"labels"`
 
 	// Branch info
 	Branch     string `json:"branch"`
@@ -2910,6 +2911,7 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 				RepoOwner:     owner,
 				RepoName:      repoName,
 				CheckStatus:   "unknown",
+				Labels:        ghPR.Labels,
 			}
 
 			// Check if there's a matching session by branch

@@ -470,6 +470,11 @@ export interface CheckDetail {
   durationSeconds?: number; // Duration in seconds (only for completed checks)
 }
 
+export interface PRLabel {
+  name: string;
+  color: string;
+}
+
 export interface PRDashboardItem {
   // PR metadata
   number: number;
@@ -481,6 +486,7 @@ export interface PRDashboardItem {
   mergeableState: string;
   checkStatus: string;
   checkDetails: CheckDetail[];
+  labels: PRLabel[];
 
   // Branch info
   branch: string;
