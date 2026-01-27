@@ -149,7 +149,7 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="font-medium text-sm truncate" title={pr.title}>
+      <span className="font-medium truncate" title={pr.title}>
         {pr.title}
       </span>
       {pr.labels?.map((label) => {
