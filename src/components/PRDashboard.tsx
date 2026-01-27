@@ -1,44 +1,323 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/FullContentLayout';
-import { PRCard } from '@/components/pr-dashboard/PRCard';
+import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
 import { getPRs, sendSessionMessage, type PRDashboardItem } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+import { isTauri } from '@/lib/tauri';
+import { getLabelStyles } from '@/lib/label-colors';
+import { useTheme } from 'next-themes';
 import {
   RefreshCw,
   Loader2,
   GitPullRequest,
+  GitPullRequestDraft,
   ChevronRight,
-  ChevronDown,
   Folder,
-  FolderOpen,
-  Terminal,
-  Settings2,
+  Check,
+  CheckCircle,
+  X,
+  Clock,
+  AlertTriangle,
   ExternalLink,
-  GitBranch,
   Copy,
-  Star,
-  Archive,
+  ArrowRight,
+  GitMerge,
+  Wrench,
+  GitBranch,
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { CardErrorFallback } from '@/components/ErrorFallbacks';
 
 interface PRDashboardProps {
   initialWorkspaceId?: string;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   showLeftSidebar?: boolean;
+}
+
+// PR Status categories for grouping
+type PRStatusCategory = 'ready' | 'pending' | 'failures' | 'conflicts' | 'draft';
+
+const STATUS_ORDER: PRStatusCategory[] = ['ready', 'failures', 'conflicts', 'pending', 'draft'];
+
+const STATUS_LABELS: Record<PRStatusCategory, string> = {
+  ready: 'Ready to Merge',
+  pending: 'Checks Pending',
+  failures: 'Check Failures',
+  conflicts: 'Merge Conflicts',
+  draft: 'Draft',
+};
+
+// Helper to open URLs in browser
+async function openInBrowser(url: string) {
+  if (isTauri()) {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+// Extended PR item with computed status
+interface PRWithStatus extends PRDashboardItem {
+  statusCategory: PRStatusCategory;
+  pendingCount: number;
+  hasConflicts: boolean;
+  allPassed: boolean;
+}
+
+// Compute PR status category
+function computePRStatus(pr: PRDashboardItem): PRWithStatus {
+  const hasChecks = pr.checksTotal > 0;
+  const hasFailures = pr.checksFailed > 0;
+  const pendingCount = pr.checksTotal - pr.checksPassed - pr.checksFailed;
+  const hasPending = pendingCount > 0;
+  const allPassed = hasChecks && !hasFailures && !hasPending;
+  const hasConflicts = pr.mergeableState === 'dirty' || pr.mergeable === false;
+
+  let statusCategory: PRStatusCategory;
+
+  if (pr.isDraft) {
+    statusCategory = 'draft';
+  } else if (hasConflicts) {
+    statusCategory = 'conflicts';
+  } else if (hasFailures) {
+    statusCategory = 'failures';
+  } else if (hasPending) {
+    statusCategory = 'pending';
+  } else {
+    statusCategory = 'ready';
+  }
+
+  return {
+    ...pr,
+    statusCategory,
+    pendingCount,
+    hasConflicts,
+    allPassed,
+  };
+}
+
+// Status icon cell component
+function StatusIconCell({ pr }: { pr: PRWithStatus }) {
+  const getIconAndColor = () => {
+    if (pr.isDraft) {
+      return { Icon: GitPullRequestDraft, color: 'text-muted-foreground' };
+    }
+    if (pr.hasConflicts) {
+      return { Icon: AlertTriangle, color: 'text-yellow-500' };
+    }
+    if (pr.checksFailed > 0) {
+      return { Icon: GitPullRequest, color: 'text-red-500' };
+    }
+    if (pr.pendingCount > 0) {
+      return { Icon: GitPullRequest, color: 'text-yellow-500' };
+    }
+    return { Icon: GitPullRequest, color: 'text-green-500' };
+  };
+
+  const { Icon, color } = getIconAndColor();
+
+  return (
+    <div className="flex items-center justify-center">
+      <Icon className={cn('h-4 w-4', color)} />
+    </div>
+  );
+}
+
+// PR Number cell
+function PRNumberCell({ pr }: { pr: PRWithStatus }) {
+  return (
+    <span className="text-sm text-muted-foreground font-mono">
+      #{pr.number}
+    </span>
+  );
+}
+
+// Title cell component
+function TitleCell({ pr }: { pr: PRWithStatus }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="font-medium text-sm truncate" title={pr.title}>
+        {pr.title}
+      </span>
+      {pr.labels?.map((label) => {
+        const labelStyles = getLabelStyles(label.color, isDark);
+        return (
+          <span
+            key={label.name}
+            className="text-[10px] px-1.5 py-0.5 rounded shrink-0 font-medium whitespace-nowrap"
+            style={{
+              backgroundColor: labelStyles.backgroundColor,
+              color: labelStyles.color,
+              border: `1px solid ${labelStyles.borderColor}`,
+            }}
+          >
+            {label.name}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// Branch cell component
+function BranchCell({ pr }: { pr: PRWithStatus }) {
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 text-xs">
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300/70 font-mono truncate" title={pr.branch}>
+        <GitBranch className="h-3 w-3 shrink-0" />
+        {pr.branch}
+      </span>
+      <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+      <span className="text-muted-foreground font-mono truncate" title={pr.baseBranch}>
+        {pr.baseBranch}
+      </span>
+    </div>
+  );
+}
+
+// Format duration for display
+function formatDuration(seconds?: number): string {
+  if (!seconds) return '';
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+}
+
+// Get check status icon and color
+function getCheckStatusDisplay(status: string, conclusion: string) {
+  if (status === 'in_progress' || status === 'queued') {
+    return { Icon: Clock, color: 'text-yellow-500' };
+  }
+  switch (conclusion) {
+    case 'success':
+      return { Icon: Check, color: 'text-green-500' };
+    case 'failure':
+    case 'timed_out':
+    case 'cancelled':
+      return { Icon: X, color: 'text-red-500' };
+    case 'skipped':
+    case 'neutral':
+      return { Icon: Check, color: 'text-muted-foreground' };
+    default:
+      return { Icon: Clock, color: 'text-yellow-500' };
+  }
+}
+
+// Checks cell component with hover popover
+function ChecksCell({ pr }: { pr: PRWithStatus }) {
+  if (pr.checksTotal === 0) {
+    return <span className="text-xs text-muted-foreground">No checks</span>;
+  }
+
+  const hasFailures = pr.checksFailed > 0;
+  const hasPending = pr.pendingCount > 0;
+
+  let Icon = Check;
+  let color = 'text-green-500';
+  let text = `${pr.checksTotal}/${pr.checksTotal}`;
+
+  if (hasFailures) {
+    Icon = X;
+    color = 'text-red-500';
+    text = `${pr.checksPassed}/${pr.checksTotal}`;
+  } else if (hasPending) {
+    Icon = Clock;
+    color = 'text-yellow-500';
+    text = `${pr.checksPassed}/${pr.checksTotal}`;
+  }
+
+  // Sort checks: failures first, then pending, then success
+  const sortedChecks = [...pr.checkDetails].sort((a, b) => {
+    const getOrder = (check: typeof a) => {
+      if (check.conclusion === 'failure' || check.conclusion === 'timed_out') return 0;
+      if (check.status === 'in_progress' || check.status === 'queued') return 1;
+      if (check.conclusion === 'success') return 2;
+      return 3;
+    };
+    return getOrder(a) - getOrder(b);
+  });
+
+  return (
+    <HoverCard openDelay={200} closeDelay={100}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className={cn('flex items-center gap-1 text-xs cursor-pointer hover:underline underline-offset-2', color)}
+        >
+          <Icon className="h-3 w-3" />
+          {text}
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-72 p-0">
+        <div className="px-3 py-2 border-b border-border/50">
+          <div className="text-xs font-medium text-foreground">
+            CI Checks
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {pr.checksPassed} passed, {pr.checksFailed} failed
+            {pr.pendingCount > 0 && `, ${pr.pendingCount} pending`}
+          </div>
+        </div>
+        <div className="max-h-[200px] overflow-y-auto">
+          {sortedChecks.map((check) => {
+            const { Icon: StatusIcon, color: statusColor } = getCheckStatusDisplay(check.status, check.conclusion);
+            return (
+              <div
+                key={check.name}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-surface-1"
+              >
+                <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', statusColor)} />
+                <span className="text-xs truncate flex-1" title={check.name}>
+                  {check.name}
+                </span>
+                {check.durationSeconds && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {formatDuration(check.durationSeconds)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+// Session cell component
+function SessionCell({ pr }: { pr: PRWithStatus }) {
+  if (!pr.sessionName) {
+    return <span className="text-xs text-muted-foreground">-</span>;
+  }
+
+  return (
+    <span className="text-xs bg-surface-2 px-1.5 py-0.5 rounded truncate max-w-[100px]" title={pr.sessionName}>
+      {pr.sessionName}
+    </span>
+  );
+}
+
+// Repository cell component
+function RepositoryCell({ pr }: { pr: PRWithStatus }) {
+  return (
+    <span className="text-xs text-muted-foreground truncate" title={`${pr.repoOwner}/${pr.repoName}`}>
+      {pr.repoName}
+    </span>
+  );
 }
 
 export function PRDashboard({
@@ -51,7 +330,7 @@ export function PRDashboard({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sendingMessageFor, setSendingMessageFor] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const workspaces = useAppStore((s) => s.workspaces);
   const selectWorkspace = useAppStore((s) => s.selectWorkspace);
@@ -96,34 +375,265 @@ export function PRDashboard({
     fetchPRs(true);
   };
 
-  const handleJumpToSession = (workspaceId: string, sessionId: string) => {
-    // Navigate to the session's conversation view
+  const handleJumpToSession = useCallback((workspaceId: string, sessionId: string) => {
     selectWorkspace(workspaceId);
     selectSession(sessionId);
     setContentView({ type: 'conversation' });
-  };
+  }, [selectWorkspace, selectSession, setContentView]);
 
-  const handleSendMessage = async (pr: PRDashboardItem, message: string) => {
+  const handleSendMessage = useCallback(async (pr: PRWithStatus, message: string) => {
     if (!pr.sessionId) return;
-
-    const prKey = `${pr.workspaceId}-${pr.number}`;
-    setSendingMessageFor(prKey);
 
     try {
       await sendSessionMessage(pr.workspaceId, pr.sessionId, message);
-      // Navigate to the session after sending
       handleJumpToSession(pr.workspaceId, pr.sessionId);
     } catch (err) {
       console.error('Failed to send message:', err);
-      // Could add toast notification here
-    } finally {
-      setSendingMessageFor(null);
     }
-  };
+  }, [handleJumpToSession]);
 
-  // Group PRs by status
-  const openPRs = prs.filter((pr) => pr.state === 'open' && !pr.isDraft);
-  const draftPRs = prs.filter((pr) => pr.isDraft);
+  // Compute PRs with status
+  const prsWithStatus = useMemo(() => {
+    return prs.map(computePRStatus);
+  }, [prs]);
+
+  // Context menu actions for a PR
+  const getPRContextMenu = useCallback((pr: PRWithStatus): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+
+    // Primary actions based on status
+    if (pr.statusCategory === 'ready' && pr.sessionId) {
+      items.push({
+        label: 'Merge PR',
+        icon: <GitMerge className="h-4 w-4" />,
+        onClick: () => handleSendMessage(pr, 'Please merge this PR.'),
+      });
+    }
+
+    if (pr.statusCategory === 'failures' && pr.sessionId) {
+      items.push({
+        label: 'Fix Failures',
+        icon: <Wrench className="h-4 w-4" />,
+        onClick: () => handleSendMessage(pr, 'Please fix the failing CI checks in this PR.'),
+      });
+    }
+
+    if (pr.statusCategory === 'conflicts' && pr.sessionId) {
+      items.push({
+        label: 'Resolve Conflicts',
+        icon: <AlertTriangle className="h-4 w-4" />,
+        onClick: () => handleSendMessage(pr, 'Please resolve the merge conflicts in this PR.'),
+      });
+    }
+
+    // Session actions
+    if (pr.sessionId) {
+      if (items.length > 0) {
+        items.push({ label: '', onClick: () => {}, separator: true });
+      }
+      items.push({
+        label: 'Go to Session',
+        icon: <ArrowRight className="h-4 w-4" />,
+        shortcut: 'Enter',
+        onClick: () => handleJumpToSession(pr.workspaceId, pr.sessionId!),
+      });
+    }
+
+    // GitHub actions
+    if (items.length > 0) {
+      items.push({ label: '', onClick: () => {}, separator: true });
+    }
+
+    items.push({
+      label: 'Open in GitHub',
+      icon: <ExternalLink className="h-4 w-4" />,
+      shortcut: '⌘O',
+      onClick: () => openInBrowser(pr.htmlUrl),
+    });
+
+    items.push({ label: '', onClick: () => {}, separator: true });
+
+    // Copy actions
+    items.push({
+      label: 'Copy PR URL',
+      icon: <Copy className="h-4 w-4" />,
+      onClick: () => navigator.clipboard.writeText(pr.htmlUrl),
+    });
+
+    items.push({
+      label: 'Copy PR Number',
+      icon: <Copy className="h-4 w-4" />,
+      onClick: () => navigator.clipboard.writeText(`#${pr.number}`),
+    });
+
+    items.push({
+      label: 'Copy Branch Name',
+      icon: <GitBranch className="h-4 w-4" />,
+      onClick: () => navigator.clipboard.writeText(pr.branch),
+    });
+
+    return items;
+  }, [handleJumpToSession, handleSendMessage]);
+
+  // Define columns for the data table
+  const columns: Column<PRWithStatus>[] = useMemo(() => [
+    {
+      id: 'number',
+      header: '#',
+      accessorKey: 'number',
+      cell: (pr) => (
+        <div className="flex items-center gap-1.5">
+          <StatusIconCell pr={pr} />
+          <PRNumberCell pr={pr} />
+        </div>
+      ),
+      sortable: true,
+      width: '80px',
+    },
+    {
+      id: 'title',
+      header: 'Title',
+      accessorKey: 'title',
+      cell: (pr) => <TitleCell pr={pr} />,
+      sortable: true,
+    },
+    {
+      id: 'branch',
+      header: 'Branch',
+      accessorKey: 'branch',
+      cell: (pr) => <BranchCell pr={pr} />,
+    },
+    {
+      id: 'checks',
+      header: 'Checks',
+      accessorKey: (pr) => `${pr.checksPassed}/${pr.checksTotal}`,
+      cell: (pr) => <ChecksCell pr={pr} />,
+      width: '80px',
+    },
+    {
+      id: 'session',
+      header: 'Session',
+      accessorKey: 'sessionName',
+      cell: (pr) => <SessionCell pr={pr} />,
+      width: '120px',
+      hidden: true,
+    },
+    {
+      id: 'repository',
+      header: 'Repository',
+      accessorKey: 'repoName',
+      cell: (pr) => <RepositoryCell pr={pr} />,
+      width: '120px',
+      hidden: !!initialWorkspaceId, // Hide when viewing single workspace
+    },
+  ], [initialWorkspaceId]);
+
+  // Filter options
+  const filterOptions: FilterOption[] = useMemo(() => [
+    {
+      column: 'statusCategory',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: 'ready', label: 'Ready to Merge' },
+        { value: 'pending', label: 'Checks Pending' },
+        { value: 'failures', label: 'Check Failures' },
+        { value: 'conflicts', label: 'Merge Conflicts' },
+        { value: 'draft', label: 'Draft' },
+      ],
+    },
+    {
+      column: 'hasSession',
+      label: 'Has Session',
+      type: 'select',
+      options: [
+        { value: 'true', label: 'Yes' },
+        { value: 'false', label: 'No' },
+      ],
+    },
+    { column: 'title', label: 'Title', type: 'text' },
+    { column: 'branch', label: 'Branch', type: 'text' },
+    ...(!initialWorkspaceId ? [{
+      column: 'repoName',
+      label: 'Repository',
+      type: 'text' as const,
+    }] : []),
+  ], [initialWorkspaceId]);
+
+  // Display options configuration
+  const displayOptionsConfig: DisplayOptionsConfig = useMemo(() => ({
+    groupingOptions: [
+      { value: 'statusCategory', label: 'Status' },
+      { value: 'repoName', label: 'Repository' },
+      { value: 'sessionName', label: 'Session' },
+    ],
+    sortingOptions: [
+      { value: 'number', label: 'PR Number' },
+      { value: 'title', label: 'Title' },
+      { value: 'statusCategory', label: 'Status' },
+    ],
+    toggleableColumns: [
+      { id: 'branch', label: 'Branch' },
+      { id: 'checks', label: 'Checks' },
+      { id: 'session', label: 'Session' },
+      ...(!initialWorkspaceId ? [{ id: 'repository', label: 'Repository' }] : []),
+    ],
+  }), [initialWorkspaceId]);
+
+  // Handle row click
+  const handleRowClick = useCallback((pr: PRWithStatus) => {
+    if (pr.sessionId) {
+      handleJumpToSession(pr.workspaceId, pr.sessionId);
+    } else {
+      openInBrowser(pr.htmlUrl);
+    }
+  }, [handleJumpToSession]);
+
+  // Get group key for a PR
+  const getPRGroupKey = useCallback((pr: PRWithStatus): string => {
+    return pr.statusCategory;
+  }, []);
+
+  // Custom group label renderer
+  const getGroupLabel = useCallback((key: string): string => {
+    return STATUS_LABELS[key as PRStatusCategory] || key;
+  }, []);
+
+  // Custom group icon renderer
+  const getGroupIcon = useCallback((key: string): React.ReactNode => {
+    switch (key as PRStatusCategory) {
+      case 'ready':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failures':
+        return <X className="h-4 w-4 text-red-500" />;
+      case 'conflicts':
+        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'pending':
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case 'draft':
+        return <GitPullRequestDraft className="h-4 w-4 text-muted-foreground" />;
+      default:
+        return null;
+    }
+  }, []);
+
+  // Add hasSession computed field for filtering
+  const prsWithSessionFlag = useMemo(() => {
+    return prsWithStatus.map(pr => ({
+      ...pr,
+      hasSession: pr.sessionId ? 'true' : 'false',
+    }));
+  }, [prsWithStatus]);
+
+  // Stats for header
+  const stats = useMemo(() => {
+    const ready = prsWithStatus.filter(pr => pr.statusCategory === 'ready').length;
+    const failures = prsWithStatus.filter(pr => pr.statusCategory === 'failures').length;
+    const conflicts = prsWithStatus.filter(pr => pr.statusCategory === 'conflicts').length;
+    const pending = prsWithStatus.filter(pr => pr.statusCategory === 'pending').length;
+    const draft = prsWithStatus.filter(pr => pr.statusCategory === 'draft').length;
+    return { ready, failures, conflicts, pending, draft, total: prsWithStatus.length };
+  }, [prsWithStatus]);
 
   return (
     <FullContentLayout
@@ -133,54 +643,18 @@ export function PRDashboard({
           {workspace && (
             <>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-sm font-medium text-purple-300/80 hover:bg-purple-500/20 transition-colors focus:outline-none">
-                    <Folder className="h-3 w-3" />
-                    <span className="truncate max-w-[200px]">{workspace.name}</span>
-                    <ChevronDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuItem>
-                    <FolderOpen className="size-4" />
-                    Open in Finder
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Terminal className="size-4" />
-                    Open in Terminal
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Copy className="size-4" />
-                    Copy Path
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <GitBranch className="size-4" />
-                    View All Branches
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <ExternalLink className="size-4" />
-                    Open on GitHub
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Star className="size-4" />
-                    Add to Favorites
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Archive className="size-4" />
-                    Archive Workspace
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <Settings2 className="size-4" />
-                    Workspace Settings
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-sm font-medium text-purple-300/80">
+                <Folder className="h-3 w-3" />
+                <span className="truncate max-w-[200px]">{workspace.name}</span>
+              </span>
             </>
           )}
+          <span className="text-sm font-normal text-muted-foreground ml-2">
+            {stats.total} {stats.total === 1 ? 'PR' : 'PRs'}
+            {stats.ready > 0 && <span className="text-green-500 ml-2">{stats.ready} ready</span>}
+            {stats.failures > 0 && <span className="text-red-500 ml-2">{stats.failures} failing</span>}
+            {stats.conflicts > 0 && <span className="text-yellow-500 ml-2">{stats.conflicts} conflicts</span>}
+          </span>
         </span>
       }
       onOpenSettings={onOpenSettings}
@@ -199,14 +673,7 @@ export function PRDashboard({
         </Button>
       }
     >
-      <div className="p-4 space-y-4">
-        {/* Status counts */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span>Open ({openPRs.length})</span>
-          <span>Draft ({draftPRs.length})</span>
-        </div>
-
-        {/* Content */}
+      <div className="pt-2 pb-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -223,34 +690,39 @@ export function PRDashboard({
             <GitPullRequest className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">No pull requests</p>
             <p className="text-sm mt-1">
-              No open pull requests found for this workspace.
+              {initialWorkspaceId
+                ? 'No open pull requests found for this workspace.'
+                : 'No open pull requests found.'}
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {prs.map((pr) => (
-              <ErrorBoundary
-                key={`${pr.workspaceId}-${pr.number}`}
-                section="PRCard"
-                fallback={<CardErrorFallback message={`Error loading PR #${pr.number}`} />}
-              >
-                <PRCard
-                  pr={pr}
-                  onJumpToSession={
-                    pr.sessionId
-                      ? () => handleJumpToSession(pr.workspaceId, pr.sessionId!)
-                      : undefined
-                  }
-                  onSendMessage={
-                    pr.sessionId
-                      ? (message) => handleSendMessage(pr, message)
-                      : undefined
-                  }
-                  isSendingMessage={sendingMessageFor === `${pr.workspaceId}-${pr.number}`}
-                />
-              </ErrorBoundary>
-            ))}
-          </div>
+          <DataTable
+            data={prsWithSessionFlag}
+            columns={columns}
+            getRowId={(pr) => `${pr.workspaceId}-${pr.number}`}
+            groupBy={{
+              key: getPRGroupKey,
+              sortOrder: STATUS_ORDER,
+              getLabel: getGroupLabel,
+              getIcon: getGroupIcon,
+            }}
+            sortBy={{ column: 'number', direction: 'desc' }}
+            onRowClick={handleRowClick}
+            onRowContextMenu={getPRContextMenu}
+            filterOptions={filterOptions}
+            displayOptionsConfig={displayOptionsConfig}
+            searchPlaceholder="Search PRs..."
+            searchValue={searchTerm}
+            onSearchChange={setSearchTerm}
+            selectable
+            emptyState={
+              <div className="text-center py-12 text-muted-foreground">
+                <GitPullRequest className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">No pull requests found</p>
+                <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+              </div>
+            }
+          />
         )}
       </div>
     </FullContentLayout>

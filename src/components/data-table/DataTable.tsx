@@ -60,7 +60,12 @@ function groupRows<T>(
 
   return sortedKeys.map((key) => ({
     key,
-    label: groupConfig.label ? `${groupConfig.label}: ${key}` : key,
+    label: groupConfig.getLabel
+      ? groupConfig.getLabel(key)
+      : groupConfig.label
+        ? `${groupConfig.label}: ${key}`
+        : key,
+    icon: groupConfig.getIcon?.(key),
     rows: groups.get(key)!,
     collapsed: groupConfig.defaultCollapsed?.includes(key) ?? false,
   }));
@@ -188,7 +193,8 @@ export function DataTable<T>({
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({
     // '__none__' means no grouping (flat list), null means use prop-based grouping
-    groupBy: '__none__',
+    // Use null (prop-based) when a groupBy prop is provided, otherwise no grouping
+    groupBy: groupBy ? null : '__none__',
     sortBy: initialSortBy ?? null,
     visibleColumns: new Set(columns.filter((c) => !c.hidden).map((c) => c.id)),
     showEmptyGroups: groupBy?.showEmpty ?? false,
@@ -230,6 +236,8 @@ export function DataTable<T>({
         key: displayOptions.groupBy as keyof T,
         sortOrder: groupBy?.sortOrder,
         defaultCollapsed: groupBy?.defaultCollapsed,
+        getLabel: groupBy?.getLabel,
+        getIcon: groupBy?.getIcon,
         showEmpty: displayOptions.showEmptyGroups,
       };
     }
@@ -461,7 +469,8 @@ export function DataTable<T>({
                     <DataTableGroup
                       key={`group-${group.key}`}
                       groupKey={group.key}
-                      label={group.key}
+                      label={group.label}
+                      icon={group.icon}
                       count={group.rows.length}
                       isCollapsed={group.collapsed}
                       onToggle={() => toggleGroupCollapse(group.key)}

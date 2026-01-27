@@ -28,6 +28,10 @@ export interface GroupConfig<T> {
   key: keyof T | ((row: T) => string);
   /** Optional label for the grouping */
   label?: string;
+  /** Function to get display label for a group key */
+  getLabel?: (key: string) => string;
+  /** Function to get icon for a group key */
+  getIcon?: (key: string) => ReactNode;
   /** Group keys that should be collapsed by default */
   defaultCollapsed?: string[];
   /** Custom sort order for groups */
@@ -170,6 +174,8 @@ export interface GroupData<T> {
   key: string;
   /** Display label */
   label: string;
+  /** Optional icon for the group */
+  icon?: ReactNode;
   /** Rows in this group */
   rows: T[];
   /** Whether the group is collapsed */
@@ -232,6 +238,8 @@ export interface DataTableGroupProps {
   groupKey: string;
   /** Display label */
   label: string;
+  /** Optional icon for the group */
+  icon?: ReactNode;
   /** Number of items in the group */
   count: number;
   /** Whether the group is collapsed */
