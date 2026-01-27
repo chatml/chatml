@@ -177,7 +177,7 @@ function DiffBadgeCell({ branch }: { branch: BranchDTO }) {
   if (branch.aheadMain === 0 && branch.behindMain === 0) return null;
 
   return (
-    <span className="flex items-center gap-1 font-mono text-[10px] whitespace-nowrap">
+    <span className="flex items-center gap-1 font-mono text-xs whitespace-nowrap">
       {branch.aheadMain > 0 && (
         <span className="text-green-500">+{branch.aheadMain}</span>
       )}
