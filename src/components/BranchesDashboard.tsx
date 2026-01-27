@@ -423,6 +423,11 @@ export function BranchesDashboard({
               </span>
             </>
           )}
+          {branchData && (
+            <span className="text-sm font-normal text-muted-foreground ml-2">
+              {branchData.sessionBranches.length} {branchData.sessionBranches.length === 1 ? 'session' : 'sessions'} in {branchData.total} branches
+            </span>
+          )}
         </span>
       }
       onOpenSettings={onOpenSettings}
@@ -440,18 +445,6 @@ export function BranchesDashboard({
             {showRemote && <Check className="h-3 w-3" />}
             Remote
           </Button>
-
-          {/* Stats */}
-          {branchData && (
-            <div className="text-xs text-muted-foreground">
-              {branchData.sessionBranches.length > 0 && (
-                <span className="mr-2">
-                  Session ({branchData.sessionBranches.length})
-                </span>
-              )}
-              <span>Total ({branchData.total})</span>
-            </div>
-          )}
 
           <Button
             variant="ghost"
