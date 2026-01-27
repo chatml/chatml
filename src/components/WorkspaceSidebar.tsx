@@ -653,7 +653,7 @@ function SortableWorkspaceItem({
         <CollapsibleTrigger asChild>
           <div
             className={cn(
-              'group flex items-center gap-1.5 px-1 py-1.5 rounded-md cursor-pointer',
+              'group flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-md cursor-pointer',
               'hover:bg-surface-1 transition-colors',
               isDragging && 'bg-surface-2'
             )}
@@ -733,7 +733,7 @@ function SortableWorkspaceItem({
 
         {/* Workspace Navigation + Sessions */}
         <CollapsibleContent>
-          <div className="ml-2 overflow-hidden">
+          <div className="ml-3 overflow-hidden">
             {/* Fixed Navigation Items - less indented than sessions */}
             <div className="pb-1">
               {(() => {
