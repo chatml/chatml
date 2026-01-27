@@ -1195,7 +1195,7 @@ export default function Home() {
 
         {/* Session Manager Overlay - full screen */}
         {contentView.type === 'session-manager' && (
-          <div className="absolute inset-0 z-20 bg-background">
+          <div className="absolute inset-0 z-20 bg-content-background">
             <SessionManager
               onOpenSettings={() => setShowSettings(true)}
               onOpenShortcuts={() => setShowShortcuts(true)}
@@ -1208,14 +1208,14 @@ export default function Home() {
 
         {/* Settings Overlay - full screen */}
         {showSettings && (
-          <div className="absolute inset-0 z-20 bg-background">
+          <div className="absolute inset-0 z-20 bg-content-background">
             <SettingsPage onBack={() => setShowSettings(false)} />
           </div>
         )}
 
         {/* Workspace Settings Overlay - full screen */}
         {showWorkspaceSettings && (
-          <div className="absolute inset-0 z-20 bg-background">
+          <div className="absolute inset-0 z-20 bg-content-background">
             <WorkspaceSettings
               workspaceId={showWorkspaceSettings}
               onBack={() => setShowWorkspaceSettings(null)}

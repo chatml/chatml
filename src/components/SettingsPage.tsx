@@ -85,7 +85,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [selectedCategory, setSelectedCategory] = useState<SettingsCategory>('chat');
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-full bg-content-background">
       {/* Settings Sidebar */}
       <div className="w-56 border-r bg-sidebar flex flex-col">
         {/* Back button - with padding for macOS traffic lights */}
