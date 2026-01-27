@@ -162,7 +162,7 @@ export function DataTableFilter({
                       </span>
                     )}
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent sideOffset={2} className="w-[180px] p-0">
+                  <DropdownMenuSubContent sideOffset={-4} className="w-[180px] p-0">
                     <div className="py-1">
                       {option.options.map((opt) => {
                         const isSelected = selectedValues.includes(opt.value);
@@ -225,7 +225,7 @@ export function DataTableFilter({
                     </span>
                   )}
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent sideOffset={2} className="w-[200px] p-2">
+                <DropdownMenuSubContent sideOffset={-4} className="w-[200px] p-2">
                   <TextFilterInput
                     column={option.column}
                     filters={filters}
