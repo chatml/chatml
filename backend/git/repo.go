@@ -875,3 +875,291 @@ func (rm *RepoManager) GetGitHubRemote(ctx context.Context, repoPath string) (ow
 
 	return "", "", fmt.Errorf("unable to parse GitHub remote URL: %s", remoteURL)
 }
+
+// SyncCommit represents a commit in the sync status
+type SyncCommit struct {
+	SHA     string
+	Subject string
+}
+
+// BranchSyncStatus represents the sync status of a branch relative to origin/main
+type BranchSyncStatus struct {
+	BehindBy    int
+	Commits     []SyncCommit
+	BaseBranch  string
+	LastChecked time.Time
+}
+
+// BranchSyncResult represents the result of a rebase or merge operation
+type BranchSyncResult struct {
+	Success       bool
+	NewBaseSha    string
+	ConflictFiles []string
+	ErrorMessage  string
+}
+
+// GetBranchSyncStatus checks how far behind a worktree is from origin/main
+func (rm *RepoManager) GetBranchSyncStatus(ctx context.Context, worktreePath, baseCommitSHA string) (*BranchSyncStatus, error) {
+	status := &BranchSyncStatus{
+		BaseBranch:  "origin/main",
+		LastChecked: time.Now(),
+		Commits:     []SyncCommit{},
+	}
+
+	// Fetch origin main to get latest commits
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "main")
+	_, err := cmd.CombinedOutput()
+	cancel()
+	if err != nil {
+		// Try master if main doesn't exist
+		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "master")
+		_, err = cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return status, nil // Return empty status if fetch fails
+		}
+		status.BaseBranch = "origin/master"
+	}
+
+	// Validate baseCommitSHA
+	if baseCommitSHA == "" {
+		return status, nil
+	}
+	if err := ValidateGitRef(baseCommitSHA); err != nil {
+		return nil, fmt.Errorf("invalid base commit SHA: %w", err)
+	}
+
+	// Get count of commits between baseCommitSHA and origin/main
+	cmd, cancel = gitCmdWithContext(ctx, worktreePath, "rev-list", "--count", baseCommitSHA+".."+status.BaseBranch)
+	out, err := cmd.Output()
+	cancel()
+	if err != nil {
+		return status, nil
+	}
+	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &status.BehindBy)
+
+	// If behind, get commit SHA and subjects
+	if status.BehindBy > 0 {
+		// Get commits with short SHA and subject, one per line
+		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "log", "--pretty=format:%h|||%s", baseCommitSHA+".."+status.BaseBranch)
+		out, err := cmd.Output()
+		cancel()
+		if err == nil && len(out) > 0 {
+			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+			for _, line := range lines {
+				if line != "" {
+					// Split on ||| delimiter
+					parts := strings.SplitN(line, "|||", 2)
+					if len(parts) == 2 {
+						status.Commits = append(status.Commits, SyncCommit{
+							SHA:     strings.TrimSpace(parts[0]),
+							Subject: strings.TrimSpace(parts[1]),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return status, nil
+}
+
+// RebaseOntoMain rebases the current branch onto origin/main
+func (rm *RepoManager) RebaseOntoMain(ctx context.Context, worktreePath string) (*BranchSyncResult, error) {
+	result := &BranchSyncResult{
+		ConflictFiles: []string{},
+	}
+
+	// Fetch origin to ensure we have the latest
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "main")
+	_, err := cmd.CombinedOutput()
+	cancel()
+	baseBranch := "origin/main"
+	if err != nil {
+		// Try master if main doesn't exist
+		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "master")
+		_, err = cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			result.ErrorMessage = "failed to fetch from origin"
+			return result, nil
+		}
+		baseBranch = "origin/master"
+	}
+
+	// Check for uncommitted changes first
+	wdStatus, err := rm.getWorkingDirectoryStatus(ctx, worktreePath)
+	if err != nil {
+		result.ErrorMessage = fmt.Sprintf("failed to check working directory: %v", err)
+		return result, nil
+	}
+
+	// Stash if there are changes
+	stashed := false
+	if wdStatus.HasChanges {
+		cmd, cancel := gitCmdWithContext(ctx, worktreePath, "stash", "push", "-m", "auto-stash before rebase")
+		_, err := cmd.CombinedOutput()
+		cancel()
+		if err == nil {
+			stashed = true
+		}
+	}
+
+	// Run rebase
+	cmd, cancel = gitCmdWithContext(ctx, worktreePath, "rebase", baseBranch)
+	out, err := cmd.CombinedOutput()
+	cancel()
+
+	if err != nil {
+		// Check if there are conflicts
+		conflicts, _ := rm.getConflictStatus(ctx, worktreePath)
+		if conflicts != nil && conflicts.HasConflicts {
+			result.ConflictFiles = conflicts.Files
+			result.ErrorMessage = "Rebase resulted in conflicts"
+		} else {
+			result.ErrorMessage = fmt.Sprintf("Rebase failed: %s", string(out))
+		}
+
+		// Try to pop stash even on failure (best effort)
+		if stashed {
+			cmd, cancel = gitCmdWithContext(ctx, worktreePath, "stash", "pop")
+			cmd.CombinedOutput()
+			cancel()
+		}
+		return result, nil
+	}
+
+	// Get new base SHA
+	cmd, cancel = gitCmdWithContext(ctx, worktreePath, "rev-parse", baseBranch)
+	out, err = cmd.Output()
+	cancel()
+	if err == nil {
+		result.NewBaseSha = strings.TrimSpace(string(out))
+	}
+
+	// Pop stash if we stashed
+	if stashed {
+		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "stash", "pop")
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			// Stash pop conflict - this is a separate issue
+			result.ErrorMessage = fmt.Sprintf("Rebase succeeded but stash pop failed: %s", string(out))
+			return result, nil
+		}
+	}
+
+	result.Success = true
+	return result, nil
+}
+
+// MergeFromMain merges origin/main into the current branch
+func (rm *RepoManager) MergeFromMain(ctx context.Context, worktreePath string) (*BranchSyncResult, error) {
+	result := &BranchSyncResult{
+		ConflictFiles: []string{},
+	}
+
+	// Fetch origin to ensure we have the latest
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "main")
+	_, err := cmd.CombinedOutput()
+	cancel()
+	baseBranch := "origin/main"
+	if err != nil {
+		// Try master if main doesn't exist
+		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "master")
+		_, err = cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			result.ErrorMessage = "failed to fetch from origin"
+			return result, nil
+		}
+		baseBranch = "origin/master"
+	}
+
+	// Check for uncommitted changes first
+	wdStatus, err := rm.getWorkingDirectoryStatus(ctx, worktreePath)
+	if err != nil {
+		result.ErrorMessage = fmt.Sprintf("failed to check working directory: %v", err)
+		return result, nil
+	}
+
+	// Stash if there are changes
+	stashed := false
+	if wdStatus.HasChanges {
+		cmd, cancel := gitCmdWithContext(ctx, worktreePath, "stash", "push", "-m", "auto-stash before merge")
+		_, err := cmd.CombinedOutput()
+		cancel()
+		if err == nil {
+			stashed = true
+		}
+	}
+
+	// Run merge
+	cmd, cancel = gitCmdWithContext(ctx, worktreePath, "merge", baseBranch, "-m", "Merge "+baseBranch+" into branch")
+	out, err := cmd.CombinedOutput()
+	cancel()
+
+	if err != nil {
+		// Check if there are conflicts
+		conflicts, _ := rm.getConflictStatus(ctx, worktreePath)
+		if conflicts != nil && conflicts.HasConflicts {
+			result.ConflictFiles = conflicts.Files
+			result.ErrorMessage = "Merge resulted in conflicts"
+		} else {
+			result.ErrorMessage = fmt.Sprintf("Merge failed: %s", string(out))
+		}
+
+		// Try to pop stash even on failure (best effort)
+		if stashed {
+			cmd, cancel = gitCmdWithContext(ctx, worktreePath, "stash", "pop")
+			cmd.CombinedOutput()
+			cancel()
+		}
+		return result, nil
+	}
+
+	// Get new base SHA
+	cmd, cancel = gitCmdWithContext(ctx, worktreePath, "rev-parse", baseBranch)
+	out, err = cmd.Output()
+	cancel()
+	if err == nil {
+		result.NewBaseSha = strings.TrimSpace(string(out))
+	}
+
+	// Pop stash if we stashed
+	if stashed {
+		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "stash", "pop")
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			// Stash pop conflict
+			result.ErrorMessage = fmt.Sprintf("Merge succeeded but stash pop failed: %s", string(out))
+			return result, nil
+		}
+	}
+
+	result.Success = true
+	return result, nil
+}
+
+// AbortRebase aborts an in-progress rebase
+func (rm *RepoManager) AbortRebase(ctx context.Context, worktreePath string) error {
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "rebase", "--abort")
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to abort rebase: %s", string(out))
+	}
+	return nil
+}
+
+// AbortMerge aborts an in-progress merge
+func (rm *RepoManager) AbortMerge(ctx context.Context, worktreePath string) error {
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "merge", "--abort")
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to abort merge: %s", string(out))
+	}
+	return nil
+}

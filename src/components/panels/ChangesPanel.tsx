@@ -299,6 +299,9 @@ export function ChangesPanel({
   const currentSession = sessions.find((s) => s.id === selectedSessionId);
   const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
 
+  // Watch for branch sync completion to refresh changes
+  const branchSyncCompletedAt = useAppStore((s) => selectedSessionId ? s.branchSyncCompletedAt[selectedSessionId] : undefined);
+
   // Track branch for refetching changes when branch is renamed
   const currentBranch = currentSession?.branch;
 
@@ -362,6 +365,15 @@ export function ChangesPanel({
       return () => { cancelled = true; };
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch]);
+
+  // Refetch changes when branch sync completes (rebase/merge)
+  useEffect(() => {
+    if (branchSyncCompletedAt && selectedWorkspaceId && selectedSessionId) {
+      // Refetch changes after sync - the BaseCommitSHA has been updated
+      fetchChanges();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchSyncCompletedAt]);
 
   // Watch session worktree for file changes and auto-refresh
   useEffect(() => {

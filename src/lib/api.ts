@@ -957,3 +957,60 @@ export async function getDashboardData(): Promise<DashboardDataDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/dashboard/data`);
   return handleResponse<DashboardDataDTO>(res);
 }
+
+// Branch sync DTOs and functions
+export interface SyncCommitDTO {
+  sha: string;
+  subject: string;
+}
+
+export interface BranchSyncStatusDTO {
+  behindBy: number;
+  commits: SyncCommitDTO[];
+  baseBranch: string;
+  lastChecked: string;
+}
+
+export interface BranchSyncResultDTO {
+  success: boolean;
+  newBaseSha?: string;
+  conflictFiles?: string[];
+  errorMessage?: string;
+}
+
+export async function getBranchSyncStatus(
+  workspaceId: string,
+  sessionId: string
+): Promise<BranchSyncStatusDTO> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branch-sync`
+  );
+  return handleResponse<BranchSyncStatusDTO>(res);
+}
+
+export async function syncBranch(
+  workspaceId: string,
+  sessionId: string,
+  operation: 'rebase' | 'merge'
+): Promise<BranchSyncResultDTO> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branch-sync`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation }),
+    }
+  );
+  return handleResponse<BranchSyncResultDTO>(res);
+}
+
+export async function abortBranchSync(
+  workspaceId: string,
+  sessionId: string
+): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branch-sync/abort`,
+    { method: 'POST' }
+  );
+  await handleVoidResponse(res, 'Failed to abort branch sync');
+}

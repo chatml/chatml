@@ -476,3 +476,25 @@ export interface CommentStats {
   total: number;
   unresolved: number;
 }
+
+// Commit info for branch sync
+export interface SyncCommit {
+  sha: string;
+  subject: string;
+}
+
+// Branch sync status - how far behind the session is from origin/main
+export interface BranchSyncStatus {
+  behindBy: number;
+  commits: SyncCommit[];
+  baseBranch: string;   // e.g., "origin/main"
+  lastChecked: string;  // ISO timestamp
+}
+
+// Branch sync result - result of a rebase or merge operation
+export interface BranchSyncResult {
+  success: boolean;
+  newBaseSha?: string;
+  conflictFiles?: string[];
+  errorMessage?: string;
+}
