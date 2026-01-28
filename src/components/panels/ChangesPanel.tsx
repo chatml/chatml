@@ -26,8 +26,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, DEFAULT_BOTTOM_TAB_ORDER } from '@/stores/settingsStore';
+import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, DEFAULT_BOTTOM_TAB_ORDER, type TopPanelTab, type AllTopPanelTab, DEFAULT_TOP_TAB_ORDER } from '@/stores/settingsStore';
 import {
   DndContext,
   closestCenter,
@@ -409,7 +410,7 @@ export function ChangesPanel({
   }, [selectedSessionId, currentSession?.worktreePath, debouncedFetchChanges]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Top Bar - changes based on session state */}
       <div
         data-tauri-drag-region
@@ -453,19 +454,19 @@ export function ChangesPanel({
           Review
         </Button>
 
-        {/* PR Status or Conflict indicator - truncates in middle */}
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        {/* PR Status or Conflict indicator - truncates in middle, hidden when very narrow */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
           {hasActivePR ? (
             <>
-              <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0" />
-              <span className="text-[12px] font-medium text-text-success truncate">
+              <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0 hidden @[220px]:block" />
+              <span className="text-[12px] font-medium text-text-success truncate hidden @[180px]:block">
                 PR #{currentSession?.prNumber}
               </span>
               {currentSession?.prUrl && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-text-success hover:bg-text-success/20 shrink-0"
+                  className="h-6 w-6 text-text-success hover:bg-text-success/20 shrink-0 hidden @[250px]:flex"
                   onClick={() => window.open(currentSession.prUrl, '_blank')}
                 >
                   <ExternalLink className="h-3 w-3" />
@@ -474,8 +475,8 @@ export function ChangesPanel({
             </>
           ) : hasConflictOrFailure && (
             <>
-              <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0" />
-              <span className="text-[12px] font-medium text-text-error truncate">
+              <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0 hidden @[220px]:block" />
+              <span className="text-[12px] font-medium text-text-error truncate hidden @[180px]:block">
                 {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
               </span>
             </>
@@ -501,63 +502,11 @@ export function ChangesPanel({
       </div>
 
       {/* Tabs Row */}
-      <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 overflow-hidden min-w-0">
-        <Button
-          variant={selectedTab === 'changes' ? 'secondary' : 'ghost'}
-          size="sm"
-          className={cn("h-6 text-xs px-2 gap-1 shrink-0", selectedTab !== 'changes' && "text-muted-foreground")}
-          onClick={() => setSelectedTab('changes')}
-        >
-          Changes
-          {changes?.length > 0 && (
-            <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[11px]">
-              {changes.length}
-            </span>
-          )}
-        </Button>
-        <Button
-          variant={selectedTab === 'review' ? 'secondary' : 'ghost'}
-          size="sm"
-          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'review' && "text-muted-foreground")}
-          onClick={() => setSelectedTab('review')}
-        >
-          Review
-        </Button>
-        <Button
-          variant={selectedTab === 'checks' ? 'secondary' : 'ghost'}
-          size="sm"
-          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'checks' && "text-muted-foreground")}
-          onClick={() => setSelectedTab('checks')}
-        >
-          Checks
-        </Button>
-        <Button
-          variant={selectedTab === 'files' ? 'secondary' : 'ghost'}
-          size="sm"
-          className={cn("h-6 text-xs px-2 shrink-0", selectedTab !== 'files' && "text-muted-foreground")}
-          onClick={() => setSelectedTab('files')}
-        >
-          Files
-        </Button>
-        <div className="flex-1 min-w-0" />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-              <MoreVertical className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>
-              <SplitSquareHorizontal className="size-4" />
-              Split View
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
-              <Search className="size-4" />
-              Search Files
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <TopPanelTabs
+        selectedTab={selectedTab}
+        setSelectedTab={setSelectedTab}
+        changesCount={changes?.length || 0}
+      />
 
       {/* Resizable content area */}
       <ResizablePanelGroup
@@ -567,7 +516,7 @@ export function ChangesPanel({
         onLayoutChange={setLayoutChanges}
       >
         {/* File List */}
-        <ResizablePanel id="file-list" defaultSize="65%" minSize="20%">
+        <ResizablePanel id="file-list" defaultSize="65%" minSize="20%" className="overflow-hidden">
           {selectedTab === 'files' ? (
             filesLoading ? (
               <div className="h-full flex items-center justify-center">
@@ -677,8 +626,8 @@ export function ChangesPanel({
         <ResizableHandle direction="vertical" />
 
         {/* Bottom Panel - Todos/MCP/History */}
-        <ResizablePanel id="terminal" defaultSize="35%" minSize="15%">
-          <div className="flex flex-col h-full">
+        <ResizablePanel id="terminal" defaultSize="35%" minSize="15%" className="overflow-hidden">
+          <div className="flex flex-col h-full w-full">
             {/* Tabs Row - matching top panel style */}
             <BottomPanelTabs
               bottomTab={bottomTab}
@@ -700,6 +649,14 @@ export function ChangesPanel({
     </div>
   );
 }
+
+// Top panel tabs configuration
+const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; alwaysVisible?: boolean }> = {
+  changes: { label: 'Changes', alwaysVisible: true },
+  review: { label: 'Review' },
+  checks: { label: 'Checks' },
+  files: { label: 'Files' },
+};
 
 // Bottom panel tabs configuration
 const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisible?: boolean }> = {
@@ -818,45 +775,47 @@ function BottomPanelTabs({
   }, [bottomTabOrder, setBottomTabOrder]);
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 shrink-0">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={visibleTabIds}
-          strategy={horizontalListSortingStrategy}
+    <div className="flex items-center gap-0.5 px-1.5 py-1 shrink-0 min-w-0 overflow-hidden">
+      {/* Scrollable tabs container */}
+      <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          {visibleTabIds.map((tabId) => (
-            <SortableTabButton
-              key={tabId}
-              id={tabId}
-              label={BOTTOM_TABS_CONFIG[tabId].label}
-              isActive={bottomTab === tabId}
-              onClick={() => setBottomTab(tabId)}
-              badge={tabId === 'todos' ? totalPendingTodos : undefined}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
+          <SortableContext
+            items={visibleTabIds}
+            strategy={horizontalListSortingStrategy}
+          >
+            <div className="flex items-center gap-0.5">
+              {visibleTabIds.map((tabId) => (
+                <SortableTabButton
+                  key={tabId}
+                  id={tabId}
+                  label={BOTTOM_TABS_CONFIG[tabId].label}
+                  isActive={bottomTab === tabId}
+                  onClick={() => setBottomTab(tabId)}
+                  badge={tabId === 'todos' ? totalPendingTodos : undefined}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
 
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Settings dropdown */}
+      {/* Settings dropdown - always visible */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0 shrink-0"
+            className="h-6 w-6 p-0 shrink-0 ml-1"
           >
             <MoreVertical className="size-3" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {DEFAULT_BOTTOM_TAB_ORDER.map((tabId) => {
+          {bottomTabOrder.map((tabId) => {
             const config = BOTTOM_TABS_CONFIG[tabId];
             return (
               <DropdownMenuCheckboxItem
@@ -866,6 +825,122 @@ function BottomPanelTabs({
                 onCheckedChange={() => {
                   if (!config.alwaysVisible) {
                     toggleBottomTab(tabId as BottomPanelTab);
+                  }
+                }}
+              >
+                {config.label}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function TopPanelTabs({
+  selectedTab,
+  setSelectedTab,
+  changesCount,
+}: {
+  selectedTab: string;
+  setSelectedTab: (tab: string) => void;
+  changesCount: number;
+}) {
+  const hiddenTopTabs = useSettingsStore((s) => s.hiddenTopTabs);
+  const toggleTopTab = useSettingsStore((s) => s.toggleTopTab);
+  const topTabOrder = useSettingsStore((s) => s.topTabOrder);
+  const setTopTabOrder = useSettingsStore((s) => s.setTopTabOrder);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const visibleTabIds = useMemo(() =>
+    topTabOrder.filter((tabId) => {
+      const config = TOP_TABS_CONFIG[tabId];
+      return config && (config.alwaysVisible || !hiddenTopTabs.includes(tabId as TopPanelTab));
+    }),
+    [topTabOrder, hiddenTopTabs]
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = topTabOrder.indexOf(active.id as AllTopPanelTab);
+      const newIndex = topTabOrder.indexOf(over.id as AllTopPanelTab);
+      const newOrder = arrayMove(topTabOrder, oldIndex, newIndex);
+      setTopTabOrder(newOrder);
+    }
+  }, [topTabOrder, setTopTabOrder]);
+
+  return (
+    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 min-w-0 overflow-hidden">
+      {/* Scrollable tabs container */}
+      <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={visibleTabIds}
+            strategy={horizontalListSortingStrategy}
+          >
+            <div className="flex items-center gap-0.5">
+              {visibleTabIds.map((tabId) => (
+                <SortableTabButton
+                  key={tabId}
+                  id={tabId}
+                  label={TOP_TABS_CONFIG[tabId].label}
+                  isActive={selectedTab === tabId}
+                  onClick={() => setSelectedTab(tabId)}
+                  badge={tabId === 'changes' && changesCount > 0 ? changesCount : undefined}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
+
+      {/* Settings dropdown - always visible */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 shrink-0 ml-1"
+          >
+            <MoreVertical className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem>
+            <SplitSquareHorizontal className="size-4" />
+            Split View
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
+            <Search className="size-4" />
+            Search Files
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {topTabOrder.map((tabId) => {
+            const config = TOP_TABS_CONFIG[tabId];
+            return (
+              <DropdownMenuCheckboxItem
+                key={tabId}
+                checked={config.alwaysVisible || !hiddenTopTabs.includes(tabId as TopPanelTab)}
+                disabled={config.alwaysVisible}
+                onCheckedChange={() => {
+                  if (!config.alwaysVisible) {
+                    toggleTopTab(tabId as TopPanelTab);
                   }
                 }}
               >
