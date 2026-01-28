@@ -782,6 +782,23 @@ export async function approvePlan(convId: string): Promise<void> {
   }
 }
 
+// Answer a pending AskUserQuestion from the agent
+export async function answerConversationQuestion(
+  convId: string,
+  requestId: string,
+  answers: Record<string, string>
+): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/answer-question`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, answers }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+}
+
 // File Tab DTOs and functions
 export interface FileTabDTO {
   id: string;

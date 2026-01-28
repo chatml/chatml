@@ -126,12 +126,15 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response";
   content?: string;
   model?: string;
   permissionMode?: string;
   checkpointUuid?: string; // For rewind_files
   attachments?: Attachment[]; // File attachments
+  // User question response fields
+  questionRequestId?: string;
+  answers?: Record<string, string>;
 }
 
 // Track if we've suggested a name yet
@@ -146,6 +149,17 @@ let queryRef: Query | null = null;
 
 // Track current session ID
 let currentSessionId: string | undefined = undefined;
+
+// Pending user question requests (for AskUserQuestion tool)
+const USER_QUESTION_TIMEOUT_MS = 60000; // 60 seconds (SDK requirement)
+
+interface PendingQuestionRequest {
+  resolve: (answers: Record<string, string>) => void;
+  reject: (error: Error) => void;
+  timeoutId: NodeJS.Timeout;
+}
+const pendingQuestionRequests = new Map<string, PendingQuestionRequest>();
+let questionRequestCounter = 0;
 
 // Module-level references for cleanup
 let abortControllerRef: AbortController | null = null;
@@ -230,6 +244,27 @@ async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
             emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: true });
           } catch (error) {
             emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: false, error: String(error) });
+          }
+          continue;
+        }
+
+        // Handle user question responses from the Go backend
+        if (input.type === "user_question_response" && input.questionRequestId && input.answers) {
+          const pending = pendingQuestionRequests.get(input.questionRequestId);
+          if (pending) {
+            clearTimeout(pending.timeoutId);
+            pendingQuestionRequests.delete(input.questionRequestId);
+            // Check if user cancelled the question
+            if (input.answers.__cancelled === "true") {
+              pending.reject(new Error("User cancelled the question"));
+            } else {
+              pending.resolve(input.answers);
+            }
+          } else {
+            emit({
+              type: "warning",
+              message: `Received response for unknown question request: ${input.questionRequestId}`,
+            });
           }
           continue;
         }
@@ -541,6 +576,82 @@ const hooks = {
 };
 
 // ============================================================================
+// CAN USE TOOL - AskUserQuestion Handler
+// ============================================================================
+
+interface AskUserQuestionInput {
+  questions: Array<{
+    question: string;
+    header: string;
+    options: Array<{
+      label: string;
+      description: string;
+    }>;
+    multiSelect: boolean;
+  }>;
+  answers?: Record<string, string>;
+}
+
+const canUseTool = async (
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  _options: { signal: AbortSignal; toolUseID: string }
+): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
+  // Only handle AskUserQuestion tool
+  if (toolName !== "AskUserQuestion") {
+    return { behavior: "allow" };
+  }
+
+  const input = toolInput as unknown as AskUserQuestionInput;
+  const requestId = `question-${++questionRequestCounter}-${Date.now()}`;
+
+  // Emit the question request to the Go backend
+  emit({
+    type: "user_question_request",
+    requestId,
+    questions: input.questions,
+    sessionId: currentSessionId,
+  });
+
+  // Wait for response with timeout (SDK requirement)
+  try {
+    const answers = await new Promise<Record<string, string>>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        pendingQuestionRequests.delete(requestId);
+        reject(new Error(`User question timed out after ${USER_QUESTION_TIMEOUT_MS / 1000} seconds`));
+      }, USER_QUESTION_TIMEOUT_MS);
+
+      pendingQuestionRequests.set(requestId, {
+        resolve,
+        reject,
+        timeoutId,
+      });
+    });
+
+    // Return updated input with answers populated
+    return {
+      behavior: "allow",
+      updatedInput: {
+        ...toolInput,
+        answers,
+      },
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    emit({
+      type: "user_question_timeout",
+      requestId,
+      error: errorMessage,
+      sessionId: currentSessionId,
+    });
+    return {
+      behavior: "deny",
+      message: errorMessage,
+    };
+  }
+};
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -577,6 +688,7 @@ async function main(): Promise<void> {
         cwd,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
+        canUseTool,
         mcpServers: { conductor: conductorMcp },
         includePartialMessages: true,
         tools: { type: "preset", preset: "claude_code" },
@@ -933,7 +1045,14 @@ async function cleanup(reason: string): Promise<void> {
     abortControllerRef.abort();
   }
 
-  // 2. Interrupt the query if active
+  // 2. Cancel all pending question requests
+  for (const [requestId, pending] of pendingQuestionRequests) {
+    clearTimeout(pending.timeoutId);
+    pending.reject(new Error(`Cleanup: ${reason}`));
+    pendingQuestionRequests.delete(requestId);
+  }
+
+  // 3. Interrupt the query if active
   if (queryRef) {
     try {
       await queryRef.interrupt();
@@ -942,10 +1061,10 @@ async function cleanup(reason: string): Promise<void> {
     }
   }
 
-  // 3. Close readline
+  // 4. Close readline
   closeReadline();
 
-  // 4. Emit shutdown event
+  // 5. Emit shutdown event
   emit({ type: "shutdown", reason });
 }
 

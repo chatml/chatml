@@ -238,6 +238,10 @@ export interface AgentEvent {
   checkpointUuid?: string;
   messageIndex?: number;
   isResult?: boolean;
+
+  // User question fields (AskUserQuestion tool)
+  requestId?: string;
+  questions?: UserQuestion[];
 }
 
 // MCP server status
@@ -331,7 +335,31 @@ export const AgentEventTypes = {
   // Checkpoint events
   CHECKPOINT_CREATED: 'checkpoint_created',
   FILES_REWOUND: 'files_rewound',
+
+  // User question events (AskUserQuestion tool)
+  USER_QUESTION_REQUEST: 'user_question_request',
+  USER_QUESTION_TIMEOUT: 'user_question_timeout',
 } as const;
+
+// AskUserQuestion tool types
+export interface UserQuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface UserQuestion {
+  question: string;
+  header: string;
+  options: UserQuestionOption[];
+  multiSelect: boolean;
+}
+
+export interface PendingUserQuestion {
+  requestId: string;
+  questions: UserQuestion[];
+  currentIndex: number;  // Track which question is being shown
+  answers: Record<string, string>;  // header -> selected label(s)
+}
 
 export interface VerificationResult {
   name: string;

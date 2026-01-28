@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
@@ -88,6 +88,8 @@ export function useWebSocket(enabled: boolean = true) {
     clearActiveTools,
     setAgentTodos,
     finalizeStreamingMessage,
+    setPendingUserQuestion,
+    clearPendingUserQuestion,
   } = useAppStore();
 
   // Map backend status to frontend session status
@@ -311,6 +313,23 @@ export function useWebSocket(enabled: boolean = true) {
           }
         }));
         break;
+
+      case 'user_question_request':
+        // AskUserQuestion tool - set pending question for the conversation
+        if (event?.requestId && Array.isArray(event?.questions)) {
+          setPendingUserQuestion(conversationId, {
+            requestId: event.requestId as string,
+            questions: event.questions as UserQuestion[],
+            currentIndex: 0,
+            answers: {},
+          });
+        }
+        break;
+
+      case 'user_question_timeout':
+        // Question timed out - clear the pending question UI
+        clearPendingUserQuestion(conversationId);
+        break;
     }
   }, [
     appendStreamingText,
@@ -328,6 +347,8 @@ export function useWebSocket(enabled: boolean = true) {
     clearActiveTools,
     setAgentTodos,
     finalizeStreamingMessage,
+    setPendingUserQuestion,
+    clearPendingUserQuestion,
   ]);
 
   const connect = useCallback(async () => {

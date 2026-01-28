@@ -74,6 +74,9 @@ type InputMessage struct {
 	PermissionMode string              `json:"permissionMode,omitempty"`
 	CheckpointUuid string              `json:"checkpointUuid,omitempty"`
 	Attachments    []models.Attachment `json:"attachments,omitempty"`
+	// User question response fields (for AskUserQuestion tool)
+	QuestionRequestID string            `json:"questionRequestId,omitempty"`
+	Answers           map[string]string `json:"answers,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -390,6 +393,15 @@ func (p *Process) RewindFiles(checkpointUuid string) error {
 	return p.sendInput(InputMessage{
 		Type:           "rewind_files",
 		CheckpointUuid: checkpointUuid,
+	})
+}
+
+// SendUserQuestionResponse sends the user's answers to a pending AskUserQuestion
+func (p *Process) SendUserQuestionResponse(requestId string, answers map[string]string) error {
+	return p.sendInput(InputMessage{
+		Type:              "user_question_response",
+		QuestionRequestID: requestId,
+		Answers:           answers,
 	})
 }
 
