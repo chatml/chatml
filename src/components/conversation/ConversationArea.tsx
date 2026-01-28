@@ -1119,7 +1119,7 @@ const MessageBlock = memo(function MessageBlock({
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
         <div className="max-w-[85%] border border-purple-400/20 bg-purple-500/10 rounded-2xl rounded-br-md px-4 py-2">
-          <p className="text-sm leading-relaxed">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
             {highlightedContent || message.content}
           </p>
         </div>
