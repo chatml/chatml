@@ -26,6 +26,7 @@ import { ConversationArea } from '@/components/conversation/ConversationArea';
 import { ChatInput } from '@/components/conversation/ChatInput';
 import { ChangesPanel } from '@/components/panels/ChangesPanel';
 import { BottomTerminal } from '@/components/layout/BottomTerminal';
+import { MainToolbar } from '@/components/layout/MainToolbar';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
@@ -1037,11 +1038,27 @@ export default function Home() {
 
           {/* Main Content - Full content views OR inner horizontal split */}
           <ResizablePanel id="main-content" defaultSize={78} minSize={30}>
-            {isLoadingData ? (
-              <ConversationSkeleton />
-            ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
-              // Full Content Views take entire main content area
-              <ErrorBoundary section="FullContent">
+            <div className="flex flex-col h-full">
+              {/* Main Toolbar - always visible at top of main content */}
+              <MainToolbar
+                showLeftSidebar={!leftSidebarCollapsed}
+                showRightSidebar={!rightSidebarCollapsed}
+                showBottomPanel={showBottomTerminal}
+                hasSecondaryPanels={!isFullContentView && !!selectedSessionId}
+                onToggleLeftSidebar={toggleLeftSidebar}
+                onToggleRightSidebar={toggleRightSidebar}
+                onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                onOpenSettings={() => setShowSettings(true)}
+                onOpenShortcuts={() => setShowShortcuts(true)}
+              />
+
+              {/* Content Area */}
+              <div className="flex-1 min-h-0">
+                {isLoadingData ? (
+                  <ConversationSkeleton />
+                ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
+                  // Full Content Views take entire main content area
+                  <ErrorBoundary section="FullContent">
                 {contentView.type === 'global-dashboard' && (
                   <GlobalDashboard
                     onOpenSettings={() => setShowSettings(true)}
@@ -1197,7 +1214,9 @@ export default function Home() {
                   </ErrorBoundary>
                 </ResizablePanel>
               </ResizablePanelGroup>
-            )}
+                )}
+              </div>
+            </div>
           </ResizablePanel>
         </ResizablePanelGroup>
 
