@@ -19,6 +19,7 @@ import type {
   RunSummary,
   ReviewComment,
   BranchSyncStatus,
+  PendingUserQuestion,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -101,6 +102,9 @@ interface AppState {
   branchSyncDismissed: { [sessionId: string]: boolean };
   // Timestamp of last successful sync (triggers changes panel refresh)
   branchSyncCompletedAt: { [sessionId: string]: number };
+
+  // Pending user questions from AskUserQuestion tool (keyed by conversationId)
+  pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -219,6 +223,13 @@ interface AppState {
   setBranchSyncCompletedAt: (sessionId: string, timestamp: number) => void;
   clearBranchSyncStatus: (sessionId: string) => void;
 
+  // User question actions (AskUserQuestion tool)
+  setPendingUserQuestion: (conversationId: string, question: PendingUserQuestion | null) => void;
+  updateUserQuestionAnswer: (conversationId: string, header: string, answer: string) => void;
+  nextUserQuestion: (conversationId: string) => void;
+  prevUserQuestion: (conversationId: string) => void;
+  clearPendingUserQuestion: (conversationId: string) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -264,6 +275,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncLoading: {},
   branchSyncDismissed: {},
   branchSyncCompletedAt: {},
+  pendingUserQuestion: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -472,6 +484,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _streaming, ...remainingStreamingState } = state.streamingState;
     const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
+    const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -498,6 +511,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       streamingState: remainingStreamingState,
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
+      pendingUserQuestion: remainingPendingQuestions,
     };
   }),
   selectConversation: (id) => set({ selectedConversationId: id }),
@@ -1130,6 +1144,66 @@ updateFileTabContent: (id, content) => set((state) => ({
       branchSyncDismissed: remainingDismissed,
     };
   }),
+
+  // User question actions (AskUserQuestion tool)
+  setPendingUserQuestion: (conversationId, question) => set((state) => ({
+    pendingUserQuestion: {
+      ...state.pendingUserQuestion,
+      [conversationId]: question,
+    },
+  })),
+
+  updateUserQuestionAnswer: (conversationId, header, answer) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending) return state;
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          answers: {
+            ...pending.answers,
+            [header]: answer,
+          },
+        },
+      },
+    };
+  }),
+
+  nextUserQuestion: (conversationId) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending || pending.currentIndex >= pending.questions.length - 1) return state;
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          currentIndex: pending.currentIndex + 1,
+        },
+      },
+    };
+  }),
+
+  prevUserQuestion: (conversationId) => set((state) => {
+    const pending = state.pendingUserQuestion[conversationId];
+    if (!pending || pending.currentIndex <= 0) return state;
+    return {
+      pendingUserQuestion: {
+        ...state.pendingUserQuestion,
+        [conversationId]: {
+          ...pending,
+          currentIndex: pending.currentIndex - 1,
+        },
+      },
+    };
+  }),
+
+  clearPendingUserQuestion: (conversationId) => set((state) => ({
+    pendingUserQuestion: {
+      ...state.pendingUserQuestion,
+      [conversationId]: null,
+    },
+  })),
 
   // Legacy support
   repos: [],

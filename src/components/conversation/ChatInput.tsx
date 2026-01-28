@@ -33,6 +33,8 @@ import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDial
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents } from '@/lib/attachments';
+import { UserQuestionPrompt } from './UserQuestionPrompt';
+import { usePendingUserQuestion } from '@/stores/selectors';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake },
@@ -637,6 +639,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     ? streamingState[selectedConversationId]?.awaitingPlanApproval
     : false;
 
+  // Check if there's a pending user question
+  const pendingQuestion = usePendingUserQuestion(selectedConversationId);
+
   // Textarea auto-grow configuration
   const TEXTAREA_LIMITS = {
     minHeight: 80,                    // Normal min height
@@ -976,6 +981,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       setSuggestion(null);
     }
   };
+
+  // If there's a pending question, show the question UI instead of the normal input
+  if (pendingQuestion && selectedConversationId) {
+    return <UserQuestionPrompt conversationId={selectedConversationId} />;
+  }
 
   return (
     <div className="pt-1 px-3 pb-3">

@@ -106,6 +106,10 @@ type AgentEvent struct {
 	// JSON parse error fields
 	RawInput     string `json:"rawInput,omitempty"`
 	ErrorDetails string `json:"errorDetails,omitempty"`
+
+	// User question fields (AskUserQuestion tool)
+	RequestID string         `json:"requestId,omitempty"`
+	Questions []UserQuestion `json:"questions,omitempty"`
 }
 
 // McpServerStatus represents MCP server connection status
@@ -202,6 +206,10 @@ const (
 
 	// Warning events
 	EventTypeStreamingWarning = "streaming_warning"
+
+	// User question events (AskUserQuestion tool)
+	EventTypeUserQuestionRequest = "user_question_request"
+	EventTypeUserQuestionTimeout = "user_question_timeout"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
@@ -209,6 +217,20 @@ type TodoItem struct {
 	Content    string `json:"content"`
 	Status     string `json:"status"` // "pending", "in_progress", "completed"
 	ActiveForm string `json:"activeForm"`
+}
+
+// UserQuestion represents a question from the AskUserQuestion tool
+type UserQuestion struct {
+	Question    string               `json:"question"`
+	Header      string               `json:"header"`
+	Options     []UserQuestionOption `json:"options"`
+	MultiSelect bool                 `json:"multiSelect"`
+}
+
+// UserQuestionOption represents an option for a user question
+type UserQuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description"`
 }
 
 // ParseAgentLine parses a line of JSON output from the agent-runner

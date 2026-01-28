@@ -2389,6 +2389,52 @@ func (h *Handlers) RewindConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "rewinding"})
 }
 
+// AnswerQuestionRequest represents user answers to AskUserQuestion tool
+type AnswerQuestionRequest struct {
+	RequestID string            `json:"requestId"`
+	Answers   map[string]string `json:"answers"`
+}
+
+// AnswerConversationQuestion submits user answers to a pending AskUserQuestion
+func (h *Handlers) AnswerConversationQuestion(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	if convID == "" {
+		writeValidationError(w, "conversation ID required")
+		return
+	}
+
+	var req AnswerQuestionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.RequestID == "" {
+		writeValidationError(w, "requestId is required")
+		return
+	}
+
+	// Ensure answers map is initialized (defensive validation)
+	if req.Answers == nil {
+		req.Answers = make(map[string]string)
+	}
+
+	// Get the process for this conversation
+	proc := h.agentManager.GetConversationProcess(convID)
+	if proc == nil {
+		writeNotFound(w, "no active process for conversation")
+		return
+	}
+
+	// Send the answer to the agent process
+	if err := proc.SendUserQuestionResponse(req.RequestID, req.Answers); err != nil {
+		writeInternalError(w, "failed to send answer", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")

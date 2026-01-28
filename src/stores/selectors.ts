@@ -317,3 +317,14 @@ export const useReviewCommentActions = () =>
       setReviewComments: s.setReviewComments,
     }))
   );
+
+// ============================================================================
+// User Question State (AskUserQuestion tool)
+// ============================================================================
+
+/**
+ * Pending user question for a specific conversation.
+ * Use in: ChatInput, UserQuestionPrompt
+ */
+export const usePendingUserQuestion = (conversationId: string | null) =>
+  useAppStore((s) => (conversationId ? s.pendingUserQuestion[conversationId] ?? null : null));
