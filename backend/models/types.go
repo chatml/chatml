@@ -269,3 +269,30 @@ type BranchListResponse struct {
 	Total           int                 `json:"total"`
 	HasMore         bool                `json:"hasMore"`
 }
+
+// SyncCommit represents a commit in the sync status
+type SyncCommit struct {
+	SHA     string `json:"sha"`
+	Subject string `json:"subject"`
+}
+
+// BranchSyncStatus represents the sync status of a session branch with origin/main
+type BranchSyncStatus struct {
+	BehindBy    int          `json:"behindBy"`
+	Commits     []SyncCommit `json:"commits"`
+	BaseBranch  string       `json:"baseBranch"`  // e.g., "origin/main"
+	LastChecked string       `json:"lastChecked"` // ISO timestamp
+}
+
+// BranchSyncRequest represents a request to sync a session branch
+type BranchSyncRequest struct {
+	Operation string `json:"operation"` // "rebase" or "merge"
+}
+
+// BranchSyncResult represents the result of a branch sync operation
+type BranchSyncResult struct {
+	Success       bool     `json:"success"`
+	NewBaseSha    string   `json:"newBaseSha,omitempty"`
+	ConflictFiles []string `json:"conflictFiles,omitempty"`
+	ErrorMessage  string   `json:"errorMessage,omitempty"`
+}

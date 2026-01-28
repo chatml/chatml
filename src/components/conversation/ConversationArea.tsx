@@ -70,6 +70,9 @@ import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteR
 import { Terminal } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { BranchSyncBanner } from '@/components/BranchSyncBanner';
+import { BranchSyncConflictDialog } from '@/components/BranchSyncConflictDialog';
+import { useBranchSync } from '@/hooks/useBranchSync';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -104,6 +107,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const streamingState = useAppStore((s) => s.streamingState);
+  const addMessage = useAppStore((s) => s.addMessage);
 
   // Use messages selector scoped to the selected conversation
   const conversationMessages = useMessages(selectedConversationId);
@@ -129,6 +133,52 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
     fetchComments();
   }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
+
+  // Branch sync for updating from origin/main
+  const {
+    status: branchSyncStatus,
+    // loading: branchSyncLoading, // Available if needed for loading indicator
+    syncing: branchSyncing,
+    aborting: branchAborting,
+    dismissed: branchSyncDismissed,
+    conflictFiles: branchConflictFiles,
+    lastOperation: branchLastOperation,
+    rebase: doBranchRebase,
+    merge: doBranchMerge,
+    abort: handleBranchAbort,
+    dismiss: handleBranchDismiss,
+    clearConflicts: clearBranchConflicts,
+  } = useBranchSync(selectedWorkspaceId, selectedSessionId);
+
+  // Show conflict dialog when there are conflicts
+  const showConflictDialog = branchConflictFiles.length > 0;
+
+  // Wrapped handlers that add a success message to the chat
+  const handleBranchRebase = useCallback(async () => {
+    const result = await doBranchRebase();
+    if (result?.success && selectedConversationId) {
+      addMessage({
+        id: `sync-${Date.now()}`,
+        conversationId: selectedConversationId,
+        role: 'system',
+        content: 'Branch rebased successfully. Your branch is now up-to-date with origin.',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [doBranchRebase, selectedConversationId, addMessage]);
+
+  const handleBranchMerge = useCallback(async () => {
+    const result = await doBranchMerge();
+    if (result?.success && selectedConversationId) {
+      addMessage({
+        id: `sync-${Date.now()}`,
+        conversationId: selectedConversationId,
+        role: 'system',
+        content: 'Branch merged successfully. Your branch is now up-to-date with origin.',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [doBranchMerge, selectedConversationId, addMessage]);
 
   // Rename dialog state for conversations
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -734,6 +784,29 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
+      {/* Branch sync banner - shows when origin/main has updates */}
+      {branchSyncStatus && branchSyncStatus.behindBy > 0 && !branchSyncDismissed && (
+        <BranchSyncBanner
+          status={branchSyncStatus}
+          loading={branchSyncing}
+          onRebase={handleBranchRebase}
+          onMerge={handleBranchMerge}
+          onDismiss={handleBranchDismiss}
+        />
+      )}
+
+      {/* Branch sync conflict dialog */}
+      <BranchSyncConflictDialog
+        open={showConflictDialog}
+        onOpenChange={(open) => {
+          if (!open) clearBranchConflicts();
+        }}
+        operation={branchLastOperation || 'rebase'}
+        conflictFiles={branchConflictFiles}
+        onAbort={handleBranchAbort}
+        aborting={branchAborting}
+      />
+
       {/* VS Code-style unified TabBar */}
       <TabBar
         workspaceTabs={[]}

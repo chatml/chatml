@@ -18,6 +18,7 @@ import type {
   ToolUsage,
   RunSummary,
   ReviewComment,
+  BranchSyncStatus,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -93,6 +94,13 @@ interface AppState {
 
   // Review comments state (keyed by sessionId)
   reviewComments: { [sessionId: string]: ReviewComment[] };
+
+  // Branch sync state (keyed by sessionId)
+  branchSyncStatus: { [sessionId: string]: BranchSyncStatus | null };
+  branchSyncLoading: { [sessionId: string]: boolean };
+  branchSyncDismissed: { [sessionId: string]: boolean };
+  // Timestamp of last successful sync (triggers changes panel refresh)
+  branchSyncCompletedAt: { [sessionId: string]: number };
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -204,6 +212,13 @@ interface AppState {
   updateReviewComment: (sessionId: string, id: string, updates: Partial<ReviewComment>) => void;
   deleteReviewComment: (sessionId: string, id: string) => void;
 
+  // Branch sync actions
+  setBranchSyncStatus: (sessionId: string, status: BranchSyncStatus | null) => void;
+  setBranchSyncLoading: (sessionId: string, loading: boolean) => void;
+  setBranchSyncDismissed: (sessionId: string, dismissed: boolean) => void;
+  setBranchSyncCompletedAt: (sessionId: string, timestamp: number) => void;
+  clearBranchSyncStatus: (sessionId: string) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -245,6 +260,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   checkpoints: [],
   budgetStatus: null,
   reviewComments: {},
+  branchSyncStatus: {},
+  branchSyncLoading: {},
+  branchSyncDismissed: {},
+  branchSyncCompletedAt: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -1075,6 +1094,42 @@ updateFileTabContent: (id, content) => set((state) => ({
       [sessionId]: (state.reviewComments[sessionId] || []).filter((c) => c.id !== id),
     },
   })),
+
+  // Branch sync actions
+  setBranchSyncStatus: (sessionId, status) => set((state) => ({
+    branchSyncStatus: {
+      ...state.branchSyncStatus,
+      [sessionId]: status,
+    },
+  })),
+  setBranchSyncLoading: (sessionId, loading) => set((state) => ({
+    branchSyncLoading: {
+      ...state.branchSyncLoading,
+      [sessionId]: loading,
+    },
+  })),
+  setBranchSyncDismissed: (sessionId, dismissed) => set((state) => ({
+    branchSyncDismissed: {
+      ...state.branchSyncDismissed,
+      [sessionId]: dismissed,
+    },
+  })),
+  setBranchSyncCompletedAt: (sessionId, timestamp) => set((state) => ({
+    branchSyncCompletedAt: {
+      ...state.branchSyncCompletedAt,
+      [sessionId]: timestamp,
+    },
+  })),
+  clearBranchSyncStatus: (sessionId) => set((state) => {
+    const { [sessionId]: _status, ...remainingStatus } = state.branchSyncStatus;
+    const { [sessionId]: _loading, ...remainingLoading } = state.branchSyncLoading;
+    const { [sessionId]: _dismissed, ...remainingDismissed } = state.branchSyncDismissed;
+    return {
+      branchSyncStatus: remainingStatus,
+      branchSyncLoading: remainingLoading,
+      branchSyncDismissed: remainingDismissed,
+    };
+  }),
 
   // Legacy support
   repos: [],

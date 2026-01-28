@@ -745,12 +745,12 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 	return RetryDBExec(ctx, "UpdateSession", DefaultRetryConfig(), func(ctx context.Context) error {
 		_, err := s.db.ExecContext(ctx, `
 			UPDATE sessions SET
-				name = ?, branch = ?, worktree_path = ?, task = ?,
+				name = ?, branch = ?, worktree_path = ?, base_commit_sha = ?, task = ?,
 				status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
 				pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
 				stats_additions = ?, stats_deletions = ?, pinned = ?, archived = ?, updated_at = ?
 			WHERE id = ?`,
-			session.Name, session.Branch, session.WorktreePath, session.Task,
+			session.Name, session.Branch, session.WorktreePath, session.BaseCommitSHA, session.Task,
 			session.Status, session.AgentID, session.PRStatus, session.PRUrl,
 			session.PRNumber, boolToInt(session.HasMergeConflict),
 			boolToInt(session.HasCheckFailures),
