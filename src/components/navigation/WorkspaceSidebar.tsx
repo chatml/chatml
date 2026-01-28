@@ -63,7 +63,9 @@ import {
   XCircle,
   AlertTriangle,
   Pin,
-  PanelLeftClose,
+  ChevronLeft,
+  ChevronRight,
+  History,
   Folder,
   Globe,
   SquarePlus,
@@ -95,7 +97,6 @@ interface WorkspaceSidebarProps {
   onSessionSelected?: () => void;
   onOpenSettings?: () => void;
   onOpenWorkspaceSettings?: (workspaceId: string) => void;
-  onToggleSidebar?: () => void;
 }
 
 // Linear-style color palette for workspace indicators
@@ -129,7 +130,7 @@ const ADD_REPO_MENU_ITEMS = [
   { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
 ] as const;
 
-export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings, onToggleSidebar }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -336,25 +337,32 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
 
       {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between shrink-0", leftToolbarBg)}>
-        <span className="text-[22px] font-extrabold select-none">
+      <div data-tauri-drag-region className={cn("relative h-11 pl-20 pr-2 flex items-center justify-between shrink-0", leftToolbarBg)}>
+        <span className="text-[20px] font-extrabold select-none truncate min-w-0" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}>
           <span className="text-muted-foreground">chat</span><span className="text-purple-600">ml</span>
         </span>
-        {onToggleSidebar && (
+        <div className="flex items-center gap-0.5 shrink-0">
+          {/* Navigation Arrows */}
+          <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+          {/* History */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
-                onClick={onToggleSidebar}
+                className="h-6 w-6"
               >
-                <PanelLeftClose className="h-4 w-4" />
+                <History className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Hide Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ B</span></TooltipContent>
+            <TooltipContent side="bottom">History</TooltipContent>
           </Tooltip>
-        )}
+        </div>
       </div>
 
       {/* Global Navigation */}

@@ -1025,7 +1025,7 @@ export default function Home() {
                     expandWorkspace(workspaceId);
                     setShowWorkspaceSettings(workspaceId);
                   }}
-                  onToggleSidebar={toggleLeftSidebar}
+
                 />
               </ErrorBoundary>
             </div>
@@ -1136,13 +1136,7 @@ export default function Home() {
                         <div className="flex flex-col h-full">
                           <TopBar
                             showLeftSidebar={!leftSidebarCollapsed || zenMode}
-                            showRightSidebar={!rightSidebarCollapsed || zenMode}
-                            showBottomPanel={showBottomTerminal}
                             onToggleLeftSidebar={toggleLeftSidebar}
-                            onToggleRightSidebar={toggleRightSidebar}
-                            onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
-                            onOpenSettings={() => setShowSettings(true)}
-                            onOpenShortcuts={() => setShowShortcuts(true)}
                           />
                           <ErrorBoundary section="Conversation">
                             <ConversationArea>
