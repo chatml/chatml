@@ -5,20 +5,20 @@ import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
 import { watchWorkspace, unwatchWorkspace, listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
-import { FileTree, FileIcon, type FileNode } from '@/components/FileTree';
-import { TodoPanel } from '@/components/TodoPanel';
-import { CheckpointTimeline } from '@/components/CheckpointTimeline';
-import { BudgetStatusPanel } from '@/components/BudgetStatusPanel';
-import { GitStatusSection } from '@/components/GitStatusSection';
-import { PrimaryActionButton } from '@/components/PrimaryActionButton';
-import { AppSettingsMenu } from '@/components/AppSettingsMenu';
+import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
+import { TodoPanel } from '@/components/panels/TodoPanel';
+import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
+import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
+import { GitStatusSection } from '@/components/panels/GitStatusSection';
+import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
+import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
 import { useGitStatus } from '@/hooks/useGitStatus';
 import { usePRStatus } from '@/hooks/usePRStatus';
 
-import { McpServersPanel } from '@/components/McpServersPanel';
-import { PlansPanel } from '@/components/PlansPanel';
-import { ReviewPanel } from '@/components/ReviewPanel';
-import { FileHistoryPanel } from '@/components/FileHistoryPanel';
+import { McpServersPanel } from '@/components/panels/McpServersPanel';
+import { PlansPanel } from '@/components/panels/PlansPanel';
+import { ReviewPanel } from '@/components/panels/ReviewPanel';
+import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,

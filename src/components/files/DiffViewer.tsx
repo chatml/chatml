@@ -14,8 +14,8 @@ import {
   FileCode,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { BlockErrorFallback } from '@/components/ErrorFallbacks';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 // Pre-computed skeleton widths (avoids Math.random() during render)
 const DIFF_SKELETON_WIDTHS = [52, 78, 45, 89, 63, 71, 48, 85, 56, 74, 42, 82];

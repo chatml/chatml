@@ -8,7 +8,7 @@ import { useTerminalState } from '@/stores/selectors';
 import { cn } from '@/lib/utils';
 
 const Terminal = dynamic(
-  () => import('@/components/Terminal').then((mod) => mod.Terminal),
+  () => import('@/components/shared/Terminal').then((mod) => mod.Terminal),
   {
     ssr: false,
     loading: () => (

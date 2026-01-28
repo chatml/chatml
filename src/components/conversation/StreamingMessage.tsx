@@ -7,8 +7,8 @@ import rehypeHighlight from 'rehype-highlight';
 import { useAppStore } from '@/stores/appStore';
 import { useStreamingState, useActiveTools } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
-import { ActiveToolsDisplay } from '@/components/ToolUsageBlock';
-import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
+import { ActiveToolsDisplay } from '@/components/conversation/ToolUsageBlock';
+import { MarkdownPre, MarkdownCode } from '@/components/shared/MarkdownCodeBlock';
 import { cn } from '@/lib/utils';
 
 interface StreamingMessageProps {

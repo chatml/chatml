@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { FullContentLayout } from '@/components/FullContentLayout';
+import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Layers, GitBranch, GitPullRequest, FolderGit2, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
