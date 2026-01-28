@@ -51,7 +51,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { AppSettingsMenu } from '@/components/AppSettingsMenu';
+import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
 
 interface TopBarProps {
   showLeftSidebar?: boolean;

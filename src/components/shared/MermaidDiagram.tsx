@@ -6,7 +6,7 @@ import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pa
 import { Button } from '@/components/ui/button';
 import { ZoomIn, ZoomOut, Undo2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 
 interface MermaidDiagramProps {
   code: string;

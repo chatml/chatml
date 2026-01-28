@@ -9,7 +9,7 @@ import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows, WrapText } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MonacoEditor, MonacoDiffEditor } from '@/components/MonacoEditor';
+import { MonacoEditor, MonacoDiffEditor } from '@/components/files/MonacoEditor';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
 import { getShikiLanguage } from '@/lib/languageMapping';

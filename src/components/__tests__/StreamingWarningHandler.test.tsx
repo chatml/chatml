@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import { StreamingWarningHandler } from '../StreamingWarningHandler';
+import { StreamingWarningHandler } from '../shared/StreamingWarningHandler';
 import { ToastProvider } from '../ui/toast';
 
 describe('StreamingWarningHandler', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Folder, Globe, SquarePlus, Sparkles } from 'lucide-react';
-import { FullContentLayout } from './FullContentLayout';
+import { FullContentLayout } from '@/components/layout/FullContentLayout';
 
 interface EmptyViewProps {
   onOpenProject: () => void;

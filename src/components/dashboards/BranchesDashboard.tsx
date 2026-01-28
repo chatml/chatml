@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { FullContentLayout } from '@/components/FullContentLayout';
+import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
 import { listBranches, type BranchDTO, type BranchListResponse } from '@/lib/api';
 import { useAvatars } from '@/hooks/useAvatars';

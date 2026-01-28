@@ -7,7 +7,7 @@ import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isTauri } from '@/lib/tauri';
 import { getFileIcon, getFolderIcon, getIconifyName, preloadFolderIcons } from '@/lib/vscodeIcons';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 
 // Preload folder icons on module load to prevent flicker
 let iconsPreloaded = false;

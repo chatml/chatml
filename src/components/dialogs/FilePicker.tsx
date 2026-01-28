@@ -12,7 +12,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { useShortcut } from '@/hooks/useShortcut';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
-import { FileIcon } from '@/components/FileTree';
+import { FileIcon } from '@/components/files/FileTree';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { FileTab } from '@/lib/types';
 import type { Command as CommandPrimitive } from 'cmdk';

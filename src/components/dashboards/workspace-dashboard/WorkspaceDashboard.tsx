@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { FullContentLayout } from '@/components/FullContentLayout';
+import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useDashboardData } from './useDashboardData';
 import { AlertsSection } from './AlertsSection';
 import { StatsOverview } from './StatsOverview';
@@ -12,8 +12,8 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Layers, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCallback, useState } from 'react';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { BlockErrorFallback, CardErrorFallback } from '@/components/ErrorFallbacks';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { BlockErrorFallback, CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 interface WorkspaceDashboardProps {
   workspaceId: string;

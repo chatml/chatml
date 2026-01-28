@@ -8,7 +8,7 @@ import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 
 // Dynamically import MermaidDiagram to avoid SSR issues with mermaid.js
 const MermaidDiagram = dynamic(
-  () => import('@/components/MermaidDiagram').then((mod) => mod.MermaidDiagram),
+  () => import('@/components/shared/MermaidDiagram').then((mod) => mod.MermaidDiagram),
   {
     ssr: false,
     loading: () => (

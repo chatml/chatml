@@ -53,23 +53,23 @@ import {
 } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import type { FileTab, Conversation } from '@/lib/types';
-import { CodeViewer } from '@/components/CodeViewer';
-import { FileTabIcon } from '@/components/FileTabIcon';
+import { CodeViewer } from '@/components/files/CodeViewer';
+import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
-import { StreamingMessage } from '@/components/StreamingMessage';
-import { RunSummaryBlock } from '@/components/RunSummaryBlock';
-import { ToolUsageHistory } from '@/components/ToolUsageHistory';
-import { SystemInfoCard } from '@/components/SystemInfoCard';
-import { MarkdownPre, MarkdownCode } from '@/components/MarkdownCodeBlock';
-import { ChatSearchBar, countSearchMatches, highlightSearchMatches } from '@/components/ChatSearchBar';
+import { StreamingMessage } from '@/components/conversation/StreamingMessage';
+import { RunSummaryBlock } from '@/components/conversation/RunSummaryBlock';
+import { ToolUsageHistory } from '@/components/conversation/ToolUsageHistory';
+import { SystemInfoCard } from '@/components/shared/SystemInfoCard';
+import { MarkdownPre, MarkdownCode } from '@/components/shared/MarkdownCodeBlock';
+import { ChatSearchBar, countSearchMatches, highlightSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
 import type { Message, VerificationResult, FileChange } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation } from '@/lib/api';
 import { Terminal } from 'lucide-react';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { BlockErrorFallback, InlineErrorFallback } from '@/components/ErrorFallbacks';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
