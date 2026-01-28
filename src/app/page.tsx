@@ -1185,6 +1185,7 @@ export default function Home() {
                   collapsedSize={0}
                   onResize={(size) => setRightSidebarCollapsed(size.asPercentage === 0)}
                   className={cn(
+                    "overflow-hidden",
                     (zenMode || !selectedSessionId) && "hidden"
                   )}
                 >
