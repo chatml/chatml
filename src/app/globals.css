@@ -46,9 +46,8 @@
   --text-display-sm: 22px;   /* Was 26px */
   --text-xl: 18px;           /* Was 22px */
   --text-lg: 16px;           /* Was 19px */
-  --text-base: 14px;         /* Was 17px */
-  --text-sm: 13px;           /* Was 15px */
-  --text-caption: 12px;      /* Captions, labels, secondary info */
+  --text-base: 13px;         /* Body text, standard UI */
+  --text-sm: 12px;           /* Small text, secondary info */
   --text-xs: 11px;           /* Was 13px */
   --text-micro: 10px;        /* Was 12px */
 
