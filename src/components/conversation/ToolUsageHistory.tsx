@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -135,7 +135,7 @@ function formatToolTarget(tool: string, params?: Record<string, unknown>): ToolT
   };
 }
 
-export function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
+export const ToolUsageHistory = memo(function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   if (tools.length === 0) return null;
@@ -213,4 +213,4 @@ export function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
       </CollapsibleContent>
     </Collapsible>
   );
-}
+});

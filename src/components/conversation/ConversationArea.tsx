@@ -1,9 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import {
   useConversationState,
@@ -23,51 +20,29 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Copy,
-  Check,
-  ChevronRight,
-  ChevronDown,
-  FileCode,
-  Circle,
   Sparkles,
   GitBranch,
   FileQuestion,
-  FileText,
   BookOpen,
   AlertCircle,
   File,
+  ChevronDown,
+  Loader2,
+  Circle,
+  CheckCircle2,
+  Terminal,
+  FileCode,
 } from 'lucide-react';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import type { FileTab, Conversation } from '@/lib/types';
 import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
 import { StreamingMessage } from '@/components/conversation/StreamingMessage';
-import { RunSummaryBlock } from '@/components/conversation/RunSummaryBlock';
-import { ToolUsageHistory } from '@/components/conversation/ToolUsageHistory';
-import { SystemInfoCard } from '@/components/shared/SystemInfoCard';
-import { MarkdownPre, MarkdownCode } from '@/components/shared/MarkdownCodeBlock';
-import { ChatSearchBar, countSearchMatches, highlightSearchMatches } from '@/components/conversation/ChatSearchBar';
+import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
+import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
-import type { Message, VerificationResult, FileChange } from '@/lib/types';
-import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
-import { copyToClipboard } from '@/lib/tauri';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation } from '@/lib/api';
-import { Terminal } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -224,6 +199,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return { total, messageOffsets };
   }, [conversationMessages, searchQuery]);
 
+  // Precompute which messages have search matches (avoids re-rendering non-matching messages)
+  const messageHasMatches = useMemo(() => {
+    if (!searchQuery) return [];
+    return conversationMessages.map((m) => countSearchMatches(m.content, searchQuery) > 0);
+  }, [conversationMessages, searchQuery]);
+
   // Clamp currentMatchIndex to valid range (derived, not effect-based)
   const clampedMatchIndex = searchMatches.total > 0
     ? Math.min(currentMatchIndex, searchMatches.total - 1)
@@ -245,6 +226,22 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
   }, []);
+
+  // Scroll to the message containing the current search match
+  useEffect(() => {
+    if (!searchQuery || searchMatches.total === 0) return;
+    // Find the message index that contains the current match
+    const offsets = searchMatches.messageOffsets;
+    let targetIndex = 0;
+    for (let i = 0; i < offsets.length; i++) {
+      const nextOffset = offsets[i + 1] ?? searchMatches.total;
+      if (clampedMatchIndex >= offsets[i] && clampedMatchIndex < nextOffset) {
+        targetIndex = i;
+        break;
+      }
+    }
+    messageListRef.current?.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
+  }, [clampedMatchIndex, searchQuery, searchMatches]);
 
   // Register keyboard shortcuts for search
   useShortcut('searchChat', useCallback(() => {
@@ -379,54 +376,20 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return null;
   }, [selectedFileTabId, selectedConversationId]);
 
-  // Auto-scroll management
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const isUserScrolledRef = useRef(false);
-  const wasAtBottomRef = useRef(true); // Track if we were at bottom before content changes
+  // Auto-scroll management via Virtuoso
+  const messageListRef = useRef<VirtualizedMessageListHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const scrollRAFRef = useRef<number | null>(null);
 
-  // Check if currently at bottom (utility function)
-  const checkIsAtBottom = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return true;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    return scrollHeight - scrollTop - clientHeight < 50;
+  // Track at-bottom state from Virtuoso
+  const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    setShowScrollButton(!atBottom);
   }, []);
-
-  // Check if user has scrolled away from bottom
-  const handleScroll = useCallback(() => {
-    const isAtBottom = checkIsAtBottom();
-
-    // Update refs synchronously for scroll logic
-    isUserScrolledRef.current = !isAtBottom;
-    wasAtBottomRef.current = isAtBottom;
-
-    // Update button visibility (React bails out if value unchanged)
-    setShowScrollButton(!isAtBottom);
-  }, [checkIsAtBottom]);
 
   // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    // Reset both ref and state
-    isUserScrolledRef.current = false;
-    wasAtBottomRef.current = true;
     setShowScrollButton(false);
-
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
+    messageListRef.current?.scrollToBottom('smooth');
   }, []);
-
-  // Scroll when messages change or streaming updates
-  const streamingText = useMemo(
-    () => selectedConversationId ? streamingState[selectedConversationId]?.text : null,
-    [selectedConversationId, streamingState]
-  );
 
   // Check if plan mode is active for the current conversation
   const planModeActive = useMemo(
@@ -434,62 +397,26 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [selectedConversationId, streamingState]
   );
 
-  // ResizeObserver-based auto-scroll - responds to actual DOM changes, not React state
-  // This is more reliable for streaming because it catches all content changes
-  // regardless of React's state batching
+  // Stable footer for VirtualizedMessageList (avoids remounting on every render)
+  const messageListFooter = useMemo(() => {
+    if (!selectedConversationId) return undefined;
+    return (
+      <div className="pl-5 pr-12 pb-10">
+        <ErrorBoundary
+          section="StreamingMessage"
+          fallback={<InlineErrorFallback message="Error displaying streaming message" />}
+        >
+          <StreamingMessage conversationId={selectedConversationId} />
+        </ErrorBoundary>
+      </div>
+    );
+  }, [selectedConversationId]);
+
+  // Reset scroll on conversation change
   useEffect(() => {
-    const content = contentRef.current;
-    const container = scrollContainerRef.current;
-    if (!content || !container) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      // Only scroll if user hasn't manually scrolled away
-      if (!isUserScrolledRef.current && wasAtBottomRef.current) {
-        // Debounce with RAF to avoid excessive scrolling
-        if (scrollRAFRef.current) {
-          cancelAnimationFrame(scrollRAFRef.current);
-        }
-        scrollRAFRef.current = requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight;
-          scrollRAFRef.current = null;
-        });
-      }
-    });
-
-    resizeObserver.observe(content);
-
-    return () => {
-      resizeObserver.disconnect();
-      if (scrollRAFRef.current) {
-        cancelAnimationFrame(scrollRAFRef.current);
-      }
-    };
-  }, [selectedConversationId]); // Re-create observer when conversation changes
-
-  // Fallback: Also scroll on state changes for cases where ResizeObserver might miss
-  useEffect(() => {
-    if (wasAtBottomRef.current && !isUserScrolledRef.current) {
-      const container = scrollContainerRef.current;
-      if (container) {
-        requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight;
-        });
-      }
-    }
-  }, [conversationMessages.length, streamingText]);
-
-  // Reset scroll state when conversation changes
-  useEffect(() => {
-    // Reset scroll state (ref updated synchronously)
-    isUserScrolledRef.current = false;
-
-    // Scroll to bottom and reset UI state after DOM updates
+    // Scroll to bottom after a tick to let Virtuoso render
     requestAnimationFrame(() => {
-      setShowScrollButton(false);
-      const container = scrollContainerRef.current;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
+      messageListRef.current?.scrollToBottom('auto');
     });
   }, [selectedConversationId]);
 
@@ -966,41 +893,23 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               onNextMatch={goToNextMatch}
               onPrevMatch={goToPrevMatch}
             />
-            <div
-              ref={scrollContainerRef}
-              onScroll={handleScroll}
-              className="h-full overflow-auto"
-            >
-              <div ref={contentRef} className="pt-3 pl-5 pr-12 pb-10 space-y-1">
-              {conversationMessages.length === 0 && !selectedConversationId ? (
-                <ConversationEmptyState sessionName={currentSession?.name} />
-              ) : (
-                <>
-                  {conversationMessages.map((message, idx) => (
-                    <MessageBlock
-                      key={message.id}
-                      message={message}
-                      isFirst={idx === 0}
-                      searchQuery={searchQuery}
-                      currentMatchIndex={clampedMatchIndex}
-                      matchOffset={searchMatches.messageOffsets[idx] ?? 0}
-                    />
-                  ))}
-                  {/* Streaming message */}
-                  {selectedConversationId && (
-                    <ErrorBoundary
-                      section="StreamingMessage"
-                      fallback={<InlineErrorFallback message="Error displaying streaming message" />}
-                    >
-                      <StreamingMessage conversationId={selectedConversationId} />
-                    </ErrorBoundary>
-                  )}
-                </>
-              )}
-              </div>
-            </div>
+            <VirtualizedMessageList
+              ref={messageListRef}
+              messages={conversationMessages}
+              searchQuery={searchQuery}
+              currentMatchIndex={clampedMatchIndex}
+              searchMatches={searchMatches}
+              messageHasMatches={messageHasMatches}
+              onAtBottomStateChange={handleAtBottomStateChange}
+              emptyState={
+                !selectedConversationId ? (
+                  <ConversationEmptyState sessionName={currentSession?.name} />
+                ) : undefined
+              }
+              footer={messageListFooter}
+            />
             {/* Fade overlay at bottom of messages */}
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
           </div>
 
           {/* Chat Input with floating scroll button */}
@@ -1081,249 +990,4 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
   );
 }
 
-interface MessageBlockProps {
-  message: Message;
-  isFirst: boolean;
-  searchQuery?: string;
-  currentMatchIndex?: number;
-  matchOffset?: number;
-}
-
-const MessageBlock = memo(function MessageBlock({
-  message,
-  isFirst,
-  searchQuery = '',
-  currentMatchIndex = 0,
-  matchOffset = 0,
-}: MessageBlockProps) {
-  const [copied, setCopied] = useState(false);
-
-  const copyContent = useCallback(async () => {
-    const success = await copyToClipboard(message.content);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
-    }
-  }, [message.content]);
-
-  // Highlighted content for plain text messages
-  const highlightedContent = useMemo(() => {
-    if (!searchQuery) return null;
-    return highlightSearchMatches(message.content, searchQuery, currentMatchIndex, matchOffset);
-  }, [message.content, searchQuery, currentMatchIndex, matchOffset]);
-
-  // System messages (setup info, etc.)
-  if (message.role === 'system') {
-    if (message.setupInfo) {
-      return (
-        <div className={cn('py-3', !isFirst && 'pt-4')}>
-          <SystemInfoCard setupInfo={message.setupInfo} />
-        </div>
-      );
-    }
-    // Fallback for system messages without setup info
-    return (
-      <div className={cn('py-2', !isFirst && 'pt-3')}>
-        <div className="text-xs text-muted-foreground italic">
-          {highlightedContent || message.content}
-        </div>
-      </div>
-    );
-  }
-
-  if (message.role === 'user') {
-    return (
-      <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
-        <div className="max-w-[85%] border border-purple-400/20 bg-purple-500/10 rounded-2xl rounded-br-md px-4 py-2">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {highlightedContent || message.content}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={cn('py-2', !isFirst && 'border-t border-border')}>
-      <div className="space-y-1.5">
-          {/* Tool Usage History */}
-          {message.toolUsage && message.toolUsage.length > 0 && (
-            <ErrorBoundary
-              section="ToolUsage"
-              fallback={<InlineErrorFallback message="Unable to display tool usage" />}
-            >
-              <ToolUsageHistory tools={message.toolUsage} />
-            </ErrorBoundary>
-          )}
-
-          {/* Verification Results */}
-          {message.verificationResults && message.verificationResults.length > 0 && (
-            <VerificationBlock results={message.verificationResults} />
-          )}
-
-          {/* Main Content */}
-          {message.content && (
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <div className="group relative">
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
-                    <ErrorBoundary
-                      section="MessageContent"
-                      fallback={
-                        <div className="text-sm text-muted-foreground italic">
-                          Unable to render message content
-                        </div>
-                      }
-                    >
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeHighlight]}
-                        components={{ pre: MarkdownPre, code: MarkdownCode }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    </ErrorBoundary>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={copyContent}
-                  >
-                    {copied ? (
-                      <Check className="h-2.5 w-2.5 text-text-success" />
-                    ) : (
-                      <Copy className="h-2.5 w-2.5" />
-                    )}
-                  </Button>
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem onClick={copyContent}>
-                  <Copy className="size-4" />
-                  Copy
-                </ContextMenuItem>
-                <ContextMenuItem onClick={copyContent}>
-                  <FileText className="size-4" />
-                  Copy as Markdown
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          )}
-
-          {/* File Changes */}
-          {message.fileChanges && message.fileChanges.length > 0 && (
-            <FileChangesBlock changes={message.fileChanges} />
-          )}
-
-          {/* Run Summary */}
-          {message.runSummary && (
-            <RunSummaryBlock summary={message.runSummary} />
-          )}
-      </div>
-    </div>
-  );
-}, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if message content/id changed, isFirst changed, or search changed
-  return prevProps.message.id === nextProps.message.id &&
-         prevProps.message.content === nextProps.message.content &&
-         prevProps.message.timestamp === nextProps.message.timestamp &&
-         prevProps.isFirst === nextProps.isFirst &&
-         prevProps.searchQuery === nextProps.searchQuery &&
-         prevProps.currentMatchIndex === nextProps.currentMatchIndex &&
-         prevProps.matchOffset === nextProps.matchOffset;
-});
-
-function VerificationBlock({ results }: { results: VerificationResult[] }) {
-  const [isOpen, setIsOpen] = useState(true);
-  const allPassed = results.every((r) => r.status === 'pass');
-  const hasFailed = results.some((r) => r.status === 'fail');
-  const isRunning = results.some((r) => r.status === 'running');
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium hover:text-foreground transition-colors w-full">
-        {isOpen ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
-        <span>Verification</span>
-        {isRunning ? (
-          <Loader2 className="w-3 h-3 animate-spin text-primary" />
-        ) : allPassed ? (
-          <CheckCircle2 className="w-3 h-3 text-text-success" />
-        ) : hasFailed ? (
-          <XCircle className="w-3 h-3 text-text-error" />
-        ) : null}
-        <span className="text-muted-foreground font-normal">
-          {results.filter((r) => r.status === 'pass').length}/{results.length} passed
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2 rounded border bg-muted/30 divide-y divide-border/50">
-          {results.map((result, idx) => (
-            <div key={idx} className="flex items-center gap-2 px-3 py-2 text-xs">
-              {result.status === 'pass' && (
-                <CheckCircle2 className="w-3.5 h-3.5 text-text-success shrink-0" />
-              )}
-              {result.status === 'fail' && (
-                <XCircle className="w-3.5 h-3.5 text-text-error shrink-0" />
-              )}
-              {result.status === 'running' && (
-                <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
-              )}
-              {result.status === 'skipped' && (
-                <Circle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              )}
-              <span className="font-mono flex-1 truncate">{result.name}</span>
-              {result.details && (
-                <span className="text-muted-foreground truncate max-w-[200px]">
-                  {result.details}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function FileChangesBlock({ changes }: { changes: FileChange[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const totalAdditions = changes.reduce((sum, c) => sum + c.additions, 0);
-  const totalDeletions = changes.reduce((sum, c) => sum + c.deletions, 0);
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium hover:text-foreground transition-colors">
-        {isOpen ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
-        <FileCode className="w-3 h-3" />
-        <span>{changes.length} file{changes.length !== 1 ? 's' : ''} changed</span>
-        <span className="font-mono text-text-success">+{totalAdditions}</span>
-        <span className="font-mono text-text-error">-{totalDeletions}</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2 rounded border bg-muted/30 divide-y divide-border/50">
-          {changes.map((change, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-surface-2 cursor-pointer"
-            >
-              <FileCode className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="flex-1 truncate">{change.path}</span>
-              <span className="text-text-success">+{change.additions}</span>
-              <span className="text-text-error">-{change.deletions}</span>
-            </div>
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
 

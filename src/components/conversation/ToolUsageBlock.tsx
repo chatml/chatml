@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -71,7 +71,7 @@ function calculateEditStats(params?: Record<string, unknown>): { additions: numb
   };
 }
 
-export function ToolUsageBlock({
+export const ToolUsageBlock = memo(function ToolUsageBlock({
   id,
   tool,
   params,
@@ -401,7 +401,7 @@ export function ToolUsageBlock({
       )}
     </Collapsible>
   );
-}
+});
 
 interface ActiveToolsDisplayProps {
   conversationId: string;

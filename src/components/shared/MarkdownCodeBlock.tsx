@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { copyToClipboard } from '@/lib/tauri';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
@@ -61,7 +61,7 @@ function CodeBlockWithCopy({ children, code, ...rest }: React.HTMLAttributes<HTM
 }
 
 // Handle <pre> elements - this wraps code blocks
-export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
+export const MarkdownPre = memo(function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
   const { children, ...rest } = props;
 
   // Try to find a code element child
@@ -85,11 +85,11 @@ export function MarkdownPre(props: React.HTMLAttributes<HTMLPreElement>) {
 
   // Default: render as normal pre (fallback for edge cases)
   return <pre {...rest}>{children}</pre>;
-}
+});
 
 // Handle <code> elements - for inline code
-export function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
+export const MarkdownCode = memo(function MarkdownCode(props: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) {
   const { className, children, ...rest } = props;
   // Only handle inline code here - block code is handled by MarkdownPre
   return <code className={className} {...rest}>{children}</code>;
-}
+});

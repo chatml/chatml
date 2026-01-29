@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -29,7 +29,7 @@ interface RunSummaryBlockProps {
   summary: RunSummary;
 }
 
-export function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
+export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const formatDuration = (ms?: number) => {
@@ -239,4 +239,4 @@ export function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
       )}
     </Collapsible>
   );
-}
+});
