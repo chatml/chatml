@@ -86,6 +86,10 @@ export interface DisplayOptions {
   visibleColumns: Set<string>;
   /** Whether to show empty groups */
   showEmptyGroups: boolean;
+  /** Custom toggle states keyed by ID */
+  customToggles: Record<string, boolean>;
+  /** Whether to show separator lines between rows */
+  showSeparators: boolean;
 }
 
 // Bulk action definition
@@ -142,6 +146,8 @@ export interface DataTableProps<T> {
   searchValue?: string;
   /** Search change handler */
   onSearchChange?: (value: string) => void;
+  /** Callback when display options change */
+  onDisplayOptionsChange?: (options: DisplayOptions) => void;
   /** Custom class name for the container */
   className?: string;
   /** Custom content for the left side of the toolbar */
@@ -160,6 +166,16 @@ export interface FilterOption {
   options?: { value: string; label: string }[];
 }
 
+// Custom toggle for the List Options section
+export interface ListOptionToggle {
+  /** Unique identifier */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Default value */
+  defaultValue: boolean;
+}
+
 // Display options configuration
 export interface DisplayOptionsConfig {
   /** Available grouping options */
@@ -168,6 +184,8 @@ export interface DisplayOptionsConfig {
   sortingOptions: { value: string; label: string }[];
   /** Toggleable columns */
   toggleableColumns: { id: string; label: string }[];
+  /** Custom toggles in the List Options section */
+  listOptions?: ListOptionToggle[];
 }
 
 // Group data structure
@@ -250,8 +268,8 @@ export interface DataTableGroupProps {
   onToggle: () => void;
   /** Collapse all groups handler */
   onCollapseAll?: () => void;
-  /** Column span */
-  colSpan: number;
+  /** CSS Grid template columns */
+  gridTemplateColumns: string;
   /** Whether to show selection controls */
   selectable?: boolean;
   /** Whether all items in group are selected */

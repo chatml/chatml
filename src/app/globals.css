@@ -4,6 +4,7 @@
 
 @plugin "@tailwindcss/typography";
 
+
 /* MesloLGS NF - Nerd Font for terminal (SIL Open Font License) */
 @font-face {
   font-family: 'MesloLGS NF';
@@ -41,19 +42,21 @@
 
 :root {
   /* Typography Scale (Cursor-inspired compact sizing) */
-  --text-display-lg: 32px;   /* Was 38px */
-  --text-display: 26px;      /* Was 32px */
-  --text-display-sm: 22px;   /* Was 26px */
-  --text-xl: 18px;           /* Was 22px */
-  --text-lg: 16px;           /* Was 19px */
-  --text-base: 13px;         /* Body text, standard UI */
-  --text-sm: 12px;           /* Small text, secondary info */
-  --text-xs: 11px;           /* Was 13px */
-  --text-micro: 10px;        /* Was 12px */
+  --font-size-display-lg: 32px;
+  --font-size-display: 26px;
+  --font-size-display-sm: 22px;
+  --font-size-xl: 18px;
+  --font-size-lg: 16px;
+  --font-size-md: 14px;
+  --font-size-base: 13px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+  --font-size-2xs: 10px;
+  --font-size-3xs: 9px;
 
   /* Semantic Typography */
-  --text-menu: var(--text-sm);        /* Menu items, dropdowns, context menus */
-  --text-menu-label: var(--text-xs);  /* Menu section labels */
+  --font-size-menu: var(--font-size-sm);        /* Menu items, dropdowns, context menus */
+  --font-size-menu-label: var(--font-size-xs);  /* Menu section labels */
 
   /* Menu Colors */
   --menu-hover: oklch(0.94 0.02 280); /* Light mode menu hover */
@@ -74,7 +77,8 @@
   /* Font Families */
   --font-display: "Instrument Serif", Georgia, serif;
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: "MesloLGS NF", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-terminal: "MesloLGS NF", var(--font-mono);
 
   --radius: 0.625rem;
   --background: oklch(0.98 0 0);
@@ -135,7 +139,7 @@
 
   /* Main backgrounds */
   --background: #090909;           /* RGB(9,9,9) - app shell background */
-  --content-background: #0f1111;   /* RGB(15,17,17) - content area background */
+  --content-background: #101011;   /* RGB(16,16,17) - content area background */
   --chat-background: #181818;      /* RGB(24,24,24) - chat area */
   --foreground: oklch(0.9 0 0);             /* ~#e5e5e5 - bright text */
   --card: #0f1111;                          /* Cards match content background */
@@ -163,7 +167,7 @@
   --destructive: oklch(0.704 0.191 22.216);
 
   /* Borders - Very subtle like Cursor */
-  --border: #2a2a2a;
+  --border: #26282d;               /* RGB(38,40,45) - layout borders */
   --input: #212121;                         /* RGB(33,33,33) */
   --ring: oklch(0.50 0.10 280);             /* Focus ring keeps purple */
 
@@ -252,7 +256,25 @@
   --color-text-warning: var(--text-warning);
   --color-text-info: var(--text-info);
 
-  /* Typography */
+  /* Typography — font sizes mapped to design tokens */
+  /* Display sizes include line-height */
+  --text-display-lg: var(--font-size-display-lg) / 1.1;
+  --text-display: var(--font-size-display) / 1.2;
+  --text-display-sm: var(--font-size-display-sm) / 1.25;
+  /* Standard sizes */
+  --text-xl: var(--font-size-xl);
+  --text-lg: var(--font-size-lg);
+  --text-md: var(--font-size-md);
+  --text-base: var(--font-size-base);
+  --text-sm: var(--font-size-sm);
+  --text-xs: var(--font-size-xs);
+  --text-2xs: var(--font-size-2xs);
+  --text-3xs: var(--font-size-3xs);
+  /* Semantic aliases */
+  --text-menu: var(--font-size-menu);
+  --text-menu-label: var(--font-size-menu-label);
+
+  /* Typography — font families */
   --font-family-display: var(--font-display);
   --font-family-sans: var(--font-sans);
   --font-family-mono: var(--font-mono);
@@ -289,24 +311,6 @@
   letter-spacing: var(--tracking-display);
 }
 
-.text-display-lg {
-  font-size: var(--text-display-lg);
-  line-height: 1.1;
-  letter-spacing: var(--tracking-display);
-}
-
-.text-display {
-  font-size: var(--text-display);
-  line-height: 1.2;
-  letter-spacing: var(--tracking-display);
-}
-
-.text-display-sm {
-  font-size: var(--text-display-sm);
-  line-height: 1.25;
-  letter-spacing: var(--tracking-tight);
-}
-
 .tracking-display {
   letter-spacing: var(--tracking-display);
 }
@@ -325,7 +329,7 @@
 
 /* Terminal output styling */
 .terminal {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-terminal);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -555,6 +559,29 @@
 
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* Thin scrollbar with no track */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Xterm background fix - match app background */

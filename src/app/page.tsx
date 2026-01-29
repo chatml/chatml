@@ -21,11 +21,13 @@ import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
 import { SettingsPage } from '@/components/settings/SettingsPage';
-import { TopBar } from '@/components/navigation/TopBar';
+import { SessionToolbarContent } from '@/components/navigation/SessionToolbarContent';
 import { ConversationArea } from '@/components/conversation/ConversationArea';
 import { ChatInput } from '@/components/conversation/ChatInput';
 import { ChangesPanel } from '@/components/panels/ChangesPanel';
 import { BottomTerminal } from '@/components/layout/BottomTerminal';
+import { MainToolbar, ContentActionBar } from '@/components/layout/MainToolbar';
+import { SidebarToolbar } from '@/components/layout/SidebarToolbar';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
@@ -134,7 +136,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
+  const sidebarWidthRef = useRef(250); // Tracked via ref — no re-renders on resize
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
@@ -340,13 +342,10 @@ export default function Home() {
     if (!el) return;
 
     const observer = new ResizeObserver(() => {
-      // Use offsetWidth to include padding/borders, but 0 when collapsed
-      setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
+      sidebarWidthRef.current = leftSidebarCollapsed ? 0 : el.offsetWidth;
     });
     observer.observe(el);
-
-    // Initial measurement
-    setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
+    sidebarWidthRef.current = leftSidebarCollapsed ? 0 : el.offsetWidth;
 
     return () => observer.disconnect();
   }, [leftSidebarCollapsed]);
@@ -1010,10 +1009,15 @@ export default function Home() {
             maxSize="400px"
             collapsible={true}
             collapsedSize={0}
-            onResize={(size) => setLeftSidebarCollapsed(size.asPercentage === 0)}
+            onResize={(size) => {
+              const collapsed = size.asPercentage === 0;
+              setLeftSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
+            }}
             className={cn(zenMode && "hidden")}
           >
-            <div ref={leftSidebarDomRef} className="h-full">
+            <div ref={leftSidebarDomRef} className="h-full flex flex-col">
+              <SidebarToolbar />
+              <div className="flex-1 min-h-0">
               <ErrorBoundary section="Sidebar">
                 <WorkspaceSidebar
                   onOpenProject={handleOpenProject}
@@ -1024,45 +1028,64 @@ export default function Home() {
                     expandWorkspace(workspaceId);
                     setShowWorkspaceSettings(workspaceId);
                   }}
-                  onToggleSidebar={toggleLeftSidebar}
+
                 />
               </ErrorBoundary>
+              </div>
             </div>
           </ResizablePanel>
 
           <ResizableHandle
             direction="horizontal"
-            className={cn((leftSidebarCollapsed || zenMode) && "hidden")}
+            className={cn(
+              "after:bg-transparent",
+              (leftSidebarCollapsed || zenMode) && "hidden"
+            )}
           />
 
           {/* Main Content - Full content views OR inner horizontal split */}
-          <ResizablePanel id="main-content" defaultSize={78} minSize={30}>
-            {isLoadingData ? (
-              <ConversationSkeleton />
-            ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
-              // Full Content Views take entire main content area
-              <ErrorBoundary section="FullContent">
+          <ResizablePanel id="main-content" defaultSize={78} minSize={30} className="!overflow-visible">
+            <div className="flex flex-col h-full">
+              {/* Main Toolbar — sits above the content area */}
+              <MainToolbar
+                showLeftSidebar={!leftSidebarCollapsed}
+                showRightSidebar={!rightSidebarCollapsed}
+                showBottomPanel={showBottomTerminal}
+                hasSecondaryPanels={!isFullContentView && !!selectedSessionId}
+                onToggleLeftSidebar={toggleLeftSidebar}
+                onToggleRightSidebar={toggleRightSidebar}
+                onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                onNew={handleNewSession}
+                onOpenSettings={() => setShowSettings(true)}
+                onOpenShortcuts={() => setShowShortcuts(true)}
+              />
+
+              {/* Main content area with border + rounded corner */}
+              <div className={cn(
+                "flex flex-col flex-1 min-h-0 border-t border-border/75 overflow-hidden",
+                !leftSidebarCollapsed && !zenMode && "border-l rounded-tl-lg shadow-[-2px_0_8px_rgba(0,0,0,0.1)]"
+              )}>
+              {/* Action bar — context-aware bar at top of main content */}
+              <ContentActionBar />
+
+              {/* Content Area */}
+              <div className="flex-1 min-h-0">
+                {isLoadingData ? (
+                  <ConversationSkeleton />
+                ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
+                  // Full Content Views take entire main content area
+                  <ErrorBoundary section="FullContent">
                 {contentView.type === 'global-dashboard' && (
-                  <GlobalDashboard
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
-                  />
+                  <GlobalDashboard />
                 )}
                 {contentView.type === 'pr-dashboard' && (
                   <PRDashboard
                     initialWorkspaceId={contentView.workspaceId}
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
                 {contentView.type === 'branches' && (
                   <BranchesDashboard
                     workspaceId={contentView.workspaceId}
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
                 {contentView.type === 'repositories' && (
@@ -1117,16 +1140,7 @@ export default function Home() {
                     <ResizablePanel id="conversation" minSize={20}>
                       {selectedSessionId ? (
                         <div className="flex flex-col h-full">
-                          <TopBar
-                            showLeftSidebar={!leftSidebarCollapsed || zenMode}
-                            showRightSidebar={!rightSidebarCollapsed || zenMode}
-                            showBottomPanel={showBottomTerminal}
-                            onToggleLeftSidebar={toggleLeftSidebar}
-                            onToggleRightSidebar={toggleRightSidebar}
-                            onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
-                            onOpenSettings={() => setShowSettings(true)}
-                            onOpenShortcuts={() => setShowShortcuts(true)}
-                          />
+                          <SessionToolbarContent />
                           <ErrorBoundary section="Conversation">
                             <ConversationArea>
                               <ChatInput />
@@ -1183,21 +1197,24 @@ export default function Home() {
                   maxSize="500px"
                   collapsible={true}
                   collapsedSize={0}
-                  onResize={(size) => setRightSidebarCollapsed(size.asPercentage === 0)}
+                  onResize={(size) => {
+              const collapsed = size.asPercentage === 0;
+              setRightSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
+            }}
                   className={cn(
                     "overflow-hidden",
                     (zenMode || !selectedSessionId) && "hidden"
                   )}
                 >
                   <ErrorBoundary section="Changes">
-                    <ChangesPanel
-                      onOpenSettings={() => setShowSettings(true)}
-                      onOpenShortcuts={() => setShowShortcuts(true)}
-                    />
+                    <ChangesPanel />
                   </ErrorBoundary>
                 </ResizablePanel>
               </ResizablePanelGroup>
-            )}
+                )}
+              </div>
+              </div>
+            </div>
           </ResizablePanel>
         </ResizablePanelGroup>
 

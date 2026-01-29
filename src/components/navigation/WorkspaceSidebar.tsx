@@ -19,7 +19,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
-import { useUIStore } from '@/stores/uiStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -63,7 +62,6 @@ import {
   XCircle,
   AlertTriangle,
   Pin,
-  PanelLeftClose,
   Folder,
   Globe,
   SquarePlus,
@@ -72,6 +70,7 @@ import {
   LayoutDashboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getWorkspaceColor } from '@/lib/workspace-colors';
 import { useToast } from '@/components/ui/toast';
 import {
   Dialog,
@@ -95,33 +94,9 @@ interface WorkspaceSidebarProps {
   onSessionSelected?: () => void;
   onOpenSettings?: () => void;
   onOpenWorkspaceSettings?: (workspaceId: string) => void;
-  onToggleSidebar?: () => void;
 }
 
 // Linear-style color palette for workspace indicators
-const WORKSPACE_COLORS = [
-  '#6366f1', // indigo
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#f43f5e', // rose
-  '#f97316', // orange
-  '#eab308', // yellow
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#06b6d4', // cyan
-  '#3b82f6', // blue
-];
-
-// Get consistent color for a workspace based on its ID
-function getWorkspaceColor(workspaceId: string): string {
-  let hash = 0;
-  for (let i = 0; i < workspaceId.length; i++) {
-    hash = ((hash << 5) - hash) + workspaceId.charCodeAt(i);
-    hash |= 0;
-  }
-  return WORKSPACE_COLORS[Math.abs(hash) % WORKSPACE_COLORS.length];
-}
-
 // Shared menu items for "Add project" dropdown
 const ADD_REPO_MENU_ITEMS = [
   { icon: Folder, label: 'Open project', key: 'open' },
@@ -129,7 +104,7 @@ const ADD_REPO_MENU_ITEMS = [
   { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
 ] as const;
 
-export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings, onToggleSidebar }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -158,7 +133,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     removeWorkspace,
   } = useAppStore();
 
-  const leftToolbarBg = useUIStore((state) => state.toolbarBackgrounds.left);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -335,30 +309,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   return (
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
 
-      {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className={cn("relative h-10 pl-20 pr-3 flex items-center justify-between shrink-0", leftToolbarBg)}>
-        <span className="text-[22px] font-extrabold select-none">
-          <span className="text-muted-foreground">chat</span><span className="text-purple-600">ml</span>
-        </span>
-        {onToggleSidebar && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={onToggleSidebar}
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Hide Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ B</span></TooltipContent>
-          </Tooltip>
-        )}
-      </div>
 
       {/* Global Navigation */}
-      <div className="px-3 py-2 border-b border-border/50">
+      <div className="px-3 py-2">
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
@@ -373,7 +326,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
             contentView.type === 'global-dashboard' ? "text-blue-400" : "text-blue-400/70"
           )} />
           <span className={cn(
-            "text-[length:var(--text-base)] font-medium",
+            "text-base font-medium",
             contentView.type === 'global-dashboard'
               ? "text-foreground"
               : "text-muted-foreground group-hover:text-foreground"
@@ -688,7 +641,7 @@ function SortableWorkspaceItem({
                 style={{ backgroundColor: getWorkspaceColor(workspace.id) }}
               />
             </div>
-            <span className="text-[length:var(--text-base)] font-semibold truncate">
+            <span className="text-base font-semibold truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -774,7 +727,7 @@ function SortableWorkspaceItem({
                         isBranchesSelected ? "text-green-400" : "text-green-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-base)] font-medium",
+                        "text-base font-medium",
                         isBranchesSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -796,7 +749,7 @@ function SortableWorkspaceItem({
                         isPRsSelected ? "text-violet-400" : "text-violet-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-base)] font-medium",
+                        "text-base font-medium",
                         isPRsSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -816,12 +769,12 @@ function SortableWorkspaceItem({
 
             {/* Sessions */}
             {sessions.length === 0 ? (
-              <div className="py-2 px-2 text-[length:var(--text-micro)] text-muted-foreground/70">
+              <div className="py-2 px-2 text-2xs text-muted-foreground/70">
                 No active sessions
               </div>
             ) : (
               sessions.map((session) => {
-                const isSessionSelected = selectedSessionId === session.id;
+                const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
                 const hasPR = session.prStatus && session.prStatus !== 'none';
                 const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
 
@@ -881,7 +834,7 @@ function SortableWorkspaceItem({
                             {/* Branch name container - grows and truncates */}
                             <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
                               <span className={cn(
-                                "text-[length:var(--text-base)] font-normal truncate flex-1 w-0",
+                                "text-base font-normal truncate flex-1 w-0",
                                 isSessionSelected ? "text-foreground" : "text-foreground/60"
                               )}>
                                 {session.branch || session.name}
@@ -895,7 +848,7 @@ function SortableWorkspaceItem({
                             <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[length:var(--text-micro)] px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                <span className="text-2xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-text-success">+{session.stats!.additions}</span>
                                   <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                                 </span>
@@ -927,7 +880,7 @@ function SortableWorkspaceItem({
                             </div>
                           </div>
                           {/* Second line: session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-sm)] text-muted-foreground">
+                          <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>

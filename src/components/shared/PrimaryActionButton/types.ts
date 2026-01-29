@@ -28,7 +28,6 @@ export interface DropdownAction {
 export interface PrimaryAction {
   type: PrimaryActionType;
   label: string;
-  shortLabel?: string; // Shorter label for narrow containers
   icon: LucideIcon;
   variant: ButtonVariant;
   message?: string; // Message to send to agent (undefined for 'view-pr' and 'archive-session')
@@ -47,4 +46,5 @@ export interface ActionButtonProps {
   disabled: boolean;
   onSendMessage: (content: string) => void;
   onArchiveSession?: (sessionId: string) => void;
+  className?: string;
 }

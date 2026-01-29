@@ -1,7 +1,6 @@
 'use client';
 
 import { ChevronRight } from 'lucide-react';
-import { TableRow, TableCell } from '@/components/ui/table';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,18 +19,21 @@ export function DataTableGroup({
   isCollapsed,
   onToggle,
   onCollapseAll,
-  colSpan,
+  gridTemplateColumns,
   selectable,
   onSelectAll,
 }: DataTableGroupProps) {
   const rowContent = (
-    <TableRow
-      className="bg-surface-1 hover:bg-surface-2 border-y border-border/30 cursor-pointer select-none"
+    <div
+      role="row"
+      className="grid bg-surface-1 hover:bg-surface-2 border-y border-border/30 cursor-pointer select-none"
+      style={{ gridTemplateColumns }}
       onClick={onToggle}
     >
-      <TableCell
-        colSpan={colSpan}
+      <div
+        role="gridcell"
         className="py-2 px-2"
+        style={{ gridColumn: '1 / -1' }}
       >
         <div className="flex items-center gap-1.5">
           {/* Expand/collapse icon */}
@@ -55,8 +57,8 @@ export function DataTableGroup({
             {count}
           </span>
         </div>
-      </TableCell>
-    </TableRow>
+      </div>
+    </div>
   );
 
   return (
@@ -84,14 +86,14 @@ export function DataTableGroup({
   );
 }
 
-// A simpler inline group header variant (not using table row)
+// A simpler inline group header variant (not using grid row)
 export function DataTableGroupHeader({
   groupKey: _groupKey,
   label,
   count,
   isCollapsed,
   onToggle,
-}: Omit<DataTableGroupProps, 'colSpan' | 'selectable' | 'allSelected' | 'someSelected' | 'onSelectAll' | 'onCollapseAll'>) {
+}: Omit<DataTableGroupProps, 'gridTemplateColumns' | 'selectable' | 'allSelected' | 'someSelected' | 'onSelectAll' | 'onCollapseAll'>) {
   return (
     <button
       type="button"

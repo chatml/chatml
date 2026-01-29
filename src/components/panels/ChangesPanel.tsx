@@ -10,10 +10,7 @@ import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/panels/GitStatusSection';
-import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
-import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
-import { useGitStatus } from '@/hooks/useGitStatus';
-import { usePRStatus } from '@/hooks/usePRStatus';
+
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { PlansPanel } from '@/components/panels/PlansPanel';
@@ -46,11 +43,6 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   ResizablePanelGroup,
@@ -58,15 +50,11 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import {
-  Eye,
   MoreVertical,
   FileText,
   Search,
   SplitSquareHorizontal,
   Loader2,
-  GitPullRequest,
-  AlertTriangle,
-  ExternalLink,
   MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -100,15 +88,7 @@ function isBinaryFile(filename: string): boolean {
 // Maximum file size for diff viewing (2MB)
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
-interface ChangesPanelProps {
-  onOpenSettings?: () => void;
-  onOpenShortcuts?: () => void;
-}
-
-export function ChangesPanel({
-  onOpenSettings,
-  onOpenShortcuts,
-}: ChangesPanelProps = {}) {
+export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { openFileTab, updateFileTab } = useFileTabState();
@@ -305,10 +285,6 @@ export function ChangesPanel({
   // Track branch for refetching changes when branch is renamed
   const currentBranch = currentSession?.branch;
 
-  // Determine top bar state
-  const hasActivePR = currentSession?.prStatus === 'open';
-  const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
-
   // Calculate todo counts for badge
   const totalPendingTodos = agentTodos.filter((t) => t.status !== 'completed').length;
 
@@ -320,16 +296,6 @@ export function ChangesPanel({
     }
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
-
-  // Fetch git status for the primary action button
-  const { status: gitStatus } = useGitStatus(selectedWorkspaceId, selectedSessionId);
-
-  // Fetch PR details for the primary action button
-  const { prDetails } = usePRStatus(
-    selectedWorkspaceId,
-    selectedSessionId,
-    currentSession?.prStatus
-  );
 
   // Fetch files from session's worktree when session changes or tab switches to files
   useEffect(() => {
@@ -423,96 +389,6 @@ export function ChangesPanel({
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
-      {/* Top Bar - changes based on session state */}
-      <div
-        data-tauri-drag-region
-        className={cn(
-          'h-10 flex items-center gap-2 px-3 border-b shrink-0 overflow-hidden @container',
-          hasActivePR && 'bg-text-success/15 border-text-success/30',
-          hasConflictOrFailure && 'bg-text-error/15 border-text-error/30'
-        )}
-      >
-        {/* Review Button - icon only with tooltip when narrow, label when wide */}
-        {/* Narrow: icon + tooltip */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-7 px-2 gap-1.5 transition-colors shrink-0 @[280px]:hidden',
-                hasActivePR && 'text-text-success hover:bg-text-success/10',
-                hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
-                !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Eye className="h-3.5 w-3.5 shrink-0" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Review Changes</TooltipContent>
-        </Tooltip>
-        {/* Wide: icon + label, no tooltip needed */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'h-7 px-2 gap-1.5 transition-colors shrink-0 hidden @[280px]:flex',
-            hasActivePR && 'text-text-success hover:bg-text-success/10',
-            hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
-            !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Eye className="h-3.5 w-3.5 shrink-0" />
-          Review
-        </Button>
-
-        {/* PR Status or Conflict indicator - truncates in middle, hidden when very narrow */}
-        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          {hasActivePR ? (
-            <>
-              <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0 hidden @[220px]:block" />
-              <span className="text-[12px] font-medium text-text-success truncate hidden @[180px]:block">
-                PR #{currentSession?.prNumber}
-              </span>
-              {currentSession?.prUrl && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-text-success hover:bg-text-success/20 shrink-0 hidden @[250px]:flex"
-                  onClick={() => window.open(currentSession.prUrl, '_blank')}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              )}
-            </>
-          ) : hasConflictOrFailure && (
-            <>
-              <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0 hidden @[220px]:block" />
-              <span className="text-[12px] font-medium text-text-error truncate hidden @[180px]:block">
-                {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Right side - always visible, pinned to right */}
-        <div className="flex items-center gap-1 shrink-0">
-          <PrimaryActionButton
-            workspaceId={selectedWorkspaceId}
-            session={currentSession}
-            onSendMessage={handleGitActionMessage}
-            gitStatus={gitStatus}
-            prDetails={prDetails}
-          />
-          {onOpenSettings && onOpenShortcuts && (
-            <AppSettingsMenu
-              onOpenSettings={onOpenSettings}
-              onOpenShortcuts={onOpenShortcuts}
-            />
-          )}
-        </div>
-      </div>
-
       {/* Tabs Row */}
       <TopPanelTabs
         selectedTab={selectedTab}
@@ -725,7 +601,7 @@ const SortableTabButton = memo(function SortableTabButton({
       variant={isActive ? 'secondary' : 'ghost'}
       size="sm"
       className={cn(
-        "h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100",
+        "h-6 text-[11px] px-2 gap-1 rounded-sm shrink-0 transition-none active:!scale-100",
         !isActive && "text-muted-foreground",
         isDragging && "bg-surface-2 shadow-md opacity-90"
       )}
@@ -894,7 +770,7 @@ function TopPanelTabs({
   }, [topTabOrder, setTopTabOrder]);
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 min-w-0 overflow-hidden">
+    <div className="flex items-center gap-0.5 px-1.5 py-1 shrink-0 min-w-0 overflow-hidden">
       {/* Scrollable tabs container */}
       <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
         <DndContext

@@ -17,6 +17,7 @@ export function ActionButton({
   disabled,
   onSendMessage,
   onArchiveSession,
+  className,
 }: ActionButtonProps) {
   // Nothing to render if action is null (e.g., merged PR)
   if (!action) {
@@ -74,11 +75,11 @@ export function ActionButton({
     }[action.variant] || 'border-l-primary/30';
 
     return (
-      <div className="inline-flex rounded-md shadow-sm">
+      <div className={cn("inline-flex rounded-sm shadow-sm", className)}>
         <Button
           variant={action.variant}
           size="sm"
-          className="h-7 text-xs gap-1 px-2 rounded-r-none border-r-0 transition-none"
+          className="h-6 text-xs gap-1 px-2 rounded-r-none rounded-l-sm border-r-0 transition-none"
           onClick={handleClick}
           disabled={isDisabled}
         >
@@ -87,14 +88,7 @@ export function ActionButton({
           ) : (
             <Icon className="h-3.5 w-3.5" />
           )}
-          {action.shortLabel ? (
-            <>
-              <span className="@[280px]:hidden">{action.shortLabel}</span>
-              <span className="hidden @[280px]:inline">{action.label}</span>
-            </>
-          ) : (
-            action.label
-          )}
+          {action.label}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -102,12 +96,12 @@ export function ActionButton({
               variant={action.variant}
               size="sm"
               className={cn(
-                'h-7 w-5 p-0 rounded-l-none transition-none border-l',
+                'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l',
                 separatorColor
               )}
               disabled={isDisabled}
             >
-              <ChevronDown className="size-3" />
+              <ChevronDown className="size-2.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -147,7 +141,7 @@ export function ActionButton({
     <Button
       variant={action.variant}
       size="sm"
-      className="h-7 text-xs gap-1 px-2 transition-none"
+      className={cn("h-6 text-xs gap-1 px-2 rounded-sm transition-none", className)}
       onClick={handleClick}
       disabled={isDisabled}
     >
@@ -156,14 +150,7 @@ export function ActionButton({
       ) : (
         <Icon className="h-3.5 w-3.5" />
       )}
-      {action.shortLabel ? (
-        <>
-          <span className="@[280px]:hidden">{action.shortLabel}</span>
-          <span className="hidden @[280px]:inline">{action.label}</span>
-        </>
-      ) : (
-        action.label
-      )}
+      {action.label}
     </Button>
   );
 }

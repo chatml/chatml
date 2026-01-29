@@ -114,18 +114,18 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'all' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter !== 'all' && 'text-muted-foreground')}
+          className={cn('h-5 text-xs px-1.5', filter !== 'all' && 'text-muted-foreground')}
           onClick={() => setFilter('all')}
         >
           All
           {counts.all > 0 && (
-            <span className="ml-1 text-[length:var(--text-micro)] opacity-70">{counts.all}</span>
+            <span className="ml-1 text-2xs opacity-70">{counts.all}</span>
           )}
         </Button>
         <Button
           variant={filter === 'error' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'error' ? 'text-text-error' : 'text-muted-foreground')}
+          className={cn('h-5 text-xs px-1.5', filter === 'error' ? 'text-text-error' : 'text-muted-foreground')}
           onClick={() => setFilter('error')}
         >
           <AlertCircle className="h-3 w-3 mr-0.5" />
@@ -134,7 +134,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'warning' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'warning' ? 'text-text-warning' : 'text-muted-foreground')}
+          className={cn('h-5 text-xs px-1.5', filter === 'warning' ? 'text-text-warning' : 'text-muted-foreground')}
           onClick={() => setFilter('warning')}
         >
           <AlertTriangle className="h-3 w-3 mr-0.5" />
@@ -143,7 +143,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'info' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'info' ? 'text-text-info' : 'text-muted-foreground')}
+          className={cn('h-5 text-xs px-1.5', filter === 'info' ? 'text-text-info' : 'text-muted-foreground')}
           onClick={() => setFilter('info')}
         >
           <Info className="h-3 w-3 mr-0.5" />
@@ -152,7 +152,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         <Button
           variant={filter === 'suggestion' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-[length:var(--text-xs)] px-1.5', filter === 'suggestion' ? 'text-purple-500' : 'text-muted-foreground')}
+          className={cn('h-5 text-xs px-1.5', filter === 'suggestion' ? 'text-purple-500' : 'text-muted-foreground')}
           onClick={() => setFilter('suggestion')}
         >
           <MessageSquare className="h-3 w-3 mr-0.5" />

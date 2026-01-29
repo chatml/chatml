@@ -22,7 +22,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-  ChevronLeft,
   ChevronRight,
   GitBranch,
   ChevronDown,
@@ -100,16 +99,7 @@ export function TopBar({
             <PanelLeft className="h-3.5 w-3.5" />
           </Button>
         )}
-        {/* Navigation buttons - tight together */}
-        <div className={`flex items-center ${!showLeftSidebar ? 'ml-1' : 'ml-0.5'}`}>
-          <Button variant="ghost" size="icon" className="h-6 w-6 p-0" disabled>
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 p-0" disabled>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        <span className="text-[12px] text-muted-foreground ml-2">
+        <span className={cn("text-[12px] text-muted-foreground", !showLeftSidebar ? 'ml-1' : 'ml-2')}>
           Select a session to get started
         </span>
       </div>
@@ -130,16 +120,6 @@ export function TopBar({
           <PanelLeft className="h-3.5 w-3.5" />
         </Button>
       )}
-
-      {/* Navigation buttons - tight together, close to divider */}
-      <div className={`flex items-center ${!showLeftSidebar ? 'ml-1' : 'ml-0.5'}`}>
-        <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 ml-2 text-sm">
