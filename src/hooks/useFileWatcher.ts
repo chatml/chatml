@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useActiveTabSelection } from '@/stores/selectors';
 import {
   watchWorkspace,
   unwatchWorkspace,
@@ -19,8 +20,9 @@ import { useToast } from '@/components/ui/toast';
  *   - If the file is open in a tab and IS dirty: show conflict warning
  */
 export function useFileWatcher() {
+  // Selection state from tab view (single source of truth)
+  const { selectedWorkspaceId } = useActiveTabSelection();
   const {
-    selectedWorkspaceId,
     workspaces,
     fileTabs,
     updateFileTab,

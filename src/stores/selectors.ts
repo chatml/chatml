@@ -334,6 +334,7 @@ export const usePendingUserQuestion = (conversationId: string | null) =>
 // ============================================================================
 
 import { useTabViewStore } from './tabViewStore';
+import type { ContentView } from './settingsStore';
 
 /**
  * Get active tab's selection state.
@@ -359,8 +360,8 @@ export const useActiveTabSelection = () => {
  * This replaces reading contentView from SettingsStore.
  * Use in: Home component, FullContentLayout
  */
-export const useActiveContentView = () => {
-  return useTabViewStore(state => state.getActiveTab()?.contentView ?? { type: 'global-dashboard' });
+export const useActiveContentView = (): ContentView => {
+  return useTabViewStore(state => state.getActiveTab()?.contentView ?? { type: 'global-dashboard' as const });
 };
 
 /**

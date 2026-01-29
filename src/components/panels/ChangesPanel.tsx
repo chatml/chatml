@@ -103,10 +103,15 @@ export function ChangesPanel() {
   const { activeRightTab, activeBottomTab } = useActiveTabPanelState();
   const setActiveRightTab = useTabViewStore((s) => s.setActiveRightTab);
   const setActiveBottomTab = useTabViewStore((s) => s.setActiveBottomTab);
-  const [selectedTab, setSelectedTab] = useState(activeRightTab);
+  const [selectedTab, setSelectedTabLocal] = useState(activeRightTab);
   const [bottomTab, setBottomTabLocal] = useState(activeBottomTab);
 
   // Wrapper to sync with tab view store
+  const setSelectedTab = useCallback((tab: string) => {
+    setSelectedTabLocal(tab as AllTopPanelTab);
+    setActiveRightTab(tab as AllTopPanelTab);
+  }, [setActiveRightTab]);
+
   const setBottomTab = useCallback((tab: string) => {
     setBottomTabLocal(tab as AllBottomPanelTab);
     setActiveBottomTab(tab as AllBottomPanelTab);
@@ -119,21 +124,14 @@ export function ChangesPanel() {
   const changesContainerRef = useRef<HTMLDivElement>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync local state with active tab state
+  // Sync local state with active tab state (e.g. when switching tabs)
   useEffect(() => {
-    setSelectedTab(activeRightTab);
+    setSelectedTabLocal(activeRightTab);
   }, [activeRightTab]);
 
   useEffect(() => {
     setBottomTabLocal(activeBottomTab);
   }, [activeBottomTab]);
-
-  // Update tab view store when local state changes
-  useEffect(() => {
-    if (selectedTab !== activeRightTab) {
-      setActiveRightTab(selectedTab);
-    }
-  }, [selectedTab, activeRightTab, setActiveRightTab]);
 
   // Fetch changes function (extracted for reuse)
   const fetchChanges = useCallback(async () => {

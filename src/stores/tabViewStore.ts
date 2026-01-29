@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuid } from 'uuid';
-import type { TabView, TabViewState, TopPanelTab, AllBottomPanelTab } from '@/types/tabView';
+import type { TabView, TabViewState, AllTopPanelTab, AllBottomPanelTab } from '@/types/tabView';
 import type { ContentView } from './settingsStore';
 
 interface TabViewStore extends TabViewState {
@@ -21,7 +21,7 @@ interface TabViewStore extends TabViewState {
 
   // Panel state (updates active tab's state)
   setRightSidebarVisible: (visible: boolean) => void;
-  setActiveRightTab: (tab: TopPanelTab) => void;
+  setActiveRightTab: (tab: AllTopPanelTab) => void;
   setBottomTerminalVisible: (visible: boolean) => void;
   setActiveBottomTab: (tab: AllBottomPanelTab) => void;
   setScrollPosition: (position: number) => void;

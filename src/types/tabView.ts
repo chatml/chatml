@@ -8,7 +8,9 @@
  * - Scroll position for restoration
  */
 
-import type { ContentView, TopPanelTab, AllBottomPanelTab } from '@/stores/settingsStore';
+import type { ContentView, AllTopPanelTab, AllBottomPanelTab } from '@/stores/settingsStore';
+
+export type { AllTopPanelTab, AllBottomPanelTab };
 
 export interface TabView {
   id: string;  // uuid
@@ -24,7 +26,7 @@ export interface TabView {
 
   // Panel state (per-tab)
   rightSidebarVisible: boolean;
-  activeRightTab: TopPanelTab;
+  activeRightTab: AllTopPanelTab;
   bottomTerminalVisible: boolean;
   activeBottomTab: AllBottomPanelTab;
 

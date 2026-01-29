@@ -26,6 +26,7 @@ interface KeyboardShortcutsDialogProps {
 const CATEGORY_ORDER: ShortcutCategory[] = [
   'General',
   'Navigation',
+  'Tabs',
   'Chat',
   'Editor',
   'Terminal',
@@ -49,6 +50,7 @@ export function KeyboardShortcutsDialog({
     const filtered: Record<ShortcutCategory, typeof SHORTCUTS> = {
       General: [],
       Navigation: [],
+      Tabs: [],
       Chat: [],
       Editor: [],
       Terminal: [],

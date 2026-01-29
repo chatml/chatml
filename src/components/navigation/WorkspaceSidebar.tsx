@@ -154,8 +154,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, setContentView } = useSettingsStore();
-  const { createTab, setActiveTab } = useTabViewStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView } = useSettingsStore();
+  const tabViewStore = useTabViewStore();
+  const { createTab, setActiveTab, setContentView } = tabViewStore;
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -426,9 +427,13 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                             setActiveTab(tabId);
                           } else {
                             // Regular click: navigate in active tab
+                            // Update tabViewStore (source of truth for per-tab navigation)
+                            tabViewStore.selectWorkspace(workspace.id);
+                            tabViewStore.selectSession(sessionId);
+                            tabViewStore.setContentView({ type: 'conversation' });
+                            // Also update appStore for business logic (conversation selection, file tabs)
                             selectWorkspace(workspace.id);
                             selectSession(sessionId);
-                            setContentView({ type: 'conversation' });
                           }
                           onSessionSelected?.();
                         }}
@@ -445,9 +450,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                             });
                           } else {
                             // Regular click: navigate in active tab
+                            tabViewStore.selectWorkspace(workspace.id);
+                            tabViewStore.selectSession(null);
+                            tabViewStore.setContentView({ type: 'branches', workspaceId: workspace.id });
                             selectWorkspace(workspace.id);
                             selectSession(null);
-                            setContentView({ type: 'branches', workspaceId: workspace.id });
                           }
                         }}
                         onOpenPRs={(e) => {
@@ -460,9 +467,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                             });
                           } else {
                             // Regular click: navigate in active tab
+                            tabViewStore.selectWorkspace(workspace.id);
+                            tabViewStore.selectSession(null);
+                            tabViewStore.setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
                             selectWorkspace(workspace.id);
                             selectSession(null);
-                            setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
                           }
                         }}
                         onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}

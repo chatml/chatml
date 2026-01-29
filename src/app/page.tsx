@@ -395,10 +395,6 @@ export default function Home() {
     sessions,
     conversations,
     messages,
-    selectedWorkspaceId,
-    selectedSessionId,
-    selectedConversationId,
-    selectedFileTabId,
     fileTabs,
     setWorkspaces,
     setSessions,
@@ -406,15 +402,35 @@ export default function Home() {
     addSession,
     addConversation,
     removeConversation,
-    selectWorkspace,
-    selectSession,
-    selectConversation,
+    selectWorkspace: selectWorkspaceInAppStore,
+    selectSession: selectSessionInAppStore,
+    selectConversation: selectConversationInAppStore,
     closeFileTab,
     selectNextTab,
     selectPreviousTab,
     pendingCloseFileTabId,
     setPendingCloseFileTabId,
   } = useAppStore();
+
+  // Selection state from tab view (single source of truth)
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId, selectedFileTabId } = useActiveTabSelection();
+  const tabStore = useTabViewStore();
+
+  // Unified navigation helpers that update both stores
+  const selectWorkspace = useCallback((id: string | null) => {
+    tabStore.selectWorkspace(id);
+    selectWorkspaceInAppStore(id);
+  }, [tabStore, selectWorkspaceInAppStore]);
+
+  const selectSession = useCallback((id: string | null) => {
+    tabStore.selectSession(id);
+    selectSessionInAppStore(id);
+  }, [tabStore, selectSessionInAppStore]);
+
+  const selectConversation = useCallback((id: string | null) => {
+    tabStore.selectConversation(id);
+    selectConversationInAppStore(id);
+  }, [tabStore, selectConversationInAppStore]);
 
   const { expandWorkspace } = useSettingsStore();
 
@@ -428,6 +444,22 @@ export default function Home() {
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  // Sync active tab selection → appStore (backward compatibility)
+  // When switching tabs, the active tab's selection values become current.
+  // Components reading from appStore need these values kept in sync.
+  useEffect(() => {
+    const appState = useAppStore.getState();
+    if (selectedWorkspaceId !== appState.selectedWorkspaceId) {
+      selectWorkspaceInAppStore(selectedWorkspaceId);
+    }
+    if (selectedSessionId !== appState.selectedSessionId) {
+      selectSessionInAppStore(selectedSessionId);
+    }
+    if (selectedConversationId !== appState.selectedConversationId) {
+      selectConversationInAppStore(selectedConversationId);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, selectedConversationId, selectWorkspaceInAppStore, selectSessionInAppStore, selectConversationInAppStore]);
 
   // Connect WebSocket for real-time updates (only when backend is connected)
   useWebSocket(backendConnected);

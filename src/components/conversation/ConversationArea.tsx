@@ -13,6 +13,7 @@ import {
   useReviewComments,
   useReviewCommentActions,
   useActiveTabPanelState,
+  useActiveTabSelection,
 } from '@/stores/selectors';
 import { useTabViewStore } from '@/stores/tabViewStore';
 import { Button } from '@/components/ui/button';
@@ -104,10 +105,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     setPendingCloseFileTabId,
   } = useFileTabState();
 
+  // Selection state from tab view (single source of truth)
+  const { selectedWorkspaceId, selectedSessionId } = useActiveTabSelection();
+
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
-  const selectedSessionId = useAppStore((s) => s.selectedSessionId);
-  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const streamingState = useAppStore((s) => s.streamingState);
   const addMessage = useAppStore((s) => s.addMessage);
 

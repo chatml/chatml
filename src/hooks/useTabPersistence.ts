@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useActiveTabSelection } from '@/stores/selectors';
 import { listFileTabs, saveFileTabs, FileTabDTO, getApiBase } from '@/lib/api';
 import type { FileTab } from '@/lib/types';
 
@@ -14,12 +15,11 @@ const SAVE_DEBOUNCE_MS = 2000;
  * - Saves tabs with debouncing when they change
  */
 export function useTabPersistence() {
+  // Selection state from tab view (single source of truth)
+  const { selectedWorkspaceId, selectedSessionId } = useActiveTabSelection();
   const {
-    selectedWorkspaceId,
-    selectedSessionId,
     fileTabs,
     setFileTabs,
-    selectedFileTabId,
     selectFileTab,
   } = useAppStore();
 

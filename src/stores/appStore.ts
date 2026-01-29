@@ -22,8 +22,6 @@ import type {
   PendingUserQuestion,
   ActiveTool,
 } from '@/lib/types';
-import { useTabViewStore } from './tabViewStore';
-
 // Maximum number of file tabs before LRU eviction kicks in
 const MAX_FILE_TABS = 10;
 
@@ -343,8 +341,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   selectWorkspace: (id) => {
     set({ selectedWorkspaceId: id });
-    // Also update TabViewStore
-    useTabViewStore.getState().selectWorkspace(id);
   },
   reorderWorkspaces: (activeId, overId) => set((state) => {
     const oldIndex = state.workspaces.findIndex((w) => w.id === activeId);
@@ -425,9 +421,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedConversationId: firstConversation?.id || null,
       selectedFileTabId: newSelectedTabId,
     });
-
-    // Also update TabViewStore
-    useTabViewStore.getState().selectSession(id);
   },
   archiveSession: (id) => set((state) => {
     const session = state.sessions.find((s) => s.id === id);
@@ -524,8 +517,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   selectConversation: (id) => {
     set({ selectedConversationId: id });
-    // Also update TabViewStore
-    useTabViewStore.getState().selectConversation(id);
   },
 
   // Message actions
@@ -628,8 +619,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       };
     });
-    // Also update TabViewStore
-    useTabViewStore.getState().selectFileTab(id);
   },
 
   updateFileTab: (id, updates) => set((state) => ({
