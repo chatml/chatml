@@ -46,11 +46,6 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   ResizablePanelGroup,
@@ -58,7 +53,6 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import {
-  Eye,
   MoreVertical,
   FileText,
   Search,
@@ -432,40 +426,6 @@ export function ChangesPanel({
           hasConflictOrFailure && 'bg-text-error/15 border-text-error/30'
         )}
       >
-        {/* Review Button - icon only with tooltip when narrow, label when wide */}
-        {/* Narrow: icon + tooltip */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-7 px-2 gap-1.5 transition-colors shrink-0 @[280px]:hidden',
-                hasActivePR && 'text-text-success hover:bg-text-success/10',
-                hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
-                !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Eye className="h-3.5 w-3.5 shrink-0" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Review Changes</TooltipContent>
-        </Tooltip>
-        {/* Wide: icon + label, no tooltip needed */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            'h-7 px-2 gap-1.5 transition-colors shrink-0 hidden @[280px]:flex',
-            hasActivePR && 'text-text-success hover:bg-text-success/10',
-            hasConflictOrFailure && 'text-text-error hover:bg-text-error/10',
-            !hasActivePR && !hasConflictOrFailure && 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Eye className="h-3.5 w-3.5 shrink-0" />
-          Review
-        </Button>
-
         {/* PR Status or Conflict indicator - truncates in middle, hidden when very narrow */}
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
           {hasActivePR ? (
