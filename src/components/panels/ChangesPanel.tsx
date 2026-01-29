@@ -16,6 +16,7 @@ import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { PlansPanel } from '@/components/panels/PlansPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
+import { SessionInfoPanel } from '@/components/panels/SessionInfoPanel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -501,6 +502,8 @@ export function ChangesPanel() {
             <div className="h-full px-1.5">
               <GitStatusSection onSendMessage={handleGitActionMessage} />
             </div>
+          ) : selectedTab === 'info' ? (
+            <SessionInfoPanel />
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
@@ -544,6 +547,7 @@ const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; alwaysVisible?: b
   review: { label: 'Review' },
   checks: { label: 'Checks' },
   files: { label: 'Files' },
+  info: { label: 'Info' },
 };
 
 // Bottom panel tabs configuration
