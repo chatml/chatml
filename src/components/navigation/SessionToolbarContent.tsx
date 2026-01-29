@@ -183,7 +183,7 @@ export function SessionToolbarContent() {
     if (!selectedSession?.branch) return;
     const ok = await copyToClipboard(selectedSession.branch);
     if (ok) showSuccess('Branch name copied');
-  }, [selectedSession?.branch, showSuccess]);
+  }, [selectedSession, showSuccess]);
 
   const handleArchive = useCallback(async () => {
     if (!selectedSession || !selectedWorkspaceId) return;
