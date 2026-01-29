@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppStore } from '@/stores/appStore';
+import { useMcpServers } from '@/stores/selectors';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Server, CheckCircle2, XCircle, AlertCircle, Clock } from 'lucide-react';
@@ -35,7 +35,7 @@ const STATUS_CONFIG = {
 } as const;
 
 export function McpServersPanel() {
-  const { mcpServers } = useAppStore();
+  const mcpServers = useMcpServers();
 
   if (!mcpServers || mcpServers.length === 0) {
     return (

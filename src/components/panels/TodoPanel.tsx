@@ -1,6 +1,7 @@
 'use client';
 
 import { useAppStore } from '@/stores/appStore';
+import { useSelectedIds } from '@/stores/selectors';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Circle, CheckCircle2, Loader2, ListTodo } from 'lucide-react';
@@ -8,7 +9,8 @@ import { cn } from '@/lib/utils';
 import type { AgentTodoItem } from '@/lib/types';
 
 export function TodoPanel() {
-  const { selectedConversationId, agentTodos } = useAppStore();
+  const { selectedConversationId } = useSelectedIds();
+  const agentTodos = useAppStore((s) => s.agentTodos);
 
   // Get todos for current conversation
   const currentAgentTodos = selectedConversationId ? agentTodos[selectedConversationId] || [] : [];

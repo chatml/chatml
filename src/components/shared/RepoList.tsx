@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppStore } from '@/stores/appStore';
+import { useRepoStateWithAgents } from '@/stores/selectors';
 import { deleteRepo } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,7 +21,7 @@ interface RepoListProps {
 }
 
 export function RepoList({ onAddClick }: RepoListProps) {
-  const { repos, selectedRepoId, selectRepo, removeRepo, agents } = useAppStore();
+  const { repos, selectedRepoId, selectRepo, removeRepo, agents } = useRepoStateWithAgents();
   const { error: showError } = useToast();
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {

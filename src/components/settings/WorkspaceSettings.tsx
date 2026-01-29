@@ -19,7 +19,7 @@ interface WorkspaceSettingsProps {
 }
 
 export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProps) {
-  const { workspaces } = useAppStore();
+  const workspaces = useAppStore((s) => s.workspaces);
   const workspace = workspaces.find((w) => w.id === workspaceId);
   const [repoDetails, setRepoDetails] = useState<RepoDetailsDTO | null>(null);
 

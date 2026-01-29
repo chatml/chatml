@@ -24,7 +24,7 @@ export function AddRepoModal({ isOpen, onClose }: AddRepoModalProps) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { addRepo: addRepoToStore } = useAppStore();
+  const addRepoToStore = useAppStore((s) => s.addRepo);
 
   // Reset form when modal opens
   useEffect(() => {

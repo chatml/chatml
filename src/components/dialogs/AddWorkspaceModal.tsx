@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
@@ -27,7 +28,15 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { addWorkspace, selectWorkspace, addSession, selectSession, addConversation } = useAppStore();
+  const { addWorkspace, selectWorkspace, addSession, selectSession, addConversation } = useAppStore(
+    useShallow((s) => ({
+      addWorkspace: s.addWorkspace,
+      selectWorkspace: s.selectWorkspace,
+      addSession: s.addSession,
+      selectSession: s.selectSession,
+      addConversation: s.addConversation,
+    }))
+  );
   const { expandWorkspace } = useSettingsStore();
 
   useEffect(() => {

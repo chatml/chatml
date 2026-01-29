@@ -420,7 +420,7 @@ interface ActiveToolType {
 }
 
 export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) {
-  const { activeTools } = useAppStore();
+  const activeTools = useAppStore((s) => s.activeTools);
   const tools: ActiveToolType[] = activeTools[conversationId] || [];
 
   if (tools.length === 0) return null;
