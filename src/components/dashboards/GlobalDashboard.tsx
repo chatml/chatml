@@ -3,22 +3,13 @@
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
+import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Layers, GitBranch, GitPullRequest, FolderGit2, Activity } from 'lucide-react';
+import { RefreshCw, Layers, GitBranch, GitPullRequest, FolderGit2, Activity, LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 
-interface GlobalDashboardProps {
-  onOpenSettings?: () => void;
-  onOpenShortcuts?: () => void;
-  showLeftSidebar?: boolean;
-}
-
-export function GlobalDashboard({
-  onOpenSettings,
-  onOpenShortcuts,
-  showLeftSidebar,
-}: GlobalDashboardProps) {
+export function GlobalDashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   const workspaces = useAppStore((s) => s.workspaces);
@@ -60,10 +51,52 @@ export function GlobalDashboard({
     [selectWorkspace, selectSession, setContentView]
   );
 
+  const handleRefreshRef = useRef<() => void>(() => {});
+
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 500);
   }, []);
+
+  // Keep ref in sync (avoids re-renders from toolbar config changes)
+  useEffect(() => {
+    handleRefreshRef.current = handleRefresh;
+  }, [handleRefresh]);
+
+  // Set dynamic toolbar content (Flutter AppBar-style)
+  const toolbarConfig = useMemo(() => ({
+    titlePosition: 'center' as const,
+    title: (
+      <span className="flex items-center gap-1.5">
+        <LayoutDashboard className="h-4 w-4 text-blue-400" />
+        <h1 className="text-base font-semibold">Dashboard</h1>
+      </span>
+    ),
+    bottom: {
+      title: (
+        <span className="text-sm text-muted-foreground">
+          {stats.totalWorkspaces} {stats.totalWorkspaces === 1 ? 'repo' : 'repos'}
+          <span className="ml-2">{stats.totalSessions} {stats.totalSessions === 1 ? 'session' : 'sessions'}</span>
+          {stats.activeSessions > 0 && <span className="text-green-500 ml-2">{stats.activeSessions} active</span>}
+          {stats.openPRs > 0 && <span className="text-purple-400 ml-2">{stats.openPRs} PRs</span>}
+        </span>
+      ),
+      titlePosition: 'left' as const,
+      actions: (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => handleRefreshRef.current()}
+          disabled={refreshing}
+          title="Refresh"
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+        </Button>
+      ),
+    },
+  }), [stats, refreshing]);
+  useMainToolbarContent(toolbarConfig);
 
   const formatTimeAgo = (dateStr: string): string => {
     const date = new Date(dateStr);
@@ -82,26 +115,8 @@ export function GlobalDashboard({
   };
 
   return (
-    <FullContentLayout
-      title="Dashboard"
-      onOpenSettings={onOpenSettings}
-      onOpenShortcuts={onOpenShortcuts}
-      showLeftSidebar={showLeftSidebar}
-      headerActions={
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          title="Refresh"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-          <span className="sr-only">Refresh view</span>
-        </Button>
-      }
-    >
-      <div className="p-6 space-y-8">
+    <FullContentLayout>
+      <div className="h-full flex flex-col overflow-y-auto p-6 space-y-8">
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-surface-1 rounded-lg p-4 border border-border/50">

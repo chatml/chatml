@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
+import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
 import { getPRs, sendSessionMessage, type PRDashboardItem } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -21,7 +22,6 @@ import {
   GitPullRequest,
   GitPullRequestDraft,
   ChevronRight,
-  Folder,
   Check,
   CheckCircle,
   X,
@@ -38,9 +38,6 @@ import { cn } from '@/lib/utils';
 
 interface PRDashboardProps {
   initialWorkspaceId?: string;
-  onOpenSettings?: () => void;
-  onOpenShortcuts?: () => void;
-  showLeftSidebar?: boolean;
 }
 
 // PR Status categories for grouping
@@ -316,11 +313,23 @@ function RepositoryCell({ pr }: { pr: PRWithStatus }) {
   );
 }
 
+// Workspace color palette (shared with WorkspaceCell, WorkspaceSidebar, etc.)
+const WORKSPACE_COLORS = [
+  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
+  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+];
+
+function getWorkspaceColor(workspaceId: string): string {
+  let hash = 0;
+  for (let i = 0; i < workspaceId.length; i++) {
+    hash = ((hash << 5) - hash) + workspaceId.charCodeAt(i);
+    hash |= 0;
+  }
+  return WORKSPACE_COLORS[Math.abs(hash) % WORKSPACE_COLORS.length];
+}
+
 export function PRDashboard({
   initialWorkspaceId,
-  onOpenSettings,
-  onOpenShortcuts,
-  showLeftSidebar,
 }: PRDashboardProps) {
   const [prs, setPRs] = useState<PRDashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -335,6 +344,8 @@ export function PRDashboard({
 
   // Get workspace name for the title
   const workspace = workspaces.find((w) => w.id === initialWorkspaceId);
+
+  const fetchPRsRef = useRef<(isRefresh?: boolean) => void>(() => {});
 
   const fetchPRs = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -354,6 +365,7 @@ export function PRDashboard({
       setRefreshing(false);
     }
   }, [initialWorkspaceId]);
+  fetchPRsRef.current = fetchPRs;
 
   // Initial fetch and auto-refresh
   useEffect(() => {
@@ -366,10 +378,6 @@ export function PRDashboard({
 
     return () => clearInterval(interval);
   }, [fetchPRs]);
-
-  const handleRefresh = () => {
-    fetchPRs(true);
-  };
 
   const handleJumpToSession = useCallback((workspaceId: string, sessionId: string) => {
     selectWorkspace(workspaceId);
@@ -631,45 +639,54 @@ export function PRDashboard({
     return { ready, failures, conflicts, pending, draft, total: prsWithStatus.length };
   }, [prsWithStatus]);
 
-  return (
-    <FullContentLayout
-      title={
-        <span className="flex items-center gap-1.5">
-          Pull Requests
-          {workspace && (
-            <>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-sm font-medium text-purple-300/80">
-                <Folder className="h-3 w-3" />
-                <span className="truncate max-w-[200px]">{workspace.name}</span>
-              </span>
-            </>
-          )}
-          <span className="text-sm font-normal text-muted-foreground ml-2">
-            {stats.total} {stats.total === 1 ? 'PR' : 'PRs'}
-            {stats.ready > 0 && <span className="text-green-500 ml-2">{stats.ready} ready</span>}
-            {stats.failures > 0 && <span className="text-red-500 ml-2">{stats.failures} failing</span>}
-            {stats.conflicts > 0 && <span className="text-yellow-500 ml-2">{stats.conflicts} conflicts</span>}
-          </span>
+  // Set dynamic toolbar content (Flutter AppBar-style)
+  const toolbarConfig = useMemo(() => ({
+    titlePosition: 'center' as const,
+    title: (
+      <span className="flex items-center gap-1.5">
+        {workspace && (
+          <>
+            <div
+              className="w-3 h-3 rounded-full shrink-0"
+              style={{ backgroundColor: getWorkspaceColor(initialWorkspaceId ?? '') }}
+            />
+            <span className="text-base font-semibold truncate max-w-[200px]">{workspace.name}</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </>
+        )}
+        <GitPullRequest className="h-4 w-4 text-violet-400" />
+        <h1 className="text-base font-semibold">Pull Requests</h1>
+      </span>
+    ),
+    bottom: {
+      title: (
+        <span className="text-sm text-muted-foreground">
+          {stats.total} {stats.total === 1 ? 'PR' : 'PRs'}
+          {stats.ready > 0 && <span className="text-green-500 ml-2">{stats.ready} ready</span>}
+          {stats.failures > 0 && <span className="text-red-500 ml-2">{stats.failures} failing</span>}
+          {stats.conflicts > 0 && <span className="text-yellow-500 ml-2">{stats.conflicts} conflicts</span>}
         </span>
-      }
-      onOpenSettings={onOpenSettings}
-      onOpenShortcuts={onOpenShortcuts}
-      showLeftSidebar={showLeftSidebar}
-      headerActions={
+      ),
+      titlePosition: 'left' as const,
+      actions: (
         <Button
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          onClick={handleRefresh}
+          onClick={() => fetchPRsRef.current(true)}
           disabled={refreshing}
           title="Refresh"
         >
           <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
         </Button>
-      }
-    >
-      <div className="pt-2 pb-4">
+      ),
+    },
+  }), [workspace, initialWorkspaceId, stats, refreshing]);
+  useMainToolbarContent(toolbarConfig);
+
+  return (
+    <FullContentLayout>
+      <div className="h-full flex flex-col">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

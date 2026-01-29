@@ -1076,18 +1076,11 @@ export default function Home() {
                   // Full Content Views take entire main content area
                   <ErrorBoundary section="FullContent">
                 {contentView.type === 'global-dashboard' && (
-                  <GlobalDashboard
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
-                  />
+                  <GlobalDashboard />
                 )}
                 {contentView.type === 'pr-dashboard' && (
                   <PRDashboard
                     initialWorkspaceId={contentView.workspaceId}
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
                 {contentView.type === 'branches' && (
