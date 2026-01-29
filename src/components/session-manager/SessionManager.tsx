@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { useUIStore } from '@/stores/uiStore';
 import { updateSession as updateSessionApi } from '@/lib/api';
 import { SessionsDataTable } from './SessionsDataTable';
@@ -18,23 +19,22 @@ export function SessionManager({
 
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
-  const selectWorkspace = useAppStore((s) => s.selectWorkspace);
-  const selectSession = useAppStore((s) => s.selectSession);
   const archiveSession = useAppStore((s) => s.archiveSession);
   const unarchiveSession = useAppStore((s) => s.unarchiveSession);
-  const setContentView = useSettingsStore((s) => s.setContentView);
   const { expandWorkspace } = useSettingsStore();
   const leftToolbarBg = useUIStore((state) => state.toolbarBackgrounds.left);
 
   // Handle session selection - navigate to conversation view
   const handleSelectSession = useCallback(
     (workspaceId: string, sessionId: string) => {
-      selectWorkspace(workspaceId);
       expandWorkspace(workspaceId);
-      selectSession(sessionId);
-      setContentView({ type: 'conversation' });
+      navigate({
+        workspaceId,
+        sessionId,
+        contentView: { type: 'conversation' },
+      });
     },
-    [selectWorkspace, expandWorkspace, selectSession, setContentView]
+    [expandWorkspace]
   );
 
   // Handle archive session

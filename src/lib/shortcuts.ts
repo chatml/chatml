@@ -54,6 +54,20 @@ export const SHORTCUTS: Shortcut[] = [
 
   // Navigation
   {
+    id: 'navigateBack',
+    key: '[',
+    modifiers: ['meta'],
+    label: 'Go back',
+    category: 'Navigation',
+  },
+  {
+    id: 'navigateForward',
+    key: ']',
+    modifiers: ['meta'],
+    label: 'Go forward',
+    category: 'Navigation',
+  },
+  {
     id: 'filePicker',
     key: 'p',
     modifiers: ['meta'],

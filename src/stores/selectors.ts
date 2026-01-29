@@ -17,6 +17,7 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
+import { useNavigationStore } from './navigationStore';
 import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
@@ -418,3 +419,24 @@ export const useUserQuestionActions = () =>
       clearPendingUserQuestion: s.clearPendingUserQuestion,
     }))
   );
+
+/**
+ * Navigation history state for the active tab.
+ * Provides back/forward stack info and capability booleans.
+ * Use in: SidebarToolbar, NavigationHistoryPopover
+ */
+export const useNavigationState = (tabId?: string) => {
+  const activeTabId = useNavigationStore((s) => s.activeTabId);
+  const id = tabId ?? activeTabId;
+  return useNavigationStore(
+    useShallow((s) => {
+      const tab = s.tabs[id] ?? { backStack: [], forwardStack: [] };
+      return {
+        canGoBack: tab.backStack.length > 0,
+        canGoForward: tab.forwardStack.length > 0,
+        backStack: tab.backStack,
+        forwardStack: tab.forwardStack,
+      };
+    })
+  );
+};

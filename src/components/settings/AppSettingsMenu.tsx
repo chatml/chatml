@@ -3,6 +3,7 @@
 import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -54,8 +55,6 @@ export function AppSettingsMenu({
   const { theme, setTheme } = useTheme();
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
-  const setContentView = useSettingsStore((s) => s.setContentView);
-
   const handleSignOut = async () => {
     try {
       await logout();
@@ -170,7 +169,7 @@ export function AppSettingsMenu({
           <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => setContentView({ type: 'session-manager' })}>
+        <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'session-manager' } })}>
           <Layers className="size-4" />
           Session Manager
         </DropdownMenuItem>

@@ -11,6 +11,7 @@ import {
   useMessages,
 } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
@@ -189,7 +190,6 @@ export default function Home() {
   const {
     showBottomTerminal, setShowBottomTerminal,
     zenMode, setZenMode,
-    setContentView,
     layoutOuter, setLayoutOuter,
     layoutInner, setLayoutInner,
     layoutVertical, setLayoutVertical,
@@ -550,11 +550,17 @@ export default function Home() {
         createdAt: newSession.createdAt,
         updatedAt: newSession.updatedAt,
       });
-      selectSession(newSession.id);
+      // Note: no conversationId needed — navigate() calls selectSession() which
+      // auto-selects the first conversation for the session as a side effect.
+      navigate({
+        workspaceId: newSession.workspaceId,
+        sessionId: newSession.id,
+        contentView: { type: 'conversation' },
+      });
     } catch (error) {
       console.error('Failed to create session:', error);
     }
-  }, [selectedWorkspaceId, addSession, selectSession]);
+  }, [selectedWorkspaceId, addSession]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -662,7 +668,6 @@ export default function Home() {
         createdAt: repo.createdAt,
       };
       useAppStore.getState().addWorkspace(workspace);
-      selectWorkspace(workspace.id);
 
       // Auto-create first session for the new workspace (backend generates city-based name)
       const session = await createSession(workspace.id);
@@ -703,16 +708,18 @@ export default function Home() {
       });
 
       expandWorkspace(workspace.id);
-      selectSession(session.id);
-      if (convs.length > 0) {
-        selectConversation(convs[0].id);
-      }
+      navigate({
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        conversationId: convs.length > 0 ? convs[0].id : undefined,
+        contentView: { type: 'conversation' },
+      });
     } catch (error) {
       // If it fails, fall back to showing the modal where user can see the error
       console.error('Failed to add workspace directly:', error);
       setShowAddWorkspace(true);
     }
-  }, [selectWorkspace, addSession, addConversation, expandWorkspace, selectSession, selectConversation]);
+  }, [addSession, addConversation, expandWorkspace]);
 
   // Handle closing a file tab (with dirty check)
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -807,14 +814,12 @@ export default function Home() {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
         if (sessions[index]) {
-          selectSession(sessions[index].id);
-          // Also select the first conversation for that session
-          const sessionConvs = conversations.filter(
-            (c) => c.sessionId === sessions[index].id
-          );
-          if (sessionConvs.length > 0) {
-            selectConversation(sessionConvs[0].id);
-          }
+          const session = sessions[index];
+          navigate({
+            workspaceId: session.workspaceId,
+            sessionId: session.id,
+            contentView: { type: 'conversation' },
+          });
         }
       }
       // Tab switching shortcuts (multiple options for cross-platform compatibility)
@@ -864,7 +869,7 @@ export default function Home() {
       if (e.key === 'Escape') {
         if (contentViewRef.current.type === 'session-manager') {
           e.preventDefault();
-          setContentView({ type: 'conversation' });
+          navigate({ contentView: { type: 'conversation' } });
         } else if (zenModeRef.current) {
           e.preventDefault();
           setZenMode(false);
@@ -874,7 +879,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -1219,7 +1224,7 @@ export default function Home() {
         {contentView.type === 'session-manager' && (
           <div className="absolute inset-0 z-20 bg-content-background">
             <SessionManager
-              onClose={() => setContentView({ type: 'conversation' })}
+              onClose={() => navigate({ contentView: { type: 'conversation' } })}
             />
           </div>
         )}

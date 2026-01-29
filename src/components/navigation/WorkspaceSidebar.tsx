@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
+import { navigate } from '@/lib/navigation';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -123,8 +124,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     sessions,
     selectedWorkspaceId,
     selectedSessionId,
-    selectWorkspace,
-    selectSession,
     addSession,
     addConversation,
     reorderWorkspaces,
@@ -132,6 +131,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     updateSession,
     removeWorkspace,
   } = useAppStore();
+
 
 
   const sensors = useSensors(
@@ -153,7 +153,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, setContentView } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -246,9 +246,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       // Expand the workspace if not already
       expandWorkspace(workspaceId);
 
-      // Select the new session (selectSession auto-selects first conversation)
-      selectWorkspace(workspaceId);
-      selectSession(session.id);
+      // Select the new session (navigate records history)
+      navigate({
+        workspaceId,
+        sessionId: session.id,
+        contentView: { type: 'conversation' },
+      });
     } catch (error) {
       console.error('Failed to create session:', error);
     }
@@ -319,7 +322,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               ? "bg-surface-2 text-foreground"
               : "hover:bg-surface-1"
           )}
-          onClick={() => setContentView({ type: 'global-dashboard' })}
+          onClick={() => navigate({ contentView: { type: 'global-dashboard' } })}
         >
           <LayoutDashboard className={cn(
             "w-4 h-4",
@@ -345,7 +348,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   Repositories
                 </span>
                 <button
-                  onClick={() => setContentView({ type: 'repositories' })}
+                  onClick={() => navigate({ contentView: { type: 'repositories' } })}
                   className="text-[10px] font-medium text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100"
                 >
                   Manage
@@ -403,23 +406,29 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
                         onCreateSession={() => handleCreateSession(workspace.id)}
                         onSelectSession={(sessionId) => {
-                          selectWorkspace(workspace.id);
-                          selectSession(sessionId);
-                          setContentView({ type: 'conversation' });
+                          navigate({
+                            workspaceId: workspace.id,
+                            sessionId,
+                            contentView: { type: 'conversation' },
+                          });
                           onSessionSelected?.();
                         }}
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
                         onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
                         onOpenBranches={() => {
-                          selectWorkspace(workspace.id);
-                          selectSession(null);
-                          setContentView({ type: 'branches', workspaceId: workspace.id });
+                          navigate({
+                            workspaceId: workspace.id,
+                            sessionId: null,
+                            contentView: { type: 'branches', workspaceId: workspace.id },
+                          });
                         }}
                         onOpenPRs={() => {
-                          selectWorkspace(workspace.id);
-                          selectSession(null);
-                          setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
+                          navigate({
+                            workspaceId: workspace.id,
+                            sessionId: null,
+                            contentView: { type: 'pr-dashboard', workspaceId: workspace.id },
+                          });
                         }}
                         onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}
                         contentView={contentView}

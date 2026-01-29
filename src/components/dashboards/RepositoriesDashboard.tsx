@@ -2,7 +2,7 @@
 
 import { useMemo, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
 import { Button } from '@/components/ui/button';
@@ -84,7 +84,7 @@ function PathCell({ workspace }: { workspace: Workspace }) {
 }
 
 // Sessions count cell
-function SessionsCell({ workspace, sessionCount }: { workspace: Workspace; sessionCount: number }) {
+function SessionsCell({ sessionCount }: { sessionCount: number }) {
   if (sessionCount === 0) return <span className="text-sm text-muted-foreground">-</span>;
 
   return (
@@ -115,9 +115,7 @@ export function RepositoriesDashboard({
 }: RepositoriesDashboardProps) {
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
-  const selectWorkspace = useAppStore((s) => s.selectWorkspace);
   const removeWorkspace = useAppStore((s) => s.removeWorkspace);
-  const setContentView = useSettingsStore((s) => s.setContentView);
 
   // Get session count for each workspace
   const getSessionCount = useCallback((workspaceId: string) => {
@@ -134,9 +132,11 @@ export function RepositoriesDashboard({
 
   // Handle row click - go to workspace dashboard
   const handleRowClick = useCallback((workspace: Workspace) => {
-    selectWorkspace(workspace.id);
-    setContentView({ type: 'workspace-dashboard', workspaceId: workspace.id });
-  }, [selectWorkspace, setContentView]);
+    navigate({
+      workspaceId: workspace.id,
+      contentView: { type: 'workspace-dashboard', workspaceId: workspace.id },
+    });
+  }, []);
 
   // Context menu actions for a workspace
   const getWorkspaceContextMenu = useCallback((workspace: Workspace): ContextMenuItem[] => {
@@ -145,16 +145,20 @@ export function RepositoriesDashboard({
         label: 'Open Dashboard',
         icon: <Folder className="h-4 w-4" />,
         onClick: () => {
-          selectWorkspace(workspace.id);
-          setContentView({ type: 'workspace-dashboard', workspaceId: workspace.id });
+          navigate({
+            workspaceId: workspace.id,
+            contentView: { type: 'workspace-dashboard', workspaceId: workspace.id },
+          });
         },
       },
       {
         label: 'View Branches',
         icon: <GitBranch className="h-4 w-4" />,
         onClick: () => {
-          selectWorkspace(workspace.id);
-          setContentView({ type: 'branches', workspaceId: workspace.id });
+          navigate({
+            workspaceId: workspace.id,
+            contentView: { type: 'branches', workspaceId: workspace.id },
+          });
         },
       },
       { label: '', onClick: () => {}, separator: true },
@@ -194,7 +198,7 @@ export function RepositoriesDashboard({
         },
       },
     ];
-  }, [selectWorkspace, setContentView, onOpenWorkspaceSettings, removeWorkspace]);
+  }, [onOpenWorkspaceSettings, removeWorkspace]);
 
   // Define columns for the data table
   const columns: Column<Workspace & { sessionCount: number }>[] = useMemo(() => [
@@ -221,7 +225,7 @@ export function RepositoriesDashboard({
       id: 'sessions',
       header: 'Sessions',
       accessorKey: (w) => w.sessionCount,
-      cell: (workspace) => <SessionsCell workspace={workspace} sessionCount={workspace.sessionCount} />,
+      cell: (workspace) => <SessionsCell sessionCount={workspace.sessionCount} />,
       sortable: true,
       width: '100px',
     },
