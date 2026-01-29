@@ -353,13 +353,13 @@ func (h *Handlers) RewindConversation(w http.ResponseWriter, r *http.Request) {
 
 ## MCP Integration
 
-### Conductor MCP Server
+### ChatML MCP Server
 
 **File: `agent-runner/src/mcp/server.ts:12-114`**
 
 ```mermaid
 flowchart TB
-    subgraph MCPServer["Conductor MCP Server"]
+    subgraph MCPServer["ChatML MCP Server"]
         GSS[get_session_status]
         GWD[get_workspace_diff]
         GRA[get_recent_activity]

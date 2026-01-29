@@ -203,7 +203,10 @@ func (g *GitHubAdapter) fetchIssues(ctx context.Context, owner, repo string, fil
 
 	// Handle errors
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, false, rateLimit, fmt.Errorf("GitHub API error %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return nil, false, rateLimit, fmt.Errorf("GitHub API error %d: %s", resp.StatusCode, body)
 	}
 

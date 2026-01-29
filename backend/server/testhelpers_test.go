@@ -11,6 +11,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
@@ -25,11 +26,14 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 	sqliteStore, err := store.NewSQLiteStoreInMemory()
 	require.NoError(t, err)
 
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+
 	t.Cleanup(func() {
 		sqliteStore.Close()
+		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil)
 
 	return handlers, sqliteStore
 }
@@ -43,13 +47,15 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 	require.NoError(t, err)
 
 	worktreeManager := git.NewWorktreeManager()
-	agentManager := agent.NewManager(sqliteStore, worktreeManager)
+	agentManager := agent.NewManager(context.Background(), sqliteStore, worktreeManager)
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
+		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil)
 
 	return handlers, sqliteStore, agentManager
 }

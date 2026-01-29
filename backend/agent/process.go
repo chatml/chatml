@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/chatml/chatml-backend/logger"
@@ -433,12 +434,31 @@ func (p *Process) sendInput(msg InputMessage) error {
 }
 
 // doStopLocked performs the actual stop cleanup. Must be called with p.mu held.
+// Sends SIGTERM first for graceful shutdown, then escalates to SIGKILL after 5s.
 func (p *Process) doStopLocked() {
 	if p.stdin != nil {
 		p.stdin.Close()
 		p.stdin = nil
 	}
-	p.cancel()
+
+	// Try graceful shutdown with SIGTERM first
+	if p.cmd != nil && p.cmd.Process != nil && p.running {
+		_ = p.cmd.Process.Signal(syscall.SIGTERM)
+		// Fire-and-forget goroutine: escalate to SIGKILL after timeout.
+		// This intentionally outlives the caller's lock; p.cancel() is goroutine-safe.
+		go func() {
+			select {
+			case <-p.done:
+				// Process exited gracefully
+			case <-time.After(5 * time.Second):
+				// Force kill via context cancellation (sends SIGKILL)
+				logger.Process.Warnf("[%s] Process did not exit after SIGTERM, sending SIGKILL", p.ID)
+				p.cancel()
+			}
+		}()
+	} else {
+		p.cancel()
+	}
 }
 
 // Stop stops the process. Safe to call multiple times (idempotent).

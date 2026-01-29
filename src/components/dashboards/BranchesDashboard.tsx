@@ -288,18 +288,26 @@ export function BranchesDashboard({
   }, [workspaceId, showRemote, searchTerm]);
   fetchBranchesRef.current = fetchBranches;
 
-  // Initial fetch and auto-refresh
+  // Initial fetch + WebSocket-driven refresh + slow fallback poll
   // After the first fetch, subsequent dependency changes use refresh mode
   // to keep the DataTable mounted and preserve its display options state.
   useEffect(() => {
     fetchBranches(hasFetchedRef.current);
     hasFetchedRef.current = true;
 
+    // Listen for WebSocket invalidation events from BranchWatcher
+    const handleBranchUpdate = () => fetchBranchesRef.current(true);
+    window.addEventListener('branch_dashboard_update', handleBranchUpdate);
+
+    // Slow fallback poll (5 minutes) as a safety net
     const interval = setInterval(() => {
       fetchBranches(true);
-    }, 60000);
+    }, 300000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener('branch_dashboard_update', handleBranchUpdate);
+      clearInterval(interval);
+    };
   }, [fetchBranches]);
 
 

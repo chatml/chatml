@@ -350,16 +350,23 @@ export function PRDashboard({
   }, [initialWorkspaceId]);
   fetchPRsRef.current = fetchPRs;
 
-  // Initial fetch and auto-refresh
+  // Initial fetch + WebSocket-driven refresh + slow fallback poll
   useEffect(() => {
     fetchPRs();
 
-    // Auto-refresh every 60 seconds
+    // Listen for WebSocket invalidation events from PRWatcher
+    const handlePRUpdate = () => fetchPRsRef.current(true);
+    window.addEventListener('pr_dashboard_update', handlePRUpdate);
+
+    // Slow fallback poll (5 minutes) as a safety net
     const interval = setInterval(() => {
       fetchPRs(true);
-    }, 60000);
+    }, 300000);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.removeEventListener('pr_dashboard_update', handlePRUpdate);
+      clearInterval(interval);
+    };
   }, [fetchPRs]);
 
   const handleJumpToSession = useCallback((workspaceId: string, sessionId: string) => {

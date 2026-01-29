@@ -334,6 +334,85 @@ func TestClient_GetPRDetails_NotAuthenticated(t *testing.T) {
 	require.Contains(t, err.Error(), "not authenticated")
 }
 
+func TestClient_ListOpenPRsWithETag_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/repos/testowner/testrepo/pulls", r.URL.Path)
+
+		// Should not send If-None-Match when no etag provided
+		require.Empty(t, r.Header.Get("If-None-Match"))
+
+		w.Header().Set("ETag", "W/\"abc123\"")
+		prs := []map[string]interface{}{
+			{
+				"number":   1,
+				"state":    "open",
+				"title":    "Test PR",
+				"html_url": "https://github.com/testowner/testrepo/pull/1",
+				"draft":    false,
+				"head":     map[string]string{"ref": "feature-1", "sha": "sha1"},
+			},
+		}
+		json.NewEncoder(w).Encode(prs)
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	result, err := client.ListOpenPRsWithETag(context.Background(), "testowner", "testrepo", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.PRs, 1)
+	require.Equal(t, "W/\"abc123\"", result.ETag)
+	require.Equal(t, 1, result.PRs[0].Number)
+}
+
+func TestClient_ListOpenPRsWithETag_NotModified(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Should send If-None-Match with the provided etag
+		require.Equal(t, "W/\"abc123\"", r.Header.Get("If-None-Match"))
+
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	result, err := client.ListOpenPRsWithETag(context.Background(), "testowner", "testrepo", "W/\"abc123\"")
+	require.ErrorIs(t, err, ErrNotModified)
+	require.Nil(t, result)
+}
+
+func TestClient_ListOpenPRsWithETag_SendsETagHeader(t *testing.T) {
+	var receivedETag string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedETag = r.Header.Get("If-None-Match")
+		w.Header().Set("ETag", "W/\"new-etag\"")
+		json.NewEncoder(w).Encode([]map[string]interface{}{})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	result, err := client.ListOpenPRsWithETag(context.Background(), "testowner", "testrepo", "W/\"old-etag\"")
+	require.NoError(t, err)
+	require.Equal(t, "W/\"old-etag\"", receivedETag)
+	require.Equal(t, "W/\"new-etag\"", result.ETag)
+}
+
+func TestClient_ListOpenPRsWithETag_NotAuthenticated(t *testing.T) {
+	client := NewClient("", "")
+
+	_, err := client.ListOpenPRsWithETag(context.Background(), "testowner", "testrepo", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not authenticated")
+}
+
 func TestClient_FindPRForBranch_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/repos/testowner/testrepo/pulls", r.URL.Path)

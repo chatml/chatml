@@ -1051,3 +1051,314 @@ func TestIntToBool(t *testing.T) {
 	assert.True(t, intToBool(-1))
 	assert.False(t, intToBool(0))
 }
+
+// ============================================================================
+// GetConversationMeta Tests
+// ============================================================================
+
+func TestGetConversationMeta_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	got, err := s.GetConversationMeta(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "conv-1", got.ID)
+	assert.Equal(t, "sess-1", got.SessionID)
+	assert.Equal(t, models.ConversationTypeTask, got.Type)
+	assert.Equal(t, models.ConversationStatusActive, got.Status)
+}
+
+func TestGetConversationMeta_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	got, err := s.GetConversationMeta(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestGetConversationMeta_DoesNotLoadMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Add messages and tool actions
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", createTestMessage("m1", "user", "Hello")))
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", createTestMessage("m2", "assistant", "Hi")))
+	require.NoError(t, s.AddToolActionToConversation(ctx, "conv-1", createTestToolAction("t1", "Read", "file.go", true)))
+
+	got, err := s.GetConversationMeta(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// Meta should NOT have messages or tool actions loaded
+	assert.Nil(t, got.Messages)
+	assert.Nil(t, got.ToolSummary)
+}
+
+func TestGetConversationMeta_VsGetConversation(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", createTestMessage("m1", "user", "Hello")))
+
+	// Meta returns same core fields as GetConversation
+	meta, err := s.GetConversationMeta(ctx, "conv-1")
+	require.NoError(t, err)
+	full, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+
+	assert.Equal(t, full.ID, meta.ID)
+	assert.Equal(t, full.SessionID, meta.SessionID)
+	assert.Equal(t, full.Type, meta.Type)
+	assert.Equal(t, full.Status, meta.Status)
+
+	// But full has messages, meta does not
+	assert.Len(t, full.Messages, 1)
+	assert.Nil(t, meta.Messages)
+}
+
+// ============================================================================
+// GetAttachmentData Tests
+// ============================================================================
+
+func TestGetAttachmentData_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "Here is an image")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	// Save attachment with base64 data
+	att := models.Attachment{
+		ID:         "att-1",
+		Type:       "image",
+		Name:       "screenshot.png",
+		MimeType:   "image/png",
+		Size:       1024,
+		Base64Data: "iVBORw0KGgoAAAANSUhEUg==",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	data, err := s.GetAttachmentData(ctx, "att-1")
+	require.NoError(t, err)
+	assert.Equal(t, "iVBORw0KGgoAAAANSUhEUg==", data)
+}
+
+func TestGetAttachmentData_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	_, err := s.GetAttachmentData(ctx, "nonexistent")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrAttachmentNotFound)
+}
+
+func TestGetAttachmentData_NullBase64(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "A code file")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	// Save attachment without base64 data (text file)
+	att := models.Attachment{
+		ID:       "att-2",
+		Type:     "file",
+		Name:     "main.go",
+		MimeType: "text/plain",
+		Size:     256,
+		Preview:  "package main\n",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	data, err := s.GetAttachmentData(ctx, "att-2")
+	require.NoError(t, err)
+	assert.Equal(t, "", data)
+}
+
+// ============================================================================
+// Base64 Exclusion Tests
+// ============================================================================
+
+func TestGetConversation_AttachmentsExcludeBase64(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "Image attached")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	// Save attachment WITH base64 data
+	att := models.Attachment{
+		ID:         "att-1",
+		Type:       "image",
+		Name:       "photo.png",
+		MimeType:   "image/png",
+		Size:       2048,
+		Width:      800,
+		Height:     600,
+		Base64Data: "AAAA_LARGE_BASE64_DATA_AAAA",
+		Preview:    "thumbnail",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	// GetConversation should load attachments but WITHOUT base64_data
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.Len(t, conv.Messages, 1)
+	require.Len(t, conv.Messages[0].Attachments, 1)
+
+	loadedAtt := conv.Messages[0].Attachments[0]
+	assert.Equal(t, "att-1", loadedAtt.ID)
+	assert.Equal(t, "photo.png", loadedAtt.Name)
+	assert.Equal(t, "image/png", loadedAtt.MimeType)
+	assert.Equal(t, int64(2048), loadedAtt.Size)
+	assert.Equal(t, 800, loadedAtt.Width)
+	assert.Equal(t, 600, loadedAtt.Height)
+	assert.Equal(t, "thumbnail", loadedAtt.Preview)
+	// Base64Data should NOT be loaded
+	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in conversation queries")
+}
+
+func TestListConversations_AttachmentsExcludeBase64(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "File")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	att := models.Attachment{
+		ID:         "att-1",
+		Type:       "image",
+		Name:       "img.png",
+		MimeType:   "image/png",
+		Size:       4096,
+		Base64Data: "BBBB_SHOULD_NOT_APPEAR_BBBB",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	convs, err := s.ListConversations(ctx, "sess-1")
+	require.NoError(t, err)
+	require.Len(t, convs, 1)
+	require.Len(t, convs[0].Messages, 1)
+	require.Len(t, convs[0].Messages[0].Attachments, 1)
+
+	loadedAtt := convs[0].Messages[0].Attachments[0]
+	assert.Equal(t, "att-1", loadedAtt.ID)
+	assert.Equal(t, "img.png", loadedAtt.Name)
+	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in list queries")
+}
+
+func TestGetAttachmentsByMessageID_ExcludesBase64(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "File")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	att := models.Attachment{
+		ID:         "att-1",
+		Type:       "image",
+		Name:       "img.png",
+		MimeType:   "image/png",
+		Size:       512,
+		Base64Data: "CCCC_NOT_RETURNED_CCCC",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	attachments, err := s.GetAttachmentsByMessageID(ctx, "m1")
+	require.NoError(t, err)
+	require.Len(t, attachments, 1)
+	assert.Equal(t, "att-1", attachments[0].ID)
+	assert.Empty(t, attachments[0].Base64Data, "base64Data should not be loaded by GetAttachmentsByMessageID")
+}
+
+func TestGetAttachmentData_RoundTrip(t *testing.T) {
+	// Verify that base64 data is saved and can be retrieved via dedicated endpoint
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "Image")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	largeBase64 := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+	att := models.Attachment{
+		ID:         "att-round",
+		Type:       "image",
+		Name:       "pixel.png",
+		MimeType:   "image/png",
+		Size:       128,
+		Base64Data: largeBase64,
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	// List query should NOT have base64
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.Len(t, conv.Messages[0].Attachments, 1)
+	assert.Empty(t, conv.Messages[0].Attachments[0].Base64Data)
+
+	// Dedicated query SHOULD have base64
+	data, err := s.GetAttachmentData(ctx, "att-round")
+	require.NoError(t, err)
+	assert.Equal(t, largeBase64, data)
+}
+
+func TestListConversationsForSessions_AttachmentsExcludeBase64(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := createTestMessage("m1", "user", "Attached file")
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	att := models.Attachment{
+		ID:         "att-batch",
+		Type:       "image",
+		Name:       "batch.png",
+		MimeType:   "image/png",
+		Size:       1024,
+		Base64Data: "DDDD_BATCH_BASE64_DDDD",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	convMap, err := s.ListConversationsForSessions(ctx, []string{"sess-1"})
+	require.NoError(t, err)
+	convs := convMap["sess-1"]
+	require.Len(t, convs, 1)
+	require.Len(t, convs[0].Messages, 1)
+	require.Len(t, convs[0].Messages[0].Attachments, 1)
+
+	loadedAtt := convs[0].Messages[0].Attachments[0]
+	assert.Equal(t, "att-batch", loadedAtt.ID)
+	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in batch queries")
+}

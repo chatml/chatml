@@ -34,6 +34,7 @@ export function BudgetStatusPanel() {
 
   // Check if any limits are configured
   const hasLimits = maxBudgetUsd !== undefined || maxTurns !== undefined || maxThinkingTokens !== undefined;
+  const thinkingEnabled = maxThinkingTokens !== undefined && maxThinkingTokens > 0;
 
   const budgetPercent = maxBudgetUsd ? (currentCostUsd / maxBudgetUsd) * 100 : 0;
   const turnsPercent = maxTurns ? (currentTurns / maxTurns) * 100 : 0;
@@ -103,26 +104,47 @@ export function BudgetStatusPanel() {
         )}
       </div>
 
-      {/* Thinking tokens - only show if limit is set */}
-      {maxThinkingTokens !== undefined && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Brain className="w-3 h-3" />
-              <span>Thinking</span>
-            </div>
-            <span className={cn(thinkingPercent >= 90 && 'text-destructive')}>
-              {currentThinkingTokens.toLocaleString()} / {maxThinkingTokens.toLocaleString()}
-            </span>
+      {/* Extended Thinking — status card */}
+      <div className={cn(
+        'rounded-lg border p-2.5 space-y-2',
+        thinkingEnabled
+          ? 'border-amber-500/20 bg-amber-500/5'
+          : 'border-border bg-muted/30'
+      )}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Brain className={cn(
+              'w-3.5 h-3.5',
+              thinkingEnabled ? 'text-amber-500' : 'text-muted-foreground'
+            )} />
+            <span className="text-xs font-medium">Extended Thinking</span>
           </div>
-          <div className="h-1 bg-muted rounded-full overflow-hidden">
-            <div
-              className={cn('h-full rounded-full', thinkingPercent >= 90 ? 'bg-destructive' : 'bg-primary')}
-              style={{ width: `${Math.min(thinkingPercent, 100)}%` }}
-            />
-          </div>
+          <span className={cn(
+            'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider',
+            thinkingEnabled
+              ? 'bg-amber-500/15 text-amber-500'
+              : 'bg-muted text-muted-foreground'
+          )}>
+            {thinkingEnabled ? 'On' : 'Off'}
+          </span>
         </div>
-      )}
+        {thinkingEnabled && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground">Usage</span>
+              <span className={cn('font-mono', thinkingPercent >= 90 && 'text-destructive')}>
+                {currentThinkingTokens.toLocaleString()} / {maxThinkingTokens.toLocaleString()}
+              </span>
+            </div>
+            <div className="h-1 bg-muted rounded-full overflow-hidden">
+              <div
+                className={cn('h-full rounded-full', thinkingPercent >= 90 ? 'bg-destructive' : 'bg-amber-500')}
+                style={{ width: `${Math.min(thinkingPercent, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Info text when no limits are configured */}
       {!hasLimits && (

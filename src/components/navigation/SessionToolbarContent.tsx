@@ -5,7 +5,15 @@ import { useWorkspaceSelection } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
-import { sendConversationMessage } from '@/lib/api';
+import {
+  sendConversationMessage,
+  createConversation,
+  deleteSession as apiDeleteSession,
+  toStoreConversation,
+} from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
+import { copyToClipboard, openInVSCode, openInTerminal, showInFinder } from '@/lib/tauri';
+import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
 import {
   ChevronRight,
   ChevronDown,
@@ -141,17 +149,65 @@ function SessionTitle({
 export function SessionToolbarContent() {
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const selectedConversationId = useAppStore((s) => s.selectedConversationId);
+  const archiveSession = useAppStore((s) => s.archiveSession);
+  const removeSession = useAppStore((s) => s.removeSession);
+  const addConversation = useAppStore((s) => s.addConversation);
+  const selectConversation = useAppStore((s) => s.selectConversation);
+  const { success: showSuccess, error: showError, warning: showWarning } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
 
   const handleGitActionMessage = useCallback((content: string) => {
     if (!selectedConversationId) {
-      console.warn('No conversation selected, cannot send git action message');
+      showWarning('No active conversation');
       return;
     }
     sendConversationMessage(selectedConversationId, content).catch(console.error);
-  }, [selectedConversationId]);
+  }, [selectedConversationId, showWarning]);
+
+  const handleNewConversation = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+    try {
+      const newConv = await createConversation(selectedWorkspaceId, selectedSessionId, { type: 'task' });
+      addConversation(toStoreConversation(newConv));
+      selectConversation(newConv.id);
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+      showError('Failed to create conversation');
+    }
+  }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation, showError]);
+
+  const handleCopyBranch = useCallback(async () => {
+    if (!selectedSession?.branch) return;
+    const ok = await copyToClipboard(selectedSession.branch);
+    if (ok) showSuccess('Branch name copied');
+  }, [selectedSession, showSuccess]);
+
+  const handleArchive = useCallback(async () => {
+    if (!selectedSession || !selectedWorkspaceId) return;
+    try {
+      await apiUpdateSession(selectedWorkspaceId, selectedSession.id, { archived: true });
+      archiveSession(selectedSession.id);
+      showSuccess('Session archived');
+    } catch (error) {
+      console.error('Failed to archive session:', error);
+      showError('Failed to archive session');
+    }
+  }, [selectedSession, selectedWorkspaceId, archiveSession, showSuccess, showError]);
+
+  const handleDelete = useCallback(async () => {
+    if (!selectedSession || !selectedWorkspaceId) return;
+    try {
+      await apiDeleteSession(selectedWorkspaceId, selectedSession.id);
+      removeSession(selectedSession.id);
+      showSuccess('Session deleted');
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      showError('Failed to delete session');
+    }
+  }, [selectedSession, selectedWorkspaceId, removeSession, showSuccess, showError]);
 
   const toolbarConfig = useMemo(() => {
     if (!selectedWorkspace || !selectedSession) return {};
@@ -266,37 +322,37 @@ export function SessionToolbarContent() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleNewConversation}>
                   <MessageSquare /> New Conversation
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleGitActionMessage('Provide a summary of all work done in this session, including files changed, key decisions, and current status.')}>
                   <FileText /> View Summary
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleCopyBranch}>
                   <Copy /> Copy Branch Name
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem disabled={!selectedSession?.worktreePath} onSelect={() => openInVSCode(selectedSession!.worktreePath!)}>
                   <Code /> Open in VS Code
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem disabled={!selectedSession?.worktreePath} onSelect={() => openInTerminal(selectedSession!.worktreePath!)}>
                   <Terminal /> Open in Terminal
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem disabled={!selectedSession?.worktreePath} onSelect={() => showInFinder(selectedSession!.worktreePath!)}>
                   <FolderOpen /> Show in Finder
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleGitActionMessage('Create a pull request for this branch. Write a descriptive title based on the changes and a comprehensive PR body. Use `gh pr create` to create it.')}>
                   <GitMerge /> Create Pull Request
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleGitActionMessage('Rebase this branch on origin/main, resolving any conflicts.')}>
                   <RefreshCw /> Sync with Main
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleArchive}>
                   <Archive /> Archive Session
                 </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive">
+                <DropdownMenuItem variant="destructive" onSelect={() => setShowDeleteDialog(true)}>
                   <Trash2 /> Delete Session
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -305,9 +361,16 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive]);
 
   useMainToolbarContent(toolbarConfig);
 
-  return null;
+  return (
+    <DeleteSessionDialog
+      open={showDeleteDialog}
+      onOpenChange={setShowDeleteDialog}
+      onConfirm={handleDelete}
+      sessionName={selectedSession?.task || selectedSession?.branch || 'this session'}
+    />
+  );
 }

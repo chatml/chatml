@@ -18,7 +18,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
 import { useNavigationStore } from './navigationStore';
-import type { Message, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool } from '@/lib/types';
+import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -28,6 +28,7 @@ const EMPTY_AGENT_TODOS: readonly AgentTodoItem[] = [];
 const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
 const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
 const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
+const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -105,6 +106,19 @@ export const useConversationsWithUserMessages = () =>
       }
       return ids.length > 0 ? ids : EMPTY_CONVERSATION_IDS;
     })
+  );
+
+/**
+ * Conversations for a specific session.
+ * Use in: SessionInfoPanel
+ */
+export const useSessionConversations = (sessionId: string | null) =>
+  useAppStore(
+    useShallow((s) =>
+      sessionId
+        ? s.conversations.filter((c) => c.sessionId === sessionId)
+        : EMPTY_CONVERSATIONS
+    )
   );
 
 // ============================================================================

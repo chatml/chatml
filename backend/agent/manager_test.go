@@ -29,7 +29,7 @@ func setupTestManager(t *testing.T) (*Manager, *store.SQLiteStore) {
 		sqliteStore.Close()
 	})
 
-	manager := NewManager(sqliteStore, worktreeManager)
+	manager := NewManager(context.Background(), sqliteStore, worktreeManager)
 
 	return manager, sqliteStore
 }
@@ -212,14 +212,14 @@ func TestManager_StopConversation_NoProcess(t *testing.T) {
 	createTestConversation(t, s, "conv-1", "sess-1")
 
 	// Should not panic when conversation has no process
-	manager.StopConversation("conv-1")
+	manager.StopConversation(context.Background(), "conv-1")
 }
 
 func TestManager_StopConversation_Nonexistent(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
 	// Should not panic when conversation doesn't exist
-	manager.StopConversation("nonexistent")
+	manager.StopConversation(context.Background(), "nonexistent")
 }
 
 // ============================================================================
@@ -240,7 +240,7 @@ func TestManager_CompleteConversation_UpdatesStatus(t *testing.T) {
 		capturedStatus = status
 	})
 
-	manager.CompleteConversation("conv-1")
+	manager.CompleteConversation(context.Background(), "conv-1")
 
 	// Verify status was updated in store
 	conv, err := s.GetConversation(ctx, "conv-1")
@@ -272,7 +272,7 @@ func TestManager_StopAgent_NoProcess(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
 	// Should not panic when agent doesn't exist
-	manager.StopAgent("nonexistent")
+	manager.StopAgent(context.Background(), "nonexistent")
 }
 
 // ============================================================================
@@ -282,7 +282,7 @@ func TestManager_StopAgent_NoProcess(t *testing.T) {
 func TestManager_StartConversation_SessionNotFound(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
-	conv, err := manager.StartConversation("nonexistent", "task", "hello", nil)
+	conv, err := manager.StartConversation(context.Background(), "nonexistent", "task", "hello", nil)
 	assert.Error(t, err)
 	assert.Nil(t, conv)
 	assert.Contains(t, err.Error(), "session not found")
@@ -295,7 +295,7 @@ func TestManager_StartConversation_SessionNotFound(t *testing.T) {
 func TestManager_SendConversationMessage_ConversationNotFound(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
-	err := manager.SendConversationMessage("nonexistent", "hello", nil)
+	err := manager.SendConversationMessage(context.Background(), "nonexistent", "hello", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conversation not found")
 }
@@ -351,7 +351,7 @@ func TestManager_ConcurrentStopConversation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			manager.StopConversation("conv-1")
+			manager.StopConversation(context.Background(), "conv-1")
 		}()
 	}
 	wg.Wait()
@@ -393,7 +393,7 @@ func TestManager_ConcurrentStopAgent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			manager.StopAgent("agent-1")
+			manager.StopAgent(context.Background(), "agent-1")
 		}()
 	}
 	wg.Wait()
@@ -431,7 +431,7 @@ func TestManager_ConcurrentStopAndGet(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			manager.StopConversation("conv-1")
+			manager.StopConversation(context.Background(), "conv-1")
 		}()
 	}
 	wg.Wait()
@@ -539,4 +539,134 @@ func TestFormatSessionName(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// ============================================================================
+// Context Cancellation Tests
+// ============================================================================
+
+func TestNewManager_AcceptsContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { sqliteStore.Close() })
+
+	worktreeManager := git.NewWorktreeManager()
+	manager := NewManager(ctx, sqliteStore, worktreeManager)
+
+	assert.NotNil(t, manager)
+	assert.Equal(t, ctx, manager.ctx)
+}
+
+func TestNewManager_CancelledContext(t *testing.T) {
+	// Verify manager stores a cancelled context without panic
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { sqliteStore.Close() })
+
+	worktreeManager := git.NewWorktreeManager()
+	manager := NewManager(ctx, sqliteStore, worktreeManager)
+
+	assert.NotNil(t, manager)
+	assert.Error(t, manager.ctx.Err()) // Context is already cancelled
+}
+
+func TestHandleConversationCompletion_ExitsOnContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { sqliteStore.Close() })
+
+	worktreeManager := git.NewWorktreeManager()
+	manager := NewManager(ctx, sqliteStore, worktreeManager)
+
+	// Create a process that never completes
+	proc := NewProcess("test-id", "/tmp", "conv-never-done")
+
+	// Track if completion handler exits
+	done := make(chan struct{})
+	go func() {
+		manager.handleConversationCompletion("conv-never-done", proc)
+		close(done)
+	}()
+
+	// Cancel context — completion handler should exit
+	cancel()
+
+	select {
+	case <-done:
+		// Good — handler exited due to context cancellation
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleConversationCompletion did not exit after context cancellation")
+	}
+}
+
+func TestHandleConversationCompletion_CompletesNormally(t *testing.T) {
+	ctx := context.Background()
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { sqliteStore.Close() })
+
+	// Set up required fixtures
+	require.NoError(t, sqliteStore.AddRepo(ctx, &models.Repo{
+		ID: "ws-1", Name: "test", Path: "/tmp/test", Branch: "main", CreatedAt: time.Now(),
+	}))
+	require.NoError(t, sqliteStore.AddSession(ctx, &models.Session{
+		ID: "sess-1", WorkspaceID: "ws-1", Name: "Test", Status: "idle",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+	require.NoError(t, sqliteStore.AddConversation(ctx, &models.Conversation{
+		ID: "conv-1", SessionID: "sess-1", Type: "task",
+		Status: models.ConversationStatusActive, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	worktreeManager := git.NewWorktreeManager()
+	manager := NewManager(ctx, sqliteStore, worktreeManager)
+
+	// Track status updates
+	var statusConvID, statusValue string
+	var mu sync.Mutex
+	manager.SetConversationStatusHandler(func(convID string, status string) {
+		mu.Lock()
+		statusConvID = convID
+		statusValue = status
+		mu.Unlock()
+	})
+
+	// Create a process whose done channel we can close
+	proc := NewProcess("test-id", "/tmp", "conv-1")
+
+	done := make(chan struct{})
+	go func() {
+		manager.handleConversationCompletion("conv-1", proc)
+		close(done)
+	}()
+
+	// Simulate process completing by closing the done channel
+	close(proc.done)
+
+	select {
+	case <-done:
+		// Good — handler completed normally
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleConversationCompletion did not complete after process done")
+	}
+
+	// Verify status was updated
+	mu.Lock()
+	assert.Equal(t, "conv-1", statusConvID)
+	assert.Equal(t, models.ConversationStatusIdle, statusValue)
+	mu.Unlock()
+
+	// Verify DB was updated
+	conv, err := sqliteStore.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Equal(t, models.ConversationStatusIdle, conv.Status)
 }

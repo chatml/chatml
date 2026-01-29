@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
@@ -437,6 +437,13 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle dashboard-level invalidation events (PR or branch changes)
+        if (data.type === 'pr_dashboard_update' || data.type === 'branch_dashboard_update') {
+          window.dispatchEvent(new CustomEvent(data.type, { detail: data.payload }));
+          // Don't return -- pr_dashboard_update is also followed by session_pr_update
+          // which we still want to process
+        }
+
         // Handle session PR status update (background GitHub polling)
         if (data.type === 'session_pr_update' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
@@ -471,6 +478,31 @@ export function useWebSocket(enabled: boolean = true) {
             }
 
             updateSession(data.sessionId, updates);
+          }
+          return;
+        }
+
+        // Handle review comment events
+        if (data.type === 'comment_added' && data.sessionId) {
+          const payload = data.payload as ReviewComment | undefined;
+          if (payload?.id) {
+            useAppStore.getState().addReviewComment(data.sessionId, payload);
+          }
+          return;
+        }
+
+        if ((data.type === 'comment_updated' || data.type === 'comment_resolved') && data.sessionId) {
+          const payload = data.payload as ReviewComment | undefined;
+          if (payload?.id) {
+            useAppStore.getState().updateReviewComment(data.sessionId, payload.id, payload);
+          }
+          return;
+        }
+
+        if (data.type === 'comment_deleted' && data.sessionId) {
+          const payload = data.payload as { id?: string } | undefined;
+          if (payload?.id) {
+            useAppStore.getState().deleteReviewComment(data.sessionId, payload.id);
           }
           return;
         }

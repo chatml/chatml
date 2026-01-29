@@ -697,6 +697,34 @@ export interface ToolActionDTO {
   success: boolean;
 }
 
+/** Map a ConversationDTO from the API to a store-compatible Conversation shape. */
+export function toStoreConversation(dto: ConversationDTO): import('@/lib/types').Conversation {
+  return {
+    id: dto.id,
+    sessionId: dto.sessionId,
+    type: dto.type,
+    name: dto.name,
+    status: dto.status,
+    messages: dto.messages.map((m) => ({
+      id: m.id,
+      conversationId: dto.id,
+      role: m.role,
+      content: m.content,
+      setupInfo: m.setupInfo,
+      runSummary: m.runSummary,
+      timestamp: m.timestamp,
+    })),
+    toolSummary: dto.toolSummary.map((t) => ({
+      id: t.id,
+      tool: t.tool,
+      target: t.target,
+      success: t.success,
+    })),
+    createdAt: dto.createdAt,
+    updatedAt: dto.updatedAt,
+  };
+}
+
 export async function listConversations(
   workspaceId: string,
   sessionId: string

@@ -102,7 +102,7 @@ func main() {
 	}
 	cleanupCancel()
 
-	agentMgr := agent.NewManager(s, wm)
+	agentMgr := agent.NewManager(ctx, s, wm)
 
 	// GitHub OAuth client
 	ghConfig := server.LoadGitHubConfig()
@@ -169,6 +169,15 @@ func main() {
 					"type":   "session_name_update",
 					"name":   newName,
 					"branch": event.NewBranch,
+				},
+			})
+
+			// Emit dashboard-level invalidation signal for branches dashboard
+			hub.Broadcast(server.Event{
+				Type: "branch_dashboard_update",
+				Payload: map[string]interface{}{
+					"sessionId": event.SessionID,
+					"updatedAt": time.Now().Unix(),
 				},
 			})
 		}()
@@ -276,9 +285,13 @@ func main() {
 
 	go hub.Run()
 
+	// Shared PR cache used by both PRWatcher and HTTP handlers
+	prCache := github.NewPRCache(2*time.Minute, 10*time.Minute)
+	defer prCache.Close()
+
 	// PR watcher for background GitHub PR status monitoring
 	// Creates a watcher that polls GitHub for PR changes and broadcasts updates via WebSocket
-	prWatcher := branch.NewPRWatcher(ghClient, repoManager, s, func(event branch.PRChangeEvent) {
+	prWatcher := branch.NewPRWatcher(ghClient, repoManager, s, prCache, func(event branch.PRChangeEvent) {
 		// Handle updates asynchronously to avoid blocking the watcher
 		go func() {
 			defer func() {
@@ -295,7 +308,7 @@ func main() {
 			logger.PRWatcher.Infof("Broadcasting PR update for session %s: status=%s, pr=%d",
 				event.SessionID, event.PRStatus, event.PRNumber)
 
-			// Emit WebSocket event for frontend
+			// Emit per-session WebSocket event for session views
 			hub.Broadcast(server.Event{
 				Type:      "session_pr_update",
 				SessionID: event.SessionID,
@@ -305,6 +318,15 @@ func main() {
 					"prUrl":       event.PRUrl,
 					"checkStatus": event.CheckStatus,
 					"mergeable":   event.Mergeable,
+				},
+			})
+
+			// Emit dashboard-level invalidation signal for PR dashboard
+			hub.Broadcast(server.Event{
+				Type: "pr_dashboard_update",
+				Payload: map[string]interface{}{
+					"sessionId": event.SessionID,
+					"updatedAt": time.Now().Unix(),
 				},
 			})
 		}()
@@ -330,11 +352,15 @@ func main() {
 		}
 	}
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, statsCache)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, statsCache)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
-		Handler: router,
+		Handler:     router,
+		ReadTimeout: 15 * time.Second,
+		// NOTE: WriteTimeout is intentionally omitted. Setting it would kill
+		// long-lived WebSocket connections that are idle beyond the timeout.
+		IdleTimeout: 60 * time.Second,
 	}
 
 	// Start server in goroutine using the already-acquired listener
@@ -351,7 +377,7 @@ func main() {
 	logger.Main.Info("Shutdown signal received, stopping server...")
 
 	// Give outstanding requests a short deadline to complete
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

@@ -25,7 +25,7 @@ type Template = 'empty' | 'nextjs';
 // Generate a unique default project name with timestamp
 function generateDefaultName(): string {
   const timestamp = Date.now().toString(36).slice(-4);
-  return `conductor-playground-${timestamp}`;
+  return `chatml-playground-${timestamp}`;
 }
 
 export function QuickStartDialog({ isOpen, onClose }: QuickStartDialogProps) {
@@ -93,7 +93,7 @@ export function QuickStartDialog({ isOpen, onClose }: QuickStartDialogProps) {
         <DialogHeader>
           <DialogTitle>Quick start</DialogTitle>
           <DialogDescription>
-            Conductor will create a new folder and GitHub repo for you.
+            ChatML will create a new folder and GitHub repo for you.
           </DialogDescription>
         </DialogHeader>
 
@@ -105,7 +105,7 @@ export function QuickStartDialog({ isOpen, onClose }: QuickStartDialogProps) {
                 id="project-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="conductor-playground"
+                placeholder="chatml-playground"
                 className="text-sm"
                 autoFocus
               />

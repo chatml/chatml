@@ -1088,12 +1088,16 @@ updateFileTabContent: (id, content) => set((state) => ({
       [sessionId]: comments,
     },
   })),
-  addReviewComment: (sessionId, comment) => set((state) => ({
-    reviewComments: {
-      ...state.reviewComments,
-      [sessionId]: [...(state.reviewComments[sessionId] || []), comment],
-    },
-  })),
+  addReviewComment: (sessionId, comment) => set((state) => {
+    const existing = state.reviewComments[sessionId] || [];
+    if (existing.some((c) => c.id === comment.id)) return state;
+    return {
+      reviewComments: {
+        ...state.reviewComments,
+        [sessionId]: [...existing, comment],
+      },
+    };
+  }),
   updateReviewComment: (sessionId, id, updates) => set((state) => ({
     reviewComments: {
       ...state.reviewComments,

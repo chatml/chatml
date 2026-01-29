@@ -1352,3 +1352,279 @@ func TestDirListingCache_ConcurrentAccess(t *testing.T) {
 	total, _ := cache.Stats()
 	assert.Greater(t, total, 0)
 }
+
+// ============================================================================
+// GetAttachmentData Endpoint Tests
+// ============================================================================
+
+func TestGetAttachmentData_Success(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Create fixture chain: repo → session → conversation → message → attachment
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := models.Message{
+		ID:        "m1",
+		Role:      "user",
+		Content:   "See image",
+		Timestamp: time.Now(),
+	}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	att := models.Attachment{
+		ID:         "att-1",
+		Type:       "image",
+		Name:       "test.png",
+		MimeType:   "image/png",
+		Size:       512,
+		Base64Data: "dGVzdGRhdGE=",
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
+
+	// Call handler
+	req := httptest.NewRequest(http.MethodGet, "/api/attachments/att-1/data", nil)
+	req = withChiContext(req, map[string]string{"attachmentId": "att-1"})
+	w := httptest.NewRecorder()
+
+	h.GetAttachmentData(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "dGVzdGRhdGE=", response["base64Data"])
+}
+
+func TestGetAttachmentData_NotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/attachments/nonexistent/data", nil)
+	req = withChiContext(req, map[string]string{"attachmentId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetAttachmentData(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ============================================================================
+// ConversationMeta Handler Tests
+// ============================================================================
+
+func TestSendConversationMessage_NotFound(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := `{"content": "hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/conversations/nonexistent/messages", strings.NewReader(body))
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.SendConversationMessage(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestRewindConversation_NotFound(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := `{"checkpointUuid": "abc123"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/conversations/nonexistent/rewind", strings.NewReader(body))
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.RewindConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestStopConversation_ExistingConversation(t *testing.T) {
+	h, s, _ := setupTestHandlersWithAgentManager(t)
+	ctx := context.Background()
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Add a message so the conversation is non-trivial
+	msg := models.Message{ID: "m1", Role: "user", Content: "Hello", Timestamp: time.Now()}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/conversations/conv-1/stop", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.StopConversation(w, req)
+
+	// Should succeed (no running process, but that's OK — StopConversation is idempotent)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestDeleteConversation_ExistingConversation(t *testing.T) {
+	h, s, _ := setupTestHandlersWithAgentManager(t)
+	ctx := context.Background()
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/conversations/conv-1", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.DeleteConversation(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+
+	// Verify conversation is deleted
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Nil(t, conv)
+}
+
+// ============================================================================
+// BranchCache Tests
+// ============================================================================
+
+func TestBranchCache_GetSet(t *testing.T) {
+	cache := NewBranchCache(5 * time.Minute)
+	defer cache.Close()
+
+	data := &git.BranchListResult{
+		Branches: []git.BranchInfo{
+			{Name: "main", IsHead: true},
+			{Name: "feature-1"},
+		},
+	}
+	cache.Set("/repo:local:false:", data)
+
+	result, ok := cache.Get("/repo:local:false:")
+	require.True(t, ok)
+	require.Len(t, result.Branches, 2)
+	require.Equal(t, "main", result.Branches[0].Name)
+}
+
+func TestBranchCache_GetNotFound(t *testing.T) {
+	cache := NewBranchCache(5 * time.Minute)
+	defer cache.Close()
+
+	result, ok := cache.Get("nonexistent")
+	require.False(t, ok)
+	require.Nil(t, result)
+}
+
+func TestBranchCache_Expiration(t *testing.T) {
+	cache := NewBranchCache(50 * time.Millisecond)
+	defer cache.Close()
+
+	data := &git.BranchListResult{
+		Branches: []git.BranchInfo{{Name: "main"}},
+	}
+	cache.Set("key", data)
+
+	// Should be available immediately
+	result, ok := cache.Get("key")
+	require.True(t, ok)
+	require.Len(t, result.Branches, 1)
+
+	// Wait for expiration
+	time.Sleep(70 * time.Millisecond)
+
+	result, ok = cache.Get("key")
+	require.False(t, ok)
+	require.Nil(t, result)
+}
+
+func TestBranchCache_Invalidate(t *testing.T) {
+	cache := NewBranchCache(5 * time.Minute)
+	defer cache.Close()
+
+	data := &git.BranchListResult{
+		Branches: []git.BranchInfo{{Name: "main"}},
+	}
+	cache.Set("key1", data)
+
+	_, ok := cache.Get("key1")
+	require.True(t, ok)
+
+	cache.Invalidate("key1")
+
+	_, ok = cache.Get("key1")
+	require.False(t, ok)
+}
+
+func TestBranchCache_InvalidateRepo(t *testing.T) {
+	cache := NewBranchCache(5 * time.Minute)
+	defer cache.Close()
+
+	data := &git.BranchListResult{
+		Branches: []git.BranchInfo{{Name: "main"}},
+	}
+
+	// Set entries for two different repos
+	cache.Set("/path/to/repo:local:false:", data)
+	cache.Set("/path/to/repo:remote:true:", data)
+	cache.Set("/other/repo:local:false:", data)
+
+	// Invalidate only /path/to/repo
+	cache.InvalidateRepo("/path/to/repo")
+
+	// Repo entries should be gone
+	_, ok := cache.Get("/path/to/repo:local:false:")
+	require.False(t, ok)
+	_, ok = cache.Get("/path/to/repo:remote:true:")
+	require.False(t, ok)
+
+	// Other repo should still exist
+	_, ok = cache.Get("/other/repo:local:false:")
+	require.True(t, ok)
+}
+
+func TestBranchCache_Close(t *testing.T) {
+	cache := NewBranchCache(5 * time.Minute)
+
+	// Close should not panic
+	cache.Close()
+
+	// Double close should not panic
+	cache.Close()
+
+	// Cache is still usable after close (just no background cleanup)
+	data := &git.BranchListResult{
+		Branches: []git.BranchInfo{{Name: "main"}},
+	}
+	cache.Set("key", data)
+	result, ok := cache.Get("key")
+	require.True(t, ok)
+	require.Equal(t, "main", result.Branches[0].Name)
+}
+
+func TestBranchCache_ConcurrentAccess(t *testing.T) {
+	cache := NewBranchCache(5 * time.Minute)
+	defer cache.Close()
+
+	var wg sync.WaitGroup
+	const n = 100
+
+	for i := 0; i < n; i++ {
+		wg.Add(2)
+		key := "key-" + string(rune('a'+i%26))
+
+		go func(k string) {
+			defer wg.Done()
+			cache.Set(k, &git.BranchListResult{
+				Branches: []git.BranchInfo{{Name: k}},
+			})
+		}(key)
+
+		go func(k string) {
+			defer wg.Done()
+			cache.Get(k)
+		}(key)
+	}
+
+	wg.Wait()
+	// Should not panic
+}

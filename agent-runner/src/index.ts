@@ -23,7 +23,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
-import { createConductorMcpServer } from "./mcp/server.js";
+import { createChatMLMcpServer } from "./mcp/server.js";
 
 function resolveToolPreset(preset: string): { allowedTools?: string[]; disallowedTools?: string[] } {
   switch (preset) {
@@ -676,8 +676,8 @@ async function main(): Promise<void> {
       linearIssue,
     });
 
-    // Create conductor MCP server
-    const conductorMcp = createConductorMcpServer({ context: workspaceContext });
+    // Create ChatML MCP server
+    const chatmlMcp = createChatMLMcpServer({ context: workspaceContext });
 
     // Resolve tool preset to allowedTools/disallowedTools
     const presetConfig = resolveToolPreset(toolPreset);
@@ -689,7 +689,7 @@ async function main(): Promise<void> {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         canUseTool,
-        mcpServers: { conductor: conductorMcp },
+        mcpServers: { chatml: chatmlMcp },
         includePartialMessages: true,
         tools: { type: "preset", preset: "claude_code" },
         systemPrompt: { type: "preset", preset: "claude_code" },
