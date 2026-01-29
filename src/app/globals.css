@@ -51,7 +51,8 @@
   --font-size-base: 13px;
   --font-size-sm: 12px;
   --font-size-xs: 11px;
-  --font-size-micro: 10px;
+  --font-size-2xs: 10px;
+  --font-size-3xs: 9px;
 
   /* Semantic Typography */
   --font-size-menu: var(--font-size-sm);        /* Menu items, dropdowns, context menus */
@@ -76,7 +77,8 @@
   /* Font Families */
   --font-display: "Instrument Serif", Georgia, serif;
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: "MesloLGS NF", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-terminal: "MesloLGS NF", var(--font-mono);
 
   --radius: 0.625rem;
   --background: oklch(0.98 0 0);
@@ -266,7 +268,8 @@
   --text-base: var(--font-size-base);
   --text-sm: var(--font-size-sm);
   --text-xs: var(--font-size-xs);
-  --text-micro: var(--font-size-micro);
+  --text-2xs: var(--font-size-2xs);
+  --text-3xs: var(--font-size-3xs);
   /* Semantic aliases */
   --text-menu: var(--font-size-menu);
   --text-menu-label: var(--font-size-menu-label);
@@ -326,7 +329,7 @@
 
 /* Terminal output styling */
 .terminal {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-terminal);
   font-size: 11px;
   line-height: 1.5;
 }

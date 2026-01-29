@@ -791,7 +791,7 @@ function SortableWorkspaceItem({
 
             {/* Sessions */}
             {sessions.length === 0 ? (
-              <div className="py-2 px-2 text-micro text-muted-foreground/70">
+              <div className="py-2 px-2 text-2xs text-muted-foreground/70">
                 No active sessions
               </div>
             ) : (
@@ -870,7 +870,7 @@ function SortableWorkspaceItem({
                             <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-micro px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                <span className="text-2xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-text-success">+{session.stats!.additions}</span>
                                   <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                                 </span>

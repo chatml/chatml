@@ -103,7 +103,7 @@ function DataTableRowComponent<T>(
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'group cursor-pointer transition-colors',
+        'group cursor-pointer transition-colors h-[44px]',
         showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
@@ -118,7 +118,7 @@ function DataTableRowComponent<T>(
       {/* Selection checkbox column - Linear style */}
       {selectable && (
         <TableCell
-          className="w-[24px] pl-2 pr-0 py-[9px] transition-colors"
+          className="w-[24px] pl-2 pr-0 py-0 transition-colors"
           onClick={handleCheckboxClick}
           onMouseEnter={() => setIsCheckboxHovered(true)}
           onMouseLeave={() => setIsCheckboxHovered(false)}
@@ -144,7 +144,7 @@ function DataTableRowComponent<T>(
         <TableCell
           key={column.id}
           className={cn(
-            'py-[9px] px-2',
+            'py-0 px-2',
             // Reduce left padding on first column when checkbox is present
             selectable && index === 0 && 'pl-1',
             // Add extra right padding on last column
@@ -235,7 +235,7 @@ export function DataTableSimpleRow<T>({
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'group cursor-pointer transition-colors',
+        'group cursor-pointer transition-colors h-[44px]',
         showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
@@ -246,7 +246,7 @@ export function DataTableSimpleRow<T>({
     >
       {selectable && (
         <TableCell
-          className="w-[24px] pl-2 pr-0 py-[9px] transition-colors"
+          className="w-[24px] pl-2 pr-0 py-0 transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect();
@@ -270,7 +270,7 @@ export function DataTableSimpleRow<T>({
         <TableCell
           key={column.id}
           className={cn(
-            'py-[9px] px-2',
+            'py-0 px-2',
             // Reduce left padding on first column when checkbox is present
             selectable && index === 0 && 'pl-1',
             // Add extra right padding on last column

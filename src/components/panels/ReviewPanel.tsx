@@ -119,7 +119,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
         >
           All
           {counts.all > 0 && (
-            <span className="ml-1 text-micro opacity-70">{counts.all}</span>
+            <span className="ml-1 text-2xs opacity-70">{counts.all}</span>
           )}
         </Button>
         <Button

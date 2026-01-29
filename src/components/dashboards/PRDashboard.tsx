@@ -175,14 +175,10 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 // Branch cell component
 function BranchCell({ pr }: { pr: PRWithStatus }) {
   return (
-    <div className="flex items-center gap-1.5 min-w-0 text-sm">
+    <div className="flex items-center gap-1.5 text-sm">
       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300/70 font-mono truncate" title={pr.branch}>
         <GitBranch className="h-3.5 w-3.5 shrink-0" />
         {pr.branch}
-      </span>
-      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-      <span className="text-muted-foreground font-mono truncate" title={pr.baseBranch}>
-        {pr.baseBranch}
       </span>
     </div>
   );
