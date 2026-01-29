@@ -1250,7 +1250,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             <Button
               size="icon"
               className={cn(
-                'h-8 w-8 rounded-full',
+                'h-8 w-8 rounded-lg',
                 (!message.trim() || isSending) && 'opacity-50'
               )}
               onClick={handleSubmit}
