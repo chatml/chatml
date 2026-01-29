@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment } from '@/lib/types';
 import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
@@ -471,6 +471,31 @@ export function useWebSocket(enabled: boolean = true) {
             }
 
             updateSession(data.sessionId, updates);
+          }
+          return;
+        }
+
+        // Handle review comment events
+        if (data.type === 'comment_added' && data.sessionId) {
+          const payload = data.payload as ReviewComment | undefined;
+          if (payload?.id) {
+            useAppStore.getState().addReviewComment(data.sessionId, payload);
+          }
+          return;
+        }
+
+        if ((data.type === 'comment_updated' || data.type === 'comment_resolved') && data.sessionId) {
+          const payload = data.payload as ReviewComment | undefined;
+          if (payload?.id) {
+            useAppStore.getState().updateReviewComment(data.sessionId, payload.id, payload);
+          }
+          return;
+        }
+
+        if (data.type === 'comment_deleted' && data.sessionId) {
+          const payload = data.payload as { id?: string } | undefined;
+          if (payload?.id) {
+            useAppStore.getState().deleteReviewComment(data.sessionId, payload.id);
           }
           return;
         }
