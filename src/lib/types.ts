@@ -75,6 +75,19 @@ export interface ToolUsage {
   stderr?: string;
 }
 
+// Active tool during streaming (real-time tracking)
+export interface ActiveTool {
+  id: string;
+  tool: string;
+  params?: Record<string, unknown>;
+  startTime: number;
+  endTime?: number;
+  success?: boolean;
+  summary?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
 // Setup info for system messages
 export interface SetupInfo {
   sessionName: string;

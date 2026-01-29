@@ -17,12 +17,12 @@
 
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
-import type { Message, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment } from '@/lib/types';
+import type { Message, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
 const EMPTY_MESSAGES: readonly Message[] = [];
-const EMPTY_TOOLS: readonly unknown[] = []; // ActiveTool is internal to appStore
+const EMPTY_TOOLS: readonly ActiveTool[] = [];
 const EMPTY_AGENT_TODOS: readonly AgentTodoItem[] = [];
 const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
 const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];

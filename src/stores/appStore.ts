@@ -20,6 +20,7 @@ import type {
   ReviewComment,
   BranchSyncStatus,
   PendingUserQuestion,
+  ActiveTool,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -29,9 +30,18 @@ interface SessionOutput {
   [sessionId: string]: string[];
 }
 
+// Text segment for interleaved timeline display
+interface TextSegment {
+  id: string;
+  text: string;
+  timestamp: number; // When this segment started
+}
+
 // Streaming state for conversations
 interface StreamingState {
-  text: string;
+  text: string; // Legacy: full accumulated text for compatibility
+  segments: TextSegment[]; // Text segments for interleaved display
+  currentSegmentId: string | null; // Current segment being appended to
   isStreaming: boolean;
   error: string | null;
   thinking: string | null; // Current thinking content being streamed
@@ -41,17 +51,7 @@ interface StreamingState {
   awaitingPlanApproval: boolean; // Whether we're waiting for user to approve ExitPlanMode
 }
 
-interface ActiveTool {
-  id: string;
-  tool: string;
-  params?: Record<string, unknown>;
-  startTime: number;
-  endTime?: number;
-  success?: boolean;
-  summary?: string;
-  stdout?: string;
-  stderr?: string;
-}
+// ActiveTool is imported from @/lib/types
 
 interface AppState {
   // New data model
@@ -738,25 +738,53 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
 
   // Streaming state actions
-  appendStreamingText: (conversationId, text) => set((state) => ({
-    streamingState: {
-      ...state.streamingState,
-      [conversationId]: {
-        ...state.streamingState[conversationId],
-        text: (state.streamingState[conversationId]?.text || '') + text,
-        isStreaming: true,
-        error: null,
-        thinking: state.streamingState[conversationId]?.thinking || null,
-        isThinking: false, // Stop thinking when text starts
+  appendStreamingText: (conversationId, text) => set((state) => {
+    const current = state.streamingState[conversationId];
+    const existingSegments = current?.segments || [];
+    const currentSegmentId = current?.currentSegmentId;
+
+    let newSegments: TextSegment[];
+    let newCurrentSegmentId: string | null;
+
+    if (currentSegmentId) {
+      // Append to existing segment
+      newSegments = existingSegments.map(seg =>
+        seg.id === currentSegmentId
+          ? { ...seg, text: seg.text + text }
+          : seg
+      );
+      newCurrentSegmentId = currentSegmentId;
+    } else {
+      // Create new segment
+      const segmentId = `seg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      newSegments = [...existingSegments, { id: segmentId, text, timestamp: Date.now() }];
+      newCurrentSegmentId = segmentId;
+    }
+
+    return {
+      streamingState: {
+        ...state.streamingState,
+        [conversationId]: {
+          ...current,
+          text: (current?.text || '') + text, // Keep legacy text for compatibility
+          segments: newSegments,
+          currentSegmentId: newCurrentSegmentId,
+          isStreaming: true,
+          error: null,
+          thinking: current?.thinking || null,
+          isThinking: false, // Stop thinking when text starts
+        },
       },
-    },
-  })),
+    };
+  }),
   setStreaming: (conversationId, isStreaming) => set((state) => ({
     streamingState: {
       ...state.streamingState,
       [conversationId]: {
         ...state.streamingState[conversationId],
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: state.streamingState[conversationId]?.currentSegmentId || null,
         isStreaming,
         error: state.streamingState[conversationId]?.error || null,
         thinking: state.streamingState[conversationId]?.thinking || null,
@@ -773,6 +801,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       ...state.streamingState,
       [conversationId]: {
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: null,
         isStreaming: false,
         error,
         thinking: null,
@@ -787,6 +817,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       ...state.streamingState,
       [conversationId]: {
         text: '',
+        segments: [],
+        currentSegmentId: null,
         isStreaming: false,
         error: null,
         thinking: null,
@@ -802,6 +834,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: {
         ...state.streamingState[conversationId],
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: state.streamingState[conversationId]?.currentSegmentId || null,
         isStreaming: true,
         error: null,
         thinking: (state.streamingState[conversationId]?.thinking || '') + text,
@@ -815,6 +849,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: {
         ...state.streamingState[conversationId],
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: state.streamingState[conversationId]?.currentSegmentId || null,
         isStreaming: state.streamingState[conversationId]?.isStreaming || false,
         error: state.streamingState[conversationId]?.error || null,
         thinking: state.streamingState[conversationId]?.thinking || null,
@@ -828,6 +864,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: {
         ...state.streamingState[conversationId],
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: state.streamingState[conversationId]?.currentSegmentId || null,
         isStreaming: state.streamingState[conversationId]?.isStreaming || false,
         error: state.streamingState[conversationId]?.error || null,
         thinking: null,
@@ -843,6 +881,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: {
         ...state.streamingState[conversationId],
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: state.streamingState[conversationId]?.currentSegmentId || null,
         isStreaming: state.streamingState[conversationId]?.isStreaming || false,
         error: state.streamingState[conversationId]?.error || null,
         thinking: state.streamingState[conversationId]?.thinking || null,
@@ -858,6 +898,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: {
         ...state.streamingState[conversationId],
         text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: state.streamingState[conversationId]?.currentSegmentId || null,
         isStreaming: state.streamingState[conversationId]?.isStreaming || false,
         error: state.streamingState[conversationId]?.error || null,
         thinking: state.streamingState[conversationId]?.thinking || null,
@@ -871,6 +913,22 @@ updateFileTabContent: (id, content) => set((state) => ({
     activeTools: {
       ...state.activeTools,
       [conversationId]: [...(state.activeTools[conversationId] || []), tool],
+    },
+    // Seal current text segment so next text creates a new segment after this tool
+    streamingState: {
+      ...state.streamingState,
+      [conversationId]: {
+        ...state.streamingState[conversationId],
+        text: state.streamingState[conversationId]?.text || '',
+        segments: state.streamingState[conversationId]?.segments || [],
+        currentSegmentId: null, // Seal current segment
+        isStreaming: state.streamingState[conversationId]?.isStreaming || false,
+        error: state.streamingState[conversationId]?.error || null,
+        thinking: state.streamingState[conversationId]?.thinking || null,
+        isThinking: state.streamingState[conversationId]?.isThinking || false,
+        planModeActive: state.streamingState[conversationId]?.planModeActive || false,
+        awaitingPlanApproval: state.streamingState[conversationId]?.awaitingPlanApproval || false,
+      },
     },
   })),
   completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr) => set((state) => ({
@@ -898,6 +956,8 @@ updateFileTabContent: (id, content) => set((state) => ({
     // Build cleared streaming state (preserve planModeActive)
     const clearedStreaming = {
       text: '',
+      segments: [],
+      currentSegmentId: null,
       isStreaming: false,
       error: null,
       thinking: null,

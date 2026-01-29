@@ -1,15 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { useAppStore } from '@/stores/appStore';
 import { useStreamingState, useActiveTools } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
-import { ActiveToolsDisplay } from '@/components/conversation/ToolUsageBlock';
+import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { MarkdownPre, MarkdownCode } from '@/components/shared/MarkdownCodeBlock';
 import { cn } from '@/lib/utils';
+
+// Timeline item types for interleaved display
+type TimelineItem =
+  | { type: 'text'; id: string; text: string; timestamp: number }
+  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string };
 
 interface StreamingMessageProps {
   conversationId: string;
@@ -132,8 +137,46 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Build interleaved timeline from segments and tools
+  const timeline = useMemo((): TimelineItem[] => {
+    const items: TimelineItem[] = [];
+
+    // Add text segments
+    const segments = streaming?.segments || [];
+    for (const seg of segments) {
+      if (seg.text) {
+        items.push({ type: 'text', id: seg.id, text: seg.text, timestamp: seg.timestamp });
+      }
+    }
+
+    // Add tools
+    for (const tool of tools) {
+      items.push({
+        type: 'tool',
+        id: tool.id,
+        tool: tool.tool,
+        params: tool.params,
+        startTime: tool.startTime,
+        endTime: tool.endTime,
+        success: tool.success,
+        summary: tool.summary,
+        stdout: tool.stdout,
+        stderr: tool.stderr,
+      });
+    }
+
+    // Sort by timestamp (text segments use timestamp, tools use startTime)
+    items.sort((a, b) => {
+      const aTime = a.type === 'text' ? a.timestamp : a.startTime;
+      const bTime = b.type === 'text' ? b.timestamp : b.startTime;
+      return aTime - bTime;
+    });
+
+    return items;
+  }, [streaming?.segments, tools]);
+
   // Don't render if no streaming content, no active tools, no thinking, and no error
-  if (!streaming?.text && tools.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
+  if (timeline.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
     return null;
   }
 
@@ -202,21 +245,40 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
             </div>
           )}
 
-          {/* Active Tools */}
-          <ActiveToolsDisplay conversationId={conversationId} />
-
-          {/* Streaming Text */}
-          {streaming?.text && (
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={{ pre: MarkdownPre, code: MarkdownCode }}
-              >
-                {streaming.text}
-              </ReactMarkdown>
-            </div>
-          )}
+          {/* Interleaved timeline of text and tools */}
+          {timeline.map((item) => {
+            if (item.type === 'text') {
+              return (
+                <div
+                  key={item.id}
+                  className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary"
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight]}
+                    components={{ pre: MarkdownPre, code: MarkdownCode }}
+                  >
+                    {item.text}
+                  </ReactMarkdown>
+                </div>
+              );
+            } else {
+              return (
+                <ToolUsageBlock
+                  key={item.id}
+                  id={item.id}
+                  tool={item.tool}
+                  params={item.params}
+                  isActive={!item.endTime}
+                  success={item.success}
+                  summary={item.summary}
+                  duration={item.endTime ? item.endTime - item.startTime : undefined}
+                  stdout={item.stdout}
+                  stderr={item.stderr}
+                />
+              );
+            }
+          })}
 
           {/* Enhanced error display */}
           {streaming?.error && (
