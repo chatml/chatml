@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/command';
 import { useAppStore } from '@/stores/appStore';
 import { useShortcut } from '@/hooks/useShortcut';
+import { navigate } from '@/lib/navigation';
 import { GitBranch, FolderGit2, GitPullRequest } from 'lucide-react';
 
 interface SearchableItem {
@@ -64,8 +65,6 @@ export function WorkspaceSearch() {
 
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
-  const selectWorkspace = useAppStore((s) => s.selectWorkspace);
-  const selectSession = useAppStore((s) => s.selectSession);
 
   useShortcut('workspaceSearch', useCallback(() => {
     setOpen((prev) => !prev);
@@ -94,11 +93,14 @@ export function WorkspaceSearch() {
       const item = items.find((i) => i.sessionId === sessionId);
       if (!item) return;
 
-      selectWorkspace(item.workspaceId);
-      selectSession(item.sessionId);
+      navigate({
+        workspaceId: item.workspaceId,
+        sessionId: item.sessionId,
+        contentView: { type: 'conversation' },
+      });
       setOpen(false);
     },
-    [items, selectWorkspace, selectSession]
+    [items]
   );
 
   return (

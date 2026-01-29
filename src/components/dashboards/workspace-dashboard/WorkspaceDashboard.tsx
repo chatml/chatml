@@ -1,7 +1,7 @@
 'use client';
 
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useDashboardData } from './useDashboardData';
 import { AlertsSection } from './AlertsSection';
@@ -32,18 +32,19 @@ export function WorkspaceDashboard({
 }: WorkspaceDashboardProps) {
   const [refreshing, setRefreshing] = useState(false);
 
-  const selectSession = useAppStore((s) => s.selectSession);
-  const setContentView = useSettingsStore((s) => s.setContentView);
   const workspace = useAppStore((s) => s.workspaces.find((w) => w.id === workspaceId));
 
   const { sessions, alerts, stats } = useDashboardData(workspaceId);
 
   const handleJumpToSession = useCallback(
     (sessionId: string) => {
-      selectSession(sessionId);
-      setContentView({ type: 'conversation' });
+      navigate({
+        workspaceId,
+        sessionId,
+        contentView: { type: 'conversation' },
+      });
     },
-    [selectSession, setContentView]
+    [workspaceId]
   );
 
   const handleRefresh = useCallback(() => {

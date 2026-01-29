@@ -1,7 +1,7 @@
 'use client';
 
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,6 @@ export function GlobalDashboard() {
 
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
-  const selectSession = useAppStore((s) => s.selectSession);
-  const selectWorkspace = useAppStore((s) => s.selectWorkspace);
-  const setContentView = useSettingsStore((s) => s.setContentView);
 
   // Aggregate stats across all workspaces
   const stats = useMemo(() => {
@@ -44,11 +41,13 @@ export function GlobalDashboard() {
 
   const handleJumpToSession = useCallback(
     (sessionId: string, workspaceId: string) => {
-      selectWorkspace(workspaceId);
-      selectSession(sessionId);
-      setContentView({ type: 'conversation' });
+      navigate({
+        workspaceId,
+        sessionId,
+        contentView: { type: 'conversation' },
+      });
     },
-    [selectWorkspace, selectSession, setContentView]
+    [] // navigate is a stable module-level function — no deps needed
   );
 
   const handleRefreshRef = useRef<() => void>(() => {});

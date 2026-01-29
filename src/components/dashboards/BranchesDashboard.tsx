@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig, type DisplayOptions } from '@/components/data-table';
@@ -217,9 +217,6 @@ export function BranchesDashboard({
   const hasFetchedRef = useRef(false);
 
   const workspaces = useAppStore((s) => s.workspaces);
-  const selectWorkspace = useAppStore((s) => s.selectWorkspace);
-  const selectSession = useAppStore((s) => s.selectSession);
-  const setContentView = useSettingsStore((s) => s.setContentView);
 
   // Get workspace name for the title
   const workspace = workspaces.find((w) => w.id === workspaceId);
@@ -307,10 +304,12 @@ export function BranchesDashboard({
 
 
   const handleJumpToSession = useCallback((sessionId: string) => {
-    selectWorkspace(workspaceId);
-    selectSession(sessionId);
-    setContentView({ type: 'conversation' });
-  }, [workspaceId, selectWorkspace, selectSession, setContentView]);
+    navigate({
+      workspaceId,
+      sessionId,
+      contentView: { type: 'conversation' },
+    });
+  }, [workspaceId]);
 
   // Combine all branches for the table with computed location field
   const allBranches = useMemo(() => {

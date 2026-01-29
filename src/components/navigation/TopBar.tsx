@@ -2,6 +2,7 @@
 
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useUIStore } from '@/stores/uiStore';
+import { navigate } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -78,8 +79,6 @@ export function TopBar({
   const centerToolbarBg = useUIStore((state) => state.toolbarBackgrounds.center);
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
-  const setContentView = useSettingsStore((s) => s.setContentView);
-
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
   const workspaceSessionCount = sessions.filter((s) => s.workspaceId === selectedWorkspaceId && !s.archived).length;
@@ -290,7 +289,7 @@ export function TopBar({
               {zenMode ? 'Exit Zen Mode' : 'Enter Zen Mode'}
               <span className="ml-auto text-xs text-muted-foreground">⌘.</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setContentView({ type: 'session-manager' })}>
+            <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'session-manager' } })}>
               <Layers className="size-4" />
               Session Manager
             </DropdownMenuItem>

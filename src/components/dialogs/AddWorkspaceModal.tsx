@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { navigate } from '@/lib/navigation';
 import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import {
@@ -28,12 +29,10 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
   const [path, setPath] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { addWorkspace, selectWorkspace, addSession, selectSession, addConversation } = useAppStore(
+  const { addWorkspace, addSession, addConversation } = useAppStore(
     useShallow((s) => ({
       addWorkspace: s.addWorkspace,
-      selectWorkspace: s.selectWorkspace,
       addSession: s.addSession,
-      selectSession: s.selectSession,
       addConversation: s.addConversation,
     }))
   );
@@ -64,7 +63,6 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
         createdAt: repo.createdAt,
       };
       addWorkspace(workspace);
-      selectWorkspace(workspace.id);
 
       // Auto-create first session for the new workspace (backend generates city-based name)
       const session = await createSessionApi(workspace.id);
@@ -105,7 +103,11 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
       });
 
       expandWorkspace(workspace.id);
-      selectSession(session.id);
+      navigate({
+        workspaceId: workspace.id,
+        sessionId: session.id,
+        contentView: { type: 'conversation' },
+      });
 
       setPath('');
       onClose();
