@@ -136,7 +136,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(250); // Default until measured
+  const sidebarWidthRef = useRef(250); // Tracked via ref — no re-renders on resize
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
@@ -342,10 +342,10 @@ export default function Home() {
     if (!el) return;
 
     const observer = new ResizeObserver(() => {
-      setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
+      sidebarWidthRef.current = leftSidebarCollapsed ? 0 : el.offsetWidth;
     });
     observer.observe(el);
-    setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
+    sidebarWidthRef.current = leftSidebarCollapsed ? 0 : el.offsetWidth;
 
     return () => observer.disconnect();
   }, [leftSidebarCollapsed]);
@@ -1009,7 +1009,10 @@ export default function Home() {
             maxSize="400px"
             collapsible={true}
             collapsedSize={0}
-            onResize={(size) => setLeftSidebarCollapsed(size.asPercentage === 0)}
+            onResize={(size) => {
+              const collapsed = size.asPercentage === 0;
+              setLeftSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
+            }}
             className={cn(zenMode && "hidden")}
           >
             <div ref={leftSidebarDomRef} className="h-full flex flex-col">
@@ -1059,7 +1062,7 @@ export default function Home() {
 
               {/* Main content area with border + rounded corner */}
               <div className={cn(
-                "flex flex-col flex-1 min-h-0 border-t overflow-hidden",
+                "flex flex-col flex-1 min-h-0 border-t border-border/75 overflow-hidden",
                 !leftSidebarCollapsed && !zenMode && "border-l rounded-tl-lg shadow-[-2px_0_8px_rgba(0,0,0,0.1)]"
               )}>
               {/* Action bar — context-aware bar at top of main content */}
@@ -1204,7 +1207,10 @@ export default function Home() {
                   maxSize="500px"
                   collapsible={true}
                   collapsedSize={0}
-                  onResize={(size) => setRightSidebarCollapsed(size.asPercentage === 0)}
+                  onResize={(size) => {
+              const collapsed = size.asPercentage === 0;
+              setRightSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
+            }}
                   className={cn(
                     "overflow-hidden",
                     (zenMode || !selectedSessionId) && "hidden"

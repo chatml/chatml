@@ -25,7 +25,7 @@ function ToolbarRow({
   const titlePosition = slots.titlePosition ?? 'left';
 
   return (
-    <div className={cn('flex items-center relative', className)}>
+    <div data-tauri-drag-region className={cn('flex items-center relative', className)}>
       {/* Leading */}
       {slots.leading && (
         <div className="flex items-center shrink-0">
@@ -40,8 +40,8 @@ function ToolbarRow({
         </div>
       )}
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* Spacer (draggable) */}
+      <div data-tauri-drag-region className="flex-1 h-full" />
 
       {/* Title — centered */}
       {titlePosition === 'center' && slots.title && (

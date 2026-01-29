@@ -333,7 +333,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
 
       {/* Global Navigation */}
-      <div className="px-3 py-2 border-b border-border/50">
+      <div className="px-3 py-2">
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
@@ -796,7 +796,7 @@ function SortableWorkspaceItem({
               </div>
             ) : (
               sessions.map((session) => {
-                const isSessionSelected = selectedSessionId === session.id;
+                const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
                 const hasPR = session.prStatus && session.prStatus !== 'none';
                 const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
 

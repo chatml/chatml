@@ -136,7 +136,7 @@
 
   /* Main backgrounds */
   --background: #090909;           /* RGB(9,9,9) - app shell background */
-  --content-background: #0f1111;   /* RGB(15,17,17) - content area background */
+  --content-background: #101011;   /* RGB(16,16,17) - content area background */
   --chat-background: #181818;      /* RGB(24,24,24) - chat area */
   --foreground: oklch(0.9 0 0);             /* ~#e5e5e5 - bright text */
   --card: #0f1111;                          /* Cards match content background */
@@ -164,7 +164,7 @@
   --destructive: oklch(0.704 0.191 22.216);
 
   /* Borders - Very subtle like Cursor */
-  --border: #2a2a2a;
+  --border: #26282d;               /* RGB(38,40,45) - layout borders */
   --input: #212121;                         /* RGB(33,33,33) */
   --ring: oklch(0.50 0.10 280);             /* Focus ring keeps purple */
 
