@@ -43,6 +43,8 @@ function getCellAlignment(align: Column<unknown>['align']): string {
 interface DataTableRowComponentProps<T> extends Omit<DataTableRowProps<T>, 'index'> {
   /** Visible columns */
   visibleColumns?: Set<string>;
+  /** Whether to show separator line below the row */
+  showSeparator?: boolean;
 }
 
 function DataTableRowComponent<T>(
@@ -60,6 +62,7 @@ function DataTableRowComponent<T>(
     contextMenuItems,
     selectable,
     visibleColumns,
+    showSeparator,
   }: DataTableRowComponentProps<T>,
   ref: React.ForwardedRef<HTMLTableRowElement>
 ) {
@@ -100,7 +103,8 @@ function DataTableRowComponent<T>(
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'group cursor-pointer transition-colors border-b border-border/20',
+        'group cursor-pointer transition-colors',
+        showSeparator && 'border-b border-border/20',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'
@@ -207,7 +211,8 @@ export function DataTableSimpleRow<T>({
   onClick,
   selectable,
   visibleColumns,
-}: Omit<DataTableRowComponentProps<T>, 'contextMenuItems' | 'onDoubleClick' | 'index'>) {
+  showSeparator,
+}: Omit<DataTableRowComponentProps<T>, 'contextMenuItems' | 'onDoubleClick' | 'index'> & { showSeparator?: boolean }) {
   const [isCheckboxHovered, setIsCheckboxHovered] = useState(false);
 
   const displayColumns = visibleColumns
@@ -230,7 +235,8 @@ export function DataTableSimpleRow<T>({
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'group cursor-pointer transition-colors border-b border-border/20',
+        'group cursor-pointer transition-colors',
+        showSeparator && 'border-b border-border/20',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'

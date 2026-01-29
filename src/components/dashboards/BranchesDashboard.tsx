@@ -503,7 +503,7 @@ export function BranchesDashboard({
 
   return (
     <FullContentLayout>
-      <div className="pt-2 pb-4">
+      <div className="h-full flex flex-col">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

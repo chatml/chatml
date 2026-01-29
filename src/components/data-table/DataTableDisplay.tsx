@@ -207,6 +207,14 @@ export function DataTableDisplay({
             List options
           </div>
           <div className="flex items-center justify-between">
+            <span className="text-[13px] text-foreground">Show separators</span>
+            <Switch
+              checked={options.showSeparators}
+              onCheckedChange={() => onChange({ ...options, showSeparators: !options.showSeparators })}
+              className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-surface-2"
+            />
+          </div>
+          <div className="flex items-center justify-between">
             <span className="text-[13px] text-foreground">Show empty groups</span>
             <Switch
               checked={options.showEmptyGroups}

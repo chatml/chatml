@@ -88,6 +88,8 @@ export interface DisplayOptions {
   showEmptyGroups: boolean;
   /** Custom toggle states keyed by ID */
   customToggles: Record<string, boolean>;
+  /** Whether to show separator lines between rows */
+  showSeparators: boolean;
 }
 
 // Bulk action definition

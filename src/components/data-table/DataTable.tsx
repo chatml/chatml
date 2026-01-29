@@ -213,6 +213,7 @@ export function DataTable<T>({
       visibleColumns: new Set(columns.filter((c) => !c.hidden).map((c) => c.id)),
       showEmptyGroups: groupBy?.showEmpty ?? false,
       customToggles,
+      showSeparators: false,
     };
   });
 
@@ -368,6 +369,22 @@ export function DataTable<T>({
   // Calculate column count for spanning
   const columnCount = visibleColumns.length + (selectable ? 1 : 0);
 
+  // Shared colgroup so the header table and body table columns stay aligned
+  const colGroup = useMemo(
+    () => (
+      <colgroup>
+        {selectable && <col style={{ width: 32 }} />}
+        {visibleColumns.map((col) => (
+          <col
+            key={col.id}
+            style={{ width: col.width, minWidth: col.minWidth }}
+          />
+        ))}
+      </colgroup>
+    ),
+    [selectable, visibleColumns]
+  );
+
   // Track row index for keyboard navigation
   let rowIndex = 0;
 
@@ -380,9 +397,10 @@ export function DataTable<T>({
   }
 
   return (
-    <div ref={containerRef} className={cn('space-y-3', className)}>
-      {/* Toolbar */}
+    <div ref={containerRef} className={cn('flex flex-col h-full', className)}>
+      {/* Toolbar — fixed at top */}
       {(filterOptions.length > 0 || displayOptionsConfig || searchPlaceholder) && (
+        <div className="shrink-0 pt-3 px-0">
         <DataTableToolbar
           filters={filters}
           onFilterChange={setFilters}
@@ -399,9 +417,10 @@ export function DataTable<T>({
           onClearSelection={selection.clearSelection}
           leftContent={toolbarLeftContent}
         />
+        </div>
       )}
 
-      {/* Table */}
+      {/* Table — scrollable area */}
       {processedData.length === 0 ? (
         emptyState || (
           <div className="text-center py-12 text-muted-foreground">
@@ -409,7 +428,11 @@ export function DataTable<T>({
           </div>
         )
       ) : (
+        <>
+        {/* Table header — fixed above scroll area */}
+        <div className="shrink-0">
         <Table className="table-fixed">
+          {colGroup}
           <TableHeader>
             <TableRow className="border-y border-border/30 hover:bg-transparent">
               {/* Selection header */}
@@ -476,6 +499,13 @@ export function DataTable<T>({
               ))}
             </TableRow>
           </TableHeader>
+        </Table>
+        </div>
+
+        {/* Table body — scrollable */}
+        <div className="flex-1 min-h-0 overflow-auto">
+        <Table className="table-fixed">
+          {colGroup}
           <TableBody>
               {groupedData.map((group) => {
                 const showGroupHeader = effectiveGroupBy && group.key !== '__all__';
@@ -525,6 +555,7 @@ export function DataTable<T>({
                         onMouseLeave={() => setHoveredRowId(null)}
                         contextMenuItems={contextItems}
                         selectable={selectable}
+                        showSeparator={displayOptions.showSeparators}
                       />
                     );
                   }
@@ -534,6 +565,8 @@ export function DataTable<T>({
               })}
             </TableBody>
           </Table>
+        </div>
+        </>
       )}
     </div>
   );
