@@ -4,8 +4,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
+import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
+import { sendConversationMessage } from '@/lib/api';
 import {
   ChevronRight,
+  ChevronDown,
   Eye,
   GitBranch,
   MoreVertical,
@@ -21,6 +24,11 @@ import {
   MessageSquare,
   FileText,
   RefreshCw,
+  Zap,
+  Search,
+  Shield,
+  Gauge,
+  Boxes,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
@@ -33,7 +41,25 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
 import type { WorktreeSession } from '@/lib/types';
+
+// ---------------------------------------------------------------------------
+// Review type options for the split button popover
+// ---------------------------------------------------------------------------
+
+const REVIEW_TYPES = [
+  { icon: Zap, title: 'Quick Scan', description: 'Fast pass over changes — catch obvious issues and typos' },
+  { icon: Search, title: 'Deep Review', description: 'Thorough line-by-line analysis with detailed feedback' },
+  { icon: Shield, title: 'Security Audit', description: 'Focus on vulnerabilities, auth gaps, and injection risks' },
+  { icon: Gauge, title: 'Performance', description: 'Check for regressions, memory leaks, and slow paths' },
+  { icon: Boxes, title: 'Architecture', description: 'Evaluate design patterns, coupling, and separation of concerns' },
+  { icon: GitMerge, title: 'Pre-merge Check', description: 'Final review before merge — verify tests, conflicts, and coverage' },
+] as const;
 
 // ---------------------------------------------------------------------------
 // SessionTitle — inline editable title using session.task
@@ -114,9 +140,18 @@ function SessionTitle({
  */
 export function SessionToolbarContent() {
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
+  const selectedConversationId = useAppStore((s) => s.selectedConversationId);
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
+
+  const handleGitActionMessage = useCallback((content: string) => {
+    if (!selectedConversationId) {
+      console.warn('No conversation selected, cannot send git action message');
+      return;
+    }
+    sendConversationMessage(selectedConversationId, content).catch(console.error);
+  }, [selectedConversationId]);
 
   const toolbarConfig = useMemo(() => {
     if (!selectedWorkspace || !selectedSession) return {};
@@ -145,18 +180,73 @@ export function SessionToolbarContent() {
         ),
         actions: (
           <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'h-6 px-2 gap-1.5 text-xs',
-                selectedSession.prStatus === 'open' && 'text-text-success hover:bg-text-success/10',
-                (selectedSession.hasMergeConflict || selectedSession.hasCheckFailures) && 'text-text-error hover:bg-text-error/10',
-              )}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              Review
-            </Button>
+            <PrimaryActionButton
+              workspaceId={selectedWorkspaceId}
+              session={selectedSession}
+              onSendMessage={handleGitActionMessage}
+            />
+
+            <div className="w-1.5" />
+
+            {(() => {
+              const reviewVariant =
+                (selectedSession.hasMergeConflict || selectedSession.hasCheckFailures)
+                  ? 'destructive' as const
+                  : selectedSession.prStatus === 'open'
+                    ? 'success' as const
+                    : 'secondary' as const;
+
+              const separatorColor = {
+                destructive: 'border-l-red-400/40',
+                success: 'border-l-emerald-400/40',
+                secondary: 'border-l-secondary-foreground/10',
+              }[reviewVariant];
+
+              return (
+            <div className="inline-flex rounded-sm shadow-sm">
+              <Button
+                variant={reviewVariant}
+                size="sm"
+                className="h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Review
+              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={reviewVariant}
+                    size="sm"
+                    className={cn(
+                      'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l',
+                      separatorColor,
+                    )}
+                  >
+                    <ChevronDown className="size-2.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-1.5">
+                  {REVIEW_TYPES.map((type) => (
+                    <button
+                      key={type.title}
+                      className="w-full text-left rounded-md px-3 py-2.5 hover:bg-accent transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        <type.icon className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                        <div>
+                          <div className="text-sm font-medium">{type.title}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{type.description}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            </div>
+              );
+            })()}
+
+            <div className="w-1.5" />
 
             <div className="w-px h-4 bg-border mx-1" />
 
@@ -215,7 +305,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage]);
 
   useMainToolbarContent(toolbarConfig);
 

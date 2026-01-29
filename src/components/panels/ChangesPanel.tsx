@@ -10,10 +10,7 @@ import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/panels/GitStatusSection';
-import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
 import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
-import { useGitStatus } from '@/hooks/useGitStatus';
-import { usePRStatus } from '@/hooks/usePRStatus';
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { PlansPanel } from '@/components/panels/PlansPanel';
@@ -315,16 +312,6 @@ export function ChangesPanel({
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
 
-  // Fetch git status for the primary action button
-  const { status: gitStatus } = useGitStatus(selectedWorkspaceId, selectedSessionId);
-
-  // Fetch PR details for the primary action button
-  const { prDetails } = usePRStatus(
-    selectedWorkspaceId,
-    selectedSessionId,
-    currentSession?.prStatus
-  );
-
   // Fetch files from session's worktree when session changes or tab switches to files
   useEffect(() => {
     if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
@@ -457,13 +444,6 @@ export function ChangesPanel({
 
         {/* Right side - always visible, pinned to right */}
         <div className="flex items-center gap-1 shrink-0">
-          <PrimaryActionButton
-            workspaceId={selectedWorkspaceId}
-            session={currentSession}
-            onSendMessage={handleGitActionMessage}
-            gitStatus={gitStatus}
-            prDetails={prDetails}
-          />
           {onOpenSettings && onOpenShortcuts && (
             <AppSettingsMenu
               onOpenSettings={onOpenSettings}
