@@ -123,6 +123,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Delete("/{convId}", h.DeleteConversation)
 	})
 
+	// Attachment endpoints
+	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)
+
 	// Agent endpoints (legacy)
 	r.Route("/api/agents", func(r chi.Router) {
 		r.Get("/{id}", h.GetAgent)

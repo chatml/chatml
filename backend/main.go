@@ -102,7 +102,7 @@ func main() {
 	}
 	cleanupCancel()
 
-	agentMgr := agent.NewManager(s, wm)
+	agentMgr := agent.NewManager(ctx, s, wm)
 
 	// GitHub OAuth client
 	ghConfig := server.LoadGitHubConfig()
@@ -334,7 +334,11 @@ func main() {
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
-		Handler: router,
+		Handler:     router,
+		ReadTimeout: 15 * time.Second,
+		// NOTE: WriteTimeout is intentionally omitted. Setting it would kill
+		// long-lived WebSocket connections that are idle beyond the timeout.
+		IdleTimeout: 60 * time.Second,
 	}
 
 	// Start server in goroutine using the already-acquired listener
@@ -351,7 +355,7 @@ func main() {
 	logger.Main.Info("Shutdown signal received, stopping server...")
 
 	// Give outstanding requests a short deadline to complete
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

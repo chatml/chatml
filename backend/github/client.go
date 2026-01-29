@@ -135,7 +135,10 @@ func (c *Client) GetUser(ctx context.Context, token string) (*User, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("GitHub returned %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -267,7 +270,10 @@ func (c *Client) GetAvatarByEmail(ctx context.Context, email string) (string, er
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return "", fmt.Errorf("GitHub returned %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return "", fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 

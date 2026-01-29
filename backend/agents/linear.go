@@ -239,7 +239,10 @@ func (l *LinearAdapter) executeQuery(ctx context.Context, query string, filters 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("Linear API error %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("Linear API error %d: %s", resp.StatusCode, bodyBytes)
 	}
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +29,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 
 	// Create worktree manager for agent manager
 	wm := gitpkg.NewWorktreeManager()
-	agentMgr := agent.NewManager(s, wm)
+	agentMgr := agent.NewManager(context.Background(), s, wm)
 	ghClient := github.NewClient("", "")
 
 	// Create router without orchestrator, branch watcher, pr watcher, or stats cache

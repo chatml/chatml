@@ -28,6 +28,7 @@ type ConversationStatusHandler func(conversationID string, status string)
 type SessionEventHandler func(sessionID string, event map[string]interface{})
 
 type Manager struct {
+	ctx             context.Context // app-level context for background goroutines
 	store           *store.SQLiteStore
 	worktreeManager *git.WorktreeManager
 	processes       map[string]*Process // keyed by agentID (legacy)
@@ -46,8 +47,9 @@ type Manager struct {
 	onSessionEvent SessionEventHandler
 }
 
-func NewManager(s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
+func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
 	return &Manager{
+		ctx:             ctx,
 		store:           s,
 		worktreeManager: wm,
 		processes:       make(map[string]*Process),
@@ -84,8 +86,7 @@ type StartConversationOptions struct {
 }
 
 // StartConversation creates and starts a new conversation within a session
-func (m *Manager) StartConversation(sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
-	ctx := context.Background()
+func (m *Manager) StartConversation(ctx context.Context, sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
 	session, err := m.store.GetSession(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
@@ -211,10 +212,10 @@ func (m *Manager) StartConversation(sessionID, conversationType, initialMessage 
 }
 
 // handleConversationOutput processes output from the agent process.
-// Note: Uses context.Background() as this runs in a background goroutine.
+// Note: Uses the app-level context so background work is cancelled on shutdown.
 // Store errors are logged but not propagated since this is async processing.
 func (m *Manager) handleConversationOutput(convID string, proc *Process) {
-	ctx := context.Background()
+	ctx := m.ctx
 	var currentAssistantMessage string
 
 	for line := range proc.Output() {
@@ -302,10 +303,15 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 }
 
 // handleConversationCompletion handles process completion.
-// Note: Uses context.Background() as this runs in a background goroutine.
+// Note: Uses the app-level context so background work is cancelled on shutdown.
 func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
-	ctx := context.Background()
-	<-proc.Done()
+	ctx := m.ctx
+	select {
+	case <-proc.Done():
+	case <-ctx.Done():
+		logger.Manager.Warnf("App shutting down, abandoning completion wait for conversation %s", convID)
+		return
+	}
 
 	var newStatus string
 	if proc.ExitError() != nil {
@@ -327,8 +333,7 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 }
 
 // SendConversationMessage sends a follow-up message to an existing conversation
-func (m *Manager) SendConversationMessage(convID, message string, attachments []models.Attachment) error {
-	ctx := context.Background()
+func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment) error {
 	m.mu.RLock()
 	proc, ok := m.convProcesses[convID]
 	m.mu.RUnlock()
@@ -436,8 +441,7 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 }
 
 // StopConversation stops a running conversation
-func (m *Manager) StopConversation(convID string) {
-	ctx := context.Background()
+func (m *Manager) StopConversation(ctx context.Context, convID string) {
 
 	m.mu.Lock()
 	proc, ok := m.convProcesses[convID]
@@ -471,9 +475,8 @@ func (m *Manager) StopConversation(convID string) {
 }
 
 // CompleteConversation marks a conversation as completed
-func (m *Manager) CompleteConversation(convID string) {
-	ctx := context.Background()
-	m.StopConversation(convID)
+func (m *Manager) CompleteConversation(ctx context.Context, convID string) {
+	m.StopConversation(ctx, convID)
 
 	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 		c.Status = models.ConversationStatusCompleted
@@ -643,8 +646,7 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 
 // ========== Legacy Agent Methods (for backwards compatibility) ==========
 
-func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, error) {
-	ctx := context.Background()
+func (m *Manager) SpawnAgent(ctx context.Context, repoPath, repoID, task string) (*models.Agent, error) {
 	agentID := uuid.New().String()[:8]
 	sessionID := uuid.New().String()
 
@@ -703,8 +705,13 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	}()
 
 	go func() {
-		bgCtx := context.Background()
-		<-proc.Done()
+		bgCtx := m.ctx
+		select {
+		case <-proc.Done():
+		case <-bgCtx.Done():
+			logger.Manager.Warnf("App shutting down, abandoning completion wait for agent %s", agentID)
+			return
+		}
 		if proc.ExitError() != nil {
 			if err := m.store.UpdateAgentStatus(bgCtx, agentID, models.StatusError); err != nil {
 				logger.Manager.Errorf("Failed to update agent status on error exit: %v", err)
@@ -735,8 +742,7 @@ func (m *Manager) SpawnAgent(repoPath, repoID, task string) (*models.Agent, erro
 	return agent, nil
 }
 
-func (m *Manager) StopAgent(agentID string) {
-	ctx := context.Background()
+func (m *Manager) StopAgent(ctx context.Context, agentID string) {
 
 	m.mu.Lock()
 	proc, ok := m.processes[agentID]

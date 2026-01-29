@@ -19,6 +19,9 @@ import (
 // ErrNotFound is returned when a requested resource does not exist
 var ErrNotFound = errors.New("not found")
 
+// ErrAttachmentNotFound is returned when a requested attachment does not exist
+var ErrAttachmentNotFound = errors.New("attachment not found")
+
 // SQLiteStore implements data persistence using SQLite
 // Note: We don't use a Go mutex because SQLite with WAL mode handles concurrency.
 // The busy_timeout pragma handles lock contention at the database level.
@@ -894,6 +897,24 @@ func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversa
 	})
 }
 
+// GetConversationMeta returns only the conversation row (no messages, tools, or attachments).
+// Use this when you only need to check existence or read status.
+func (s *SQLiteStore) GetConversationMeta(ctx context.Context, id string) (*models.Conversation, error) {
+	var conv models.Conversation
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, session_id, type, name, status, created_at, updated_at
+		FROM conversations WHERE id = ?`, id).Scan(
+		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
+		&conv.Status, &conv.CreatedAt, &conv.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetConversationMeta: %w", err)
+	}
+	return &conv, nil
+}
+
 func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
@@ -1181,7 +1202,7 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 		}
 
 		attQuery := fmt.Sprintf(`
-			SELECT message_id, id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview
+			SELECT message_id, id, type, name, path, mime_type, size, line_count, width, height, preview
 			FROM attachments
 			WHERE message_id IN (%s)`, strings.Join(attPlaceholders, ","))
 
@@ -1194,19 +1215,16 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 		for attRows.Next() {
 			var messageID string
 			var att models.Attachment
-			var path, base64Data, preview sql.NullString
+			var path, preview sql.NullString
 			var lineCount, width, height sql.NullInt64
 
 			if err := attRows.Scan(&messageID, &att.ID, &att.Type, &att.Name, &path, &att.MimeType,
-				&att.Size, &lineCount, &width, &height, &base64Data, &preview); err != nil {
+				&att.Size, &lineCount, &width, &height, &preview); err != nil {
 				return fmt.Errorf("loadMessagesForConversations attachment scan: %w", err)
 			}
 
 			if path.Valid {
 				att.Path = path.String
-			}
-			if base64Data.Valid {
-				att.Base64Data = base64Data.String
 			}
 			if preview.Valid {
 				att.Preview = preview.String
@@ -1296,7 +1314,7 @@ func (s *SQLiteStore) loadAttachmentsForMessages(ctx context.Context, messages [
 	}
 
 	query := fmt.Sprintf(`
-		SELECT message_id, id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview
+		SELECT message_id, id, type, name, path, mime_type, size, line_count, width, height, preview
 		FROM attachments
 		WHERE message_id IN (%s)`, strings.Join(placeholders, ","))
 
@@ -1309,19 +1327,16 @@ func (s *SQLiteStore) loadAttachmentsForMessages(ctx context.Context, messages [
 	for rows.Next() {
 		var messageID string
 		var att models.Attachment
-		var path, base64Data, preview sql.NullString
+		var path, preview sql.NullString
 		var lineCount, width, height sql.NullInt64
 
 		if err := rows.Scan(&messageID, &att.ID, &att.Type, &att.Name, &path, &att.MimeType,
-			&att.Size, &lineCount, &width, &height, &base64Data, &preview); err != nil {
+			&att.Size, &lineCount, &width, &height, &preview); err != nil {
 			return fmt.Errorf("loadAttachmentsForMessages scan: %w", err)
 		}
 
 		if path.Valid {
 			att.Path = path.String
-		}
-		if base64Data.Valid {
-			att.Base64Data = base64Data.String
 		}
 		if preview.Valid {
 			att.Preview = preview.String
@@ -2037,7 +2052,7 @@ func (s *SQLiteStore) SaveAttachments(ctx context.Context, messageID string, att
 // GetAttachmentsByMessageID retrieves all attachments for a message
 func (s *SQLiteStore) GetAttachmentsByMessageID(ctx context.Context, messageID string) ([]models.Attachment, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, type, name, path, mime_type, size, line_count, width, height, base64_data, preview
+		SELECT id, type, name, path, mime_type, size, line_count, width, height, preview
 		FROM attachments WHERE message_id = ?`, messageID)
 	if err != nil {
 		return nil, fmt.Errorf("GetAttachmentsByMessageID: %w", err)
@@ -2047,19 +2062,16 @@ func (s *SQLiteStore) GetAttachmentsByMessageID(ctx context.Context, messageID s
 	attachments := []models.Attachment{}
 	for rows.Next() {
 		var att models.Attachment
-		var path, base64Data, preview sql.NullString
+		var path, preview sql.NullString
 		var lineCount, width, height sql.NullInt64
 
 		if err := rows.Scan(&att.ID, &att.Type, &att.Name, &path, &att.MimeType,
-			&att.Size, &lineCount, &width, &height, &base64Data, &preview); err != nil {
+			&att.Size, &lineCount, &width, &height, &preview); err != nil {
 			return nil, fmt.Errorf("GetAttachmentsByMessageID scan: %w", err)
 		}
 
 		if path.Valid {
 			att.Path = path.String
-		}
-		if base64Data.Valid {
-			att.Base64Data = base64Data.String
 		}
 		if preview.Valid {
 			att.Preview = preview.String
@@ -2080,4 +2092,20 @@ func (s *SQLiteStore) GetAttachmentsByMessageID(ctx context.Context, messageID s
 		return nil, fmt.Errorf("GetAttachmentsByMessageID rows: %w", err)
 	}
 	return attachments, nil
+}
+
+// GetAttachmentData retrieves the base64 data for a single attachment by ID.
+func (s *SQLiteStore) GetAttachmentData(ctx context.Context, attachmentID string) (string, error) {
+	var data sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT base64_data FROM attachments WHERE id = ?`, attachmentID).Scan(&data)
+	if err == sql.ErrNoRows {
+		return "", ErrAttachmentNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("GetAttachmentData: %w", err)
+	}
+	if !data.Valid {
+		return "", nil
+	}
+	return data.String, nil
 }

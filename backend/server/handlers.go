@@ -648,8 +648,7 @@ func (h *Handlers) GetRepoDetails(w http.ResponseWriter, r *http.Request) {
 	response := &RepoDetailsResponse{Repo: repo}
 
 	// Try to get remote origin URL
-	rm := git.NewRepoManager()
-	owner, repoName, err := rm.GetGitHubRemote(ctx, repo.Path)
+	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
 	if err == nil {
 		response.GitHubOwner = owner
 		response.GitHubRepo = repoName
@@ -726,8 +725,6 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	// Build cache key - cache the full list, apply filtering after
 	cacheKey := fmt.Sprintf("%s:remote=%v:sort=%s", repo.Path, includeRemote, sortBy)
 
-	repoMgr := git.NewRepoManager()
-
 	// Check cache first
 	branchResult, cacheHit := h.branchCache.Get(cacheKey)
 	if !cacheHit {
@@ -742,7 +739,7 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var err error
-		branchResult, err = repoMgr.ListBranches(ctx, repo.Path, branchOpts)
+		branchResult, err = h.repoManager.ListBranches(ctx, repo.Path, branchOpts)
 		if err != nil {
 			writeInternalError(w, "failed to list branches", err)
 			return
@@ -785,7 +782,7 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get current branch
-	currentBranch, _ := repoMgr.GetCurrentBranch(ctx, repo.Path)
+	currentBranch, _ := h.repoManager.GetCurrentBranch(ctx, repo.Path)
 
 	// Get all non-archived sessions for this workspace to build branch -> session lookup
 	sessions, err := h.store.ListSessions(ctx, workspaceID, false)
@@ -1612,7 +1609,7 @@ func (h *Handlers) SpawnAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent, err := h.agentManager.SpawnAgent(repo.Path, repoID, req.Task)
+	agent, err := h.agentManager.SpawnAgent(ctx, repo.Path, repoID, req.Task)
 	if err != nil {
 		writeInternalError(w, "failed to spawn agent", err)
 		return
@@ -1622,8 +1619,9 @@ func (h *Handlers) SpawnAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) StopAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	h.agentManager.StopAgent(id)
+	h.agentManager.StopAgent(ctx, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2269,7 +2267,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conv, err := h.agentManager.StartConversation(sessionID, req.Type, req.Message, opts)
+	conv, err := h.agentManager.StartConversation(ctx, sessionID, req.Type, req.Message, opts)
 	if err != nil {
 		writeInternalError(w, "failed to start conversation", err)
 		return
@@ -2305,7 +2303,7 @@ type SendConversationMessageRequest struct {
 func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv, err := h.store.GetConversation(ctx, convID)
+	conv, err := h.store.GetConversationMeta(ctx, convID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -2326,7 +2324,7 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.agentManager.SendConversationMessage(convID, req.Content, req.Attachments); err != nil {
+	if err := h.agentManager.SendConversationMessage(ctx, convID, req.Content, req.Attachments); err != nil {
 		writeInternalError(w, "failed to send message", err)
 		return
 	}
@@ -2338,7 +2336,7 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv, err := h.store.GetConversation(ctx, convID)
+	conv, err := h.store.GetConversationMeta(ctx, convID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -2348,7 +2346,7 @@ func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.agentManager.StopConversation(convID)
+	h.agentManager.StopConversation(ctx, convID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2359,7 +2357,7 @@ type RewindConversationRequest struct {
 func (h *Handlers) RewindConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv, err := h.store.GetConversation(ctx, convID)
+	conv, err := h.store.GetConversationMeta(ctx, convID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -2438,7 +2436,7 @@ func (h *Handlers) AnswerConversationQuestion(w http.ResponseWriter, r *http.Req
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv, err := h.store.GetConversation(ctx, convID)
+	conv, err := h.store.GetConversationMeta(ctx, convID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -2449,7 +2447,7 @@ func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Stop the conversation if running
-	h.agentManager.StopConversation(convID)
+	h.agentManager.StopConversation(ctx, convID)
 
 	// Delete from store
 	if err := h.store.DeleteConversation(ctx, convID); err != nil {
@@ -2466,7 +2464,7 @@ type SetPlanModeRequest struct {
 func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv, err := h.store.GetConversation(ctx, convID)
+	conv, err := h.store.GetConversationMeta(ctx, convID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -2488,6 +2486,23 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, map[string]bool{"enabled": req.Enabled})
+}
+
+// Attachment handlers
+
+func (h *Handlers) GetAttachmentData(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	attachmentID := chi.URLParam(r, "attachmentId")
+	data, err := h.store.GetAttachmentData(ctx, attachmentID)
+	if err != nil {
+		if errors.Is(err, store.ErrAttachmentNotFound) {
+			writeNotFound(w, "attachment")
+			return
+		}
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"base64Data": data})
 }
 
 // File tab handlers

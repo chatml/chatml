@@ -438,3 +438,24 @@ func TestProcess_OutputBufferFull_EmitsWarning(t *testing.T) {
 	assert.Equal(t, "buffer_full", event["reason"])
 	assert.Equal(t, "Some streaming events were dropped due to slow processing", event["message"])
 }
+
+// ============================================================================
+// Stop with SIGTERM/SIGKILL Escalation Tests
+// ============================================================================
+
+func TestProcess_Stop_ClosesStdin(t *testing.T) {
+	p := NewProcess("test-stdin", "/tmp", "conv-stdin")
+
+	// Create a pipe to simulate stdin
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	defer r.Close()
+
+	p.stdin = w
+
+	p.Stop()
+
+	// Writing to the closed pipe should fail
+	_, writeErr := w.Write([]byte("test"))
+	assert.Error(t, writeErr, "stdin should be closed after Stop()")
+}
