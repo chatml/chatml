@@ -1,7 +1,6 @@
 'use client';
 
 import { forwardRef, useCallback, useState } from 'react';
-import { TableRow, TableCell } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   ContextMenu,
@@ -45,6 +44,8 @@ interface DataTableRowComponentProps<T> extends Omit<DataTableRowProps<T>, 'inde
   visibleColumns?: Set<string>;
   /** Whether to show separator line below the row */
   showSeparator?: boolean;
+  /** CSS Grid template columns */
+  gridTemplateColumns: string;
 }
 
 function DataTableRowComponent<T>(
@@ -63,8 +64,9 @@ function DataTableRowComponent<T>(
     selectable,
     visibleColumns,
     showSeparator,
+    gridTemplateColumns,
   }: DataTableRowComponentProps<T>,
-  ref: React.ForwardedRef<HTMLTableRowElement>
+  ref: React.ForwardedRef<HTMLDivElement>
 ) {
   const [isCheckboxHovered, setIsCheckboxHovered] = useState(false);
 
@@ -98,17 +100,19 @@ function DataTableRowComponent<T>(
   );
 
   const rowContent = (
-    <TableRow
+    <div
       ref={ref}
+      role="row"
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'group cursor-pointer transition-colors h-[44px]',
+        'group grid cursor-pointer transition-colors h-[44px] items-center',
         showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'
       )}
+      style={{ gridTemplateColumns }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseEnter={onMouseEnter}
@@ -117,8 +121,9 @@ function DataTableRowComponent<T>(
     >
       {/* Selection checkbox column - Linear style */}
       {selectable && (
-        <TableCell
-          className="w-[24px] pl-2 pr-0 py-0 transition-colors"
+        <div
+          role="gridcell"
+          className="pl-2 pr-0 py-0 transition-colors"
           onClick={handleCheckboxClick}
           onMouseEnter={() => setIsCheckboxHovered(true)}
           onMouseLeave={() => setIsCheckboxHovered(false)}
@@ -136,31 +141,27 @@ function DataTableRowComponent<T>(
             )}
             aria-label={`Select row ${rowId}`}
           />
-        </TableCell>
+        </div>
       )}
 
       {/* Data columns */}
       {displayColumns.map((column, index) => (
-        <TableCell
+        <div
           key={column.id}
+          role="gridcell"
           className={cn(
-            'py-0 px-3',
+            'py-0 px-3 overflow-hidden',
             // Reduce left padding on first column when checkbox is present
             selectable && index === 0 && 'pl-1',
             // Add extra right padding on last column
             index === displayColumns.length - 1 && 'pr-4',
-            getCellAlignment(column.align),
-            column.width && `w-[${column.width}]`
+            getCellAlignment(column.align)
           )}
-          style={{
-            width: column.width,
-            minWidth: column.minWidth,
-          }}
         >
           {getCellValue(row, column) as React.ReactNode}
-        </TableCell>
+        </div>
       ))}
-    </TableRow>
+    </div>
   );
 
   // Wrap in context menu if items are provided
@@ -197,7 +198,7 @@ function DataTableRowComponent<T>(
 
 // Type-safe forwardRef wrapper
 export const DataTableRow = forwardRef(DataTableRowComponent) as <T>(
-  props: DataTableRowComponentProps<T> & { ref?: React.ForwardedRef<HTMLTableRowElement> }
+  props: DataTableRowComponentProps<T> & { ref?: React.ForwardedRef<HTMLDivElement> }
 ) => React.ReactElement;
 
 // Simple row renderer without context menu (for performance)
@@ -212,6 +213,7 @@ export function DataTableSimpleRow<T>({
   selectable,
   visibleColumns,
   showSeparator,
+  gridTemplateColumns,
 }: Omit<DataTableRowComponentProps<T>, 'contextMenuItems' | 'onDoubleClick' | 'index'> & { showSeparator?: boolean }) {
   const [isCheckboxHovered, setIsCheckboxHovered] = useState(false);
 
@@ -231,22 +233,25 @@ export function DataTableSimpleRow<T>({
   );
 
   return (
-    <TableRow
+    <div
+      role="row"
       data-state={isSelected ? 'selected' : undefined}
       data-focused={isFocused || undefined}
       className={cn(
-        'group cursor-pointer transition-colors h-[44px]',
+        'group grid cursor-pointer transition-colors h-[44px] items-center',
         showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'
       )}
+      style={{ gridTemplateColumns }}
       onClick={handleClick}
       tabIndex={isFocused ? 0 : -1}
     >
       {selectable && (
-        <TableCell
-          className="w-[24px] pl-2 pr-0 py-0 transition-colors"
+        <div
+          role="gridcell"
+          className="pl-2 pr-0 py-0 transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect();
@@ -264,27 +269,24 @@ export function DataTableSimpleRow<T>({
             )}
             aria-label={`Select row ${rowId}`}
           />
-        </TableCell>
+        </div>
       )}
       {displayColumns.map((column, index) => (
-        <TableCell
+        <div
           key={column.id}
+          role="gridcell"
           className={cn(
-            'py-0 px-3',
+            'py-0 px-3 overflow-hidden',
             // Reduce left padding on first column when checkbox is present
             selectable && index === 0 && 'pl-1',
             // Add extra right padding on last column
             index === displayColumns.length - 1 && 'pr-4',
             getCellAlignment(column.align)
           )}
-          style={{
-            width: column.width,
-            minWidth: column.minWidth,
-          }}
         >
           {getCellValue(row, column) as React.ReactNode}
-        </TableCell>
+        </div>
       ))}
-    </TableRow>
+    </div>
   );
 }

@@ -268,8 +268,8 @@ export interface DataTableGroupProps {
   onToggle: () => void;
   /** Collapse all groups handler */
   onCollapseAll?: () => void;
-  /** Column span */
-  colSpan: number;
+  /** CSS Grid template columns */
+  gridTemplateColumns: string;
   /** Whether to show selection controls */
   selectable?: boolean;
   /** Whether all items in group are selected */

@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -367,24 +366,21 @@ export function DataTable<T>({
     [columns, displayOptions.visibleColumns]
   );
 
-  // Calculate column count for spanning
-  const columnCount = visibleColumns.length + (selectable ? 1 : 0);
-
-  // Shared colgroup so the header table and body table columns stay aligned
-  const colGroup = useMemo(
-    () => (
-      <colgroup>
-        {selectable && <col style={{ width: 32 }} />}
-        {visibleColumns.map((col) => (
-          <col
-            key={col.id}
-            style={{ width: col.width, minWidth: col.minWidth }}
-          />
-        ))}
-      </colgroup>
-    ),
-    [selectable, visibleColumns]
-  );
+  // Compute CSS Grid template columns
+  const gridTemplateColumns = useMemo(() => {
+    const tracks: string[] = [];
+    if (selectable) tracks.push('32px');
+    for (const col of visibleColumns) {
+      if (col.width) {
+        tracks.push(col.minWidth ? `minmax(${col.minWidth}, ${col.width})` : col.width);
+      } else if (col.minWidth) {
+        tracks.push(`minmax(${col.minWidth}, 1fr)`);
+      } else {
+        tracks.push('1fr');
+      }
+    }
+    return tracks.join(' ');
+  }, [selectable, visibleColumns]);
 
   // Track row index for keyboard navigation
   let rowIndex = 0;
@@ -421,7 +417,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      {/* Table — scrollable area */}
+      {/* Grid — scrollable area */}
       {processedData.length === 0 ? (
         emptyState || (
           <div className="text-center py-12 text-muted-foreground">
@@ -429,138 +425,132 @@ export function DataTable<T>({
           </div>
         )
       ) : (
-        <>
-        {/* Table header — fixed above scroll area */}
+        <div role="grid" aria-rowcount={processedData.length} className="flex flex-col flex-1 min-h-0">
+        {/* Header — fixed above scroll area */}
         <div className="shrink-0">
-        <Table className="table-fixed">
-          {colGroup}
-          <TableHeader>
-            <TableRow className="border-y border-border/30 hover:bg-transparent">
-              {/* Selection header */}
-              {selectable && (
-                <TableHead className="w-[32px] px-2">
-                  <Checkbox
-                    checked={selection.isAllSelected}
-                    onCheckedChange={() => {
-                      if (selection.isAllSelected) {
-                        selection.clearSelection();
-                      } else {
-                        selection.selectAll();
-                      }
-                    }}
-                    className="h-3.5 w-3.5 opacity-30 hover:opacity-100 transition-opacity"
-                    aria-label="Select all"
-                  />
-                </TableHead>
-              )}
-              {/* Column headers */}
-              {visibleColumns.map((column) => (
-                <TableHead
-                  key={column.id}
-                  className={cn(
-                    'text-sm font-medium text-foreground/70 h-8',
-                    column.align === 'center' && 'text-center',
-                    column.align === 'right' && 'text-right',
-                  )}
-                  style={{
-                    width: column.width,
-                    minWidth: column.minWidth,
+          <div
+            role="row"
+            className="grid h-8 items-center border-y border-border/30 py-1"
+            style={{ gridTemplateColumns }}
+          >
+            {/* Selection header */}
+            {selectable && (
+              <div role="columnheader" className="px-2">
+                <Checkbox
+                  checked={selection.isAllSelected}
+                  onCheckedChange={() => {
+                    if (selection.isAllSelected) {
+                      selection.clearSelection();
+                    } else {
+                      selection.selectAll();
+                    }
                   }}
-                >
-                  {column.sortable ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="-ml-2 h-7 gap-1 text-sm font-medium text-foreground/70 hover:text-foreground"
-                      onClick={() => {
-                        const isCurrentColumn = sortConfig?.column === column.id;
-                        const isAsc = isCurrentColumn && sortConfig?.direction === 'asc';
-                        handleDisplayChange({
-                          ...displayOptions,
-                          sortBy: { column: column.id, direction: isAsc ? 'desc' : 'asc' },
-                        });
-                      }}
-                    >
-                      {column.header}
-                      {sortConfig?.column === column.id && (
-                        <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </Button>
-                  ) : (
-                    column.header
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-        </Table>
+                  className="h-3.5 w-3.5 opacity-30 hover:opacity-100 transition-opacity"
+                  aria-label="Select all"
+                />
+              </div>
+            )}
+            {/* Column headers */}
+            {visibleColumns.map((column, colIndex) => (
+              <div
+                key={column.id}
+                role="columnheader"
+                className={cn(
+                  'text-sm font-medium text-foreground/70 px-3',
+                  column.align === 'center' && 'text-center',
+                  column.align === 'right' && 'text-right',
+                )}
+              >
+                {column.sortable ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="group/sort -ml-2 h-6 px-1.5 gap-1 rounded-sm text-sm font-medium text-foreground/70 hover:text-foreground"
+                    onClick={() => {
+                      const isCurrentColumn = sortConfig?.column === column.id;
+                      const isDesc = isCurrentColumn && sortConfig?.direction === 'desc';
+                      handleDisplayChange({
+                        ...displayOptions,
+                        sortBy: { column: column.id, direction: isDesc ? 'asc' : 'desc' },
+                      });
+                    }}
+                  >
+                    {column.header}
+                    {sortConfig?.column === column.id ? (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    ) : (
+                      <span className="opacity-0 group-hover/sort:opacity-100 transition-opacity">↓</span>
+                    )}
+                  </Button>
+                ) : (
+                  column.header
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Table body — scrollable */}
-        <div className="flex-1 min-h-0 overflow-auto scrollbar-thin">
-        <Table className="table-fixed">
-          {colGroup}
-          <TableBody>
-              {groupedData.map((group) => {
-                const showGroupHeader = effectiveGroupBy && group.key !== '__all__';
-                const groupContent: React.ReactNode[] = [];
+        {/* Body — scrollable */}
+        <div role="rowgroup" className="flex-1 min-h-0 overflow-auto scrollbar-thin">
+            {groupedData.map((group) => {
+              const showGroupHeader = effectiveGroupBy && group.key !== '__all__';
+              const groupContent: React.ReactNode[] = [];
 
-                // Group header
-                if (showGroupHeader) {
+              // Group header
+              if (showGroupHeader) {
+                groupContent.push(
+                  <DataTableGroup
+                    key={`group-${group.key}`}
+                    groupKey={group.key}
+                    label={group.label}
+                    icon={group.icon}
+                    count={group.rows.length}
+                    isCollapsed={group.collapsed}
+                    onToggle={() => toggleGroupCollapse(group.key)}
+                    onCollapseAll={collapseAllGroups}
+                    gridTemplateColumns={gridTemplateColumns}
+                    selectable={selectable}
+                    onSelectAll={() => selection.selectAllInGroup(group.key)}
+                  />
+                );
+              }
+
+              // Rows (if not collapsed)
+              if (!group.collapsed) {
+                for (const row of group.rows) {
+                  const rowId = getRowId(row);
+                  const currentIndex = rowIndex;
+                  rowIndex++;
+
+                  const contextItems = onRowContextMenu?.(row);
+
                   groupContent.push(
-                    <DataTableGroup
-                      key={`group-${group.key}`}
-                      groupKey={group.key}
-                      label={group.label}
-                      icon={group.icon}
-                      count={group.rows.length}
-                      isCollapsed={group.collapsed}
-                      onToggle={() => toggleGroupCollapse(group.key)}
-                      onCollapseAll={collapseAllGroups}
-                      colSpan={columnCount}
+                    <DataTableRow
+                      key={rowId}
+                      row={row}
+                      rowId={rowId}
+                      columns={columns}
+                      visibleColumns={displayOptions.visibleColumns}
+                      isSelected={selection.isSelected(rowId)}
+                      isFocused={currentIndex === focusedIndex}
+                      onToggleSelect={() => selection.toggleSelection(rowId)}
+                      onClick={() => onRowClick?.(row)}
+                      onDoubleClick={() => onRowDoubleClick?.(row)}
+                      onMouseEnter={() => setHoveredRowId(rowId)}
+                      onMouseLeave={() => setHoveredRowId(null)}
+                      contextMenuItems={contextItems}
                       selectable={selectable}
-                      onSelectAll={() => selection.selectAllInGroup(group.key)}
+                      showSeparator={displayOptions.showSeparators}
+                      gridTemplateColumns={gridTemplateColumns}
                     />
                   );
                 }
+              }
 
-                // Rows (if not collapsed)
-                if (!group.collapsed) {
-                  for (const row of group.rows) {
-                    const rowId = getRowId(row);
-                    const currentIndex = rowIndex;
-                    rowIndex++;
-
-                    const contextItems = onRowContextMenu?.(row);
-
-                    groupContent.push(
-                      <DataTableRow
-                        key={rowId}
-                        row={row}
-                        rowId={rowId}
-                        columns={columns}
-                        visibleColumns={displayOptions.visibleColumns}
-                        isSelected={selection.isSelected(rowId)}
-                        isFocused={currentIndex === focusedIndex}
-                        onToggleSelect={() => selection.toggleSelection(rowId)}
-                        onClick={() => onRowClick?.(row)}
-                        onDoubleClick={() => onRowDoubleClick?.(row)}
-                        onMouseEnter={() => setHoveredRowId(rowId)}
-                        onMouseLeave={() => setHoveredRowId(null)}
-                        contextMenuItems={contextItems}
-                        selectable={selectable}
-                        showSeparator={displayOptions.showSeparators}
-                      />
-                    );
-                  }
-                }
-
-                return groupContent;
-              })}
-            </TableBody>
-          </Table>
+              return groupContent;
+            })}
         </div>
-        </>
+        </div>
       )}
     </div>
   );
