@@ -412,6 +412,49 @@ export async function countFileLines(path: string): Promise<number | null> {
   }
 }
 
+// ============================================
+// Shell Open Functions
+// ============================================
+
+/**
+ * Open a path in VS Code
+ */
+export async function openInVSCode(path: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell');
+    Command.create('code', [path]).spawn().catch(console.error);
+  } catch (e) {
+    console.error('Failed to open in VS Code', e);
+  }
+}
+
+/**
+ * Open a path in macOS Terminal
+ */
+export async function openInTerminal(path: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell');
+    Command.create('open', ['-a', 'Terminal', path]).spawn().catch(console.error);
+  } catch (e) {
+    console.error('Failed to open in Terminal', e);
+  }
+}
+
+/**
+ * Show a path in Finder
+ */
+export async function showInFinder(path: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell');
+    Command.create('open', ['-R', path]).spawn().catch(console.error);
+  } catch (e) {
+    console.error('Failed to show in Finder', e);
+  }
+}
+
 export interface FileDialogOptions {
   multiple?: boolean;
   filters?: Array<{ name: string; extensions: string[] }>;
