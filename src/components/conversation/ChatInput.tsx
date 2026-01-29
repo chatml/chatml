@@ -1174,9 +1174,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           {/* Extended Thinking Toggle */}
           <Button
             variant="ghost"
-            size="icon"
+            size={thinkingEnabled ? 'sm' : 'icon'}
             className={cn(
-              'h-7 w-7',
+              thinkingEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
               thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
             )}
             onClick={() => setThinkingEnabled(!thinkingEnabled)}
@@ -1185,14 +1185,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             aria-pressed={thinkingEnabled}
           >
             <Brain className="h-4 w-4" />
+            {thinkingEnabled && <span className="text-xs font-medium">Thinking</span>}
           </Button>
 
           {/* Plan Mode Toggle */}
           <Button
             variant="ghost"
-            size="icon"
+            size={planModeEnabled ? 'sm' : 'icon'}
             className={cn(
-              'h-7 w-7',
+              planModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
               planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
             )}
             onClick={handlePlanModeToggle}
@@ -1201,6 +1202,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             aria-pressed={planModeEnabled}
           >
             <BookOpen className="h-4 w-4" />
+            {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
           </Button>
 
           {/* Spacer */}
