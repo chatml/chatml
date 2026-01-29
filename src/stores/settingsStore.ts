@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useTabViewStore } from './tabViewStore';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
 export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history';
@@ -134,7 +135,11 @@ export const useSettingsStore = create<SettingsState>()(
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
       setTheme: (value) => set({ theme: value }),
       setEditorTheme: (value) => set({ editorTheme: value }),
-      setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
+      setShowBottomTerminal: (value) => {
+        set({ showBottomTerminal: value });
+        // Also update TabViewStore
+        useTabViewStore.getState().setBottomTerminalVisible(value);
+      },
       setZenMode: (value) => set({ zenMode: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
         set((state) => ({
@@ -160,7 +165,11 @@ export const useSettingsStore = create<SettingsState>()(
             : [...state.hiddenTopTabs, tab],
         })),
       setTopTabOrder: (order) => set({ topTabOrder: order }),
-      setContentView: (view) => set({ contentView: view }),
+      setContentView: (view) => {
+        set({ contentView: view });
+        // Also update TabViewStore
+        useTabViewStore.getState().setContentView(view);
+      },
       setLayoutOuter: (layout) => set({ layoutOuter: layout }),
       setLayoutInner: (layout) => set({ layoutInner: layout }),
       setLayoutVertical: (layout) => set({ layoutVertical: layout }),

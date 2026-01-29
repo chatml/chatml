@@ -328,3 +328,67 @@ export const useReviewCommentActions = () =>
  */
 export const usePendingUserQuestion = (conversationId: string | null) =>
   useAppStore((s) => (conversationId ? s.pendingUserQuestion[conversationId] ?? null : null));
+
+// ============================================================================
+// TabView State (replaces global selection state)
+// ============================================================================
+
+import { useTabViewStore } from './tabViewStore';
+
+/**
+ * Get active tab's selection state.
+ * This replaces the old useSelectedIds() which read from AppStore.
+ * Use in: All components that need to know what's selected
+ */
+export const useActiveTabSelection = () => {
+  return useTabViewStore(
+    useShallow((state) => {
+      const activeTab = state.getActiveTab();
+      return {
+        selectedWorkspaceId: activeTab?.selectedWorkspaceId ?? null,
+        selectedSessionId: activeTab?.selectedSessionId ?? null,
+        selectedConversationId: activeTab?.selectedConversationId ?? null,
+        selectedFileTabId: activeTab?.selectedFileTabId ?? null,
+      };
+    })
+  );
+};
+
+/**
+ * Get active tab's content view.
+ * This replaces reading contentView from SettingsStore.
+ * Use in: Home component, FullContentLayout
+ */
+export const useActiveContentView = () => {
+  return useTabViewStore(state => state.getActiveTab()?.contentView ?? { type: 'global-dashboard' });
+};
+
+/**
+ * Get active tab's panel state.
+ * Use in: ChangesPanel, BottomTerminal, ConversationArea
+ */
+export const useActiveTabPanelState = () => {
+  return useTabViewStore(
+    useShallow((state) => {
+      const activeTab = state.getActiveTab();
+      return {
+        rightSidebarVisible: activeTab?.rightSidebarVisible ?? true,
+        activeRightTab: activeTab?.activeRightTab ?? 'changes',
+        bottomTerminalVisible: activeTab?.bottomTerminalVisible ?? false,
+        activeBottomTab: activeTab?.activeBottomTab ?? 'todos',
+        scrollPosition: activeTab?.scrollPosition ?? 0,
+      };
+    })
+  );
+};
+
+/**
+ * Get all tabs and active tab ID.
+ * Use in: TabBar, MainToolbar
+ */
+export const useTabViewState = () => {
+  return useTabViewStore(useShallow(state => ({
+    tabs: state.tabs,
+    activeTabId: state.activeTabId,
+  })));
+};

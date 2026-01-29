@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useSelectedIds, useFileTabState } from '@/stores/selectors';
+import { useActiveTabSelection, useFileTabState } from '@/stores/selectors';
 import { EmptyState } from '@/components/ui/empty-state';
 import { GitCommitHorizontal, FileQuestion, Loader2 } from 'lucide-react';
 import {
@@ -43,7 +43,7 @@ function formatRelativeTime(isoTimestamp: string): string {
 }
 
 export function FileHistoryPanel() {
-  const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
+  const { selectedWorkspaceId, selectedSessionId } = useActiveTabSelection();
   const { fileTabs, selectedFileTabId, openFileTab, updateFileTab } = useFileTabState();
 
   const [commits, setCommits] = useState<FileCommitDTO[]>([]);

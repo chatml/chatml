@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
+import { useActiveTabSelection, useFileTabState, useTodoState, useFileCommentStats, useActiveTabPanelState } from '@/stores/selectors';
+import { useTabViewStore } from '@/stores/tabViewStore';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
 import { watchWorkspace, unwatchWorkspace, listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
 import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
@@ -90,7 +91,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
 export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
-  const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useActiveTabSelection();
   const { openFileTab, updateFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
@@ -99,8 +100,17 @@ export function ChangesPanel() {
   const updateSession = useAppStore((s) => s.updateSession);
   const layoutChanges = useSettingsStore((s) => s.layoutChanges);
   const setLayoutChanges = useSettingsStore((s) => s.setLayoutChanges);
-  const [selectedTab, setSelectedTab] = useState('files');
-  const [bottomTab, setBottomTab] = useState('todos');
+  const { activeRightTab, activeBottomTab } = useActiveTabPanelState();
+  const setActiveRightTab = useTabViewStore((s) => s.setActiveRightTab);
+  const setActiveBottomTab = useTabViewStore((s) => s.setActiveBottomTab);
+  const [selectedTab, setSelectedTab] = useState(activeRightTab);
+  const [bottomTab, setBottomTabLocal] = useState(activeBottomTab);
+
+  // Wrapper to sync with tab view store
+  const setBottomTab = useCallback((tab: string) => {
+    setBottomTabLocal(tab as AllBottomPanelTab);
+    setActiveBottomTab(tab as AllBottomPanelTab);
+  }, [setActiveBottomTab]);
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
@@ -108,6 +118,22 @@ export function ChangesPanel() {
   const [containerWidth, setContainerWidth] = useState(400);
   const changesContainerRef = useRef<HTMLDivElement>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync local state with active tab state
+  useEffect(() => {
+    setSelectedTab(activeRightTab);
+  }, [activeRightTab]);
+
+  useEffect(() => {
+    setBottomTabLocal(activeBottomTab);
+  }, [activeBottomTab]);
+
+  // Update tab view store when local state changes
+  useEffect(() => {
+    if (selectedTab !== activeRightTab) {
+      setActiveRightTab(selectedTab);
+    }
+  }, [selectedTab, activeRightTab, setActiveRightTab]);
 
   // Fetch changes function (extracted for reuse)
   const fetchChanges = useCallback(async () => {

@@ -5,6 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useActiveTabSelection, useActiveContentView, useActiveTabPanelState } from '@/stores/selectors';
+import { useTabViewStore } from '@/stores/tabViewStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
@@ -16,6 +18,7 @@ import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useShortcut } from '@/hooks/useShortcut';
+import { useTabKeyboardShortcuts } from '@/hooks/useTabKeyboardShortcuts';
 import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
@@ -176,12 +179,13 @@ export default function Home() {
   }, []);
 
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
-  const contentView = useSettingsStore((s) => s.contentView);
+  const contentView = useActiveContentView();
+  const { bottomTerminalVisible } = useActiveTabPanelState();
+  const setBottomTerminalVisible = useTabViewStore((s) => s.setBottomTerminalVisible);
+  const setContentView = useTabViewStore((s) => s.setContentView);
   const { error: showError } = useToast();
   const {
-    showBottomTerminal, setShowBottomTerminal,
     zenMode, setZenMode,
-    setContentView,
     layoutOuter, setLayoutOuter,
     layoutInner, setLayoutInner,
     layoutVertical, setLayoutVertical,
@@ -275,11 +279,47 @@ export default function Home() {
     validate();
   }, [backendConnected, isAuthenticated, setAuthenticated]);
 
-  // Use refs to avoid changing useEffect dependency array sizes
-  const showBottomTerminalRef = useRef(showBottomTerminal);
+  // Migrate legacy store state to TabViewStore (one-time migration on mount)
   useEffect(() => {
-    showBottomTerminalRef.current = showBottomTerminal;
-  }, [showBottomTerminal]);
+    const tabViewStore = useTabViewStore.getState();
+
+    // Initialize default tab if tabs array is empty
+    tabViewStore._ensureDefaultTab();
+
+    // Only migrate if we have exactly 1 tab (the default tab just created) and have legacy state
+    const { tabs } = tabViewStore;
+    if (tabs.length === 1) {
+      const appStore = useAppStore.getState();
+      const settingsStore = useSettingsStore.getState();
+
+      // Check if we have legacy state to migrate
+      const hasLegacyState =
+        appStore.selectedWorkspaceId ||
+        appStore.selectedSessionId ||
+        appStore.selectedConversationId ||
+        appStore.selectedFileTabId ||
+        settingsStore.contentView.type !== 'conversation' ||
+        settingsStore.showBottomTerminal;
+
+      if (hasLegacyState) {
+        // Update the default tab with legacy state
+        tabViewStore.updateTab(tabs[0].id, {
+          selectedWorkspaceId: appStore.selectedWorkspaceId,
+          selectedSessionId: appStore.selectedSessionId,
+          selectedConversationId: appStore.selectedConversationId,
+          selectedFileTabId: appStore.selectedFileTabId,
+          contentView: settingsStore.contentView,
+          bottomTerminalVisible: settingsStore.showBottomTerminal,
+        });
+      }
+    }
+  }, []);
+
+  // Use refs to avoid changing useEffect dependency array sizes
+  const bottomTerminalVisibleRef = useRef(bottomTerminalVisible);
+  useEffect(() => {
+    bottomTerminalVisibleRef.current = bottomTerminalVisible;
+  }, [bottomTerminalVisible]);
 
   const zenModeRef = useRef(zenMode);
   useEffect(() => {
@@ -322,19 +362,19 @@ export default function Home() {
     }
   }, [zenMode, leftSidebarCollapsed, rightSidebarCollapsed]);
 
-  // Sync bottom terminal panel collapse state with showBottomTerminal
+  // Sync bottom terminal panel collapse state with bottomTerminalVisible
   useEffect(() => {
     const panel = bottomTerminalPanelRef.current;
     if (!panel) return;
 
     // Only act if the panel state doesn't match the desired state
     const isCollapsed = panel.isCollapsed();
-    if (showBottomTerminal && isCollapsed) {
+    if (bottomTerminalVisible && isCollapsed) {
       panel.expand();
-    } else if (!showBottomTerminal && !isCollapsed) {
+    } else if (!bottomTerminalVisible && !isCollapsed) {
       panel.collapse();
     }
-  }, [showBottomTerminal]);
+  }, [bottomTerminalVisible]);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
@@ -400,6 +440,9 @@ export default function Home() {
 
   // Watch for external file changes
   useFileWatcher();
+
+  // Tab keyboard shortcuts (Cmd+T, Cmd+W, Cmd+1-9, Cmd+Tab, etc.)
+  useTabKeyboardShortcuts();
 
   // Keyboard shortcut: Cmd+/ to show shortcuts dialog
   useShortcut('shortcutsDialog', useCallback(() => {
@@ -804,7 +847,7 @@ export default function Home() {
       if ((e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) ||
           (e.key === 'j' && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey)) {
         e.preventDefault();
-        setShowBottomTerminal(!showBottomTerminalRef.current);
+        setBottomTerminalVisible(!bottomTerminalVisibleRef.current);
       }
       // Cmd+Shift+1-9 to switch sessions
       if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
@@ -878,7 +921,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setBottomTerminalVisible, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, setContentView, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -914,7 +957,7 @@ export default function Home() {
           }
           break;
         case 'toggle_terminal':
-          setShowBottomTerminal(!showBottomTerminalRef.current);
+          setBottomTerminalVisible(!bottomTerminalVisibleRef.current);
           break;
         case 'toggle_thinking':
           // Emit event for ChatInput to handle
@@ -938,7 +981,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, setBottomTerminalVisible, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar]);
 
   // Handle window close confirmation
   useEffect(() => {
@@ -1050,11 +1093,11 @@ export default function Home() {
               <MainToolbar
                 showLeftSidebar={!leftSidebarCollapsed}
                 showRightSidebar={!rightSidebarCollapsed}
-                showBottomPanel={showBottomTerminal}
+                showBottomPanel={bottomTerminalVisible}
                 hasSecondaryPanels={!isFullContentView && !!selectedSessionId}
                 onToggleLeftSidebar={toggleLeftSidebar}
                 onToggleRightSidebar={toggleRightSidebar}
-                onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                onToggleBottomPanel={() => setBottomTerminalVisible(!bottomTerminalVisible)}
                 onNew={handleNewSession}
                 onOpenSettings={() => setShowSettings(true)}
                 onOpenShortcuts={() => setShowShortcuts(true)}
@@ -1155,7 +1198,7 @@ export default function Home() {
                       <>
                         <ResizableHandle
                           direction="vertical"
-                          className={cn(!showBottomTerminal && "hidden")}
+                          className={cn(!bottomTerminalVisible && "hidden")}
                         />
                         <ResizablePanel
                           ref={bottomTerminalPanelRef}
@@ -1166,12 +1209,12 @@ export default function Home() {
                           collapsible={true}
                           collapsedSize={0}
                         >
-                          <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
+                          <div className={bottomTerminalVisible ? 'h-full' : 'h-0 overflow-hidden'}>
                             <ErrorBoundary section="Terminal">
                               <BottomTerminal
                                 sessionId={selectedSession.id}
                                 workspacePath={selectedSession.worktreePath}
-                                onHide={() => setShowBottomTerminal(false)}
+                                onHide={() => setBottomTerminalVisible(false)}
                               />
                             </ErrorBoundary>
                           </div>

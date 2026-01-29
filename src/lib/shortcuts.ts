@@ -3,7 +3,7 @@
  * Single source of truth for all keyboard shortcuts in the app.
  */
 
-export type ShortcutCategory = 'General' | 'Navigation' | 'Chat' | 'Editor' | 'Terminal';
+export type ShortcutCategory = 'General' | 'Navigation' | 'Chat' | 'Editor' | 'Terminal' | 'Tabs';
 
 export type ModifierKey = 'meta' | 'ctrl' | 'alt' | 'shift';
 
@@ -119,6 +119,99 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'Chat',
   },
 
+  // Tabs
+  {
+    id: 'newTab',
+    key: 't',
+    modifiers: ['meta'],
+    label: 'New tab',
+    category: 'Tabs',
+  },
+  {
+    id: 'closeTab',
+    key: 'w',
+    modifiers: ['meta'],
+    label: 'Close tab',
+    category: 'Tabs',
+  },
+  {
+    id: 'nextTab',
+    key: 'Tab',
+    modifiers: ['meta'],
+    label: 'Next tab',
+    category: 'Tabs',
+  },
+  {
+    id: 'prevTab',
+    key: 'Tab',
+    modifiers: ['meta', 'shift'],
+    label: 'Previous tab',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab1',
+    key: '1',
+    modifiers: ['meta'],
+    label: 'Switch to tab 1',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab2',
+    key: '2',
+    modifiers: ['meta'],
+    label: 'Switch to tab 2',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab3',
+    key: '3',
+    modifiers: ['meta'],
+    label: 'Switch to tab 3',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab4',
+    key: '4',
+    modifiers: ['meta'],
+    label: 'Switch to tab 4',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab5',
+    key: '5',
+    modifiers: ['meta'],
+    label: 'Switch to tab 5',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab6',
+    key: '6',
+    modifiers: ['meta'],
+    label: 'Switch to tab 6',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab7',
+    key: '7',
+    modifiers: ['meta'],
+    label: 'Switch to tab 7',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab8',
+    key: '8',
+    modifiers: ['meta'],
+    label: 'Switch to tab 8',
+    category: 'Tabs',
+  },
+  {
+    id: 'switchToTab9',
+    key: '9',
+    modifiers: ['meta'],
+    label: 'Switch to tab 9',
+    category: 'Tabs',
+  },
+
   // Terminal shortcuts are handled directly by xterm.js and are listed here
   // for documentation purposes only. They are not registered via useShortcut
   // since they require focus-based context that xterm handles natively.
@@ -134,6 +227,7 @@ export function getShortcutsByCategory(): Record<ShortcutCategory, Shortcut[]> {
     Chat: [],
     Editor: [],
     Terminal: [],
+    Tabs: [],
   };
 
   for (const shortcut of SHORTCUTS) {

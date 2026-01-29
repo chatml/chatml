@@ -19,6 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
+import { useTabViewStore } from '@/stores/tabViewStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -154,6 +155,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   // Track which workspaces are collapsed (persisted)
   const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, setContentView } = useSettingsStore();
+  const { createTab, setActiveTab } = useTabViewStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -319,7 +321,16 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               ? "bg-surface-2 text-foreground"
               : "hover:bg-surface-1"
           )}
-          onClick={() => setContentView({ type: 'global-dashboard' })}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey) {
+              // Cmd/Ctrl+Click: create new tab with dashboard
+              createTab({ contentView: { type: 'global-dashboard' }, label: 'Dashboard' });
+            } else {
+              // Regular click: navigate in active tab
+              setContentView({ type: 'global-dashboard' });
+            }
+          }}
+          title="Click to open, Cmd/Ctrl+Click for new tab"
         >
           <LayoutDashboard className={cn(
             "w-4 h-4",
@@ -402,24 +413,57 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         selectedSessionId={selectedSessionId}
                         onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
                         onCreateSession={() => handleCreateSession(workspace.id)}
-                        onSelectSession={(sessionId) => {
-                          selectWorkspace(workspace.id);
-                          selectSession(sessionId);
-                          setContentView({ type: 'conversation' });
+                        onSelectSession={(sessionId, e) => {
+                          if (e?.metaKey || e?.ctrlKey) {
+                            // Cmd/Ctrl+Click: create new tab with this session
+                            const session = sessions.find(s => s.id === sessionId);
+                            const tabId = createTab({
+                              contentView: { type: 'conversation' },
+                              selectedWorkspaceId: workspace.id,
+                              selectedSessionId: sessionId,
+                              label: session?.name || 'Session',
+                            });
+                            setActiveTab(tabId);
+                          } else {
+                            // Regular click: navigate in active tab
+                            selectWorkspace(workspace.id);
+                            selectSession(sessionId);
+                            setContentView({ type: 'conversation' });
+                          }
                           onSessionSelected?.();
                         }}
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
                         onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
-                        onOpenBranches={() => {
-                          selectWorkspace(workspace.id);
-                          selectSession(null);
-                          setContentView({ type: 'branches', workspaceId: workspace.id });
+                        onOpenBranches={(e) => {
+                          if (e?.metaKey || e?.ctrlKey) {
+                            // Cmd/Ctrl+Click: create new tab with branches view
+                            createTab({
+                              contentView: { type: 'branches', workspaceId: workspace.id },
+                              selectedWorkspaceId: workspace.id,
+                              label: `${workspace.name} - Branches`,
+                            });
+                          } else {
+                            // Regular click: navigate in active tab
+                            selectWorkspace(workspace.id);
+                            selectSession(null);
+                            setContentView({ type: 'branches', workspaceId: workspace.id });
+                          }
                         }}
-                        onOpenPRs={() => {
-                          selectWorkspace(workspace.id);
-                          selectSession(null);
-                          setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
+                        onOpenPRs={(e) => {
+                          if (e?.metaKey || e?.ctrlKey) {
+                            // Cmd/Ctrl+Click: create new tab with PRs view
+                            createTab({
+                              contentView: { type: 'pr-dashboard', workspaceId: workspace.id },
+                              selectedWorkspaceId: workspace.id,
+                              label: 'Pull Requests',
+                            });
+                          } else {
+                            // Regular click: navigate in active tab
+                            selectWorkspace(workspace.id);
+                            selectSession(null);
+                            setContentView({ type: 'pr-dashboard', workspaceId: workspace.id });
+                          }
                         }}
                         onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}
                         contentView={contentView}
@@ -572,12 +616,12 @@ interface SortableWorkspaceItemProps {
   contentView: ContentView;
   onToggle: () => void;
   onCreateSession: () => void;
-  onSelectSession: (sessionId: string) => void;
+  onSelectSession: (sessionId: string, e?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
   onRemoveWorkspace: () => void;
-  onOpenBranches: () => void;
-  onOpenPRs: () => void;
+  onOpenBranches: (e?: React.MouseEvent) => void;
+  onOpenPRs: (e?: React.MouseEvent) => void;
   onOpenWorkspaceSettings: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
@@ -720,7 +764,8 @@ function SortableWorkspaceItem({
                           ? "bg-surface-2 text-foreground"
                           : "hover:bg-surface-1"
                       )}
-                      onClick={onOpenBranches}
+                      onClick={(e) => onOpenBranches(e)}
+                      title="Click to open, Cmd/Ctrl+Click for new tab"
                     >
                       <GitBranch className={cn(
                         "w-3.5 h-3.5",
@@ -742,7 +787,8 @@ function SortableWorkspaceItem({
                           ? "bg-surface-2 text-foreground"
                           : "hover:bg-surface-1"
                       )}
-                      onClick={onOpenPRs}
+                      onClick={(e) => onOpenPRs(e)}
+                      title="Click to open, Cmd/Ctrl+Click for new tab"
                     >
                       <GitPullRequest className={cn(
                         "w-3.5 h-3.5",
@@ -808,7 +854,8 @@ function SortableWorkspaceItem({
                             ? 'bg-surface-2 hover:bg-surface-3'
                             : 'hover:bg-surface-1'
                         )}
-                        onClick={() => onSelectSession(session.id)}
+                        onClick={(e) => onSelectSession(session.id, e)}
+                        title="Click to open, Cmd/Ctrl+Click for new tab"
                       >
                         {/* Status indicator column */}
                         <div className="w-3.5 shrink-0 flex items-center justify-center pt-0.5">

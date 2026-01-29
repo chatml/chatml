@@ -12,7 +12,9 @@ import {
   useConversationsWithUserMessages,
   useReviewComments,
   useReviewCommentActions,
+  useActiveTabPanelState,
 } from '@/stores/selectors';
+import { useTabViewStore } from '@/stores/tabViewStore';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -51,7 +53,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { cn } from '@/lib/utils';
+import { cn, debounce } from '@/lib/utils';
 import type { FileTab, Conversation } from '@/lib/types';
 import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
@@ -117,6 +119,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Review comments for current session
   const reviewComments = useReviewComments(selectedSessionId);
   const { updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
+
+  // Tab scroll position tracking
+  const { scrollPosition: tabScrollPosition } = useActiveTabPanelState();
+  const setScrollPosition = useTabViewStore((state) => state.setScrollPosition);
 
   // Fetch initial review comments when session changes
   useEffect(() => {
@@ -395,9 +401,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return scrollHeight - scrollTop - clientHeight < 50;
   }, []);
 
+  // Debounced scroll position saver
+  const saveScrollPositionDebounced = useMemo(
+    () => debounce((position: number) => {
+      setScrollPosition(position);
+    }, 300),
+    [setScrollPosition]
+  );
+
   // Check if user has scrolled away from bottom
   const handleScroll = useCallback(() => {
     const isAtBottom = checkIsAtBottom();
+    const container = scrollContainerRef.current;
 
     // Update refs synchronously for scroll logic
     isUserScrolledRef.current = !isAtBottom;
@@ -405,7 +420,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
     // Update button visibility (React bails out if value unchanged)
     setShowScrollButton(!isAtBottom);
-  }, [checkIsAtBottom]);
+
+    // Save scroll position to tab store (debounced)
+    if (container) {
+      saveScrollPositionDebounced(container.scrollTop);
+    }
+  }, [checkIsAtBottom, saveScrollPositionDebounced]);
 
   // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
@@ -492,6 +512,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     });
   }, [selectedConversationId]);
+
+  // Restore scroll position when tab changes (tab-level persistence)
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || tabScrollPosition === undefined) return;
+
+    // Wait for content to render before restoring scroll
+    requestAnimationFrame(() => {
+      container.scrollTop = tabScrollPosition;
+    });
+  }, [tabScrollPosition]);
 
   // Listen for message submit events to force scroll to bottom
   useEffect(() => {

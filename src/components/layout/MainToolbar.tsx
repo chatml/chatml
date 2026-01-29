@@ -11,6 +11,9 @@ import { type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { useUIStore, type ToolbarSlots } from '@/stores/uiStore';
 import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
+import { TabBar } from '@/components/navigation/TabBar';
+import { useTabViewState } from '@/stores/selectors';
+import { useTabViewStore } from '@/stores/tabViewStore';
 
 /** Renders the shared leading | title | spacer | actions slot layout */
 function ToolbarRow({
@@ -91,6 +94,29 @@ export function MainToolbar({
   onOpenShortcuts,
 }: MainToolbarProps) {
   const toolbarConfig = useUIStore((s) => s.toolbarConfig);
+  const { tabs, activeTabId } = useTabViewState();
+  const { createTab, closeTab, setActiveTab, reorderTabs } = useTabViewStore();
+
+  // Show tabs in title slot when tabs exist
+  const showTabBar = tabs.length > 0;
+
+  // If showing tabs, override the title slot
+  const effectiveSlots: ToolbarSlots = showTabBar
+    ? {
+        ...toolbarConfig,
+        title: (
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabClick={setActiveTab}
+            onTabClose={closeTab}
+            onNewTab={() => createTab()}
+            onTabReorder={reorderTabs}
+          />
+        ),
+        titlePosition: 'left',
+      }
+    : (toolbarConfig ?? {});
 
   return (
     <div className="shrink-0">
@@ -102,7 +128,7 @@ export function MainToolbar({
         )}
       >
         <ToolbarRow
-          slots={toolbarConfig ?? {}}
+          slots={effectiveSlots}
           className="h-full"
           trailing={
             <>
