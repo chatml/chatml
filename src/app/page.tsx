@@ -39,6 +39,7 @@ import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
+import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
 // import { UpdateChecker } from '@/components/shared/UpdateChecker';
 import { BackendStatus } from '@/components/shared/BackendStatus';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -1281,6 +1282,9 @@ export default function Home() {
           workspaceId={selectedWorkspaceId}
           sessionId={selectedSessionId}
         />
+
+        {/* Workspace Search (Cmd+Shift+F) */}
+        <WorkspaceSearch />
 
         {/* Keyboard Shortcuts Dialog (Cmd+/) */}
         <KeyboardShortcutsDialog

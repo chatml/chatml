@@ -60,6 +60,13 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Open file picker',
     category: 'Navigation',
   },
+  {
+    id: 'workspaceSearch',
+    key: 'f',
+    modifiers: ['meta', 'shift'],
+    label: 'Search workspaces',
+    category: 'Navigation',
+  },
 
   // Chat
   {
