@@ -42,19 +42,20 @@
 
 :root {
   /* Typography Scale (Cursor-inspired compact sizing) */
-  --text-display-lg: 32px;   /* Was 38px */
-  --text-display: 26px;      /* Was 32px */
-  --text-display-sm: 22px;   /* Was 26px */
-  --text-xl: 18px;           /* Was 22px */
-  --text-lg: 16px;           /* Was 19px */
-  --text-base: 13px;         /* Body text, standard UI */
-  --text-sm: 12px;           /* Small text, secondary info */
-  --text-xs: 11px;           /* Was 13px */
-  --text-micro: 10px;        /* Was 12px */
+  --font-size-display-lg: 32px;
+  --font-size-display: 26px;
+  --font-size-display-sm: 22px;
+  --font-size-xl: 18px;
+  --font-size-lg: 16px;
+  --font-size-md: 14px;
+  --font-size-base: 13px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+  --font-size-micro: 10px;
 
   /* Semantic Typography */
-  --text-menu: var(--text-sm);        /* Menu items, dropdowns, context menus */
-  --text-menu-label: var(--text-xs);  /* Menu section labels */
+  --font-size-menu: var(--font-size-sm);        /* Menu items, dropdowns, context menus */
+  --font-size-menu-label: var(--font-size-xs);  /* Menu section labels */
 
   /* Menu Colors */
   --menu-hover: oklch(0.94 0.02 280); /* Light mode menu hover */
@@ -253,7 +254,24 @@
   --color-text-warning: var(--text-warning);
   --color-text-info: var(--text-info);
 
-  /* Typography */
+  /* Typography — font sizes mapped to design tokens */
+  /* Display sizes include line-height */
+  --text-display-lg: var(--font-size-display-lg) / 1.1;
+  --text-display: var(--font-size-display) / 1.2;
+  --text-display-sm: var(--font-size-display-sm) / 1.25;
+  /* Standard sizes */
+  --text-xl: var(--font-size-xl);
+  --text-lg: var(--font-size-lg);
+  --text-md: var(--font-size-md);
+  --text-base: var(--font-size-base);
+  --text-sm: var(--font-size-sm);
+  --text-xs: var(--font-size-xs);
+  --text-micro: var(--font-size-micro);
+  /* Semantic aliases */
+  --text-menu: var(--font-size-menu);
+  --text-menu-label: var(--font-size-menu-label);
+
+  /* Typography — font families */
   --font-family-display: var(--font-display);
   --font-family-sans: var(--font-sans);
   --font-family-mono: var(--font-mono);
@@ -288,24 +306,6 @@
 .font-display {
   font-family: var(--font-display);
   letter-spacing: var(--tracking-display);
-}
-
-.text-display-lg {
-  font-size: var(--text-display-lg);
-  line-height: 1.1;
-  letter-spacing: var(--tracking-display);
-}
-
-.text-display {
-  font-size: var(--text-display);
-  line-height: 1.2;
-  letter-spacing: var(--tracking-display);
-}
-
-.text-display-sm {
-  font-size: var(--text-display-sm);
-  line-height: 1.25;
-  letter-spacing: var(--tracking-tight);
 }
 
 .tracking-display {

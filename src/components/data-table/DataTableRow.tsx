@@ -104,7 +104,7 @@ function DataTableRowComponent<T>(
       data-focused={isFocused || undefined}
       className={cn(
         'group cursor-pointer transition-colors',
-        showSeparator && 'border-b border-border/20',
+        showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'
@@ -236,7 +236,7 @@ export function DataTableSimpleRow<T>({
       data-focused={isFocused || undefined}
       className={cn(
         'group cursor-pointer transition-colors',
-        showSeparator && 'border-b border-border/20',
+        showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
         isSelected && 'bg-primary/15 hover:bg-primary/20',
         isFocused && 'bg-white/[0.02]'

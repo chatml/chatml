@@ -348,7 +348,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
             contentView.type === 'global-dashboard' ? "text-blue-400" : "text-blue-400/70"
           )} />
           <span className={cn(
-            "text-[length:var(--text-base)] font-medium",
+            "text-base font-medium",
             contentView.type === 'global-dashboard'
               ? "text-foreground"
               : "text-muted-foreground group-hover:text-foreground"
@@ -663,7 +663,7 @@ function SortableWorkspaceItem({
                 style={{ backgroundColor: getWorkspaceColor(workspace.id) }}
               />
             </div>
-            <span className="text-[length:var(--text-base)] font-semibold truncate">
+            <span className="text-base font-semibold truncate">
               {workspace.name}
             </span>
             <ChevronDown
@@ -749,7 +749,7 @@ function SortableWorkspaceItem({
                         isBranchesSelected ? "text-green-400" : "text-green-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-base)] font-medium",
+                        "text-base font-medium",
                         isBranchesSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -771,7 +771,7 @@ function SortableWorkspaceItem({
                         isPRsSelected ? "text-violet-400" : "text-violet-400/70"
                       )} />
                       <span className={cn(
-                        "text-[length:var(--text-base)] font-medium",
+                        "text-base font-medium",
                         isPRsSelected
                           ? "text-foreground"
                           : "text-muted-foreground group-hover:text-foreground"
@@ -791,7 +791,7 @@ function SortableWorkspaceItem({
 
             {/* Sessions */}
             {sessions.length === 0 ? (
-              <div className="py-2 px-2 text-[length:var(--text-micro)] text-muted-foreground/70">
+              <div className="py-2 px-2 text-micro text-muted-foreground/70">
                 No active sessions
               </div>
             ) : (
@@ -856,7 +856,7 @@ function SortableWorkspaceItem({
                             {/* Branch name container - grows and truncates */}
                             <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
                               <span className={cn(
-                                "text-[length:var(--text-base)] font-normal truncate flex-1 w-0",
+                                "text-base font-normal truncate flex-1 w-0",
                                 isSessionSelected ? "text-foreground" : "text-foreground/60"
                               )}>
                                 {session.branch || session.name}
@@ -870,7 +870,7 @@ function SortableWorkspaceItem({
                             <div className="relative shrink-0 flex items-center">
                               {/* Stats - fade out on hover */}
                               {hasStats && (
-                                <span className="text-[length:var(--text-micro)] px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                                <span className="text-micro px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                                   <span className="text-text-success">+{session.stats!.additions}</span>
                                   <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                                 </span>
@@ -902,7 +902,7 @@ function SortableWorkspaceItem({
                             </div>
                           </div>
                           {/* Second line: session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-0.5 text-[length:var(--text-sm)] text-muted-foreground">
+                          <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>

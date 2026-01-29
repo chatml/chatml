@@ -76,7 +76,7 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
     <div className="flex items-center gap-2 min-w-0">
       <span
         className={cn(
-          'font-medium truncate min-w-0',
+          'font-medium truncate min-w-0 text-md',
           isRemote && 'text-muted-foreground'
         )}
         title={displayName}
