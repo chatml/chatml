@@ -53,6 +53,7 @@ type PRWatcher struct {
 	ghClient    *github.Client
 	repoManager PRWatcherRepoManager
 	store       PRWatcherStore
+	prCache     *github.PRCache // Shared cache with ListPRs handler
 	onChange    func(PRChangeEvent)
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -63,6 +64,7 @@ func NewPRWatcher(
 	ghClient *github.Client,
 	repoManager PRWatcherRepoManager,
 	store PRWatcherStore,
+	prCache *github.PRCache,
 	onChange func(PRChangeEvent),
 ) *PRWatcher {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,6 +73,7 @@ func NewPRWatcher(
 		ghClient:    ghClient,
 		repoManager: repoManager,
 		store:       store,
+		prCache:     prCache,
 		onChange:    onChange,
 		ctx:         ctx,
 		cancel:      cancel,
@@ -220,7 +223,8 @@ func (w *PRWatcher) groupSessionsByRepo(filter func(*PRWatchEntry) bool) map[rep
 	return result
 }
 
-// checkRepoSessions checks PR status for sessions grouped by repo
+// checkRepoSessions checks PR status for sessions grouped by repo.
+// Uses the shared PR cache to avoid redundant GitHub API calls.
 func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) {
 	for key, entries := range repoSessions {
 		// Check context cancellation
@@ -228,11 +232,29 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 			return
 		}
 
-		// Get open PRs for this repo (one API call per repo)
-		openPRs, err := w.ghClient.ListOpenPRs(w.ctx, key.owner, key.repo)
-		if err != nil {
-			logger.PRWatcher.Errorf("Failed to list PRs for %s/%s: %v", key.owner, key.repo, err)
-			continue
+		// Try the shared cache first
+		var openPRs []github.PRListItem
+		if w.prCache != nil {
+			cached, ok := w.prCache.Get(key.owner, key.repo)
+			if ok {
+				openPRs = cached
+			}
+		}
+
+		// Cache miss -- fetch from GitHub and populate shared cache.
+		// NOTE: This stores PRs without details or ETag. If the HTTP handler
+		// hits this entry while fresh, it will serve PRs with unknown check status
+		// until the next background refresh cycle populates details.
+		if openPRs == nil {
+			var err error
+			openPRs, err = w.ghClient.ListOpenPRs(w.ctx, key.owner, key.repo)
+			if err != nil {
+				logger.PRWatcher.Errorf("Failed to list PRs for %s/%s: %v", key.owner, key.repo, err)
+				continue
+			}
+			if w.prCache != nil {
+				w.prCache.Set(key.owner, key.repo, openPRs)
+			}
 		}
 
 		// Build branch -> PR map for quick lookup
@@ -265,9 +287,19 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 		prNumber = pr.Number
 		prUrl = pr.HTMLURL
 
-		// Get detailed PR info for CI status and mergeable state
-		details, err := w.ghClient.GetPRDetails(w.ctx, owner, repo, pr.Number)
-		if err == nil && details != nil {
+		// Try cached details first, then fetch from GitHub
+		var details *github.PRDetails
+		if w.prCache != nil {
+			details, _ = w.prCache.GetDetails(owner, repo, pr.Number)
+		}
+		if details == nil {
+			var err error
+			details, err = w.ghClient.GetPRDetails(w.ctx, owner, repo, pr.Number)
+			if err == nil && details != nil && w.prCache != nil {
+				w.prCache.SetDetails(owner, repo, map[int]*github.PRDetails{pr.Number: details})
+			}
+		}
+		if details != nil {
 			checkStatus = string(details.CheckStatus)
 			mergeable = details.Mergeable
 		}

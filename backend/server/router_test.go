@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/chatml/chatml-backend/agent"
 	gitpkg "github.com/chatml/chatml-backend/git"
@@ -31,9 +32,11 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	wm := gitpkg.NewWorktreeManager()
 	agentMgr := agent.NewManager(context.Background(), s, wm)
 	ghClient := github.NewClient("", "")
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	t.Cleanup(func() { prCache.Close() })
 
 	// Create router without orchestrator, branch watcher, pr watcher, or stats cache
-	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil, nil, nil)
+	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil, nil, prCache, nil)
 
 	return router, s
 }

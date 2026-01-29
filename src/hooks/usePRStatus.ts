@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getPRStatus, type PRDetails } from '@/lib/api';
 
-const PR_STATUS_POLL_INTERVAL_MS = 60000; // 60 seconds
+const PR_STATUS_FALLBACK_POLL_MS = 300000; // 5 minutes (fallback, WebSocket is primary)
 
 interface UsePRStatusResult {
   prDetails: PRDetails | null;
@@ -80,13 +80,13 @@ export function usePRStatus(
     };
   }, [fetchStatus, prStatus]);
 
-  // Periodic polling only when PR is open
+  // Slow fallback poll when PR is open (WebSocket is the primary update mechanism)
   useEffect(() => {
     if (!workspaceId || !sessionId || prStatus !== 'open') return;
 
     const interval = setInterval(() => {
       fetchStatus();
-    }, PR_STATUS_POLL_INTERVAL_MS);
+    }, PR_STATUS_FALLBACK_POLL_MS);
 
     return () => clearInterval(interval);
   }, [workspaceId, sessionId, prStatus, fetchStatus]);
