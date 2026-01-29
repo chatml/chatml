@@ -99,7 +99,7 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
       )}
 
       {hasSession && branch.sessionName && (
-        <span className="text-sm text-purple-400 truncate max-w-[80px] whitespace-nowrap" title={branch.sessionName}>
+        <span className="text-sm text-purple-400 truncate whitespace-nowrap" title={branch.sessionName}>
           {branch.sessionName}
         </span>
       )}
@@ -474,7 +474,7 @@ export function BranchesDashboard({
     ],
     sortingOptions: [
       { value: 'name', label: 'Name' },
-      { value: 'lastCommitDate', label: 'Last updated' },
+      { value: 'updated', label: 'Last updated' },
       { value: 'lastAuthor', label: 'Author' },
     ],
     toggleableColumns: [
@@ -535,7 +535,7 @@ export function BranchesDashboard({
                 defaultCollapsed: ['origin'],
                 getLabel: (key) => key === '' ? '(None)' : key,
               }}
-              sortBy={{ column: 'lastCommitDate', direction: 'desc' }}
+              sortBy={{ column: 'updated', direction: 'desc' }}
               onRowClick={handleRowClick}
               onRowContextMenu={getBranchContextMenu}
               filterOptions={filterOptions}

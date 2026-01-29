@@ -144,7 +144,7 @@ function DataTableRowComponent<T>(
         <TableCell
           key={column.id}
           className={cn(
-            'py-0 px-2',
+            'py-0 px-3',
             // Reduce left padding on first column when checkbox is present
             selectable && index === 0 && 'pl-1',
             // Add extra right padding on last column
@@ -270,7 +270,7 @@ export function DataTableSimpleRow<T>({
         <TableCell
           key={column.id}
           className={cn(
-            'py-0 px-2',
+            'py-0 px-3',
             // Reduce left padding on first column when checkbox is present
             selectable && index === 0 && 'pl-1',
             // Add extra right padding on last column

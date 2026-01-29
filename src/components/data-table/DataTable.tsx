@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { DataTableRow } from './DataTableRow';
 import { DataTableGroup } from './DataTableGroup';
@@ -400,7 +401,7 @@ export function DataTable<T>({
     <div ref={containerRef} className={cn('flex flex-col h-full', className)}>
       {/* Toolbar — fixed at top */}
       {(filterOptions.length > 0 || displayOptionsConfig || searchPlaceholder) && (
-        <div className="shrink-0 pt-3 px-0">
+        <div className="shrink-0 pt-3 pl-9 pr-2">
         <DataTableToolbar
           filters={filters}
           onFilterChange={setFilters}
@@ -457,44 +458,37 @@ export function DataTable<T>({
                 <TableHead
                   key={column.id}
                   className={cn(
-                    'text-sm font-medium text-foreground/70 h-9',
+                    'text-sm font-medium text-foreground/70 h-8',
                     column.align === 'center' && 'text-center',
                     column.align === 'right' && 'text-right',
-                    column.sortable && 'cursor-pointer hover:text-foreground select-none'
                   )}
                   style={{
                     width: column.width,
                     minWidth: column.minWidth,
                   }}
-                  onClick={() => {
-                    if (column.sortable) {
-                      const currentSort = displayOptions.sortBy;
-                      if (currentSort?.column === column.id) {
-                        if (currentSort.direction === 'asc') {
-                          handleDisplayChange({
-                            ...displayOptions,
-                            sortBy: { column: column.id, direction: 'desc' },
-                          });
-                        } else {
-                          handleDisplayChange({ ...displayOptions, sortBy: null });
-                        }
-                      } else {
+                >
+                  {column.sortable ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-2 h-7 gap-1 text-sm font-medium text-foreground/70 hover:text-foreground"
+                      onClick={() => {
+                        const isCurrentColumn = sortConfig?.column === column.id;
+                        const isAsc = isCurrentColumn && sortConfig?.direction === 'asc';
                         handleDisplayChange({
                           ...displayOptions,
-                          sortBy: { column: column.id, direction: 'asc' },
+                          sortBy: { column: column.id, direction: isAsc ? 'desc' : 'asc' },
                         });
-                      }
-                    }
-                  }}
-                >
-                  <span className="flex items-center gap-1">
-                    {column.header}
-                    {column.sortable && displayOptions.sortBy?.column === column.id && (
-                      <span className="text-foreground">
-                        {displayOptions.sortBy.direction === 'asc' ? '↑' : '↓'}
-                      </span>
-                    )}
-                  </span>
+                      }}
+                    >
+                      {column.header}
+                      {sortConfig?.column === column.id && (
+                        <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </Button>
+                  ) : (
+                    column.header
+                  )}
                 </TableHead>
               ))}
             </TableRow>
@@ -503,7 +497,7 @@ export function DataTable<T>({
         </div>
 
         {/* Table body — scrollable */}
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto scrollbar-thin">
         <Table className="table-fixed">
           {colGroup}
           <TableBody>
