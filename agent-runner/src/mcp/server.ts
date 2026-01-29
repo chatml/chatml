@@ -9,11 +9,11 @@ export interface McpServerOptions {
   context: WorkspaceContext;
 }
 
-export function createConductorMcpServer(options: McpServerOptions) {
+export function createChatMLMcpServer(options: McpServerOptions) {
   const { context } = options;
 
   return createSdkMcpServer({
-    name: "conductor",
+    name: "chatml",
     version: "1.0.0",
     tools: [
       // Session status tool

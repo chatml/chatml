@@ -205,11 +205,11 @@ export interface McpServerOptions {
   context: WorkspaceContext;
 }
 
-export function createConductorMcpServer(options: McpServerOptions) {
+export function createChatMLMcpServer(options: McpServerOptions) {
   const { context } = options;
 
   return createSdkMcpServer({
-    name: "conductor",
+    name: "chatml",
     version: "1.0.0",
     tools: [
       // Session status tool
@@ -329,7 +329,7 @@ Find line with existing imports and add:
 
 ```typescript
 import { WorkspaceContext } from "./mcp/context.js";
-import { createConductorMcpServer } from "./mcp/server.js";
+import { createChatMLMcpServer } from "./mcp/server.js";
 ```
 
 **Step 2: Parse new CLI arguments (after line ~37)**
@@ -365,8 +365,8 @@ const workspaceContext = new WorkspaceContext({
   linearIssue,
 });
 
-// Create conductor MCP server
-const conductorMcp = createConductorMcpServer({ context: workspaceContext });
+// Create ChatML MCP server
+const chatmlMcp = createChatMLMcpServer({ context: workspaceContext });
 ```
 
 **Step 4: Add mcpServers to query options**
@@ -380,7 +380,7 @@ options: {
 
 Add inside options object:
 ```typescript
-mcpServers: [conductorMcp],
+mcpServers: [chatmlMcp],
 ```
 
 **Step 5: Build and verify**
@@ -392,7 +392,7 @@ Expected: Compilation succeeds
 
 ```bash
 git add agent-runner/src/index.ts
-git commit -m "feat(mcp): wire conductor MCP server into agent runner"
+git commit -m "feat(mcp): wire chatml MCP server into agent runner"
 ```
 
 ---
@@ -870,7 +870,7 @@ npm run build
 **Step 2: Run the app and verify**
 
 1. Start the app
-2. Start a conversation - verify "conductor" MCP server appears in status
+2. Start a conversation - verify "chatml" MCP server appears in status
 3. Ask agent to use `get_session_status` tool
 4. Check MCP Servers tab shows server status
 
@@ -885,7 +885,7 @@ git commit -m "feat: complete Phase 4 MCP & Custom Tools implementation"
 
 ## Verification Checklist
 
-- [ ] `conductor` MCP server connects when agent starts
+- [ ] `chatml` MCP server connects when agent starts
 - [ ] `get_session_status` returns correct git state
 - [ ] `get_workspace_diff` returns diff summary
 - [ ] `get_recent_activity` returns commit history

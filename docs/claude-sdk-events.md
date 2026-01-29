@@ -71,7 +71,7 @@ const result = await query(
     systemPrompts: { preset: "claude_code" },
     resume: resumeSessionId,
     forkSession: forkSession && !!resumeSessionId,
-    mcpServers: { conductor: conductorMcp },
+    mcpServers: { chatml: chatmlMcp },
     maxBudgetUsd: maxBudgetUsd,
     maxTurns: maxTurns,
     maxThinkingTokens: maxThinkingTokens,
@@ -214,7 +214,7 @@ interface OutputEvent {
   model: "claude-sonnet-4-20250514",
   tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", ...],
   mcpServers: [
-    { name: "conductor", status: "connected", tools: [...] }
+    { name: "chatml", status: "connected", tools: [...] }
   ],
   slashCommands: ["/commit", "/review-pr", ...],
   skills: ["test-driven-development", "systematic-debugging", ...],
