@@ -381,9 +381,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Auto-scroll management
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const isUserScrolledRef = useRef(false);
   const wasAtBottomRef = useRef(true); // Track if we were at bottom before content changes
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const scrollRAFRef = useRef<number | null>(null);
 
   // Check if currently at bottom (utility function)
   const checkIsAtBottom = useCallback(() => {
@@ -404,22 +406,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // Update button visibility (React bails out if value unchanged)
     setShowScrollButton(!isAtBottom);
   }, [checkIsAtBottom]);
-
-  // Auto-scroll to bottom when new content arrives (only if user hasn't scrolled away)
-  const scrollToBottom = useCallback(() => {
-    // Don't scroll if user has explicitly scrolled away
-    if (isUserScrolledRef.current) return;
-
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    // Use requestAnimationFrame for smoother scrolling
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-      // Update wasAtBottomRef after scrolling
-      wasAtBottomRef.current = true;
-    });
-  }, []);
 
   // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
@@ -448,10 +434,40 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [selectedConversationId, streamingState]
   );
 
-  // Auto-scroll when content changes - but only if we were at the bottom
+  // ResizeObserver-based auto-scroll - responds to actual DOM changes, not React state
+  // This is more reliable for streaming because it catches all content changes
+  // regardless of React's state batching
   useEffect(() => {
-    // Check if we were at bottom before this render
-    // wasAtBottomRef is updated by handleScroll and tracks our position
+    const content = contentRef.current;
+    const container = scrollContainerRef.current;
+    if (!content || !container) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Only scroll if user hasn't manually scrolled away
+      if (!isUserScrolledRef.current && wasAtBottomRef.current) {
+        // Debounce with RAF to avoid excessive scrolling
+        if (scrollRAFRef.current) {
+          cancelAnimationFrame(scrollRAFRef.current);
+        }
+        scrollRAFRef.current = requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+          scrollRAFRef.current = null;
+        });
+      }
+    });
+
+    resizeObserver.observe(content);
+
+    return () => {
+      resizeObserver.disconnect();
+      if (scrollRAFRef.current) {
+        cancelAnimationFrame(scrollRAFRef.current);
+      }
+    };
+  }, [selectedConversationId]); // Re-create observer when conversation changes
+
+  // Fallback: Also scroll on state changes for cases where ResizeObserver might miss
+  useEffect(() => {
     if (wasAtBottomRef.current && !isUserScrolledRef.current) {
       const container = scrollContainerRef.current;
       if (container) {
@@ -955,7 +971,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               onScroll={handleScroll}
               className="h-full overflow-auto"
             >
-              <div className="pt-3 pl-5 pr-12 pb-10 space-y-1">
+              <div ref={contentRef} className="pt-3 pl-5 pr-12 pb-10 space-y-1">
               {conversationMessages.length === 0 && !selectedConversationId ? (
                 <ConversationEmptyState sessionName={currentSession?.name} />
               ) : (
