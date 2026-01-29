@@ -27,7 +27,7 @@ agent-runner/src/mcp/
 ```
 agent-runner process
 ├── query() with mcpServers config
-│   └── "conductor": createSdkMcpServer()
+│   └── "chatml": createSdkMcpServer()
 │       ├── Tools registered via tool()
 │       └── Shared WorkspaceContext
 └── MCP status events emitted to frontend
@@ -166,7 +166,7 @@ New **MCP Servers** tab in the right sidebar bottom section (alongside Setup/Run
 ┌─────────────────────────────┐
 │ [Setup] [Run] [MCP Servers] │
 ├─────────────────────────────┤
-│ 🟢 conductor     connected  │
+│ 🟢 chatml        connected  │
 │ 🟢 linear        connected  │
 │ 🟡 github        needs-auth │
 │ 🔴 postgres      failed     │
@@ -221,7 +221,7 @@ New **MCP Servers** tab in the right sidebar bottom section (alongside Setup/Run
 
 ## Verification
 
-- Start agent and verify `conductor` MCP server connects
+- Start agent and verify `chatml` MCP server connects
 - Test workspace tools return correct session/git state
 - Test Linear tools create branches and update issues
 - Verify MCP status displays in right sidebar
