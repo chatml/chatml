@@ -21,7 +21,7 @@ import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
 import { SettingsPage } from '@/components/settings/SettingsPage';
-import { TopBar } from '@/components/navigation/TopBar';
+import { SessionToolbarContent } from '@/components/navigation/SessionToolbarContent';
 import { ConversationArea } from '@/components/conversation/ConversationArea';
 import { ChatInput } from '@/components/conversation/ChatInput';
 import { ChangesPanel } from '@/components/panels/ChangesPanel';
@@ -1140,10 +1140,7 @@ export default function Home() {
                     <ResizablePanel id="conversation" minSize={20}>
                       {selectedSessionId ? (
                         <div className="flex flex-col h-full">
-                          <TopBar
-                            showLeftSidebar={!leftSidebarCollapsed || zenMode}
-                            onToggleLeftSidebar={toggleLeftSidebar}
-                          />
+                          <SessionToolbarContent />
                           <ErrorBoundary section="Conversation">
                             <ConversationArea>
                               <ChatInput />
