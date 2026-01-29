@@ -185,6 +185,7 @@ export function DataTable<T>({
   searchPlaceholder,
   searchValue: controlledSearchValue,
   onSearchChange,
+  onDisplayOptionsChange,
   className,
   toolbarLeftContent,
 }: DataTableProps<T>) {
@@ -197,13 +198,22 @@ export function DataTable<T>({
   const [internalSearchValue, setInternalSearchValue] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
-  const [displayOptions, setDisplayOptions] = useState<DisplayOptions>({
-    // '__none__' means no grouping (flat list), null means use prop-based grouping
-    // Use null (prop-based) when a groupBy prop is provided, otherwise no grouping
-    groupBy: groupBy ? null : '__none__',
-    sortBy: initialSortBy ?? null,
-    visibleColumns: new Set(columns.filter((c) => !c.hidden).map((c) => c.id)),
-    showEmptyGroups: groupBy?.showEmpty ?? false,
+  const [displayOptions, setDisplayOptions] = useState<DisplayOptions>(() => {
+    const customToggles: Record<string, boolean> = {};
+    if (displayOptionsConfig?.listOptions) {
+      for (const opt of displayOptionsConfig.listOptions) {
+        customToggles[opt.id] = opt.defaultValue;
+      }
+    }
+    return {
+      // '__none__' means no grouping (flat list), null means use prop-based grouping
+      // Use null (prop-based) when a groupBy prop is provided, otherwise no grouping
+      groupBy: groupBy ? null : '__none__',
+      sortBy: initialSortBy ?? null,
+      visibleColumns: new Set(columns.filter((c) => !c.hidden).map((c) => c.id)),
+      showEmptyGroups: groupBy?.showEmpty ?? false,
+      customToggles,
+    };
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -346,7 +356,8 @@ export function DataTable<T>({
     if (newOptions.sortBy !== displayOptions.sortBy) {
       setInternalSortBy(newOptions.sortBy);
     }
-  }, [displayOptions.sortBy]);
+    onDisplayOptionsChange?.(newOptions);
+  }, [displayOptions.sortBy, onDisplayOptionsChange]);
 
   // Get visible columns
   const visibleColumns = useMemo(

@@ -97,6 +97,17 @@ export function DataTableDisplay({
     onChange({ ...options, showEmptyGroups: !options.showEmptyGroups });
   };
 
+  // Toggle custom list option
+  const toggleCustomOption = (id: string) => {
+    onChange({
+      ...options,
+      customToggles: {
+        ...options.customToggles,
+        [id]: !options.customToggles[id],
+      },
+    });
+  };
+
   return (
     <Popover open={controlledOpen} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -204,6 +215,16 @@ export function DataTableDisplay({
               className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-surface-2"
             />
           </div>
+          {config.listOptions?.map((opt) => (
+            <div key={opt.id} className="flex items-center justify-between">
+              <span className="text-[13px] text-foreground">{opt.label}</span>
+              <Switch
+                checked={options.customToggles[opt.id] ?? opt.defaultValue}
+                onCheckedChange={() => toggleCustomOption(opt.id)}
+                className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-surface-2"
+              />
+            </div>
+          ))}
         </div>
 
         {/* Display properties (columns) */}

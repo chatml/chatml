@@ -26,7 +26,8 @@ import { ConversationArea } from '@/components/conversation/ConversationArea';
 import { ChatInput } from '@/components/conversation/ChatInput';
 import { ChangesPanel } from '@/components/panels/ChangesPanel';
 import { BottomTerminal } from '@/components/layout/BottomTerminal';
-import { MainToolbar } from '@/components/layout/MainToolbar';
+import { MainToolbar, ContentActionBar } from '@/components/layout/MainToolbar';
+import { SidebarToolbar } from '@/components/layout/SidebarToolbar';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
@@ -341,12 +342,9 @@ export default function Home() {
     if (!el) return;
 
     const observer = new ResizeObserver(() => {
-      // Use offsetWidth to include padding/borders, but 0 when collapsed
       setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
     });
     observer.observe(el);
-
-    // Initial measurement
     setSidebarWidth(leftSidebarCollapsed ? 0 : el.offsetWidth);
 
     return () => observer.disconnect();
@@ -1014,7 +1012,9 @@ export default function Home() {
             onResize={(size) => setLeftSidebarCollapsed(size.asPercentage === 0)}
             className={cn(zenMode && "hidden")}
           >
-            <div ref={leftSidebarDomRef} className="h-full">
+            <div ref={leftSidebarDomRef} className="h-full flex flex-col">
+              <SidebarToolbar />
+              <div className="flex-1 min-h-0">
               <ErrorBoundary section="Sidebar">
                 <WorkspaceSidebar
                   onOpenProject={handleOpenProject}
@@ -1028,18 +1028,22 @@ export default function Home() {
 
                 />
               </ErrorBoundary>
+              </div>
             </div>
           </ResizablePanel>
 
           <ResizableHandle
             direction="horizontal"
-            className={cn((leftSidebarCollapsed || zenMode) && "hidden")}
+            className={cn(
+              "after:bg-transparent",
+              (leftSidebarCollapsed || zenMode) && "hidden"
+            )}
           />
 
           {/* Main Content - Full content views OR inner horizontal split */}
-          <ResizablePanel id="main-content" defaultSize={78} minSize={30}>
+          <ResizablePanel id="main-content" defaultSize={78} minSize={30} className="!overflow-visible">
             <div className="flex flex-col h-full">
-              {/* Main Toolbar - always visible at top of main content */}
+              {/* Main Toolbar — sits above the content area */}
               <MainToolbar
                 showLeftSidebar={!leftSidebarCollapsed}
                 showRightSidebar={!rightSidebarCollapsed}
@@ -1048,9 +1052,18 @@ export default function Home() {
                 onToggleLeftSidebar={toggleLeftSidebar}
                 onToggleRightSidebar={toggleRightSidebar}
                 onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                onNew={handleNewSession}
                 onOpenSettings={() => setShowSettings(true)}
                 onOpenShortcuts={() => setShowShortcuts(true)}
               />
+
+              {/* Main content area with border + rounded corner */}
+              <div className={cn(
+                "flex flex-col flex-1 min-h-0 border-t overflow-hidden",
+                !leftSidebarCollapsed && !zenMode && "border-l rounded-tl-lg shadow-[-2px_0_8px_rgba(0,0,0,0.1)]"
+              )}>
+              {/* Action bar — context-aware bar at top of main content */}
+              <ContentActionBar />
 
               {/* Content Area */}
               <div className="flex-1 min-h-0">
@@ -1077,9 +1090,6 @@ export default function Home() {
                 {contentView.type === 'branches' && (
                   <BranchesDashboard
                     workspaceId={contentView.workspaceId}
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
                 {contentView.type === 'repositories' && (
@@ -1209,6 +1219,7 @@ export default function Home() {
                 </ResizablePanel>
               </ResizablePanelGroup>
                 )}
+              </div>
               </div>
             </div>
           </ResizablePanel>

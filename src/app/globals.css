@@ -4,6 +4,7 @@
 
 @plugin "@tailwindcss/typography";
 
+
 /* MesloLGS NF - Nerd Font for terminal (SIL Open Font License) */
 @font-face {
   font-family: 'MesloLGS NF';

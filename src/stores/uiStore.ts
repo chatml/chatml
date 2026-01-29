@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react';
 import { create } from 'zustand';
 
 // Default toolbar background - regular dark background
@@ -11,14 +12,36 @@ interface ToolbarBackgrounds {
   right: string;
 }
 
+/** Shared slot layout for toolbar rows (leading | title | spacer | actions) */
+export interface ToolbarSlots {
+  /** Widget on the far left (e.g. back button, icon) */
+  leading?: ReactNode;
+  /** Primary content — rendered according to titlePosition */
+  title?: ReactNode;
+  /** Where to place the title: 'left' (default) or 'center' */
+  titlePosition?: 'left' | 'center';
+  /** Widgets on the right side */
+  actions?: ReactNode;
+}
+
+/** Flutter AppBar-style toolbar configuration */
+export interface ToolbarConfig extends ToolbarSlots {
+  /** Action bar below the main toolbar — same slot layout */
+  bottom?: ToolbarSlots;
+}
+
 interface UIState {
   // Toolbar backgrounds
   toolbarBackgrounds: ToolbarBackgrounds;
+
+  // Dynamic toolbar configuration (Flutter AppBar-style)
+  toolbarConfig: ToolbarConfig | null;
 
   // Actions
   setToolbarBackground: (toolbar: ToolbarId, className: string) => void;
   setAllToolbarBackgrounds: (className: string) => void;
   resetToolbarBackgrounds: () => void;
+  setToolbarConfig: (config: ToolbarConfig | null) => void;
 }
 
 const defaultBackgrounds: ToolbarBackgrounds = {
@@ -29,6 +52,7 @@ const defaultBackgrounds: ToolbarBackgrounds = {
 
 export const useUIStore = create<UIState>()((set) => ({
   toolbarBackgrounds: { ...defaultBackgrounds },
+  toolbarConfig: null,
 
   setToolbarBackground: (toolbar, className) =>
     set((state) => ({
@@ -51,4 +75,6 @@ export const useUIStore = create<UIState>()((set) => ({
     set(() => ({
       toolbarBackgrounds: { ...defaultBackgrounds },
     })),
+
+  setToolbarConfig: (config) => set({ toolbarConfig: config }),
 }));

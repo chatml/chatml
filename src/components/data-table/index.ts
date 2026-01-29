@@ -25,6 +25,7 @@ export type {
   DataTableProps,
   FilterOption,
   DisplayOptionsConfig,
+  ListOptionToggle,
   GroupData,
   DataTableState,
   DataTableRowProps,

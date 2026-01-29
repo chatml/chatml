@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
-import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
+import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
+import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig, type DisplayOptions } from '@/components/data-table';
 import { listBranches, type BranchDTO, type BranchListResponse } from '@/lib/api';
 import { useAvatars } from '@/hooks/useAvatars';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,6 @@ import {
   Loader2,
   GitBranch,
   ChevronRight,
-  Folder,
   Check,
   ArrowRight,
   Copy,
@@ -24,9 +24,6 @@ import { cn } from '@/lib/utils';
 
 interface BranchesDashboardProps {
   workspaceId: string;
-  onOpenSettings?: () => void;
-  onOpenShortcuts?: () => void;
-  showLeftSidebar?: boolean;
 }
 
 // Format time ago helper
@@ -202,21 +199,36 @@ function getBranchGroupKey(branch: BranchDTO): string {
   return branch.prefix || '(None)';
 }
 
+// Workspace color palette (shared with WorkspaceCell, WorkspaceSidebar, etc.)
+const WORKSPACE_COLORS = [
+  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
+  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+];
+
+function getWorkspaceColor(workspaceId: string): string {
+  let hash = 0;
+  for (let i = 0; i < workspaceId.length; i++) {
+    hash = ((hash << 5) - hash) + workspaceId.charCodeAt(i);
+    hash |= 0;
+  }
+  return WORKSPACE_COLORS[Math.abs(hash) % WORKSPACE_COLORS.length];
+}
+
 // Sort group keys with preferred order - (None) and origin at the end
 const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'release', 'hotfix', 'origin', '(None)'];
 
 export function BranchesDashboard({
   workspaceId,
-  onOpenSettings,
-  onOpenShortcuts,
-  showLeftSidebar,
 }: BranchesDashboardProps) {
   const [branchData, setBranchData] = useState<BranchListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showRemote, setShowRemote] = useState(true);
+  const [showRemote, setShowRemote] = useState(false);
+
+  const fetchBranchesRef = useRef<(isRefresh?: boolean) => void>(() => {});
+  const hasFetchedRef = useRef(false);
 
   const workspaces = useAppStore((s) => s.workspaces);
   const selectWorkspace = useAppStore((s) => s.selectWorkspace);
@@ -225,6 +237,47 @@ export function BranchesDashboard({
 
   // Get workspace name for the title
   const workspace = workspaces.find((w) => w.id === workspaceId);
+
+  // Set dynamic toolbar content (Flutter AppBar-style)
+  const toolbarConfig = useMemo(() => ({
+    titlePosition: 'center' as const,
+    title: (
+      <span className="flex items-center gap-1.5">
+        {workspace && (
+          <>
+            <div
+              className="w-3 h-3 rounded-full shrink-0"
+              style={{ backgroundColor: getWorkspaceColor(workspaceId) }}
+            />
+            <span className="text-base font-semibold truncate max-w-[200px]">{workspace.name}</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </>
+        )}
+        <h1 className="text-base font-semibold">Branches</h1>
+      </span>
+    ),
+    bottom: {
+      title: branchData ? (
+        <span className="text-sm text-muted-foreground">
+          {branchData.sessionBranches.length} {branchData.sessionBranches.length === 1 ? 'session' : 'sessions'} in {branchData.total} branches
+        </span>
+      ) : undefined,
+      titlePosition: 'left' as const,
+      actions: (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => fetchBranchesRef.current(true)}
+          disabled={refreshing}
+          title="Refresh"
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+        </Button>
+      ),
+    },
+  }), [workspace, workspaceId, branchData, refreshing]);
+  useMainToolbarContent(toolbarConfig);
 
   const fetchBranches = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -249,12 +302,15 @@ export function BranchesDashboard({
       setRefreshing(false);
     }
   }, [workspaceId, showRemote, searchTerm]);
+  fetchBranchesRef.current = fetchBranches;
 
   // Initial fetch and auto-refresh
+  // After the first fetch, subsequent dependency changes use refresh mode
+  // to keep the DataTable mounted and preserve its display options state.
   useEffect(() => {
-    fetchBranches();
+    fetchBranches(hasFetchedRef.current);
+    hasFetchedRef.current = true;
 
-    // Auto-refresh every 60 seconds
     const interval = setInterval(() => {
       fetchBranches(true);
     }, 60000);
@@ -262,9 +318,6 @@ export function BranchesDashboard({
     return () => clearInterval(interval);
   }, [fetchBranches]);
 
-  const handleRefresh = () => {
-    fetchBranches(true);
-  };
 
   const handleJumpToSession = useCallback((sessionId: string) => {
     selectWorkspace(workspaceId);
@@ -431,7 +484,15 @@ export function BranchesDashboard({
       { id: 'updated', label: 'Updated' },
       { id: 'diff', label: 'Diff' },
     ],
+    listOptions: [
+      { id: 'showRemote', label: 'Show remote branches', defaultValue: false },
+    ],
   }), []);
+
+  // Sync display option toggles with local state
+  const handleDisplayOptionsChange = useCallback((opts: DisplayOptions) => {
+    setShowRemote(opts.customToggles.showRemote ?? false);
+  }, []);
 
   // Handle row click
   const handleRowClick = useCallback((branch: BranchDTO) => {
@@ -441,55 +502,7 @@ export function BranchesDashboard({
   }, [handleJumpToSession]);
 
   return (
-    <FullContentLayout
-      title={
-        <span className="flex items-center gap-1.5">
-          Branches
-          {workspace && (
-            <>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-sm font-medium text-purple-300/80">
-                <Folder className="h-3 w-3" />
-                <span className="truncate max-w-[200px]">{workspace.name}</span>
-              </span>
-            </>
-          )}
-          {branchData && (
-            <span className="text-sm font-normal text-muted-foreground ml-2">
-              {branchData.sessionBranches.length} {branchData.sessionBranches.length === 1 ? 'session' : 'sessions'} in {branchData.total} branches
-            </span>
-          )}
-        </span>
-      }
-      onOpenSettings={onOpenSettings}
-      onOpenShortcuts={onOpenShortcuts}
-      showLeftSidebar={showLeftSidebar}
-      headerActions={
-        <div className="flex items-center gap-2">
-          {/* Remote toggle */}
-          <Button
-            variant={showRemote ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setShowRemote(!showRemote)}
-            className="h-6 text-xs gap-1"
-          >
-            {showRemote && <Check className="h-3 w-3" />}
-            Remote
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title="Refresh"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-          </Button>
-        </div>
-      }
-    >
+    <FullContentLayout>
       <div className="pt-2 pb-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -527,6 +540,7 @@ export function BranchesDashboard({
               onRowContextMenu={getBranchContextMenu}
               filterOptions={filterOptions}
               displayOptionsConfig={displayOptionsConfig}
+              onDisplayOptionsChange={handleDisplayOptionsChange}
               searchPlaceholder="Search..."
               searchValue={searchTerm}
               onSearchChange={setSearchTerm}

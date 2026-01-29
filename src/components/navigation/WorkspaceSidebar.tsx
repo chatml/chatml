@@ -19,7 +19,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
-import { useUIStore } from '@/stores/uiStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -63,9 +62,6 @@ import {
   XCircle,
   AlertTriangle,
   Pin,
-  ChevronLeft,
-  ChevronRight,
-  History,
   Folder,
   Globe,
   SquarePlus,
@@ -159,7 +155,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     removeWorkspace,
   } = useAppStore();
 
-  const leftToolbarBg = useUIStore((state) => state.toolbarBackgrounds.left);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -336,34 +331,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   return (
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
 
-      {/* Header - pl-20 gives space for macOS traffic lights */}
-      <div data-tauri-drag-region className={cn("relative h-11 pl-20 pr-2 flex items-center justify-between shrink-0", leftToolbarBg)}>
-        <span className="text-[20px] font-extrabold select-none truncate min-w-0" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}>
-          <span className="text-muted-foreground">chat</span><span className="text-purple-600">ml</span>
-        </span>
-        <div className="flex items-center gap-0.5 shrink-0">
-          {/* Navigation Arrows */}
-          <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 p-0">
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-          {/* History */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-              >
-                <History className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">History</TooltipContent>
-          </Tooltip>
-        </div>
-      </div>
 
       {/* Global Navigation */}
       <div className="px-3 py-2 border-b border-border/50">
