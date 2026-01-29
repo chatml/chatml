@@ -35,15 +35,18 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const MODELS = [
-  { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake },
-  { id: 'sonnet-4', name: 'Sonnet 4', icon: Snowflake },
-  { id: 'haiku-3.5', name: 'Haiku 3.5', icon: Snowflake },
+  { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
+  { id: 'sonnet-4', name: 'Sonnet 4', icon: Snowflake, supportsThinking: true },
+  { id: 'haiku-3.5', name: 'Haiku 3.5', icon: Snowflake, supportsThinking: false },
 ];
 
-// Token budget for extended thinking mode
-const DEFAULT_THINKING_TOKENS = 10000;
+// Models that support extended thinking mode (derived from MODELS)
+const THINKING_SUPPORTED_MODELS = new Set(
+  MODELS.filter((m) => m.supportsThinking).map((m) => m.id)
+);
 
 // Common prompt patterns for suggestions
 const COMMON_PATTERNS = [
@@ -580,6 +583,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
+  const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -779,6 +784,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setApprovalError(null);
   }, [selectedConversationId, setAwaitingPlanApproval]);
 
+  // Auto-disable thinking when switching to an unsupported model
+  useEffect(() => {
+    if (thinkingEnabled && !thinkingSupported) {
+      setThinkingEnabled(false);
+    }
+  }, [thinkingSupported, thinkingEnabled]);
+
   // Global keyboard shortcuts
 
   useEffect(() => {
@@ -788,10 +800,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         textareaRef.current?.focus();
       }
-      // Alt+T to toggle thinking mode
+      // Alt+T to toggle thinking mode (only if model supports it)
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        setThinkingEnabled(prev => !prev);
+        if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
+          setThinkingEnabled(prev => !prev);
+        }
       }
       // Shift+Tab to toggle plan mode
       if (e.code === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -808,7 +822,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     // Handle menu events from native Tauri menu
     const handleFocusInput = () => textareaRef.current?.focus();
-    const handleToggleThinking = () => setThinkingEnabled(prev => !prev);
+    const handleToggleThinking = () => {
+      if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
+        setThinkingEnabled(prev => !prev);
+      }
+    };
     const handleTogglePlanMode = () => handlePlanModeToggle();
 
     document.addEventListener('keydown', handleGlobalKeyDown);
@@ -821,7 +839,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker]);
+  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel.id]);
 
   const handleSubmit = async () => {
     if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
@@ -863,7 +881,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           type: convType,
           message: content,
           // Pass thinking tokens when thinking mode is enabled
-          maxThinkingTokens: thinkingEnabled ? DEFAULT_THINKING_TOKENS : undefined,
+          maxThinkingTokens: thinkingEnabled ? maxThinkingTokens : undefined,
           // Pass attachments with loaded content
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
         });
@@ -1177,10 +1195,16 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             size={thinkingEnabled ? 'sm' : 'icon'}
             className={cn(
               thinkingEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-              thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+              thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20',
+              !thinkingSupported && 'opacity-50 cursor-not-allowed'
             )}
             onClick={() => setThinkingEnabled(!thinkingEnabled)}
-            title={`Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`}
+            disabled={!thinkingSupported}
+            title={
+              !thinkingSupported
+                ? `Extended thinking not available for ${selectedModel.name}`
+                : `Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`
+            }
             aria-label={`Extended thinking ${thinkingEnabled ? 'on' : 'off'}`}
             aria-pressed={thinkingEnabled}
           >
