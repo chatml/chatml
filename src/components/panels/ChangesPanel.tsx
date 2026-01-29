@@ -601,7 +601,7 @@ const SortableTabButton = memo(function SortableTabButton({
       variant={isActive ? 'secondary' : 'ghost'}
       size="sm"
       className={cn(
-        "h-6 text-[11px] px-2 gap-1 shrink-0 transition-none active:!scale-100",
+        "h-6 text-[11px] px-2 gap-1 rounded-sm shrink-0 transition-none active:!scale-100",
         !isActive && "text-muted-foreground",
         isDragging && "bg-surface-2 shadow-md opacity-90"
       )}
@@ -770,7 +770,7 @@ function TopPanelTabs({
   }, [topTabOrder, setTopTabOrder]);
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b shrink-0 min-w-0 overflow-hidden">
+    <div className="flex items-center gap-0.5 px-1.5 py-1 shrink-0 min-w-0 overflow-hidden">
       {/* Scrollable tabs container */}
       <div className="flex-1 min-w-0 overflow-x-auto scrollbar-none">
         <DndContext

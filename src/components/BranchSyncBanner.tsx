@@ -8,11 +8,17 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
+import {
   GitBranch,
   X,
   Loader2,
   GitMerge,
   GitPullRequestArrow,
+  ChevronDown,
   Copy,
   Check,
 } from 'lucide-react';
@@ -110,38 +116,68 @@ export function BranchSyncBanner({
         <div className="flex-1" />
 
         <div className="flex items-center gap-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={onRebase}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <GitPullRequestArrow className="h-3.5 w-3.5" />
-            )}
-            Rebase
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={onMerge}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <GitMerge className="h-3.5 w-3.5" />
-            )}
-            Merge
-          </Button>
+          <div className="inline-flex rounded-sm shadow-sm">
+            <Button
+              variant="warning"
+              size="sm"
+              className="h-6 text-xs gap-1.5 px-2 rounded-r-none rounded-l-sm border-r-0 transition-none"
+              onClick={onRebase}
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <GitPullRequestArrow className="h-3.5 w-3.5" />
+              )}
+              Rebase
+            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="warning"
+                  size="sm"
+                  className="h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l border-l-yellow-400/40"
+                  disabled={loading}
+                >
+                  <ChevronDown className="size-2.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-1.5">
+                <button
+                  className="w-full text-left rounded-lg px-3 py-2.5 hover:bg-accent transition-colors"
+                  onClick={onRebase}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-md bg-amber-500/15 p-1.5 mt-0.5">
+                      <GitPullRequestArrow className="h-4 w-4 text-amber-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold">Rebase</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Replay your commits on top of <span className="font-medium text-foreground/70">{status.baseBranch}</span> for a linear history</div>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  className="w-full text-left rounded-lg px-3 py-2.5 hover:bg-accent transition-colors"
+                  onClick={onMerge}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-md bg-purple-500/15 p-1.5 mt-0.5">
+                      <GitMerge className="h-4 w-4 text-purple-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold">Merge</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Merge <span className="font-medium text-foreground/70">{status.baseBranch}</span> into your branch with a merge commit</div>
+                    </div>
+                  </div>
+                </button>
+              </PopoverContent>
+            </Popover>
+          </div>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-6 w-6"
             onClick={onDismiss}
             disabled={loading}
           >

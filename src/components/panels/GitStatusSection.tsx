@@ -5,15 +5,31 @@ import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
+import {
   Check,
   Circle,
   AlertTriangle,
   XCircle,
   Loader2,
   RefreshCw,
+  ChevronDown,
+  GitBranch,
+  GitMerge,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GitStatusDTO } from '@/lib/api';
+
+interface DropdownAction {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  onClick: () => void;
+}
 
 interface GitStatusItemProps {
   type: 'success' | 'warning' | 'error' | 'info' | 'neutral';
@@ -22,13 +38,10 @@ interface GitStatusItemProps {
     label: string;
     onClick: () => void;
   };
-  secondaryAction?: {
-    label: string;
-    onClick: () => void;
-  };
+  dropdownActions?: DropdownAction[];
 }
 
-function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItemProps) {
+function GitStatusItem({ type, message, action, dropdownActions }: GitStatusItemProps) {
   const Icon = {
     success: Check,
     warning: AlertTriangle,
@@ -46,10 +59,49 @@ function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItem
   }[type];
 
   return (
-    <div className="flex items-center gap-2 py-1.5 px-2 group">
+    <div className="flex items-center gap-2 py-1 px-2 group">
       <Icon className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
       <span className="text-xs flex-1 min-w-0 truncate">{message}</span>
-      {action && (
+      {action && dropdownActions ? (
+        <div className="inline-flex rounded-sm shadow-sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs px-2 rounded-r-none rounded-l-sm border-r-0 transition-none"
+            onClick={action.onClick}
+          >
+            {action.label}
+          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l border-l-border"
+              >
+                <ChevronDown className="size-2.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-1.5">
+              {dropdownActions.map((da) => (
+                <button
+                  key={da.label}
+                  className="w-full text-left rounded-md px-3 py-2.5 hover:bg-accent transition-colors"
+                  onClick={da.onClick}
+                >
+                  <div className="flex items-start gap-3">
+                    <da.icon className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                    <div>
+                      <div className="text-sm font-medium">{da.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{da.description}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        </div>
+      ) : action ? (
         <Button
           variant="ghost"
           size="sm"
@@ -58,17 +110,7 @@ function GitStatusItem({ type, message, action, secondaryAction }: GitStatusItem
         >
           {action.label}
         </Button>
-      )}
-      {secondaryAction && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 text-xs px-2"
-          onClick={secondaryAction.onClick}
-        >
-          {secondaryAction.label}
-        </Button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -104,10 +146,20 @@ function buildStatusItems(
         label: 'Continue',
         onClick: () => sendMessage(`Continue the ${status.inProgress.type}`),
       },
-      secondaryAction: {
-        label: 'Abort',
-        onClick: () => sendMessage(`Abort the ${status.inProgress.type}`),
-      },
+      dropdownActions: [
+        {
+          icon: RefreshCw,
+          label: `Continue ${operationType}`,
+          description: `Resume the ${status.inProgress.type} from where it left off`,
+          onClick: () => sendMessage(`Continue the ${status.inProgress.type}`),
+        },
+        {
+          icon: XCircle,
+          label: `Abort ${operationType}`,
+          description: `Cancel the ${status.inProgress.type} and restore previous state`,
+          onClick: () => sendMessage(`Abort the ${status.inProgress.type}`),
+        },
+      ],
     });
   }
 
@@ -185,6 +237,20 @@ function buildStatusItems(
         label: 'Rebase',
         onClick: () => sendMessage(`Rebase my branch on ${baseBranch}`),
       },
+      dropdownActions: [
+        {
+          icon: GitBranch,
+          label: 'Rebase',
+          description: `Replay your commits on top of ${baseBranch} for a linear history`,
+          onClick: () => sendMessage(`Rebase my branch on ${baseBranch}`),
+        },
+        {
+          icon: GitMerge,
+          label: 'Merge',
+          description: `Merge ${baseBranch} into your branch with a merge commit`,
+          onClick: () => sendMessage(`Merge ${baseBranch} into my branch`),
+        },
+      ],
     });
   } else if (behindBy > 0) {
     items.push({
@@ -194,6 +260,20 @@ function buildStatusItems(
         label: 'Rebase',
         onClick: () => sendMessage(`Rebase my branch on ${baseBranch}`),
       },
+      dropdownActions: [
+        {
+          icon: GitBranch,
+          label: 'Rebase',
+          description: `Replay your commits on top of ${baseBranch} for a linear history`,
+          onClick: () => sendMessage(`Rebase my branch on ${baseBranch}`),
+        },
+        {
+          icon: GitMerge,
+          label: 'Merge',
+          description: `Merge ${baseBranch} into your branch with a merge commit`,
+          onClick: () => sendMessage(`Merge ${baseBranch} into my branch`),
+        },
+      ],
     });
   } else if (unpushedCommits > 0) {
     items.push({
@@ -220,10 +300,20 @@ function buildStatusItems(
         label: 'Apply',
         onClick: () => sendMessage('Apply the latest stash'),
       },
-      secondaryAction: {
-        label: 'Pop',
-        onClick: () => sendMessage('Pop the latest stash'),
-      },
+      dropdownActions: [
+        {
+          icon: RefreshCw,
+          label: 'Apply Stash',
+          description: 'Apply stashed changes and keep the stash entry',
+          onClick: () => sendMessage('Apply the latest stash'),
+        },
+        {
+          icon: AlertTriangle,
+          label: 'Pop Stash',
+          description: 'Apply stashed changes and remove the stash entry',
+          onClick: () => sendMessage('Pop the latest stash'),
+        },
+      ],
     });
   }
 
