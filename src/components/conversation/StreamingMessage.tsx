@@ -1,14 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { useAppStore } from '@/stores/appStore';
 import { useStreamingState, useActiveTools } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
-import { MarkdownPre, MarkdownCode } from '@/components/shared/MarkdownCodeBlock';
+import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { cn } from '@/lib/utils';
 
 // Timeline item types for interleaved display
@@ -246,20 +243,21 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
           )}
 
           {/* Interleaved timeline of text and tools */}
-          {timeline.map((item) => {
+          {(() => {
+            // The last text segment is actively streaming — skip cache for it
+            const lastTextId = timeline.findLast((i) => i.type === 'text')?.id;
+            return timeline.map((item) => {
             if (item.type === 'text') {
               return (
                 <div
                   key={item.id}
-                  className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary"
+                  className="prose prose-base dark:prose-invert max-w-none text-md leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary"
                 >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeHighlight]}
-                    components={{ pre: MarkdownPre, code: MarkdownCode }}
-                  >
-                    {item.text}
-                  </ReactMarkdown>
+                  <CachedMarkdown
+                    cacheKey={`seg:${item.id}`}
+                    content={item.text}
+                    skipCache={item.id === lastTextId}
+                  />
                 </div>
               );
             } else {
@@ -278,7 +276,8 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
                 />
               );
             }
-          })}
+          });
+          })()}
 
           {/* Enhanced error display */}
           {streaming?.error && (

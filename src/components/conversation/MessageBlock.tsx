@@ -1,9 +1,6 @@
 'use client';
 
 import { useState, useCallback, useMemo, memo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
@@ -21,7 +18,7 @@ import { VerificationBlock } from '@/components/conversation/VerificationBlock';
 import { FileChangesBlock } from '@/components/conversation/FileChangesBlock';
 import { RunSummaryBlock } from '@/components/conversation/RunSummaryBlock';
 import { SystemInfoCard } from '@/components/shared/SystemInfoCard';
-import { MarkdownPre, MarkdownCode } from '@/components/shared/MarkdownCodeBlock';
+import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { highlightSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
@@ -82,8 +79,8 @@ export const MessageBlock = memo(function MessageBlock({
   if (message.role === 'user') {
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
-        <div className="max-w-[85%] bg-[#090909] rounded-2xl px-4 py-2.5">
-          <p className="text-base leading-relaxed whitespace-pre-wrap">
+        <div className="bg-[#090909] rounded-lg px-4 py-2.5">
+          <p className="text-md leading-relaxed whitespace-pre-wrap">
             {highlightedContent || message.content}
           </p>
         </div>
@@ -114,7 +111,7 @@ export const MessageBlock = memo(function MessageBlock({
             <ContextMenu>
               <ContextMenuTrigger asChild>
                 <div className="group relative">
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:my-1.5 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:text-base prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+                  <div className="prose prose-base dark:prose-invert max-w-none text-md leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
                     <ErrorBoundary
                       section="MessageContent"
                       fallback={
@@ -123,13 +120,10 @@ export const MessageBlock = memo(function MessageBlock({
                         </div>
                       }
                     >
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeHighlight]}
-                        components={{ pre: MarkdownPre, code: MarkdownCode }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
+                      <CachedMarkdown
+                        cacheKey={`msg:${message.id}`}
+                        content={message.content}
+                      />
                     </ErrorBoundary>
                   </div>
                   <Button

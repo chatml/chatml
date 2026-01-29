@@ -1,12 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MessageBlock } from '../MessageBlock';
+import { clearMarkdownCache } from '@/lib/markdownCache';
 import type { Message } from '@/lib/types';
 
-// Mock clipboard
+// Mock Tauri utilities
 vi.mock('@/lib/tauri', () => ({
   copyToClipboard: vi.fn().mockResolvedValue(true),
+  openUrlInBrowser: vi.fn().mockResolvedValue(undefined),
+  isTauri: vi.fn().mockReturnValue(false),
 }));
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
@@ -21,6 +24,10 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
 }
 
 describe('MessageBlock', () => {
+  beforeEach(() => {
+    clearMarkdownCache();
+  });
+
   describe('user messages', () => {
     it('renders user message content', () => {
       render(

@@ -23,6 +23,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
+import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
@@ -397,6 +398,7 @@ export default function Home() {
 
   // Watch for external file changes
   useFileWatcher();
+  useExternalLinkGuard();
 
   // Keyboard shortcut: Cmd+/ to show shortcuts dialog
   useShortcut('shortcutsDialog', useCallback(() => {
