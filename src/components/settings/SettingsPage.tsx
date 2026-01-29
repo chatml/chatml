@@ -569,6 +569,9 @@ AWS_PROFILE=default`);
 }
 
 function ClaudeCodeSettings() {
+  const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
+  const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Claude Code</h2>
@@ -582,12 +585,19 @@ function ClaudeCodeSettings() {
         title="Max thinking tokens"
         description="Maximum tokens for extended thinking"
       >
-        <Select defaultValue="16000">
+        <Select
+          value={maxThinkingTokens.toString()}
+          onValueChange={(value) => {
+            const n = parseInt(value, 10);
+            if (!isNaN(n) && n > 0) setMaxThinkingTokens(n);
+          }}
+        >
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="8000">8,000</SelectItem>
+            <SelectItem value="10000">10,000</SelectItem>
             <SelectItem value="16000">16,000</SelectItem>
             <SelectItem value="32000">32,000</SelectItem>
           </SelectContent>

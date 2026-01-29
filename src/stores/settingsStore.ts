@@ -48,6 +48,7 @@ interface SettingsState {
   confirmCloseActiveTab: boolean;
   defaultModel: string;
   defaultThinking: boolean;
+  maxThinkingTokens: number;
   desktopNotifications: boolean;
   soundEffects: boolean;
   sendWithEnter: boolean;
@@ -76,6 +77,7 @@ interface SettingsState {
   setConfirmCloseActiveTab: (value: boolean) => void;
   setDefaultModel: (value: string) => void;
   setDefaultThinking: (value: boolean) => void;
+  setMaxThinkingTokens: (value: number) => void;
   setDesktopNotifications: (value: boolean) => void;
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
@@ -105,6 +107,7 @@ export const useSettingsStore = create<SettingsState>()(
       confirmCloseActiveTab: true,
       defaultModel: 'opus-4.5',
       defaultThinking: true,
+      maxThinkingTokens: 10000,
       desktopNotifications: true,
       soundEffects: false,
       sendWithEnter: true,
@@ -128,6 +131,7 @@ export const useSettingsStore = create<SettingsState>()(
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
       setDefaultModel: (value) => set({ defaultModel: value }),
       setDefaultThinking: (value) => set({ defaultThinking: value }),
+      setMaxThinkingTokens: (value) => set({ maxThinkingTokens: value }),
       setDesktopNotifications: (value) => set({ desktopNotifications: value }),
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
