@@ -1,13 +1,13 @@
 'use client';
 
-import { useAppStore } from '@/stores/appStore';
+import { useBudgetStatus } from '@/stores/selectors';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertCircle, DollarSign, RefreshCw, Brain, Gauge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
 
 export function BudgetStatusPanel() {
-  const { budgetStatus } = useAppStore();
+  const budgetStatus = useBudgetStatus();
 
   // Show empty state when no budget status at all
   if (!budgetStatus) {

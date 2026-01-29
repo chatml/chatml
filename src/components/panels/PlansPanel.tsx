@@ -15,7 +15,7 @@ export interface PlanDocument {
 }
 
 export function PlansPanel() {
-  const { selectedSessionId } = useAppStore();
+  const selectedSessionId = useAppStore((s) => s.selectedSessionId);
 
   // TODO: Fetch plans from session/conversation
   const plans: PlanDocument[] = [];

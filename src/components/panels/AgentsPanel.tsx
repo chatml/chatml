@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppStore } from '@/stores/appStore';
+import { useWorkspaceSelection } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -32,7 +32,7 @@ interface Agent {
 }
 
 export function AgentsPanel() {
-  const { sessions, workspaces } = useAppStore();
+  const { sessions, workspaces } = useWorkspaceSelection();
 
   // Mock agents data - in real app this would come from the store
   const agents: Agent[] = sessions

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { saveFile } from '@/lib/api';
 import type { FileTab } from '@/lib/types';
 
@@ -15,7 +16,13 @@ const AUTO_SAVE_DELAY_MS = 30000;
  * - Updates tab state after save (clears dirty flag)
  */
 export function useAutoSave() {
-  const { fileTabs, selectedFileTabId, updateFileTab } = useAppStore();
+  const { fileTabs, selectedFileTabId, updateFileTab } = useAppStore(
+    useShallow((s) => ({
+      fileTabs: s.fileTabs,
+      selectedFileTabId: s.selectedFileTabId,
+      updateFileTab: s.updateFileTab,
+    }))
+  );
   const saveTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const mountedRef = useRef(true);
 

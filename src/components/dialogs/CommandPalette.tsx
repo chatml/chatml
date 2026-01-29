@@ -10,7 +10,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command';
-import { useAppStore } from '@/stores/appStore';
+import { useRepoState } from '@/stores/selectors';
 import { useShortcut } from '@/hooks/useShortcut';
 import {
   FolderGit2,
@@ -26,7 +26,7 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ onAddRepo, onSpawnAgent }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
-  const { repos, selectedRepoId, selectRepo } = useAppStore();
+  const { repos, selectedRepoId, selectRepo } = useRepoState();
 
   // Register Cmd+K shortcut
   useShortcut('commandPalette', useCallback(() => {

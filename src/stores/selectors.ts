@@ -328,3 +328,79 @@ export const useReviewCommentActions = () =>
  */
 export const usePendingUserQuestion = (conversationId: string | null) =>
   useAppStore((s) => (conversationId ? s.pendingUserQuestion[conversationId] ?? null : null));
+
+// ============================================================================
+// Repo State (Legacy)
+// ============================================================================
+
+/**
+ * Repo list and selection state.
+ * Use in: CommandPalette, components that don't need agents
+ */
+export const useRepoState = () =>
+  useAppStore(
+    useShallow((s) => ({
+      repos: s.repos,
+      selectedRepoId: s.selectedRepoId,
+      selectRepo: s.selectRepo,
+      removeRepo: s.removeRepo,
+    }))
+  );
+
+/**
+ * Repo state with agents — extends useRepoState for components that also
+ * render agent info alongside repos (e.g. showing agent count per repo).
+ * Use in: RepoList
+ */
+export const useRepoStateWithAgents = () =>
+  useAppStore(
+    useShallow((s) => ({
+      repos: s.repos,
+      selectedRepoId: s.selectedRepoId,
+      selectRepo: s.selectRepo,
+      removeRepo: s.removeRepo,
+      agents: s.agents,
+    }))
+  );
+
+// ============================================================================
+// Page-level Actions
+// ============================================================================
+
+/**
+ * Actions needed by the root page component.
+ * useShallow is required here: without it Zustand's default `===` comparison
+ * would see a new object literal on every store update and re-render.
+ * useShallow compares each property by reference — since action refs are stable,
+ * it always returns the cached object.
+ * Use in: page.tsx
+ */
+export const usePageActions = () =>
+  useAppStore(
+    useShallow((s) => ({
+      setWorkspaces: s.setWorkspaces,
+      setSessions: s.setSessions,
+      setConversations: s.setConversations,
+      addSession: s.addSession,
+      addConversation: s.addConversation,
+      removeConversation: s.removeConversation,
+      selectWorkspace: s.selectWorkspace,
+      selectSession: s.selectSession,
+      selectConversation: s.selectConversation,
+    }))
+  );
+
+/**
+ * User question actions for components that need to modify pending questions.
+ * useShallow required — see usePageActions comment.
+ * Use in: UserQuestionPrompt
+ */
+export const useUserQuestionActions = () =>
+  useAppStore(
+    useShallow((s) => ({
+      updateUserQuestionAnswer: s.updateUserQuestionAnswer,
+      nextUserQuestion: s.nextUserQuestion,
+      prevUserQuestion: s.prevUserQuestion,
+      clearPendingUserQuestion: s.clearPendingUserQuestion,
+    }))
+  );

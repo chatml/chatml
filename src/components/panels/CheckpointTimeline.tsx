@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAppStore } from '@/stores/appStore';
+import { useCheckpoints, useSelectedIds } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -9,7 +9,8 @@ import { History, RotateCcw, Loader2 } from 'lucide-react';
 import { getApiBase } from '@/lib/api';
 
 export function CheckpointTimeline() {
-  const { checkpoints, selectedConversationId } = useAppStore();
+  const checkpoints = useCheckpoints();
+  const { selectedConversationId } = useSelectedIds();
   const [rewindingUuid, setRewindingUuid] = useState<string | null>(null);
 
   const handleRewind = async (uuid: string) => {

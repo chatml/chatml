@@ -216,7 +216,7 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
   const hasCacheRef = useRef(false);
   const listRef = useRef<React.ElementRef<typeof CommandPrimitive.List>>(null);
 
-  const { openFileTab } = useAppStore();
+  const openFileTab = useAppStore((s) => s.openFileTab);
 
   // Register Cmd+P shortcut
   useShortcut('filePicker', useCallback(() => {

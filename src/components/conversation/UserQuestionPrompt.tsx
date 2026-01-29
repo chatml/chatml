@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { useAppStore } from '@/stores/appStore';
-import { usePendingUserQuestion } from '@/stores/selectors';
+import { usePendingUserQuestion, useUserQuestionActions } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { X, ChevronLeft, ChevronRight, ArrowUp, Check, Loader2 } from 'lucide-react';
@@ -16,7 +15,7 @@ interface UserQuestionPromptProps {
 
 export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) {
   const pending = usePendingUserQuestion(conversationId);
-  const { updateUserQuestionAnswer, nextUserQuestion, prevUserQuestion, clearPendingUserQuestion } = useAppStore();
+  const { updateUserQuestionAnswer, nextUserQuestion, prevUserQuestion, clearPendingUserQuestion } = useUserQuestionActions();
   const { error: showError } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 

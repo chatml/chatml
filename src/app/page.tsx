@@ -3,6 +3,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
+import {
+  useWorkspaceSelection,
+  useConversationState,
+  useFileTabState,
+  usePageActions,
+  useMessages,
+} from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
@@ -350,31 +357,20 @@ export default function Home() {
     return () => observer.disconnect();
   }, [leftSidebarCollapsed]);
 
+  // Use scoped selectors to avoid full-store re-renders
+  const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
+  const { conversations, selectedConversationId, removeConversation } = useConversationState();
   const {
-    workspaces,
-    sessions,
-    conversations,
-    messages,
-    selectedWorkspaceId,
-    selectedSessionId,
-    selectedConversationId,
-    selectedFileTabId,
-    fileTabs,
-    setWorkspaces,
-    setSessions,
-    setConversations,
-    addSession,
-    addConversation,
-    removeConversation,
-    selectWorkspace,
-    selectSession,
-    selectConversation,
-    closeFileTab,
-    selectNextTab,
-    selectPreviousTab,
-    pendingCloseFileTabId,
-    setPendingCloseFileTabId,
-  } = useAppStore();
+    fileTabs, selectedFileTabId, closeFileTab,
+    pendingCloseFileTabId, setPendingCloseFileTabId,
+  } = useFileTabState();
+  const {
+    setWorkspaces, setSessions, setConversations,
+    addSession, addConversation, selectWorkspace, selectSession, selectConversation,
+  } = usePageActions();
+  const conversationMessages = useMessages(selectedConversationId);
+  const selectNextTab = useAppStore((s) => s.selectNextTab);
+  const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
 
   const { expandWorkspace } = useSettingsStore();
 
@@ -626,8 +622,7 @@ export default function Home() {
   const handleCloseTab = useCallback(async () => {
     if (!selectedConversationId) return;
 
-    // Check if conversation has messages using the messages store
-    const conversationMessages = messages.filter((m) => m.conversationId === selectedConversationId);
+    // Check if conversation has messages
     const hasMessages = conversationMessages.length > 0;
 
     // If conversation has messages and setting is enabled, show confirmation
@@ -639,7 +634,7 @@ export default function Home() {
 
     // Otherwise close directly
     await doCloseTab(selectedConversationId);
-  }, [selectedConversationId, messages, confirmCloseActiveTab, doCloseTab]);
+  }, [selectedConversationId, conversationMessages, confirmCloseActiveTab, doCloseTab]);
 
   const handleConfirmClose = useCallback(async () => {
     if (pendingCloseConvId) {

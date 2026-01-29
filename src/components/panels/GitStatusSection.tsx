@@ -1,7 +1,7 @@
 'use client';
 
 import { useGitStatus } from '@/hooks/useGitStatus';
-import { useAppStore } from '@/stores/appStore';
+import { useSelectedIds } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -325,7 +325,7 @@ interface GitStatusSectionProps {
 }
 
 export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
-  const { selectedWorkspaceId, selectedSessionId } = useAppStore();
+  const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
   const { status, loading, error, refetch } = useGitStatus(selectedWorkspaceId, selectedSessionId);
 
   // Wrapper that handles missing callback
