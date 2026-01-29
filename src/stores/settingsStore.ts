@@ -11,13 +11,13 @@ export type AllBottomPanelTab = 'todos' | BottomPanelTab;
 export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'history', 'file-history', 'budget', 'mcp'];
 
 // Top panel (right sidebar) tab IDs - Changes is always visible
-export type TopPanelTab = 'review' | 'checks' | 'files';
+export type TopPanelTab = 'review' | 'checks' | 'files' | 'info';
 
 // All top panel tabs including the always-visible Changes
 export type AllTopPanelTab = 'changes' | TopPanelTab;
 
 // Default top tab order
-export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['changes', 'review', 'checks', 'files'];
+export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['changes', 'review', 'checks', 'files', 'info'];
 
 // Theme options
 export type ThemeOption = 'system' | 'light' | 'dark';
