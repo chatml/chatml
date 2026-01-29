@@ -267,8 +267,27 @@ type githubPRListItem struct {
 	} `json:"labels"`
 }
 
+// ErrNotModified is returned when a conditional request receives 304 Not Modified
+var ErrNotModified = fmt.Errorf("not modified")
+
+// ListOpenPRsResult contains the result of listing open PRs
+type ListOpenPRsResult struct {
+	PRs  []PRListItem
+	ETag string // Response ETag for conditional requests
+}
+
 // ListOpenPRs lists all open pull requests for a repository
 func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListItem, error) {
+	result, err := c.ListOpenPRsWithETag(ctx, owner, repo, "")
+	if err != nil {
+		return nil, err
+	}
+	return result.PRs, nil
+}
+
+// ListOpenPRsWithETag lists open PRs with ETag support for conditional requests.
+// If etag is non-empty, sends If-None-Match header. Returns ErrNotModified on 304.
+func (c *Client) ListOpenPRsWithETag(ctx context.Context, owner, repo, etag string) (*ListOpenPRsResult, error) {
 	token := c.GetToken()
 	if token == "" {
 		return nil, fmt.Errorf("not authenticated")
@@ -283,12 +302,19 @@ func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListI
 
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching PRs: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, ErrNotModified
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := io.ReadAll(resp.Body)
@@ -324,7 +350,10 @@ func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListI
 		}
 	}
 
-	return prs, nil
+	return &ListOpenPRsResult{
+		PRs:  prs,
+		ETag: resp.Header.Get("ETag"),
+	}, nil
 }
 
 // githubSearchResult represents the GitHub API response for PR search

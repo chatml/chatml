@@ -83,6 +83,7 @@ type BranchCache struct {
 	mu      sync.RWMutex
 	entries map[string]*branchCacheEntry
 	ttl     time.Duration
+	done    chan struct{}
 }
 
 type branchCacheEntry struct {
@@ -92,10 +93,13 @@ type branchCacheEntry struct {
 
 // NewBranchCache creates a new branch cache with the given TTL
 func NewBranchCache(ttl time.Duration) *BranchCache {
-	return &BranchCache{
+	c := &BranchCache{
 		entries: make(map[string]*branchCacheEntry),
 		ttl:     ttl,
+		done:    make(chan struct{}),
 	}
+	go c.cleanupLoop()
+	return c
 }
 
 // Get retrieves a cached branch list by key
@@ -141,6 +145,37 @@ func (c *BranchCache) InvalidateRepo(repoPath string) {
 	for key := range c.entries {
 		if strings.HasPrefix(key, repoPath+":") {
 			delete(c.entries, key)
+		}
+	}
+}
+
+// Close stops the cleanup goroutine. Safe to call multiple times.
+func (c *BranchCache) Close() {
+	select {
+	case <-c.done:
+	default:
+		close(c.done)
+	}
+}
+
+// cleanupLoop periodically removes expired branch cache entries
+func (c *BranchCache) cleanupLoop() {
+	ticker := time.NewTicker(c.ttl)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			c.mu.Lock()
+			now := time.Now()
+			for key, entry := range c.entries {
+				if now.After(entry.expiresAt) {
+					delete(c.entries, key)
+				}
+			}
+			c.mu.Unlock()
 		}
 	}
 }
@@ -297,7 +332,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, statsCache *SessionStatsCache) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, statsCache *SessionStatsCache) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -318,7 +353,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		prWatcher:        prw,
 		hub:              hub,
 		ghClient:         ghClient,
-		prCache:          github.NewPRCache(30 * time.Second),   // Cache PR data for 30 seconds
+		prCache:          prCache,
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
 	}
@@ -1141,6 +1176,9 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		h.prWatcher.WatchSession(sess.ID, workspaceID, branchName, repo.Path, models.PRStatusNone)
 	}
 
+	// Invalidate branch cache after new session/branch creation
+	h.branchCache.InvalidateRepo(repo.Path)
+
 	// All operations succeeded - disable rollback
 	rollback = false
 	writeJSON(w, sess)
@@ -1297,6 +1335,9 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
 			// Remove from session name cache
 			h.sessionNameCache.Remove(sess.Name)
+
+			// Invalidate branch cache after branch/worktree removal
+			h.branchCache.InvalidateRepo(repo.Path)
 		}
 	}
 
@@ -1700,6 +1741,9 @@ func (h *Handlers) MergeAgent(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, "failed to merge agent changes", err)
 		return
 	}
+
+	// Invalidate branch cache after merge
+	h.branchCache.InvalidateRepo(repo.Path)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -3045,6 +3089,11 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Invalidate branch cache after sync operation
+	if repo, err := h.store.GetRepo(ctx, session.WorkspaceID); err == nil && repo != nil {
+		h.branchCache.InvalidateRepo(repo.Path)
+	}
+
 	// Convert to response format
 	response := models.BranchSyncResult{
 		Success:       result.Success,
@@ -3094,6 +3143,11 @@ func (h *Handlers) AbortSessionSync(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeValidationError(w, "no rebase or merge in progress")
 		return
+	}
+
+	// Invalidate branch cache after abort
+	if repo, err := h.store.GetRepo(ctx, session.WorkspaceID); err == nil && repo != nil {
+		h.branchCache.InvalidateRepo(repo.Path)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -3180,17 +3234,44 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Check PR cache first
-		ghPRs, cacheHit := h.prCache.Get(owner, repoName)
-		if !cacheHit {
-			// Fetch all open PRs directly from GitHub
-			ghPRs, err = h.ghClient.ListOpenPRs(ctx, owner, repoName)
-			if err != nil {
-				// Log error but continue with other repos
+		// Check unified PR cache (list + details) with stale-while-revalidate
+		cacheEntry, freshness := h.prCache.GetWithStale(owner, repoName)
+
+		var ghPRs []github.PRListItem
+		var prDetailsMap map[int]*github.PRDetails
+
+		switch freshness {
+		case github.CacheFresh:
+			// Serve directly from cache -- zero API calls
+			ghPRs = cacheEntry.PRs
+			prDetailsMap = cacheEntry.Details
+
+		case github.CacheStale:
+			// Serve stale data immediately, trigger background refresh
+			ghPRs = cacheEntry.PRs
+			prDetailsMap = cacheEntry.Details
+
+			if h.prCache.TryStartRefresh(owner, repoName) {
+				go h.refreshPRCache(owner, repoName)
+			}
+
+		default:
+			// Cache miss -- fetch synchronously with ETag capture
+			result, fetchErr := h.ghClient.ListOpenPRsWithETag(ctx, owner, repoName, "")
+			if fetchErr != nil {
 				continue
 			}
-			// Cache the result
-			h.prCache.Set(owner, repoName, ghPRs)
+			ghPRs = result.PRs
+
+			// Batch fetch all PR details
+			prNumbers := make([]int, len(ghPRs))
+			for i, pr := range ghPRs {
+				prNumbers[i] = pr.Number
+			}
+			prDetailsMap, _ = h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+
+			// Store combined result in cache (including ETag for future conditional requests)
+			h.prCache.SetFull(owner, repoName, ghPRs, prDetailsMap, result.ETag)
 		}
 
 		// List sessions to match PRs with sessions by branch
@@ -3207,15 +3288,6 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 				sessionByBranch[session.Branch] = session
 			}
 		}
-
-		// Collect all PR numbers for batch fetching
-		prNumbers := make([]int, len(ghPRs))
-		for i, pr := range ghPRs {
-			prNumbers[i] = pr.Number
-		}
-
-		// Batch fetch all PR details concurrently (max 5 parallel requests)
-		prDetailsMap, _ := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
 
 		// Process each PR from GitHub
 		for _, ghPR := range ghPRs {
@@ -3241,25 +3313,27 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 				prItem.SessionName = session.Name
 			}
 
-			// Use batch-fetched PR details
-			if prDetails, ok := prDetailsMap[ghPR.Number]; ok && prDetails != nil {
-				prItem.Mergeable = prDetails.Mergeable
-				prItem.MergeableState = prDetails.MergeableState
-				prItem.CheckStatus = string(prDetails.CheckStatus)
+			// Use cached or freshly-fetched PR details
+			if prDetailsMap != nil {
+				if prDetails, ok := prDetailsMap[ghPR.Number]; ok && prDetails != nil {
+					prItem.Mergeable = prDetails.Mergeable
+					prItem.MergeableState = prDetails.MergeableState
+					prItem.CheckStatus = string(prDetails.CheckStatus)
 
-				// Convert check details
-				for _, check := range prDetails.CheckDetails {
-					prItem.CheckDetails = append(prItem.CheckDetails, check)
-				}
+					// Convert check details
+					for _, check := range prDetails.CheckDetails {
+						prItem.CheckDetails = append(prItem.CheckDetails, check)
+					}
 
-				// Calculate counts
-				prItem.ChecksTotal = len(prDetails.CheckDetails)
-				for _, check := range prDetails.CheckDetails {
-					if check.Status == "completed" {
-						if check.Conclusion == "success" || check.Conclusion == "neutral" || check.Conclusion == "skipped" {
-							prItem.ChecksPassed++
-						} else {
-							prItem.ChecksFailed++
+					// Calculate counts
+					prItem.ChecksTotal = len(prDetails.CheckDetails)
+					for _, check := range prDetails.CheckDetails {
+						if check.Status == "completed" {
+							if check.Conclusion == "success" || check.Conclusion == "neutral" || check.Conclusion == "skipped" {
+								prItem.ChecksPassed++
+							} else {
+								prItem.ChecksFailed++
+							}
 						}
 					}
 				}
@@ -3275,4 +3349,55 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, prItems)
+}
+
+// refreshPRCache fetches fresh PR data from GitHub in the background
+// and updates the unified cache. Called when serving stale data.
+// Uses ETag conditional requests to avoid re-fetching unchanged data.
+// Respects the prCache shutdown signal so goroutines don't outlive the server.
+func (h *Handlers) refreshPRCache(owner, repoName string) {
+	defer h.prCache.EndRefresh(owner, repoName)
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Handlers.Errorf("Panic in background PR refresh for %s/%s: %v", owner, repoName, r)
+		}
+	}()
+
+	// Derive a context that cancels on timeout OR server shutdown (whichever comes first)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-h.prCache.Done():
+			cancel()
+		}
+	}()
+
+	// Use cached ETag for conditional request
+	etag := h.prCache.GetETag(owner, repoName)
+	result, err := h.ghClient.ListOpenPRsWithETag(ctx, owner, repoName, etag)
+
+	if errors.Is(err, github.ErrNotModified) {
+		// Data unchanged -- atomically refresh the TTL on the existing entry
+		h.prCache.BumpTTL(owner, repoName)
+		logger.Handlers.Debugf("Background PR refresh for %s/%s: not modified (ETag hit)", owner, repoName)
+		return
+	}
+	if err != nil {
+		logger.Handlers.Errorf("Background PR refresh failed for %s/%s: %v", owner, repoName, err)
+		return
+	}
+
+	// Batch fetch all PR details
+	prNumbers := make([]int, len(result.PRs))
+	for i, pr := range result.PRs {
+		prNumbers[i] = pr.Number
+	}
+	prDetailsMap, _ := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+
+	// Update the unified cache with new ETag
+	h.prCache.SetFull(owner, repoName, result.PRs, prDetailsMap, result.ETag)
+
+	logger.Handlers.Debugf("Background PR refresh complete for %s/%s: %d PRs", owner, repoName, len(result.PRs))
 }
