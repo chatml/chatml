@@ -1207,10 +1207,7 @@ export default function Home() {
                   )}
                 >
                   <ErrorBoundary section="Changes">
-                    <ChangesPanel
-                      onOpenSettings={() => setShowSettings(true)}
-                      onOpenShortcuts={() => setShowShortcuts(true)}
-                    />
+                    <ChangesPanel />
                   </ErrorBoundary>
                 </ResizablePanel>
               </ResizablePanelGroup>

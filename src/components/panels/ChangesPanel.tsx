@@ -10,7 +10,7 @@ import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
 import { GitStatusSection } from '@/components/panels/GitStatusSection';
-import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
+
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { PlansPanel } from '@/components/panels/PlansPanel';
@@ -55,9 +55,6 @@ import {
   Search,
   SplitSquareHorizontal,
   Loader2,
-  GitPullRequest,
-  AlertTriangle,
-  ExternalLink,
   MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -91,15 +88,7 @@ function isBinaryFile(filename: string): boolean {
 // Maximum file size for diff viewing (2MB)
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 
-interface ChangesPanelProps {
-  onOpenSettings?: () => void;
-  onOpenShortcuts?: () => void;
-}
-
-export function ChangesPanel({
-  onOpenSettings,
-  onOpenShortcuts,
-}: ChangesPanelProps = {}) {
+export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
   const { openFileTab, updateFileTab } = useFileTabState();
@@ -296,10 +285,6 @@ export function ChangesPanel({
   // Track branch for refetching changes when branch is renamed
   const currentBranch = currentSession?.branch;
 
-  // Determine top bar state
-  const hasActivePR = currentSession?.prStatus === 'open';
-  const hasConflictOrFailure = currentSession?.hasMergeConflict || currentSession?.hasCheckFailures;
-
   // Calculate todo counts for badge
   const totalPendingTodos = agentTodos.filter((t) => t.status !== 'completed').length;
 
@@ -404,55 +389,6 @@ export function ChangesPanel({
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
-      {/* Top Bar - changes based on session state */}
-      <div
-        data-tauri-drag-region
-        className={cn(
-          'h-10 flex items-center gap-2 px-3 border-b shrink-0 overflow-hidden @container',
-          hasActivePR && 'bg-text-success/15 border-text-success/30',
-          hasConflictOrFailure && 'bg-text-error/15 border-text-error/30'
-        )}
-      >
-        {/* PR Status or Conflict indicator - truncates in middle, hidden when very narrow */}
-        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          {hasActivePR ? (
-            <>
-              <GitPullRequest className="h-3.5 w-3.5 text-text-success shrink-0 hidden @[220px]:block" />
-              <span className="text-[12px] font-medium text-text-success truncate hidden @[180px]:block">
-                PR #{currentSession?.prNumber}
-              </span>
-              {currentSession?.prUrl && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-text-success hover:bg-text-success/20 shrink-0 hidden @[250px]:flex"
-                  onClick={() => window.open(currentSession.prUrl, '_blank')}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              )}
-            </>
-          ) : hasConflictOrFailure && (
-            <>
-              <AlertTriangle className="h-3.5 w-3.5 text-text-error shrink-0 hidden @[220px]:block" />
-              <span className="text-[12px] font-medium text-text-error truncate hidden @[180px]:block">
-                {currentSession?.hasMergeConflict ? 'Merge Conflict' : 'Check Failures'}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Right side - always visible, pinned to right */}
-        <div className="flex items-center gap-1 shrink-0">
-          {onOpenSettings && onOpenShortcuts && (
-            <AppSettingsMenu
-              onOpenSettings={onOpenSettings}
-              onOpenShortcuts={onOpenShortcuts}
-            />
-          )}
-        </div>
-      </div>
-
       {/* Tabs Row */}
       <TopPanelTabs
         selectedTab={selectedTab}
