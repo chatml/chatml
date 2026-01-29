@@ -95,7 +95,10 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("GitHub returned %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -288,7 +291,10 @@ func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListI
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("GitHub returned %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -355,7 +361,10 @@ func (c *Client) FindPRForBranch(ctx context.Context, owner, repo, branch string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return 0, fmt.Errorf("GitHub returned %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
 		return 0, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 

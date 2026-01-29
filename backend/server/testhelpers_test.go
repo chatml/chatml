@@ -43,7 +43,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 	require.NoError(t, err)
 
 	worktreeManager := git.NewWorktreeManager()
-	agentManager := agent.NewManager(sqliteStore, worktreeManager)
+	agentManager := agent.NewManager(context.Background(), sqliteStore, worktreeManager)
 
 	t.Cleanup(func() {
 		sqliteStore.Close()
