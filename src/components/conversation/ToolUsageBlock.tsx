@@ -19,7 +19,6 @@ import {
   Terminal,
   Search,
   Globe,
-  Loader2,
   FolderOpen,
   Circle,
   type LucideIcon,
@@ -221,16 +220,18 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           isActive && 'bg-primary/5'
         )}
       >
-        {/* Status indicator */}
-        {isActive ? (
-          <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
-        ) : success === true ? (
-          <Circle className="w-2 h-2 fill-text-success text-text-success shrink-0" />
-        ) : success === false ? (
-          <Circle className="w-2 h-2 fill-text-error text-text-error shrink-0" />
-        ) : (
-          <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50 shrink-0" />
-        )}
+        {/* Status indicator — fixed 3x3 box to prevent layout shift */}
+        <span className="flex items-center justify-center w-3 h-3 shrink-0">
+          {isActive ? (
+            <span className="block w-2 h-2 rounded-full border-[1.5px] border-primary border-t-transparent animate-spin" />
+          ) : success === true ? (
+            <Circle className="w-2 h-2 fill-text-success text-text-success" />
+          ) : success === false ? (
+            <Circle className="w-2 h-2 fill-text-error text-text-error" />
+          ) : (
+            <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50" />
+          )}
+        </span>
 
         {/* Tool icon and label - show "Error" when tool failed */}
         {success === false ? (

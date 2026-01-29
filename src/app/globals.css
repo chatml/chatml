@@ -339,6 +339,12 @@
   @apply inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium bg-muted border rounded text-muted-foreground;
 }
 
+/* Scale down emoji so they don't tower over text */
+.prose .emoji {
+  font-size: 0.85em;
+  vertical-align: baseline;
+}
+
 /* Prose typography enhancements */
 .prose {
   --tw-prose-body: var(--foreground);
@@ -372,21 +378,33 @@
   @apply bg-purple-500/20 px-1 py-0.5 rounded text-[11px] font-medium text-purple-700 dark:text-purple-300;
 }
 
-/* Heading styles */
-.prose h1 {
-  @apply text-lg font-semibold mt-5 mb-2 text-purple-800 dark:text-purple-300/70;
+/* Heading styles — double class for specificity over prose-base defaults */
+.prose.prose h1 {
+  @apply font-semibold mt-5 mb-2;
+  font-size: 30px;
+  color: oklch(0.25 0.12 280);
+}
+.dark .prose.prose h1 {
+  color: oklch(0.65 0.15 280);
 }
 
-.prose h2 {
-  @apply text-[15px] font-semibold mt-4 mb-2 text-purple-800 dark:text-purple-300/70;
+.prose.prose h2 {
+  @apply font-semibold mt-8 mb-2;
+  font-size: 20px;
+  color: oklch(0.25 0.12 280);
+}
+.dark .prose.prose h2 {
+  color: oklch(0.65 0.15 280);
 }
 
-.prose h3 {
-  @apply text-[14px] font-semibold mt-3 mb-1.5 text-purple-800 dark:text-purple-300/70;
+.prose.prose h3 {
+  @apply font-semibold mt-3 mb-1.5 text-foreground;
+  font-size: 14px;
 }
 
-.prose h4, .prose h5, .prose h6 {
-  @apply text-[13px] font-semibold mt-2 mb-1 text-purple-800 dark:text-purple-300/70;
+.prose.prose h4, .prose.prose h5, .prose.prose h6 {
+  @apply font-semibold mt-2 mb-1 text-foreground;
+  font-size: 13px;
 }
 
 /* First heading shouldn't have top margin */

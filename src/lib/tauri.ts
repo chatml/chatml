@@ -417,6 +417,24 @@ export async function countFileLines(path: string): Promise<number | null> {
 // ============================================
 
 /**
+ * Open a URL in the system default browser.
+ * Falls back to window.open when not running in Tauri.
+ */
+export async function openUrlInBrowser(url: string): Promise<void> {
+  if (!isTauri()) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+  } catch (e) {
+    console.error('Failed to open URL in browser', e);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
+/**
  * Open a path in VS Code
  */
 export async function openInVSCode(path: string): Promise<void> {
