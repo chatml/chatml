@@ -414,23 +414,26 @@ export default function Home() {
 
   // Selection state from tab view (single source of truth)
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId, selectedFileTabId } = useActiveTabSelection();
-  const tabStore = useTabViewStore();
+  // Use individual selectors for stable function references (avoids infinite re-render loop)
+  const tabSelectWorkspace = useTabViewStore((s) => s.selectWorkspace);
+  const tabSelectSession = useTabViewStore((s) => s.selectSession);
+  const tabSelectConversation = useTabViewStore((s) => s.selectConversation);
 
   // Unified navigation helpers that update both stores
   const selectWorkspace = useCallback((id: string | null) => {
-    tabStore.selectWorkspace(id);
+    tabSelectWorkspace(id);
     selectWorkspaceInAppStore(id);
-  }, [tabStore, selectWorkspaceInAppStore]);
+  }, [tabSelectWorkspace, selectWorkspaceInAppStore]);
 
   const selectSession = useCallback((id: string | null) => {
-    tabStore.selectSession(id);
+    tabSelectSession(id);
     selectSessionInAppStore(id);
-  }, [tabStore, selectSessionInAppStore]);
+  }, [tabSelectSession, selectSessionInAppStore]);
 
   const selectConversation = useCallback((id: string | null) => {
-    tabStore.selectConversation(id);
+    tabSelectConversation(id);
     selectConversationInAppStore(id);
-  }, [tabStore, selectConversationInAppStore]);
+  }, [tabSelectConversation, selectConversationInAppStore]);
 
   const { expandWorkspace } = useSettingsStore();
 
