@@ -171,6 +171,7 @@ func (s *SQLiteStore) initSchema() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+	CREATE INDEX IF NOT EXISTS idx_messages_conversation_position ON messages(conversation_id, position);
 
 	-- Tool Actions (normalized from Conversation.ToolSummary)
 	CREATE TABLE IF NOT EXISTS tool_actions (
@@ -183,6 +184,7 @@ func (s *SQLiteStore) initSchema() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_tool_actions_conversation_id ON tool_actions(conversation_id);
+	CREATE INDEX IF NOT EXISTS idx_tool_actions_conversation_position ON tool_actions(conversation_id, position);
 
 	-- Schema versioning
 	CREATE TABLE IF NOT EXISTS schema_version (
