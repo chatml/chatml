@@ -19,7 +19,9 @@ import {
   ArrowRight,
   Copy,
   Cloud,
+  Wand2,
 } from 'lucide-react';
+import { BranchCleanupDialog } from '@/components/dialogs/branch-cleanup/BranchCleanupDialog';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
 
@@ -212,6 +214,7 @@ export function BranchesDashboard({
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showRemote, setShowRemote] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
 
   const fetchBranchesRef = useRef<(isRefresh?: boolean) => void>(() => {});
   const hasFetchedRef = useRef(false);
@@ -251,16 +254,27 @@ export function BranchesDashboard({
       ) : undefined,
       titlePosition: 'left' as const,
       actions: (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => fetchBranchesRef.current(true)}
-          disabled={refreshing}
-          title="Refresh"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-        </Button>
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2 text-xs"
+            onClick={() => setCleanupOpen(true)}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Smart Branch Cleanup
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => fetchBranchesRef.current(true)}
+            disabled={refreshing}
+            title="Refresh"
+          >
+            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+          </Button>
+        </>
       ),
     },
   }), [workspace, workspaceId, branchData, refreshing]);
@@ -551,6 +565,13 @@ export function BranchesDashboard({
           </>
         )}
       </div>
+
+      <BranchCleanupDialog
+        open={cleanupOpen}
+        onOpenChange={setCleanupOpen}
+        workspaceId={workspaceId}
+        onComplete={() => fetchBranchesRef.current(true)}
+      />
     </FullContentLayout>
   );
 }

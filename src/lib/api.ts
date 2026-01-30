@@ -319,6 +319,73 @@ export async function listBranches(
   return handleResponse<BranchListResponse>(res);
 }
 
+// Branch cleanup types and API
+export type CleanupCategory = 'merged' | 'stale' | 'orphaned' | 'safe';
+
+export interface CleanupCandidate {
+  name: string;
+  isRemote: boolean;
+  category: CleanupCategory;
+  reason: string;
+  lastCommitDate: string;
+  lastAuthor: string;
+  hasLocalAndRemote: boolean;
+  sessionId?: string;
+  sessionName?: string;
+  sessionStatus?: string;
+  isProtected: boolean;
+  deletable: boolean;
+}
+
+export interface CleanupAnalysisResponse {
+  candidates: CleanupCandidate[];
+  summary: Record<string, number>;
+  protectedCount: number;
+  totalAnalyzed: number;
+}
+
+export interface CleanupBranchTarget {
+  name: string;
+  deleteLocal: boolean;
+  deleteRemote: boolean;
+}
+
+export interface CleanupBranchResult {
+  name: string;
+  deletedLocal: boolean;
+  deletedRemote: boolean;
+  error?: string;
+}
+
+export interface CleanupResult {
+  succeeded: CleanupBranchResult[];
+  failed: CleanupBranchResult[];
+}
+
+export async function analyzeBranchCleanup(
+  workspaceId: string,
+  params: { staleDaysThreshold?: number; includeRemote?: boolean }
+): Promise<CleanupAnalysisResponse> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/branches/analyze-cleanup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  return handleResponse<CleanupAnalysisResponse>(res);
+}
+
+export async function executeBranchCleanup(
+  workspaceId: string,
+  branches: CleanupBranchTarget[]
+): Promise<CleanupResult> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/branches/cleanup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branches }),
+  });
+  return handleResponse<CleanupResult>(res);
+}
+
 // Avatar types and API
 export interface AvatarResponse {
   avatars: Record<string, string>;
