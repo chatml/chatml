@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -15,7 +16,7 @@ import { navigate } from '@/lib/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
-import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
@@ -42,6 +43,7 @@ import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
 import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
+import { CommandPalette } from '@/components/dialogs/CommandPalette';
 // import { UpdateChecker } from '@/components/shared/UpdateChecker';
 import { BackendStatus } from '@/components/shared/BackendStatus';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -152,6 +154,9 @@ export default function Home() {
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Theme from next-themes
+  const { theme, setTheme } = useTheme();
 
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
@@ -960,6 +965,52 @@ export default function Home() {
     };
   }, []);
 
+  // Handle CommandPalette custom events
+  useEffect(() => {
+    const handleOpenSettings = () => setShowSettings(true);
+    const handleCloseSettings = () => setShowSettings(false);
+    const handleSpawnAgent = () => handleNewSession();
+    const handleNewConv = () => handleNewConversation();
+    const handleAddWorkspace = () => setShowAddWorkspace(true);
+    const handleToggleTheme = () => {
+      // Toggle between light and dark (resolve system to actual theme)
+      const isDark = theme === 'dark' ||
+        (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      setTheme(isDark ? 'light' : 'dark');
+    };
+    const handleToggleLeftPanel = () => toggleLeftSidebar();
+    const handleToggleRightPanel = () => toggleRightSidebar();
+    const handleOpenInVSCode = () => {
+      const { selectedSessionId, sessions } = useAppStore.getState();
+      const session = sessions.find((s) => s.id === selectedSessionId);
+      if (session?.worktreePath) {
+        openInVSCode(session.worktreePath);
+      }
+    };
+
+    window.addEventListener('open-settings', handleOpenSettings);
+    window.addEventListener('close-settings', handleCloseSettings);
+    window.addEventListener('spawn-agent', handleSpawnAgent);
+    window.addEventListener('new-conversation', handleNewConv);
+    window.addEventListener('add-workspace', handleAddWorkspace);
+    window.addEventListener('toggle-theme', handleToggleTheme);
+    window.addEventListener('toggle-left-panel', handleToggleLeftPanel);
+    window.addEventListener('toggle-right-panel', handleToggleRightPanel);
+    window.addEventListener('open-in-vscode', handleOpenInVSCode);
+
+    return () => {
+      window.removeEventListener('open-settings', handleOpenSettings);
+      window.removeEventListener('close-settings', handleCloseSettings);
+      window.removeEventListener('spawn-agent', handleSpawnAgent);
+      window.removeEventListener('new-conversation', handleNewConv);
+      window.removeEventListener('add-workspace', handleAddWorkspace);
+      window.removeEventListener('toggle-theme', handleToggleTheme);
+      window.removeEventListener('toggle-left-panel', handleToggleLeftPanel);
+      window.removeEventListener('toggle-right-panel', handleToggleRightPanel);
+      window.removeEventListener('open-in-vscode', handleOpenInVSCode);
+    };
+  }, [handleNewSession, handleNewConversation, theme, setTheme, toggleLeftSidebar, toggleRightSidebar]);
+
   // Don't render anything until client-side mounted - prevents hydration flash
   // Body background (set by ThemeScript) shows through
   if (!mounted) {
@@ -1298,6 +1349,9 @@ export default function Home() {
           open={showShortcuts}
           onOpenChange={setShowShortcuts}
         />
+
+        {/* Command Palette (Cmd+K) */}
+        <CommandPalette />
 
         {/* Update Checker - disabled until remote URL is configured
         <UpdateChecker />

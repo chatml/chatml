@@ -454,7 +454,7 @@ export async function openInTerminal(path: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const { Command } = await import('@tauri-apps/plugin-shell');
-    Command.create('open', ['-a', 'Terminal', path]).spawn().catch(console.error);
+    Command.create('open-terminal', [path]).spawn().catch(console.error);
   } catch (e) {
     console.error('Failed to open in Terminal', e);
   }
@@ -467,7 +467,7 @@ export async function showInFinder(path: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const { Command } = await import('@tauri-apps/plugin-shell');
-    Command.create('open', ['-R', path]).spawn().catch(console.error);
+    Command.create('open-finder', [path]).spawn().catch(console.error);
   } catch (e) {
     console.error('Failed to show in Finder', e);
   }
