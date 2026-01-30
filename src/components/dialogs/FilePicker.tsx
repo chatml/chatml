@@ -220,7 +220,13 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
 
   // Register Cmd+P shortcut
   useShortcut('filePicker', useCallback(() => {
-    setOpen((prev) => !prev);
+    setOpen((prev) => {
+      if (!prev) {
+        // Close command palette when opening file picker
+        window.dispatchEvent(new CustomEvent('close-command-palette'));
+      }
+      return !prev;
+    });
   }, []));
 
   // Reset search value when dialog closes
@@ -238,11 +244,20 @@ export function FilePicker({ workspaceId, sessionId }: FilePickerProps) {
     }
   }, [searchValue]);
 
-  // Listen for custom event (from menu or other triggers)
+  // Listen for custom events (from menu or other triggers)
   useEffect(() => {
-    const handleOpenEvent = () => setOpen(true);
+    const handleOpenEvent = () => {
+      // Close command palette when opening file picker
+      window.dispatchEvent(new CustomEvent('close-command-palette'));
+      setOpen(true);
+    };
+    const handleCloseEvent = () => setOpen(false);
     window.addEventListener('open-file-picker', handleOpenEvent);
-    return () => window.removeEventListener('open-file-picker', handleOpenEvent);
+    window.addEventListener('close-file-picker', handleCloseEvent);
+    return () => {
+      window.removeEventListener('open-file-picker', handleOpenEvent);
+      window.removeEventListener('close-file-picker', handleCloseEvent);
+    };
   }, []);
 
   // Fetch files when dialog opens (with caching per session)

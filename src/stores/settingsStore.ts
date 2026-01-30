@@ -73,6 +73,9 @@ interface SettingsState {
   layoutVertical: PanelLayout | undefined;
   layoutChanges: PanelLayout | undefined;
 
+  // Command palette recent commands (last 5 used)
+  recentCommands: string[];
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setDefaultModel: (value: string) => void;
@@ -98,6 +101,7 @@ interface SettingsState {
   setLayoutVertical: (layout: PanelLayout) => void;
   setLayoutChanges: (layout: PanelLayout) => void;
   resetLayouts: () => void;
+  addRecentCommand: (commandId: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -126,6 +130,7 @@ export const useSettingsStore = create<SettingsState>()(
       layoutInner: undefined,
       layoutVertical: undefined,
       layoutChanges: undefined,
+      recentCommands: [], // Last 5 used command IDs
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -175,6 +180,11 @@ export const useSettingsStore = create<SettingsState>()(
         layoutVertical: undefined,
         layoutChanges: undefined,
       }),
+      addRecentCommand: (commandId) =>
+        set((state) => {
+          const filtered = state.recentCommands.filter((id) => id !== commandId);
+          return { recentCommands: [commandId, ...filtered].slice(0, 5) };
+        }),
     }),
     {
       name: 'chatml-settings',
