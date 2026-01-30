@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
-import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi } from '@/lib/api';
+import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi, mapSessionDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import {
   Dialog,
@@ -67,17 +67,7 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
       // Auto-create first session for the new workspace (backend generates city-based name)
       const session = await createSessionApi(workspace.id);
 
-      addSession({
-        id: session.id,
-        workspaceId: session.workspaceId,
-        name: session.name,
-        branch: session.branch,
-        worktreePath: session.worktreePath,
-        task: session.task,
-        status: session.status,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-      });
+      addSession(mapSessionDTO(session));
 
       // Fetch conversations created by backend (includes "Untitled" with setup info)
       const conversations = await listConversationsApi(workspace.id, session.id);

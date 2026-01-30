@@ -2,7 +2,7 @@
 
 import { useMemo, useCallback } from 'react';
 import { Layers, Archive, ExternalLink, Copy, FolderOpen, ArrowLeft } from 'lucide-react';
-import type { WorktreeSession, Workspace } from '@/lib/types';
+import type { WorktreeSession, Workspace, SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { DataTable, type Column, type ContextMenuItem, type DisplayOptionsConfig } from '@/components/data-table';
 import {
   SessionIconCell,
@@ -12,6 +12,12 @@ import {
   DateCell,
   ActionsCell,
 } from './cells';
+import { PrioritySelector } from '@/components/shared/PrioritySelector';
+import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
+import { getPriorityOption, getTaskStatusOption } from '@/lib/session-fields';
+import { useAppStore } from '@/stores/appStore';
+import { updateSession as apiUpdateSession } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 
 // Row type for the data table
 interface SessionTableRow {
@@ -21,6 +27,8 @@ interface SessionTableRow {
   dateGroup: string;
   statusGroup: string;
   archivedGroup: string;
+  priorityGroup: string;
+  taskStatusGroup: string;
 }
 
 interface SessionsDataTableProps {
@@ -69,12 +77,35 @@ export function SessionsDataTable({
         dateGroup: getDateGroup(session.updatedAt),
         statusGroup: session.status as string,
         archivedGroup: session.archived ? 'Archived' : 'Active',
+        priorityGroup: getPriorityOption(session.priority).label,
+        taskStatusGroup: getTaskStatusOption(session.taskStatus).label,
       };
     })
     .filter((row): row is SessionTableRow => row !== null)
     .sort((a, b) =>
       new Date(b.session.updatedAt).getTime() - new Date(a.session.updatedAt).getTime()
     );
+
+  const storeUpdateSession = useAppStore((s) => s.updateSession);
+  const { error: showError } = useToast();
+
+  const handlePriorityChange = useCallback((session: WorktreeSession, value: SessionPriority) => {
+    const prev = session.priority;
+    storeUpdateSession(session.id, { priority: value });
+    apiUpdateSession(session.workspaceId, session.id, { priority: value }).catch(() => {
+      storeUpdateSession(session.id, { priority: prev });
+      showError('Failed to update priority');
+    });
+  }, [storeUpdateSession, showError]);
+
+  const handleTaskStatusChange = useCallback((session: WorktreeSession, value: SessionTaskStatus) => {
+    const prev = session.taskStatus;
+    storeUpdateSession(session.id, { taskStatus: value });
+    apiUpdateSession(session.workspaceId, session.id, { taskStatus: value }).catch(() => {
+      storeUpdateSession(session.id, { taskStatus: prev });
+      showError('Failed to update task status');
+    });
+  }, [storeUpdateSession, showError]);
 
   // Define columns
   const columns = useMemo<Column<SessionTableRow>[]>(
@@ -96,10 +127,38 @@ export function SessionsDataTable({
       {
         id: 'name',
         header: 'Branch',
-        width: '280px',
+        width: '220px',
         sortable: true,
         accessorKey: (row) => row.session.branch || row.session.name,
         cell: (row) => <SessionNameCell session={row.session} />,
+      },
+      {
+        id: 'taskStatus',
+        header: 'Status',
+        width: '50px',
+        sortable: true,
+        accessorKey: (row) => row.session.taskStatus,
+        cell: (row) => (
+          <TaskStatusSelector
+            value={row.session.taskStatus}
+            onChange={(val) => handleTaskStatusChange(row.session, val)}
+            size="sm"
+          />
+        ),
+      },
+      {
+        id: 'priority',
+        header: 'Priority',
+        width: '50px',
+        sortable: true,
+        accessorKey: (row) => row.session.priority,
+        cell: (row) => (
+          <PrioritySelector
+            value={row.session.priority}
+            onChange={(val) => handlePriorityChange(row.session, val)}
+            size="sm"
+          />
+        ),
       },
       {
         id: 'stats',
@@ -129,7 +188,7 @@ export function SessionsDataTable({
         ),
       },
     ],
-    [onArchiveSession, onUnarchiveSession]
+    [onArchiveSession, onUnarchiveSession, handlePriorityChange, handleTaskStatusChange]
   );
 
   // Row ID getter
@@ -203,14 +262,20 @@ export function SessionsDataTable({
         { value: 'workspaceName', label: 'Workspace' },
         { value: 'statusGroup', label: 'Status' },
         { value: 'archivedGroup', label: 'Active/Archived' },
+        { value: 'priorityGroup', label: 'Priority' },
+        { value: 'taskStatusGroup', label: 'Task Status' },
       ],
       sortingOptions: [
         { value: 'updated', label: 'Updated' },
         { value: 'name', label: 'Branch name' },
         { value: 'workspace', label: 'Workspace' },
+        { value: 'priority', label: 'Priority' },
+        { value: 'taskStatus', label: 'Task Status' },
       ],
       toggleableColumns: [
         { id: 'workspace', label: 'Workspace' },
+        { id: 'taskStatus', label: 'Task Status' },
+        { id: 'priority', label: 'Priority' },
         { id: 'stats', label: 'Changes' },
         { id: 'updated', label: 'Updated' },
       ],

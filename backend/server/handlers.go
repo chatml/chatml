@@ -1239,6 +1239,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Task:          req.Task,
 		Status:        "idle",
 		PRStatus:      "none",
+		Priority:      models.PriorityNone,
+		TaskStatus:    models.TaskStatusBacklog,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -1334,6 +1336,8 @@ type UpdateSessionRequest struct {
 	HasCheckFailures *bool   `json:"hasCheckFailures,omitempty"`
 	Pinned           *bool   `json:"pinned,omitempty"`
 	Archived         *bool   `json:"archived,omitempty"`
+	Priority         *int    `json:"priority,omitempty"`
+	TaskStatus       *string `json:"taskStatus,omitempty"`
 }
 
 func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
@@ -1362,6 +1366,14 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.PRStatus != nil && !models.ValidPRStatuses[*req.PRStatus] {
 		writeValidationError(w, "invalid prStatus value")
+		return
+	}
+	if req.Priority != nil && !models.ValidPriorities[*req.Priority] {
+		writeValidationError(w, "invalid priority value")
+		return
+	}
+	if req.TaskStatus != nil && !models.ValidTaskStatuses[*req.TaskStatus] {
+		writeValidationError(w, "invalid taskStatus value")
 		return
 	}
 
@@ -1395,6 +1407,12 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Archived != nil {
 			s.Archived = *req.Archived
+		}
+		if req.Priority != nil {
+			s.Priority = *req.Priority
+		}
+		if req.TaskStatus != nil {
+			s.TaskStatus = *req.TaskStatus
 		}
 		s.UpdatedAt = time.Now()
 	}); err != nil {

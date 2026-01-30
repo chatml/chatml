@@ -205,6 +205,8 @@ export interface SessionDTO {
   worktreePath: string;
   task?: string;
   status: 'active' | 'idle' | 'done' | 'error';
+  priority: number;
+  taskStatus: string;
   agentId?: string;
   stats?: {
     additions: number;
@@ -219,6 +221,31 @@ export interface SessionDTO {
   archived?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Map a backend SessionDTO to a frontend WorktreeSession */
+export function mapSessionDTO(session: SessionDTO): import('@/lib/types').WorktreeSession {
+  return {
+    id: session.id,
+    workspaceId: session.workspaceId,
+    name: session.name,
+    branch: session.branch,
+    worktreePath: session.worktreePath,
+    task: session.task,
+    status: session.status,
+    priority: (session.priority ?? 0) as import('@/lib/types').SessionPriority,
+    taskStatus: (session.taskStatus ?? 'backlog') as import('@/lib/types').SessionTaskStatus,
+    stats: session.stats,
+    prStatus: session.prStatus,
+    prUrl: session.prUrl,
+    prNumber: session.prNumber,
+    hasMergeConflict: session.hasMergeConflict,
+    hasCheckFailures: session.hasCheckFailures,
+    pinned: session.pinned,
+    archived: session.archived,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
 }
 
 export async function listSessions(workspaceId: string, includeArchived?: boolean): Promise<SessionDTO[]> {

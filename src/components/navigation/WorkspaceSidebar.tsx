@@ -20,7 +20,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { navigate } from '@/lib/navigation';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
-import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, mapSessionDTO } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -72,6 +72,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { getPriorityOption, getTaskStatusOption } from '@/lib/session-fields';
 import { useToast } from '@/components/ui/toast';
 import {
   Dialog,
@@ -208,17 +209,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       const session = await createSessionApi(workspaceId);
 
       // Add to local store
-      addSession({
-        id: session.id,
-        workspaceId: session.workspaceId,
-        name: session.name,
-        branch: session.branch,
-        worktreePath: session.worktreePath,
-        task: session.task,
-        status: session.status,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-      });
+      addSession(mapSessionDTO(session));
 
       // Fetch conversations created by backend (includes "Untitled" with setup info)
       const conversations = await listConversationsApi(workspaceId, session.id);
@@ -888,8 +879,16 @@ function SortableWorkspaceItem({
                               </div>
                             </div>
                           </div>
-                          {/* Second line: session name · PR info · status */}
+                          {/* Second line: task status · priority · session name · PR info · status */}
                           <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
+                            {session.taskStatus && session.taskStatus !== 'backlog' && (() => {
+                              const opt = getTaskStatusOption(session.taskStatus);
+                              return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
+                            })()}
+                            {session.priority > 0 && (() => {
+                              const opt = getPriorityOption(session.priority);
+                              return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
+                            })()}
                             <span className="truncate">{session.name}</span>
                             {hasPR && session.prNumber && (
                               <>
