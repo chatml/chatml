@@ -885,6 +885,130 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+// getSessionBranchMap builds a mapping from branch name to session info for a workspace
+func (h *Handlers) getSessionBranchMap(ctx context.Context, workspaceID string) (map[string]*git.SessionInfo, error) {
+	sessions, err := h.store.ListSessions(ctx, workspaceID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	sessionBranches := make(map[string]*git.SessionInfo)
+	for _, sess := range sessions {
+		if sess.Branch != "" {
+			sessionBranches[sess.Branch] = &git.SessionInfo{
+				ID:     sess.ID,
+				Name:   sess.Name,
+				Status: sess.Status,
+			}
+		}
+	}
+	return sessionBranches, nil
+}
+
+// AnalyzeBranchCleanup analyzes branches for cleanup and returns categorized candidates
+// POST /api/repos/{id}/branches/analyze-cleanup
+func (h *Handlers) AnalyzeBranchCleanup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	// Get the workspace
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "workspace")
+		return
+	}
+
+	// Parse request body
+	var req git.CleanupAnalysisRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	if req.StaleDaysThreshold <= 0 {
+		req.StaleDaysThreshold = 90
+	}
+
+	// Get sessions for branch -> session mapping
+	sessionBranches, err := h.getSessionBranchMap(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Run analysis
+	response, err := h.repoManager.AnalyzeBranchesForCleanup(
+		ctx, repo.Path, req.StaleDaysThreshold, req.IncludeRemote, sessionBranches,
+	)
+	if err != nil {
+		writeInternalError(w, "failed to analyze branches", err)
+		return
+	}
+
+	writeJSON(w, response)
+}
+
+// ExecuteBranchCleanup deletes the specified branches
+// POST /api/repos/{id}/branches/cleanup
+func (h *Handlers) ExecuteBranchCleanup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	// Get the workspace
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "workspace")
+		return
+	}
+
+	// Parse request body
+	var req git.CleanupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	if len(req.Branches) == 0 {
+		writeValidationError(w, "no branches specified")
+		return
+	}
+
+	// Get sessions for safety checks
+	sessionBranches, err := h.getSessionBranchMap(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Execute cleanup
+	result, err := h.repoManager.DeleteBranches(ctx, repo.Path, req.Branches, sessionBranches)
+	if err != nil {
+		writeInternalError(w, "failed to delete branches", err)
+		return
+	}
+
+	// Invalidate branch cache and notify clients
+	h.branchCache.InvalidateRepo(repo.Path)
+	if h.hub != nil {
+		h.hub.Broadcast(Event{
+			Type: "branch_dashboard_update",
+			Payload: map[string]interface{}{
+				"reason":    "branch_cleanup",
+				"succeeded": len(result.Succeeded),
+				"failed":    len(result.Failed),
+			},
+		})
+	}
+
+	writeJSON(w, result)
+}
+
 // GetAvatars returns GitHub avatar URLs for a batch of email addresses
 // GET /api/avatars?emails=email1@example.com,email2@example.com
 func (h *Handlers) GetAvatars(w http.ResponseWriter, r *http.Request) {
