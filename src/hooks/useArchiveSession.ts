@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { updateSession as updateSessionApi, getGitStatus } from '@/lib/api';
@@ -23,8 +23,10 @@ export function useArchiveSession(options?: {
   // Use refs for callbacks to avoid re-creating memoized functions
   const onSuccessRef = useRef(options?.onSuccess);
   const onErrorRef = useRef(options?.onError);
-  onSuccessRef.current = options?.onSuccess;
-  onErrorRef.current = options?.onError;
+  useEffect(() => {
+    onSuccessRef.current = options?.onSuccess;
+    onErrorRef.current = options?.onError;
+  });
 
   const [dialogState, setDialogState] = useState<ArchiveDialogState | null>(
     null

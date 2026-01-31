@@ -360,7 +360,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive, requestArchive]);
 
   useMainToolbarContent(toolbarConfig);
 
