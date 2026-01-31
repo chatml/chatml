@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Build output
+**/dist/
+
 # Go
 backend/chatml-backend
 
