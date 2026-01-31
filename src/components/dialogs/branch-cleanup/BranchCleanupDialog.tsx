@@ -70,7 +70,6 @@ export function BranchCleanupDialog({
             workspaceId={workspaceId}
             staleDaysThreshold={state.staleDaysThreshold}
             retryCount={state.retryCount}
-            isLoading={state.isLoading}
             error={state.error}
             dispatch={dispatch}
             onCancel={handleCancel}
