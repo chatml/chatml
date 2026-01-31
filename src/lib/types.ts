@@ -1,3 +1,9 @@
+// Session priority levels (matches Linear)
+export type SessionPriority = 0 | 1 | 2 | 3 | 4;
+
+// Session task status (user-managed workflow state, distinct from agent execution status)
+export type SessionTaskStatus = 'backlog' | 'todo' | 'in_progress' | 'done' | 'cancelled';
+
 // Workspace = A repository pointed to a path on disk
 export interface Workspace {
   id: string;
@@ -16,6 +22,8 @@ export interface WorktreeSession {
   worktreePath: string;
   task?: string; // optional task description
   status: 'active' | 'idle' | 'done' | 'error';
+  priority: SessionPriority;
+  taskStatus: SessionTaskStatus;
   archived?: boolean; // whether the session is archived
   pinned?: boolean; // whether the session is pinned to the top
   stats?: {

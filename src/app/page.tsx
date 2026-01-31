@@ -26,7 +26,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
@@ -419,26 +419,7 @@ export default function Home() {
     createdAt: repo.createdAt,
   }), []);
 
-  // Map backend Session to frontend WorktreeSession
-  const sessionToWorktreeSession = useCallback((session: SessionDTO) => ({
-    id: session.id,
-    workspaceId: session.workspaceId,
-    name: session.name,
-    branch: session.branch,
-    worktreePath: session.worktreePath,
-    task: session.task,
-    status: session.status,
-    stats: session.stats,
-    prStatus: session.prStatus,
-    prUrl: session.prUrl,
-    prNumber: session.prNumber,
-    hasMergeConflict: session.hasMergeConflict,
-    hasCheckFailures: session.hasCheckFailures,
-    pinned: session.pinned,
-    archived: session.archived,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-  }), []);
+  // mapSessionDTO from api.ts maps backend SessionDTO to frontend WorktreeSession
 
   // Map backend MessageDTO to frontend Message
   const messageToMessage = useCallback((msg: MessageDTO, conversationId: string) => ({
@@ -486,7 +467,7 @@ export default function Home() {
         setWorkspaces(mappedWorkspaces);
 
         // Map sessions (stats already come from backend if available)
-        const allSessions = dashboardData.sessions.map(s => sessionToWorktreeSession(s));
+        const allSessions = dashboardData.sessions.map(s => mapSessionDTO(s));
         setSessions(allSessions);
 
         // Map conversations (already included in the batch response)
@@ -528,7 +509,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [backendConnected, repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation]);
+  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation]);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {
@@ -539,24 +520,7 @@ export default function Home() {
       const newSession = await createSession(selectedWorkspaceId);
 
       // Add to store and select
-      addSession({
-        id: newSession.id,
-        workspaceId: newSession.workspaceId,
-        name: newSession.name,
-        branch: newSession.branch,
-        worktreePath: newSession.worktreePath,
-        task: newSession.task,
-        status: newSession.status,
-        stats: newSession.stats,
-        prStatus: newSession.prStatus,
-        prUrl: newSession.prUrl,
-        prNumber: newSession.prNumber,
-        hasMergeConflict: newSession.hasMergeConflict,
-        hasCheckFailures: newSession.hasCheckFailures,
-        pinned: newSession.pinned,
-        createdAt: newSession.createdAt,
-        updatedAt: newSession.updatedAt,
-      });
+      addSession(mapSessionDTO(newSession));
       // Note: no conversationId needed — navigate() calls selectSession() which
       // auto-selects the first conversation for the session as a side effect.
       navigate({
@@ -679,17 +643,7 @@ export default function Home() {
       // Auto-create first session for the new workspace (backend generates city-based name)
       const session = await createSession(workspace.id);
 
-      addSession({
-        id: session.id,
-        workspaceId: session.workspaceId,
-        name: session.name,
-        branch: session.branch,
-        worktreePath: session.worktreePath,
-        task: session.task,
-        status: session.status,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-      });
+      addSession(mapSessionDTO(session));
 
       // Fetch conversations created by backend (includes "Untitled" with setup info)
       const convs = await listConversations(workspace.id, session.id);

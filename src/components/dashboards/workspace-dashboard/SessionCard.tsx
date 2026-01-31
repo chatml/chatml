@@ -14,6 +14,7 @@ import {
   Plus,
   Minus,
 } from 'lucide-react';
+import { getPriorityOption, getTaskStatusOption } from '@/lib/session-fields';
 
 interface SessionCardProps {
   session: WorktreeSession;
@@ -69,6 +70,10 @@ export function SessionCard({ session, onJumpToSession }: SessionCardProps) {
   };
 
   const prStatus = getPRStatusInfo();
+  const taskStatusOpt = getTaskStatusOption(session.taskStatus);
+  const priorityOpt = session.priority > 0 ? getPriorityOption(session.priority) : null;
+  const TaskStatusIcon = taskStatusOpt.icon;
+  const PriorityIcon = priorityOpt?.icon;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -103,6 +108,10 @@ export function SessionCard({ session, onJumpToSession }: SessionCardProps) {
           {/* Main content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
+              <TaskStatusIcon className={cn('h-3.5 w-3.5 shrink-0', taskStatusOpt.color)} />
+              {PriorityIcon && priorityOpt && (
+                <PriorityIcon className={cn('h-3.5 w-3.5 shrink-0', priorityOpt.color)} />
+              )}
               <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="font-medium text-sm truncate">{session.branch}</span>
               {session.pinned && (
