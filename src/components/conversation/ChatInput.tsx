@@ -36,6 +36,8 @@ import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAll
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useSlashCommands } from '@/hooks/useSlashCommands';
+import { SlashCommandMenu } from './SlashCommandMenu';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
@@ -628,11 +630,29 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     return [...new Set(userMessages)].slice(0, 50); // Keep last 50 unique prompts
   }, [allMessages, sessionConversationIds]);
 
-  // Calculate suggestion when message changes
+  // Slash commands hook
+  // Note: context object identity changes on conversation/session switch. This is fine
+  // because context is only consumed inside executeCommand callbacks, not in effects/memos.
+  const slashMenu = useSlashCommands({
+    context: useMemo(() => ({
+      setMessage,
+      conversationId: selectedConversationId,
+      sessionId: selectedSessionId,
+    }), [selectedConversationId, selectedSessionId]),
+    availability: useMemo(() => ({
+      hasSession: selectedSessionId !== null,
+    }), [selectedSessionId]),
+  });
+
+  // Calculate suggestion when message changes (suppressed when slash menu is open)
   useEffect(() => {
+    if (slashMenu.isOpen) {
+      setSuggestion(null);
+      return;
+    }
     const newSuggestion = getSuggestion(message, previousPrompts);
     setSuggestion(newSuggestion);
-  }, [message, previousPrompts]);
+  }, [message, previousPrompts, slashMenu.isOpen]);
 
   // Check if currently streaming
   const isStreaming = selectedConversationId
@@ -975,6 +995,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Slash command menu takes priority when open
+    if (slashMenu.isOpen) {
+      const consumed = slashMenu.handleKeyDown(e);
+      if (consumed) return;
+    }
+
     // Tab to accept suggestion
     if (e.key === 'Tab' && suggestion && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
@@ -1106,6 +1132,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           />
         )}
 
+        {/* Slash Command Menu */}
+        <div className="relative">
+          <SlashCommandMenu
+            isOpen={slashMenu.isOpen}
+            commands={slashMenu.filteredCommands}
+            selectedIndex={slashMenu.selectedIndex}
+            query={slashMenu.query}
+            onSelect={slashMenu.executeCommand}
+            onHover={slashMenu.setSelectedIndex}
+            onDismiss={slashMenu.dismiss}
+          />
+        </div>
+
         {/* Text Input with Cmd+L hint and ghost text */}
         <div className="relative">
           {/* Ghost text overlay - must match textarea styling exactly for proper wrapping */}
@@ -1137,8 +1176,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           <Textarea
             ref={textareaRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              const pos = e.target.selectionStart ?? value.length;
+              setMessage(value);
+              slashMenu.handleInputChange(value, pos);
+            }}
             onKeyDown={handleKeyDown}
+            onClick={() => {
+              const pos = textareaRef.current?.selectionStart ?? 0;
+              slashMenu.handleInputChange(message, pos);
+            }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
