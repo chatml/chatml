@@ -299,12 +299,11 @@ export function ChangesPanel() {
   }, [selectedConversationId]);
 
   // Fetch files from session's worktree when session changes or tab switches to files
-  // Deferred slightly so it doesn't block the main conversation render on navigation
+  // Deferred via requestIdleCallback so it doesn't block the main conversation render on navigation
   useEffect(() => {
     if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
-      // Defer the fetch to avoid blocking session navigation render
-      const timeoutId = setTimeout(() => {
+      const schedule = () => {
         if (cancelled) return;
         setFilesLoading(true);
         listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
@@ -313,17 +312,23 @@ export function ChangesPanel() {
           })
           .catch(console.error)
           .finally(() => { if (!cancelled) setFilesLoading(false); });
-      }, 50);
-      return () => { cancelled = true; clearTimeout(timeoutId); };
+      };
+      if (typeof requestIdleCallback === 'function') {
+        const id = requestIdleCallback(schedule, { timeout: 3000 });
+        return () => { cancelled = true; cancelIdleCallback(id); };
+      } else {
+        const id = setTimeout(schedule, 150);
+        return () => { cancelled = true; clearTimeout(id); };
+      }
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
   // Fetch changes when session changes, tab switches to changes, or branch is renamed
-  // Deferred slightly so it doesn't block the main conversation render on navigation
+  // Deferred via requestIdleCallback so it doesn't block the main conversation render on navigation
   useEffect(() => {
     if (selectedTab === 'changes' && selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
-      const timeoutId = setTimeout(() => {
+      const schedule = () => {
         if (cancelled) return;
         setChangesLoading(true);
         getSessionChanges(selectedWorkspaceId, selectedSessionId)
@@ -332,8 +337,14 @@ export function ChangesPanel() {
           })
           .catch(console.error)
           .finally(() => { if (!cancelled) setChangesLoading(false); });
-      }, 50);
-      return () => { cancelled = true; clearTimeout(timeoutId); };
+      };
+      if (typeof requestIdleCallback === 'function') {
+        const id = requestIdleCallback(schedule, { timeout: 3000 });
+        return () => { cancelled = true; cancelIdleCallback(id); };
+      } else {
+        const id = setTimeout(schedule, 150);
+        return () => { cancelled = true; clearTimeout(id); };
+      }
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch]);
 
@@ -354,8 +365,8 @@ export function ChangesPanel() {
     const cleanupRef = { current: null as (() => void) | null };
     let isMounted = true;
 
-    // Defer the file watcher setup to avoid blocking the navigation render
-    const timeoutId = setTimeout(() => {
+    // Defer the file watcher setup via requestIdleCallback to avoid blocking the navigation render
+    const setupWatcher = () => {
       if (!isMounted) return;
 
       // Start watching the session's worktree directory (using session ID as the key)
@@ -379,11 +390,20 @@ export function ChangesPanel() {
           }
         }
       });
-    }, 100);
+    };
+
+    let cancelDefer: () => void;
+    if (typeof requestIdleCallback === 'function') {
+      const id = requestIdleCallback(setupWatcher, { timeout: 3000 });
+      cancelDefer = () => cancelIdleCallback(id);
+    } else {
+      const id = setTimeout(setupWatcher, 150);
+      cancelDefer = () => clearTimeout(id);
+    }
 
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
+      cancelDefer();
       try {
         cleanupRef.current?.();
       } catch {

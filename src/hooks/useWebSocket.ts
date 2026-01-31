@@ -205,11 +205,13 @@ export function useWebSocket(enabled: boolean = true) {
       case 'result':
         // Result event signals the end of a turn - finalize streaming atomically
         // This prevents data loss by creating message and clearing state in one update
-        const startTime = store.streamingState[conversationId]?.startTime;
+        // Re-read store to capture any mutations from earlier cases in this handler
+        const freshStore = getStore();
+        const startTime = freshStore.streamingState[conversationId]?.startTime;
         const durationMs = startTime ? Date.now() - startTime : undefined;
 
         // Capture tool usage before clearing
-        const tools = store.activeTools[conversationId] || [];
+        const tools = freshStore.activeTools[conversationId] || [];
         const toolUsage = tools.map((t) => ({
           id: t.id,
           tool: t.tool,
@@ -223,7 +225,7 @@ export function useWebSocket(enabled: boolean = true) {
 
         // Atomic finalization - creates message and clears streaming/activeTools in one update
         // Note: finalizeStreamingMessage also clears thinking state, so no separate clearThinking needed
-        store.finalizeStreamingMessage(conversationId, {
+        freshStore.finalizeStreamingMessage(conversationId, {
           durationMs,
           toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
           runSummary: {
@@ -237,7 +239,7 @@ export function useWebSocket(enabled: boolean = true) {
         });
         // Update budget status from result event, preserving max values
         if (event.cost !== undefined) {
-          const existingStatus = store.budgetStatus;
+          const existingStatus = freshStore.budgetStatus;
           const budgetStatus: BudgetStatus = {
             // Preserve max values from init event
             maxBudgetUsd: existingStatus?.maxBudgetUsd,
@@ -251,10 +253,10 @@ export function useWebSocket(enabled: boolean = true) {
                          : event.subtype === 'error_max_turns' ? 'turns'
                          : undefined,
           };
-          store.setBudgetStatus(budgetStatus);
+          freshStore.setBudgetStatus(budgetStatus);
         }
         // Update conversation status to completed
-        store.updateConversation(conversationId, { status: 'completed' });
+        freshStore.updateConversation(conversationId, { status: 'completed' });
         break;
 
       case 'complete':
