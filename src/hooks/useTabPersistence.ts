@@ -14,14 +14,12 @@ const SAVE_DEBOUNCE_MS = 2000;
  * - Saves tabs with debouncing when they change
  */
 export function useTabPersistence() {
-  const {
-    selectedWorkspaceId,
-    selectedSessionId,
-    fileTabs,
-    setFileTabs,
-    selectedFileTabId,
-    selectFileTab,
-  } = useAppStore();
+  // Use targeted selectors to prevent re-renders on unrelated store updates
+  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
+  const selectedSessionId = useAppStore((s) => s.selectedSessionId);
+  const fileTabs = useAppStore((s) => s.fileTabs);
+  const setFileTabs = useAppStore((s) => s.setFileTabs);
+  const selectFileTab = useAppStore((s) => s.selectFileTab);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef<string>('');
@@ -31,6 +29,13 @@ export function useTabPersistence() {
   // Tabs are stored at workspace level but filtered by session on load
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    // Skip fetch if we already have tabs for this session in the store
+    const existingTabs = useAppStore.getState().fileTabs;
+    const hasSessionTabs = existingTabs.some(
+      (t) => t.sessionId === selectedSessionId && t.workspaceId === selectedWorkspaceId
+    );
+    if (hasSessionTabs) return;
 
     const loadTabs = async () => {
       isLoadingRef.current = true;

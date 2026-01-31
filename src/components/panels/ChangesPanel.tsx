@@ -299,37 +299,41 @@ export function ChangesPanel() {
   }, [selectedConversationId]);
 
   // Fetch files from session's worktree when session changes or tab switches to files
+  // Deferred slightly so it doesn't block the main conversation render on navigation
   useEffect(() => {
     if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
-      queueMicrotask(() => {
-        if (!cancelled) setFilesLoading(true);
-      });
-      listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
-        .then((data) => {
-          // Convert FileNodeDTO to FileNode (they're the same shape)
-          if (!cancelled) setFiles(data as FileNode[]);
-        })
-        .catch(console.error)
-        .finally(() => { if (!cancelled) setFilesLoading(false); });
-      return () => { cancelled = true; };
+      // Defer the fetch to avoid blocking session navigation render
+      const timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setFilesLoading(true);
+        listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
+          .then((data) => {
+            if (!cancelled) setFiles(data as FileNode[]);
+          })
+          .catch(console.error)
+          .finally(() => { if (!cancelled) setFilesLoading(false); });
+      }, 50);
+      return () => { cancelled = true; clearTimeout(timeoutId); };
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
 
   // Fetch changes when session changes, tab switches to changes, or branch is renamed
+  // Deferred slightly so it doesn't block the main conversation render on navigation
   useEffect(() => {
     if (selectedTab === 'changes' && selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
-      queueMicrotask(() => {
-        if (!cancelled) setChangesLoading(true);
-      });
-      getSessionChanges(selectedWorkspaceId, selectedSessionId)
-        .then((data) => {
-          if (!cancelled) setChanges(data || []);
-        })
-        .catch(console.error)
-        .finally(() => { if (!cancelled) setChangesLoading(false); });
-      return () => { cancelled = true; };
+      const timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setChangesLoading(true);
+        getSessionChanges(selectedWorkspaceId, selectedSessionId)
+          .then((data) => {
+            if (!cancelled) setChanges(data || []);
+          })
+          .catch(console.error)
+          .finally(() => { if (!cancelled) setChangesLoading(false); });
+      }, 50);
+      return () => { cancelled = true; clearTimeout(timeoutId); };
     }
   }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch]);
 
@@ -343,37 +347,43 @@ export function ChangesPanel() {
   }, [branchSyncCompletedAt]);
 
   // Watch session worktree for file changes and auto-refresh
+  // Deferred so the Tauri IPC setup doesn't block session navigation render
   useEffect(() => {
     if (!selectedSessionId || !currentSession?.worktreePath) return;
 
     const cleanupRef = { current: null as (() => void) | null };
     let isMounted = true;
 
-    // Start watching the session's worktree directory (using session ID as the key)
-    watchWorkspace(selectedSessionId, currentSession.worktreePath);
+    // Defer the file watcher setup to avoid blocking the navigation render
+    const timeoutId = setTimeout(() => {
+      if (!isMounted) return;
 
-    const handleFileChange = (event: FileChangedEvent) => {
-      // Only refetch if the file change is for this session's worktree
-      if (event.workspaceId === selectedSessionId) {
-        debouncedFetchChanges();
-      }
-    };
+      // Start watching the session's worktree directory (using session ID as the key)
+      watchWorkspace(selectedSessionId, currentSession.worktreePath);
 
-    listenForFileChanges(handleFileChange).then((unlisten) => {
-      if (isMounted) {
-        cleanupRef.current = unlisten;
-      } else {
-        // Component unmounted before listener was ready - clean up safely
-        try {
-          unlisten();
-        } catch {
-          // Ignore errors if listener wasn't fully registered
+      const handleFileChange = (event: FileChangedEvent) => {
+        // Only refetch if the file change is for this session's worktree
+        if (event.workspaceId === selectedSessionId) {
+          debouncedFetchChanges();
         }
-      }
-    });
+      };
+
+      listenForFileChanges(handleFileChange).then((unlisten) => {
+        if (isMounted) {
+          cleanupRef.current = unlisten;
+        } else {
+          try {
+            unlisten();
+          } catch {
+            // Ignore errors if listener wasn't fully registered
+          }
+        }
+      });
+    }, 100);
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
       try {
         cleanupRef.current?.();
       } catch {

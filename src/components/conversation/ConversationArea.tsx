@@ -93,9 +93,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const reviewComments = useReviewComments(selectedSessionId);
   const { updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
 
-  // Fetch initial review comments when session changes
+  // Fetch initial review comments when session changes (skip if already cached)
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    // Skip fetch if we already have comments cached for this session
+    const existing = useAppStore.getState().reviewComments[selectedSessionId];
+    if (existing) return;
 
     const fetchComments = async () => {
       try {

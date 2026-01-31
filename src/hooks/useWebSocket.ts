@@ -70,27 +70,9 @@ export function useWebSocket(enabled: boolean = true) {
     enabledRef.current = enabled;
   }, [enabled]);
 
-  const {
-    appendOutput,
-    updateSession,
-    updateConversation,
-    appendStreamingText,
-    setStreaming,
-    setStreamingError,
-    clearStreamingText,
-    appendThinkingText,
-    setThinking,
-    clearThinking,
-    setPlanModeActive,
-    setAwaitingPlanApproval,
-    addActiveTool,
-    completeActiveTool,
-    clearActiveTools,
-    setAgentTodos,
-    finalizeStreamingMessage,
-    setPendingUserQuestion,
-    clearPendingUserQuestion,
-  } = useAppStore();
+  // Access store actions via getState() to avoid subscribing to all state changes.
+  // Actions are stable references so this is safe and avoids re-renders on every store update.
+  const getStore = useAppStore.getState;
 
   // Map backend status to frontend session status
   const mapStatus = (status: string): 'active' | 'idle' | 'done' | 'error' => {
@@ -106,11 +88,12 @@ export function useWebSocket(enabled: boolean = true) {
   const handleConversationEvent = useCallback((data: WSEvent) => {
     const conversationId = data.conversationId;
     if (!conversationId) return;
+    const store = getStore();
 
     // Handle conversation_status separately - it uses a string payload
     if (data.type === 'conversation_status') {
       if (typeof data.payload === 'string' && isValidConversationStatus(data.payload)) {
-        updateConversation(conversationId, { status: data.payload });
+        store.updateConversation(conversationId, { status: data.payload });
       } else {
         console.warn('Invalid conversation status payload:', data.payload);
       }
@@ -130,8 +113,8 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.budgetConfig) {
           const config = event.budgetConfig as { maxBudgetUsd?: number; maxTurns?: number; maxThinkingTokens?: number };
           // Initialize budget status with max values from config
-          const existingStatus = useAppStore.getState().budgetStatus;
-          useAppStore.getState().setBudgetStatus({
+          const existingStatus = store.budgetStatus;
+          store.setBudgetStatus({
             maxBudgetUsd: config.maxBudgetUsd,
             maxTurns: config.maxTurns,
             maxThinkingTokens: config.maxThinkingTokens,
@@ -145,34 +128,34 @@ export function useWebSocket(enabled: boolean = true) {
       case 'assistant_text':
         // Append streaming text - clear thinking when regular text starts
         if (event?.content) {
-          clearThinking(conversationId);
-          appendStreamingText(conversationId, event.content);
+          store.clearThinking(conversationId);
+          store.appendStreamingText(conversationId, event.content);
         }
         break;
 
       case 'thinking_start':
         // Start a new thinking block
-        setThinking(conversationId, true);
+        store.setThinking(conversationId, true);
         break;
 
       case 'thinking_delta':
         // Append thinking text
         if (event?.content) {
-          appendThinkingText(conversationId, event.content);
+          store.appendThinkingText(conversationId, event.content);
         }
         break;
 
       case 'thinking':
         // Full thinking content (non-streaming)
         if (event?.content) {
-          appendThinkingText(conversationId, event.content);
+          store.appendThinkingText(conversationId, event.content);
         }
         break;
 
       case 'tool_start':
         // Add active tool
         if (event?.id && event?.tool) {
-          addActiveTool(conversationId, {
+          store.addActiveTool(conversationId, {
             id: event.id,
             tool: event.tool,
             params: event.params,
@@ -181,7 +164,7 @@ export function useWebSocket(enabled: boolean = true) {
 
           // Detect ExitPlanMode tool - this means Claude wants plan approval
           if (event.tool === 'ExitPlanMode') {
-            setAwaitingPlanApproval(conversationId, true);
+            store.setAwaitingPlanApproval(conversationId, true);
           }
         }
         break;
@@ -191,16 +174,16 @@ export function useWebSocket(enabled: boolean = true) {
         // For Bash tools, also capture stdout/stderr
         if (event?.id) {
           // Check tool name BEFORE completing (to avoid race condition with state update)
-          const activeTool = useAppStore.getState().activeTools[conversationId]?.find(t => t.id === event.id);
+          const activeTool = store.activeTools[conversationId]?.find(t => t.id === event.id);
           const isExitPlanMode = activeTool?.tool === 'ExitPlanMode';
 
           const stdout = event.stdout as string | undefined;
           const stderr = event.stderr as string | undefined;
-          completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+          store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
 
           // Clear awaiting plan approval when ExitPlanMode completes
           if (isExitPlanMode) {
-            setAwaitingPlanApproval(conversationId, false);
+            store.setAwaitingPlanApproval(conversationId, false);
           }
         }
         break;
@@ -208,26 +191,25 @@ export function useWebSocket(enabled: boolean = true) {
       case 'todo_update':
         // Update agent todos for real-time tracking
         if (event?.todos && isAgentTodoItemArray(event.todos)) {
-          setAgentTodos(conversationId, event.todos);
+          store.setAgentTodos(conversationId, event.todos);
         }
         break;
 
       case 'name_suggestion':
         // Update conversation name
         if (event?.name) {
-          updateConversation(conversationId, { name: event.name });
+          store.updateConversation(conversationId, { name: event.name });
         }
         break;
 
       case 'result':
         // Result event signals the end of a turn - finalize streaming atomically
         // This prevents data loss by creating message and clearing state in one update
-        const state = useAppStore.getState();
-        const startTime = state.streamingState[conversationId]?.startTime;
+        const startTime = store.streamingState[conversationId]?.startTime;
         const durationMs = startTime ? Date.now() - startTime : undefined;
 
         // Capture tool usage before clearing
-        const tools = state.activeTools[conversationId] || [];
+        const tools = store.activeTools[conversationId] || [];
         const toolUsage = tools.map((t) => ({
           id: t.id,
           tool: t.tool,
@@ -241,7 +223,7 @@ export function useWebSocket(enabled: boolean = true) {
 
         // Atomic finalization - creates message and clears streaming/activeTools in one update
         // Note: finalizeStreamingMessage also clears thinking state, so no separate clearThinking needed
-        finalizeStreamingMessage(conversationId, {
+        store.finalizeStreamingMessage(conversationId, {
           durationMs,
           toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
           runSummary: {
@@ -253,9 +235,9 @@ export function useWebSocket(enabled: boolean = true) {
             errors: event.errors,
           },
         });
-// Update budget status from result event, preserving max values
+        // Update budget status from result event, preserving max values
         if (event.cost !== undefined) {
-          const existingStatus = useAppStore.getState().budgetStatus;
+          const existingStatus = store.budgetStatus;
           const budgetStatus: BudgetStatus = {
             // Preserve max values from init event
             maxBudgetUsd: existingStatus?.maxBudgetUsd,
@@ -269,28 +251,28 @@ export function useWebSocket(enabled: boolean = true) {
                          : event.subtype === 'error_max_turns' ? 'turns'
                          : undefined,
           };
-          useAppStore.getState().setBudgetStatus(budgetStatus);
+          store.setBudgetStatus(budgetStatus);
         }
         // Update conversation status to completed
-        updateConversation(conversationId, { status: 'completed' });
+        store.updateConversation(conversationId, { status: 'completed' });
         break;
 
       case 'complete':
         // Complete event signals the entire conversation ended (stdin closed)
         // Clear any remaining state
-        clearStreamingText(conversationId);
-        setStreaming(conversationId, false);
-        clearThinking(conversationId);
-        clearActiveTools(conversationId);
+        store.clearStreamingText(conversationId);
+        store.setStreaming(conversationId, false);
+        store.clearThinking(conversationId);
+        store.clearActiveTools(conversationId);
         // Update conversation status to idle (ready for new input)
-        updateConversation(conversationId, { status: 'idle' });
+        store.updateConversation(conversationId, { status: 'idle' });
         break;
 
       case 'permission_mode_changed':
         // Handle plan mode changes from the backend
         if (event?.mode) {
           const isPlanMode = event.mode === 'plan';
-          setPlanModeActive(conversationId, isPlanMode);
+          store.setPlanModeActive(conversationId, isPlanMode);
         }
         break;
 
@@ -298,9 +280,9 @@ export function useWebSocket(enabled: boolean = true) {
         // Handle error - capture the error message and stop streaming
         const errorMessage = event?.message || 'An unknown error occurred';
         console.error('Conversation error:', errorMessage);
-        setStreamingError(conversationId, errorMessage);
+        store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
-        updateConversation(conversationId, { status: 'idle' });
+        store.updateConversation(conversationId, { status: 'idle' });
         break;
 
       case 'streaming_warning':
@@ -317,7 +299,7 @@ export function useWebSocket(enabled: boolean = true) {
       case 'user_question_request':
         // AskUserQuestion tool - set pending question for the conversation
         if (event?.requestId && Array.isArray(event?.questions)) {
-          setPendingUserQuestion(conversationId, {
+          store.setPendingUserQuestion(conversationId, {
             requestId: event.requestId as string,
             questions: event.questions as UserQuestion[],
             currentIndex: 0,
@@ -328,28 +310,12 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'user_question_timeout':
         // Question timed out - clear the pending question UI
-        clearPendingUserQuestion(conversationId);
+        store.clearPendingUserQuestion(conversationId);
         break;
     }
-  }, [
-    appendStreamingText,
-    addActiveTool,
-    completeActiveTool,
-    updateConversation,
-    clearStreamingText,
-    setStreaming,
-    setStreamingError,
-    appendThinkingText,
-    setThinking,
-    clearThinking,
-    setPlanModeActive,
-    setAwaitingPlanApproval,
-    clearActiveTools,
-    setAgentTodos,
-    finalizeStreamingMessage,
-    setPendingUserQuestion,
-    clearPendingUserQuestion,
-  ]);
+  // getStore is a stable reference (useAppStore.getState), no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const connect = useCallback(async () => {
     // Cancel any pending reconnect to prevent race condition
@@ -390,7 +356,7 @@ export function useWebSocket(enabled: boolean = true) {
         if (data.type === 'init') {
           const payload = data.payload as Record<string, unknown> | undefined;
           if (payload?.mcpServers && Array.isArray(payload.mcpServers)) {
-            useAppStore.getState().setMcpServers(payload.mcpServers);
+            getStore().setMcpServers(payload.mcpServers);
           }
           return;
         }
@@ -404,7 +370,7 @@ export function useWebSocket(enabled: boolean = true) {
             messageIndex: (eventData.messageIndex as number) || 0,
             isResult: eventData.isResult as boolean | undefined,
           };
-          useAppStore.getState().addCheckpoint(checkpoint);
+          getStore().addCheckpoint(checkpoint);
           return;
         }
 
@@ -423,7 +389,7 @@ export function useWebSocket(enabled: boolean = true) {
             if (payload?.branch && typeof payload.branch === 'string') {
               updates.branch = payload.branch;
             }
-            updateSession(data.sessionId, updates);
+            getStore().updateSession(data.sessionId, updates);
           }
           return;
         }
@@ -433,7 +399,7 @@ export function useWebSocket(enabled: boolean = true) {
           const payload = data.payload as Record<string, unknown> | undefined;
           // stats can be null (no changes) or { additions: number, deletions: number }
           const stats = payload?.stats as { additions: number; deletions: number } | null | undefined;
-          updateSession(data.sessionId, { stats: stats ?? undefined });
+          getStore().updateSession(data.sessionId, { stats: stats ?? undefined });
           return;
         }
 
@@ -477,7 +443,7 @@ export function useWebSocket(enabled: boolean = true) {
               updates.hasMergeConflict = !payload.mergeable;
             }
 
-            updateSession(data.sessionId, updates);
+            getStore().updateSession(data.sessionId, updates);
           }
           return;
         }
@@ -486,7 +452,7 @@ export function useWebSocket(enabled: boolean = true) {
         if (data.type === 'comment_added' && data.sessionId) {
           const payload = data.payload as ReviewComment | undefined;
           if (payload?.id) {
-            useAppStore.getState().addReviewComment(data.sessionId, payload);
+            getStore().addReviewComment(data.sessionId, payload);
           }
           return;
         }
@@ -494,7 +460,7 @@ export function useWebSocket(enabled: boolean = true) {
         if ((data.type === 'comment_updated' || data.type === 'comment_resolved') && data.sessionId) {
           const payload = data.payload as ReviewComment | undefined;
           if (payload?.id) {
-            useAppStore.getState().updateReviewComment(data.sessionId, payload.id, payload);
+            getStore().updateReviewComment(data.sessionId, payload.id, payload);
           }
           return;
         }
@@ -502,16 +468,16 @@ export function useWebSocket(enabled: boolean = true) {
         if (data.type === 'comment_deleted' && data.sessionId) {
           const payload = data.payload as { id?: string } | undefined;
           if (payload?.id) {
-            useAppStore.getState().deleteReviewComment(data.sessionId, payload.id);
+            getStore().deleteReviewComment(data.sessionId, payload.id);
           }
           return;
         }
 
         // Legacy agent events - validate string payloads
         if (data.type === 'output' && data.agentId && typeof data.payload === 'string') {
-          appendOutput(data.agentId, data.payload);
+          getStore().appendOutput(data.agentId, data.payload);
         } else if (data.type === 'status' && data.agentId && typeof data.payload === 'string') {
-          updateSession(data.agentId, {
+          getStore().updateSession(data.agentId, {
             status: mapStatus(data.payload),
             updatedAt: new Date().toISOString(),
           });
@@ -536,7 +502,7 @@ export function useWebSocket(enabled: boolean = true) {
     };
 
     wsRef.current = ws;
-  }, [appendOutput, updateSession, handleConversationEvent]);
+  }, [handleConversationEvent, getStore]);
 
   // Store connect function in ref for self-referential reconnection
   useEffect(() => {

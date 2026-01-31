@@ -19,12 +19,11 @@ import { useToast } from '@/components/ui/toast';
  *   - If the file is open in a tab and IS dirty: show conflict warning
  */
 export function useFileWatcher() {
-  const {
-    selectedWorkspaceId,
-    workspaces,
-    fileTabs,
-    updateFileTab,
-  } = useAppStore();
+  // Use targeted selectors to prevent re-renders on unrelated store updates
+  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
+  const workspaces = useAppStore((s) => s.workspaces);
+  const fileTabs = useAppStore((s) => s.fileTabs);
+  const updateFileTab = useAppStore((s) => s.updateFileTab);
   const { error: showError } = useToast();
 
   // Track the currently watched workspace to avoid duplicate watches
