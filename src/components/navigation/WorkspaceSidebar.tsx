@@ -20,7 +20,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { navigate } from '@/lib/navigation';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
-import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, mapSessionDTO } from '@/lib/api';
+import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -33,6 +33,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -69,6 +73,8 @@ import {
   Search,
   X,
   LayoutDashboard,
+  Bot,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
@@ -100,12 +106,11 @@ interface WorkspaceSidebarProps {
   onOpenWorkspaceSettings?: (workspaceId: string) => void;
 }
 
-// Linear-style color palette for workspace indicators
-// Shared menu items for "Add project" dropdown
-const ADD_REPO_MENU_ITEMS = [
-  { icon: Folder, label: 'Open project', key: 'open' },
+// Shared menu items for "Add project" group in the plus menu
+const PROJECT_MENU_ITEMS = [
+  { icon: Folder, label: 'Open Project', key: 'open' },
   { icon: Globe, label: 'Clone from URL', key: 'clone' },
-  { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
+  { icon: SquarePlus, label: 'Quick Start', key: 'quickstart' },
 ] as const;
 
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
@@ -158,7 +163,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -274,6 +279,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   const handleRemoveWorkspace = async (workspaceId: string) => {
     try {
+      // Save to recently removed before deleting
+      const workspace = workspaces.find((w) => w.id === workspaceId);
+      if (workspace) {
+        addRecentlyRemovedWorkspace({ name: workspace.name, path: workspace.path });
+      }
       // Delete from backend
       await deleteRepoApi(workspaceId);
       // Update local store
@@ -281,6 +291,29 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     } catch (error) {
       console.error('Failed to remove workspace:', error);
       showError('Failed to remove workspace. Please try again.');
+    }
+  };
+
+  const handleReopenWorkspace = async (path: string) => {
+    try {
+      const repo = await addRepoApi(path);
+      // Remove from recently removed list
+      removeRecentlyRemovedWorkspace(path);
+      // Add to local store only if not already present
+      const { addWorkspace, workspaces: currentWorkspaces } = useAppStore.getState();
+      if (!currentWorkspaces.some((w) => w.id === repo.id)) {
+        addWorkspace({
+          id: repo.id,
+          name: repo.name,
+          path: repo.path,
+          defaultBranch: repo.branch,
+          createdAt: repo.createdAt,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to re-open workspace:', error);
+      showError('Failed to re-open workspace. It may have been moved or deleted.');
+      removeRecentlyRemovedWorkspace(path);
     }
   };
 
@@ -360,12 +393,31 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="center" className="w-48">
-                      {ADD_REPO_MENU_ITEMS.map((item) => (
+                      {PROJECT_MENU_ITEMS.map((item) => (
                         <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
                           <item.icon className="h-4 w-4" />
                           {item.label}
                         </DropdownMenuItem>
                       ))}
+                      {recentlyRemovedWorkspaces.length > 0 && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                              <Clock className="h-4 w-4" />
+                              Recent Projects
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-48">
+                              {recentlyRemovedWorkspaces.map((w) => (
+                                <DropdownMenuItem key={w.path} onClick={() => handleReopenWorkspace(w.path)}>
+                                  <Folder className="h-4 w-4" />
+                                  <span className="truncate">{w.name}</span>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -432,24 +484,31 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     <div className="flex-1 min-h-4" />
                   </ContextMenuTrigger>
                   <ContextMenuContent>
-                    <ContextMenuItem onClick={() => handleCreateSession(selectedWorkspaceId || workspaces[0].id)}>
-                      <Plus className="h-4 w-4" />
-                      Add session
+                    <ContextMenuItem onClick={() => {
+                      const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                      if (targetId) handleCreateSession(targetId);
+                    }}>
+                      <Bot className="h-4 w-4" />
+                      New Session
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     <ContextMenuSub>
                       <ContextMenuSubTrigger>
                         <FolderPlus className="h-4 w-4" />
-                        Add project
+                        Add Project
                       </ContextMenuSubTrigger>
                       <ContextMenuSubContent>
                         <ContextMenuItem onClick={onOpenProject}>
                           <Folder className="h-4 w-4" />
-                          Open project
+                          Open Project
                         </ContextMenuItem>
                         <ContextMenuItem onClick={onCloneFromUrl}>
                           <Globe className="h-4 w-4" />
                           Clone from URL
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={onQuickStart}>
+                          <SquarePlus className="h-4 w-4" />
+                          Quick Start
                         </ContextMenuItem>
                       </ContextMenuSubContent>
                     </ContextMenuSub>
@@ -490,16 +549,67 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <DropdownMenuContent align="start" side="top" className="w-48">
-              {ADD_REPO_MENU_ITEMS.map((item) => (
+            <DropdownMenuContent align="start" side="top" className="w-52">
+              {/* Session creation group */}
+              {workspaces.length > 0 && (
+                <>
+                  <DropdownMenuItem onClick={() => {
+                    const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                    if (targetId) handleCreateSession(targetId);
+                  }}>
+                    <Bot className="h-4 w-4" />
+                    New Session
+                    <DropdownMenuShortcut>⌘N</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  {workspaces.length > 1 && (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <GitBranch className="h-4 w-4" />
+                        New Session in...
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-48">
+                        {workspaces.map((w) => (
+                          <DropdownMenuItem key={w.id} onClick={() => handleCreateSession(w.id)}>
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getWorkspaceColor(w.id) }} />
+                            <span className="truncate">{w.name}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  )}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {/* Project addition group */}
+              {PROJECT_MENU_ITEMS.map((item) => (
                 <DropdownMenuItem key={item.key} onClick={menuHandlers[item.key]}>
                   <item.icon className="h-4 w-4" />
                   {item.label}
                 </DropdownMenuItem>
               ))}
+              {/* Recent projects group */}
+              {recentlyRemovedWorkspaces.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Clock className="h-4 w-4" />
+                      Recent Projects
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-48">
+                      {recentlyRemovedWorkspaces.map((w) => (
+                        <DropdownMenuItem key={w.path} onClick={() => handleReopenWorkspace(w.path)}>
+                          <Folder className="h-4 w-4" />
+                          <span className="truncate">{w.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <TooltipContent side="top">Add project</TooltipContent>
+          <TooltipContent side="top">New...</TooltipContent>
         </Tooltip>
         {/* Search input */}
         <div className="flex-1 relative">
