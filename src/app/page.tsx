@@ -155,8 +155,8 @@ export default function Home() {
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
-  // Theme from next-themes
-  const { theme, setTheme } = useTheme();
+  // Theme from next-themes (resolvedTheme handles 'system' → actual theme)
+  const { resolvedTheme, setTheme } = useTheme();
 
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
@@ -927,10 +927,7 @@ export default function Home() {
     const handleNewConv = () => handleNewConversation();
     const handleAddWorkspace = () => setShowAddWorkspace(true);
     const handleToggleTheme = () => {
-      // Toggle between light and dark (resolve system to actual theme)
-      const isDark = theme === 'dark' ||
-        (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      setTheme(isDark ? 'light' : 'dark');
+      setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
     };
     const handleToggleLeftPanel = () => toggleLeftSidebar();
     const handleToggleRightPanel = () => toggleRightSidebar();
@@ -963,7 +960,7 @@ export default function Home() {
       window.removeEventListener('toggle-right-panel', handleToggleRightPanel);
       window.removeEventListener('open-in-vscode', handleOpenInVSCode);
     };
-  }, [handleNewSession, handleNewConversation, theme, setTheme, toggleLeftSidebar, toggleRightSidebar]);
+  }, [handleNewSession, handleNewConversation, resolvedTheme, setTheme, toggleLeftSidebar, toggleRightSidebar]);
 
   // Don't render anything until client-side mounted - prevents hydration flash
   // Body background (set by ThemeScript) shows through

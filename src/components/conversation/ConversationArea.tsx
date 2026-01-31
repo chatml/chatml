@@ -93,9 +93,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const reviewComments = useReviewComments(selectedSessionId);
   const { updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
 
-  // Fetch initial review comments when session changes
+  // Fetch review comments when session changes.
+  // If cached, show cached data immediately but still refetch in the background
+  // to pick up any deletions/updates that happened outside this client.
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    const hasCached = !!useAppStore.getState().reviewComments[selectedSessionId];
 
     const fetchComments = async () => {
       try {
@@ -106,7 +110,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     };
 
-    fetchComments();
+    if (hasCached) {
+      // Defer background refresh so it doesn't block navigation render
+      if (typeof requestIdleCallback === 'function') {
+        const id = requestIdleCallback(() => fetchComments(), { timeout: 5000 });
+        return () => cancelIdleCallback(id);
+      } else {
+        const id = setTimeout(fetchComments, 200);
+        return () => clearTimeout(id);
+      }
+    } else {
+      fetchComments();
+    }
   }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
 
   // Branch sync for updating from origin/main

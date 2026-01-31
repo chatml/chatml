@@ -30,7 +30,7 @@
             "Terminal",
             {
               "validator": "regex",
-              "value": "^[/~][-\\w\\s./~]+$"
+              "value": "^[/~.][-\\w\\s./~]+$"
             }
           ]
         },
@@ -41,7 +41,7 @@
             "-R",
             {
               "validator": "regex",
-              "value": "^[/~][-\\w\\s./~]+$"
+              "value": "^[/~.][-\\w\\s./~]+$"
             }
           ]
         }

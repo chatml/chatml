@@ -6,6 +6,7 @@
  * This ensures every navigation action is recorded in the history stack.
  */
 
+import { startTransition } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useNavigationStore, type NavigationEntry } from '@/stores/navigationStore';
@@ -141,23 +142,25 @@ function isEntryValid(entry: NavigationEntry): boolean {
 
 /** Apply a navigation entry to the app state */
 function applyEntry(entry: NavigationEntry): void {
-  const appStore = useAppStore.getState();
-  const settingsStore = useSettingsStore.getState();
+  startTransition(() => {
+    const appStore = useAppStore.getState();
+    const settingsStore = useSettingsStore.getState();
 
-  if (entry.workspaceId !== undefined) {
-    appStore.selectWorkspace(entry.workspaceId);
-  }
-  // Use selectSession for session changes (it auto-selects first conversation)
-  // But if we have a specific conversationId, override after
-  if (entry.sessionId !== undefined) {
-    appStore.selectSession(entry.sessionId);
-  }
-  if (entry.conversationId !== undefined) {
-    appStore.selectConversation(entry.conversationId);
-  }
-  if (entry.contentView !== undefined) {
-    settingsStore.setContentView(entry.contentView);
-  }
+    if (entry.workspaceId !== undefined) {
+      appStore.selectWorkspace(entry.workspaceId);
+    }
+    // Use selectSession for session changes (it auto-selects first conversation)
+    // But if we have a specific conversationId, override after
+    if (entry.sessionId !== undefined) {
+      appStore.selectSession(entry.sessionId);
+    }
+    if (entry.conversationId !== undefined) {
+      appStore.selectConversation(entry.conversationId);
+    }
+    if (entry.contentView !== undefined) {
+      settingsStore.setContentView(entry.contentView);
+    }
+  });
 }
 
 /**
@@ -173,22 +176,26 @@ export function navigate(params: NavigateParams): void {
     navStore.pushEntry(currentEntry, params.tabId);
   }
 
-  // Apply navigation changes
-  const appStore = useAppStore.getState();
-  const settingsStore = useSettingsStore.getState();
+  // Wrap state mutations in startTransition so React can keep displaying
+  // the current UI while the new session's component tree renders.
+  // This eliminates the perceived 1+ second freeze on session navigation.
+  startTransition(() => {
+    const appStore = useAppStore.getState();
+    const settingsStore = useSettingsStore.getState();
 
-  if (params.workspaceId !== undefined) {
-    appStore.selectWorkspace(params.workspaceId);
-  }
-  if (params.sessionId !== undefined) {
-    appStore.selectSession(params.sessionId);
-  }
-  if (params.conversationId !== undefined) {
-    appStore.selectConversation(params.conversationId);
-  }
-  if (params.contentView !== undefined) {
-    settingsStore.setContentView(params.contentView);
-  }
+    if (params.workspaceId !== undefined) {
+      appStore.selectWorkspace(params.workspaceId);
+    }
+    if (params.sessionId !== undefined) {
+      appStore.selectSession(params.sessionId);
+    }
+    if (params.conversationId !== undefined) {
+      appStore.selectConversation(params.conversationId);
+    }
+    if (params.contentView !== undefined) {
+      settingsStore.setContentView(params.contentView);
+    }
+  });
 }
 
 /** Go back in history for the given tab (defaults to active tab) */

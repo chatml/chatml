@@ -204,9 +204,20 @@ export function useBranchSync(
   }, []);
 
   // Check status on session change only (not on checkStatus change)
+  // Deferred via requestIdleCallback so it doesn't block the initial render
   useEffect(() => {
-    if (sessionId) {
-      checkStatus();
+    if (!sessionId) return;
+
+    const scheduleCheck = () => checkStatus();
+
+    // Use requestIdleCallback to defer the network call until the browser is idle,
+    // preventing it from blocking the session navigation render.
+    if (typeof requestIdleCallback === 'function') {
+      const id = requestIdleCallback(scheduleCheck, { timeout: 3000 });
+      return () => cancelIdleCallback(id);
+    } else {
+      const id = setTimeout(scheduleCheck, 150);
+      return () => clearTimeout(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, workspaceId]);

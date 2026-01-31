@@ -496,10 +496,7 @@ export function CommandPalette() {
   // Current submenu page (root if empty)
   const currentPage = pages[pages.length - 1];
 
-  // Subscribe to store state for command availability
-  const workspaces = useAppStore((state) => state.workspaces);
-  const sessions = useAppStore((state) => state.sessions);
-  const conversations = useAppStore((state) => state.conversations);
+  // Subscribe to minimal store state to trigger re-render when command availability may change
   const selectedWorkspaceId = useAppStore((state) => state.selectedWorkspaceId);
   const selectedSessionId = useAppStore((state) => state.selectedSessionId);
 
@@ -524,12 +521,8 @@ export function CommandPalette() {
     return () => window.removeEventListener('close-command-palette', handleClose);
   }, []);
 
-  // Filter commands by availability (re-evaluate when store state changes)
-  const availableCommands = useMemo(
-    () => COMMANDS.filter((c) => c.available?.() ?? true),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [workspaces.length, sessions.length, conversations.length, selectedWorkspaceId, selectedSessionId]
-  );
+  // Filter commands by availability — no memo needed, filtering ~30 items is negligible
+  const availableCommands = COMMANDS.filter((c) => c.available?.() ?? true);
 
   // Get recent commands that are still available
   const recentItems = useMemo(() => {
