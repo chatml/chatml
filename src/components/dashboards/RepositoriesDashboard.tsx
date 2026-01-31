@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { Workspace } from '@/lib/types';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { showInFinder, openInTerminal } from '@/lib/tauri';
 
 interface RepositoriesDashboardProps {
   onOpenProject: () => void;
@@ -172,14 +173,14 @@ export function RepositoriesDashboard({
         label: 'Open in Finder',
         icon: <FolderOpen className="h-4 w-4" />,
         onClick: () => {
-          // TODO: Implement open in finder
+          showInFinder(workspace.path);
         },
       },
       {
         label: 'Open in Terminal',
         icon: <Terminal className="h-4 w-4" />,
         onClick: () => {
-          // TODO: Implement open in terminal
+          openInTerminal(workspace.path);
         },
       },
       {
