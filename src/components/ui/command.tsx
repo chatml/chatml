@@ -43,7 +43,7 @@ function Command({
       <CommandPrimitive
         data-slot="command"
         className={cn(
-          "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
+          "bg-surface-1 text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
           className
         )}
         // Disable cmdk's pointer selection - we handle mouse hover separately
@@ -115,7 +115,7 @@ function CommandDialog({
             className={cn(
               "fixed top-8 inset-x-0 mx-auto z-50",
               "w-full max-w-xl",
-              "bg-popover/95 backdrop-blur-xl",
+              "bg-surface-1/95 backdrop-blur-xl",
               "border rounded-lg shadow-2xl",
               "overflow-hidden p-0",
               "data-[state=open]:animate-in data-[state=closed]:animate-out",
