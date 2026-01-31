@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Loader2, RotateCcw } from 'lucide-react';
+import { Loader2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DialogDescription,
@@ -16,7 +16,6 @@ interface CleanupStepAnalysisProps {
   workspaceId: string;
   staleDaysThreshold: number;
   retryCount: number;
-  isLoading: boolean;
   error: string | null;
   dispatch: React.Dispatch<CleanupAction>;
   onCancel: () => void;
@@ -26,11 +25,11 @@ export function CleanupStepAnalysis({
   workspaceId,
   staleDaysThreshold,
   retryCount,
-  isLoading,
   error,
   dispatch,
   onCancel,
 }: CleanupStepAnalysisProps) {
+  // Run analysis on mount / retry
   useEffect(() => {
     let cancelled = false;
 
@@ -48,46 +47,85 @@ export function CleanupStepAnalysis({
         }
       } catch (err) {
         if (!cancelled) {
-          dispatch({ type: 'SET_ERROR', error: err instanceof Error ? err.message : 'Analysis failed' });
+          dispatch({ type: 'SET_LOADING', loading: false });
+          dispatch({
+            type: 'SET_ERROR',
+            error: err instanceof Error ? err.message : 'Analysis failed',
+          });
         }
       }
     }
 
     runAnalysis();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [workspaceId, staleDaysThreshold, retryCount, dispatch]);
 
+  // --- Error state ---
+  if (error) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>Analysis Failed</DialogTitle>
+          <DialogDescription>
+            Something went wrong while scanning your branches.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center justify-center py-6">
+          <div className="animate-scale-in w-full max-w-sm rounded-lg border border-destructive/30 bg-destructive/5 p-5">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  Unable to complete analysis
+                </p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {error}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => dispatch({ type: 'RETRY' })}
+                className="gap-1.5"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        </DialogFooter>
+      </>
+    );
+  }
+
+  // --- Loading state ---
   return (
     <>
       <DialogHeader>
-        <DialogTitle>
-          {error ? 'Analysis failed' : 'Analyzing branches...'}
-        </DialogTitle>
+        <DialogTitle>Analyzing Branches</DialogTitle>
         <DialogDescription>
-          {error
-            ? 'Something went wrong while scanning your branches.'
-            : 'Scanning repository for branches that can be safely cleaned up.'}
+          Scanning your repository for branches that can be safely cleaned up.
         </DialogDescription>
       </DialogHeader>
 
-      <div className="flex flex-col items-center justify-center py-8 gap-4">
-        {isLoading && !error && (
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        )}
-
-        {error && (
-          <div className="text-center space-y-3">
-            <p className="text-sm text-destructive">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => dispatch({ type: 'RETRY' })}
-            >
-              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-              Retry
-            </Button>
-          </div>
-        )}
+      <div className="flex flex-col items-center justify-center gap-3 py-8">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          This may take a moment...
+        </p>
       </div>
 
       <DialogFooter>
