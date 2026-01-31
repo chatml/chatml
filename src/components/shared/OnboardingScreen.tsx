@@ -2,8 +2,8 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { GlassCard } from '@/components/ui/glass-card';
 import { Github, Loader2, X, RefreshCw, ClipboardPaste } from 'lucide-react';
 import { startOAuthFlow, cancelOAuthFlow, handleOAuthCallback, storeToken } from '@/lib/auth';
 import { useAuthStore } from '@/stores/authStore';
@@ -68,20 +68,13 @@ export function OnboardingScreen() {
   // Dev mode: manually process OAuth callback URL
   const handleDevPaste = async () => {
     if (!devCallbackUrl.trim()) return;
-    console.log('[Onboarding] handleDevPaste: starting...');
     setDevProcessing(true);
     try {
-      console.log('[Onboarding] Calling handleOAuthCallback...');
       const result = await handleOAuthCallback(devCallbackUrl.trim());
-      console.log('[Onboarding] handleOAuthCallback done, storing token...');
       await storeToken(result.token);
-      console.log('[Onboarding] Token stored, calling completeOAuth...');
       completeOAuth();
-      console.log('[Onboarding] Calling setAuthenticated...');
       setAuthenticated(true, result.user);
-      console.log('[Onboarding] Done!');
     } catch (err) {
-      console.error('[Onboarding] Error:', err);
       failOAuth(err instanceof Error ? err.message : 'Failed to process callback');
     } finally {
       setDevProcessing(false);
@@ -91,177 +84,175 @@ export function OnboardingScreen() {
   };
 
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center bg-surface-0 overflow-hidden">
+    <div className="relative flex h-screen w-screen items-center justify-center bg-[#090909] overflow-hidden">
       {/* Draggable region for window management */}
       <div data-tauri-drag-region className="absolute top-0 left-0 right-0 h-11 z-50" />
-      {/* Gradient background (static for performance) */}
-      <div className="absolute inset-0 overflow-hidden">
-        {/* Large blur orbs */}
-        <div
-          className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 bg-primary/20 rounded-full blur-[120px]"
-        />
-        <div
-          className="absolute -bottom-1/4 -right-1/4 w-1/2 h-1/2 bg-purple-500/15 rounded-full blur-[120px]"
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/3 h-1/3 bg-ai-active/10 rounded-full blur-[100px]"
-        />
-      </div>
+
+      {/* Subtle ambient glow behind mascot — very muted */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[58%] w-[500px] h-[500px] rounded-full bg-purple-900/15 blur-[150px] pointer-events-none" />
 
       {/* Content */}
-      <GlassCard variant="elevated" hover="none" padding="lg" className="relative z-10 w-full max-w-md animate-scale-in">
-        <div className="flex flex-col items-center space-y-8">
-          {/* Logo with gradient and glow */}
-          <div className="flex flex-col items-center space-y-4">
-            <div className="relative">
-              {/* Glow effect */}
-              <div className="absolute inset-0 bg-gradient-to-br from-primary to-purple-500 rounded-2xl blur-xl opacity-50" />
-              {/* Logo */}
-              <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-purple-500 shadow-lg">
-                <span className="font-display text-4xl font-bold text-white">C</span>
-              </div>
-            </div>
-            <h1 className="font-display text-display-sm tracking-display">ChatML</h1>
+      <div className="relative z-10 flex flex-col items-center w-full max-w-sm animate-scale-in">
+        {/* Mascot — circular with purple ring, matching website brand */}
+        <div className="mb-8">
+          <div className="w-32 h-32 rounded-full ring-[3px] ring-primary/50 ring-offset-4 ring-offset-[#090909] overflow-hidden shadow-2xl shadow-primary/20">
+            <Image
+              src="/mascot.png"
+              alt="ChatML mascot"
+              width={128}
+              height={128}
+              className="w-full h-full object-cover"
+              priority
+            />
           </div>
+        </div>
 
-          {/* Tagline with display typography */}
-          <p className="text-center text-lg text-muted-foreground tracking-tight">
-            Enterprise AI Orchestration
-          </p>
+        {/* Brand wordmark — monospace: gray "chat" + purple "ml" */}
+        <h1 className="font-mono font-bold text-4xl tracking-[-0.05em]">
+          <span className="text-foreground/60">chat</span><span className="text-primary">ml</span>
+        </h1>
 
-          {/* Action buttons */}
-          <div className="flex flex-col items-center gap-3 w-full">
-            {/* Error state: show error and retry button */}
-            {hasError && (
-              <div className="flex flex-col items-center gap-3 w-full animate-slide-up-fade">
-                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-4 py-2 rounded-lg">
-                  <X className="h-4 w-4 shrink-0" />
-                  <span>{oauthError}</span>
-                </div>
-                <Button
-                  size="lg"
-                  onClick={handleRetry}
-                  className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-colors"
-                >
-                  <RefreshCw className="mr-2 h-5 w-5" />
-                  Try Again
-                </Button>
+        {/* Tagline — matching website hero */}
+        <div className="mt-10 flex flex-col items-center gap-1 text-center">
+          <span className="text-4xl font-extrabold tracking-[-0.03em] leading-none text-foreground">
+            Run Multiple
+          </span>
+          <span className="text-4xl font-extrabold tracking-[-0.03em] leading-none hero-gradient-text">
+            Coding Agents
+          </span>
+          <span className="text-2xl font-extrabold tracking-[-0.03em] leading-none text-foreground/50 mt-1">
+            that do the work for you
+          </span>
+        </div>
+
+        {/* Action area */}
+        <div className="mt-10 flex flex-col items-center gap-3 w-full">
+          {/* Error state */}
+          {hasError && (
+            <div className="flex flex-col items-center gap-3 w-full animate-slide-up-fade">
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-4 py-2.5 rounded-lg border border-destructive/20">
+                <X className="h-4 w-4 shrink-0" />
+                <span>{oauthError}</span>
               </div>
-            )}
-
-            {/* Pending state: show spinner and cancel button */}
-            {isConnecting && (
-              <div className="flex flex-col items-center gap-3 w-full">
-                <Button
-                  size="lg"
-                  disabled
-                  className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 shadow-lg shadow-primary/25"
-                >
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Waiting for GitHub...
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCancel}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Cancel
-                </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  Complete authorization in your browser, then return here.
-                </p>
-
-                {/* Dev mode: manual callback URL paste */}
-                {isDev && (
-                  <div className="mt-4 w-full border-t border-border/50 pt-4">
-                    {!showDevPaste ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowDevPaste(true)}
-                        className="w-full text-xs text-muted-foreground"
-                      >
-                        <ClipboardPaste className="mr-2 h-3 w-3" />
-                        Dev: Paste callback URL manually
-                      </Button>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        <input
-                          type="text"
-                          value={devCallbackUrl}
-                          onChange={(e) => setDevCallbackUrl(e.target.value)}
-                          placeholder="chatml://oauth/callback?code=...&state=..."
-                          className="w-full px-3 py-2 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
-                          disabled={devProcessing}
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={handleDevPaste}
-                            disabled={!devCallbackUrl.trim() || devProcessing}
-                            className="flex-1 text-xs"
-                          >
-                            {devProcessing ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              'Process'
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setShowDevPaste(false);
-                              setDevCallbackUrl('');
-                            }}
-                            disabled={devProcessing}
-                            className="text-xs"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground/70">
-                          Deep links don&apos;t work in dev mode. Copy the redirect URL from your browser.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Idle state: show sign in button */}
-            {!isConnecting && !hasError && (
               <Button
                 size="lg"
-                onClick={handleSignIn}
-                className="h-12 px-8 text-base bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90 shadow-lg shadow-primary/25 transition-colors"
+                onClick={handleRetry}
+                className="h-12 w-full text-md bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
               >
-                <Github className="mr-2 h-5 w-5" />
-                Sign in with GitHub
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try Again
               </Button>
-            )}
-          </div>
-
-          {/* Skip button for development - only show when not connecting */}
-          {!isConnecting && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSkip}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Skip for now
-            </Button>
+            </div>
           )}
 
-          {/* Footer */}
-          <p className="text-xs text-muted-foreground/70 text-center">
-            By signing in, you agree to grant ChatML access to your repositories.
-          </p>
+          {/* Pending state */}
+          {isConnecting && (
+            <div className="flex flex-col items-center gap-3 w-full">
+              <Button
+                size="lg"
+                disabled
+                className="h-12 w-full text-md bg-white/10 text-foreground border border-white/10 font-medium rounded-xl"
+              >
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Waiting for GitHub...
+              </Button>
+              <button
+                onClick={handleCancel}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <p className="text-xs text-muted-foreground/70 text-center mt-1">
+                Complete authorization in your browser, then return here.
+              </p>
+
+              {/* Dev mode: manual callback URL paste */}
+              {isDev && (
+                <div className="mt-4 w-full border-t border-white/5 pt-4">
+                  {!showDevPaste ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDevPaste(true)}
+                      className="w-full text-xs text-muted-foreground border-white/10 hover:bg-white/5"
+                    >
+                      <ClipboardPaste className="mr-2 h-3 w-3" />
+                      Dev: Paste callback URL manually
+                    </Button>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="text"
+                        value={devCallbackUrl}
+                        onChange={(e) => setDevCallbackUrl(e.target.value)}
+                        placeholder="chatml://oauth/callback?code=...&state=..."
+                        className="w-full px-3 py-2 text-xs bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-white/20 text-foreground placeholder:text-muted-foreground/50"
+                        disabled={devProcessing}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={handleDevPaste}
+                          disabled={!devCallbackUrl.trim() || devProcessing}
+                          className="flex-1 text-xs bg-white/10 hover:bg-white/15"
+                        >
+                          {devProcessing ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            'Process'
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowDevPaste(false);
+                            setDevCallbackUrl('');
+                          }}
+                          disabled={devProcessing}
+                          className="text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/50">
+                        Deep links don&apos;t work in dev mode. Copy the redirect URL from your browser.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Idle state: sign in button */}
+          {!isConnecting && !hasError && (
+            <Button
+              size="lg"
+              onClick={handleSignIn}
+              className="h-12 w-full text-md bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+            >
+              <Github className="mr-2 h-5 w-5" />
+              Sign in with GitHub
+            </Button>
+          )}
         </div>
-      </GlassCard>
+
+        {/* Skip button */}
+        {!isConnecting && (
+          <button
+            onClick={handleSkip}
+            className="mt-4 text-sm text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            Skip for now
+          </button>
+        )}
+
+        {/* Footer */}
+        <p className="mt-8 text-xs text-muted-foreground/40 text-center leading-relaxed">
+          By signing in, you agree to grant ChatML<br />access to your repositories.
+        </p>
+      </div>
     </div>
   );
 }
