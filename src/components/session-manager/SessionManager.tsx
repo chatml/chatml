@@ -8,6 +8,8 @@ import { useUIStore } from '@/stores/uiStore';
 import { updateSession as updateSessionApi } from '@/lib/api';
 import { SessionsDataTable } from './SessionsDataTable';
 import { cn } from '@/lib/utils';
+import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
+import { useArchiveSession } from '@/hooks/useArchiveSession';
 
 interface SessionManagerProps {
   onClose: () => void;
@@ -19,10 +21,10 @@ export function SessionManager({
 
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
-  const archiveSession = useAppStore((s) => s.archiveSession);
   const unarchiveSession = useAppStore((s) => s.unarchiveSession);
   const { expandWorkspace } = useSettingsStore();
   const leftToolbarBg = useUIStore((state) => state.toolbarBackgrounds.left);
+  const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession();
 
   // Handle session selection - navigate to conversation view
   const handleSelectSession = useCallback(
@@ -39,20 +41,10 @@ export function SessionManager({
 
   // Handle archive session
   const handleArchiveSession = useCallback(
-    async (sessionId: string) => {
-      const session = sessions.find((s) => s.id === sessionId);
-      if (!session) return;
-
-      try {
-        // Update backend
-        await updateSessionApi(session.workspaceId, sessionId, { archived: true });
-        // Update local store
-        archiveSession(sessionId);
-      } catch (error) {
-        console.error('Failed to archive session:', error);
-      }
+    (sessionId: string) => {
+      requestArchive(sessionId);
     },
-    [sessions, archiveSession]
+    [requestArchive]
   );
 
   // Handle unarchive session
@@ -94,6 +86,7 @@ export function SessionManager({
           onClose={onClose}
         />
       </div>
+      {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
     </div>
   );
 }

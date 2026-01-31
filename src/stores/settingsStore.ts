@@ -46,6 +46,7 @@ export const DEFAULT_LAYOUTS = {
 interface SettingsState {
   // Chat settings
   confirmCloseActiveTab: boolean;
+  confirmArchiveDirtySession: boolean;
   defaultModel: string;
   defaultThinking: boolean;
   maxThinkingTokens: number;
@@ -75,6 +76,7 @@ interface SettingsState {
 
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
+  setConfirmArchiveDirtySession: (value: boolean) => void;
   setDefaultModel: (value: string) => void;
   setDefaultThinking: (value: boolean) => void;
   setMaxThinkingTokens: (value: number) => void;
@@ -105,6 +107,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       // Default values
       confirmCloseActiveTab: true,
+      confirmArchiveDirtySession: true,
       defaultModel: 'opus-4.5',
       defaultThinking: true,
       maxThinkingTokens: 10000,
@@ -129,6 +132,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
+      setConfirmArchiveDirtySession: (value) => set({ confirmArchiveDirtySession: value }),
       setDefaultModel: (value) => set({ defaultModel: value }),
       setDefaultThinking: (value) => set({ defaultThinking: value }),
       setMaxThinkingTokens: (value) => set({ maxThinkingTokens: value }),

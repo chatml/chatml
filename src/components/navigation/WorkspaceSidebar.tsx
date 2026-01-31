@@ -87,6 +87,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
+import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
+import { useArchiveSession } from '@/hooks/useArchiveSession';
 
 interface WorkspaceSidebarProps {
   onOpenProject: () => void;
@@ -127,10 +129,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     addSession,
     addConversation,
     reorderWorkspaces,
-    archiveSession,
     updateSession,
     removeWorkspace,
   } = useAppStore();
+  const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
+    onError: () => showError('Failed to archive session'),
+  });
 
 
 
@@ -257,18 +261,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     }
   };
 
-  const handleArchiveSession = async (sessionId: string) => {
-    const session = sessions.find((s) => s.id === sessionId);
-    if (!session) return;
-
-    try {
-      // Update backend to mark as archived
-      await updateSessionApi(session.workspaceId, sessionId, { archived: true });
-      // Update local store
-      archiveSession(sessionId);
-    } catch (error) {
-      console.error('Failed to archive session:', error);
-    }
+  const handleArchiveSession = (sessionId: string) => {
+    requestArchive(sessionId);
   };
 
   const handlePinSession = async (sessionId: string) => {
@@ -569,6 +563,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
     </div>
   );
 }

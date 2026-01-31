@@ -14,6 +14,8 @@ import {
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInVSCode, openInTerminal, showInFinder } from '@/lib/tauri';
 import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
+import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
+import { useArchiveSession } from '@/hooks/useArchiveSession';
 import {
   ChevronRight,
   ChevronDown,
@@ -149,12 +151,15 @@ function SessionTitle({
 export function SessionToolbarContent() {
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const selectedConversationId = useAppStore((s) => s.selectedConversationId);
-  const archiveSession = useAppStore((s) => s.archiveSession);
   const removeSession = useAppStore((s) => s.removeSession);
   const addConversation = useAppStore((s) => s.addConversation);
   const selectConversation = useAppStore((s) => s.selectConversation);
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
+    onSuccess: () => showSuccess('Session archived'),
+    onError: () => showError('Failed to archive session'),
+  });
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
@@ -185,17 +190,10 @@ export function SessionToolbarContent() {
     if (ok) showSuccess('Branch name copied');
   }, [selectedSession, showSuccess]);
 
-  const handleArchive = useCallback(async () => {
-    if (!selectedSession || !selectedWorkspaceId) return;
-    try {
-      await apiUpdateSession(selectedWorkspaceId, selectedSession.id, { archived: true });
-      archiveSession(selectedSession.id);
-      showSuccess('Session archived');
-    } catch (error) {
-      console.error('Failed to archive session:', error);
-      showError('Failed to archive session');
-    }
-  }, [selectedSession, selectedWorkspaceId, archiveSession, showSuccess, showError]);
+  const handleArchive = useCallback(() => {
+    if (!selectedSession) return;
+    requestArchive(selectedSession.id);
+  }, [selectedSession, requestArchive]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedSession || !selectedWorkspaceId) return;
@@ -240,6 +238,7 @@ export function SessionToolbarContent() {
               workspaceId={selectedWorkspaceId}
               session={selectedSession}
               onSendMessage={handleGitActionMessage}
+              onArchiveSession={requestArchive}
             />
 
             <div className="w-1.5" />
@@ -366,11 +365,14 @@ export function SessionToolbarContent() {
   useMainToolbarContent(toolbarConfig);
 
   return (
-    <DeleteSessionDialog
-      open={showDeleteDialog}
-      onOpenChange={setShowDeleteDialog}
-      onConfirm={handleDelete}
-      sessionName={selectedSession?.task || selectedSession?.branch || 'this session'}
-    />
+    <>
+      <DeleteSessionDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={handleDelete}
+        sessionName={selectedSession?.task || selectedSession?.branch || 'this session'}
+      />
+      {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
+    </>
   );
 }

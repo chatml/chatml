@@ -513,6 +513,31 @@ function GitSettings() {
           />
         </div>
       </div>
+
+      {/* Confirm archive with uncommitted changes */}
+      <ConfirmArchiveSetting />
+    </div>
+  );
+}
+
+function ConfirmArchiveSetting() {
+  const confirmArchiveDirtySession = useSettingsStore((s) => s.confirmArchiveDirtySession);
+  const setConfirmArchiveDirtySession = useSettingsStore((s) => s.setConfirmArchiveDirtySession);
+
+  return (
+    <div className="flex items-start justify-between py-4 border-b border-border/50">
+      <div className="flex-1 pr-4">
+        <h4 className="text-sm font-medium">Confirm archive with uncommitted changes</h4>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Show a confirmation dialog when archiving a session that has uncommitted or unpushed changes
+        </p>
+      </div>
+      <div className="shrink-0 pt-1">
+        <Switch
+          checked={confirmArchiveDirtySession}
+          onCheckedChange={setConfirmArchiveDirtySession}
+        />
+      </div>
     </div>
   );
 }
