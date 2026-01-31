@@ -56,7 +56,9 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
-import type { WorktreeSession } from '@/lib/types';
+import type { WorktreeSession, SessionPriority, SessionTaskStatus } from '@/lib/types';
+import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
+import { PrioritySelector } from '@/components/shared/PrioritySelector';
 
 // ---------------------------------------------------------------------------
 // Review type options for the split button popover
@@ -207,6 +209,28 @@ export function SessionToolbarContent() {
     }
   }, [selectedSession, selectedWorkspaceId, removeSession, showSuccess, showError]);
 
+  const storeUpdateSession = useAppStore((s) => s.updateSession);
+
+  const handlePriorityChange = useCallback((value: SessionPriority) => {
+    if (!selectedSession || !selectedWorkspaceId) return;
+    const prev = selectedSession.priority;
+    storeUpdateSession(selectedSession.id, { priority: value });
+    apiUpdateSession(selectedWorkspaceId, selectedSession.id, { priority: value }).catch(() => {
+      storeUpdateSession(selectedSession.id, { priority: prev });
+      showError('Failed to update priority');
+    });
+  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
+
+  const handleTaskStatusChange = useCallback((value: SessionTaskStatus) => {
+    if (!selectedSession || !selectedWorkspaceId) return;
+    const prev = selectedSession.taskStatus;
+    storeUpdateSession(selectedSession.id, { taskStatus: value });
+    apiUpdateSession(selectedWorkspaceId, selectedSession.id, { taskStatus: value }).catch(() => {
+      storeUpdateSession(selectedSession.id, { taskStatus: prev });
+      showError('Failed to update task status');
+    });
+  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
+
   const toolbarConfig = useMemo(() => {
     if (!selectedWorkspace || !selectedSession) return {};
 
@@ -227,10 +251,22 @@ export function SessionToolbarContent() {
       bottom: {
         titlePosition: 'left' as const,
         title: (
-          <SessionTitle
-            session={selectedSession}
-            workspaceId={selectedWorkspaceId!}
-          />
+          <div className="flex items-center gap-0.5">
+            <TaskStatusSelector
+              value={selectedSession.taskStatus}
+              onChange={handleTaskStatusChange}
+              size="sm"
+            />
+            <PrioritySelector
+              value={selectedSession.priority}
+              onChange={handlePriorityChange}
+              size="sm"
+            />
+            <SessionTitle
+              session={selectedSession}
+              workspaceId={selectedWorkspaceId!}
+            />
+          </div>
         ),
         actions: (
           <div className="flex items-center gap-0.5">
@@ -360,7 +396,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive, requestArchive]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handlePriorityChange]);
 
   useMainToolbarContent(toolbarConfig);
 

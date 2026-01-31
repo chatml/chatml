@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -15,7 +16,7 @@ import { navigate } from '@/lib/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
-import { isTauri, safeListen, closeWindow, openFolderDialog } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
@@ -25,7 +26,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
@@ -42,6 +43,7 @@ import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
 import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
+import { CommandPalette } from '@/components/dialogs/CommandPalette';
 // import { UpdateChecker } from '@/components/shared/UpdateChecker';
 import { BackendStatus } from '@/components/shared/BackendStatus';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -152,6 +154,9 @@ export default function Home() {
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Theme from next-themes
+  const { theme, setTheme } = useTheme();
 
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
@@ -414,26 +419,7 @@ export default function Home() {
     createdAt: repo.createdAt,
   }), []);
 
-  // Map backend Session to frontend WorktreeSession
-  const sessionToWorktreeSession = useCallback((session: SessionDTO) => ({
-    id: session.id,
-    workspaceId: session.workspaceId,
-    name: session.name,
-    branch: session.branch,
-    worktreePath: session.worktreePath,
-    task: session.task,
-    status: session.status,
-    stats: session.stats,
-    prStatus: session.prStatus,
-    prUrl: session.prUrl,
-    prNumber: session.prNumber,
-    hasMergeConflict: session.hasMergeConflict,
-    hasCheckFailures: session.hasCheckFailures,
-    pinned: session.pinned,
-    archived: session.archived,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-  }), []);
+  // mapSessionDTO from api.ts maps backend SessionDTO to frontend WorktreeSession
 
   // Map backend MessageDTO to frontend Message
   const messageToMessage = useCallback((msg: MessageDTO, conversationId: string) => ({
@@ -481,7 +467,7 @@ export default function Home() {
         setWorkspaces(mappedWorkspaces);
 
         // Map sessions (stats already come from backend if available)
-        const allSessions = dashboardData.sessions.map(s => sessionToWorktreeSession(s));
+        const allSessions = dashboardData.sessions.map(s => mapSessionDTO(s));
         setSessions(allSessions);
 
         // Map conversations (already included in the batch response)
@@ -523,7 +509,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [backendConnected, repoToWorkspace, sessionToWorktreeSession, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation]);
+  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation]);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {
@@ -534,24 +520,7 @@ export default function Home() {
       const newSession = await createSession(selectedWorkspaceId);
 
       // Add to store and select
-      addSession({
-        id: newSession.id,
-        workspaceId: newSession.workspaceId,
-        name: newSession.name,
-        branch: newSession.branch,
-        worktreePath: newSession.worktreePath,
-        task: newSession.task,
-        status: newSession.status,
-        stats: newSession.stats,
-        prStatus: newSession.prStatus,
-        prUrl: newSession.prUrl,
-        prNumber: newSession.prNumber,
-        hasMergeConflict: newSession.hasMergeConflict,
-        hasCheckFailures: newSession.hasCheckFailures,
-        pinned: newSession.pinned,
-        createdAt: newSession.createdAt,
-        updatedAt: newSession.updatedAt,
-      });
+      addSession(mapSessionDTO(newSession));
       // Note: no conversationId needed — navigate() calls selectSession() which
       // auto-selects the first conversation for the session as a side effect.
       navigate({
@@ -674,17 +643,7 @@ export default function Home() {
       // Auto-create first session for the new workspace (backend generates city-based name)
       const session = await createSession(workspace.id);
 
-      addSession({
-        id: session.id,
-        workspaceId: session.workspaceId,
-        name: session.name,
-        branch: session.branch,
-        worktreePath: session.worktreePath,
-        task: session.task,
-        status: session.status,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-      });
+      addSession(mapSessionDTO(session));
 
       // Fetch conversations created by backend (includes "Untitled" with setup info)
       const convs = await listConversations(workspace.id, session.id);
@@ -959,6 +918,52 @@ export default function Home() {
       cleanup?.();
     };
   }, []);
+
+  // Handle CommandPalette custom events
+  useEffect(() => {
+    const handleOpenSettings = () => setShowSettings(true);
+    const handleCloseSettings = () => setShowSettings(false);
+    const handleSpawnAgent = () => handleNewSession();
+    const handleNewConv = () => handleNewConversation();
+    const handleAddWorkspace = () => setShowAddWorkspace(true);
+    const handleToggleTheme = () => {
+      // Toggle between light and dark (resolve system to actual theme)
+      const isDark = theme === 'dark' ||
+        (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      setTheme(isDark ? 'light' : 'dark');
+    };
+    const handleToggleLeftPanel = () => toggleLeftSidebar();
+    const handleToggleRightPanel = () => toggleRightSidebar();
+    const handleOpenInVSCode = () => {
+      const { selectedSessionId, sessions } = useAppStore.getState();
+      const session = sessions.find((s) => s.id === selectedSessionId);
+      if (session?.worktreePath) {
+        openInVSCode(session.worktreePath);
+      }
+    };
+
+    window.addEventListener('open-settings', handleOpenSettings);
+    window.addEventListener('close-settings', handleCloseSettings);
+    window.addEventListener('spawn-agent', handleSpawnAgent);
+    window.addEventListener('new-conversation', handleNewConv);
+    window.addEventListener('add-workspace', handleAddWorkspace);
+    window.addEventListener('toggle-theme', handleToggleTheme);
+    window.addEventListener('toggle-left-panel', handleToggleLeftPanel);
+    window.addEventListener('toggle-right-panel', handleToggleRightPanel);
+    window.addEventListener('open-in-vscode', handleOpenInVSCode);
+
+    return () => {
+      window.removeEventListener('open-settings', handleOpenSettings);
+      window.removeEventListener('close-settings', handleCloseSettings);
+      window.removeEventListener('spawn-agent', handleSpawnAgent);
+      window.removeEventListener('new-conversation', handleNewConv);
+      window.removeEventListener('add-workspace', handleAddWorkspace);
+      window.removeEventListener('toggle-theme', handleToggleTheme);
+      window.removeEventListener('toggle-left-panel', handleToggleLeftPanel);
+      window.removeEventListener('toggle-right-panel', handleToggleRightPanel);
+      window.removeEventListener('open-in-vscode', handleOpenInVSCode);
+    };
+  }, [handleNewSession, handleNewConversation, theme, setTheme, toggleLeftSidebar, toggleRightSidebar]);
 
   // Don't render anything until client-side mounted - prevents hydration flash
   // Body background (set by ThemeScript) shows through
@@ -1298,6 +1303,9 @@ export default function Home() {
           open={showShortcuts}
           onOpenChange={setShowShortcuts}
         />
+
+        {/* Command Palette (Cmd+K) */}
+        <CommandPalette />
 
         {/* Update Checker - disabled until remote URL is configured
         <UpdateChecker />

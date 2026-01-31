@@ -21,6 +21,29 @@
               "value": "^[/~.][-\\w\\s./~]+$"
             }
           ]
+        },
+        {
+          "name": "open-terminal",
+          "cmd": "open",
+          "args": [
+            "-a",
+            "Terminal",
+            {
+              "validator": "regex",
+              "value": "^[/~][-\\w\\s./~]+$"
+            }
+          ]
+        },
+        {
+          "name": "open-finder",
+          "cmd": "open",
+          "args": [
+            "-R",
+            {
+              "validator": "regex",
+              "value": "^[/~][-\\w\\s./~]+$"
+            }
+          ]
         }
       ]
     },

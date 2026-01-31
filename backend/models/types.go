@@ -27,6 +27,8 @@ type Session struct {
 	PRNumber         int           `json:"prNumber,omitempty"`
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
+	Priority         int           `json:"priority"`             // 0=None, 1=Urgent, 2=High, 3=Medium, 4=Low
+	TaskStatus       string        `json:"taskStatus"`           // backlog, todo, in_progress, done, cancelled
 	Pinned           bool          `json:"pinned,omitempty"`
 	Archived         bool          `json:"archived,omitempty"`
 	AutoNamed        bool          `json:"autoNamed,omitempty"` // True if session was auto-renamed based on context
@@ -171,6 +173,42 @@ var ValidSessionStatuses = map[string]bool{
 	SessionStatusIdle:   true,
 	SessionStatusDone:   true,
 	SessionStatusError:  true,
+}
+
+// Priority constants
+const (
+	PriorityNone   = 0
+	PriorityUrgent = 1
+	PriorityHigh   = 2
+	PriorityMedium = 3
+	PriorityLow    = 4
+)
+
+// ValidPriorities is the set of valid priority values
+var ValidPriorities = map[int]bool{
+	PriorityNone:   true,
+	PriorityUrgent: true,
+	PriorityHigh:   true,
+	PriorityMedium: true,
+	PriorityLow:    true,
+}
+
+// TaskStatus constants (user-managed workflow state, distinct from agent execution Status)
+const (
+	TaskStatusBacklog    = "backlog"
+	TaskStatusTodo       = "todo"
+	TaskStatusInProgress = "in_progress"
+	TaskStatusDone       = "done"
+	TaskStatusCancelled  = "cancelled"
+)
+
+// ValidTaskStatuses is the set of valid task status values
+var ValidTaskStatuses = map[string]bool{
+	TaskStatusBacklog:    true,
+	TaskStatusTodo:       true,
+	TaskStatusInProgress: true,
+	TaskStatusDone:       true,
+	TaskStatusCancelled:  true,
 }
 
 // PRStatus constants

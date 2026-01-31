@@ -4,9 +4,14 @@ import { useState, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useSessionConversations } from '@/stores/selectors';
 import { copyToClipboard } from '@/lib/tauri';
+import { updateSession as apiUpdateSession } from '@/lib/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
+import type { SessionPriority, SessionTaskStatus } from '@/lib/types';
+import { PrioritySelector } from '@/components/shared/PrioritySelector';
+import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import {
   Info,
   GitBranch,
@@ -195,6 +200,28 @@ export function SessionInfoPanel() {
     selectedSessionId ? s.branchSyncStatus[selectedSessionId] ?? null : null,
   );
   const conversations = useSessionConversations(selectedSessionId);
+  const storeUpdateSession = useAppStore((s) => s.updateSession);
+  const { error: showError } = useToast();
+
+  const handlePriorityChange = useCallback((value: SessionPriority) => {
+    if (!session || !selectedWorkspaceId) return;
+    const prev = session.priority;
+    storeUpdateSession(session.id, { priority: value });
+    apiUpdateSession(selectedWorkspaceId, session.id, { priority: value }).catch(() => {
+      storeUpdateSession(session.id, { priority: prev });
+      showError('Failed to update priority');
+    });
+  }, [session, selectedWorkspaceId, storeUpdateSession, showError]);
+
+  const handleTaskStatusChange = useCallback((value: SessionTaskStatus) => {
+    if (!session || !selectedWorkspaceId) return;
+    const prev = session.taskStatus;
+    storeUpdateSession(session.id, { taskStatus: value });
+    apiUpdateSession(selectedWorkspaceId, session.id, { taskStatus: value }).catch(() => {
+      storeUpdateSession(session.id, { taskStatus: prev });
+      showError('Failed to update task status');
+    });
+  }, [session, selectedWorkspaceId, storeUpdateSession, showError]);
 
   if (!session) {
     return (
@@ -255,7 +282,29 @@ export function SessionInfoPanel() {
         {/* Status */}
         <div className="space-y-1.5">
           <SectionHeader label="Status" />
-          <InfoRow label="Session" value={<StatusDot status={session.status} />} />
+          <InfoRow
+            label="Task Status"
+            value={
+              <TaskStatusSelector
+                value={session.taskStatus}
+                onChange={handleTaskStatusChange}
+                size="sm"
+                showLabel
+              />
+            }
+          />
+          <InfoRow
+            label="Priority"
+            value={
+              <PrioritySelector
+                value={session.priority}
+                onChange={handlePriorityChange}
+                size="sm"
+                showLabel
+              />
+            }
+          />
+          <InfoRow label="Agent" value={<StatusDot status={session.status} />} />
           {session.prStatus && session.prStatus !== 'none' && (
             <InfoRow
               icon={GitPullRequest}
