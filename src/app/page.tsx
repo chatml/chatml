@@ -29,6 +29,7 @@ import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
+import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
@@ -419,6 +420,7 @@ export default function Home() {
   // Watch for external file changes
   useFileWatcher();
   useExternalLinkGuard();
+  useDesktopNotifications();
 
   // Keyboard shortcut: Cmd+/ to show shortcuts dialog
   useShortcut('shortcutsDialog', useCallback(() => {

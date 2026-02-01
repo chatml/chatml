@@ -12,6 +12,7 @@ import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats } from '@/lib/api';
+import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
 // Debounce interval for drop stats REST fetches (ms).
 // The backend ticker fires every 2s, so 3s avoids redundant requests during bursty drops.
@@ -269,6 +270,13 @@ export function useWebSocket(enabled: boolean = true) {
         }
         // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
+        // Desktop notification for task completion.
+        // success defaults to true when the field is absent (only explicitly false means failure).
+        notifyDesktop(
+          conversationId,
+          event.success !== false ? 'Task completed' : 'Task finished with errors',
+          getConversationLabel(conversationId),
+        );
         break;
 
       case 'complete':
@@ -287,6 +295,9 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.mode) {
           const isPlanMode = event.mode === 'plan';
           store.setPlanModeActive(conversationId, isPlanMode);
+          if (isPlanMode) {
+            notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+          }
         }
         break;
 
@@ -297,6 +308,8 @@ export function useWebSocket(enabled: boolean = true) {
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
+        // Desktop notification for error
+        notifyDesktop(conversationId, 'Task error', (errorMessage || 'Unknown error').slice(0, 100));
         break;
 
       case 'streaming_warning': {
@@ -349,6 +362,7 @@ export function useWebSocket(enabled: boolean = true) {
             currentIndex: 0,
             answers: {},
           });
+          notifyDesktop(conversationId, 'Question from AI', 'The AI needs your input');
         }
         break;
 
