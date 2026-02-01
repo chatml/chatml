@@ -117,9 +117,7 @@ describe('ReviewPanel', () => {
       expect(screen.getByText('Use /review to start a code review')).toBeInTheDocument();
     });
 
-    it('shows "No review comments yet" when all comments are resolved', async () => {
-      // When all comments are resolved, unresolvedComments.length === 0 (counts.all === 0),
-      // so the component shows "No review comments yet" (not "No unresolved comments")
+    it('shows "All comments resolved" when all comments are resolved', async () => {
       const allResolved = [
         makeComment({ id: 'r-1', resolved: true }),
         makeComment({ id: 'r-2', resolved: true }),
@@ -129,7 +127,7 @@ describe('ReviewPanel', () => {
       render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
 
       await waitFor(() => {
-        expect(screen.getByText('No review comments yet')).toBeInTheDocument();
+        expect(screen.getByText('All comments resolved')).toBeInTheDocument();
       });
     });
 
@@ -383,7 +381,7 @@ describe('ReviewPanel', () => {
       });
     });
 
-    it('optimistically updates store when API fails', async () => {
+    it('reverts optimistic update when API fails', async () => {
       const user = userEvent.setup();
 
       server.use(
@@ -404,12 +402,11 @@ describe('ReviewPanel', () => {
       const resolveButton = screen.getByTitle('Resolve comment');
       await user.click(resolveButton);
 
-      // After API failure, the optimistic update should mark it resolved in the store
+      // After API failure, the optimistic update should be reverted
       await waitFor(() => {
         const storeComments = useAppStore.getState().reviewComments['session-1'] || [];
         const comment = storeComments.find((c) => c.id === 'c-fail-1');
-        expect(comment?.resolved).toBe(true);
-        expect(comment?.resolvedBy).toBe('user');
+        expect(comment?.resolved).toBe(false);
       });
     });
   });

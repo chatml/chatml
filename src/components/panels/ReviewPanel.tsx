@@ -36,6 +36,7 @@ interface ReviewPanelProps {
 export function ReviewPanel({ workspaceId, sessionId, onFileSelect }: ReviewPanelProps) {
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
   const [loading, setLoading] = useState(false);
+  const [fetchSession, setFetchSession] = useState<string | null>(null);
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -43,12 +44,19 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect }: ReviewPane
   const setReviewComments = useAppStore((s) => s.setReviewComments);
   const updateReviewComment = useAppStore((s) => s.updateReviewComment);
 
+  // Track when session changes to trigger loading state outside the effect
+  if (sessionId !== fetchSession) {
+    setFetchSession(sessionId);
+    if (workspaceId && sessionId) {
+      setLoading(true);
+    }
+  }
+
   // Fetch comments from API on mount / session change
   useEffect(() => {
     if (!workspaceId || !sessionId) return;
 
     let cancelled = false;
-    setLoading(true);
 
     listReviewComments(workspaceId, sessionId)
       .then((data) => {
@@ -98,7 +106,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect }: ReviewPane
           resolved: true,
           resolvedBy: 'user',
         });
-      } catch (_e) {
+      } catch {
         // Revert optimistic update on failure
         updateReviewComment(sessionId, commentId, {
           resolved: false,
