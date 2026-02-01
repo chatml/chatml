@@ -2453,6 +2453,7 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 type CreateConversationRequest struct {
 	Type              string              `json:"type"`              // "task", "review", "chat"
 	Message           string              `json:"message"`           // Initial message (optional)
+	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
 }
@@ -2483,10 +2484,11 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Attachments:       req.Attachments,
+			PlanMode:          req.PlanMode,
 		}
 	}
 
@@ -2709,6 +2711,34 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, map[string]bool{"enabled": req.Enabled})
+}
+
+func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	// Verify the conversation is actually in plan mode before approving
+	if !h.agentManager.IsConversationInPlanMode(convID) {
+		writeConflict(w, "conversation is not in plan mode")
+		return
+	}
+
+	// Approving a plan means exiting plan mode (switching back to bypassPermissions)
+	if err := h.agentManager.SetConversationPlanMode(convID, false); err != nil {
+		writeInternalError(w, "failed to approve plan", err)
+		return
+	}
+
+	writeJSON(w, map[string]bool{"approved": true})
 }
 
 // Attachment handlers

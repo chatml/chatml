@@ -1957,3 +1957,113 @@ func TestSetWorkspacesBaseDir_PathIsFile(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "path is not a directory")
 }
+
+// ============================================================================
+// CreateConversation Plan Mode Tests
+// ============================================================================
+
+func TestCreateConversation_InvalidJSON(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "ws-1", repoPath)
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions/sess-1/conversations", strings.NewReader(`{bad json`))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"workspaceId": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.CreateConversation(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateConversation_SessionNotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	body := strings.NewReader(`{"type": "task", "message": "hello"}`)
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions/nonexistent/conversations", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"workspaceId": "ws-1", "sessionId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.CreateConversation(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestCreateConversation_RequestParsing_WithPlanMode(t *testing.T) {
+	// Verify that CreateConversationRequest correctly deserializes planMode
+	tests := []struct {
+		name     string
+		body     string
+		expected bool
+	}{
+		{
+			name:     "planMode true",
+			body:     `{"type": "task", "message": "hello", "planMode": true}`,
+			expected: true,
+		},
+		{
+			name:     "planMode false",
+			body:     `{"type": "task", "message": "hello", "planMode": false}`,
+			expected: false,
+		},
+		{
+			name:     "planMode omitted defaults to false",
+			body:     `{"type": "task", "message": "hello"}`,
+			expected: false,
+		},
+		{
+			name:     "planMode with thinking tokens",
+			body:     `{"type": "task", "message": "hello", "planMode": true, "maxThinkingTokens": 5000}`,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req CreateConversationRequest
+			err := json.Unmarshal([]byte(tt.body), &req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, req.PlanMode)
+		})
+	}
+}
+
+// ============================================================================
+// ApprovePlan Handler Tests
+// ============================================================================
+
+func TestApprovePlan_NotFound(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	req := httptest.NewRequest("POST", "/api/conversations/nonexistent/approve-plan", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.ApprovePlan(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "conversation not found")
+}
+
+func TestApprovePlan_NotInPlanMode(t *testing.T) {
+	h, s, _ := setupTestHandlersWithAgentManager(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.ApprovePlan(w, req)
+
+	// Should fail because no process is running (not in plan mode)
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), "conversation is not in plan mode")
+}

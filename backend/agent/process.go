@@ -45,6 +45,7 @@ type ProcessOptions struct {
 	MaxBudgetUsd        float64
 	MaxTurns            int
 	MaxThinkingTokens   int
+	PlanMode            bool // Start agent in plan mode
 	StructuredOutput    string
 	SettingSources      string // Comma-separated: project,user,local
 	Betas               string // Comma-separated beta features
@@ -61,10 +62,11 @@ type Process struct {
 	cancel         context.CancelFunc
 	output         chan string
 	done           chan struct{}
-	mu             sync.Mutex
-	running        bool
-	stopped        bool // Prevents double-stop race conditions
-	exitErr        error
+	mu              sync.Mutex
+	running         bool
+	stopped         bool // Prevents double-stop race conditions
+	exitErr         error
+	planModeActive  bool // Tracks whether the process is in plan mode
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -167,6 +169,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	if opts.MaxThinkingTokens > 0 {
 		args = append(args, "--max-thinking-tokens", strconv.Itoa(opts.MaxThinkingTokens))
 	}
+	if opts.PlanMode {
+		args = append(args, "--permission-mode", "plan")
+	}
 
 	// Add structured output schema if provided
 	if opts.StructuredOutput != "" {
@@ -200,8 +205,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		// size was increased from 100 to handle high-throughput scenarios
 		// where agents produce rapid bursts of output (e.g., streaming
 		// tool results or large code blocks).
-		output: make(chan string, 1000),
-		done:   make(chan struct{}),
+		output:         make(chan string, 1000),
+		done:           make(chan struct{}),
+		planModeActive: opts.PlanMode,
 	}
 }
 
@@ -355,10 +361,23 @@ func (p *Process) SetModel(model string) error {
 
 // SetPermissionMode sends a message to change the permission mode
 func (p *Process) SetPermissionMode(mode string) error {
-	return p.sendInput(InputMessage{
+	err := p.sendInput(InputMessage{
 		Type:           "set_permission_mode",
 		PermissionMode: mode,
 	})
+	if err == nil {
+		p.mu.Lock()
+		p.planModeActive = (mode == "plan")
+		p.mu.Unlock()
+	}
+	return err
+}
+
+// IsPlanModeActive returns whether the process is currently in plan mode
+func (p *Process) IsPlanModeActive() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.planModeActive
 }
 
 // GetSupportedModels requests the list of supported models

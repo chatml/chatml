@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__mocks__/server';
-import { listSessions, updateSession, getWorkspacesBasePath, setWorkspacesBasePath } from '../api';
+import {
+  listSessions,
+  updateSession,
+  getWorkspacesBasePath,
+  setWorkspacesBasePath,
+  createConversation,
+  setConversationPlanMode,
+  approvePlan,
+} from '../api';
 
 const API_BASE = 'http://localhost:9876';
 
@@ -115,6 +123,218 @@ describe('Settings API', () => {
       );
 
       await expect(setWorkspacesBasePath('/nonexistent')).rejects.toThrow();
+    });
+  });
+});
+
+// ============================================================================
+// Conversation API Tests
+// ============================================================================
+
+describe('Conversation API', () => {
+  describe('createConversation', () => {
+    it('creates a conversation without planMode', async () => {
+      const result = await createConversation('workspace-1', 'session-1', {
+        type: 'task',
+        message: 'Hello',
+      });
+
+      expect(result.id).toBe('new-conv-id');
+      expect(result.type).toBe('task');
+      expect(result.status).toBe('active');
+    });
+
+    it('creates a conversation with planMode true', async () => {
+      let receivedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'plan-conv-id',
+            sessionId: 'session-1',
+            type: receivedBody.type || 'task',
+            name: 'Plan Conversation',
+            status: 'active',
+            messages: [],
+            toolSummary: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      const result = await createConversation('workspace-1', 'session-1', {
+        type: 'task',
+        message: 'Build a feature',
+        planMode: true,
+      });
+
+      expect(result.id).toBe('plan-conv-id');
+      expect(receivedBody.planMode).toBe(true);
+      expect(receivedBody.message).toBe('Build a feature');
+    });
+
+    it('creates a conversation with planMode false', async () => {
+      let receivedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'no-plan-conv-id',
+            sessionId: 'session-1',
+            type: 'task',
+            name: 'No Plan Conversation',
+            status: 'active',
+            messages: [],
+            toolSummary: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      const result = await createConversation('workspace-1', 'session-1', {
+        type: 'task',
+        message: 'Quick fix',
+        planMode: false,
+      });
+
+      expect(result.id).toBe('no-plan-conv-id');
+      expect(receivedBody.planMode).toBe(false);
+    });
+
+    it('creates a conversation with planMode and thinking tokens', async () => {
+      let receivedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'combo-conv-id',
+            sessionId: 'session-1',
+            type: 'task',
+            name: 'Combo Conversation',
+            status: 'active',
+            messages: [],
+            toolSummary: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      const result = await createConversation('workspace-1', 'session-1', {
+        type: 'task',
+        message: 'Complex task',
+        planMode: true,
+        maxThinkingTokens: 5000,
+      });
+
+      expect(result.id).toBe('combo-conv-id');
+      expect(receivedBody.planMode).toBe(true);
+      expect(receivedBody.maxThinkingTokens).toBe(5000);
+    });
+
+    it('handles server error on createConversation', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, () => {
+          return HttpResponse.json({ error: 'session not found' }, { status: 404 });
+        })
+      );
+
+      await expect(
+        createConversation('workspace-1', 'nonexistent', {
+          type: 'task',
+          message: 'Hello',
+        })
+      ).rejects.toThrow();
+    });
+  });
+});
+
+// ============================================================================
+// Plan Mode API Tests
+// ============================================================================
+
+describe('Plan Mode API', () => {
+  describe('setConversationPlanMode', () => {
+    it('enables plan mode', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/plan-mode`, async ({ request }) => {
+          const body = await request.json() as { enabled: boolean };
+          return HttpResponse.json({ enabled: body.enabled });
+        })
+      );
+
+      await expect(setConversationPlanMode('conv-1', true)).resolves.toBeUndefined();
+    });
+
+    it('disables plan mode', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/plan-mode`, async ({ request }) => {
+          const body = await request.json() as { enabled: boolean };
+          return HttpResponse.json({ enabled: body.enabled });
+        })
+      );
+
+      await expect(setConversationPlanMode('conv-1', false)).resolves.toBeUndefined();
+    });
+
+    it('rejects on server error', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/plan-mode`, () => {
+          return HttpResponse.json({ error: 'conversation not found' }, { status: 404 });
+        })
+      );
+
+      await expect(setConversationPlanMode('nonexistent', true)).rejects.toThrow();
+    });
+
+    it('rejects when process not running', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/plan-mode`, () => {
+          return HttpResponse.json(
+            { error: 'failed to set plan mode' },
+            { status: 500 }
+          );
+        })
+      );
+
+      await expect(setConversationPlanMode('conv-1', true)).rejects.toThrow();
+    });
+  });
+
+  describe('approvePlan', () => {
+    it('approves a plan successfully', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, () => {
+          return HttpResponse.json({ approved: true });
+        })
+      );
+
+      await expect(approvePlan('conv-1')).resolves.toBeUndefined();
+    });
+
+    it('rejects when conversation not found', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, () => {
+          return HttpResponse.json({ error: 'conversation not found' }, { status: 404 });
+        })
+      );
+
+      await expect(approvePlan('nonexistent')).rejects.toThrow();
+    });
+
+    it('rejects when process not running', async () => {
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, () => {
+          return HttpResponse.json(
+            { error: 'failed to approve plan' },
+            { status: 500 }
+          );
+        })
+      );
+
+      await expect(approvePlan('conv-1')).rejects.toThrow();
     });
   });
 });
