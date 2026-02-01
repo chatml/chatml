@@ -332,6 +332,19 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
+// settingKeyWorkspacesBaseDir is the settings key for the workspaces base directory
+const settingKeyWorkspacesBaseDir = "workspaces-base-dir"
+
+// getWorkspacesBaseDir returns the configured workspaces base directory,
+// falling back to the default (~/.chatml/workspaces) if not configured.
+func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
+	configured, _, err := h.store.GetSetting(ctx, settingKeyWorkspacesBaseDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read workspaces base dir setting: %w", err)
+	}
+	return git.WorkspacesBaseDirWithOverride(configured)
+}
+
 func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, statsCache *SessionStatsCache) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
@@ -690,8 +703,8 @@ func (h *Handlers) GetRepoDetails(w http.ResponseWriter, r *http.Request) {
 		response.RemoteURL = fmt.Sprintf("https://github.com/%s/%s", owner, repoName)
 	}
 
-	// Get workspaces base directory
-	workspacesDir, err := git.WorkspacesBaseDir()
+	// Get workspaces base directory (uses configured path if set)
+	workspacesDir, err := h.getWorkspacesBaseDir(ctx)
 	if err == nil {
 		response.WorkspacesPath = workspacesDir
 	}
@@ -1104,8 +1117,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Generate session ID
 	sessionID := uuid.New().String()
 
-	// Get workspaces base directory (~/.chatml/workspaces)
-	workspacesDir, err := git.WorkspacesBaseDir()
+	// Get workspaces base directory (uses configured path if set)
+	workspacesDir, err := h.getWorkspacesBaseDir(ctx)
 	if err != nil {
 		writeInternalError(w, "failed to get workspaces directory", err)
 		return
@@ -3566,4 +3579,72 @@ func (h *Handlers) refreshPRCache(owner, repoName string) {
 	h.prCache.SetFull(owner, repoName, result.PRs, prDetailsMap, result.ETag)
 
 	logger.Handlers.Debugf("Background PR refresh complete for %s/%s: %d PRs", owner, repoName, len(result.PRs))
+}
+
+// ============================================================================
+// Settings endpoints
+// ============================================================================
+
+// GetWorkspacesBaseDir returns the configured workspaces base directory
+func (h *Handlers) GetWorkspacesBaseDir(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	dir, err := h.getWorkspacesBaseDir(ctx)
+	if err != nil {
+		writeInternalError(w, "failed to get workspaces base dir", err)
+		return
+	}
+	writeJSON(w, map[string]string{"path": dir})
+}
+
+// SetWorkspacesBaseDir updates the configured workspaces base directory
+func (h *Handlers) SetWorkspacesBaseDir(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.Path == "" {
+		// Empty path means reset to default — delete the setting row entirely
+		if err := h.store.DeleteSetting(ctx, settingKeyWorkspacesBaseDir); err != nil {
+			writeInternalError(w, "failed to delete setting", err)
+			return
+		}
+	} else {
+		// Validate that path exists and is a directory
+		info, err := os.Stat(req.Path)
+		if err != nil {
+			writeValidationError(w, fmt.Sprintf("path does not exist: %s", req.Path))
+			return
+		}
+		if !info.IsDir() {
+			writeValidationError(w, fmt.Sprintf("path is not a directory: %s", req.Path))
+			return
+		}
+		// Verify the directory is writable by creating and removing a temp file
+		testFile, err := os.CreateTemp(req.Path, ".chatml-write-test-*")
+		if err != nil {
+			writeValidationError(w, fmt.Sprintf("directory is not writable: %s", req.Path))
+			return
+		}
+		testFile.Close()
+		os.Remove(testFile.Name())
+
+		if err := h.store.SetSetting(ctx, settingKeyWorkspacesBaseDir, req.Path); err != nil {
+			writeInternalError(w, "failed to save setting", err)
+			return
+		}
+	}
+
+	// Return the effective path after save
+	dir, err := h.getWorkspacesBaseDir(ctx)
+	if err != nil {
+		writeInternalError(w, "failed to get workspaces base dir", err)
+		return
+	}
+	writeJSON(w, map[string]string{"path": dir})
 }

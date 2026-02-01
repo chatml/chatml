@@ -140,6 +140,9 @@ interface AppState {
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
 
+  // File watcher: last file change event (for reactive subscriptions)
+  lastFileChange: { workspaceId: string; path: string; fullPath: string; timestamp: number } | null;
+
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
   addWorkspace: (workspace: Workspace) => void;
@@ -264,6 +267,9 @@ interface AppState {
   prevUserQuestion: (conversationId: string) => void;
   clearPendingUserQuestion: (conversationId: string) => void;
 
+  // File watcher actions
+  setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
+
   // Legacy support
   repos: Repo[];
   selectedRepoId: string | null;
@@ -310,6 +316,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncDismissed: {},
   branchSyncCompletedAt: {},
   pendingUserQuestion: {},
+  lastFileChange: null,
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -1208,6 +1215,11 @@ updateFileTabContent: (id, content) => set((state) => ({
       [conversationId]: null,
     },
   })),
+
+  // File watcher actions
+  setLastFileChange: (event) => set({
+    lastFileChange: { ...event, timestamp: Date.now() },
+  }),
 
   // Legacy support
   repos: [],

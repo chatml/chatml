@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openFolderDialog, setMinimizeToTray } from '@/lib/tauri';
+import { getWorkspacesBasePath, setWorkspacesBasePath } from '@/lib/api';
 import { EDITOR_THEMES } from '@/lib/monacoThemes';
 
 interface SettingsPageProps {
@@ -793,14 +794,46 @@ function UpdatesSettings() {
 }
 
 function AdvancedSettings() {
-  const [rootDirectory, setRootDirectory] = useState('/Users/mcastilho/chatml');
+  const [rootDirectory, setRootDirectory] = useState('');
+  const [savedDirectory, setSavedDirectory] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const minimizeToTray = useSettingsStore((s) => s.minimizeToTray);
   const setMinimizeToTraySetting = useSettingsStore((s) => s.setMinimizeToTray);
+
+  // Fetch the current configured base path from the backend
+  useEffect(() => {
+    getWorkspacesBasePath().then((path) => {
+      setRootDirectory(path);
+      setSavedDirectory(path);
+    }).catch((err) => {
+      console.error('Failed to fetch workspaces base path:', err);
+    });
+  }, []);
 
   const handleMinimizeToTrayChange = (enabled: boolean) => {
     setMinimizeToTraySetting(enabled);
     setMinimizeToTray(enabled); // Sync with Tauri backend
   };
+
+  const hasUnsavedChanges = rootDirectory !== savedDirectory;
+
+  const handleSaveDirectory = useCallback(async () => {
+    if (!hasUnsavedChanges) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const newPath = await setWorkspacesBasePath(rootDirectory);
+      setSavedDirectory(newPath);
+      setRootDirectory(newPath);
+      // The file watcher will pick up the new path on app restart.
+      // We don't restart it inline because session registrations would be lost.
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }, [rootDirectory, hasUnsavedChanges]);
 
   return (
     <div>
@@ -821,7 +854,7 @@ function AdvancedSettings() {
       <div className="py-4 border-b border-border/50">
         <h4 className="text-sm font-medium">ChatML root directory</h4>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Where ChatML stores repositories and workspaces. Changing this will delete all your existing repos and workspaces.
+          Where ChatML stores repositories and workspaces. Changing this requires restarting the app.
         </p>
         <div className="flex items-center gap-2 mt-3">
           <input
@@ -844,7 +877,21 @@ function AdvancedSettings() {
             <FolderOpen className="w-4 h-4" />
             Browse
           </Button>
+          {hasUnsavedChanges && (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-9"
+              disabled={saving}
+              onClick={handleSaveDirectory}
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+          )}
         </div>
+        {saveError && (
+          <p className="text-sm text-destructive mt-2">{saveError}</p>
+        )}
       </div>
 
       <SettingsRow

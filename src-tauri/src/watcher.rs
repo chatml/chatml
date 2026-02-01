@@ -1,8 +1,8 @@
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
@@ -11,8 +11,19 @@ use crate::error::{AppError, AppResult};
 /// Type alias for file watcher handle
 type FileWatcherHandle = notify_debouncer_mini::Debouncer<notify::RecommendedWatcher>;
 
-/// Global state for file watchers (keyed by workspace ID)
-static FILE_WATCHERS: Mutex<Option<HashMap<String, FileWatcherHandle>>> = Mutex::new(None);
+/// Shared session map: maps session directory name -> workspace_id for event routing.
+/// Uses RwLock so the event thread can read concurrently without blocking registrations.
+type SessionMap = Arc<RwLock<HashMap<String, String>>>;
+
+/// Single global watcher that monitors the base worktrees directory
+struct GlobalFileWatcher {
+    _debouncer: FileWatcherHandle, // kept alive to maintain the OS watch
+    _base_path: PathBuf,           // retained for diagnostics / future use
+    sessions: SessionMap,
+}
+
+/// Global state: single watcher instance instead of per-workspace watchers
+static GLOBAL_WATCHER: Mutex<Option<GlobalFileWatcher>> = Mutex::new(None);
 
 /// Directories to ignore when watching for file changes
 const IGNORED_DIRECTORIES: &[&str] = &[
@@ -43,48 +54,61 @@ pub(crate) fn should_ignore_path(path: &str) -> bool {
     })
 }
 
-/// Start watching a workspace directory for file changes
-pub fn watch_workspace(
+/// Extract the session directory name from an event path by stripping the base path.
+/// Returns the first path component after the base path, which is the session dir name.
+fn extract_session_dir(base_path: &Path, event_path: &Path) -> Option<String> {
+    event_path
+        .strip_prefix(base_path)
+        .ok()
+        .and_then(|relative| relative.components().next())
+        .and_then(|component| {
+            if let std::path::Component::Normal(name) = component {
+                name.to_str().map(String::from)
+            } else {
+                None
+            }
+        })
+}
+
+/// Start the global file watcher on the base worktrees directory.
+/// This creates a single recursive watcher that monitors all session worktrees.
+/// Events are routed to the correct workspace_id based on session registration.
+///
+/// If `create_if_needed` is true, the directory will be created if it doesn't exist.
+/// The frontend passes true for the default path and false for user-configured paths
+/// (which are validated by the backend before being stored).
+pub fn start_global_watcher(
     app: &tauri::AppHandle,
-    workspace_id: String,
-    workspace_path: String,
+    base_path: String,
+    create_if_needed: bool,
 ) -> AppResult<()> {
     use std::sync::mpsc::channel;
 
-    // Initialize the watchers map if needed
-    {
-        let mut watchers = FILE_WATCHERS
-            .lock()
-            .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
-        if watchers.is_none() {
-            *watchers = Some(HashMap::new());
-        }
-    }
+    // Stop any existing watcher first
+    stop_global_watcher()?;
 
-    // Check if already watching this workspace
-    {
-        let watchers = FILE_WATCHERS
-            .lock()
-            .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
-        if let Some(map) = watchers.as_ref() {
-            if map.contains_key(&workspace_id) {
-                log::info!("Already watching workspace: {}", workspace_id);
-                return Ok(());
-            }
-        }
-    }
+    let path = PathBuf::from(&base_path);
 
-    let path = PathBuf::from(&workspace_path);
     if !path.exists() {
-        return Err(AppError::Watcher(format!(
-            "Workspace path does not exist: {}",
-            workspace_path
-        )));
+        if create_if_needed {
+            std::fs::create_dir_all(&path).map_err(|e| {
+                AppError::Watcher(format!(
+                    "Failed to create base directory {}: {}",
+                    base_path, e
+                ))
+            })?;
+        } else {
+            return Err(AppError::Watcher(format!(
+                "Workspaces base directory does not exist: {}",
+                base_path
+            )));
+        }
     }
 
     let app_handle = app.clone();
-    let ws_id = workspace_id.clone();
-    let ws_path = workspace_path.clone();
+    let watcher_base_path = path.clone();
+    let sessions: SessionMap = Arc::new(RwLock::new(HashMap::new()));
+    let thread_sessions = Arc::clone(&sessions);
 
     // Create a channel to receive file change events
     let (tx, rx) = channel();
@@ -93,52 +117,90 @@ pub fn watch_workspace(
     let mut debouncer = new_debouncer(Duration::from_secs(2), tx)
         .map_err(|e| AppError::Watcher(format!("Failed to create file watcher: {}", e)))?;
 
-    // Start watching the workspace directory
+    // Start watching the entire base directory recursively
     debouncer
         .watcher()
         .watch(&path, RecursiveMode::Recursive)
         .map_err(|e| AppError::Watcher(format!("Failed to watch directory: {}", e)))?;
 
     // Spawn a thread to handle file change events.
-    // Lifecycle: The thread runs until the channel closes. When unwatch_workspace() removes
-    // the debouncer from FILE_WATCHERS, the debouncer is dropped, which closes the sender
-    // channel, causing rx.recv() to return Err and the thread to exit gracefully.
-    // Note: We don't track the JoinHandle because the channel-based shutdown is sufficient.
+    // Lifecycle: The thread runs until the channel closes. When stop_global_watcher()
+    // drops the GlobalFileWatcher (and its debouncer), the sender channel closes,
+    // causing rx.recv() to return Err and the thread to exit gracefully.
     std::thread::spawn(move || {
         log::info!(
-            "File watcher started for workspace: {} at {}",
-            ws_id,
-            ws_path
+            "Global file watcher started on base directory: {}",
+            watcher_base_path.display()
         );
 
         loop {
             match rx.recv() {
                 Ok(Ok(events)) => {
                     for event in events {
-                        // Only emit for write events
                         if event.kind == DebouncedEventKind::Any {
-                            let event_path = event.path.to_string_lossy().to_string();
+                            let event_path_str = event.path.to_string_lossy().to_string();
 
-                            // Skip ignored directories (configurable list)
-                            if should_ignore_path(&event_path) {
+                            // Skip ignored directories
+                            if should_ignore_path(&event_path_str) {
                                 continue;
                             }
 
-                            log::debug!("File changed: {}", event_path);
+                            // Extract session directory name from the path
+                            let session_dir =
+                                match extract_session_dir(&watcher_base_path, &event.path) {
+                                    Some(dir) => dir,
+                                    None => {
+                                        log::debug!(
+                                            "Ignoring event outside session dirs: {}",
+                                            event_path_str
+                                        );
+                                        continue;
+                                    }
+                                };
 
-                            // Get relative path from workspace root
+                            // Look up the workspace_id for this session (read lock only)
+                            let workspace_id = match thread_sessions.read() {
+                                Ok(s) => s.get(&session_dir).cloned(),
+                                Err(e) => {
+                                    log::warn!(
+                                        "Session map RwLock poisoned, skipping event: {}",
+                                        e
+                                    );
+                                    continue;
+                                }
+                            };
+
+                            let workspace_id = match workspace_id {
+                                Some(id) => id,
+                                None => {
+                                    log::debug!(
+                                        "Ignoring event for unregistered session: {}",
+                                        session_dir
+                                    );
+                                    continue;
+                                }
+                            };
+
+                            // Get relative path from session root
+                            let session_path = watcher_base_path.join(&session_dir);
                             let relative_path = event
                                 .path
-                                .strip_prefix(&ws_path)
+                                .strip_prefix(&session_path)
                                 .map(|p| p.to_string_lossy().to_string())
-                                .unwrap_or_else(|_| event_path.clone());
+                                .unwrap_or_else(|_| event_path_str.clone());
 
-                            // Emit event to frontend
+                            log::debug!(
+                                "File changed in session {}: {}",
+                                session_dir,
+                                relative_path
+                            );
+
+                            // Emit event to frontend with same payload format
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let payload = serde_json::json!({
-                                    "workspaceId": ws_id,
+                                    "workspaceId": workspace_id,
                                     "path": relative_path,
-                                    "fullPath": event_path,
+                                    "fullPath": event_path_str,
                                 });
                                 if let Err(e) = window.emit("file-changed", payload) {
                                     log::error!("Failed to emit file-changed event: {}", e);
@@ -148,46 +210,88 @@ pub fn watch_workspace(
                     }
                 }
                 Ok(Err(error)) => {
-                    log::error!("File watcher error: {:?}", error);
+                    log::error!("Global file watcher error: {:?}", error);
                 }
                 Err(_) => {
                     // Channel closed, watcher was stopped
-                    log::info!("File watcher stopped for workspace: {}", ws_id);
+                    log::info!("Global file watcher stopped");
                     break;
                 }
             }
         }
     });
 
-    // Store the debouncer handle
+    // Store the watcher
     {
-        let mut watchers = FILE_WATCHERS
+        let mut watcher = GLOBAL_WATCHER
             .lock()
             .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
-        if let Some(map) = watchers.as_mut() {
-            map.insert(workspace_id.clone(), debouncer);
-        }
+        *watcher = Some(GlobalFileWatcher {
+            _debouncer: debouncer,
+            _base_path: path.clone(),
+            sessions,
+        });
     }
 
-    log::info!(
-        "Started watching workspace: {} at {}",
-        workspace_id,
-        workspace_path
-    );
+    log::info!("Global file watcher initialized on: {}", base_path);
     Ok(())
 }
 
-/// Stop watching a workspace directory
-pub fn unwatch_workspace(workspace_id: &str) -> AppResult<()> {
-    let mut watchers = FILE_WATCHERS
+/// Stop the global file watcher
+pub fn stop_global_watcher() -> AppResult<()> {
+    let mut watcher = GLOBAL_WATCHER
         .lock()
         .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
 
-    if let Some(map) = watchers.as_mut() {
-        if map.remove(workspace_id).is_some() {
-            log::info!("Stopped watching workspace: {}", workspace_id);
+    if watcher.take().is_some() {
+        log::info!("Global file watcher stopped");
+    }
+
+    Ok(())
+}
+
+/// Get a clone of the session map from the global watcher.
+/// Returns None if the global watcher is not started.
+fn get_session_map() -> AppResult<Option<SessionMap>> {
+    let watcher = GLOBAL_WATCHER
+        .lock()
+        .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
+    Ok(watcher.as_ref().map(|w| Arc::clone(&w.sessions)))
+}
+
+/// Register a session so its file change events are routed with the correct workspace_id.
+/// The session_dir_name is the directory name under the base worktrees path.
+pub fn register_session(session_dir_name: String, workspace_id: String) -> AppResult<()> {
+    if let Some(sessions) = get_session_map()? {
+        let mut map = sessions
+            .write()
+            .map_err(|e| AppError::Watcher(format!("Session map write lock error: {}", e)))?;
+        map.insert(session_dir_name.clone(), workspace_id.clone());
+        log::info!(
+            "Registered session: {} -> {}",
+            session_dir_name,
+            workspace_id
+        );
+    } else {
+        log::warn!(
+            "Cannot register session {}: global watcher not started",
+            session_dir_name
+        );
+    }
+
+    Ok(())
+}
+
+/// Unregister a session so its events are no longer routed.
+pub fn unregister_session(session_dir_name: &str) -> AppResult<()> {
+    if let Some(sessions) = get_session_map()? {
+        let mut map = sessions
+            .write()
+            .map_err(|e| AppError::Watcher(format!("Session map write lock error: {}", e)))?;
+        if map.remove(session_dir_name).is_some() {
+            log::info!("Unregistered session: {}", session_dir_name);
         } else {
-            log::debug!("Workspace was not being watched: {}", workspace_id);
+            log::debug!("Session was not registered: {}", session_dir_name);
         }
     }
 
@@ -243,9 +347,9 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_unwatch_nonexistent_workspace_ok() {
-        // Unwatching a workspace that doesn't exist should succeed
-        let result = unwatch_workspace("nonexistent-workspace-12345");
+    fn test_stop_global_watcher_when_not_started() {
+        // Stopping when not started should succeed
+        let result = stop_global_watcher();
         assert!(result.is_ok());
     }
 
@@ -256,5 +360,40 @@ mod tests {
         assert!(IGNORED_DIRECTORIES.contains(&".git"));
         assert!(IGNORED_DIRECTORIES.contains(&"node_modules"));
         assert!(IGNORED_DIRECTORIES.contains(&"target"));
+    }
+
+    #[test]
+    fn test_extract_session_dir() {
+        let base = PathBuf::from("/Users/test/.chatml/workspaces");
+
+        // Normal case
+        assert_eq!(
+            extract_session_dir(
+                &base,
+                &PathBuf::from("/Users/test/.chatml/workspaces/my-session/src/main.rs")
+            ),
+            Some("my-session".to_string())
+        );
+
+        // File directly in session root
+        assert_eq!(
+            extract_session_dir(
+                &base,
+                &PathBuf::from("/Users/test/.chatml/workspaces/my-session/README.md")
+            ),
+            Some("my-session".to_string())
+        );
+
+        // Path that doesn't match base
+        assert_eq!(
+            extract_session_dir(&base, &PathBuf::from("/other/path/file.txt")),
+            None
+        );
+
+        // Path that is the base itself (no session component)
+        assert_eq!(
+            extract_session_dir(&base, &PathBuf::from("/Users/test/.chatml/workspaces")),
+            None
+        );
     }
 }

@@ -21,6 +21,7 @@ import { useAppStore } from '@/stores/appStore';
 import { navigate } from '@/lib/navigation';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
+import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -216,6 +217,14 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     try {
       // Create session via backend API (generates city-based name, branch, and worktree path)
       const session = await createSessionApi(workspaceId);
+
+      // Register with global file watcher for event routing
+      if (session.worktreePath) {
+        const dirName = getSessionDirName(session.worktreePath);
+        if (dirName) {
+          registerSession(dirName, session.id);
+        }
+      }
 
       // Add to local store
       addSession(mapSessionDTO(session));

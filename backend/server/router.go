@@ -126,6 +126,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Delete("/{convId}", h.DeleteConversation)
 	})
 
+	// Settings endpoints
+	r.Get("/api/settings/workspaces-base-dir", h.GetWorkspacesBaseDir)
+	r.Put("/api/settings/workspaces-base-dir", h.SetWorkspacesBaseDir)
+
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)
 

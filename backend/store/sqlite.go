@@ -449,6 +449,19 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	logger.SQLite.Infof("Migration: attachments table ready")
 
+	// Migration: Create settings table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	logger.SQLite.Infof("Migration: settings table ready")
+
 	return nil
 }
 
@@ -2137,6 +2150,47 @@ func (s *SQLiteStore) GetAttachmentsByMessageID(ctx context.Context, messageID s
 		return nil, fmt.Errorf("GetAttachmentsByMessageID rows: %w", err)
 	}
 	return attachments, nil
+}
+
+// ============================================================================
+// Settings methods
+// ============================================================================
+
+// GetSetting retrieves a setting value by key.
+// Returns (value, true, nil) if found, ("", false, nil) if not found.
+// This distinguishes "key not set" from "key set to empty string".
+func (s *SQLiteStore) GetSetting(ctx context.Context, key string) (string, bool, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("GetSetting: %w", err)
+	}
+	return value, true, nil
+}
+
+// SetSetting creates or updates a setting value.
+func (s *SQLiteStore) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO settings (key, value, updated_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+		key, value)
+	if err != nil {
+		return fmt.Errorf("SetSetting: %w", err)
+	}
+	return nil
+}
+
+// DeleteSetting removes a setting by key. No error if the key doesn't exist.
+func (s *SQLiteStore) DeleteSetting(ctx context.Context, key string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM settings WHERE key = ?`, key)
+	if err != nil {
+		return fmt.Errorf("DeleteSetting: %w", err)
+	}
+	return nil
 }
 
 // GetAttachmentData retrieves the base64 data for a single attachment by ID.

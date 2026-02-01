@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getGitStatus, GitStatusDTO } from '@/lib/api';
 import { GIT_STATUS_POLL_INTERVAL_MS } from '@/lib/constants';
-import { listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
+import { useAppStore } from '@/stores/appStore';
 
 interface UseGitStatusResult {
   status: GitStatusDTO | null;
@@ -18,7 +18,7 @@ interface UseGitStatusResult {
  * Features:
  * - Fetches status on mount and session change
  * - Polls periodically (every 30 seconds)
- * - Refetches on file change events
+ * - Refetches on file change events via the centralized lastFileChange store
  * - Debounces rapid file changes
  */
 export function useGitStatus(
@@ -28,6 +28,9 @@ export function useGitStatus(
   const [status, setStatus] = useState<GitStatusDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Subscribe to centralized file change events from the store
+  const lastFileChange = useAppStore((s) => s.lastFileChange);
 
   // Refs for debouncing and cleanup
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -100,42 +103,13 @@ export function useGitStatus(
     return () => clearInterval(interval);
   }, [workspaceId, sessionId, fetchStatus]);
 
-  // Listen for file change events
+  // React to file change events from centralized store
   useEffect(() => {
-    if (!workspaceId) return;
-
-    const cleanupRef = { current: null as (() => void) | null };
-    let isMounted = true;
-
-    const handleFileChange = (event: FileChangedEvent) => {
-      // Only refetch if the file change is for this workspace
-      if (event.workspaceId === workspaceId) {
-        debouncedRefetch();
-      }
-    };
-
-    listenForFileChanges(handleFileChange).then((unlisten) => {
-      if (isMounted) {
-        cleanupRef.current = unlisten;
-      } else {
-        // Component unmounted before listener was set up - safely try to unlisten
-        try {
-          unlisten();
-        } catch {
-          // Ignore errors if listener was never fully registered
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      try {
-        cleanupRef.current?.();
-      } catch {
-        // Ignore errors during cleanup if listener state is inconsistent
-      }
-    };
-  }, [workspaceId, debouncedRefetch]);
+    if (!workspaceId || !lastFileChange) return;
+    if (lastFileChange.workspaceId === workspaceId) {
+      debouncedRefetch();
+    }
+  }, [lastFileChange, workspaceId, debouncedRefetch]);
 
   return { status, loading, error, refetch };
 }

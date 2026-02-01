@@ -464,3 +464,31 @@ func TestCreateInExistingDir_Success(t *testing.T) {
 	gitFile := filepath.Join(sessionDir, ".git")
 	assert.FileExists(t, gitFile)
 }
+
+// ============================================================================
+// WorkspacesBaseDirWithOverride Tests
+// ============================================================================
+
+func TestWorkspacesBaseDirWithOverride_ReturnsConfiguredPath(t *testing.T) {
+	path, err := WorkspacesBaseDirWithOverride("/custom/workspaces")
+	require.NoError(t, err)
+	assert.Equal(t, "/custom/workspaces", path)
+}
+
+func TestWorkspacesBaseDirWithOverride_FallbackToDefault(t *testing.T) {
+	// Empty string should fall back to the default WorkspacesBaseDir()
+	overridePath, err := WorkspacesBaseDirWithOverride("")
+	require.NoError(t, err)
+
+	defaultPath, err := WorkspacesBaseDir()
+	require.NoError(t, err)
+
+	assert.Equal(t, defaultPath, overridePath)
+}
+
+func TestWorkspacesBaseDirWithOverride_DoesNotValidatePath(t *testing.T) {
+	// Non-existent path should still be returned without error
+	path, err := WorkspacesBaseDirWithOverride("/nonexistent/absolutely/fake/path")
+	require.NoError(t, err)
+	assert.Equal(t, "/nonexistent/absolutely/fake/path", path)
+}
