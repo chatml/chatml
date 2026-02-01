@@ -2160,6 +2160,123 @@ func TestSetPRTemplate_InvalidBody(t *testing.T) {
 }
 
 // ============================================================================
+// Global PR Template Handler Tests
+// ============================================================================
+
+func TestGetGlobalPRTemplate_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w := httptest.NewRecorder()
+
+	h.GetGlobalPRTemplate(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "", resp["template"])
+}
+
+func TestSetGlobalPRTemplate_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	body, _ := json.Marshal(map[string]string{"template": "Include testing checklist"})
+	req := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetGlobalPRTemplate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify it was saved
+	req2 := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w2 := httptest.NewRecorder()
+
+	h.GetGlobalPRTemplate(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, "Include testing checklist", resp["template"])
+}
+
+func TestSetGlobalPRTemplate_EmptyDeletes(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.SetSetting(ctx, "pr-template", "old template"))
+
+	body, _ := json.Marshal(map[string]string{"template": ""})
+	req := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetGlobalPRTemplate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify deleted
+	req2 := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w2 := httptest.NewRecorder()
+	h.GetGlobalPRTemplate(w2, req2)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, "", resp["template"])
+}
+
+func TestSetGlobalPRTemplate_InvalidBody(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetGlobalPRTemplate(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPRTemplate_GlobalAndWorkspaceIsolated(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set a global template
+	globalBody, _ := json.Marshal(map[string]string{"template": "global instructions"})
+	req1 := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader(globalBody))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	h.SetGlobalPRTemplate(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Workspace endpoint should still be empty
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/pr-template", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+	h.GetPRTemplate(w2, req2)
+
+	var wsResp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &wsResp))
+	assert.Equal(t, "", wsResp["template"])
+
+	// Set a workspace template
+	wsBody, _ := json.Marshal(map[string]string{"template": "workspace instructions"})
+	req3 := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/pr-template", bytes.NewReader(wsBody))
+	req3.Header.Set("Content-Type", "application/json")
+	req3 = withChiContext(req3, map[string]string{"id": "ws-1"})
+	w3 := httptest.NewRecorder()
+	h.SetPRTemplate(w3, req3)
+	assert.Equal(t, http.StatusOK, w3.Code)
+
+	// Global should still have its value
+	req4 := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w4 := httptest.NewRecorder()
+	h.GetGlobalPRTemplate(w4, req4)
+
+	var globalResp map[string]string
+	require.NoError(t, json.Unmarshal(w4.Body.Bytes(), &globalResp))
+	assert.Equal(t, "global instructions", globalResp["template"])
+}
+
+// ============================================================================
 // Review Prompts Settings Tests
 // ============================================================================
 

@@ -1590,6 +1590,21 @@ export async function setPRTemplate(workspaceId: string, template: string): Prom
   await handleVoidResponse(res, 'Failed to save PR template');
 }
 
+export async function getGlobalPRTemplate(): Promise<string> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/pr-template`);
+  const data = await handleResponse<{ template: string }>(res);
+  return data.template;
+}
+
+export async function setGlobalPRTemplate(template: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/pr-template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template }),
+  });
+  await handleVoidResponse(res, 'Failed to save PR template');
+}
+
 // ---------------------------------------------------------------------------
 // Review Prompt Overrides
 // ---------------------------------------------------------------------------

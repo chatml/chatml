@@ -179,6 +179,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Put("/api/settings/review-prompts", h.SetReviewPrompts)
 	r.Get("/api/settings/env", h.GetEnvSettings)
 	r.Put("/api/settings/env", h.SetEnvSettings)
+	r.Get("/api/settings/pr-template", h.GetGlobalPRTemplate)
+	r.Put("/api/settings/pr-template", h.SetGlobalPRTemplate)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

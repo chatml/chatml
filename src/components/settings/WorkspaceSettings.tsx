@@ -8,6 +8,9 @@ import {
   getGlobalReviewPrompts,
   getWorkspaceReviewPrompts,
   setWorkspaceReviewPrompts,
+  getGlobalPRTemplate,
+  getPRTemplate,
+  setPRTemplate,
 } from '@/lib/api';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
 import { useToast } from '@/components/ui/toast';
@@ -216,21 +219,32 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, string>>({});
   const [globalPrompts, setGlobalPrompts] = useState<Record<string, string>>({});
+  const [prTemplate, setPrTemplate] = useState('');
+  const [savedPrTemplate, setSavedPrTemplate] = useState('');
+  const [globalPrTemplate, setGlobalPrTemplate] = useState('');
   const [saving, setSaving] = useState(false);
   const { error: showError } = useToast();
 
   useEffect(() => {
     Promise.all([
-      getWorkspaceReviewPrompts(workspaceId).catch(() => ({} as Record<string, string>)),
-      getGlobalReviewPrompts().catch(() => ({} as Record<string, string>)),
-    ]).then(([ws, gl]) => {
+      getWorkspaceReviewPrompts(workspaceId),
+      getGlobalReviewPrompts(),
+      getPRTemplate(workspaceId),
+      getGlobalPRTemplate(),
+    ]).then(([ws, gl, wsPr, glPr]) => {
       setPrompts(ws);
       setSaved(ws);
       setGlobalPrompts(gl);
+      setPrTemplate(wsPr);
+      setSavedPrTemplate(wsPr);
+      setGlobalPrTemplate(glPr);
+    }).catch(() => {
+      showError('Failed to load settings');
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
-  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved);
+  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved) || prTemplate !== savedPrTemplate;
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -239,16 +253,25 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
       for (const [k, v] of Object.entries(prompts)) {
         if (v.trim()) cleaned[k] = v.trim();
       }
-      await setWorkspaceReviewPrompts(workspaceId, cleaned);
+      await Promise.all([
+        setWorkspaceReviewPrompts(workspaceId, cleaned),
+        setPRTemplate(workspaceId, prTemplate.trim()),
+      ]);
       setPrompts(cleaned);
       setSaved(cleaned);
+      setPrTemplate(prTemplate.trim());
+      setSavedPrTemplate(prTemplate.trim());
     } catch {
-      showError('Failed to save review prompts');
+      showError('Failed to save settings');
     } finally {
       setSaving(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, prompts]);
+  }, [workspaceId, prompts, prTemplate]);
+
+  const prPlaceholder = globalPrTemplate
+    ? `Global: ${globalPrTemplate.slice(0, 60)}${globalPrTemplate.length > 60 ? '…' : ''}`
+    : 'e.g., Include a testing checklist, link to related issues';
 
   return (
     <div>
@@ -280,6 +303,25 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-8 pt-8 border-t border-border/50">
+        <h3 className="text-lg font-semibold mb-1">PR Creation</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Override the global PR template for this workspace.
+          Leave empty to use the global default.
+        </p>
+
+        <label className="text-[13px] font-medium block mb-1.5">PR Description Prompt</label>
+        <p className="text-[11px] text-muted-foreground mb-1.5">
+          These instructions will be prepended to the default PR generation prompt
+        </p>
+        <Textarea
+          className="text-[13px] min-h-[80px]"
+          placeholder={prPlaceholder}
+          value={prTemplate}
+          onChange={(e) => setPrTemplate(e.target.value)}
+        />
       </div>
 
       {hasChanges && (

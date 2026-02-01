@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openFolderDialog, setMinimizeToTray, requestNotificationPermission } from '@/lib/tauri';
-import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts, getEnvSettings, setEnvSettings } from '@/lib/api';
+import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts, getGlobalPRTemplate, setGlobalPRTemplate, getEnvSettings, setEnvSettings } from '@/lib/api';
 import { EDITOR_THEMES } from '@/lib/monacoThemes';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
 import { Textarea } from '@/components/ui/textarea';
@@ -885,22 +885,26 @@ function UpdatesSettings() {
 function ReviewSettings() {
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, string>>({});
+  const [prTemplate, setPRTemplate] = useState('');
+  const [savedPRTemplate, setSavedPRTemplate] = useState('');
   const [saving, setSaving] = useState(false);
   const { error: showError } = useToast();
 
   useEffect(() => {
-    getGlobalReviewPrompts()
-      .then((data) => {
-        setPrompts(data);
-        setSaved(data);
+    Promise.all([getGlobalReviewPrompts(), getGlobalPRTemplate()])
+      .then(([reviewData, prData]) => {
+        setPrompts(reviewData);
+        setSaved(reviewData);
+        setPRTemplate(prData);
+        setSavedPRTemplate(prData);
       })
       .catch(() => {
-        showError('Failed to load review prompts');
+        showError('Failed to load settings');
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved);
+  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved) || prTemplate !== savedPRTemplate;
 
   const handleSave = async () => {
     setSaving(true);
@@ -910,11 +914,16 @@ function ReviewSettings() {
       for (const [k, v] of Object.entries(prompts)) {
         if (v.trim()) cleaned[k] = v.trim();
       }
-      await setGlobalReviewPrompts(cleaned);
+      await Promise.all([
+        setGlobalReviewPrompts(cleaned),
+        setGlobalPRTemplate(prTemplate.trim()),
+      ]);
       setPrompts(cleaned);
       setSaved(cleaned);
+      setPRTemplate(prTemplate.trim());
+      setSavedPRTemplate(prTemplate.trim());
     } catch {
-      showError('Failed to save review prompts');
+      showError('Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -943,6 +952,25 @@ function ReviewSettings() {
             />
           </div>
         ))}
+      </div>
+
+      <div className="mt-8 pt-8 border-t border-border/50">
+        <h3 className="text-lg font-semibold mb-1">PR Creation</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Add custom instructions for AI-generated PR descriptions. These apply globally.
+          Per-workspace overrides can be set in workspace settings.
+        </p>
+
+        <label className="text-[13px] font-medium block mb-1.5">PR Description Prompt</label>
+        <p className="text-[11px] text-muted-foreground mb-1.5">
+          These instructions will be prepended to the default PR generation prompt
+        </p>
+        <Textarea
+          className="text-[13px] min-h-[80px]"
+          placeholder="e.g., Include a testing checklist, link to related issues, use conventional commit format for title"
+          value={prTemplate}
+          onChange={(e) => setPRTemplate(e.target.value)}
+        />
       </div>
 
       {hasChanges && (
