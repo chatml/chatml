@@ -62,6 +62,7 @@ interface SettingsState {
   editorTheme: string; // Monaco editor theme (e.g., 'vs-dark', 'monokai', 'dracula')
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
+  unreadWorkspaces: string[]; // Workspace IDs marked as unread
   showBottomTerminal: boolean;
   zenMode: boolean; // Distraction-free mode that hides sidebars
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
@@ -101,6 +102,8 @@ interface SettingsState {
   setZenMode: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
+  markWorkspaceUnread: (workspaceId: string) => void;
+  markWorkspaceRead: (workspaceId: string) => void;
   toggleBottomTab: (tab: BottomPanelTab) => void;
   setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
   toggleTopTab: (tab: TopPanelTab) => void;
@@ -134,6 +137,7 @@ export const useSettingsStore = create<SettingsState>()(
       theme: 'system',
       editorTheme: 'vs-dark',
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
+      unreadWorkspaces: [], // Workspace IDs marked as unread
       showBottomTerminal: false,
       zenMode: false,
       hiddenBottomTabs: [], // All tabs visible by default
@@ -166,14 +170,32 @@ export const useSettingsStore = create<SettingsState>()(
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
-        set((state) => ({
-          collapsedWorkspaces: state.collapsedWorkspaces.includes(workspaceId)
-            ? state.collapsedWorkspaces.filter((id) => id !== workspaceId)
-            : [...state.collapsedWorkspaces, workspaceId],
-        })),
+        set((state) => {
+          const isCollapsed = state.collapsedWorkspaces.includes(workspaceId);
+          return {
+            collapsedWorkspaces: isCollapsed
+              ? state.collapsedWorkspaces.filter((id) => id !== workspaceId)
+              : [...state.collapsedWorkspaces, workspaceId],
+            // Auto-clear unread when expanding a workspace
+            ...(isCollapsed && {
+              unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
+            }),
+          };
+        }),
       expandWorkspace: (workspaceId) =>
         set((state) => ({
           collapsedWorkspaces: state.collapsedWorkspaces.filter((id) => id !== workspaceId),
+          unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
+        })),
+      markWorkspaceUnread: (workspaceId) =>
+        set((state) => ({
+          unreadWorkspaces: state.unreadWorkspaces.includes(workspaceId)
+            ? state.unreadWorkspaces
+            : [...state.unreadWorkspaces, workspaceId],
+        })),
+      markWorkspaceRead: (workspaceId) =>
+        set((state) => ({
+          unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
         })),
       toggleBottomTab: (tab) =>
         set((state) => ({

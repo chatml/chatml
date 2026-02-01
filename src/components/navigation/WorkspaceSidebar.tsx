@@ -76,6 +76,7 @@ import {
   LayoutDashboard,
   Layers,
   Bot,
+  Circle,
   Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -167,7 +168,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -300,6 +301,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       await deleteRepoApi(workspaceId);
       // Update local store
       removeWorkspace(workspaceId);
+      // Clean up unread state
+      markWorkspaceRead(workspaceId);
     } catch (error) {
       console.error('Failed to remove workspace:', error);
       showError('Failed to remove workspace. Please try again.');
@@ -467,7 +470,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   >
                     {workspaces
                       .filter((workspace) => !searchTerm || getWorkspaceSessions(workspace.id).length > 0)
-                      .map((workspace) => (
+                      .map((workspace) => {
+                        const isUnread = unreadWorkspaces.includes(workspace.id);
+                        return (
                       <SortableWorkspaceItem
                         key={workspace.id}
                         workspace={workspace}
@@ -502,12 +507,21 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                           }, event);
                         }}
                         onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}
+                        isUnread={isUnread}
+                        onToggleUnread={() => {
+                          if (isUnread) {
+                            markWorkspaceRead(workspace.id);
+                          } else {
+                            markWorkspaceUnread(workspace.id);
+                          }
+                        }}
                         contentView={contentView}
                         getStatusColor={getStatusColor}
                         formatTimeAgo={formatTimeAgo}
                         getInitial={getInitial}
                       />
-                    ))}
+                    );
+                      })}
                   </SortableContext>
                 </DndContext>
               )}
@@ -718,6 +732,8 @@ interface SortableWorkspaceItemProps {
   onOpenBranches: (event?: React.MouseEvent) => void;
   onOpenPRs: (event?: React.MouseEvent) => void;
   onOpenWorkspaceSettings: () => void;
+  isUnread: boolean;
+  onToggleUnread: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
   getInitial: (name: string) => string;
@@ -738,6 +754,8 @@ function SortableWorkspaceItem({
   onOpenBranches,
   onOpenPRs,
   onOpenWorkspaceSettings,
+  isUnread,
+  onToggleUnread,
   getStatusColor,
   formatTimeAgo,
   getInitial,
@@ -758,13 +776,15 @@ function SortableWorkspaceItem({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="mb-1">
-      <Collapsible open={isExpanded} onOpenChange={onToggle}>
-        {/* Workspace Header */}
-        <CollapsibleTrigger asChild>
-          <div
-            className={cn(
-              'group flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-md cursor-pointer',
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div ref={setNodeRef} style={style} className="mb-1">
+          <Collapsible open={isExpanded} onOpenChange={onToggle}>
+            {/* Workspace Header */}
+            <CollapsibleTrigger asChild>
+              <div
+                className={cn(
+                  'group flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-md cursor-pointer',
               'hover:bg-surface-1 transition-colors',
               isDragging && 'bg-surface-2'
             )}
@@ -780,7 +800,7 @@ function SortableWorkspaceItem({
                 style={{ backgroundColor: getWorkspaceColor(workspace.id) }}
               />
             </div>
-            <span className="text-base font-semibold truncate">
+            <span className={cn("text-base truncate", isUnread ? "font-bold" : "font-semibold")}>
               {workspace.name}
             </span>
             <ChevronDown
@@ -789,6 +809,9 @@ function SortableWorkspaceItem({
                 !isExpanded && '-rotate-90'
               )}
             />
+            {isUnread && (
+              <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+            )}
             <div className="flex-1" />
             <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
               <Button
@@ -814,6 +837,11 @@ function SortableWorkspaceItem({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={onToggleUnread}>
+                    {isUnread ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+                    {isUnread ? 'Mark as read' : 'Mark as unread'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onOpenWorkspaceSettings}>
                     <Settings2 className="size-4" />
                     Workspace Settings
@@ -932,8 +960,31 @@ function SortableWorkspaceItem({
             )}
           </div>
         </CollapsibleContent>
-      </Collapsible>
-    </div>
+          </Collapsible>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={onToggleUnread}>
+          {isUnread ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+          {isUnread ? 'Mark as read' : 'Mark as unread'}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={onCreateSession}>
+          <Plus className="size-4" />
+          New Session
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={onOpenWorkspaceSettings}>
+          <Settings2 className="size-4" />
+          Workspace Settings
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onClick={onRemoveWorkspace}>
+          <Trash2 className="size-4" />
+          Remove
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
