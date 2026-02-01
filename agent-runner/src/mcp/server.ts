@@ -4,6 +4,7 @@ import { z } from "zod";
 import { WorkspaceContext } from "./context.js";
 import { createLinearTools } from "./tools/linear.js";
 import { createCommentTools } from "./tools/comments.js";
+import { createScriptTools } from "./tools/scripts.js";
 
 export interface McpServerOptions {
   context: WorkspaceContext;
@@ -109,6 +110,9 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
       // Review comment tools
       ...createCommentTools(context),
+
+      // Script config tools
+      ...createScriptTools(context),
     ],
   });
 }

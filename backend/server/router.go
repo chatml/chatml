@@ -11,6 +11,7 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/orchestrator"
+	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -18,10 +19,10 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient, scriptRunner)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
@@ -142,6 +143,15 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/issues", h.ListIssues)
 		r.With(searchRateLimiter).Get("/{id}/issues/search", h.SearchIssues)
 		r.Get("/{id}/issues/{number}", h.GetIssueDetails)
+		// Scripts config endpoints
+		r.Get("/{id}/config", h.GetWorkspaceConfig)
+		r.Put("/{id}/config", h.UpdateWorkspaceConfig)
+		r.Get("/{id}/config/detect", h.DetectWorkspaceConfig)
+		// Script execution endpoints
+		r.Post("/{id}/sessions/{sessionId}/scripts/run", h.RunScript)
+		r.Post("/{id}/sessions/{sessionId}/scripts/setup", h.RunSetupScripts)
+		r.Post("/{id}/sessions/{sessionId}/scripts/stop", h.StopSessionScript)
+		r.Get("/{id}/sessions/{sessionId}/scripts/runs", h.ListScriptRuns)
 	})
 
 	// Conversation endpoints (top-level for direct access)

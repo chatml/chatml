@@ -16,6 +16,7 @@ import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { PlansPanel } from '@/components/panels/PlansPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
+import { ScriptsPanel } from '@/components/panels/ScriptsPanel';
 import { SessionInfoPanel } from '@/components/panels/SessionInfoPanel';
 import { Button } from '@/components/ui/button';
 import {
@@ -633,6 +634,11 @@ export function ChangesPanel() {
                   <FileHistoryPanel />
                 </ErrorBoundary>
               )}
+              {bottomTab === 'scripts' && (
+                <ErrorBoundary section="Scripts" fallback={<InlineErrorFallback message="Unable to display scripts" />}>
+                  <ScriptsPanel />
+                </ErrorBoundary>
+              )}
             </div>
           </div>
         </ResizablePanel>
@@ -658,6 +664,7 @@ const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisib
   'file-history': { label: 'File History' },
   budget: { label: 'Budget' },
   mcp: { label: 'MCP' },
+  scripts: { label: 'Scripts' },
 };
 
 // Sortable tab button component

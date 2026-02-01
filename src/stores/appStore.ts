@@ -23,10 +23,30 @@ import type {
   PendingUserQuestion,
   ActiveTool,
   Summary,
+  ScriptRun,
+  SetupProgress,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
 const MAX_FILE_TABS = 10;
+
+// Script output is stored outside Zustand to avoid O(n²) array copies on every line.
+// A version counter in the store triggers re-renders when output changes.
+const scriptOutputBuffers = new Map<string, string[]>(); // key: `${sessionId}:${runId}`
+
+/** Get script output lines for a run (read from external buffer) */
+export function getScriptOutputLines(sessionId: string, runId: string): string[] {
+  return scriptOutputBuffers.get(`${sessionId}:${runId}`) || [];
+}
+
+/** Clear script output buffers for a session */
+export function clearScriptOutputBuffers(sessionId: string) {
+  for (const key of scriptOutputBuffers.keys()) {
+    if (key.startsWith(`${sessionId}:`)) {
+      scriptOutputBuffers.delete(key);
+    }
+  }
+}
 
 // Timeout tracking for orphaned tool cleanup
 const toolTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
@@ -176,6 +196,18 @@ interface AppState {
 
   // File watcher: last file change event (for reactive subscriptions)
   lastFileChange: { workspaceId: string; path: string; fullPath: string; timestamp: number } | null;
+
+  // Script runs state (keyed by sessionId)
+  scriptRuns: Record<string, ScriptRun[]>;
+  setupProgress: Record<string, SetupProgress>;
+  // Monotonic counter bumped on each output line to trigger re-renders
+  scriptOutputVersion: number;
+
+  // Script actions
+  addScriptRun: (sessionId: string, run: ScriptRun) => void;
+  updateScriptRunStatus: (sessionId: string, run: ScriptRun) => void;
+  appendScriptOutput: (sessionId: string, runId: string, line: string) => void;
+  setSetupProgress: (sessionId: string, progress: SetupProgress) => void;
 
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
@@ -373,6 +405,55 @@ export const useAppStore = create<AppState>((set, get) => ({
   summaries: {},
   lastFileChange: null,
   messagePagination: {},
+
+  // Script state
+  scriptRuns: {},
+  setupProgress: {},
+  scriptOutputVersion: 0,
+
+  // Script actions
+  addScriptRun: (sessionId, run) => {
+    // Seed external output buffer from the run's inline output (if any)
+    if (run.output && run.output.length > 0) {
+      const key = `${sessionId}:${run.id}`;
+      scriptOutputBuffers.set(key, [...run.output]);
+    }
+    return set((state) => ({
+      scriptRuns: {
+        ...state.scriptRuns,
+        [sessionId]: [...(state.scriptRuns[sessionId] || []), { ...run, output: [] }],
+      },
+    }));
+  },
+
+  updateScriptRunStatus: (sessionId, updatedRun) => set((state) => ({
+    scriptRuns: {
+      ...state.scriptRuns,
+      [sessionId]: (state.scriptRuns[sessionId] || []).map((r) =>
+        r.id === updatedRun.id ? updatedRun : r
+      ),
+    },
+  })),
+
+  appendScriptOutput: (sessionId, runId, line) => {
+    // Append to external buffer (O(1) amortized)
+    const key = `${sessionId}:${runId}`;
+    let buf = scriptOutputBuffers.get(key);
+    if (!buf) {
+      buf = [];
+      scriptOutputBuffers.set(key, buf);
+    }
+    buf.push(line);
+    // Bump version counter to trigger re-renders
+    set((state) => ({ scriptOutputVersion: state.scriptOutputVersion + 1 }));
+  },
+
+  setSetupProgress: (sessionId, progress) => set((state) => ({
+    setupProgress: {
+      ...state.setupProgress,
+      [sessionId]: progress,
+    },
+  })),
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),

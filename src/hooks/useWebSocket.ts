@@ -587,6 +587,39 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle script output events
+        if (data.type === 'script_output' && data.sessionId) {
+          const payload = data.payload as { runId: string; line: string } | undefined;
+          if (payload?.runId && typeof payload.line === 'string') {
+            getStore().appendScriptOutput(data.sessionId, payload.runId, payload.line);
+          }
+          return;
+        }
+
+        // Handle script status events
+        if (data.type === 'script_status' && data.sessionId) {
+          const run = data.payload as import('@/lib/types').ScriptRun | undefined;
+          if (run?.id) {
+            const store = getStore();
+            const existing = store.scriptRuns[data.sessionId]?.find(r => r.id === run.id);
+            if (existing) {
+              store.updateScriptRunStatus(data.sessionId, run);
+            } else {
+              store.addScriptRun(data.sessionId, run);
+            }
+          }
+          return;
+        }
+
+        // Handle setup progress events
+        if (data.type === 'setup_progress' && data.sessionId) {
+          const payload = data.payload as import('@/lib/types').SetupProgress | undefined;
+          if (payload) {
+            getStore().setSetupProgress(data.sessionId, payload);
+          }
+          return;
+        }
+
         // Handle dashboard-level invalidation events (PR or branch changes)
         if (data.type === 'pr_dashboard_update' || data.type === 'branch_dashboard_update') {
           window.dispatchEvent(new CustomEvent(data.type, { detail: data.payload }));

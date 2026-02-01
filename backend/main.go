@@ -21,6 +21,7 @@ import (
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
+	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/server"
 	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
@@ -360,7 +361,39 @@ func main() {
 	// AI client for PR description generation
 	aiClient := ai.NewClient(os.Getenv("ANTHROPIC_API_KEY"))
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient)
+	// Script runner for setup/run scripts with WebSocket output streaming
+	scriptRunner := scripts.NewRunner(
+		func(sessionID, runID, line string) {
+			hub.Broadcast(server.Event{
+				Type:      "script_output",
+				SessionID: sessionID,
+				Payload: map[string]interface{}{
+					"runId": runID,
+					"line":  line,
+				},
+			})
+		},
+		func(sessionID string, run *scripts.ScriptRun) {
+			hub.Broadcast(server.Event{
+				Type:      "script_status",
+				SessionID: sessionID,
+				Payload:   run,
+			})
+		},
+		func(sessionID string, current, total int, status string) {
+			hub.Broadcast(server.Event{
+				Type:      "setup_progress",
+				SessionID: sessionID,
+				Payload: map[string]interface{}{
+					"current": current,
+					"total":   total,
+					"status":  status,
+				},
+			})
+		},
+	)
+
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
