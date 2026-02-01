@@ -421,6 +421,21 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	logger.SQLite.Infof("Migration: review_comments table ready")
 
+	// Migration: Add title column to review_comments if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('review_comments') WHERE name = 'title'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE review_comments ADD COLUMN title TEXT`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added title column to review_comments")
+	}
+
 	// Migration: Create attachments table if it doesn't exist
 	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS attachments (
@@ -1820,10 +1835,10 @@ func (s *SQLiteStore) AddReviewComment(ctx context.Context, comment *models.Revi
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO review_comments (id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO review_comments (id, session_id, file_path, line_number, title, content, source, author, severity, created_at, resolved)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		comment.ID, comment.SessionID, comment.FilePath, comment.LineNumber,
-		comment.Content, comment.Source, comment.Author, severity,
+		comment.Title, comment.Content, comment.Source, comment.Author, severity,
 		comment.CreatedAt, boolToInt(comment.Resolved))
 	if err != nil {
 		return fmt.Errorf("AddReviewComment: %w", err)
@@ -1838,11 +1853,13 @@ func (s *SQLiteStore) GetReviewComment(ctx context.Context, id string) (*models.
 	var resolvedAt sql.NullTime
 	var resolvedBy sql.NullString
 
+	var title sql.NullString
+
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
+		SELECT id, session_id, file_path, line_number, title, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
 		FROM review_comments WHERE id = ?`, id).Scan(
 		&comment.ID, &comment.SessionID, &comment.FilePath, &comment.LineNumber,
-		&comment.Content, &comment.Source, &comment.Author, &severity,
+		&title, &comment.Content, &comment.Source, &comment.Author, &severity,
 		&comment.CreatedAt, &resolved, &resolvedAt, &resolvedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1852,6 +1869,9 @@ func (s *SQLiteStore) GetReviewComment(ctx context.Context, id string) (*models.
 	}
 
 	comment.Resolved = intToBool(resolved)
+	if title.Valid {
+		comment.Title = title.String
+	}
 	if severity.Valid {
 		comment.Severity = severity.String
 	}
@@ -1867,7 +1887,7 @@ func (s *SQLiteStore) GetReviewComment(ctx context.Context, id string) (*models.
 
 func (s *SQLiteStore) ListReviewComments(ctx context.Context, sessionID string) ([]*models.ReviewComment, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
+		SELECT id, session_id, file_path, line_number, title, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
 		FROM review_comments WHERE session_id = ?
 		ORDER BY file_path, line_number`, sessionID)
 	if err != nil {
@@ -1878,6 +1898,7 @@ func (s *SQLiteStore) ListReviewComments(ctx context.Context, sessionID string) 
 	comments := []*models.ReviewComment{}
 	for rows.Next() {
 		var comment models.ReviewComment
+		var title sql.NullString
 		var severity sql.NullString
 		var resolved int
 		var resolvedAt sql.NullTime
@@ -1885,12 +1906,15 @@ func (s *SQLiteStore) ListReviewComments(ctx context.Context, sessionID string) 
 
 		if err := rows.Scan(
 			&comment.ID, &comment.SessionID, &comment.FilePath, &comment.LineNumber,
-			&comment.Content, &comment.Source, &comment.Author, &severity,
+			&title, &comment.Content, &comment.Source, &comment.Author, &severity,
 			&comment.CreatedAt, &resolved, &resolvedAt, &resolvedBy); err != nil {
 			return nil, fmt.Errorf("ListReviewComments scan: %w", err)
 		}
 
 		comment.Resolved = intToBool(resolved)
+		if title.Valid {
+			comment.Title = title.String
+		}
 		if severity.Valid {
 			comment.Severity = severity.String
 		}
@@ -1911,7 +1935,7 @@ func (s *SQLiteStore) ListReviewComments(ctx context.Context, sessionID string) 
 
 func (s *SQLiteStore) ListReviewCommentsForFile(ctx context.Context, sessionID, filePath string) ([]*models.ReviewComment, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, file_path, line_number, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
+		SELECT id, session_id, file_path, line_number, title, content, source, author, severity, created_at, resolved, resolved_at, resolved_by
 		FROM review_comments WHERE session_id = ? AND file_path = ?
 		ORDER BY line_number`, sessionID, filePath)
 	if err != nil {
@@ -1922,6 +1946,7 @@ func (s *SQLiteStore) ListReviewCommentsForFile(ctx context.Context, sessionID, 
 	comments := []*models.ReviewComment{}
 	for rows.Next() {
 		var comment models.ReviewComment
+		var title sql.NullString
 		var severity sql.NullString
 		var resolved int
 		var resolvedAt sql.NullTime
@@ -1929,12 +1954,15 @@ func (s *SQLiteStore) ListReviewCommentsForFile(ctx context.Context, sessionID, 
 
 		if err := rows.Scan(
 			&comment.ID, &comment.SessionID, &comment.FilePath, &comment.LineNumber,
-			&comment.Content, &comment.Source, &comment.Author, &severity,
+			&title, &comment.Content, &comment.Source, &comment.Author, &severity,
 			&comment.CreatedAt, &resolved, &resolvedAt, &resolvedBy); err != nil {
 			return nil, fmt.Errorf("ListReviewCommentsForFile scan: %w", err)
 		}
 
 		comment.Resolved = intToBool(resolved)
+		if title.Valid {
+			comment.Title = title.String
+		}
 		if severity.Valid {
 			comment.Severity = severity.String
 		}
@@ -2008,9 +2036,9 @@ func (s *SQLiteStore) UpdateReviewComment(ctx context.Context, id string, update
 
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE review_comments SET
-			content = ?, severity = ?, resolved = ?, resolved_at = ?, resolved_by = ?
+			title = ?, content = ?, severity = ?, resolved = ?, resolved_at = ?, resolved_by = ?
 		WHERE id = ?`,
-		comment.Content, severity, boolToInt(comment.Resolved), resolvedAt, resolvedBy, id)
+		comment.Title, comment.Content, severity, boolToInt(comment.Resolved), resolvedAt, resolvedBy, id)
 	if err != nil {
 		return fmt.Errorf("UpdateReviewComment: %w", err)
 	}
