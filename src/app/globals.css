@@ -846,6 +846,38 @@
   opacity: 0.5;
 }
 
+/* Add-comment glyph margin hover affordance */
+.add-comment-glyph {
+  cursor: pointer !important;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.add-comment-glyph::before {
+  content: '+';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0 2px;
+  border-radius: 50%;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Show on line hover via Monaco's built-in hover detection.
+   FRAGILE: These selectors depend on Monaco's internal DOM structure
+   (.margin-view-overlays, .current-line) which is not part of its public API.
+   Verify these still work when upgrading Monaco. */
+.margin-view-overlays .current-line ~ .add-comment-glyph,
+.margin-view-overlays:hover .add-comment-glyph:hover {
+  opacity: 1;
+}
+
 /* Comment zone container styling */
 .comment-zone-container {
   background-color: transparent;

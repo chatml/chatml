@@ -43,7 +43,7 @@ import { StreamingMessage } from '@/components/conversation/StreamingMessage';
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, getConversationMessages, toStoreMessage } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage } from '@/lib/api';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -96,7 +96,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Review comments for current session
   const reviewComments = useReviewComments(selectedSessionId);
-  const { updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
+  const { addReviewComment: addReviewCommentToStore, updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
 
   // Fetch review comments when session changes.
   // If cached, show cached data immediately but still refetch in the background
@@ -700,6 +700,23 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [selectedWorkspaceId, selectedSessionId, deleteReviewCommentFromStore]);
 
+  // Handle creating a new review comment on a diff line
+  const handleCreateComment = useCallback(async (lineNumber: number, content: string) => {
+    if (!selectedWorkspaceId || !selectedSessionId || !currentFileTab?.path) return;
+    try {
+      const newComment = await createReviewComment(selectedWorkspaceId, selectedSessionId, {
+        filePath: currentFileTab.path,
+        lineNumber,
+        content,
+        source: 'user',
+        author: 'You',
+      });
+      addReviewCommentToStore(selectedSessionId, newComment);
+    } catch (error) {
+      console.error('Failed to create comment:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, currentFileTab, addReviewCommentToStore]);
+
   // Unified tab select handler for TabBar
   const handleTabSelect = useCallback(
     (id: string, type: 'file' | 'conversation') => {
@@ -906,6 +923,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   comments={reviewComments.filter((c) => c.filePath === currentFileTab.path)}
                   onResolveComment={handleResolveComment}
                   onDeleteComment={handleDeleteComment}
+                  onCreateComment={handleCreateComment}
                 />
               </ErrorBoundary>
             ) : (

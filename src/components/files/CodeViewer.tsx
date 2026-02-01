@@ -38,6 +38,8 @@ interface CodeViewerProps {
   onResolveComment?: (id: string, resolved: boolean) => void;
   /** Callback when a comment is deleted */
   onDeleteComment?: (id: string) => void;
+  /** Callback when a user creates a new comment on a diff line */
+  onCreateComment?: (lineNumber: number, content: string) => void;
 }
 
 function isMarkdownFile(filename: string): boolean {
@@ -56,6 +58,7 @@ export function CodeViewer({
   comments,
   onResolveComment,
   onDeleteComment,
+  onCreateComment,
 }: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
   const [copied, setCopied] = useState(false);
@@ -172,6 +175,7 @@ export function CodeViewer({
             comments={comments}
             onResolveComment={onResolveComment}
             onDeleteComment={onDeleteComment}
+            onCreateComment={onCreateComment}
           />
         </div>
       </div>

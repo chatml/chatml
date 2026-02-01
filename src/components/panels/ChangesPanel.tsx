@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
+import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
+import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
@@ -98,6 +99,7 @@ export function ChangesPanel() {
   const { openFileTab, updateFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
+  const reviewComments = useReviewComments(selectedSessionId);
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
@@ -330,6 +332,24 @@ export function ChangesPanel() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
 
+  // Send unresolved review comments as feedback to AI via a dedicated review conversation
+  const handleSendFeedback = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    const message = formatReviewFeedback(reviewComments);
+    if (!message) return;
+
+    try {
+      await createConversation(selectedWorkspaceId, selectedSessionId, {
+        type: 'review',
+        message,
+      });
+    } catch (error) {
+      // TODO: Show a toast notification once a toast library is added
+      console.error('Failed to send review feedback:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, reviewComments]);
+
   // Fetch files from session's worktree when session changes or tab switches to files
   // Deferred via requestIdleCallback so it doesn't block the main conversation render on navigation
   useEffect(() => {
@@ -550,7 +570,7 @@ export function ChangesPanel() {
             )
           ) : selectedTab === 'review' ? (
             <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
-              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} />
+              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} onSendFeedback={handleSendFeedback} />
             </ErrorBoundary>
           ) : selectedTab === 'checks' ? (
             <ErrorBoundary section="GitStatus" fallback={<InlineErrorFallback message="Unable to display git status" />}>

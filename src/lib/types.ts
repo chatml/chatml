@@ -210,6 +210,13 @@ export interface AgentEvent {
   modelUsage?: Record<string, unknown>;
   structuredOutput?: unknown;
 
+  // Context usage fields
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  contextWindow?: number;
+
   // Hook event fields
   toolUseId?: string;
   input?: unknown;
@@ -421,6 +428,16 @@ export interface BudgetStatus {
   maxThinkingTokens?: number;
   currentThinkingTokens: number;
   limitExceeded?: 'budget' | 'turns' | 'thinking_tokens';
+}
+
+// Context window usage tracking
+export interface ContextUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  contextWindow: number;
+  lastUpdated: number;
 }
 
 // User-defined custom todo item
