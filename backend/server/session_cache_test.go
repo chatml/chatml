@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestSessionNameCache_AddAndContains(t *testing.T) {
@@ -159,4 +160,175 @@ func TestSessionNameCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Should not panic or deadlock
+}
+
+func TestSessionNameCache_TTL_DefaultValue(t *testing.T) {
+	cache := NewSessionNameCache("")
+	if cache.ttl != 5*time.Minute {
+		t.Errorf("Expected default TTL of 5m, got %v", cache.ttl)
+	}
+}
+
+func TestSessionNameCache_TTL_RefreshesAfterExpiry(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Start with two directories
+	os.Mkdir(filepath.Join(tempDir, "tokyo"), 0755)
+	os.Mkdir(filepath.Join(tempDir, "osaka"), 0755)
+
+	cache := NewSessionNameCache(tempDir)
+	cache.ttl = 10 * time.Millisecond // Short TTL for testing
+
+	// First call initializes from filesystem
+	names, err := cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 2 {
+		t.Fatalf("Expected 2 names, got %d", len(names))
+	}
+
+	// Add a directory externally (simulating out-of-process creation)
+	os.Mkdir(filepath.Join(tempDir, "kyoto"), 0755)
+
+	// Before TTL expires, cache should still return 2
+	names, err = cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 2 {
+		t.Errorf("Expected 2 names before TTL expiry, got %d", len(names))
+	}
+
+	// Wait for TTL to expire
+	time.Sleep(15 * time.Millisecond)
+
+	// After TTL expires, cache should refresh and pick up the new directory
+	names, err = cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 3 {
+		t.Errorf("Expected 3 names after TTL expiry, got %d", len(names))
+	}
+	if !cache.Contains("kyoto") {
+		t.Error("Expected cache to contain 'kyoto' after TTL refresh")
+	}
+}
+
+func TestSessionNameCache_TTL_PicksUpDeletions(t *testing.T) {
+	tempDir := t.TempDir()
+
+	os.Mkdir(filepath.Join(tempDir, "tokyo"), 0755)
+	os.Mkdir(filepath.Join(tempDir, "osaka"), 0755)
+
+	cache := NewSessionNameCache(tempDir)
+	cache.ttl = 10 * time.Millisecond
+
+	// Initialize
+	names, err := cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 2 {
+		t.Fatalf("Expected 2 names, got %d", len(names))
+	}
+
+	// Delete a directory externally
+	os.Remove(filepath.Join(tempDir, "tokyo"))
+
+	// Wait for TTL to expire
+	time.Sleep(15 * time.Millisecond)
+
+	// Cache should refresh and reflect the deletion
+	names, err = cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 1 {
+		t.Errorf("Expected 1 name after TTL refresh with deletion, got %d", len(names))
+	}
+	if cache.Contains("tokyo") {
+		t.Error("Did not expect cache to contain 'tokyo' after external deletion and TTL refresh")
+	}
+	if !cache.Contains("osaka") {
+		t.Error("Expected cache to still contain 'osaka'")
+	}
+}
+
+func TestSessionNameCache_TTL_ManualAddSurvivesBeforeTTL(t *testing.T) {
+	cache := NewSessionNameCache("")
+	cache.ttl = 10 * time.Minute // Long TTL
+
+	// Initialize with nonexistent dir (empty cache)
+	names, err := cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 0 {
+		t.Fatalf("Expected 0 names, got %d", len(names))
+	}
+
+	// Manually add entries (simulating session creation via Add())
+	cache.Add("tokyo")
+	cache.Add("osaka")
+
+	// Should still see them since TTL hasn't expired
+	names, err = cache.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll returned error: %v", err)
+	}
+	if len(names) != 2 {
+		t.Errorf("Expected 2 names, got %d", len(names))
+	}
+}
+
+func TestSessionNameCache_TTL_ConcurrentRefresh(t *testing.T) {
+	tempDir := t.TempDir()
+	os.Mkdir(filepath.Join(tempDir, "tokyo"), 0755)
+
+	cache := NewSessionNameCache(tempDir)
+	cache.ttl = 1 * time.Millisecond // Tiny TTL to force frequent refreshes
+
+	// Initialize
+	cache.GetAll()
+
+	// Hammer GetAll from many goroutines while TTL is constantly expiring
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				_, err := cache.GetAll()
+				if err != nil {
+					t.Errorf("GetAll returned error: %v", err)
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}()
+	}
+	wg.Wait()
+	// Should not panic, deadlock, or return errors
+}
+
+func TestSessionNameCache_LastInitializedSet(t *testing.T) {
+	tempDir := t.TempDir()
+	cache := NewSessionNameCache(tempDir)
+
+	if !cache.lastInitialized.IsZero() {
+		t.Error("Expected lastInitialized to be zero before initialization")
+	}
+
+	before := time.Now()
+	cache.GetAll()
+	after := time.Now()
+
+	cache.mu.RLock()
+	li := cache.lastInitialized
+	cache.mu.RUnlock()
+
+	if li.Before(before) || li.After(after) {
+		t.Errorf("Expected lastInitialized between %v and %v, got %v", before, after, li)
+	}
 }
