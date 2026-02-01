@@ -478,6 +478,7 @@ export interface FileTab {
   isTooLarge?: boolean;
   isEmpty?: boolean;          // File has no content (0 bytes)
   loadError?: string;         // Error message if loading failed
+  saveError?: string;         // Error message if saving failed
   isPinned?: boolean;         // Pin support - pinned tabs won't auto-close
   openedAt?: string;          // ISO timestamp for ordering/history
   lastAccessedAt?: string;    // ISO timestamp for LRU tab closing

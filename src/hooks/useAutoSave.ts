@@ -9,13 +9,18 @@ import type { FileTab } from '@/lib/types';
 // Auto-save delay in milliseconds (30 seconds after last change)
 const AUTO_SAVE_DELAY_MS = 30000;
 
+interface UseAutoSaveOptions {
+  onError?: (filePath: string, error: unknown) => void;
+}
+
 /**
  * Hook that handles auto-saving dirty file tabs
  * - Auto-saves after 30 seconds of inactivity
  * - Provides manual save function for Cmd+S
  * - Updates tab state after save (clears dirty flag)
+ * - Notifies caller of save failures via onError callback
  */
-export function useAutoSave() {
+export function useAutoSave(options?: UseAutoSaveOptions) {
   const { fileTabs, selectedFileTabId, updateFileTab } = useAppStore(
     useShallow((s) => ({
       fileTabs: s.fileTabs,
@@ -25,6 +30,12 @@ export function useAutoSave() {
   );
   const saveTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const mountedRef = useRef(true);
+  const onErrorRef = useRef(options?.onError);
+
+  // Keep onError ref up to date without causing re-renders
+  useEffect(() => {
+    onErrorRef.current = options?.onError;
+  }, [options?.onError]);
 
   // Track mounted state to prevent state updates after unmount
   useEffect(() => {
@@ -52,12 +63,20 @@ export function useAutoSave() {
           updateFileTab(tab.id, {
             originalContent: tab.content,
             isDirty: false,
+            saveError: undefined,
           });
         }
 
         return true;
       } catch (err) {
         console.error('Failed to save file:', err);
+
+        if (mountedRef.current) {
+          const message = err instanceof Error ? err.message : 'Unknown error';
+          updateFileTab(tab.id, { saveError: message });
+        }
+
+        onErrorRef.current?.(tab.path, err);
         return false;
       }
     },
@@ -113,9 +132,10 @@ export function useAutoSave() {
   }, [fileTabs, saveTab]);
 
   // Save all dirty tabs immediately (for app unmount/workspace switch)
+  // Uses Promise.allSettled so individual failures don't abort remaining saves
   const saveAllDirty = useCallback(async (): Promise<void> => {
     const dirtyTabs = fileTabs.filter((t) => t.isDirty && t.viewMode !== 'diff');
-    await Promise.all(dirtyTabs.map(saveTab));
+    await Promise.allSettled(dirtyTabs.map(saveTab));
   }, [fileTabs, saveTab]);
 
   return {

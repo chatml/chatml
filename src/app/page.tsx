@@ -407,7 +407,12 @@ export default function Home() {
   useTabPersistence();
 
   // Auto-save dirty file tabs
-  const { saveCurrentTab, saveTab } = useAutoSave();
+  const handleSaveError = useCallback((filePath: string, error: unknown) => {
+    const fileName = filePath.split('/').pop() ?? filePath;
+    const reason = error instanceof Error ? error.message : 'Unknown error';
+    showError(`Failed to save ${fileName}: ${reason}`, 'Auto-save Error');
+  }, [showError]);
+  const { saveCurrentTab, saveTab } = useAutoSave({ onError: handleSaveError });
 
   // Watch for external file changes
   useFileWatcher();
