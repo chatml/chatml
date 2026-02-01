@@ -97,6 +97,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{id}/sessions/{sessionId}/pr/create", h.CreatePR)
 		r.Get("/{id}/settings/pr-template", h.GetPRTemplate)
 		r.Put("/{id}/settings/pr-template", h.SetPRTemplate)
+		r.Get("/{id}/settings/review-prompts", h.GetWorkspaceReviewPrompts)
+		r.Put("/{id}/settings/review-prompts", h.SetWorkspaceReviewPrompts)
 		r.Get("/{id}/sessions/{sessionId}/branch-sync", h.GetSessionBranchSyncStatus)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync", h.SyncSessionBranch)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync/abort", h.AbortSessionSync)
@@ -160,6 +162,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// Settings endpoints
 	r.Get("/api/settings/workspaces-base-dir", h.GetWorkspacesBaseDir)
 	r.Put("/api/settings/workspaces-base-dir", h.SetWorkspacesBaseDir)
+	r.Get("/api/settings/review-prompts", h.GetReviewPrompts)
+	r.Put("/api/settings/review-prompts", h.SetReviewPrompts)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

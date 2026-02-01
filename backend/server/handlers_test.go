@@ -2158,6 +2158,207 @@ func TestSetPRTemplate_InvalidBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// ============================================================================
+// Review Prompts Settings Tests
+// ============================================================================
+
+func TestGetReviewPrompts_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/settings/review-prompts", nil)
+	w := httptest.NewRecorder()
+
+	h.GetReviewPrompts(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["prompts"].(map[string]any))
+}
+
+func TestSetReviewPrompts_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	prompts := map[string]any{"prompts": map[string]string{"quick": "Also check accessibility"}}
+	body, _ := json.Marshal(prompts)
+	req := httptest.NewRequest("PUT", "/api/settings/review-prompts", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetReviewPrompts(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify it was saved
+	req2 := httptest.NewRequest("GET", "/api/settings/review-prompts", nil)
+	w2 := httptest.NewRecorder()
+
+	h.GetReviewPrompts(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	p := resp["prompts"].(map[string]any)
+	assert.Equal(t, "Also check accessibility", p["quick"])
+}
+
+func TestSetReviewPrompts_EmptyDeletes(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.SetSetting(ctx, "review-prompts", `{"quick":"old"}`))
+
+	body, _ := json.Marshal(map[string]any{"prompts": map[string]string{}})
+	req := httptest.NewRequest("PUT", "/api/settings/review-prompts", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetReviewPrompts(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify deleted
+	req2 := httptest.NewRequest("GET", "/api/settings/review-prompts", nil)
+	w2 := httptest.NewRecorder()
+	h.GetReviewPrompts(w2, req2)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["prompts"].(map[string]any))
+}
+
+func TestSetReviewPrompts_InvalidBody(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("PUT", "/api/settings/review-prompts", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetReviewPrompts(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetWorkspaceReviewPrompts_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/settings/review-prompts", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.GetWorkspaceReviewPrompts(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["prompts"].(map[string]any))
+}
+
+func TestSetWorkspaceReviewPrompts_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	prompts := map[string]any{"prompts": map[string]string{"security": "Check OWASP top 10"}}
+	body, _ := json.Marshal(prompts)
+	req := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/review-prompts", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.SetWorkspaceReviewPrompts(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify saved
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/review-prompts", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+
+	h.GetWorkspaceReviewPrompts(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	p := resp["prompts"].(map[string]any)
+	assert.Equal(t, "Check OWASP top 10", p["security"])
+}
+
+func TestSetWorkspaceReviewPrompts_IsolatedPerWorkspace(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set for ws-1
+	body1, _ := json.Marshal(map[string]any{"prompts": map[string]string{"quick": "ws1 instructions"}})
+	req1 := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/review-prompts", bytes.NewReader(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	req1 = withChiContext(req1, map[string]string{"id": "ws-1"})
+	w1 := httptest.NewRecorder()
+	h.SetWorkspaceReviewPrompts(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// ws-2 should still be empty
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-2/settings/review-prompts", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-2"})
+	w2 := httptest.NewRecorder()
+	h.GetWorkspaceReviewPrompts(w2, req2)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["prompts"].(map[string]any))
+}
+
+func TestReviewPrompts_GlobalAndWorkspaceIsolated(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set a global prompt
+	globalBody, _ := json.Marshal(map[string]any{"prompts": map[string]string{"quick": "global instructions"}})
+	req1 := httptest.NewRequest("PUT", "/api/settings/review-prompts", bytes.NewReader(globalBody))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	h.SetReviewPrompts(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Workspace endpoint should still be empty
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/review-prompts", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+	h.GetWorkspaceReviewPrompts(w2, req2)
+
+	var wsResp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &wsResp))
+	assert.Equal(t, map[string]any{}, wsResp["prompts"].(map[string]any))
+
+	// Set a workspace prompt
+	wsBody, _ := json.Marshal(map[string]any{"prompts": map[string]string{"security": "workspace instructions"}})
+	req3 := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/review-prompts", bytes.NewReader(wsBody))
+	req3.Header.Set("Content-Type", "application/json")
+	req3 = withChiContext(req3, map[string]string{"id": "ws-1"})
+	w3 := httptest.NewRecorder()
+	h.SetWorkspaceReviewPrompts(w3, req3)
+	assert.Equal(t, http.StatusOK, w3.Code)
+
+	// Global should still only have "quick", not "security"
+	req4 := httptest.NewRequest("GET", "/api/settings/review-prompts", nil)
+	w4 := httptest.NewRecorder()
+	h.GetReviewPrompts(w4, req4)
+
+	var globalResp map[string]any
+	require.NoError(t, json.Unmarshal(w4.Body.Bytes(), &globalResp))
+	gp := globalResp["prompts"].(map[string]any)
+	assert.Equal(t, "global instructions", gp["quick"])
+	assert.Nil(t, gp["security"])
+}
+
+func TestGetReviewPrompts_CorruptedData(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Store invalid JSON
+	require.NoError(t, s.SetSetting(ctx, "review-prompts", "not-json"))
+
+	req := httptest.NewRequest("GET", "/api/settings/review-prompts", nil)
+	w := httptest.NewRecorder()
+	h.GetReviewPrompts(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestGeneratePRDescription_NoAIClient(t *testing.T) {
 	h, _ := setupTestHandlers(t) // handlers created with nil aiClient
 
