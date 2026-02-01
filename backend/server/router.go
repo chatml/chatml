@@ -18,10 +18,10 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, statsCache *SessionStatsCache, aiClient *ai.Client) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, statsCache, aiClient)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
@@ -57,6 +57,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 
 	// Rate limiter for comment operations
 	commentRateLimiter := httprate.LimitByIP(60, 1*time.Minute) // 60 comments per minute
+
+	// Rate limiter for GitHub search operations (GitHub search API has 30 req/min limit)
+	searchRateLimiter := httprate.LimitByIP(20, 1*time.Minute) // 20 searches per minute
 
 	// PR Dashboard endpoint
 	r.Get("/api/prs", h.ListPRs)
@@ -128,6 +131,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/tabs", h.ListFileTabs)
 		r.Post("/{id}/tabs", h.SaveFileTabs)
 		r.Delete("/{id}/tabs/{tabId}", h.DeleteFileTab)
+		// GitHub Issues endpoints
+		r.Get("/{id}/issues", h.ListIssues)
+		r.With(searchRateLimiter).Get("/{id}/issues/search", h.SearchIssues)
+		r.Get("/{id}/issues/{number}", h.GetIssueDetails)
 	})
 
 	// Conversation endpoints (top-level for direct access)
