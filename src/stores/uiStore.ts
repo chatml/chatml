@@ -37,11 +37,16 @@ interface UIState {
   // Dynamic toolbar configuration (Flutter AppBar-style)
   toolbarConfig: ToolbarConfig | null;
 
+  // Per-tab cached rich titles (ReactNode) for the tab strip
+  tabTitles: Record<string, ReactNode>;
+
   // Actions
   setToolbarBackground: (toolbar: ToolbarId, className: string) => void;
   setAllToolbarBackgrounds: (className: string) => void;
   resetToolbarBackgrounds: () => void;
   setToolbarConfig: (config: ToolbarConfig | null) => void;
+  setTabTitle: (tabId: string, title: ReactNode) => void;
+  removeTabTitle: (tabId: string) => void;
 }
 
 const defaultBackgrounds: ToolbarBackgrounds = {
@@ -53,6 +58,7 @@ const defaultBackgrounds: ToolbarBackgrounds = {
 export const useUIStore = create<UIState>()((set) => ({
   toolbarBackgrounds: { ...defaultBackgrounds },
   toolbarConfig: null,
+  tabTitles: {},
 
   setToolbarBackground: (toolbar, className) =>
     set((state) => ({
@@ -77,4 +83,16 @@ export const useUIStore = create<UIState>()((set) => ({
     })),
 
   setToolbarConfig: (config) => set({ toolbarConfig: config }),
+
+  setTabTitle: (tabId, title) =>
+    set((state) => ({
+      tabTitles: { ...state.tabTitles, [tabId]: title },
+    })),
+
+  removeTabTitle: (tabId) =>
+    set((state) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [tabId]: _removed, ...rest } = state.tabTitles;
+      return { tabTitles: rest };
+    }),
 }));

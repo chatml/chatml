@@ -66,7 +66,7 @@ export function GlobalDashboard() {
   const toolbarConfig = useMemo(() => ({
     titlePosition: 'center' as const,
     title: (
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 shrink-0">
         <LayoutDashboard className="h-4 w-4 text-blue-400" />
         <h1 className="text-base font-semibold">Dashboard</h1>
       </span>

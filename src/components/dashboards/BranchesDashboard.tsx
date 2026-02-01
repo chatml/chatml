@@ -228,19 +228,21 @@ export function BranchesDashboard({
   const toolbarConfig = useMemo(() => ({
     titlePosition: 'center' as const,
     title: (
-      <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5 min-w-0">
         {workspace && (
-          <>
+          <span className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden">
             <div
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: getWorkspaceColor(workspaceId) }}
             />
-            <span className="text-base font-semibold truncate max-w-[200px]">{workspace.name}</span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </>
+            <span className="text-base font-semibold truncate">{workspace.name}</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          </span>
         )}
-        <GitBranch className="h-4 w-4 text-green-400" />
-        <h1 className="text-base font-semibold">Branches</h1>
+        <span className="flex items-center gap-1.5 shrink-0">
+          <GitBranch className="h-4 w-4 text-green-400" />
+          <h1 className="text-base font-semibold">Branches</h1>
+        </span>
       </span>
     ),
     bottom: {

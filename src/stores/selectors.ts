@@ -18,6 +18,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
 import { useNavigationStore } from './navigationStore';
+import { useTabStore } from './tabStore';
 import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
@@ -440,3 +441,31 @@ export const useNavigationState = (tabId?: string) => {
     })
   );
 };
+
+/**
+ * Browser tab state selectors.
+ * Use in: BrowserTabBar, keyboard shortcut handlers
+ */
+export const useBrowserTabs = () =>
+  useTabStore(
+    useShallow((s) => ({
+      tabs: s.tabs,
+      tabOrder: s.tabOrder,
+      activeTabId: s.activeTabId,
+      tabCount: s.tabOrder.length,
+    }))
+  );
+
+export const useActiveTabViewState = () =>
+  useTabStore(
+    useShallow((s) => {
+      const tab = s.tabs[s.activeTabId];
+      return {
+        selectedWorkspaceId: tab?.selectedWorkspaceId ?? null,
+        selectedSessionId: tab?.selectedSessionId ?? null,
+        selectedConversationId: tab?.selectedConversationId ?? null,
+        contentView: tab?.contentView ?? { type: 'conversation' as const },
+        label: tab?.label ?? 'New Tab',
+      };
+    })
+  );

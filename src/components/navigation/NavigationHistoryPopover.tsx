@@ -86,8 +86,9 @@ export function NavigationHistoryPopover({ onClose }: { onClose?: () => void }) 
   const forwardStack = tab?.forwardStack ?? [];
 
   // Subscribe reactively so the label updates if data changes while the popover is open
-  const { selectedSessionId, selectedConversationId, sessions, conversations, workspaces } =
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, conversations, workspaces } =
     useAppStore(useShallow((s) => ({
+      selectedWorkspaceId: s.selectedWorkspaceId,
       selectedSessionId: s.selectedSessionId,
       selectedConversationId: s.selectedConversationId,
       sessions: s.sessions,
@@ -95,6 +96,7 @@ export function NavigationHistoryPopover({ onClose }: { onClose?: () => void }) 
       workspaces: s.workspaces,
     })));
   const currentLabel = buildNavigationLabel(contentView, {
+    selectedWorkspaceId,
     selectedSessionId,
     selectedConversationId,
     sessions,

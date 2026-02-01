@@ -10,6 +10,7 @@ import { startTransition } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useNavigationStore, type NavigationEntry } from '@/stores/navigationStore';
+import { useTabStore } from '@/stores/tabStore';
 
 export interface NavigateParams {
   workspaceId?: string | null;
@@ -29,39 +30,47 @@ export interface NavigateParams {
 export function buildNavigationLabel(
   contentView: ContentView,
   opts: {
+    selectedWorkspaceId?: string | null;
     selectedSessionId?: string | null;
     selectedConversationId?: string | null;
-    sessions?: { id: string; name: string; branch: string }[];
+    sessions?: { id: string; name: string; branch: string; workspaceId: string }[];
     conversations?: { id: string; name: string }[];
     workspaces?: { id: string; name: string }[];
   } = {},
 ): string {
-  const { selectedSessionId, selectedConversationId, sessions = [], conversations = [], workspaces = [] } = opts;
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions = [], conversations = [], workspaces = [] } = opts;
+
+  /** Find the workspace name for a given workspace ID */
+  const wsName = (id?: string | null) => workspaces.find((w) => w.id === id)?.name;
 
   switch (contentView.type) {
     case 'conversation': {
-      const conv = conversations.find((c) => c.id === selectedConversationId);
       const session = sessions.find((s) => s.id === selectedSessionId);
-      if (conv) return conv.name;
-      if (session) return session.name || session.branch;
+      const sessionLabel = session ? (session.name || session.branch) : null;
+      const ws = wsName(session?.workspaceId ?? selectedWorkspaceId);
+
+      const conv = conversations.find((c) => c.id === selectedConversationId);
+      if (conv) {
+        return ws ? `${ws} › ${conv.name}` : conv.name;
+      }
+      if (sessionLabel) {
+        return ws ? `${ws} › ${sessionLabel}` : sessionLabel;
+      }
       return 'Conversation';
     }
     case 'global-dashboard':
       return 'Dashboard';
     case 'workspace-dashboard': {
-      const ws = workspaces.find((w) => w.id === contentView.workspaceId);
-      return ws ? `${ws.name}` : 'Workspace';
+      const ws = wsName(contentView.workspaceId);
+      return ws ?? 'Workspace';
     }
     case 'pr-dashboard': {
-      if (contentView.workspaceId) {
-        const ws = workspaces.find((w) => w.id === contentView.workspaceId);
-        return ws ? `PRs · ${ws.name}` : 'Pull Requests';
-      }
-      return 'Pull Requests';
+      const ws = wsName(contentView.workspaceId);
+      return ws ? `${ws} › Pull Requests` : 'Pull Requests';
     }
     case 'branches': {
-      const ws = workspaces.find((w) => w.id === contentView.workspaceId);
-      return ws ? `Branches · ${ws.name}` : 'Branches';
+      const ws = wsName(contentView.workspaceId);
+      return ws ? `${ws} › Branches` : 'Branches';
     }
     case 'repositories':
       return 'Repositories';
@@ -74,13 +83,34 @@ export function buildNavigationLabel(
 
 /** Build a label from current app/settings store state */
 function buildLabel(): string {
-  const { selectedSessionId, selectedConversationId, sessions, conversations, workspaces } =
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId, sessions, conversations, workspaces } =
     useAppStore.getState();
   const { contentView } = useSettingsStore.getState();
 
   return buildNavigationLabel(contentView, {
+    selectedWorkspaceId,
     selectedSessionId,
     selectedConversationId,
+    sessions,
+    conversations,
+    workspaces,
+  });
+}
+
+/** Build a label for a specific set of navigation params */
+function buildLabelForParams(params: {
+  contentView?: ContentView;
+  workspaceId?: string | null;
+  sessionId?: string | null;
+  conversationId?: string | null;
+}): string {
+  const { selectedWorkspaceId, sessions, conversations, workspaces } = useAppStore.getState();
+  const contentView = params.contentView ?? useSettingsStore.getState().contentView;
+
+  return buildNavigationLabel(contentView, {
+    selectedWorkspaceId: params.workspaceId ?? selectedWorkspaceId,
+    selectedSessionId: params.sessionId,
+    selectedConversationId: params.conversationId,
     sessions,
     conversations,
     workspaces,
@@ -140,11 +170,12 @@ function isEntryValid(entry: NavigationEntry): boolean {
   return true;
 }
 
-/** Apply a navigation entry to the app state */
+/** Apply a navigation entry to the app and tab state */
 function applyEntry(entry: NavigationEntry): void {
   startTransition(() => {
     const appStore = useAppStore.getState();
     const settingsStore = useSettingsStore.getState();
+    const tabStore = useTabStore.getState();
 
     if (entry.workspaceId !== undefined) {
       appStore.selectWorkspace(entry.workspaceId);
@@ -160,6 +191,15 @@ function applyEntry(entry: NavigationEntry): void {
     if (entry.contentView !== undefined) {
       settingsStore.setContentView(entry.contentView);
     }
+
+    // Sync to active browser tab
+    tabStore.updateActiveTab({
+      selectedWorkspaceId: entry.workspaceId,
+      selectedSessionId: entry.sessionId,
+      selectedConversationId: entry.conversationId,
+      contentView: entry.contentView,
+      label: entry.label,
+    });
   });
 }
 
@@ -182,6 +222,7 @@ export function navigate(params: NavigateParams): void {
   startTransition(() => {
     const appStore = useAppStore.getState();
     const settingsStore = useSettingsStore.getState();
+    const tabStore = useTabStore.getState();
 
     if (params.workspaceId !== undefined) {
       appStore.selectWorkspace(params.workspaceId);
@@ -195,7 +236,42 @@ export function navigate(params: NavigateParams): void {
     if (params.contentView !== undefined) {
       settingsStore.setContentView(params.contentView);
     }
+
+    // Sync to active browser tab
+    tabStore.updateActiveTab({
+      ...(params.workspaceId !== undefined && { selectedWorkspaceId: params.workspaceId }),
+      ...(params.sessionId !== undefined && { selectedSessionId: params.sessionId }),
+      ...(params.conversationId !== undefined && { selectedConversationId: params.conversationId }),
+      ...(params.contentView !== undefined && { contentView: params.contentView }),
+      label: params.label ?? buildLabelForParams(params),
+    });
   });
+}
+
+/**
+ * Navigate within active tab, or open in a new tab if Cmd+Click or middle-click.
+ * Use this as the click handler for sidebar navigation items.
+ */
+export function navigateOrOpenTab(params: NavigateParams, event?: React.MouseEvent): void {
+  if (event && (event.metaKey || event.button === 1)) {
+    // Cmd+Click or middle-click: open in new tab
+    event.preventDefault();
+    const tabStore = useTabStore.getState();
+    const label = params.label ?? buildLabelForParams(params);
+
+    const tabId = tabStore.createTab({
+      selectedWorkspaceId: params.workspaceId ?? null,
+      selectedSessionId: params.sessionId ?? null,
+      selectedConversationId: params.conversationId ?? null,
+      contentView: params.contentView ?? { type: 'conversation' },
+      label,
+    });
+    tabStore.activateTab(tabId);
+    useNavigationStore.getState().setActiveTabId(tabId);
+  } else {
+    // Normal click: navigate within active tab
+    navigate(params);
+  }
 }
 
 /** Go back in history for the given tab (defaults to active tab) */
