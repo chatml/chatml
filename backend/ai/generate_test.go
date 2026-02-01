@@ -496,3 +496,254 @@ func TestGenerateConversationSummary_MessageFormatting(t *testing.T) {
 	assert.Contains(t, capturedUserMsg, "--- Assistant ---\nI will fix it now")
 	assert.Contains(t, capturedUserMsg, "--- System ---\nTool result here")
 }
+
+// ---------------------------------------------------------------------------
+// GenerateSessionSummary tests
+// ---------------------------------------------------------------------------
+
+func TestGenerateSessionSummary_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		assert.Equal(t, "sk-test-key", r.Header.Get("x-api-key"))
+		assert.Equal(t, apiVersion, r.Header.Get("anthropic-version"))
+		assert.Equal(t, "POST", r.Method)
+
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		var apiReq anthropicRequest
+		require.NoError(t, json.Unmarshal(body, &apiReq))
+		assert.Equal(t, defaultModel, apiReq.Model)
+		assert.Equal(t, summaryMaxTokens, apiReq.MaxTokens)
+		assert.Equal(t, sessionSummarySystemPrompt, apiReq.System)
+		assert.Len(t, apiReq.Messages, 1)
+		assert.Equal(t, "user", apiReq.Messages[0].Role)
+
+		resp := anthropicResponse{
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: "  The session implemented OAuth2 login.  "},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	result, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{
+		SessionName: "Auth Feature",
+		Task:        "Build login flow",
+		Conversations: []ConversationMessages{
+			{
+				Name: "Task Conv",
+				Type: "task",
+				Messages: []SummaryMessage{
+					{Role: "user", Content: "Help me build OAuth2 login"},
+					{Role: "assistant", Content: "I'll set up the OAuth2 flow."},
+				},
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "The session implemented OAuth2 login.", result)
+}
+
+func TestGenerateSessionSummary_NilClient(t *testing.T) {
+	var client *Client
+	_, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not configured")
+}
+
+func TestGenerateSessionSummary_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error": "internal server error"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	_, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{
+		SessionName: "Test",
+		Conversations: []ConversationMessages{
+			{Name: "Conv1", Type: "task", Messages: []SummaryMessage{{Role: "user", Content: "Hello"}}},
+		},
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGenerateSessionSummary_EmptyResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := anthropicResponse{Content: nil}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	_, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{
+		SessionName: "Test",
+		Conversations: []ConversationMessages{
+			{Name: "Conv1", Type: "task", Messages: []SummaryMessage{{Role: "user", Content: "Hello"}}},
+		},
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty response")
+}
+
+func TestGenerateSessionSummary_MessageTruncation(t *testing.T) {
+	var capturedUserMsg string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var apiReq anthropicRequest
+		json.Unmarshal(body, &apiReq)
+		capturedUserMsg = apiReq.Messages[0].Content
+
+		resp := anthropicResponse{
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: "Summary of truncated session."},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	bigContent := strings.Repeat("x", 10000)
+	messages := make([]SummaryMessage, 50)
+	for i := range messages {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		messages[i] = SummaryMessage{Role: role, Content: bigContent}
+	}
+
+	result, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{
+		SessionName: "Large Session",
+		Task:        "Big refactor",
+		Conversations: []ConversationMessages{
+			{Name: "Main Task", Type: "task", Messages: messages},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "Summary of truncated session.", result)
+	assert.Contains(t, capturedUserMsg, "messages omitted")
+	assert.Contains(t, capturedUserMsg, "--- User ---")
+	assert.Contains(t, capturedUserMsg, "--- Assistant ---")
+}
+
+func TestGenerateSessionSummary_SessionNameAndTaskInPrompt(t *testing.T) {
+	var capturedUserMsg string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var apiReq anthropicRequest
+		json.Unmarshal(body, &apiReq)
+		capturedUserMsg = apiReq.Messages[0].Content
+
+		resp := anthropicResponse{
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: "Summary."},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	_, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{
+		SessionName: "Fix Auth Bug",
+		Task:        "Fix login redirect issue",
+		Conversations: []ConversationMessages{
+			{Name: "Debug", Type: "task", Messages: []SummaryMessage{{Role: "user", Content: "The login redirect is broken"}}},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, capturedUserMsg, "Session: Fix Auth Bug")
+	assert.Contains(t, capturedUserMsg, "Task: Fix login redirect issue")
+}
+
+func TestGenerateSessionSummary_ConversationGrouping(t *testing.T) {
+	var capturedUserMsg string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var apiReq anthropicRequest
+		json.Unmarshal(body, &apiReq)
+		capturedUserMsg = apiReq.Messages[0].Content
+
+		resp := anthropicResponse{
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: "Summary."},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	_, err := client.GenerateSessionSummary(context.Background(), GenerateSessionSummaryRequest{
+		SessionName: "Multi-conv Session",
+		Conversations: []ConversationMessages{
+			{Name: "Implementation", Type: "task", Messages: []SummaryMessage{{Role: "user", Content: "Build the feature"}}},
+			{Name: "Code Review", Type: "review", Messages: []SummaryMessage{{Role: "user", Content: "Review the changes"}}},
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, capturedUserMsg, "=== Conversation: Implementation (task) ===")
+	assert.Contains(t, capturedUserMsg, "=== Conversation: Code Review (review) ===")
+}
+
+func TestGenerateSessionSummary_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-test-key")
+	client.apiURL = server.URL
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.GenerateSessionSummary(ctx, GenerateSessionSummaryRequest{
+		SessionName: "Test",
+		Conversations: []ConversationMessages{
+			{Name: "Conv1", Type: "task", Messages: []SummaryMessage{{Role: "user", Content: "Hello"}}},
+		},
+	})
+
+	assert.Error(t, err)
+}

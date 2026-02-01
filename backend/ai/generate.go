@@ -40,6 +40,15 @@ func NewClient(apiKey string) *Client {
 	}
 }
 
+// NewTestClient creates a client with a custom API URL for testing.
+func NewTestClient(apiKey, apiURL string) *Client {
+	c := NewClient(apiKey)
+	if c != nil {
+		c.apiURL = apiURL
+	}
+	return c
+}
+
 // CommitInfo is a simplified commit representation for PR generation.
 type CommitInfo struct {
 	SHA     string `json:"sha"`
@@ -329,4 +338,161 @@ func parsePRResponse(text string) *GeneratePRResponse {
 	}
 
 	return result
+}
+
+// ConversationMessages holds a conversation's metadata and messages for session summarization.
+type ConversationMessages struct {
+	Name     string           `json:"name"`
+	Type     string           `json:"type"` // "task", "review", "chat"
+	Messages []SummaryMessage `json:"messages"`
+}
+
+// GenerateSessionSummaryRequest contains the context to summarize an entire session.
+type GenerateSessionSummaryRequest struct {
+	SessionName   string                 `json:"sessionName"`
+	Task          string                 `json:"task"`
+	Conversations []ConversationMessages `json:"conversations"`
+}
+
+const sessionSummarySystemPrompt = `Summarize this coding session concisely (200-500 words). The session may contain multiple conversations (task, review, chat). Capture:
+1. Goal/task that was being worked on
+2. Key decisions and approach taken
+3. Files modified or created
+4. Issues encountered and how they were resolved
+5. Current state: what was completed vs what remains
+
+Focus on providing useful context for someone deciding whether to restore this archived session. Be specific about what was accomplished. Technical language, no meta-commentary.`
+
+// maxMessageChars caps individual message content to prevent a single huge message
+// from consuming the entire budget.
+const maxMessageChars = 50000
+
+// taggedMessage pairs a message with its conversation header for correct reconstruction after truncation.
+type taggedMessage struct {
+	SummaryMessage
+	ConvHeader string // e.g. "=== Conversation: Name (type) ==="
+}
+
+// GenerateSessionSummary calls the Anthropic API to summarize an entire session across all its conversations.
+func (c *Client) GenerateSessionSummary(ctx context.Context, req GenerateSessionSummaryRequest) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("AI client not configured (missing ANTHROPIC_API_KEY)")
+	}
+
+	// Collect all messages, tagging each with its conversation header
+	var allMessages []taggedMessage
+	for _, conv := range req.Conversations {
+		header := fmt.Sprintf("=== Conversation: %s (%s) ===", conv.Name, conv.Type)
+		for _, m := range conv.Messages {
+			content := m.Content
+			if len(content) > maxMessageChars {
+				content = content[:maxMessageChars] + "\n[...message truncated...]"
+			}
+			allMessages = append(allMessages, taggedMessage{
+				SummaryMessage: SummaryMessage{Role: m.Role, Content: content},
+				ConvHeader:     header,
+			})
+		}
+	}
+
+	// Calculate total chars and truncate if needed
+	totalChars := 0
+	for _, m := range allMessages {
+		totalChars += len(m.Content)
+	}
+
+	messages := allMessages
+	if totalChars > maxInputChars && len(messages) > 4 {
+		// Keep first 2 messages and trim from the middle
+		firstMessages := messages[:2]
+		remaining := messages[2:]
+		budgetChars := maxInputChars - len(firstMessages[0].Content) - len(firstMessages[1].Content)
+		var lastMessages []taggedMessage
+		for i := len(remaining) - 1; i >= 0; i-- {
+			budgetChars -= len(remaining[i].Content)
+			if budgetChars < 0 {
+				break
+			}
+			lastMessages = append(lastMessages, remaining[i])
+		}
+		// Reverse to restore chronological order
+		for i, j := 0, len(lastMessages)-1; i < j; i, j = i+1, j-1 {
+			lastMessages[i], lastMessages[j] = lastMessages[j], lastMessages[i]
+		}
+		omitted := len(allMessages) - len(firstMessages) - len(lastMessages)
+		messages = firstMessages
+		if omitted > 0 {
+			messages = append(messages, taggedMessage{
+				SummaryMessage: SummaryMessage{
+					Role:    "system",
+					Content: fmt.Sprintf("[...%d messages omitted...]", omitted),
+				},
+				ConvHeader: firstMessages[len(firstMessages)-1].ConvHeader,
+			})
+		}
+		messages = append(messages, lastMessages...)
+	}
+
+	// Build user message, inserting conversation headers at boundaries
+	var userMsg strings.Builder
+	userMsg.WriteString(fmt.Sprintf("Session: %s\n", req.SessionName))
+	if req.Task != "" {
+		userMsg.WriteString(fmt.Sprintf("Task: %s\n", req.Task))
+	}
+	userMsg.WriteString("\n")
+
+	currentHeader := ""
+	for _, m := range messages {
+		if m.ConvHeader != currentHeader {
+			currentHeader = m.ConvHeader
+			userMsg.WriteString(currentHeader + "\n\n")
+		}
+		role := strings.ToUpper(m.Role[:1]) + m.Role[1:]
+		userMsg.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", role, m.Content))
+	}
+
+	apiReq := anthropicRequest{
+		Model:     c.model,
+		MaxTokens: summaryMaxTokens,
+		System:    sessionSummarySystemPrompt,
+		Messages: []anthropicMessage{
+			{Role: "user", Content: userMsg.String()},
+		},
+	}
+
+	body, err := json.Marshal(apiReq)
+	if err != nil {
+		return "", fmt.Errorf("marshaling request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("calling Anthropic API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Anthropic API returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var apiResp anthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return "", fmt.Errorf("decoding response: %w", err)
+	}
+
+	if len(apiResp.Content) == 0 {
+		return "", fmt.Errorf("empty response from Anthropic API")
+	}
+
+	return strings.TrimSpace(apiResp.Content[0].Text), nil
 }

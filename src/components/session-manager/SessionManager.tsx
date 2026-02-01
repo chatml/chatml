@@ -1,23 +1,35 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
-import { updateSession as updateSessionApi } from '@/lib/api';
+import { updateSession as updateSessionApi, deleteSession as deleteSessionApi } from '@/lib/api';
 import { SessionsDataTable } from './SessionsDataTable';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
+import { ArchivedSessionPreviewDialog } from '@/components/dialogs/ArchivedSessionPreviewDialog';
+import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
+import { useToast } from '@/components/ui/toast';
 import { Layers } from 'lucide-react';
+import type { WorktreeSession, Workspace } from '@/lib/types';
 
 export function SessionManager() {
 
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
   const unarchiveSession = useAppStore((s) => s.unarchiveSession);
+  const removeSession = useAppStore((s) => s.removeSession);
   const { expandWorkspace } = useSettingsStore();
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession();
+  const { error: showError } = useToast();
+
+  // Preview dialog state
+  const [previewTarget, setPreviewTarget] = useState<{ session: WorktreeSession; workspace: Workspace } | null>(null);
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; workspaceId: string; name: string } | null>(null);
 
   // Set dynamic toolbar content
   const { activeSessions, archivedSessions } = useMemo(() => {
@@ -71,6 +83,43 @@ export function SessionManager() {
     [requestArchive]
   );
 
+  // Handle preview archived session
+  const handlePreviewSession = useCallback(
+    (sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      const workspace = workspaces.find((w) => w.id === session.workspaceId);
+      if (!workspace) return;
+      setPreviewTarget({ session, workspace });
+    },
+    [sessions, workspaces]
+  );
+
+  // Handle delete archived session
+  const handleDeleteSession = useCallback(
+    (sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      setDeleteTarget({ id: sessionId, workspaceId: session.workspaceId, name: session.name || session.branch });
+    },
+    [sessions]
+  );
+
+  const confirmDeleteSession = useCallback(
+    async () => {
+      if (!deleteTarget) return;
+      try {
+        await deleteSessionApi(deleteTarget.workspaceId, deleteTarget.id);
+        removeSession(deleteTarget.id);
+      } catch (error) {
+        console.error('Failed to delete session:', error);
+        showError('Failed to delete session');
+      }
+      setDeleteTarget(null);
+    },
+    [deleteTarget, removeSession, showError]
+  );
+
   // Handle unarchive session
   const handleUnarchiveSession = useCallback(
     async (sessionId: string) => {
@@ -99,9 +148,35 @@ export function SessionManager() {
           onSelectSession={handleSelectSession}
           onArchiveSession={handleArchiveSession}
           onUnarchiveSession={handleUnarchiveSession}
+          onPreviewSession={handlePreviewSession}
+          onDeleteSession={handleDeleteSession}
         />
       </div>
       {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
+      {previewTarget && (
+        <ArchivedSessionPreviewDialog
+          open={!!previewTarget}
+          onOpenChange={(open) => { if (!open) setPreviewTarget(null); }}
+          session={previewTarget.session}
+          workspace={previewTarget.workspace}
+          onRestore={() => {
+            handleUnarchiveSession(previewTarget.session.id);
+            setPreviewTarget(null);
+          }}
+          onDelete={() => {
+            handleDeleteSession(previewTarget.session.id);
+            setPreviewTarget(null);
+          }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteSessionDialog
+          open={!!deleteTarget}
+          onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+          onConfirm={confirmDeleteSession}
+          sessionName={deleteTarget.name}
+        />
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   MessageSquare,
   GitPullRequest,
   Archive,
+  Eye,
 } from 'lucide-react';
 
 interface SessionRowProps {
@@ -15,9 +16,10 @@ interface SessionRowProps {
   workspace: Workspace;
   onSelect: () => void;
   onUnarchive?: () => void;
+  onPreview?: () => void;
 }
 
-export function SessionRow({ session, workspace, onSelect, onUnarchive }: SessionRowProps) {
+export function SessionRow({ session, workspace, onSelect, onUnarchive, onPreview }: SessionRowProps) {
   const isActive = session.status === 'active';
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
@@ -109,7 +111,20 @@ export function SessionRow({ session, workspace, onSelect, onUnarchive }: Sessio
         {formatDate(session.updatedAt)}
       </span>
 
-      {/* Unarchive button for archived sessions */}
+      {/* Preview + Unarchive buttons for archived sessions */}
+      {session.archived && onPreview && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreview();
+          }}
+        >
+          <Eye className="h-3 w-3" />
+        </Button>
+      )}
       {session.archived && onUnarchive && (
         <Button
           variant="ghost"

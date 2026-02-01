@@ -228,6 +228,8 @@ export interface SessionDTO {
   hasCheckFailures?: boolean;
   pinned?: boolean;
   archived?: boolean;
+  archiveSummary?: string;
+  archiveSummaryStatus?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -252,6 +254,8 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     hasCheckFailures: session.hasCheckFailures,
     pinned: session.pinned,
     archived: session.archived,
+    archiveSummary: session.archiveSummary,
+    archiveSummaryStatus: (session.archiveSummaryStatus || '') as import('@/lib/types').WorktreeSession['archiveSummaryStatus'],
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

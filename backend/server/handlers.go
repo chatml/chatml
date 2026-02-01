@@ -1492,7 +1492,123 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		writeDBError(w, err)
 		return
 	}
+
+	// Trigger archive summary generation when session is being archived
+	if req.Archived != nil && *req.Archived && h.aiClient != nil {
+		// Set generating status synchronously so the frontend sees it immediately
+		if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
+			s.ArchiveSummaryStatus = models.SummaryStatusGenerating
+		}); err != nil {
+			logger.Error.Errorf("Failed to set generating status for session %s: %v", id, err)
+		} else {
+			session.ArchiveSummaryStatus = models.SummaryStatusGenerating
+			go h.generateArchiveSummary(id)
+		}
+	}
+
 	writeJSON(w, session)
+}
+
+// generateArchiveSummary fetches all conversations for a session and generates a combined summary.
+func (h *Handlers) generateArchiveSummary(sessionID string) {
+	bgCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// Fetch all conversations for this session
+	convs, err := h.store.ListConversations(bgCtx, sessionID)
+	if err != nil {
+		logger.Error.Errorf("Archive summary: failed to list conversations for session %s: %v", sessionID, err)
+		h.updateArchiveSummaryStatus(bgCtx, sessionID, models.SummaryStatusFailed, "")
+		return
+	}
+
+	// Build conversation messages for the AI
+	var convMessages []ai.ConversationMessages
+	for _, conv := range convs {
+		if conv.MessageCount < 1 {
+			continue
+		}
+		allMessages, err := h.store.GetConversationMessages(bgCtx, conv.ID, nil, conv.MessageCount)
+		if err != nil {
+			logger.Error.Errorf("Archive summary: failed to get messages for conversation %s: %v", conv.ID, err)
+			continue
+		}
+
+		var msgs []ai.SummaryMessage
+		for _, m := range allMessages.Messages {
+			if m.Role == "system" && m.SetupInfo != nil {
+				continue
+			}
+			if m.RunSummary != nil && m.Content == "" {
+				continue
+			}
+			if m.Content == "" {
+				continue
+			}
+			msgs = append(msgs, ai.SummaryMessage{
+				Role:    m.Role,
+				Content: m.Content,
+			})
+		}
+
+		if len(msgs) > 0 {
+			convMessages = append(convMessages, ai.ConversationMessages{
+				Name:     conv.Name,
+				Type:     conv.Type,
+				Messages: msgs,
+			})
+		}
+	}
+
+	if len(convMessages) == 0 {
+		logger.Handlers.Infof("Archive summary: no messages to summarize for session %s", sessionID)
+		h.updateArchiveSummaryStatus(bgCtx, sessionID, models.SummaryStatusCompleted, "No conversations with messages to summarize.")
+		return
+	}
+
+	// Get session info for context
+	sess, _ := h.store.GetSession(bgCtx, sessionID)
+	sessionName := sessionID
+	task := ""
+	if sess != nil {
+		sessionName = sess.Name
+		task = sess.Task
+	}
+
+	result, err := h.aiClient.GenerateSessionSummary(bgCtx, ai.GenerateSessionSummaryRequest{
+		SessionName:   sessionName,
+		Task:          task,
+		Conversations: convMessages,
+	})
+
+	if err != nil {
+		logger.Error.Errorf("Archive summary generation failed for session %s: %v", sessionID, err)
+		h.updateArchiveSummaryStatus(bgCtx, sessionID, models.SummaryStatusFailed, "")
+		return
+	}
+
+	h.updateArchiveSummaryStatus(bgCtx, sessionID, models.SummaryStatusCompleted, result)
+}
+
+// updateArchiveSummaryStatus updates the archive summary fields and broadcasts a WebSocket event.
+func (h *Handlers) updateArchiveSummaryStatus(ctx context.Context, sessionID, status, content string) {
+	if err := h.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+		s.ArchiveSummaryStatus = status
+		s.ArchiveSummary = content
+	}); err != nil {
+		logger.Error.Errorf("Failed to update archive summary status for session %s: %v", sessionID, err)
+		return
+	}
+
+	// Broadcast so frontend can update
+	updatedSession, _ := h.store.GetSession(ctx, sessionID)
+	if updatedSession != nil {
+		h.hub.Broadcast(Event{
+			Type:      "archive_summary_updated",
+			SessionID: sessionID,
+			Payload:   updatedSession,
+		})
+	}
 }
 
 func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {

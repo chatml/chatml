@@ -2385,3 +2385,107 @@ func TestSummary_CascadeDeleteSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, summaries)
 }
+
+// ============================================================================
+// Archive Summary Field Tests
+// ============================================================================
+
+func TestUpdateSession_SetArchiveSummary(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "s1", "ws-1")
+
+	// Set archive summary and status
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.ArchiveSummary = "This session implemented authentication."
+		sess.ArchiveSummaryStatus = models.SummaryStatusCompleted
+	}))
+
+	fetched, err := s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.Equal(t, "This session implemented authentication.", fetched.ArchiveSummary)
+	assert.Equal(t, models.SummaryStatusCompleted, fetched.ArchiveSummaryStatus)
+
+	// Update to generating status with empty summary
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.ArchiveSummary = ""
+		sess.ArchiveSummaryStatus = models.SummaryStatusGenerating
+	}))
+
+	fetched, err = s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.Empty(t, fetched.ArchiveSummary)
+	assert.Equal(t, models.SummaryStatusGenerating, fetched.ArchiveSummaryStatus)
+
+	// Update to failed status
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.ArchiveSummaryStatus = models.SummaryStatusFailed
+	}))
+
+	fetched, err = s.GetSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.Equal(t, models.SummaryStatusFailed, fetched.ArchiveSummaryStatus)
+}
+
+func TestAddSession_WithArchiveSummaryFields(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	session := &models.Session{
+		ID:                   "sess-with-summary",
+		WorkspaceID:          "ws-1",
+		Name:                 "Pre-summarized Session",
+		Branch:               "feature/test",
+		Status:               "idle",
+		ArchiveSummary:       "Pre-existing summary text",
+		ArchiveSummaryStatus: models.SummaryStatusCompleted,
+		CreatedAt:            time.Now(),
+		UpdatedAt:            time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	fetched, err := s.GetSession(ctx, "sess-with-summary")
+	require.NoError(t, err)
+	require.NotNil(t, fetched)
+	assert.Equal(t, "Pre-existing summary text", fetched.ArchiveSummary)
+	assert.Equal(t, models.SummaryStatusCompleted, fetched.ArchiveSummaryStatus)
+}
+
+func TestListSessions_IncludesArchiveSummaryFields(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "s1", "ws-1")
+
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.Archived = true
+		sess.ArchiveSummary = "Session summary for listing"
+		sess.ArchiveSummaryStatus = models.SummaryStatusCompleted
+	}))
+
+	sessions, err := s.ListSessions(ctx, "ws-1", true)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+	assert.Equal(t, "Session summary for listing", sessions[0].ArchiveSummary)
+	assert.Equal(t, models.SummaryStatusCompleted, sessions[0].ArchiveSummaryStatus)
+}
+
+func TestGetSessionWithWorkspace_IncludesArchiveSummaryFields(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "s1", "ws-1")
+
+	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
+		sess.ArchiveSummary = "Session summary via join"
+		sess.ArchiveSummaryStatus = models.SummaryStatusCompleted
+	}))
+
+	result, err := s.GetSessionWithWorkspace(ctx, "s1")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "Session summary via join", result.Session.ArchiveSummary)
+	assert.Equal(t, models.SummaryStatusCompleted, result.Session.ArchiveSummaryStatus)
+}

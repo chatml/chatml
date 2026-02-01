@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
@@ -176,6 +177,27 @@ func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID st
 	}
 	require.NoError(t, s.AddConversation(ctx, conv))
 	return conv
+}
+
+// setupTestHandlersWithAIClient creates handlers with a mock AI client for testing
+// The aiServer URL is used as the Anthropic API endpoint.
+func setupTestHandlersWithAIClient(t *testing.T, aiServerURL string) (*Handlers, *store.SQLiteStore) {
+	t.Helper()
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	aiClient := ai.NewTestClient("sk-test-key", aiServerURL)
+
+	t.Cleanup(func() {
+		sqliteStore.Close()
+		prCache.Close()
+	})
+
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, aiClient)
+
+	return handlers, sqliteStore
 }
 
 // withChiContext sets up chi URL parameters for a request

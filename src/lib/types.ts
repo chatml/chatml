@@ -25,6 +25,8 @@ export interface WorktreeSession {
   priority: SessionPriority;
   taskStatus: SessionTaskStatus;
   archived?: boolean; // whether the session is archived
+  archiveSummary?: string; // AI-generated summary created at archive time
+  archiveSummaryStatus?: '' | 'generating' | 'completed' | 'failed';
   pinned?: boolean; // whether the session is pinned to the top
   stats?: {
     additions: number;
