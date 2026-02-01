@@ -2487,3 +2487,80 @@ func TestGetConversationMessagesHandler_FullPagination(t *testing.T) {
 		seen[m.ID] = true
 	}
 }
+
+// ============================================================================
+// Active Streaming Conversations Handler Tests
+// ============================================================================
+
+func TestGetActiveStreamingConversations_NoProcesses(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	req := httptest.NewRequest("GET", "/api/conversations/active-streaming", nil)
+	w := httptest.NewRecorder()
+
+	h.GetActiveStreamingConversations(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+
+	var result map[string][]string
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Empty(t, result["conversationIds"])
+}
+
+func TestGetActiveStreamingConversations_ReturnsEmptyArray(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	req := httptest.NewRequest("GET", "/api/conversations/active-streaming", nil)
+	w := httptest.NewRecorder()
+
+	h.GetActiveStreamingConversations(w, req)
+
+	// Verify it returns [] not null
+	assert.Contains(t, w.Body.String(), `"conversationIds":[]`)
+}
+
+func TestGetActiveStreamingConversations_WithRunningProcess(t *testing.T) {
+	h, _, agentMgr := setupTestHandlersWithAgentManager(t)
+
+	proc := agent.NewProcess("proc-1", t.TempDir(), "conv-active")
+	proc.SetRunningForTest(true)
+	agentMgr.InsertProcessForTest("conv-active", proc)
+
+	req := httptest.NewRequest("GET", "/api/conversations/active-streaming", nil)
+	w := httptest.NewRecorder()
+
+	h.GetActiveStreamingConversations(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string][]string
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"conv-active"}, result["conversationIds"])
+}
+
+func TestGetActiveStreamingConversations_MixedProcesses(t *testing.T) {
+	h, _, agentMgr := setupTestHandlersWithAgentManager(t)
+
+	procRunning := agent.NewProcess("proc-1", t.TempDir(), "conv-running")
+	procRunning.SetRunningForTest(true)
+	agentMgr.InsertProcessForTest("conv-running", procRunning)
+
+	procStopped := agent.NewProcess("proc-2", t.TempDir(), "conv-stopped")
+	agentMgr.InsertProcessForTest("conv-stopped", procStopped)
+
+	req := httptest.NewRequest("GET", "/api/conversations/active-streaming", nil)
+	w := httptest.NewRecorder()
+
+	h.GetActiveStreamingConversations(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string][]string
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Len(t, result["conversationIds"], 1)
+	assert.Contains(t, result["conversationIds"], "conv-running")
+}

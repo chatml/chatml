@@ -12,7 +12,7 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, toStoreMessage } from '@/lib/api';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
@@ -95,6 +95,7 @@ export function useWebSocket(enabled: boolean = true) {
   const enabledRef = useRef(enabled);
   const connectRef = useRef<(() => void) | null>(null);
   const attemptRef = useRef(0);
+  const hasConnectedRef = useRef(false);
 
   // Update enabledRef in effect to satisfy linter
   useEffect(() => {
@@ -422,6 +423,46 @@ export function useWebSocket(enabled: boolean = true) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // After a WebSocket reconnection, reconcile frontend streaming state with backend reality.
+  // If the agent finished while we were disconnected, clear orphaned streaming state and reload messages.
+  const reconcileStreamingState = useCallback(async () => {
+    const store = getStore();
+
+    const locallyStreaming = Object.entries(store.streamingState)
+      .filter(([, state]) => state.isStreaming)
+      .map(([convId]) => convId);
+
+    if (locallyStreaming.length === 0) return;
+
+    try {
+      const { conversationIds: serverActive } = await getActiveStreamingConversations();
+      const serverActiveSet = new Set(serverActive);
+
+      for (const convId of locallyStreaming) {
+        if (!serverActiveSet.has(convId)) {
+          // Agent finished while we were disconnected — clear orphaned state
+          store.clearStreamingText(convId);
+          store.clearActiveTools(convId);
+          store.clearThinking(convId);
+          store.updateConversation(convId, { status: 'completed' });
+
+          // Reload messages to pick up any assistant responses we missed
+          try {
+            const page = await getConversationMessages(convId);
+            const messages = page.messages.map(m => toStoreMessage(m, convId));
+            store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+          } catch (err) {
+            console.warn(`Failed to reload messages for ${convId} after reconnect:`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to reconcile streaming state after reconnect:', err);
+    }
+  // getStore is a stable reference (useAppStore.getState), no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const connect = useCallback(async () => {
     // Cancel any pending reconnect to prevent race condition
     if (reconnectTimeoutRef.current) {
@@ -444,8 +485,16 @@ export function useWebSocket(enabled: boolean = true) {
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+      const isReconnect = hasConnectedRef.current;
+      hasConnectedRef.current = true;
       attemptRef.current = 0;
       useConnectionStore.getState().setConnected();
+
+      if (isReconnect) {
+        // Intentionally not awaited — we don't want to block the WebSocket onopen handler.
+        // The UI may briefly show stale streaming state until reconciliation completes.
+        reconcileStreamingState();
+      }
     };
 
     ws.onmessage = (event) => {
@@ -622,7 +671,7 @@ export function useWebSocket(enabled: boolean = true) {
     };
 
     wsRef.current = ws;
-  }, [handleConversationEvent, getStore]);
+  }, [handleConversationEvent, reconcileStreamingState, getStore]);
 
   // Store connect function in ref for self-referential reconnection
   useEffect(() => {
