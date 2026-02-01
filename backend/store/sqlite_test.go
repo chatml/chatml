@@ -559,6 +559,90 @@ func TestDeleteSession_Cascades(t *testing.T) {
 }
 
 // ============================================================================
+// SessionExistsByName Tests
+// ============================================================================
+
+func TestSessionExistsByName_Exists(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	exists, err := s.SessionExistsByName(ctx, "ws-1", "test-session-sess-1")
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
+func TestSessionExistsByName_NotExists(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	exists, err := s.SessionExistsByName(ctx, "ws-1", "nonexistent")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestSessionExistsByName_WrongWorkspace(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestRepo(t, s, "ws-2")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Session belongs to ws-1, should not be found in ws-2
+	exists, err := s.SessionExistsByName(ctx, "ws-2", "test-session-sess-1")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestSessionExistsByName_CaseSensitive(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	session := &models.Session{
+		ID:          "sess-1",
+		WorkspaceID: "ws-1",
+		Name:        "Tokyo",
+		Status:      "idle",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	// Exact match
+	exists, err := s.SessionExistsByName(ctx, "ws-1", "Tokyo")
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// Different case should not match (default BINARY collation is case-sensitive)
+	exists, err = s.SessionExistsByName(ctx, "ws-1", "tokyo")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestSessionExistsByName_AfterDeletion(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Exists before deletion
+	exists, err := s.SessionExistsByName(ctx, "ws-1", "test-session-sess-1")
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	// Delete the session
+	require.NoError(t, s.DeleteSession(ctx, "sess-1"))
+
+	// Should no longer exist
+	exists, err = s.SessionExistsByName(ctx, "ws-1", "test-session-sess-1")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+// ============================================================================
 // Agent Tests
 // ============================================================================
 

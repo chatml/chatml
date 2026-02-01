@@ -477,6 +477,13 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	logger.SQLite.Infof("Migration: settings table ready")
 
+	// Migration: Add composite index on sessions(workspace_id, name) for fast name lookups
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_workspace_name ON sessions(workspace_id, name)`)
+	if err != nil {
+		return err
+	}
+	logger.SQLite.Infof("Migration: sessions workspace_name index ready")
+
 	return nil
 }
 
@@ -881,6 +888,19 @@ func (s *SQLiteStore) DeleteSession(ctx context.Context, id string) error {
 		return fmt.Errorf("DeleteSession: %w", err)
 	}
 	return nil
+}
+
+// SessionExistsByName checks whether a session with the given name exists
+// for a workspace. Uses the idx_sessions_workspace_name composite index.
+func (s *SQLiteStore) SessionExistsByName(ctx context.Context, workspaceID, name string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sessions WHERE workspace_id = ? AND name = ?)`,
+		workspaceID, name).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("SessionExistsByName: %w", err)
+	}
+	return exists, nil
 }
 
 // ============================================================================
