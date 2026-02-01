@@ -19,6 +19,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      agent-runner: ${{ steps.filter.outputs.agent-runner }}
       tauri: ${{ steps.filter.outputs.tauri }}
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +37,9 @@ jobs:
               - 'tsconfig.json'
               - 'vitest.config.ts'
               - 'vitest.setup.ts'
+              - '.github/workflows/ci.yml'
+            agent-runner:
+              - 'agent-runner/**'
               - '.github/workflows/ci.yml'
             tauri:
               - 'src-tauri/**'
@@ -67,6 +71,29 @@ jobs:
         run: npm run test:run
 
       - name: Build
+        run: npm run build
+
+  # Agent runner checks (TypeScript build)
+  agent-runner:
+    name: Agent Runner
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.agent-runner == 'true' || github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        working-directory: agent-runner
+        run: npm install
+
+      - name: Build
+        working-directory: agent-runner
         run: npm run build
 
   # Go backend checks (test + build)

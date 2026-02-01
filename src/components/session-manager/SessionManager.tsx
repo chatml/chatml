@@ -90,7 +90,7 @@ export function SessionManager() {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-content-background">
       {/* Content: Sessions data table */}
       <div className="flex-1 overflow-hidden">
         <SessionsDataTable
