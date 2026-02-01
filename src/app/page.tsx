@@ -31,7 +31,7 @@ import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
@@ -381,6 +381,7 @@ export default function Home() {
   const {
     setWorkspaces, setSessions, setConversations,
     addSession, addConversation, selectWorkspace, selectSession, selectConversation,
+    setMessagePage,
   } = usePageActions();
   const conversationMessages = useMessages(selectedConversationId);
   const selectNextTab = useAppStore((s) => s.selectNextTab);
@@ -545,6 +546,18 @@ export default function Home() {
             selectSession(firstSession.id);
           }
         }
+        // Eagerly load messages for the initially-selected conversation so it's
+        // visible without waiting for ConversationArea's useEffect to fire.
+        const initialConvId = useAppStore.getState().selectedConversationId;
+        if (initialConvId) {
+          try {
+            const page = await getConversationMessages(initialConvId, { limit: 50 });
+            const messages = page.messages.map((m) => toStoreMessage(m, initialConvId));
+            setMessagePage(initialConvId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+          } catch (err) {
+            console.error('Failed to eagerly load messages for initial conversation:', err);
+          }
+        }
       } catch (error) {
         console.error('Failed to load data from backend:', error);
       } finally {
@@ -553,7 +566,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, selectConversation, addConversation]);
+  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, selectConversation, addConversation, setMessagePage]);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {

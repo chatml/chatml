@@ -69,6 +69,13 @@ export const useMessages = (conversationId: string | null) =>
   );
 
 /**
+ * Pagination state for a specific conversation's messages.
+ * Use in: ConversationArea, VirtualizedMessageList for infinite scroll
+ */
+export const useMessagePagination = (conversationId: string | null) =>
+  useAppStore((s) => (conversationId ? s.messagePagination[conversationId] ?? null : null));
+
+/**
  * Check if a conversation has any user messages.
  * Use in: ConversationArea for "fresh conversation" indicator
  *
@@ -403,6 +410,9 @@ export const usePageActions = () =>
       selectWorkspace: s.selectWorkspace,
       selectSession: s.selectSession,
       selectConversation: s.selectConversation,
+      setMessagePage: s.setMessagePage,
+      prependMessages: s.prependMessages,
+      setLoadingMoreMessages: s.setLoadingMoreMessages,
     }))
   );
 

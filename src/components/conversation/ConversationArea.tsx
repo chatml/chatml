@@ -6,6 +6,7 @@ import {
   useConversationState,
   useFileTabState,
   useMessages,
+  useMessagePagination,
   useConversationsWithUserMessages,
   useReviewComments,
   useReviewCommentActions,
@@ -42,7 +43,7 @@ import { StreamingMessage } from '@/components/conversation/StreamingMessage';
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, getConversationMessages, toStoreMessage } from '@/lib/api';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -86,6 +87,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Use messages selector scoped to the selected conversation
   const conversationMessages = useMessages(selectedConversationId);
+  const pagination = useMessagePagination(selectedConversationId);
+  const setMessagePage = useAppStore((s) => s.setMessagePage);
+  const prependMessages = useAppStore((s) => s.prependMessages);
+  const setLoadingMoreMessages = useAppStore((s) => s.setLoadingMoreMessages);
   // Get Set of conversation IDs that have user messages (avoids subscribing to all messages)
   const conversationsWithUserMessages = useConversationsWithUserMessages();
 
@@ -123,6 +128,32 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       fetchComments();
     }
   }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
+
+  // Load messages on-demand when conversation is selected (paginated)
+  useEffect(() => {
+    if (!selectedConversationId) return;
+
+    // One-shot read via getState() — intentionally not subscribing to pagination changes
+    // so this effect only fires when the conversation selection changes, not on every
+    // pagination state update. If messages were already loaded (e.g., eagerly at boot),
+    // skip the fetch.
+    const existingPagination = useAppStore.getState().messagePagination[selectedConversationId];
+    if (existingPagination) return;
+
+    let cancelled = false;
+    async function loadMessages() {
+      try {
+        const page = await getConversationMessages(selectedConversationId!, { limit: 50 });
+        if (cancelled) return;
+        const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId!));
+        setMessagePage(selectedConversationId!, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+      } catch (error) {
+        console.error('Failed to load conversation messages:', error);
+      }
+    }
+    loadMessages();
+    return () => { cancelled = true; };
+  }, [selectedConversationId, setMessagePage]);
 
   // Branch sync for updating from origin/main
   const {
@@ -224,6 +255,30 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const clampedMatchIndex = searchMatches.total > 0
     ? Math.min(currentMatchIndex, searchMatches.total - 1)
     : 0;
+
+  // Pagination: compute firstItemIndex for Virtuoso scroll stability when prepending
+  const VIRTUAL_BASE_INDEX = 100_000;
+  const firstItemIndex = pagination
+    ? VIRTUAL_BASE_INDEX - (pagination.totalCount - conversationMessages.length)
+    : VIRTUAL_BASE_INDEX;
+
+  // Load older messages when user scrolls to top
+  const handleStartReached = useCallback(async () => {
+    if (!selectedConversationId || !pagination?.hasMore || pagination?.isLoadingMore) return;
+
+    setLoadingMoreMessages(selectedConversationId, true);
+    try {
+      const page = await getConversationMessages(selectedConversationId, {
+        before: pagination.oldestPosition ?? undefined,
+        limit: 50,
+      });
+      const messages = page.messages.map((m) => toStoreMessage(m, selectedConversationId));
+      prependMessages(selectedConversationId, messages, page.hasMore, page.oldestPosition ?? 0);
+    } catch (error) {
+      console.error('Failed to load older messages:', error);
+      setLoadingMoreMessages(selectedConversationId, false);
+    }
+  }, [selectedConversationId, pagination, setLoadingMoreMessages, prependMessages]);
 
   // Search navigation handlers
   const goToNextMatch = useCallback(() => {
@@ -907,6 +962,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               totalMatches={searchMatches.total}
               onNextMatch={goToNextMatch}
               onPrevMatch={goToPrevMatch}
+              partialResults={pagination?.hasMore}
             />
             <VirtualizedMessageList
               ref={messageListRef}
@@ -916,6 +972,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               searchMatches={searchMatches}
               messageHasMatches={messageHasMatches}
               onAtBottomStateChange={handleAtBottomStateChange}
+              onStartReached={pagination?.hasMore ? handleStartReached : undefined}
+              firstItemIndex={firstItemIndex}
+              isLoadingOlder={pagination?.isLoadingMore}
               emptyState={
                 !selectedConversationId ? (
                   <ConversationEmptyState sessionName={currentSession?.name} />
