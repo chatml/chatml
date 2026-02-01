@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2587,4 +2588,238 @@ func TestGenerateConversationSummary_AlreadyCompleted(t *testing.T) {
 	assert.Equal(t, "sum-done", summary.ID)
 	assert.Equal(t, "Already summarized", summary.Content)
 	assert.Equal(t, models.SummaryStatusCompleted, summary.Status)
+}
+
+// ============================================================================
+// GetConversationMessages Handler Tests (Pagination)
+// ============================================================================
+
+// addTestMessages adds N messages to a conversation via the store
+func addTestMessages(t *testing.T, s *store.SQLiteStore, convID string, n int) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		msg := models.Message{
+			ID:        fmt.Sprintf("msg-%s-%d", convID, i),
+			Role:      role,
+			Content:   fmt.Sprintf("Message %d", i),
+			Timestamp: time.Now(),
+		}
+		require.NoError(t, s.AddMessageToConversation(ctx, convID, msg))
+	}
+}
+
+func TestGetConversationMessagesHandler_DefaultParams(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addTestMessages(t, s, "conv-1", 5)
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-1/messages", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var page models.MessagePage
+	err := json.Unmarshal(w.Body.Bytes(), &page)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 5)
+	assert.Equal(t, 5, page.TotalCount)
+	assert.False(t, page.HasMore)
+}
+
+func TestGetConversationMessagesHandler_WithLimit(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addTestMessages(t, s, "conv-1", 10)
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-1/messages?limit=3", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var page models.MessagePage
+	err := json.Unmarshal(w.Body.Bytes(), &page)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 3)
+	assert.Equal(t, 10, page.TotalCount)
+	assert.True(t, page.HasMore)
+}
+
+func TestGetConversationMessagesHandler_WithCursor(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addTestMessages(t, s, "conv-1", 10)
+
+	// First request to get the cursor
+	req1 := httptest.NewRequest("GET", "/api/conversations/conv-1/messages?limit=3", nil)
+	req1 = withChiContext(req1, map[string]string{"convId": "conv-1"})
+	w1 := httptest.NewRecorder()
+	h.GetConversationMessages(w1, req1)
+
+	var page1 models.MessagePage
+	require.NoError(t, json.Unmarshal(w1.Body.Bytes(), &page1))
+
+	// Second request with cursor
+	url := fmt.Sprintf("/api/conversations/conv-1/messages?limit=3&before=%d", page1.OldestPosition)
+	req2 := httptest.NewRequest("GET", url, nil)
+	req2 = withChiContext(req2, map[string]string{"convId": "conv-1"})
+	w2 := httptest.NewRecorder()
+	h.GetConversationMessages(w2, req2)
+
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var page2 models.MessagePage
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &page2))
+	assert.Len(t, page2.Messages, 3)
+	assert.True(t, page2.HasMore)
+
+	// No overlap between pages
+	page1IDs := make(map[string]bool)
+	for _, m := range page1.Messages {
+		page1IDs[m.ID] = true
+	}
+	for _, m := range page2.Messages {
+		assert.False(t, page1IDs[m.ID], "page2 should not contain messages from page1")
+	}
+}
+
+func TestGetConversationMessagesHandler_InvalidBefore(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-1/messages?before=notanumber", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationMessages(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetConversationMessagesHandler_InvalidLimit(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	tests := []struct {
+		name  string
+		limit string
+	}{
+		{"non-numeric", "abc"},
+		{"zero", "0"},
+		{"negative", "-5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/api/conversations/conv-1/messages?limit="+tt.limit, nil)
+			req = withChiContext(req, map[string]string{"convId": "conv-1"})
+			w := httptest.NewRecorder()
+
+			h.GetConversationMessages(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestGetConversationMessagesHandler_EmptyConversation(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-1/messages", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var page models.MessagePage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &page))
+	assert.Empty(t, page.Messages)
+	assert.False(t, page.HasMore)
+	assert.Equal(t, 0, page.TotalCount)
+}
+
+func TestGetConversationMessagesHandler_NonexistentConversation(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/conversations/nonexistent/messages", nil)
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationMessages(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var page models.MessagePage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &page))
+	assert.Empty(t, page.Messages)
+	assert.Equal(t, 0, page.TotalCount)
+}
+
+func TestGetConversationMessagesHandler_FullPagination(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	createTestRepo(t, s, "ws-1", "/path/to/ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addTestMessages(t, s, "conv-1", 11)
+
+	// Walk through all pages via the HTTP handler
+	var allMessages []models.Message
+	baseURL := "/api/conversations/conv-1/messages?limit=4"
+	cursorParam := ""
+
+	for {
+		req := httptest.NewRequest("GET", baseURL+cursorParam, nil)
+		req = withChiContext(req, map[string]string{"convId": "conv-1"})
+		w := httptest.NewRecorder()
+		h.GetConversationMessages(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var page models.MessagePage
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &page))
+		allMessages = append(allMessages, page.Messages...)
+
+		if !page.HasMore {
+			break
+		}
+		cursorParam = fmt.Sprintf("&before=%d", page.OldestPosition)
+	}
+
+	assert.Len(t, allMessages, 11)
+
+	// Verify no duplicates
+	seen := make(map[string]bool)
+	for _, m := range allMessages {
+		assert.False(t, seen[m.ID], "duplicate message: %s", m.ID)
+		seen[m.ID] = true
+	}
 }

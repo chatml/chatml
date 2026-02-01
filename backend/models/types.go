@@ -79,15 +79,24 @@ const (
 
 // Conversation represents a chat conversation within a session
 type Conversation struct {
-	ID          string       `json:"id"`
-	SessionID   string       `json:"sessionId"`
-	Type        string       `json:"type"`   // "task", "review", "chat"
-	Name        string       `json:"name"`   // AI-updatable display name
-	Status      string       `json:"status"` // "active", "idle", "completed"
-	Messages    []Message    `json:"messages"`
-	ToolSummary []ToolAction `json:"toolSummary"`
-	CreatedAt   time.Time    `json:"createdAt"`
-	UpdatedAt   time.Time    `json:"updatedAt"`
+	ID           string       `json:"id"`
+	SessionID    string       `json:"sessionId"`
+	Type         string       `json:"type"`   // "task", "review", "chat"
+	Name         string       `json:"name"`   // AI-updatable display name
+	Status       string       `json:"status"` // "active", "idle", "completed"
+	Messages     []Message    `json:"messages"`
+	MessageCount int          `json:"messageCount,omitempty"`
+	ToolSummary  []ToolAction `json:"toolSummary"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	UpdatedAt    time.Time    `json:"updatedAt"`
+}
+
+// MessagePage represents a paginated page of messages
+type MessagePage struct {
+	Messages       []Message `json:"messages"`
+	HasMore        bool      `json:"hasMore"`
+	TotalCount     int       `json:"totalCount"`
+	OldestPosition int       `json:"oldestPosition,omitempty"`
 }
 
 // SetupInfo contains information about the worktree setup for system messages

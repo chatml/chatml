@@ -1034,49 +1034,12 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 	conv.Messages = []models.Message{}
 	conv.ToolSummary = []models.ToolAction{}
 
-	// Load messages
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, role, content, setup_info, run_summary, timestamp
-		FROM messages
-		WHERE conversation_id = ?
-		ORDER BY position`, id)
+	// Load message count instead of full messages (use GetConversationMessages endpoint for paginated messages)
+	count, err := s.GetConversationMessageCount(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("GetConversation messages: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
-	msgIndexByID := make(map[string]int)
-	for rows.Next() {
-		var msg models.Message
-		var setupInfoJSON sql.NullString
-		var runSummaryJSON sql.NullString
-		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err != nil {
-			return nil, fmt.Errorf("GetConversation message scan: %w", err)
-		}
-		if setupInfoJSON.Valid {
-			var setupInfo models.SetupInfo
-			if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
-				msg.SetupInfo = &setupInfo
-			}
-		}
-		if runSummaryJSON.Valid {
-			var runSummary models.RunSummary
-			if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
-				msg.RunSummary = &runSummary
-			}
-		}
-		msgIndexByID[msg.ID] = len(conv.Messages)
-		conv.Messages = append(conv.Messages, msg)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("GetConversation messages rows: %w", err)
-	}
-
-	// Load attachments for all messages
-	if len(conv.Messages) > 0 {
-		if err := s.loadAttachmentsForMessages(ctx, conv.Messages, msgIndexByID); err != nil {
-			return nil, err
-		}
-	}
+	conv.MessageCount = count
 
 	// Load tool actions
 	toolRows, err := s.db.QueryContext(ctx, `
@@ -1142,8 +1105,8 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 		return convs, nil
 	}
 
-	// Load all messages for these conversations in one query
-	if err := s.loadMessagesForConversations(ctx, convMap, convIDs); err != nil {
+	// Load message counts instead of full messages
+	if err := s.loadMessageCountsForConversations(ctx, convMap, convIDs); err != nil {
 		return nil, err
 	}
 
@@ -1215,8 +1178,8 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 		return result, nil
 	}
 
-	// Load all messages for all conversations in one query
-	if err := s.loadMessagesForConversations(ctx, convMap, convIDs); err != nil {
+	// Load message counts instead of full messages
+	if err := s.loadMessageCountsForConversations(ctx, convMap, convIDs); err != nil {
 		return nil, err
 	}
 
@@ -1226,6 +1189,44 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 	}
 
 	return result, nil
+}
+
+// loadMessageCountsForConversations loads message counts for multiple conversations in a single query.
+func (s *SQLiteStore) loadMessageCountsForConversations(ctx context.Context, convMap map[string]*models.Conversation, convIDs []string) error {
+	if len(convIDs) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, len(convIDs))
+	args := make([]interface{}, len(convIDs))
+	for i, id := range convIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT conversation_id, COUNT(*) as cnt
+		FROM messages
+		WHERE conversation_id IN (%s)
+		GROUP BY conversation_id`, strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("loadMessageCountsForConversations: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var convID string
+		var count int
+		if err := rows.Scan(&convID, &count); err != nil {
+			return fmt.Errorf("loadMessageCountsForConversations scan: %w", err)
+		}
+		if conv, ok := convMap[convID]; ok {
+			conv.MessageCount = count
+		}
+	}
+	return rows.Err()
 }
 
 // loadMessagesForConversations loads messages for multiple conversations in a single query
@@ -1458,6 +1459,124 @@ func (s *SQLiteStore) loadAttachmentsForMessages(ctx context.Context, messages [
 		}
 	}
 	return rows.Err()
+}
+
+// GetConversationMessages returns a paginated page of messages for a conversation.
+// Uses cursor-based pagination on the position column.
+// If beforePosition is nil, returns the most recent messages.
+// Messages are returned in ascending position order.
+func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string, beforePosition *int, limit int) (*models.MessagePage, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	// Get total count
+	var totalCount int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id = ?`, convID).Scan(&totalCount); err != nil {
+		return nil, fmt.Errorf("GetConversationMessages count: %w", err)
+	}
+
+	// Fetch limit+1 rows to determine hasMore
+	fetchLimit := limit + 1
+	var rows *sql.Rows
+	var err error
+	if beforePosition != nil {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, role, content, setup_info, run_summary, timestamp, position
+			FROM messages
+			WHERE conversation_id = ? AND position < ?
+			ORDER BY position DESC
+			LIMIT ?`, convID, *beforePosition, fetchLimit)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, role, content, setup_info, run_summary, timestamp, position
+			FROM messages
+			WHERE conversation_id = ?
+			ORDER BY position DESC
+			LIMIT ?`, convID, fetchLimit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetConversationMessages query: %w", err)
+	}
+	defer rows.Close()
+
+	type messageWithPos struct {
+		msg      models.Message
+		position int
+	}
+
+	var items []messageWithPos
+	for rows.Next() {
+		var msg models.Message
+		var setupInfoJSON, runSummaryJSON sql.NullString
+		var position int
+		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp, &position); err != nil {
+			return nil, fmt.Errorf("GetConversationMessages scan: %w", err)
+		}
+		if setupInfoJSON.Valid {
+			var setupInfo models.SetupInfo
+			if json.Unmarshal([]byte(setupInfoJSON.String), &setupInfo) == nil {
+				msg.SetupInfo = &setupInfo
+			}
+		}
+		if runSummaryJSON.Valid {
+			var runSummary models.RunSummary
+			if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
+				msg.RunSummary = &runSummary
+			}
+		}
+		items = append(items, messageWithPos{msg: msg, position: position})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetConversationMessages rows: %w", err)
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	// Reverse to ascending order
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
+
+	messages := make([]models.Message, len(items))
+	msgIndexByID := make(map[string]int, len(items))
+	oldestPosition := 0
+	for i, item := range items {
+		messages[i] = item.msg
+		msgIndexByID[item.msg.ID] = i
+		if i == 0 {
+			oldestPosition = item.position
+		}
+	}
+
+	// Load attachments
+	if len(messages) > 0 {
+		if err := s.loadAttachmentsForMessages(ctx, messages, msgIndexByID); err != nil {
+			return nil, err
+		}
+	}
+
+	return &models.MessagePage{
+		Messages:       messages,
+		HasMore:        hasMore,
+		TotalCount:     totalCount,
+		OldestPosition: oldestPosition,
+	}, nil
+}
+
+// GetConversationMessageCount returns the number of messages in a conversation.
+func (s *SQLiteStore) GetConversationMessageCount(ctx context.Context, convID string) (int, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id = ?`, convID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("GetConversationMessageCount: %w", err)
+	}
+	return count, nil
 }
 
 func (s *SQLiteStore) UpdateConversation(ctx context.Context, id string, updates func(*models.Conversation)) error {

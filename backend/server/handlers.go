@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2557,6 +2558,42 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, conv)
 }
 
+func (h *Handlers) GetConversationMessages(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+
+	// Parse pagination params
+	var beforePosition *int
+	if beforeStr := r.URL.Query().Get("before"); beforeStr != "" {
+		v, err := strconv.Atoi(beforeStr)
+		if err != nil {
+			writeValidationError(w, "invalid 'before' parameter")
+			return
+		}
+		beforePosition = &v
+	}
+
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		v, err := strconv.Atoi(limitStr)
+		if err != nil || v < 1 {
+			writeValidationError(w, "invalid 'limit' parameter")
+			return
+		}
+		if v > 200 {
+			v = 200
+		}
+		limit = v
+	}
+
+	page, err := h.store.GetConversationMessages(ctx, convID, beforePosition, limit)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, page)
+}
+
 type SendConversationMessageRequest struct {
 	Content     string              `json:"content"`
 	Attachments []models.Attachment `json:"attachments"` // File attachments (optional)
@@ -2811,13 +2848,7 @@ func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Re
 	}
 
 	// Validate conversation has enough messages
-	userOrAssistantCount := 0
-	for _, m := range conv.Messages {
-		if m.Role == "user" || m.Role == "assistant" {
-			userOrAssistantCount++
-		}
-	}
-	if userOrAssistantCount < 2 {
+	if conv.MessageCount < 2 {
 		writeValidationError(w, "conversation needs at least 2 messages to summarize")
 		return
 	}
@@ -2853,7 +2884,7 @@ func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Re
 		ConversationID: convID,
 		SessionID:      conv.SessionID,
 		Status:         models.SummaryStatusGenerating,
-		MessageCount:   len(conv.Messages),
+		MessageCount:   conv.MessageCount,
 		CreatedAt:      time.Now(),
 	}
 	if err := h.store.AddSummary(ctx, summary); err != nil {
@@ -2861,9 +2892,16 @@ func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Fetch all messages via paginated API
+	allMessages, err := h.store.GetConversationMessages(ctx, convID, nil, conv.MessageCount)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
 	// Build messages for the AI
 	var summaryMessages []ai.SummaryMessage
-	for _, m := range conv.Messages {
+	for _, m := range allMessages.Messages {
 		if m.Role == "system" && m.SetupInfo != nil {
 			continue // Skip setup messages
 		}

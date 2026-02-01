@@ -752,9 +752,17 @@ export interface ConversationDTO {
   name: string;
   status: 'active' | 'idle' | 'completed';
   messages: MessageDTO[];
+  messageCount?: number;
   toolSummary: ToolActionDTO[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MessagePageDTO {
+  messages: MessageDTO[];
+  hasMore: boolean;
+  totalCount: number;
+  oldestPosition?: number;
 }
 
 export interface SetupInfoDTO {
@@ -823,7 +831,7 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
     type: dto.type,
     name: dto.name,
     status: dto.status,
-    messages: dto.messages.map((m) => ({
+    messages: (dto.messages || []).map((m) => ({
       id: m.id,
       conversationId: dto.id,
       role: m.role,
@@ -832,7 +840,8 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
       runSummary: m.runSummary,
       timestamp: m.timestamp,
     })),
-    toolSummary: dto.toolSummary.map((t) => ({
+    messageCount: dto.messageCount,
+    toolSummary: (dto.toolSummary || []).map((t) => ({
       id: t.id,
       tool: t.tool,
       target: t.target,
@@ -840,6 +849,20 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
     })),
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
+  };
+}
+
+/** Map a MessageDTO to a store-compatible Message shape. */
+export function toStoreMessage(dto: MessageDTO, conversationId: string): import('@/lib/types').Message {
+  return {
+    id: dto.id,
+    conversationId,
+    role: dto.role,
+    content: dto.content,
+    setupInfo: dto.setupInfo,
+    runSummary: dto.runSummary,
+    attachments: dto.attachments,
+    timestamp: dto.timestamp,
   };
 }
 
@@ -879,6 +902,19 @@ export async function createConversation(
 export async function getConversation(convId: string): Promise<ConversationDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`);
   return handleResponse<ConversationDTO>(res);
+}
+
+export async function getConversationMessages(
+  convId: string,
+  opts?: { before?: number; limit?: number }
+): Promise<MessagePageDTO> {
+  const params = new URLSearchParams();
+  if (opts?.before !== undefined) params.set('before', String(opts.before));
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  const url = `${getApiBase()}/api/conversations/${convId}/messages${qs ? `?${qs}` : ''}`;
+  const res = await fetchWithAuth(url);
+  return handleResponse<MessagePageDTO>(res);
 }
 
 export async function sendConversationMessage(

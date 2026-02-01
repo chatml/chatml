@@ -74,6 +74,13 @@ type AgentEvent struct {
 	Trigger   string `json:"trigger,omitempty"`
 	PreTokens int    `json:"preTokens,omitempty"`
 
+	// Context usage fields
+	InputTokens              int `json:"inputTokens,omitempty"`
+	OutputTokens             int `json:"outputTokens,omitempty"`
+	CacheReadInputTokens     int `json:"cacheReadInputTokens,omitempty"`
+	CacheCreationInputTokens int `json:"cacheCreationInputTokens,omitempty"`
+	ContextWindow            int `json:"contextWindow,omitempty"`
+
 	// Status fields
 	Status string `json:"status,omitempty"`
 
@@ -206,6 +213,10 @@ const (
 
 	// Warning events
 	EventTypeStreamingWarning = "streaming_warning"
+
+	// Context usage events
+	EventTypeContextUsage      = "context_usage"
+	EventTypeContextWindowSize = "context_window_size"
 
 	// User question events (AskUserQuestion tool)
 	EventTypeUserQuestionRequest = "user_question_request"

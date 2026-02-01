@@ -241,10 +241,80 @@ export class CommentZoneManager {
     }
   }
 
+  // --- Comment input view zone ---
+  private inputZoneId: string | null = null;
+  private inputContainer: HTMLDivElement | null = null;
+  private inputRoot: Root | null = null;
+  private inputObserver: ResizeObserver | null = null;
+
+  /**
+   * Show an inline comment input at the given line number.
+   * Only one input can be active at a time.
+   */
+  showCommentInput(
+    lineNumber: number,
+    renderCallback: (container: HTMLDivElement, root: Root) => void
+  ): void {
+    // Remove any existing input first
+    this.hideCommentInput();
+
+    const container = document.createElement('div');
+    container.className = 'comment-zone-container comment-input-zone';
+    container.style.padding = '4px 0';
+
+    const root = createRoot(container);
+    renderCallback(container, root);
+
+    const observer = new ResizeObserver(() => {
+      if (this.inputZoneId) {
+        this.editor.changeViewZones((accessor) => {
+          accessor.layoutZone(this.inputZoneId!);
+        });
+      }
+    });
+    observer.observe(container);
+
+    this.editor.changeViewZones((accessor) => {
+      this.inputZoneId = accessor.addZone({
+        afterLineNumber: lineNumber,
+        heightInPx: 120,
+        domNode: container,
+        suppressMouseDown: false,
+      });
+    });
+
+    this.inputContainer = container;
+    this.inputRoot = root;
+    this.inputObserver = observer;
+  }
+
+  /**
+   * Hide and clean up the comment input view zone.
+   */
+  hideCommentInput(): void {
+    if (this.inputZoneId) {
+      this.editor.changeViewZones((accessor) => {
+        accessor.removeZone(this.inputZoneId!);
+      });
+      this.inputZoneId = null;
+    }
+    if (this.inputRoot) {
+      this.inputRoot.unmount();
+      this.inputRoot = null;
+    }
+    if (this.inputObserver) {
+      this.inputObserver.disconnect();
+      this.inputObserver = null;
+    }
+    this.inputContainer = null;
+  }
+
   /**
    * Dispose all resources. Call when editor unmounts.
    */
   dispose(): void {
+    // Remove comment input if active
+    this.hideCommentInput();
     // Remove all zones
     this.editor.changeViewZones((accessor) => {
       for (const zone of this.zones.values()) {

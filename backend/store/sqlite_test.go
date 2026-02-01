@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -738,11 +739,16 @@ func TestGetConversation_WithMessages(t *testing.T) {
 	got, err := s.GetConversation(ctx, "conv-1")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Len(t, got.Messages, 2)
-	assert.Equal(t, "Hello", got.Messages[0].Content)
-	assert.Equal(t, "user", got.Messages[0].Role)
-	assert.Equal(t, "Hi there!", got.Messages[1].Content)
-	assert.Equal(t, "assistant", got.Messages[1].Role)
+	assert.Equal(t, 2, got.MessageCount)
+
+	// Verify messages via paginated endpoint
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 2)
+	assert.Equal(t, "Hello", page.Messages[0].Content)
+	assert.Equal(t, "user", page.Messages[0].Role)
+	assert.Equal(t, "Hi there!", page.Messages[1].Content)
+	assert.Equal(t, "assistant", page.Messages[1].Role)
 }
 
 func TestGetConversation_EmptyMessages(t *testing.T) {
@@ -801,10 +807,16 @@ func TestListConversations_WithMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, convs, 1)
 
-	// Verify messages are loaded directly by ListConversations
-	require.Len(t, convs[0].Messages, 2)
-	assert.Equal(t, "Hello", convs[0].Messages[0].Content)
-	assert.Equal(t, "Hi", convs[0].Messages[1].Content)
+	// ListConversations no longer loads messages inline, only MessageCount
+	assert.Equal(t, 2, convs[0].MessageCount)
+	assert.Empty(t, convs[0].Messages) // Messages are empty (use GetConversationMessages for paginated access)
+
+	// Verify messages via paginated endpoint
+	page, err := s.GetConversationMessages(ctx, "c1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 2)
+	assert.Equal(t, "Hello", page.Messages[0].Content)
+	assert.Equal(t, "Hi", page.Messages[1].Content)
 }
 
 func TestListConversations_WithToolActions(t *testing.T) {
@@ -903,15 +915,15 @@ func TestAddMessageToConversation_Ordering(t *testing.T) {
 		require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 	}
 
-	got, err := s.GetConversation(ctx, "conv-1")
+	// Verify ordering via paginated endpoint
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
 	require.NoError(t, err)
-	require.NotNil(t, got)
-	require.Len(t, got.Messages, 3)
+	require.Len(t, page.Messages, 3)
 
 	// Should be in order of insertion
-	assert.Equal(t, "First", got.Messages[0].Content)
-	assert.Equal(t, "Second", got.Messages[1].Content)
-	assert.Equal(t, "Third", got.Messages[2].Content)
+	assert.Equal(t, "First", page.Messages[0].Content)
+	assert.Equal(t, "Second", page.Messages[1].Content)
+	assert.Equal(t, "Third", page.Messages[2].Content)
 }
 
 func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
@@ -936,15 +948,15 @@ func TestAddMessageToConversation_WithSetupInfo(t *testing.T) {
 
 	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
-	got, err := s.GetConversation(ctx, "conv-1")
+	// Verify via paginated endpoint
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
 	require.NoError(t, err)
-	require.NotNil(t, got)
-	require.Len(t, got.Messages, 1)
-	require.NotNil(t, got.Messages[0].SetupInfo)
-	assert.Equal(t, "My Session", got.Messages[0].SetupInfo.SessionName)
-	assert.Equal(t, "feature/test", got.Messages[0].SetupInfo.BranchName)
-	assert.Equal(t, "main", got.Messages[0].SetupInfo.OriginBranch)
-	assert.Equal(t, 42, got.Messages[0].SetupInfo.FileCount)
+	require.Len(t, page.Messages, 1)
+	require.NotNil(t, page.Messages[0].SetupInfo)
+	assert.Equal(t, "My Session", page.Messages[0].SetupInfo.SessionName)
+	assert.Equal(t, "feature/test", page.Messages[0].SetupInfo.BranchName)
+	assert.Equal(t, "main", page.Messages[0].SetupInfo.OriginBranch)
+	assert.Equal(t, 42, page.Messages[0].SetupInfo.FileCount)
 }
 
 func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
@@ -969,15 +981,15 @@ func TestAddMessageToConversation_WithRunSummary(t *testing.T) {
 
 	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
 
-	got, err := s.GetConversation(ctx, "conv-1")
+	// Verify via paginated endpoint
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
 	require.NoError(t, err)
-	require.NotNil(t, got)
-	require.Len(t, got.Messages, 1)
-	require.NotNil(t, got.Messages[0].RunSummary)
-	assert.True(t, got.Messages[0].RunSummary.Success)
-	assert.Equal(t, 0.05, got.Messages[0].RunSummary.Cost)
-	assert.Equal(t, 3, got.Messages[0].RunSummary.Turns)
-	assert.Equal(t, 5000, got.Messages[0].RunSummary.DurationMs)
+	require.Len(t, page.Messages, 1)
+	require.NotNil(t, page.Messages[0].RunSummary)
+	assert.True(t, page.Messages[0].RunSummary.Success)
+	assert.Equal(t, 0.05, page.Messages[0].RunSummary.Cost)
+	assert.Equal(t, 3, page.Messages[0].RunSummary.Turns)
+	assert.Equal(t, 5000, page.Messages[0].RunSummary.DurationMs)
 }
 
 // ============================================================================
@@ -1122,8 +1134,9 @@ func TestGetConversationMeta_VsGetConversation(t *testing.T) {
 	assert.Equal(t, full.Type, meta.Type)
 	assert.Equal(t, full.Status, meta.Status)
 
-	// But full has messages, meta does not
-	assert.Len(t, full.Messages, 1)
+	// GetConversation now returns messageCount instead of inline messages
+	assert.Equal(t, 1, full.MessageCount)
+	assert.Empty(t, full.Messages) // Messages are empty (use GetConversationMessages for paginated access)
 	assert.Nil(t, meta.Messages)
 }
 
@@ -1220,13 +1233,18 @@ func TestGetConversation_AttachmentsExcludeBase64(t *testing.T) {
 	}
 	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
 
-	// GetConversation should load attachments but WITHOUT base64_data
+	// GetConversation no longer loads messages inline, verify messageCount
 	conv, err := s.GetConversation(ctx, "conv-1")
 	require.NoError(t, err)
-	require.Len(t, conv.Messages, 1)
-	require.Len(t, conv.Messages[0].Attachments, 1)
+	assert.Equal(t, 1, conv.MessageCount)
 
-	loadedAtt := conv.Messages[0].Attachments[0]
+	// Use GetConversationMessages to verify attachments exclude base64
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	require.Len(t, page.Messages[0].Attachments, 1)
+
+	loadedAtt := page.Messages[0].Attachments[0]
 	assert.Equal(t, "att-1", loadedAtt.ID)
 	assert.Equal(t, "photo.png", loadedAtt.Name)
 	assert.Equal(t, "image/png", loadedAtt.MimeType)
@@ -1258,16 +1276,22 @@ func TestListConversations_AttachmentsExcludeBase64(t *testing.T) {
 	}
 	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
 
+	// ListConversations no longer loads messages inline
 	convs, err := s.ListConversations(ctx, "sess-1")
 	require.NoError(t, err)
 	require.Len(t, convs, 1)
-	require.Len(t, convs[0].Messages, 1)
-	require.Len(t, convs[0].Messages[0].Attachments, 1)
+	assert.Equal(t, 1, convs[0].MessageCount)
 
-	loadedAtt := convs[0].Messages[0].Attachments[0]
+	// Verify attachments via paginated messages endpoint
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	require.Len(t, page.Messages[0].Attachments, 1)
+
+	loadedAtt := page.Messages[0].Attachments[0]
 	assert.Equal(t, "att-1", loadedAtt.ID)
 	assert.Equal(t, "img.png", loadedAtt.Name)
-	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in list queries")
+	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in paginated queries")
 }
 
 func TestGetAttachmentsByMessageID_ExcludesBase64(t *testing.T) {
@@ -1319,11 +1343,12 @@ func TestGetAttachmentData_RoundTrip(t *testing.T) {
 	}
 	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
 
-	// List query should NOT have base64
-	conv, err := s.GetConversation(ctx, "conv-1")
+	// Paginated query should NOT have base64
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
 	require.NoError(t, err)
-	require.Len(t, conv.Messages[0].Attachments, 1)
-	assert.Empty(t, conv.Messages[0].Attachments[0].Base64Data)
+	require.Len(t, page.Messages, 1)
+	require.Len(t, page.Messages[0].Attachments, 1)
+	assert.Empty(t, page.Messages[0].Attachments[0].Base64Data)
 
 	// Dedicated query SHOULD have base64
 	data, err := s.GetAttachmentData(ctx, "att-round")
@@ -1355,12 +1380,17 @@ func TestListConversationsForSessions_AttachmentsExcludeBase64(t *testing.T) {
 	require.NoError(t, err)
 	convs := convMap["sess-1"]
 	require.Len(t, convs, 1)
-	require.Len(t, convs[0].Messages, 1)
-	require.Len(t, convs[0].Messages[0].Attachments, 1)
+	assert.Equal(t, 1, convs[0].MessageCount)
 
-	loadedAtt := convs[0].Messages[0].Attachments[0]
+	// Verify attachments via paginated messages endpoint
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	require.Len(t, page.Messages[0].Attachments, 1)
+
+	loadedAtt := page.Messages[0].Attachments[0]
 	assert.Equal(t, "att-batch", loadedAtt.ID)
-	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in batch queries")
+	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in paginated queries")
 }
 
 // ============================================================================
@@ -1460,6 +1490,527 @@ func TestSetSetting_EmptyValue(t *testing.T) {
 	assert.True(t, found, "key with empty value should still be found")
 	assert.Equal(t, "", val)
 }
+
+// ============================================================================
+// Message Pagination Tests (GetConversationMessages)
+// ============================================================================
+
+// addNMessages is a helper to add N messages to a conversation
+func addNMessages(t *testing.T, s *SQLiteStore, convID string, n int) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		msg := createTestMessage(
+			fmt.Sprintf("msg-%s-%d", convID, i),
+			role,
+			fmt.Sprintf("Message %d", i),
+		)
+		require.NoError(t, s.AddMessageToConversation(ctx, convID, msg))
+	}
+}
+
+func TestGetConversationMessages_EmptyConversation(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.NotNil(t, page)
+	assert.Empty(t, page.Messages)
+	assert.False(t, page.HasMore)
+	assert.Equal(t, 0, page.TotalCount)
+	assert.Equal(t, 0, page.OldestPosition)
+}
+
+func TestGetConversationMessages_DefaultLimit(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 5)
+
+	// Passing 0 limit should default to 50
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 0)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 5)
+	assert.Equal(t, 5, page.TotalCount)
+	assert.False(t, page.HasMore)
+}
+
+func TestGetConversationMessages_NegativeLimit(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 3)
+
+	// Negative limit should default to 50
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, -10)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 3)
+}
+
+func TestGetConversationMessages_LimitClampsAt200(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	// Add 210 messages — more than the 200 max
+	addNMessages(t, s, "conv-1", 210)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 500)
+	require.NoError(t, err)
+	// Should be clamped to 200
+	assert.Len(t, page.Messages, 200)
+	assert.True(t, page.HasMore)
+	assert.Equal(t, 210, page.TotalCount)
+}
+
+func TestGetConversationMessages_ReturnsLatestMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 10)
+
+	// Request only 3 — should get the 3 most recent
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 3)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 3)
+	assert.True(t, page.HasMore)
+	assert.Equal(t, 10, page.TotalCount)
+
+	// Messages should be in ascending order (oldest first)
+	assert.Equal(t, "Message 7", page.Messages[0].Content)
+	assert.Equal(t, "Message 8", page.Messages[1].Content)
+	assert.Equal(t, "Message 9", page.Messages[2].Content)
+}
+
+func TestGetConversationMessages_AscendingOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 5)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 5)
+
+	// Verify ascending order by content
+	for i, msg := range page.Messages {
+		assert.Equal(t, fmt.Sprintf("Message %d", i), msg.Content)
+	}
+}
+
+func TestGetConversationMessages_CursorPagination(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 10)
+
+	// Page 1: get latest 3
+	page1, err := s.GetConversationMessages(ctx, "conv-1", nil, 3)
+	require.NoError(t, err)
+	assert.Len(t, page1.Messages, 3)
+	assert.True(t, page1.HasMore)
+	assert.Equal(t, "Message 7", page1.Messages[0].Content)
+	assert.Equal(t, "Message 9", page1.Messages[2].Content)
+
+	// Page 2: get 3 before the oldest position of page 1
+	cursor := page1.OldestPosition
+	page2, err := s.GetConversationMessages(ctx, "conv-1", &cursor, 3)
+	require.NoError(t, err)
+	assert.Len(t, page2.Messages, 3)
+	assert.True(t, page2.HasMore)
+	assert.Equal(t, "Message 4", page2.Messages[0].Content)
+	assert.Equal(t, "Message 6", page2.Messages[2].Content)
+
+	// Page 3: get 3 more
+	cursor2 := page2.OldestPosition
+	page3, err := s.GetConversationMessages(ctx, "conv-1", &cursor2, 3)
+	require.NoError(t, err)
+	assert.Len(t, page3.Messages, 3)
+	assert.True(t, page3.HasMore)
+	assert.Equal(t, "Message 1", page3.Messages[0].Content)
+	assert.Equal(t, "Message 3", page3.Messages[2].Content)
+
+	// Page 4: get remaining 1
+	cursor3 := page3.OldestPosition
+	page4, err := s.GetConversationMessages(ctx, "conv-1", &cursor3, 3)
+	require.NoError(t, err)
+	assert.Len(t, page4.Messages, 1)
+	assert.False(t, page4.HasMore)
+	assert.Equal(t, "Message 0", page4.Messages[0].Content)
+}
+
+func TestGetConversationMessages_HasMoreFlag(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 5)
+
+	// Exact count: hasMore should be false
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 5)
+	require.NoError(t, err)
+	assert.Len(t, page.Messages, 5)
+	assert.False(t, page.HasMore)
+
+	// One less: hasMore should be true
+	page2, err := s.GetConversationMessages(ctx, "conv-1", nil, 4)
+	require.NoError(t, err)
+	assert.Len(t, page2.Messages, 4)
+	assert.True(t, page2.HasMore)
+
+	// More than available: hasMore should be false
+	page3, err := s.GetConversationMessages(ctx, "conv-1", nil, 10)
+	require.NoError(t, err)
+	assert.Len(t, page3.Messages, 5)
+	assert.False(t, page3.HasMore)
+}
+
+func TestGetConversationMessages_OldestPosition(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 5)
+
+	// Full page: oldest position should be position of first message (position 0)
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	assert.Equal(t, 0, page.OldestPosition)
+
+	// Partial page: oldest should be position of the oldest returned message
+	page2, err := s.GetConversationMessages(ctx, "conv-1", nil, 2)
+	require.NoError(t, err)
+	assert.Len(t, page2.Messages, 2)
+	// Positions are 0-based so the 2 most recent are at positions 3 and 4
+	assert.Equal(t, 3, page2.OldestPosition)
+}
+
+func TestGetConversationMessages_WithSetupInfo(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := models.Message{
+		ID:      "msg-setup",
+		Role:    "system",
+		Content: "Setup message",
+		SetupInfo: &models.SetupInfo{
+			SessionName:  "test-session",
+			BranchName:   "feature/test",
+			OriginBranch: "main",
+			FileCount:    42,
+		},
+		Timestamp: time.Now(),
+	}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	require.NotNil(t, page.Messages[0].SetupInfo)
+	assert.Equal(t, "test-session", page.Messages[0].SetupInfo.SessionName)
+	assert.Equal(t, "feature/test", page.Messages[0].SetupInfo.BranchName)
+	assert.Equal(t, "main", page.Messages[0].SetupInfo.OriginBranch)
+	assert.Equal(t, 42, page.Messages[0].SetupInfo.FileCount)
+}
+
+func TestGetConversationMessages_WithRunSummary(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := models.Message{
+		ID:      "msg-summary",
+		Role:    "assistant",
+		Content: "Done!",
+		RunSummary: &models.RunSummary{
+			Success:    true,
+			Cost:       0.05,
+			Turns:      3,
+			DurationMs: 12000,
+		},
+		Timestamp: time.Now(),
+	}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	require.NotNil(t, page.Messages[0].RunSummary)
+	assert.True(t, page.Messages[0].RunSummary.Success)
+	assert.Equal(t, 0.05, page.Messages[0].RunSummary.Cost)
+	assert.Equal(t, 3, page.Messages[0].RunSummary.Turns)
+	assert.Equal(t, 12000, page.Messages[0].RunSummary.DurationMs)
+}
+
+func TestGetConversationMessages_WithAttachments(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	msg := models.Message{
+		ID:        "msg-attach",
+		Role:      "user",
+		Content:   "Here is a file",
+		Timestamp: time.Now(),
+	}
+	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
+
+	// Attachments are saved separately via SaveAttachments
+	attachments := []models.Attachment{
+		{
+			ID:         "att-1",
+			Type:       "file",
+			Name:       "test.txt",
+			MimeType:   "text/plain",
+			Size:       100,
+			Base64Data: "dGVzdCBkYXRh",
+			Preview:    "test data",
+		},
+	}
+	require.NoError(t, s.SaveAttachments(ctx, "msg-attach", attachments))
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	require.Len(t, page.Messages[0].Attachments, 1)
+	assert.Equal(t, "att-1", page.Messages[0].Attachments[0].ID)
+	assert.Equal(t, "test.txt", page.Messages[0].Attachments[0].Name)
+	// loadAttachmentsForMessages excludes base64 by default
+	assert.Empty(t, page.Messages[0].Attachments[0].Base64Data)
+	assert.Equal(t, "test data", page.Messages[0].Attachments[0].Preview)
+}
+
+func TestGetConversationMessages_NonexistentConversation(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	page, err := s.GetConversationMessages(ctx, "nonexistent", nil, 50)
+	require.NoError(t, err)
+	require.NotNil(t, page)
+	assert.Empty(t, page.Messages)
+	assert.False(t, page.HasMore)
+	assert.Equal(t, 0, page.TotalCount)
+}
+
+func TestGetConversationMessages_TotalCountStaysConstant(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 20)
+
+	// TotalCount should be the same regardless of limit or cursor
+	page1, err := s.GetConversationMessages(ctx, "conv-1", nil, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 20, page1.TotalCount)
+
+	cursor := page1.OldestPosition
+	page2, err := s.GetConversationMessages(ctx, "conv-1", &cursor, 5)
+	require.NoError(t, err)
+	assert.Equal(t, 20, page2.TotalCount)
+}
+
+func TestGetConversationMessages_RolesPreserved(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 4)
+
+	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 4)
+
+	// addNMessages alternates: 0=user, 1=assistant, 2=user, 3=assistant
+	assert.Equal(t, "user", page.Messages[0].Role)
+	assert.Equal(t, "assistant", page.Messages[1].Role)
+	assert.Equal(t, "user", page.Messages[2].Role)
+	assert.Equal(t, "assistant", page.Messages[3].Role)
+}
+
+func TestGetConversationMessages_CursorPagination_CollectsAllMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 15)
+
+	// Walk through all pages collecting messages
+	var allMessages []models.Message
+	var cursor *int
+	for {
+		page, err := s.GetConversationMessages(ctx, "conv-1", cursor, 4)
+		require.NoError(t, err)
+		allMessages = append(allMessages, page.Messages...)
+		if !page.HasMore {
+			break
+		}
+		cursor = &page.OldestPosition
+	}
+
+	// Should have collected all 15 messages with no duplicates
+	assert.Len(t, allMessages, 15)
+	seen := make(map[string]bool)
+	for _, msg := range allMessages {
+		assert.False(t, seen[msg.ID], "duplicate message ID: %s", msg.ID)
+		seen[msg.ID] = true
+	}
+}
+
+// ============================================================================
+// GetConversationMessageCount Tests
+// ============================================================================
+
+func TestGetConversationMessageCount_Empty(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	count, err := s.GetConversationMessageCount(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestGetConversationMessageCount_WithMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 7)
+
+	count, err := s.GetConversationMessageCount(ctx, "conv-1")
+	require.NoError(t, err)
+	assert.Equal(t, 7, count)
+}
+
+func TestGetConversationMessageCount_Nonexistent(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	count, err := s.GetConversationMessageCount(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+// ============================================================================
+// GetConversation and ListConversations return MessageCount Tests
+// ============================================================================
+
+func TestGetConversation_ReturnsMessageCount(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	addNMessages(t, s, "conv-1", 12)
+
+	conv, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, conv)
+	assert.Equal(t, 12, conv.MessageCount)
+	// Messages should NOT be loaded inline
+	assert.Empty(t, conv.Messages)
+}
+
+func TestListConversations_ReturnsMessageCount(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	createTestConversation(t, s, "conv-2", "sess-1")
+
+	addNMessages(t, s, "conv-1", 5)
+	addNMessages(t, s, "conv-2", 10)
+
+	convs, err := s.ListConversations(ctx, "sess-1")
+	require.NoError(t, err)
+	require.Len(t, convs, 2)
+
+	// Find each conversation and verify counts
+	counts := make(map[string]int)
+	for _, c := range convs {
+		counts[c.ID] = c.MessageCount
+		assert.Empty(t, c.Messages, "Messages should not be loaded inline for %s", c.ID)
+	}
+	assert.Equal(t, 5, counts["conv-1"])
+	assert.Equal(t, 10, counts["conv-2"])
+}
+
+func TestListConversationsForSessions_ReturnsMessageCount(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestSession(t, s, "sess-2", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	createTestConversation(t, s, "conv-2", "sess-2")
+
+	addNMessages(t, s, "conv-1", 3)
+	addNMessages(t, s, "conv-2", 8)
+
+	result, err := s.ListConversationsForSessions(ctx, []string{"sess-1", "sess-2"})
+	require.NoError(t, err)
+
+	// Flatten the map and check counts
+	counts := make(map[string]int)
+	for _, convs := range result {
+		for _, c := range convs {
+			counts[c.ID] = c.MessageCount
+			assert.Empty(t, c.Messages)
+		}
+	}
+	assert.Equal(t, 3, counts["conv-1"])
+	assert.Equal(t, 8, counts["conv-2"])
+}
+
 
 // ============================================================================
 // Summary Tests

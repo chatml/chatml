@@ -7,6 +7,9 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { Message } from '@/lib/types';
 
+// Large initial index to allow prepending items without going negative
+const INITIAL_FIRST_ITEM_INDEX = 100_000;
+
 export interface VirtualizedMessageListHandle {
   scrollToIndex: (index: number, options?: { align?: 'start' | 'center' | 'end'; behavior?: 'smooth' | 'auto' }) => void;
   scrollToBottom: (behavior?: 'smooth' | 'auto') => void;
@@ -21,6 +24,9 @@ interface VirtualizedMessageListProps {
   footer?: React.ReactNode;
   emptyState?: React.ReactNode;
   onAtBottomStateChange?: (atBottom: boolean) => void;
+  onStartReached?: () => void;
+  firstItemIndex?: number;
+  isLoadingOlder?: boolean;
 }
 
 export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, VirtualizedMessageListProps>(
@@ -34,6 +40,9 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       footer,
       emptyState,
       onAtBottomStateChange,
+      onStartReached,
+      firstItemIndex,
+      isLoadingOlder,
     },
     ref
   ) {
@@ -94,6 +103,23 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       };
     }, [footer]);
 
+    // Header component: loading indicator or padding
+    const HeaderComponent = useMemo(() => {
+      if (isLoadingOlder) {
+        return function VirtuosoHeader() {
+          return (
+            <div className="flex items-center justify-center py-4 text-xs text-zinc-500">
+              <div className="h-3 w-3 animate-spin rounded-full border border-zinc-600 border-t-transparent mr-2" />
+              Loading older messages…
+            </div>
+          );
+        };
+      }
+      return function VirtuosoHeader() {
+        return <div className="pt-3" />;
+      };
+    }, [isLoadingOlder]);
+
     // Empty state when no messages
     if (messages.length === 0 && emptyState) {
       return (
@@ -109,16 +135,18 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       <Virtuoso
         ref={virtuosoRef}
         data={messages}
+        firstItemIndex={firstItemIndex ?? INITIAL_FIRST_ITEM_INDEX}
         itemContent={itemContent}
         followOutput={followOutput}
         alignToBottom
+        startReached={onStartReached}
         increaseViewportBy={{ top: 2000, bottom: 2000 }}
         atBottomStateChange={onAtBottomStateChange}
         atBottomThreshold={50}
         className="h-full"
         style={{ overflowX: 'hidden' }}
         components={{
-          Header: () => <div className="pt-3" />,
+          Header: HeaderComponent,
           ...(FooterComponent ? { Footer: FooterComponent } : {}),
         }}
       />
