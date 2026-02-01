@@ -803,6 +803,18 @@ function handleMessage(message: SDKMessage): void {
           }
         }
       }
+
+      // Extract per-message usage for context meter
+      const msgUsage = (message.message as { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }).usage;
+      if (msgUsage) {
+        emit({
+          type: "context_usage",
+          inputTokens: msgUsage.input_tokens ?? 0,
+          outputTokens: msgUsage.output_tokens ?? 0,
+          cacheReadInputTokens: msgUsage.cache_read_input_tokens ?? 0,
+          cacheCreationInputTokens: msgUsage.cache_creation_input_tokens ?? 0,
+        });
+      }
       break;
     }
 
@@ -954,6 +966,21 @@ function handleMessage(message: SDKMessage): void {
             totalToolDurationMs: runStats.totalToolDurationMs,
           },
         });
+      }
+
+      // Extract context window size from modelUsage for context meter
+      const resultModelUsage = resultMsg.modelUsage as Record<string, { contextWindow?: number }> | undefined;
+      if (resultModelUsage) {
+        for (const modelKey of Object.keys(resultModelUsage)) {
+          const mu = resultModelUsage[modelKey];
+          if (mu?.contextWindow) {
+            emit({
+              type: "context_window_size",
+              contextWindow: mu.contextWindow,
+            });
+            break;
+          }
+        }
       }
       break;
     }

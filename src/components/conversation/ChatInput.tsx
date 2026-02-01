@@ -28,6 +28,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
@@ -1383,6 +1384,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          {/* Context Meter */}
+          <ContextMeter conversationId={selectedConversationId} />
 
           {/* Plus Menu */}
           <DropdownMenu>
