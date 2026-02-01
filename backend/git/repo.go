@@ -942,6 +942,17 @@ func (rm *RepoManager) getAheadBehind(ctx context.Context, repoPath, branchName 
 	return 0, 0
 }
 
+// GetHeadSHA returns the SHA of the current HEAD commit
+func (rm *RepoManager) GetHeadSHA(ctx context.Context, repoPath string) (string, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "HEAD")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get HEAD SHA: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // GetGitHubRemote extracts the GitHub owner and repo name from the origin remote URL
 func (rm *RepoManager) GetGitHubRemote(ctx context.Context, repoPath string) (owner, repo string, err error) {
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "remote", "get-url", "origin")

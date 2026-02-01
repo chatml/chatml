@@ -107,6 +107,16 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/sessions/{sessionId}/comments/stats", h.GetReviewCommentStats)
 		r.Patch("/{id}/sessions/{sessionId}/comments/{commentId}", h.UpdateReviewComment)
 		r.Delete("/{id}/sessions/{sessionId}/comments/{commentId}", h.DeleteReviewComment)
+		// CI/Actions endpoints
+		r.Get("/{id}/sessions/{sessionId}/ci/runs", h.ListCIRuns)
+		r.Get("/{id}/sessions/{sessionId}/ci/runs/{runId}", h.GetCIRun)
+		r.Get("/{id}/sessions/{sessionId}/ci/runs/{runId}/jobs", h.ListCIJobs)
+		r.Post("/{id}/sessions/{sessionId}/ci/runs/{runId}/rerun", h.RerunCIWorkflow)
+		r.Get("/{id}/sessions/{sessionId}/ci/jobs/{jobId}/logs", h.GetCIJobLogs)
+		r.Post("/{id}/sessions/{sessionId}/ci/analyze", h.AnalyzeCIFailure)
+		// Commit status endpoints
+		r.Post("/{id}/sessions/{sessionId}/status", h.PostCommitStatus)
+		r.Get("/{id}/sessions/{sessionId}/statuses", h.ListCommitStatuses)
 		r.Get("/{id}/agents", h.ListAgents)
 		r.With(agentRateLimiter).Post("/{id}/agents", h.SpawnAgent)
 		// File tabs
