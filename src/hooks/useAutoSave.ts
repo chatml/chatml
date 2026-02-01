@@ -55,6 +55,12 @@ export function useAutoSave(options?: UseAutoSaveOptions) {
         return false;
       }
 
+      // Verify tab still exists before saving (it may have been closed)
+      const currentTabs = useAppStore.getState().fileTabs;
+      if (!currentTabs.find((t) => t.id === tab.id)) {
+        return false;
+      }
+
       try {
         await saveFile(tab.workspaceId, tab.path, tab.content, tab.sessionId);
 
