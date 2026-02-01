@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { X, Pin, PinOff, Pencil } from 'lucide-react';
+import { X, Pin, PinOff, Pencil, AlertCircle } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -109,8 +109,18 @@ export const TabItem = memo(function TabItem({
             <Pin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
           )}
 
+          {/* Save error indicator */}
+          {tab.fileTab?.saveError && (
+            <span title={`Save failed: ${tab.fileTab.saveError}`}>
+              <AlertCircle
+                className="w-3 h-3 text-destructive shrink-0"
+                aria-label="Save failed"
+              />
+            </span>
+          )}
+
           {/* Status indicator (for conversation tabs) or icon (for file tabs) */}
-          {statusIndicator || tab.icon}
+          {!tab.fileTab?.saveError && (statusIndicator || tab.icon)}
 
           {/* Tab label */}
           <span className="truncate flex-1">{tab.label}</span>
