@@ -38,6 +38,9 @@ export interface TabBarProps {
   onReorder?: (activeId: string, overId: string) => void;
   onNewSession: () => void;
   onRenameConversation?: (id: string) => void;
+  onGenerateSummary?: (conversationId: string) => void;
+  onViewSummary?: (conversationId: string) => void;
+  getSummaryStatus?: (conversationId: string) => 'generating' | 'completed' | 'failed' | null;
 }
 
 /**
@@ -53,6 +56,9 @@ export interface TabItemProps {
   onCloseOthers?: () => void;
   onCloseToRight?: () => void;
   onRename?: () => void;
+  onGenerateSummary?: () => void;
+  onViewSummary?: () => void;
+  summaryStatus?: 'generating' | 'completed' | 'failed' | null;
   // Status indicator for conversations
   statusIndicator?: ReactNode;
 }

@@ -39,6 +39,9 @@ function SortableTabItem({
   onCloseOthers,
   onCloseToRight,
   onRename,
+  onGenerateSummary,
+  onViewSummary,
+  summaryStatus,
   statusIndicator,
 }: {
   tab: TabItemData;
@@ -50,6 +53,9 @@ function SortableTabItem({
   onCloseOthers?: () => void;
   onCloseToRight?: () => void;
   onRename?: () => void;
+  onGenerateSummary?: () => void;
+  onViewSummary?: () => void;
+  summaryStatus?: 'generating' | 'completed' | 'failed' | null;
   statusIndicator?: React.ReactNode;
 }) {
   const {
@@ -80,6 +86,9 @@ function SortableTabItem({
         onCloseOthers={onCloseOthers}
         onCloseToRight={onCloseToRight}
         onRename={onRename}
+        onGenerateSummary={onGenerateSummary}
+        onViewSummary={onViewSummary}
+        summaryStatus={summaryStatus}
         statusIndicator={statusIndicator}
       />
     </div>
@@ -110,6 +119,9 @@ export function TabBar({
   onReorder,
   onNewSession,
   onRenameConversation,
+  onGenerateSummary,
+  onViewSummary,
+  getSummaryStatus,
 }: TabBarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const {
@@ -190,6 +202,21 @@ export function TabBar({
             ? () => onRenameConversation(tab.id)
             : undefined
         }
+        onGenerateSummary={
+          tab.type === 'conversation' && onGenerateSummary
+            ? () => onGenerateSummary(tab.id)
+            : undefined
+        }
+        onViewSummary={
+          tab.type === 'conversation' && onViewSummary
+            ? () => onViewSummary(tab.id)
+            : undefined
+        }
+        summaryStatus={
+          tab.type === 'conversation' && getSummaryStatus
+            ? getSummaryStatus(tab.id)
+            : undefined
+        }
         statusIndicator={statusIndicator}
       />
     ),
@@ -202,6 +229,9 @@ export function TabBar({
       onCloseOthers,
       onCloseToRight,
       onRenameConversation,
+      onGenerateSummary,
+      onViewSummary,
+      getSummaryStatus,
     ]
   );
 

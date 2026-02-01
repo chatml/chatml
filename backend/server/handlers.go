@@ -2456,6 +2456,7 @@ type CreateConversationRequest struct {
 	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
+	SummaryIDs        []string            `json:"summaryIds"`        // Summaries to attach as context (optional)
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
@@ -2482,13 +2483,49 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		req.Type = "task"
 	}
 
+	// Build instructions from attached summaries
+	var instructions string
+	if len(req.SummaryIDs) > 0 {
+		var parts []string
+		for _, sid := range req.SummaryIDs {
+			summary, err := h.store.GetSummary(ctx, sid)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					writeValidationError(w, fmt.Sprintf("summary not found: %s", sid))
+					return
+				}
+				writeInternalError(w, "failed to fetch summary", err)
+				return
+			}
+			if summary.Status != models.SummaryStatusCompleted {
+				continue
+			}
+			// Validate summary belongs to the same session
+			if summary.SessionID != sessionID {
+				writeValidationError(w, "summary does not belong to this session")
+				return
+			}
+			// Look up conversation name for context
+			convMeta, _ := h.store.GetConversationMeta(ctx, summary.ConversationID)
+			convName := "Previous conversation"
+			if convMeta != nil && convMeta.Name != "" {
+				convName = convMeta.Name
+			}
+			parts = append(parts, fmt.Sprintf("### %s\n%s", convName, summary.Content))
+		}
+		if len(parts) > 0 {
+			instructions = "## Context from Previous Conversations\n\n" + strings.Join(parts, "\n\n")
+		}
+	}
+
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Attachments:       req.Attachments,
 			PlanMode:          req.PlanMode,
+			Instructions:      instructions,
 		}
 	}
 
@@ -2750,6 +2787,167 @@ func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]bool{"approved": true})
+}
+
+// Summary handlers
+
+func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversation(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	// Check AI client is available
+	if h.aiClient == nil {
+		writeServiceUnavailable(w, "AI features not configured (missing ANTHROPIC_API_KEY)")
+		return
+	}
+
+	// Validate conversation has enough messages
+	userOrAssistantCount := 0
+	for _, m := range conv.Messages {
+		if m.Role == "user" || m.Role == "assistant" {
+			userOrAssistantCount++
+		}
+	}
+	if userOrAssistantCount < 2 {
+		writeValidationError(w, "conversation needs at least 2 messages to summarize")
+		return
+	}
+
+	// Check for existing summary
+	existing, err := h.store.GetSummaryByConversation(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if existing != nil {
+		if existing.Status == models.SummaryStatusGenerating {
+			writeConflict(w, "summary is already being generated")
+			return
+		}
+		if existing.Status == models.SummaryStatusCompleted {
+			// Return existing summary
+			writeJSON(w, existing)
+			return
+		}
+		// Failed summary - allow regeneration by deleting old one
+		if existing.Status == models.SummaryStatusFailed {
+			if err := h.store.DeleteSummary(ctx, existing.ID); err != nil {
+				writeDBError(w, err)
+				return
+			}
+		}
+	}
+
+	// Create summary record
+	summary := &models.Summary{
+		ID:             uuid.New().String(),
+		ConversationID: convID,
+		SessionID:      conv.SessionID,
+		Status:         models.SummaryStatusGenerating,
+		MessageCount:   len(conv.Messages),
+		CreatedAt:      time.Now(),
+	}
+	if err := h.store.AddSummary(ctx, summary); err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Build messages for the AI
+	var summaryMessages []ai.SummaryMessage
+	for _, m := range conv.Messages {
+		if m.Role == "system" && m.SetupInfo != nil {
+			continue // Skip setup messages
+		}
+		content := m.Content
+		// Strip RunSummary from content (it's metadata, not conversation)
+		if m.RunSummary != nil && content == "" {
+			continue
+		}
+		if content == "" {
+			continue
+		}
+		summaryMessages = append(summaryMessages, ai.SummaryMessage{
+			Role:    m.Role,
+			Content: content,
+		})
+	}
+
+	// Generate asynchronously
+	go func() {
+		bgCtx := context.Background()
+		result, err := h.aiClient.GenerateConversationSummary(bgCtx, ai.GenerateSummaryRequest{
+			ConversationName: conv.Name,
+			Messages:         summaryMessages,
+		})
+
+		if err != nil {
+			logger.Error.Errorf("Summary generation failed for %s: %v", convID, err)
+			if dbErr := h.store.UpdateSummary(bgCtx, summary.ID, models.SummaryStatusFailed, "", err.Error()); dbErr != nil {
+				logger.Error.Errorf("Failed to update summary %s to failed status: %v", summary.ID, dbErr)
+			}
+			h.hub.Broadcast(Event{
+				Type:           "summary_updated",
+				ConversationID: convID,
+				Payload:        map[string]interface{}{"id": summary.ID, "status": models.SummaryStatusFailed, "errorMessage": err.Error()},
+			})
+			return
+		}
+
+		if dbErr := h.store.UpdateSummary(bgCtx, summary.ID, models.SummaryStatusCompleted, result, ""); dbErr != nil {
+			logger.Error.Errorf("Failed to update summary %s to completed status: %v", summary.ID, dbErr)
+			return
+		}
+		// Broadcast completion
+		updatedSummary, _ := h.store.GetSummary(bgCtx, summary.ID)
+		if updatedSummary != nil {
+			h.hub.Broadcast(Event{
+				Type:           "summary_updated",
+				ConversationID: convID,
+				Payload:        updatedSummary,
+			})
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+	writeJSON(w, summary)
+}
+
+func (h *Handlers) GetConversationSummary(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	summary, err := h.store.GetSummaryByConversation(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if summary == nil {
+		writeNotFound(w, "summary")
+		return
+	}
+	writeJSON(w, summary)
+}
+
+func (h *Handlers) ListSessionSummaries(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+	summaries, err := h.store.ListSummariesBySession(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if summaries == nil {
+		summaries = []*models.Summary{}
+	}
+	writeJSON(w, summaries)
 }
 
 // Attachment handlers

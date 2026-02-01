@@ -53,6 +53,19 @@ export interface Conversation {
   updatedAt: string;
 }
 
+// Summary of a conversation, generated on demand
+export interface Summary {
+  id: string;
+  conversationId: string;
+  sessionId: string;
+  conversationName?: string;
+  content: string;
+  status: 'generating' | 'completed' | 'failed';
+  errorMessage?: string;
+  messageCount: number;
+  createdAt: string;
+}
+
 // ToolAction = Record of a tool usage
 export interface ToolAction {
   id: string;

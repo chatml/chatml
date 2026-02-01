@@ -26,6 +26,7 @@ import {
   EyeOff,
   Loader2,
   Upload,
+  ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
@@ -38,6 +39,7 @@ import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSlashCommands } from '@/hooks/useSlashCommands';
 import { SlashCommandMenu } from './SlashCommandMenu';
+import { SummaryPicker } from './SummaryPicker';
 
 const MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
@@ -592,6 +594,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
+  const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ghostTextRef = useRef<HTMLSpanElement>(null);
 
@@ -1007,6 +1011,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           maxThinkingTokens: thinkingEnabled ? maxThinkingTokens : undefined,
           // Pass attachments with loaded content
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
+          // Pass conversation summary context
+          summaryIds: selectedSummaryIds.length > 0 ? selectedSummaryIds : undefined,
         });
 
         // Remove local placeholder conversation if it exists
@@ -1235,6 +1241,24 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           />
         )}
 
+        {/* Summary context indicator */}
+        {selectedSummaryIds.length > 0 && (
+          <div className="px-3 py-1.5 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">
+              <ScrollText className="size-3" />
+              {selectedSummaryIds.length} {selectedSummaryIds.length === 1 ? 'summary' : 'summaries'} attached
+              <button
+                type="button"
+                className="ml-1 hover:text-destructive"
+                onClick={() => setSelectedSummaryIds([])}
+                aria-label="Remove summaries"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Slash Command Menu */}
         <div className="relative">
           <SlashCommandMenu
@@ -1407,6 +1431,16 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <FolderSymlink className="size-4" />
                 Link workspaces
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setSummaryPickerOpen(true)}>
+                <ScrollText className="size-4" />
+                Attach conversation context
+                {selectedSummaryIds.length > 0 && (
+                  <span className="ml-auto text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                    {selectedSummaryIds.length}
+                  </span>
+                )}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -1439,6 +1473,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         </div>
       </div>
       </div>
+
+      {/* Summary Picker Dialog */}
+      {selectedWorkspaceId && selectedSessionId && (
+        <SummaryPicker
+          open={summaryPickerOpen}
+          onOpenChange={setSummaryPickerOpen}
+          workspaceId={selectedWorkspaceId}
+          sessionId={selectedSessionId}
+          selectedIds={selectedSummaryIds}
+          onSelectionChange={setSelectedSummaryIds}
+        />
+      )}
     </div>
   );
 }

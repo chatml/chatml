@@ -176,6 +176,127 @@ func (c *Client) GeneratePRDescription(ctx context.Context, req GeneratePRReques
 	return parsePRResponse(apiResp.Content[0].Text), nil
 }
 
+// SummaryMessage is a simplified message representation for summarization.
+type SummaryMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// GenerateSummaryRequest contains the messages to summarize.
+type GenerateSummaryRequest struct {
+	ConversationName string           `json:"conversationName"`
+	Messages         []SummaryMessage `json:"messages"`
+}
+
+const summarySystemPrompt = `Summarize this AI coding conversation concisely (200-500 words). Capture:
+1. Task/goal
+2. Key decisions and rationale
+3. Files modified/created
+4. Issues encountered and resolutions
+5. Current state: completed vs remaining work
+
+Focus on context useful for follow-up conversations. Technical language, no meta-commentary.`
+
+const summaryMaxTokens = 2048
+const maxInputChars = 400000 // ~100K tokens at 4 chars/token
+
+// GenerateConversationSummary calls the Anthropic API to summarize a conversation.
+func (c *Client) GenerateConversationSummary(ctx context.Context, req GenerateSummaryRequest) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("AI client not configured (missing ANTHROPIC_API_KEY)")
+	}
+
+	// Build user message from conversation messages
+	var userMsg strings.Builder
+	userMsg.WriteString(fmt.Sprintf("Conversation: %s\n\n", req.ConversationName))
+
+	// Truncate if too long: keep first 2 and last N messages
+	messages := req.Messages
+	totalChars := 0
+	for _, m := range messages {
+		totalChars += len(m.Content)
+	}
+
+	if totalChars > maxInputChars && len(messages) > 4 {
+		// Keep first 2 messages and trim from the middle
+		firstMessages := messages[:2]
+		remaining := messages[2:]
+		// Work backwards to find how many we can fit
+		budgetChars := maxInputChars - len(firstMessages[0].Content) - len(firstMessages[1].Content)
+		var lastMessages []SummaryMessage
+		for i := len(remaining) - 1; i >= 0; i-- {
+			budgetChars -= len(remaining[i].Content)
+			if budgetChars < 0 {
+				break
+			}
+			lastMessages = append(lastMessages, remaining[i])
+		}
+		// Reverse to restore chronological order
+		for i, j := 0, len(lastMessages)-1; i < j; i, j = i+1, j-1 {
+			lastMessages[i], lastMessages[j] = lastMessages[j], lastMessages[i]
+		}
+		omitted := len(messages) - len(firstMessages) - len(lastMessages)
+		messages = firstMessages
+		if omitted > 0 {
+			messages = append(messages, SummaryMessage{
+				Role:    "system",
+				Content: fmt.Sprintf("[...%d messages omitted...]", omitted),
+			})
+		}
+		messages = append(messages, lastMessages...)
+	}
+
+	for _, m := range messages {
+		role := strings.ToUpper(m.Role[:1]) + m.Role[1:]
+		userMsg.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", role, m.Content))
+	}
+
+	apiReq := anthropicRequest{
+		Model:     c.model,
+		MaxTokens: summaryMaxTokens,
+		System:    summarySystemPrompt,
+		Messages: []anthropicMessage{
+			{Role: "user", Content: userMsg.String()},
+		},
+	}
+
+	body, err := json.Marshal(apiReq)
+	if err != nil {
+		return "", fmt.Errorf("marshaling request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("calling Anthropic API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Anthropic API returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var apiResp anthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return "", fmt.Errorf("decoding response: %w", err)
+	}
+
+	if len(apiResp.Content) == 0 {
+		return "", fmt.Errorf("empty response from Anthropic API")
+	}
+
+	return strings.TrimSpace(apiResp.Content[0].Text), nil
+}
+
 // parsePRResponse extracts title and body from the AI response text.
 func parsePRResponse(text string) *GeneratePRResponse {
 	text = strings.TrimSpace(text)

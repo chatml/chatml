@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState } from 'react';
-import { X, Pin, PinOff, Pencil, AlertCircle } from 'lucide-react';
+import { X, Pin, PinOff, Pencil, AlertCircle, ScrollText, Loader2, CheckCircle2 } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -33,6 +33,9 @@ export const TabItem = memo(function TabItem({
   onCloseOthers,
   onCloseToRight,
   onRename,
+  onGenerateSummary,
+  onViewSummary,
+  summaryStatus,
   statusIndicator,
 }: TabItemProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -157,6 +160,28 @@ export const TabItem = memo(function TabItem({
               <Pencil className="size-4" />
               Rename
             </ContextMenuItem>
+          </>
+        )}
+
+        {/* Summary actions - only for conversation tabs */}
+        {tab.type === 'conversation' && (
+          <>
+            {summaryStatus === 'completed' && onViewSummary ? (
+              <ContextMenuItem onClick={onViewSummary}>
+                <CheckCircle2 className="size-4 text-green-500" />
+                View Summary
+              </ContextMenuItem>
+            ) : summaryStatus === 'generating' ? (
+              <ContextMenuItem disabled>
+                <Loader2 className="size-4 animate-spin" />
+                Generating Summary...
+              </ContextMenuItem>
+            ) : onGenerateSummary ? (
+              <ContextMenuItem onClick={onGenerateSummary}>
+                <ScrollText className="size-4" />
+                Generate Summary
+              </ContextMenuItem>
+            ) : null}
             <ContextMenuSeparator />
           </>
         )}

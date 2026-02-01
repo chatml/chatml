@@ -112,6 +112,22 @@ export function useWebSocket(enabled: boolean = true) {
       return;
     }
 
+    // Handle summary_updated events
+    if (data.type === 'summary_updated') {
+      const payload = data.payload as Record<string, unknown> | null;
+      if (payload && typeof payload === 'object' && payload.id) {
+        // Use updateSummary for partial payloads (e.g., failed status only has id/status/errorMessage)
+        // Use setSummary only when we have a full Summary object (completed status with all fields)
+        const existing = store.summaries[conversationId];
+        if (existing) {
+          store.updateSummary(conversationId, payload as Partial<import('@/lib/types').Summary>);
+        } else {
+          store.setSummary(conversationId, payload as import('@/lib/types').Summary);
+        }
+      }
+      return;
+    }
+
     // For all other events, validate payload is an AgentEvent object
     if (!isAgentEvent(data.payload)) {
       console.warn('Invalid WebSocket payload for conversation event:', data.type);
