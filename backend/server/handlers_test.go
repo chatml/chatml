@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
@@ -2166,4 +2167,88 @@ func TestGeneratePRDescription_NoAIClient(t *testing.T) {
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	assert.Contains(t, w.Body.String(), "not available")
+}
+
+// ============================================================================
+// Drop Stats Handler Tests
+// ============================================================================
+
+func TestGetConversationDropStats_NoActiveProcess(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-nonexistent/drop-stats", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationDropStats(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var stats map[string]uint64
+	err := json.Unmarshal(w.Body.Bytes(), &stats)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), stats["droppedMessages"])
+}
+
+func TestGetConversationDropStats_WithActiveProcess(t *testing.T) {
+	h, _, agentMgr := setupTestHandlersWithAgentManager(t)
+
+	// Manually insert a process with some drops
+	proc := agent.NewProcess("drop-proc", t.TempDir(), "conv-stats")
+	agentMgr.InsertProcessForTest("conv-stats", proc)
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-stats/drop-stats", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-stats"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationDropStats(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var stats map[string]uint64
+	err := json.Unmarshal(w.Body.Bytes(), &stats)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), stats["droppedMessages"])
+}
+
+func TestGetConversationDropStats_ReflectsDropCount(t *testing.T) {
+	h, _, agentMgr := setupTestHandlersWithAgentManager(t)
+
+	// Create process and simulate drops
+	proc := agent.NewProcess("drop-proc", t.TempDir(), "conv-stats")
+	proc.SimulateDrops(17)
+	agentMgr.InsertProcessForTest("conv-stats", proc)
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-stats/drop-stats", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-stats"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationDropStats(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var stats map[string]uint64
+	err := json.Unmarshal(w.Body.Bytes(), &stats)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(17), stats["droppedMessages"])
+}
+
+func TestGetConversationDropStats_ResponseFormat(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-format/drop-stats", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-format"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationDropStats(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+
+	// Verify response is valid JSON with expected key
+	var result map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	_, hasDropped := result["droppedMessages"]
+	assert.True(t, hasDropped, "Response should contain droppedMessages key")
 }

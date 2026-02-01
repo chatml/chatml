@@ -80,9 +80,9 @@ func TestHub_Broadcast_Success(t *testing.T) {
 func TestHub_Broadcast_ChannelFull(t *testing.T) {
 	hub := NewHub()
 
-	// Fill the channel to capacity (1024)
+	// Fill the channel to capacity (4096)
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 4096; i++ {
 		hub.broadcast <- fillerData
 	}
 
@@ -135,9 +135,9 @@ func TestHub_Broadcast_MultipleEvents(t *testing.T) {
 func TestHub_Broadcast_Backpressure(t *testing.T) {
 	hub := NewHub()
 
-	// Fill channel to >75% capacity (769 messages, which is > 768 = 1024*3/4) to trigger backpressure
+	// Fill channel to >75% capacity (3073 messages, which is > 3072 = 4096*3/4) to trigger backpressure
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 769; i++ {
+	for i := 0; i < 3073; i++ {
 		hub.broadcast <- fillerData
 	}
 
@@ -323,7 +323,7 @@ func TestHub_GetStats(t *testing.T) {
 	assert.Equal(t, uint64(1), stats["messagesDropped"])
 	assert.Equal(t, int64(3), stats["currentClients"])
 	assert.Equal(t, int64(3), stats["peakClients"])
-	assert.Equal(t, 1024, stats["broadcastBufferCapacity"])
+	assert.Equal(t, 4096, stats["broadcastBufferCapacity"])
 }
 
 // ============================================================================
@@ -514,9 +514,9 @@ func TestBroadcastResult_SuccessfulDelivery(t *testing.T) {
 func TestHub_Broadcast_TimeoutBehavior(t *testing.T) {
 	hub := NewHub()
 
-	// Fill the channel to capacity (1024)
+	// Fill the channel to capacity (4096)
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 4096; i++ {
 		hub.broadcast <- fillerData
 	}
 
@@ -748,7 +748,7 @@ func TestHub_Broadcast_EmitsWarningOnTimeout(t *testing.T) {
 
 	// Fill channel to capacity
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 4096; i++ {
 		hub.broadcast <- fillerData
 	}
 
@@ -769,7 +769,7 @@ func TestHub_Broadcast_WarningRateLimited(t *testing.T) {
 
 	// Fill channel
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 4096; i++ {
 		hub.broadcast <- fillerData
 	}
 
@@ -789,7 +789,7 @@ func TestHub_Broadcast_WarningAfterRateLimitExpires(t *testing.T) {
 
 	// Fill channel
 	fillerData, _ := json.Marshal(Event{Type: "filler"})
-	for i := 0; i < 1024; i++ {
+	for i := 0; i < 4096; i++ {
 		hub.broadcast <- fillerData
 	}
 

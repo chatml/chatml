@@ -901,6 +901,11 @@ export async function stopConversation(convId: string): Promise<void> {
   await handleVoidResponse(res, 'Failed to stop conversation');
 }
 
+export async function getConversationDropStats(convId: string): Promise<{ droppedMessages: number }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/drop-stats`);
+  return handleResponse(res);
+}
+
 export async function deleteConversation(convId: string): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete conversation');

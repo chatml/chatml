@@ -699,3 +699,253 @@ func TestSetConversationPlanMode_StoppedProcess(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "conversation process not running")
 }
+
+// ============================================================================
+// GetConversationDropStats Tests
+// ============================================================================
+
+func TestGetConversationDropStats_NoProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	stats := m.GetConversationDropStats("nonexistent-conv")
+	assert.Nil(t, stats)
+}
+
+func TestGetConversationDropStats_ZeroDrops(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("drop-test", t.TempDir(), "conv-drop")
+	m.InsertProcessForTest("conv-drop", proc)
+
+	stats := m.GetConversationDropStats("conv-drop")
+	require.NotNil(t, stats)
+	assert.Equal(t, uint64(0), stats["droppedMessages"])
+}
+
+func TestGetConversationDropStats_WithDrops(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("drop-test", t.TempDir(), "conv-drop")
+	proc.SimulateDrops(42)
+	m.InsertProcessForTest("conv-drop", proc)
+
+	stats := m.GetConversationDropStats("conv-drop")
+	require.NotNil(t, stats)
+	assert.Equal(t, uint64(42), stats["droppedMessages"])
+}
+
+func TestGetConversationDropStats_ConcurrentAccess(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("drop-test", t.TempDir(), "conv-drop")
+	m.InsertProcessForTest("conv-drop", proc)
+
+	var wg sync.WaitGroup
+
+	// Concurrent writers incrementing drop counter
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			proc.SimulateDrops(1)
+		}()
+	}
+
+	// Concurrent readers calling GetConversationDropStats
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			stats := m.GetConversationDropStats("conv-drop")
+			assert.NotNil(t, stats)
+		}()
+	}
+
+	wg.Wait()
+	stats := m.GetConversationDropStats("conv-drop")
+	assert.Equal(t, uint64(50), stats["droppedMessages"])
+}
+
+// ============================================================================
+// handleConversationOutput Drop Warning Tests
+// ============================================================================
+
+func TestHandleConversationOutput_EmitsDropWarning(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("drop-warn-test", t.TempDir(), "conv-warn")
+	m.InsertProcessForTest("conv-warn", proc)
+
+	// Capture emitted events
+	var events []*AgentEvent
+	var eventMu sync.Mutex
+	m.SetConversationEventHandler(func(convID string, event *AgentEvent) {
+		eventMu.Lock()
+		events = append(events, event)
+		eventMu.Unlock()
+	})
+
+	// Simulate drops before handleConversationOutput processes them
+	proc.SimulateDrops(5)
+
+	// Send one event then close the channel to end the handler
+	proc.output <- `{"type":"assistant_text","content":"hello"}`
+	close(proc.output)
+
+	// Run handler (blocking, returns when channel closed)
+	done := make(chan struct{})
+	go func() {
+		m.handleConversationOutput("conv-warn", proc)
+		close(done)
+	}()
+
+	// Wait for handler to finish (with timeout)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("handleConversationOutput did not finish in time")
+	}
+
+	// Should have emitted the assistant_text event + at least one streaming_warning
+	eventMu.Lock()
+	defer eventMu.Unlock()
+
+	var warningEvents []*AgentEvent
+	for _, e := range events {
+		if e.Type == "streaming_warning" {
+			warningEvents = append(warningEvents, e)
+		}
+	}
+	require.NotEmpty(t, warningEvents, "Expected at least one streaming_warning event")
+	assert.Equal(t, "process", warningEvents[0].Source)
+	assert.Equal(t, "buffer_full", warningEvents[0].Reason)
+	assert.Contains(t, warningEvents[0].Message, "5 streaming events were dropped")
+}
+
+func TestHandleConversationOutput_NoWarningWhenNoDrops(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("no-drop-test", t.TempDir(), "conv-no-drop")
+	m.InsertProcessForTest("conv-no-drop", proc)
+
+	var events []*AgentEvent
+	var eventMu sync.Mutex
+	m.SetConversationEventHandler(func(convID string, event *AgentEvent) {
+		eventMu.Lock()
+		events = append(events, event)
+		eventMu.Unlock()
+	})
+
+	// Send one event then close
+	proc.output <- `{"type":"assistant_text","content":"hello"}`
+	close(proc.output)
+
+	done := make(chan struct{})
+	go func() {
+		m.handleConversationOutput("conv-no-drop", proc)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("handleConversationOutput did not finish in time")
+	}
+
+	// Should have no streaming_warning events
+	eventMu.Lock()
+	defer eventMu.Unlock()
+	for _, e := range events {
+		assert.NotEqual(t, "streaming_warning", e.Type, "Should not emit warning when no drops occurred")
+	}
+}
+
+func TestHandleConversationOutput_ForwardsEvents(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("forward-test", t.TempDir(), "conv-forward")
+	m.InsertProcessForTest("conv-forward", proc)
+
+	var events []*AgentEvent
+	var eventMu sync.Mutex
+	m.SetConversationEventHandler(func(convID string, event *AgentEvent) {
+		eventMu.Lock()
+		events = append(events, event)
+		eventMu.Unlock()
+	})
+
+	// Send multiple events
+	proc.output <- `{"type":"assistant_text","content":"hello"}`
+	proc.output <- `{"type":"tool_start","id":"t1","tool":"Read"}`
+	proc.output <- `{"type":"tool_end","id":"t1","tool":"Read","success":true}`
+	close(proc.output)
+
+	done := make(chan struct{})
+	go func() {
+		m.handleConversationOutput("conv-forward", proc)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("handleConversationOutput did not finish in time")
+	}
+
+	eventMu.Lock()
+	defer eventMu.Unlock()
+
+	// Should have forwarded all 3 events
+	var types []string
+	for _, e := range events {
+		types = append(types, e.Type)
+	}
+	assert.Contains(t, types, "assistant_text")
+	assert.Contains(t, types, "tool_start")
+	assert.Contains(t, types, "tool_end")
+}
+
+func TestHandleConversationOutput_FinalDropReport(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcess("final-drop-test", t.TempDir(), "conv-final")
+	m.InsertProcessForTest("conv-final", proc)
+
+	var events []*AgentEvent
+	var eventMu sync.Mutex
+	m.SetConversationEventHandler(func(convID string, event *AgentEvent) {
+		eventMu.Lock()
+		events = append(events, event)
+		eventMu.Unlock()
+	})
+
+	// Simulate drops that happen right before process ends (within ticker interval)
+	// Close channel immediately - the drops happen but the ticker may not fire
+	proc.SimulateDrops(3)
+	close(proc.output)
+
+	done := make(chan struct{})
+	go func() {
+		m.handleConversationOutput("conv-final", proc)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("handleConversationOutput did not finish in time")
+	}
+
+	// The final drop report should emit a warning for any unreported drops
+	eventMu.Lock()
+	defer eventMu.Unlock()
+
+	var warningEvents []*AgentEvent
+	for _, e := range events {
+		if e.Type == "streaming_warning" {
+			warningEvents = append(warningEvents, e)
+		}
+	}
+	require.NotEmpty(t, warningEvents, "Expected final drop report warning")
+	assert.Contains(t, warningEvents[len(warningEvents)-1].Message, "3 streaming events were dropped")
+}

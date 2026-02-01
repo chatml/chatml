@@ -11,6 +11,12 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
+import { getConversationDropStats } from '@/lib/api';
+
+// Debounce interval for drop stats REST fetches (ms).
+// The backend ticker fires every 2s, so 3s avoids redundant requests during bursty drops.
+const DROP_STATS_DEBOUNCE_MS = 3000;
+let lastDropStatsFetchTime = 0;
 
 // Type guards for WebSocket payload validation
 function isAgentEvent(payload: unknown): payload is AgentEvent {
@@ -293,16 +299,46 @@ export function useWebSocket(enabled: boolean = true) {
         store.updateConversation(conversationId, { status: 'idle' });
         break;
 
-      case 'streaming_warning':
-        // Emit custom event for StreamingWarningHandler to display toast
-        window.dispatchEvent(new CustomEvent('streaming-warning', {
-          detail: {
-            source: event?.source,
-            reason: event?.reason,
-            message: event?.message || 'Some streaming data may have been lost',
-          }
-        }));
+      case 'streaming_warning': {
+        // Emit custom event for StreamingWarningHandler to display toast.
+        // Debounce the REST call to avoid redundant requests during bursty drops.
+        // The backend ticker fires every 2s, so at most one fetch per 3s is sufficient.
+        const now = Date.now();
+        if (now - lastDropStatsFetchTime >= DROP_STATS_DEBOUNCE_MS) {
+          lastDropStatsFetchTime = now;
+          getConversationDropStats(conversationId).then((stats) => {
+            window.dispatchEvent(new CustomEvent('streaming-warning', {
+              detail: {
+                source: event?.source,
+                reason: event?.reason,
+                message: stats.droppedMessages > 0
+                  ? `${stats.droppedMessages} streaming events were dropped`
+                  : (event?.message || 'Some streaming data may have been lost'),
+                droppedMessages: stats.droppedMessages,
+              }
+            }));
+          }).catch(() => {
+            // Fallback: emit warning with whatever info we have from WebSocket
+            window.dispatchEvent(new CustomEvent('streaming-warning', {
+              detail: {
+                source: event?.source,
+                reason: event?.reason,
+                message: event?.message || 'Some streaming data may have been lost',
+              }
+            }));
+          });
+        } else {
+          // Debounced: emit warning with WebSocket data only (no REST call)
+          window.dispatchEvent(new CustomEvent('streaming-warning', {
+            detail: {
+              source: event?.source,
+              reason: event?.reason,
+              message: event?.message || 'Some streaming data may have been lost',
+            }
+          }));
+        }
         break;
+      }
 
       case 'user_question_request':
         // AskUserQuestion tool - set pending question for the conversation
