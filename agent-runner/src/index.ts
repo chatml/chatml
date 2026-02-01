@@ -616,10 +616,10 @@ const askUserQuestionHook: HookCallback = async (input) => {
     // Allow tool execution with answers populated
     return {
       hookSpecificOutput: {
-        hookEventName: input.hook_event_name,
+        hookEventName: "PreToolUse" as const,
         permissionDecision: "allow" as const,
         updatedInput: {
-          ...hookInput.tool_input,
+          ...(hookInput.tool_input as Record<string, unknown>),
           answers,
         },
       },
@@ -628,7 +628,7 @@ const askUserQuestionHook: HookCallback = async (input) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       hookSpecificOutput: {
-        hookEventName: input.hook_event_name,
+        hookEventName: "PreToolUse" as const,
         permissionDecision: "deny" as const,
         permissionDecisionReason: errorMessage,
       },
