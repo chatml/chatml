@@ -36,13 +36,22 @@ export class ApiError extends Error {
 }
 
 // Fetch helper that adds authentication token for Tauri builds
+// Also catches network-level TypeErrors (e.g. server unreachable) and
+// re-throws them as ApiError with status 0 for consistent error handling.
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const token = await getAuthToken();
   const headers = new Headers(options.headers);
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  return fetch(url, { ...options, headers });
+  try {
+    return await fetch(url, { ...options, headers });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new ApiError('Cannot connect to backend. Is the server running?', 0);
+    }
+    throw err;
+  }
 }
 
 // Helper to handle API responses consistently
