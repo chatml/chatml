@@ -48,6 +48,7 @@ export interface Conversation {
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
   messages: Message[];
+  messageCount?: number; // Total messages (set when messages are loaded lazily)
   toolSummary: ToolAction[];
   createdAt: string;
   updatedAt: string;

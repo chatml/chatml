@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -2518,6 +2519,42 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, conv)
+}
+
+func (h *Handlers) GetConversationMessages(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+
+	// Parse pagination params
+	var beforePosition *int
+	if beforeStr := r.URL.Query().Get("before"); beforeStr != "" {
+		v, err := strconv.Atoi(beforeStr)
+		if err != nil {
+			writeValidationError(w, "invalid 'before' parameter")
+			return
+		}
+		beforePosition = &v
+	}
+
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		v, err := strconv.Atoi(limitStr)
+		if err != nil || v < 1 {
+			writeValidationError(w, "invalid 'limit' parameter")
+			return
+		}
+		if v > 200 {
+			v = 200
+		}
+		limit = v
+	}
+
+	page, err := h.store.GetConversationMessages(ctx, convID, beforePosition, limit)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, page)
 }
 
 type SendConversationMessageRequest struct {
