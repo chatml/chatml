@@ -3275,6 +3275,182 @@ func TestResolvePR_InvalidURL(t *testing.T) {
 	}
 }
 
+func TestGetEnvSettings_Empty(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	req := httptest.NewRequest("GET", "/api/settings/env", nil)
+	w := httptest.NewRecorder()
+
+	h.GetEnvSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, "", result["envVars"])
+}
+
+func TestSetEnvSettings_Success(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	envVars := "API_KEY=test123\nDEBUG=true"
+	reqBody := map[string]string{"envVars": envVars}
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("PUT", "/api/settings/env", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetEnvSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]string
+	err = json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, envVars, result["envVars"])
+}
+
+func TestGetEnvSettings_AfterSet(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	envVars := "FOO=bar\nBAZ=qux"
+	reqBody := map[string]string{"envVars": envVars}
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	// Set env vars
+	setReq := httptest.NewRequest("PUT", "/api/settings/env", bytes.NewReader(body))
+	setReq.Header.Set("Content-Type", "application/json")
+	setW := httptest.NewRecorder()
+	h.SetEnvSettings(setW, setReq)
+	assert.Equal(t, http.StatusOK, setW.Code)
+
+	// Get env vars
+	getReq := httptest.NewRequest("GET", "/api/settings/env", nil)
+	getW := httptest.NewRecorder()
+	h.GetEnvSettings(getW, getReq)
+
+	assert.Equal(t, http.StatusOK, getW.Code)
+
+	var result map[string]string
+	err = json.Unmarshal(getW.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, envVars, result["envVars"])
+}
+
+func TestSetEnvSettings_InvalidJSON(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	req := httptest.NewRequest("PUT", "/api/settings/env", strings.NewReader("{invalid json}"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetEnvSettings(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestParseEnvVars(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]string
+	}{
+		{
+			name:  "basic KEY=VALUE parsing",
+			input: "KEY1=value1\nKEY2=value2",
+			expected: map[string]string{
+				"KEY1": "value1",
+				"KEY2": "value2",
+			},
+		},
+		{
+			name:  "strips export prefix",
+			input: "export API_KEY=secret\nexport DEBUG=true",
+			expected: map[string]string{
+				"API_KEY": "secret",
+				"DEBUG":   "true",
+			},
+		},
+		{
+			name:     "skips blank lines and comments",
+			input:    "KEY1=value1\n\n# This is a comment\nKEY2=value2\n   \n# Another comment",
+			expected: map[string]string{
+				"KEY1": "value1",
+				"KEY2": "value2",
+			},
+		},
+		{
+			name:  "handles values with = signs",
+			input: "CONNECTION_STRING=host=localhost;user=admin;password=pass=123",
+			expected: map[string]string{
+				"CONNECTION_STRING": "host=localhost;user=admin;password=pass=123",
+			},
+		},
+		{
+			name:     "returns empty map for empty string",
+			input:    "",
+			expected: map[string]string{},
+		},
+		{
+			name:     "returns empty map for only whitespace",
+			input:    "   \n\n   \n",
+			expected: map[string]string{},
+		},
+		{
+			name:  "mixed format",
+			input: "export KEY1=value1\nKEY2=value2\n\n# Comment\nexport KEY3=value=with=equals",
+			expected: map[string]string{
+				"KEY1": "value1",
+				"KEY2": "value2",
+				"KEY3": "value=with=equals",
+			},
+		},
+		{
+			name:  "strips double quotes from values",
+			input: `MY_VAR="hello world"`,
+			expected: map[string]string{
+				"MY_VAR": "hello world",
+			},
+		},
+		{
+			name:  "strips single quotes from values",
+			input: `MY_VAR='hello world'`,
+			expected: map[string]string{
+				"MY_VAR": "hello world",
+			},
+		},
+		{
+			name:  "preserves inner quotes",
+			input: `MY_VAR="it's a test"`,
+			expected: map[string]string{
+				"MY_VAR": "it's a test",
+			},
+		},
+		{
+			name:  "does not strip mismatched quotes",
+			input: `MY_VAR="hello'`,
+			expected: map[string]string{
+				"MY_VAR": `"hello'`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := store.ParseEnvVars(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestResolvePR_InvalidRequestBody(t *testing.T) {
 	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("GitHub API should not be called for invalid request body")
@@ -3543,4 +3719,45 @@ func TestResolvePR_URLVariants(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code, "URL %s should be accepted", url)
 		})
 	}
+}
+
+func TestCreateSession_WithBranchPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	// Create a real git repo
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Use timestamp-based session name to avoid conflicts
+	sessionName := fmt.Sprintf("test-session-%d", time.Now().UnixNano())
+
+	// Clean up test session directory after test
+	t.Cleanup(func() {
+		workspacesDir, _ := git.WorkspacesBaseDir()
+		os.RemoveAll(filepath.Join(workspacesDir, sessionName))
+	})
+
+	// Create session with BranchPrefix
+	reqBody := CreateSessionRequest{
+		Name:         sessionName,
+		BranchPrefix: "feature",
+	}
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions", bytes.NewReader(body))
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.CreateSession(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "Response: %s", w.Body.String())
+
+	var session models.Session
+	err = json.Unmarshal(w.Body.Bytes(), &session)
+	require.NoError(t, err)
+
+	// Verify branch name starts with the prefix
+	assert.True(t, strings.HasPrefix(session.Branch, "feature/"),
+		"Expected branch name to start with 'feature/', got: %s", session.Branch)
 }
