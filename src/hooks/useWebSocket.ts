@@ -310,10 +310,6 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      case 'user_question_timeout':
-        // Question timed out - clear the pending question UI
-        store.clearPendingUserQuestion(conversationId);
-        break;
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
