@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -36,33 +36,47 @@ export function CreatePRDialog({
   const [draft, setDraft] = useState(false);
   const [state, setState] = useState<DialogState>('generating');
   const [error, setError] = useState<string | null>(null);
+  const generateCountRef = useRef(0);
 
   const generate = useCallback(async () => {
+    const id = ++generateCountRef.current;
     setState('generating');
     setError(null);
     try {
       const result = await generatePRDescription(workspaceId, sessionId);
+      if (id !== generateCountRef.current) return; // stale request
       setTitle(result.title);
       setBody(result.body);
       setState('ready');
     } catch (err) {
+      if (id !== generateCountRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to generate PR description');
       setState('error');
     }
   }, [workspaceId, sessionId]);
 
-  useEffect(() => {
-    if (open) {
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      onOpenChange(nextOpen);
+      if (!nextOpen) {
+        // Reset state when dialog closes
+        setTitle('');
+        setBody('');
+        setDraft(false);
+        setState('generating');
+        setError(null);
+      }
+    },
+    [onOpenChange],
+  );
+
+  const handleOpenAutoFocus = useCallback(
+    (e: Event) => {
+      e.preventDefault(); // We'll manage focus via the Input autoFocus prop
       generate();
-    } else {
-      // Reset state when dialog closes
-      setTitle('');
-      setBody('');
-      setDraft(false);
-      setState('generating');
-      setError(null);
-    }
-  }, [open, generate]);
+    },
+    [generate],
+  );
 
   const handleCreate = async () => {
     if (!title.trim()) return;
@@ -74,7 +88,7 @@ export function CreatePRDialog({
         body,
         draft,
       });
-      onOpenChange(false);
+      handleOpenChange(false);
       onSuccess(result.htmlUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create pull request');
@@ -83,8 +97,8 @@ export function CreatePRDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-xl" onOpenAutoFocus={handleOpenAutoFocus}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GitPullRequest className="h-4 w-4" />
@@ -159,7 +173,7 @@ export function CreatePRDialog({
             Regenerate
           </Button>
           <div className="flex-1" />
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <Button
