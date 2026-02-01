@@ -14,6 +14,8 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useShortcut } from '@/hooks/useShortcut';
 import { navigate } from '@/lib/navigation';
+import { copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -71,7 +73,7 @@ interface Command {
   available?: () => boolean;
   hasSubmenu?: boolean;
   submenuId?: string;
-  action: () => void;
+  action: () => unknown;
 }
 
 interface SubmenuPage {
@@ -85,7 +87,7 @@ interface SubmenuItem {
   label: string;
   description?: string;
   icon?: LucideIcon;
-  action: () => void;
+  action: () => unknown;
 }
 
 // ============================================================================
@@ -316,11 +318,12 @@ const COMMANDS: Command[] = [
       const sessionId = useAppStore.getState().selectedSessionId;
       return sessionId !== null;
     },
-    action: () => {
+    action: async () => {
       const { selectedSessionId, sessions } = useAppStore.getState();
       const session = sessions.find((s) => s.id === selectedSessionId);
       if (session?.branch) {
-        navigator.clipboard.writeText(session.branch);
+        const success = await copyToClipboard(session.branch);
+        if (!success) throw new Error('Failed to copy branch name to clipboard');
       }
     },
   },
@@ -487,6 +490,7 @@ function ShortcutHint({ shortcutId }: { shortcutId: string }) {
 // ============================================================================
 
 export function CommandPalette() {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [pages, setPages] = useState<string[]>([]);
   const [search, setSearch] = useState('');
@@ -563,6 +567,17 @@ export function CommandPalette() {
     [search, pages.length]
   );
 
+  // Run an action, catching any thrown errors and showing a toast
+  const runAction = useCallback(
+    (action: () => unknown) => {
+      Promise.resolve(action()).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Command failed';
+        toast.error(message);
+      });
+    },
+    [toast]
+  );
+
   // Execute command and track in recents
   const executeCommand = useCallback(
     (cmd: Command) => {
@@ -578,10 +593,10 @@ export function CommandPalette() {
         if (cmd.category === 'Navigation') {
           window.dispatchEvent(new CustomEvent('close-settings'));
         }
-        cmd.action();
+        runAction(cmd.action);
       }
     },
-    [addRecentCommand]
+    [addRecentCommand, runAction]
   );
 
   // Execute submenu item
@@ -591,8 +606,8 @@ export function CommandPalette() {
     setSearch('');
     // Close any overlays (like settings page) when navigating
     window.dispatchEvent(new CustomEvent('close-settings'));
-    item.action();
-  }, []);
+    runAction(item.action);
+  }, [runAction]);
 
   // Go back to previous page
   const goBack = useCallback(() => {
