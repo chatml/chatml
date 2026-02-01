@@ -15,6 +15,7 @@ interface ChatSearchBarProps {
   totalMatches: number;
   onNextMatch: () => void;
   onPrevMatch: () => void;
+  partialResults?: boolean; // True when not all messages are loaded
 }
 
 export function ChatSearchBar({
@@ -26,6 +27,7 @@ export function ChatSearchBar({
   totalMatches,
   onNextMatch,
   onPrevMatch,
+  partialResults,
 }: ChatSearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -75,9 +77,12 @@ export function ChatSearchBar({
         )}>
           {searchQuery ? (
             totalMatches > 0 ? (
-              `${currentMatchIndex + 1} of ${totalMatches}`
+              <>
+                {`${currentMatchIndex + 1} of ${totalMatches}`}
+                {partialResults && <span title="Not all messages are loaded">*</span>}
+              </>
             ) : (
-              "No results"
+              partialResults ? "No results*" : "No results"
             )
           ) : null}
         </div>

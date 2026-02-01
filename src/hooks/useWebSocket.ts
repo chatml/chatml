@@ -13,6 +13,7 @@ import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats } from '@/lib/api';
+import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
@@ -289,6 +290,13 @@ export function useWebSocket(enabled: boolean = true) {
         }
         // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
+        // Desktop notification for task completion.
+        // success defaults to true when the field is absent (only explicitly false means failure).
+        notifyDesktop(
+          conversationId,
+          event.success !== false ? 'Task completed' : 'Task finished with errors',
+          getConversationLabel(conversationId),
+        );
         break;
 
       case 'complete':
@@ -307,6 +315,9 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.mode) {
           const isPlanMode = event.mode === 'plan';
           store.setPlanModeActive(conversationId, isPlanMode);
+          if (isPlanMode) {
+            notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+          }
         }
         break;
 
@@ -317,6 +328,8 @@ export function useWebSocket(enabled: boolean = true) {
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
+        // Desktop notification for error
+        notifyDesktop(conversationId, 'Task error', (errorMessage || 'Unknown error').slice(0, 100));
         break;
 
       case 'streaming_warning': {
@@ -369,7 +382,39 @@ export function useWebSocket(enabled: boolean = true) {
             currentIndex: 0,
             answers: {},
           });
+          notifyDesktop(conversationId, 'Question from AI', 'The AI needs your input');
         }
+        break;
+
+      case 'context_usage':
+        // Update context usage from per-assistant-message token counts
+        if (event?.inputTokens !== undefined) {
+          store.setContextUsage(conversationId, {
+            inputTokens: event.inputTokens ?? 0,
+            outputTokens: event.outputTokens ?? 0,
+            cacheReadInputTokens: event.cacheReadInputTokens ?? 0,
+            cacheCreationInputTokens: event.cacheCreationInputTokens ?? 0,
+          });
+        }
+        break;
+
+      case 'context_window_size':
+        // Update the max context window from modelUsage in result
+        if (event?.contextWindow) {
+          store.setContextUsage(conversationId, {
+            contextWindow: event.contextWindow,
+          });
+        }
+        break;
+
+      case 'compact_boundary':
+        // After compaction, reset all token fields until next assistant message provides fresh data
+        store.setContextUsage(conversationId, {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        });
         break;
 
     }

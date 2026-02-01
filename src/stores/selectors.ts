@@ -15,6 +15,7 @@
  * if referential stability is needed for downstream dependencies.
  */
 
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
 import { useNavigationStore } from './navigationStore';
@@ -67,6 +68,13 @@ export const useMessages = (conversationId: string | null) =>
         : EMPTY_MESSAGES
     )
   );
+
+/**
+ * Pagination state for a specific conversation's messages.
+ * Use in: ConversationArea, VirtualizedMessageList for infinite scroll
+ */
+export const useMessagePagination = (conversationId: string | null) =>
+  useAppStore((s) => (conversationId ? s.messagePagination[conversationId] ?? null : null));
 
 /**
  * Check if a conversation has any user messages.
@@ -296,19 +304,19 @@ export const useReviewComments = (sessionId: string | null) =>
  * Returns a Map of filePath to { total, unresolved } counts.
  * Use in: ChangesPanel for badge display
  *
- * Returns a stable empty Map when there are no comments.
- * Note: Components should use useMemo if they need to avoid re-computation.
+ * Derives stats from useReviewComments via useMemo to ensure referential
+ * stability. The previous implementation created a new Map inside the Zustand
+ * selector on every store update, which caused React's useSyncExternalStore
+ * to detect a new snapshot each time, leading to infinite re-render loops.
  */
-export const useFileCommentStats = (sessionId: string | null) =>
-  useAppStore((s) => {
-    const comments = sessionId ? s.reviewComments[sessionId] : null;
+export const useFileCommentStats = (sessionId: string | null) => {
+  const comments = useReviewComments(sessionId);
 
-    // Return stable empty map when no comments
+  return useMemo(() => {
     if (!comments || comments.length === 0) {
       return EMPTY_FILE_COMMENT_STATS;
     }
 
-    // Only construct Map when we have actual comments
     const stats = new Map<string, { total: number; unresolved: number }>();
     for (const comment of comments) {
       const current = stats.get(comment.filePath) || { total: 0, unresolved: 0 };
@@ -318,7 +326,8 @@ export const useFileCommentStats = (sessionId: string | null) =>
     }
 
     return stats;
-  });
+  }, [comments]);
+};
 
 /**
  * Review comment actions for components that need to modify comments.
@@ -403,6 +412,9 @@ export const usePageActions = () =>
       selectWorkspace: s.selectWorkspace,
       selectSession: s.selectSession,
       selectConversation: s.selectConversation,
+      setMessagePage: s.setMessagePage,
+      prependMessages: s.prependMessages,
+      setLoadingMoreMessages: s.setLoadingMoreMessages,
     }))
   );
 

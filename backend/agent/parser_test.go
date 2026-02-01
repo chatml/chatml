@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -196,6 +197,25 @@ func TestParseAgentLine_ValidJSON(t *testing.T) {
 				assert.Equal(t, "Failed to parse input: Unexpected token", event.Message)
 				assert.Equal(t, "{invalid json}", event.RawInput)
 				assert.Equal(t, "Unexpected token", event.ErrorDetails)
+			},
+		},
+		{
+			name:         "context_usage",
+			input:        `{"type":"context_usage","inputTokens":15000,"outputTokens":3000,"cacheReadInputTokens":5000,"cacheCreationInputTokens":2000}`,
+			expectedType: EventTypeContextUsage,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, 15000, event.InputTokens)
+				assert.Equal(t, 3000, event.OutputTokens)
+				assert.Equal(t, 5000, event.CacheReadInputTokens)
+				assert.Equal(t, 2000, event.CacheCreationInputTokens)
+			},
+		},
+		{
+			name:         "context_window_size",
+			input:        `{"type":"context_window_size","contextWindow":200000}`,
+			expectedType: EventTypeContextWindowSize,
+			checkFields: func(t *testing.T, event *AgentEvent) {
+				assert.Equal(t, 200000, event.ContextWindow)
 			},
 		},
 	}
@@ -553,4 +573,119 @@ func TestParseAgentLine_StreamingWarning_ProcessSource(t *testing.T) {
 	assert.Equal(t, "process", event.Source)
 	assert.Equal(t, "buffer_full", event.Reason)
 	assert.Equal(t, "Some streaming events were dropped due to slow processing", event.Message)
+}
+
+// ============================================================================
+// Context Usage Event Tests
+// ============================================================================
+
+func TestEventTypeContextUsageConstants(t *testing.T) {
+	assert.Equal(t, "context_usage", EventTypeContextUsage)
+	assert.Equal(t, "context_window_size", EventTypeContextWindowSize)
+}
+
+func TestParseAgentLine_ContextUsage(t *testing.T) {
+	line := `{"type":"context_usage","inputTokens":70400,"outputTokens":3000,"cacheReadInputTokens":5000,"cacheCreationInputTokens":1500}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypeContextUsage, event.Type)
+	assert.Equal(t, 70400, event.InputTokens)
+	assert.Equal(t, 3000, event.OutputTokens)
+	assert.Equal(t, 5000, event.CacheReadInputTokens)
+	assert.Equal(t, 1500, event.CacheCreationInputTokens)
+}
+
+func TestParseAgentLine_ContextUsage_ZeroValues(t *testing.T) {
+	// When only inputTokens is non-zero, other fields should be 0
+	line := `{"type":"context_usage","inputTokens":10000}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypeContextUsage, event.Type)
+	assert.Equal(t, 10000, event.InputTokens)
+	assert.Equal(t, 0, event.OutputTokens)
+	assert.Equal(t, 0, event.CacheReadInputTokens)
+	assert.Equal(t, 0, event.CacheCreationInputTokens)
+}
+
+func TestParseAgentLine_ContextWindowSize(t *testing.T) {
+	line := `{"type":"context_window_size","contextWindow":1000000}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypeContextWindowSize, event.Type)
+	assert.Equal(t, 1000000, event.ContextWindow)
+}
+
+func TestParseAgentLine_ContextWindowSize_200k(t *testing.T) {
+	line := `{"type":"context_window_size","contextWindow":200000}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, 200000, event.ContextWindow)
+}
+
+func TestAgentEvent_ContextFieldsRoundTrip(t *testing.T) {
+	// Verify that marshaling and unmarshaling preserves context fields
+	original := &AgentEvent{
+		Type:                     EventTypeContextUsage,
+		InputTokens:              15000,
+		OutputTokens:             3000,
+		CacheReadInputTokens:     5000,
+		CacheCreationInputTokens: 2000,
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var parsed AgentEvent
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+
+	assert.Equal(t, original.Type, parsed.Type)
+	assert.Equal(t, original.InputTokens, parsed.InputTokens)
+	assert.Equal(t, original.OutputTokens, parsed.OutputTokens)
+	assert.Equal(t, original.CacheReadInputTokens, parsed.CacheReadInputTokens)
+	assert.Equal(t, original.CacheCreationInputTokens, parsed.CacheCreationInputTokens)
+}
+
+func TestAgentEvent_ContextWindowRoundTrip(t *testing.T) {
+	original := &AgentEvent{
+		Type:          EventTypeContextWindowSize,
+		ContextWindow: 200000,
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var parsed AgentEvent
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+
+	assert.Equal(t, original.Type, parsed.Type)
+	assert.Equal(t, original.ContextWindow, parsed.ContextWindow)
+}
+
+func TestAgentEvent_ContextUsageOmitsZeroFields(t *testing.T) {
+	// Verify that zero-value fields are omitted in JSON (due to omitempty)
+	event := &AgentEvent{
+		Type:        EventTypeContextUsage,
+		InputTokens: 10000,
+		// All other context fields are zero
+	}
+
+	data, err := json.Marshal(event)
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	assert.Contains(t, jsonStr, `"inputTokens":10000`)
+	assert.NotContains(t, jsonStr, `"outputTokens"`)
+	assert.NotContains(t, jsonStr, `"cacheReadInputTokens"`)
+	assert.NotContains(t, jsonStr, `"cacheCreationInputTokens"`)
+	assert.NotContains(t, jsonStr, `"contextWindow"`)
 }

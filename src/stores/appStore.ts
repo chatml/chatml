@@ -15,6 +15,7 @@ import type {
   McpServerStatus,
   CheckpointInfo,
   BudgetStatus,
+  ContextUsage,
   ToolUsage,
   RunSummary,
   ReviewComment,
@@ -127,6 +128,9 @@ interface AppState {
   checkpoints: CheckpointInfo[];
   budgetStatus: BudgetStatus | null;
 
+  // Context window usage (keyed by conversationId)
+  contextUsage: { [conversationId: string]: ContextUsage };
+
   // Review comments state (keyed by sessionId)
   reviewComments: { [sessionId: string]: ReviewComment[] };
 
@@ -170,6 +174,17 @@ interface AppState {
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
+
+  // Message pagination state & actions
+  messagePagination: Record<string, {
+    hasMore: boolean;
+    oldestPosition: number | null;
+    isLoadingMore: boolean;
+    totalCount: number;
+  }>;
+  setMessagePage: (convId: string, messages: Message[], hasMore: boolean, oldestPosition: number, totalCount: number) => void;
+  prependMessages: (convId: string, messages: Message[], hasMore: boolean, oldestPosition: number) => void;
+  setLoadingMoreMessages: (convId: string, loading: boolean) => void;
 
   // File changes
   setFileChanges: (changes: FileChange[]) => void;
@@ -247,6 +262,10 @@ interface AppState {
   clearCheckpoints: () => void;
   setBudgetStatus: (status: BudgetStatus | null) => void;
 
+  // Context usage actions
+  setContextUsage: (conversationId: string, usage: Partial<ContextUsage>) => void;
+  clearContextUsage: (conversationId: string) => void;
+
   // Review comments actions
   setReviewComments: (sessionId: string, comments: ReviewComment[]) => void;
   addReviewComment: (sessionId: string, comment: ReviewComment) => void;
@@ -310,6 +329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpServers: [],
   checkpoints: [],
   budgetStatus: null,
+  contextUsage: {},
   reviewComments: {},
   branchSyncStatus: {},
   branchSyncLoading: {},
@@ -317,6 +337,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncCompletedAt: {},
   pendingUserQuestion: {},
   lastFileChange: null,
+  messagePagination: {},
 
   // Workspace actions
   setWorkspaces: (workspaces) => set({ workspaces }),
@@ -412,10 +433,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cleanedStreamingState = { ...state.streamingState };
     const cleanedActiveTools = { ...state.activeTools };
     const cleanedAgentTodos = { ...state.agentTodos };
+    const cleanedContextUsage = { ...state.contextUsage };
     for (const convId of sessionConvIds) {
       delete cleanedStreamingState[convId];
       delete cleanedActiveTools[convId];
       delete cleanedAgentTodos[convId];
+      delete cleanedContextUsage[convId];
     }
 
     // Clean up custom todos, session outputs, and review comments
@@ -434,6 +457,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       streamingState: cleanedStreamingState,
       activeTools: cleanedActiveTools,
       agentTodos: cleanedAgentTodos,
+      contextUsage: cleanedContextUsage,
       customTodos: remainingCustomTodos,
       sessionOutputs: remainingSessionOutputs,
       reviewComments: remainingReviewComments,
@@ -507,13 +531,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Conversation actions
   setConversations: (conversations) => set({
     conversations,
-    // Also populate the messages array from all conversations
-    messages: conversations.flatMap((c) => c.messages),
+    // Messages are loaded on-demand via getConversationMessages, not inline.
+    // The useEffect in ConversationArea will fetch messages for the active conversation.
   }),
   addConversation: (conversation) => set((state) => ({
     conversations: [...state.conversations, conversation],
-    // Also add the conversation's messages to the messages array
-    messages: [...state.messages, ...conversation.messages]
+    // Also add any initial messages (e.g., system setup message from createConversation)
+    messages: conversation.messages.length > 0
+      ? [...state.messages, ...conversation.messages]
+      : state.messages,
   })),
   updateConversation: (id, updates) => set((state) => ({
     conversations: state.conversations.map((c) =>
@@ -526,6 +552,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
+    const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -553,19 +580,76 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
       pendingUserQuestion: remainingPendingQuestions,
+      contextUsage: remainingContextUsage,
     };
   }),
   selectConversation: (id) => set({ selectedConversationId: id }),
 
   // Message actions
   setMessages: (messages) => set({ messages }),
-  addMessage: (message) => set((state) => ({
-    messages: [...state.messages, message]
-  })),
+  addMessage: (message) => set((state) => {
+    const convPagination = state.messagePagination[message.conversationId];
+    return {
+      messages: [...state.messages, message],
+      // Keep totalCount in sync so firstItemIndex stays stable
+      ...(convPagination ? {
+        messagePagination: {
+          ...state.messagePagination,
+          [message.conversationId]: {
+            ...convPagination,
+            totalCount: convPagination.totalCount + 1,
+          },
+        },
+      } : {}),
+    };
+  }),
   updateMessage: (id, updates) => set((state) => ({
     messages: state.messages.map((m) =>
       m.id === id ? { ...m, ...updates } : m
     ),
+  })),
+
+  // Message pagination actions
+  setMessagePage: (convId, messages, hasMore, oldestPosition, totalCount) => set((state) => ({
+    // Replace any existing messages for this conversation with the new page
+    messages: [
+      ...state.messages.filter((m) => m.conversationId !== convId),
+      ...messages,
+    ],
+    messagePagination: {
+      ...state.messagePagination,
+      [convId]: { hasMore, oldestPosition, isLoadingMore: false, totalCount },
+    },
+  })),
+  prependMessages: (convId, messages, hasMore, oldestPosition) => set((state) => {
+    // Find where this conversation's messages start and prepend
+    const existingIds = new Set(state.messages.filter((m) => m.conversationId === convId).map((m) => m.id));
+    const newMessages = messages.filter((m) => !existingIds.has(m.id));
+    return {
+      messages: [
+        ...state.messages.filter((m) => m.conversationId !== convId),
+        ...newMessages,
+        ...state.messages.filter((m) => m.conversationId === convId),
+      ],
+      messagePagination: {
+        ...state.messagePagination,
+        [convId]: {
+          ...state.messagePagination[convId],
+          hasMore,
+          oldestPosition,
+          isLoadingMore: false,
+        },
+      },
+    };
+  }),
+  setLoadingMoreMessages: (convId, loading) => set((state) => ({
+    messagePagination: {
+      ...state.messagePagination,
+      [convId]: {
+        ...state.messagePagination[convId],
+        isLoadingMore: loading,
+      },
+    },
   })),
 
   // File changes
@@ -1088,6 +1172,28 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
   clearCheckpoints: () => set({ checkpoints: [] }),
   setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
+
+  // Context usage actions
+  setContextUsage: (conversationId, usage) => set((state) => {
+    const existing = state.contextUsage[conversationId] || {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      contextWindow: 200000,
+      lastUpdated: Date.now(),
+    };
+    return {
+      contextUsage: {
+        ...state.contextUsage,
+        [conversationId]: { ...existing, ...usage, lastUpdated: Date.now() },
+      },
+    };
+  }),
+  clearContextUsage: (conversationId) => set((state) => {
+    const { [conversationId]: _, ...rest } = state.contextUsage;
+    return { contextUsage: rest };
+  }),
 
   // Review comments actions
   setReviewComments: (sessionId, comments) => set((state) => ({

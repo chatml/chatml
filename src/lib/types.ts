@@ -48,6 +48,7 @@ export interface Conversation {
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
   messages: Message[];
+  messageCount?: number; // Total messages (set when messages are loaded lazily)
   toolSummary: ToolAction[];
   createdAt: string;
   updatedAt: string;
@@ -232,6 +233,13 @@ export interface AgentEvent {
   usage?: Record<string, unknown>;
   modelUsage?: Record<string, unknown>;
   structuredOutput?: unknown;
+
+  // Context usage fields
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  contextWindow?: number;
 
   // Hook event fields
   toolUseId?: string;
@@ -444,6 +452,16 @@ export interface BudgetStatus {
   maxThinkingTokens?: number;
   currentThinkingTokens: number;
   limitExceeded?: 'budget' | 'turns' | 'thinking_tokens';
+}
+
+// Context window usage tracking
+export interface ContextUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  contextWindow: number;
+  lastUpdated: number;
 }
 
 // User-defined custom todo item

@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { openFolderDialog, setMinimizeToTray } from '@/lib/tauri';
+import { openFolderDialog, setMinimizeToTray, requestNotificationPermission } from '@/lib/tauri';
 import { getWorkspacesBasePath, setWorkspacesBasePath } from '@/lib/api';
 import { EDITOR_THEMES } from '@/lib/monacoThemes';
 
@@ -214,6 +214,16 @@ function ChatSettings() {
   const setConfirmCloseActiveTab = useSettingsStore((s) => s.setConfirmCloseActiveTab);
   const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
   const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
+  const desktopNotifications = useSettingsStore((s) => s.desktopNotifications);
+  const setDesktopNotifications = useSettingsStore((s) => s.setDesktopNotifications);
+
+  const handleNotificationToggle = useCallback(async (enabled: boolean) => {
+    if (enabled) {
+      const perm = await requestNotificationPermission();
+      if (perm !== 'granted') return;
+    }
+    setDesktopNotifications(enabled);
+  }, [setDesktopNotifications]);
 
   return (
     <div>
@@ -278,7 +288,7 @@ function ChatSettings() {
         title="Desktop notifications"
         description="Get notified when AI finishes working in a chat"
       >
-        <Switch defaultChecked />
+        <Switch checked={desktopNotifications} onCheckedChange={handleNotificationToggle} />
       </SettingsRow>
 
       <SettingsRow
