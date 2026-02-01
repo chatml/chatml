@@ -441,6 +441,107 @@ describe('ReviewPanel', () => {
     });
   });
 
+  // ── Send Feedback button ─────────────────────────────────────────────
+
+  describe('send feedback button', () => {
+    it('does not render Send Feedback when onSendFeedback is not provided', async () => {
+      setupMswListComments(mockComments);
+
+      render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Potential null pointer')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Send Feedback')).not.toBeInTheDocument();
+    });
+
+    it('renders Send Feedback button when onSendFeedback is provided', async () => {
+      setupMswListComments(mockComments);
+
+      render(
+        <ReviewPanel
+          workspaceId="ws-1"
+          sessionId="session-1"
+          onSendFeedback={vi.fn()}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Potential null pointer')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Send Feedback')).toBeInTheDocument();
+    });
+
+    it('disables Send Feedback when no unresolved comments exist', async () => {
+      setupMswListComments([
+        makeComment({ id: 'r-1', resolved: true }),
+      ]);
+
+      render(
+        <ReviewPanel
+          workspaceId="ws-1"
+          sessionId="session-1"
+          onSendFeedback={vi.fn()}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('All comments resolved')).toBeInTheDocument();
+      });
+
+      const sendButton = screen.getByText('Send Feedback').closest('button');
+      expect(sendButton).toBeDisabled();
+    });
+
+    it('enables Send Feedback when unresolved comments exist', async () => {
+      setupMswListComments([
+        makeComment({ id: 'c-1', resolved: false, title: 'Active comment' }),
+      ]);
+
+      render(
+        <ReviewPanel
+          workspaceId="ws-1"
+          sessionId="session-1"
+          onSendFeedback={vi.fn()}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Active comment')).toBeInTheDocument();
+      });
+
+      const sendButton = screen.getByText('Send Feedback').closest('button');
+      expect(sendButton).not.toBeDisabled();
+    });
+
+    it('calls onSendFeedback when button is clicked', async () => {
+      const user = userEvent.setup();
+      const onSendFeedback = vi.fn();
+
+      setupMswListComments([
+        makeComment({ id: 'c-1', title: 'A comment' }),
+      ]);
+
+      render(
+        <ReviewPanel
+          workspaceId="ws-1"
+          sessionId="session-1"
+          onSendFeedback={onSendFeedback}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('A comment')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Send Feedback'));
+
+      expect(onSendFeedback).toHaveBeenCalledOnce();
+    });
+  });
+
   // ── Store integration ────────────────────────────────────────────────
 
   describe('store integration', () => {

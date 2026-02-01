@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Check,
   Loader2,
+  Send,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -31,9 +32,10 @@ interface ReviewPanelProps {
   workspaceId: string | null;
   sessionId: string | null;
   onFileSelect?: (path: string, line?: number) => void;
+  onSendFeedback?: () => void;
 }
 
-export function ReviewPanel({ workspaceId, sessionId, onFileSelect }: ReviewPanelProps) {
+export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedback }: ReviewPanelProps) {
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const [fetchSession, setFetchSession] = useState<string | null>(null);
@@ -179,6 +181,19 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect }: ReviewPane
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
+        {onSendFeedback && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 text-xs px-1.5 ml-auto text-muted-foreground hover:text-foreground"
+            onClick={onSendFeedback}
+            disabled={counts.all === 0}
+            title="Send unresolved comments as feedback to AI"
+          >
+            <Send className="h-3 w-3 mr-0.5" />
+            Send Feedback
+          </Button>
+        )}
       </div>
 
       {/* Comments list */}
