@@ -17,6 +17,7 @@ interface PrimaryActionButtonProps {
   workspaceId: string | null;
   session: WorktreeSession | null | undefined;
   onSendMessage: (content: string) => void;
+  onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
   onCreatePR?: () => void;
   // Optional: pass pre-fetched data to avoid duplicate fetches
@@ -28,6 +29,7 @@ export function PrimaryActionButton({
   workspaceId,
   session,
   onSendMessage,
+  onFixIssues,
   onArchiveSession,
   onCreatePR,
   gitStatus: externalGitStatus,
@@ -75,6 +77,7 @@ export function PrimaryActionButton({
       isLoading={isLoading}
       disabled={isAgentWorking}
       onSendMessage={onSendMessage}
+      onFixIssues={onFixIssues}
       onArchiveSession={onArchiveSession}
       onCreatePR={onCreatePR}
     />

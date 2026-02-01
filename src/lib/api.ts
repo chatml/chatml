@@ -1469,6 +1469,44 @@ export async function analyzeCIFailure(
 }
 
 // =============================================================================
+// CI Failure Context (aggregated failures for forwarding to AI)
+// =============================================================================
+
+export interface FailedJobContext {
+  jobId: number;
+  jobName: string;
+  jobUrl: string;
+  failedSteps: string[];
+  logs: string;
+  logLines: number;
+  truncated: boolean;
+}
+
+export interface FailedRunContext {
+  runId: number;
+  runName: string;
+  runUrl: string;
+  failedJobs: FailedJobContext[];
+}
+
+export interface CIFailureContextDTO {
+  branch: string;
+  failedRuns: FailedRunContext[];
+  totalFailed: number;
+  truncated: boolean;
+}
+
+export async function getCIFailureContext(
+  workspaceId: string,
+  sessionId: string
+): Promise<CIFailureContextDTO> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/ci/failure-context`
+  );
+  return handleResponse<CIFailureContextDTO>(res);
+}
+
+// =============================================================================
 // Commit Status Types and Functions
 // =============================================================================
 

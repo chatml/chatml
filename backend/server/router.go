@@ -130,6 +130,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{id}/sessions/{sessionId}/ci/runs/{runId}/rerun", h.RerunCIWorkflow)
 		r.Get("/{id}/sessions/{sessionId}/ci/jobs/{jobId}/logs", h.GetCIJobLogs)
 		r.Post("/{id}/sessions/{sessionId}/ci/analyze", h.AnalyzeCIFailure)
+		r.Get("/{id}/sessions/{sessionId}/ci/failure-context", h.GetCIFailureContext)
 		// Commit status endpoints
 		r.Post("/{id}/sessions/{sessionId}/status", h.PostCommitStatus)
 		r.Get("/{id}/sessions/{sessionId}/statuses", h.ListCommitStatuses)
