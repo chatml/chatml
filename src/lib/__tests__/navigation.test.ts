@@ -39,6 +39,22 @@ vi.mock('@/stores/settingsStore', () => ({
   },
 }));
 
+const mockUpdateActiveTab = vi.fn();
+const mockTabStoreState = {
+  activeTabId: 'default',
+  tabs: { default: { id: 'default', label: 'Dashboard' } },
+  tabOrder: ['default'],
+  updateActiveTab: mockUpdateActiveTab,
+  createTab: vi.fn(() => 'new-tab'),
+  activateTab: vi.fn(),
+};
+
+vi.mock('@/stores/tabStore', () => ({
+  useTabStore: {
+    getState: () => mockTabStoreState,
+  },
+}));
+
 // Import after mocks are set up
 const { navigate, goBack, goForward, goToBackEntry, goToForwardEntry } = await import('../navigation');
 
@@ -78,6 +94,7 @@ describe('navigation helpers', () => {
     mockAppState.workspaces = [{ id: 'ws-1', name: 'My Repo' }];
     mockAppState.sessions = [{ id: 'sess-1', name: 'boston', branch: 'main', workspaceId: 'ws-1' }];
     mockAppState.conversations = [{ id: 'conv-1', name: 'Task Chat', sessionId: 'sess-1' }];
+    mockTabStoreState.activeTabId = 'default';
   });
 
   // ---------- navigate ----------
@@ -113,12 +130,12 @@ describe('navigation helpers', () => {
       expect(tab.backStack[0].contentView.type).toBe('conversation');
     });
 
-    it('generates a label from current state when pushing history', () => {
-      // Current state has conversation with conv-1 named 'Task Chat'
+    it('generates a breadcrumb label from current state when pushing history', () => {
+      // Current state has conversation with conv-1 named 'Task Chat' in workspace 'My Repo'
       navigate({ contentView: { type: 'global-dashboard' } });
 
       const tab = getTab();
-      expect(tab.backStack[0].label).toBe('Task Chat');
+      expect(tab.backStack[0].label).toBe('My Repo › Task Chat');
     });
 
     it('generates dashboard label for global-dashboard', () => {
@@ -135,18 +152,18 @@ describe('navigation helpers', () => {
       expect(getTab().backStack[0].label).toBe('My Repo');
     });
 
-    it('generates branches label', () => {
+    it('generates breadcrumb branches label', () => {
       mockSettingsState.contentView = { type: 'branches', workspaceId: 'ws-1' };
       navigate({ contentView: { type: 'conversation' } });
 
-      expect(getTab().backStack[0].label).toBe('Branches · My Repo');
+      expect(getTab().backStack[0].label).toBe('My Repo › Branches');
     });
 
-    it('generates PR dashboard label', () => {
+    it('generates breadcrumb PR dashboard label', () => {
       mockSettingsState.contentView = { type: 'pr-dashboard', workspaceId: 'ws-1' };
       navigate({ contentView: { type: 'conversation' } });
 
-      expect(getTab().backStack[0].label).toBe('PRs · My Repo');
+      expect(getTab().backStack[0].label).toBe('My Repo › Pull Requests');
     });
 
     it('generates session-manager label', () => {
@@ -163,12 +180,12 @@ describe('navigation helpers', () => {
       expect(getTab().backStack[0].label).toBe('Repositories');
     });
 
-    it('falls back to session name when no conversation is selected', () => {
+    it('falls back to breadcrumb session name when no conversation is selected', () => {
       mockAppState.selectedConversationId = null as unknown as string;
       mockAppState.conversations = [];
       navigate({ contentView: { type: 'global-dashboard' } });
 
-      expect(getTab().backStack[0].label).toBe('boston');
+      expect(getTab().backStack[0].label).toBe('My Repo › boston');
     });
 
     it('skips history push when isRestoring is true', () => {

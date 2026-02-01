@@ -3,6 +3,20 @@ import { vi, beforeAll, afterEach, afterAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import { server } from '@/__mocks__/server';
 
+// Polyfill localStorage for jsdom (node's --localstorage-file may not work)
+if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage.setItem !== 'function') {
+  const store = new Map<string, string>();
+  const localStorageMock: Storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => { store.set(key, String(value)); },
+    removeItem: (key: string) => { store.delete(key); },
+    clear: () => { store.clear(); },
+    get length() { return store.size; },
+    key: (index: number) => [...store.keys()][index] ?? null,
+  };
+  Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
+}
+
 // MSW server lifecycle
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {

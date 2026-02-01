@@ -13,6 +13,10 @@ import {
 } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
+import { ENABLE_BROWSER_TABS } from '@/lib/constants';
+import { useTabStore } from '@/stores/tabStore';
+import { switchToTab, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
+import { useNavigationStore } from '@/stores/navigationStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
@@ -490,8 +494,27 @@ export default function Home() {
         );
         setConversations(allConversations);
 
-        // Select first workspace and session if available
-        if (mappedWorkspaces.length > 0) {
+        // Restore active tab state if persisted tabs exist, otherwise fall back to defaults
+        const tabState = ENABLE_BROWSER_TABS ? useTabStore.getState() : null;
+        const activeTab = tabState?.tabs[tabState.activeTabId];
+        const hasPersistedTab = ENABLE_BROWSER_TABS && activeTab && tabState!.tabOrder.length > 0 &&
+          (activeTab.selectedWorkspaceId || activeTab.contentView.type !== 'conversation');
+
+        if (hasPersistedTab) {
+          // Restore from persisted active tab
+          if (activeTab.selectedWorkspaceId) {
+            selectWorkspace(activeTab.selectedWorkspaceId);
+          }
+          if (activeTab.selectedSessionId) {
+            selectSession(activeTab.selectedSessionId);
+          }
+          if (activeTab.selectedConversationId) {
+            selectConversation(activeTab.selectedConversationId);
+          }
+          useSettingsStore.getState().setContentView(activeTab!.contentView);
+          useNavigationStore.getState().setActiveTabId(tabState!.activeTabId);
+        } else if (mappedWorkspaces.length > 0) {
+          // First launch — select first workspace and session
           selectWorkspace(mappedWorkspaces[0].id);
           const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id);
           if (firstSession) {
@@ -523,7 +546,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, addConversation]);
+  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, selectConversation, addConversation]);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {
@@ -800,9 +823,10 @@ export default function Home() {
         setShowBottomTerminal(!showBottomTerminalRef.current);
       }
       // Cmd+Shift+1-9 to switch sessions
-      if (e.metaKey && e.shiftKey && e.key >= '1' && e.key <= '9') {
+      // Use e.code because Shift changes e.key to symbols on macOS (e.g. '1' → '!')
+      if (e.metaKey && e.shiftKey && e.code >= 'Digit1' && e.code <= 'Digit9') {
         e.preventDefault();
-        const index = parseInt(e.key) - 1;
+        const index = parseInt(e.code.slice(5)) - 1;
         if (sessions[index]) {
           const session = sessions[index];
           navigate({
@@ -825,21 +849,69 @@ export default function Home() {
         e.preventDefault();
         selectPreviousTab();
       }
-      // Cmd+W to close tab (file tab first, then conversation)
+      // Cmd+T to open new browser tab
+      if (ENABLE_BROWSER_TABS && e.key === 't' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        createAndSwitchToNewTab();
+      }
+      // Cmd+W to close tab (file tab first, then conversation, then browser tab)
       if (e.key === 'w' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
         // If a file tab is selected, close it first
         if (selectedFileTabId) {
           handleCloseFileTab(selectedFileTabId);
+        } else if (ENABLE_BROWSER_TABS && useTabStore.getState().tabOrder.length > 1) {
+          // Close the browser tab if more than one exists
+          const tabStore = useTabStore.getState();
+          const closingId = tabStore.activeTabId;
+          tabStore.closeTab(closingId);
+          // Restore new active tab's state
+          const newActiveId = tabStore.activeTabId;
+          if (newActiveId !== closingId) {
+            switchToTab(newActiveId);
+          }
         } else {
           // Otherwise close the conversation
           handleCloseTab();
+        }
+      }
+      // Cmd+Shift+] for next browser tab
+      if (ENABLE_BROWSER_TABS && e.key === ']' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        const { tabOrder, activeTabId: currentTabId } = useTabStore.getState();
+        if (tabOrder.length > 1) {
+          const currentIndex = tabOrder.indexOf(currentTabId);
+          const nextIndex = (currentIndex + 1) % tabOrder.length;
+          switchToTab(tabOrder[nextIndex]);
+        }
+      }
+      // Cmd+Shift+[ for previous browser tab
+      if (ENABLE_BROWSER_TABS && e.key === '[' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        const { tabOrder, activeTabId: currentTabId } = useTabStore.getState();
+        if (tabOrder.length > 1) {
+          const currentIndex = tabOrder.indexOf(currentTabId);
+          const prevIndex = (currentIndex - 1 + tabOrder.length) % tabOrder.length;
+          switchToTab(tabOrder[prevIndex]);
         }
       }
       // Cmd+S to save current file tab
       if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
         saveCurrentTab();
+      }
+      // Cmd+1-9 to select browser tabs by position (Cmd+9 = last tab)
+      if (ENABLE_BROWSER_TABS && e.key >= '1' && e.key <= '9' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        const { tabOrder } = useTabStore.getState();
+        if (tabOrder.length > 1) {
+          const num = parseInt(e.key, 10);
+          // Cmd+9 always selects the last tab
+          const targetIndex = num === 9 ? tabOrder.length - 1 : num - 1;
+          if (targetIndex < tabOrder.length) {
+            switchToTab(tabOrder[targetIndex]);
+          }
+        }
       }
       // Cmd+. to toggle zen mode (distraction-free mode, only when session is selected)
       if (e.code === 'Period' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
@@ -1086,7 +1158,6 @@ export default function Home() {
                 onToggleLeftSidebar={toggleLeftSidebar}
                 onToggleRightSidebar={toggleRightSidebar}
                 onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
-                onNew={handleNewSession}
                 onOpenSettings={() => setShowSettings(true)}
                 onOpenShortcuts={() => setShowShortcuts(true)}
               />

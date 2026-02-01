@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
-import { navigate } from '@/lib/navigation';
+import { navigate, navigateOrOpenTab } from '@/lib/navigation';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
@@ -350,7 +350,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               ? "bg-surface-2 text-foreground"
               : "hover:bg-surface-1"
           )}
-          onClick={() => navigate({ contentView: { type: 'global-dashboard' } })}
+          onClick={(e) => navigateOrOpenTab({ contentView: { type: 'global-dashboard' } }, e)}
         >
           <LayoutDashboard className={cn(
             "w-4 h-4",
@@ -398,7 +398,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   Repositories
                 </span>
                 <button
-                  onClick={() => navigate({ contentView: { type: 'repositories' } })}
+                  onClick={(e) => navigateOrOpenTab({ contentView: { type: 'repositories' } }, e)}
                   className="text-[10px] font-medium text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100"
                 >
                   Manage
@@ -474,30 +474,30 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         selectedSessionId={selectedSessionId}
                         onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
                         onCreateSession={() => handleCreateSession(workspace.id)}
-                        onSelectSession={(sessionId) => {
-                          navigate({
+                        onSelectSession={(sessionId, event) => {
+                          navigateOrOpenTab({
                             workspaceId: workspace.id,
                             sessionId,
                             contentView: { type: 'conversation' },
-                          });
+                          }, event);
                           onSessionSelected?.();
                         }}
                         onArchiveSession={handleArchiveSession}
                         onPinSession={handlePinSession}
                         onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
-                        onOpenBranches={() => {
-                          navigate({
+                        onOpenBranches={(event) => {
+                          navigateOrOpenTab({
                             workspaceId: workspace.id,
                             sessionId: null,
                             contentView: { type: 'branches', workspaceId: workspace.id },
-                          });
+                          }, event);
                         }}
-                        onOpenPRs={() => {
-                          navigate({
+                        onOpenPRs={(event) => {
+                          navigateOrOpenTab({
                             workspaceId: workspace.id,
                             sessionId: null,
                             contentView: { type: 'pr-dashboard', workspaceId: workspace.id },
-                          });
+                          }, event);
                         }}
                         onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}
                         contentView={contentView}
@@ -709,12 +709,12 @@ interface SortableWorkspaceItemProps {
   contentView: ContentView;
   onToggle: () => void;
   onCreateSession: () => void;
-  onSelectSession: (sessionId: string) => void;
+  onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
   onPinSession: (sessionId: string) => void;
   onRemoveWorkspace: () => void;
-  onOpenBranches: () => void;
-  onOpenPRs: () => void;
+  onOpenBranches: (event?: React.MouseEvent) => void;
+  onOpenPRs: (event?: React.MouseEvent) => void;
   onOpenWorkspaceSettings: () => void;
   getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
@@ -857,7 +857,7 @@ function SortableWorkspaceItem({
                           ? "bg-surface-2 text-foreground"
                           : "hover:bg-surface-1"
                       )}
-                      onClick={onOpenBranches}
+                      onClick={(e) => onOpenBranches(e)}
                     >
                       <GitBranch className={cn(
                         "w-3.5 h-3.5",
@@ -879,7 +879,7 @@ function SortableWorkspaceItem({
                           ? "bg-surface-2 text-foreground"
                           : "hover:bg-surface-1"
                       )}
-                      onClick={onOpenPRs}
+                      onClick={(e) => onOpenPRs(e)}
                     >
                       <GitPullRequest className={cn(
                         "w-3.5 h-3.5",
@@ -945,7 +945,7 @@ function SortableWorkspaceItem({
                             ? 'bg-surface-2 hover:bg-surface-3'
                             : 'hover:bg-surface-1'
                         )}
-                        onClick={() => onSelectSession(session.id)}
+                        onClick={(e) => onSelectSession(session.id, e)}
                       >
                         {/* Status indicator column */}
                         <div className="w-3.5 shrink-0 flex items-center justify-center pt-0.5">

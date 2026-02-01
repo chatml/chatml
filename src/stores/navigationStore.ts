@@ -61,6 +61,12 @@ interface NavigationState {
   goToBackIndex: (index: number, currentEntry: NavigationEntry, tabId?: string) => NavigationEntry | null;
   goToForwardIndex: (index: number, currentEntry: NavigationEntry, tabId?: string) => NavigationEntry | null;
   setRestoring: (value: boolean) => void;
+  /** Set the active tab ID (called when browser tabs switch) */
+  setActiveTabId: (tabId: string) => void;
+  /** Remove a tab's history (called when a browser tab is closed) */
+  clearTabHistory: (tabId: string) => void;
+  /** Ensure a tab has a history entry (called when a new browser tab is created) */
+  ensureTabHistory: (tabId: string) => void;
 }
 
 export const useNavigationStore = create<NavigationState>()((set) => ({
@@ -187,4 +193,21 @@ export const useNavigationStore = create<NavigationState>()((set) => ({
   },
 
   setRestoring: (value) => set({ isRestoring: value }),
+
+  setActiveTabId: (tabId) => set((state) => {
+    // Ensure the tab has a history entry
+    const tabs = state.tabs[tabId] ? state.tabs : { ...state.tabs, [tabId]: emptyTabHistory() };
+    return { activeTabId: tabId, tabs };
+  }),
+
+  clearTabHistory: (tabId) => set((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [tabId]: _removed, ...rest } = state.tabs;
+    return { tabs: rest };
+  }),
+
+  ensureTabHistory: (tabId) => set((state) => {
+    if (state.tabs[tabId]) return state;
+    return { tabs: { ...state.tabs, [tabId]: emptyTabHistory() } };
+  }),
 }));
