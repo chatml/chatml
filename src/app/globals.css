@@ -305,6 +305,16 @@
   }
 }
 
+/* Hero gradient text */
+.hero-gradient-text {
+  display: inline-block;
+  background: linear-gradient(135deg, #a855f7 0%, #22d3ee 50%, #f472b6 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 /* Typography utility classes */
 .font-display {
   font-family: var(--font-display);

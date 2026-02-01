@@ -741,10 +741,17 @@ export default function Home() {
         e.preventDefault();
         window.location.reload();
       }
-      // Cmd+N to add workspace
-      if (e.key === 'n' && (e.metaKey || e.ctrlKey)) {
+      // Cmd+Shift+N to add workspace
+      if (e.key === 'n' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         setShowAddWorkspace(true);
+        return;
+      }
+      // Cmd+N to create new session in selected workspace
+      if (e.key === 'n' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        if (!selectedWorkspaceId && workspaces.length === 0) return;
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('spawn-agent'));
       }
       // Cmd+K for command palette (future) - but allow terminal to handle it for clear
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {

@@ -45,6 +45,20 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'General',
   },
   {
+    id: 'newSession',
+    key: 'n',
+    modifiers: ['meta'],
+    label: 'New session',
+    category: 'General',
+  },
+  {
+    id: 'addWorkspace',
+    key: 'n',
+    modifiers: ['meta', 'shift'],
+    label: 'Add workspace',
+    category: 'General',
+  },
+  {
     id: 'resetLayouts',
     key: 'r',
     modifiers: ['meta', 'shift'],

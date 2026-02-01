@@ -77,6 +77,9 @@ interface SettingsState {
   // Command palette recent commands (last 5 used)
   recentCommands: string[];
 
+  // Recently removed workspaces (last 5, for quick re-add)
+  recentlyRemovedWorkspaces: { name: string; path: string }[];
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -104,6 +107,8 @@ interface SettingsState {
   setLayoutChanges: (layout: PanelLayout) => void;
   resetLayouts: () => void;
   addRecentCommand: (commandId: string) => void;
+  addRecentlyRemovedWorkspace: (workspace: { name: string; path: string }) => void;
+  removeRecentlyRemovedWorkspace: (path: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -134,6 +139,7 @@ export const useSettingsStore = create<SettingsState>()(
       layoutVertical: undefined,
       layoutChanges: undefined,
       recentCommands: [], // Last 5 used command IDs
+      recentlyRemovedWorkspaces: [], // Last 5 removed workspaces for quick re-add
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -189,6 +195,15 @@ export const useSettingsStore = create<SettingsState>()(
           const filtered = state.recentCommands.filter((id) => id !== commandId);
           return { recentCommands: [commandId, ...filtered].slice(0, 5) };
         }),
+      addRecentlyRemovedWorkspace: (workspace) =>
+        set((state) => {
+          const filtered = state.recentlyRemovedWorkspaces.filter((w) => w.path !== workspace.path);
+          return { recentlyRemovedWorkspaces: [workspace, ...filtered].slice(0, 5) };
+        }),
+      removeRecentlyRemovedWorkspace: (path) =>
+        set((state) => ({
+          recentlyRemovedWorkspaces: state.recentlyRemovedWorkspaces.filter((w) => w.path !== path),
+        })),
     }),
     {
       name: 'chatml-settings',
