@@ -55,10 +55,14 @@ export function MonacoEditor({
   // Register custom theme when editorTheme changes
   // Only show loading spinner on initial load to prevent flash when switching themes
   useEffect(() => {
+    let cancelled = false;
     registerMonacoTheme(editorTheme).then((themeId) => {
-      setActiveTheme(themeId);
-      setIsInitialLoad(false);
+      if (!cancelled) {
+        setActiveTheme(themeId);
+        setIsInitialLoad(false);
+      }
     });
+    return () => { cancelled = true; };
   }, [editorTheme]);
 
   const handleMount: OnMount = useCallback((editor) => {
@@ -230,10 +234,14 @@ export function MonacoDiffEditor({
   // Register custom theme when editorTheme changes
   // Only show loading spinner on initial load to prevent flash when switching themes
   useEffect(() => {
+    let cancelled = false;
     registerMonacoTheme(editorTheme).then((themeId) => {
-      setActiveTheme(themeId);
-      setIsInitialLoad(false);
+      if (!cancelled) {
+        setActiveTheme(themeId);
+        setIsInitialLoad(false);
+      }
     });
+    return () => { cancelled = true; };
   }, [editorTheme]);
 
   // Update sideBySide option when it changes without remounting
