@@ -1,14 +1,16 @@
 'use client';
 
 import { type CheckDetail } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, Clock, CircleDot, CircleMinus } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, CircleDot, CircleMinus, Sparkles } from 'lucide-react';
 
 interface CheckListProps {
   checks: CheckDetail[];
+  onAnalyzeFailure?: (check: CheckDetail) => void;
 }
 
-export function CheckList({ checks }: CheckListProps) {
+export function CheckList({ checks, onAnalyzeFailure }: CheckListProps) {
   // Sort: failures first, then pending, then passed
   const sortedChecks = [...checks].sort((a, b) => {
     const getOrder = (check: CheckDetail) => {
@@ -22,7 +24,11 @@ export function CheckList({ checks }: CheckListProps) {
   return (
     <div className="space-y-1">
       {sortedChecks.map((check, index) => (
-        <CheckItem key={`${check.name}-${index}`} check={check} />
+        <CheckItem
+          key={`${check.name}-${index}`}
+          check={check}
+          onAnalyze={onAnalyzeFailure}
+        />
       ))}
     </div>
   );
@@ -30,6 +36,7 @@ export function CheckList({ checks }: CheckListProps) {
 
 interface CheckItemProps {
   check: CheckDetail;
+  onAnalyze?: (check: CheckDetail) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -46,7 +53,7 @@ function formatDuration(seconds: number): string {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
-function CheckItem({ check }: CheckItemProps) {
+function CheckItem({ check, onAnalyze }: CheckItemProps) {
   const getStatusInfo = () => {
     if (check.status !== 'completed') {
       if (check.status === 'in_progress') {
@@ -107,6 +114,7 @@ function CheckItem({ check }: CheckItemProps) {
 
   const statusInfo = getStatusInfo();
   const StatusIcon = statusInfo.icon;
+  const isFailed = check.conclusion === 'failure' || check.conclusion === 'timed_out';
 
   return (
     <div className="flex items-center gap-2 text-xs py-0.5">
@@ -116,6 +124,17 @@ function CheckItem({ check }: CheckItemProps) {
         <span className="text-muted-foreground shrink-0">{formatDuration(check.durationSeconds)}</span>
       )}
       <span className="flex-1" />
+      {isFailed && onAnalyze && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 px-1.5 text-xs"
+          onClick={() => onAnalyze(check)}
+        >
+          <Sparkles className="h-3 w-3 mr-1" />
+          Analyze
+        </Button>
+      )}
       <span className={cn('shrink-0', statusInfo.color)}>{statusInfo.label}</span>
     </div>
   );

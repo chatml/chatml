@@ -2,6 +2,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,11 +23,12 @@ type User struct {
 
 // Client handles GitHub API interactions
 type Client struct {
-	clientID     string
-	clientSecret string
-	httpClient   *http.Client
-	baseURL      string // OAuth base URL (github.com)
-	apiURL       string // API base URL (api.github.com)
+	clientID         string
+	clientSecret     string
+	httpClient       *http.Client
+	noRedirectClient *http.Client // Client that doesn't follow redirects (for log fetching)
+	baseURL          string       // OAuth base URL (github.com)
+	apiURL           string       // API base URL (api.github.com)
 
 	// In-memory token storage
 	mu    sync.RWMutex
@@ -40,8 +42,14 @@ func NewClient(clientID, clientSecret string) *Client {
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		httpClient:   &http.Client{Timeout: 30 * time.Second},
-		baseURL:      "https://github.com",
-		apiURL:       "https://api.github.com",
+		noRedirectClient: &http.Client{
+			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		baseURL: "https://github.com",
+		apiURL:  "https://api.github.com",
 	}
 }
 
@@ -288,4 +296,111 @@ func (c *Client) GetAvatarByEmail(ctx context.Context, email string) (string, er
 	}
 
 	return result.Items[0].AvatarURL, nil
+}
+
+// CommitStatus represents a commit status to create
+type CommitStatus struct {
+	State       string `json:"state"`       // error, failure, pending, success
+	TargetURL   string `json:"target_url"`  // URL to ChatML session/results
+	Description string `json:"description"` // Short description (max 140 chars)
+	Context     string `json:"context"`     // Status identifier, e.g., "chatml/ai-review"
+}
+
+// CommitStatusResponse represents GitHub's response for a commit status
+type CommitStatusResponse struct {
+	ID          int64     `json:"id"`
+	State       string    `json:"state"`
+	Description string    `json:"description"`
+	Context     string    `json:"context"`
+	TargetURL   string    `json:"target_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Creator     *User     `json:"creator"`
+}
+
+// CombinedStatus represents the combined status for a ref
+type CombinedStatus struct {
+	State      string                 `json:"state"` // failure, pending, success
+	SHA        string                 `json:"sha"`
+	TotalCount int                    `json:"total_count"`
+	Statuses   []CommitStatusResponse `json:"statuses"`
+}
+
+// CreateCommitStatus posts a status to a commit
+func (c *Client) CreateCommitStatus(ctx context.Context, owner, repo, sha string, status CommitStatus) (*CommitStatusResponse, error) {
+	token := c.GetToken()
+	if token == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	statusURL := fmt.Sprintf("%s/repos/%s/%s/statuses/%s", c.apiURL, owner, repo, sha)
+
+	body, err := json.Marshal(status)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling status: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", statusURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("posting status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// GitHub returns 201 Created on success
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var result CommitStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// GetCombinedStatus gets the combined status for a ref (branch, tag, or SHA)
+func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string) (*CombinedStatus, error) {
+	token := c.GetToken()
+	if token == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	statusURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/status", c.apiURL, owner, repo, ref)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", statusURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result CombinedStatus
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	return &result, nil
 }
