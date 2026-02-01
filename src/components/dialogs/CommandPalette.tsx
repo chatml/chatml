@@ -191,6 +191,15 @@ const COMMANDS: Command[] = [
     action: () => window.dispatchEvent(new CustomEvent('new-conversation')),
   },
   {
+    id: 'create-from-pr',
+    category: 'Actions',
+    label: 'New Session from PR/Branch',
+    icon: GitPullRequest,
+    shortcutId: 'createFromPR',
+    keywords: ['pull request', 'pr', 'branch', 'checkout', 'review'],
+    action: () => window.dispatchEvent(new CustomEvent('create-from-pr')),
+  },
+  {
     id: 'add-repository',
     category: 'Actions',
     label: 'Add Repository',

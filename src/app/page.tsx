@@ -45,6 +45,7 @@ import { BottomTerminal } from '@/components/layout/BottomTerminal';
 import { MainToolbar, ContentActionBar } from '@/components/layout/MainToolbar';
 import { SidebarToolbar } from '@/components/layout/SidebarToolbar';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
+import { CreateFromPRModal } from '@/components/dialogs/CreateFromPRModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
 import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
@@ -152,6 +153,7 @@ export default function Home() {
     setMounted(true);
   }, []);
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
+  const [showCreateFromPR, setShowCreateFromPR] = useState(false);
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
@@ -426,6 +428,14 @@ export default function Home() {
   // Keyboard shortcut: Cmd+/ to show shortcuts dialog
   useShortcut('shortcutsDialog', useCallback(() => {
     setShowShortcuts((prev) => !prev);
+  }, []));
+
+  useShortcut('addWorkspace', useCallback(() => {
+    setShowAddWorkspace(true);
+  }, []));
+
+  useShortcut('createFromPR', useCallback(() => {
+    setShowCreateFromPR(true);
   }, []));
 
   // Map backend Repo to frontend Workspace
@@ -1053,6 +1063,7 @@ export default function Home() {
     const handleSpawnAgent = () => handleNewSession();
     const handleNewConv = () => handleNewConversation();
     const handleAddWorkspace = () => setShowAddWorkspace(true);
+    const handleCreateFromPR = () => setShowCreateFromPR(true);
     const handleToggleTheme = () => {
       setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
     };
@@ -1071,6 +1082,7 @@ export default function Home() {
     window.addEventListener('spawn-agent', handleSpawnAgent);
     window.addEventListener('new-conversation', handleNewConv);
     window.addEventListener('add-workspace', handleAddWorkspace);
+    window.addEventListener('create-from-pr', handleCreateFromPR);
     window.addEventListener('toggle-theme', handleToggleTheme);
     window.addEventListener('toggle-left-panel', handleToggleLeftPanel);
     window.addEventListener('toggle-right-panel', handleToggleRightPanel);
@@ -1082,6 +1094,7 @@ export default function Home() {
       window.removeEventListener('spawn-agent', handleSpawnAgent);
       window.removeEventListener('new-conversation', handleNewConv);
       window.removeEventListener('add-workspace', handleAddWorkspace);
+      window.removeEventListener('create-from-pr', handleCreateFromPR);
       window.removeEventListener('toggle-theme', handleToggleTheme);
       window.removeEventListener('toggle-left-panel', handleToggleLeftPanel);
       window.removeEventListener('toggle-right-panel', handleToggleRightPanel);
@@ -1376,6 +1389,12 @@ export default function Home() {
         <AddWorkspaceModal
           isOpen={showAddWorkspace}
           onClose={() => setShowAddWorkspace(false)}
+        />
+
+        {/* Create Session from PR/Branch Modal */}
+        <CreateFromPRModal
+          isOpen={showCreateFromPR}
+          onClose={() => setShowCreateFromPR(false)}
         />
 
         {/* Clone from URL Dialog */}

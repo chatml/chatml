@@ -12,6 +12,12 @@ import (
 // ErrDirectoryExists indicates a name collision during atomic directory creation
 var ErrDirectoryExists = errors.New("directory already exists")
 
+// ErrBranchAlreadyCheckedOut indicates the branch is already in use by another worktree
+var ErrBranchAlreadyCheckedOut = errors.New("branch is already checked out in another worktree")
+
+// ErrLocalBranchExists indicates the local branch already exists (but is not checked out in a worktree)
+var ErrLocalBranchExists = errors.New("local branch already exists")
+
 // WorkspacesBaseDir returns the default base directory for session worktrees: ~/.chatml/workspaces
 func WorkspacesBaseDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -117,6 +123,52 @@ func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, wo
 	}
 
 	return worktreePath, branchName, baseCommit, nil
+}
+
+// CheckoutExistingBranchInDir creates a worktree that checks out an existing remote branch.
+// Unlike CreateInExistingDir which creates a new branch with -b, this checks out an existing
+// remote branch (e.g. origin/feature-branch) and creates a local tracking branch.
+// The directory must already exist (created atomically by caller).
+// Returns the worktree path, local branch name, and the base commit SHA.
+func (wm *WorktreeManager) CheckoutExistingBranchInDir(ctx context.Context, repoPath, worktreePath, remoteBranch string) (string, string, string, error) {
+	// Fetch the specific branch from origin (targeted fetch is faster than fetching all refs)
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "fetch", "origin", remoteBranch)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		cancel()
+		return "", "", "", fmt.Errorf("failed to fetch origin: %s: %w", string(out), err)
+	}
+	cancel()
+
+	// Resolve the remote branch ref to get the base commit SHA
+	remoteRef := fmt.Sprintf("origin/%s", remoteBranch)
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-parse", remoteRef)
+	out, err := cmd.Output()
+	cancel()
+	if err != nil {
+		return "", "", "", fmt.Errorf("remote branch '%s' not found on origin: %w", remoteBranch, err)
+	}
+	baseCommit := strings.TrimSpace(string(out))
+
+	// Create worktree with a local tracking branch using -b.
+	// "git worktree add -b <branch> --track <path> <remote-ref>" creates a local branch
+	// tracking the remote. Possible errors:
+	// - "already checked out" / "is already used by worktree" → branch is in use by another worktree
+	// - "already exists" → local branch exists but is not checked out in a worktree
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", remoteBranch, "--track", worktreePath, remoteRef)
+	defer cancel()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		errMsg := string(out)
+		if strings.Contains(errMsg, "already checked out") ||
+			strings.Contains(errMsg, "is already used by worktree") {
+			return "", "", "", fmt.Errorf("%w: %s", ErrBranchAlreadyCheckedOut, errMsg)
+		}
+		if strings.Contains(errMsg, "already exists") {
+			return "", "", "", fmt.Errorf("%w: %s", ErrLocalBranchExists, errMsg)
+		}
+		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", errMsg, err)
+	}
+
+	return worktreePath, remoteBranch, baseCommit, nil
 }
 
 func (wm *WorktreeManager) Remove(ctx context.Context, repoPath, agentID string) error {

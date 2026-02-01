@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1122,6 +1123,10 @@ type CreateSessionRequest struct {
 	WorktreePath string `json:"worktreePath,omitempty"`
 	// Task is an optional description of what this session is for
 	Task string `json:"task,omitempty"`
+	// CheckoutExisting checks out an existing remote branch instead of creating a new one
+	CheckoutExisting bool `json:"checkoutExisting,omitempty"`
+	// SystemMessage is optional custom content for the initial system message (e.g. PR context)
+	SystemMessage string `json:"systemMessage,omitempty"`
 }
 
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
@@ -1140,6 +1145,11 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.CheckoutExisting && req.Branch == "" {
+		writeValidationError(w, "branch is required when checkoutExisting is true")
 		return
 	}
 
@@ -1229,12 +1239,27 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	defer h.sessionLocks.Unlock(sessionPath)
 
 	// Create git worktree in the atomically created directory
-	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName)
+	var worktreePath, baseCommitSHA string
+	if req.CheckoutExisting {
+		// Checkout an existing remote branch (e.g. a PR branch)
+		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, sessionPath, branchName)
+	} else {
+		// Create a new branch (default behavior)
+		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName)
+	}
 	if err != nil {
 		// Rollback: remove the atomically created directory and cache entry
 		h.sessionNameCache.Remove(sessionName)
 		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
 			logger.Handlers.Warnf("Failed to rollback session directory %s: %v", sessionPath, removeErr)
+		}
+		if errors.Is(err, git.ErrBranchAlreadyCheckedOut) {
+			writeConflict(w, fmt.Sprintf("branch '%s' is already checked out in another session", branchName))
+			return
+		}
+		if errors.Is(err, git.ErrLocalBranchExists) {
+			writeConflict(w, fmt.Sprintf("local branch '%s' already exists; delete it first or use a different branch name", branchName))
+			return
 		}
 		writeInternalError(w, "failed to create worktree", err)
 		return
@@ -1318,7 +1343,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	setupMsg := models.Message{
 		ID:      uuid.New().String()[:8],
 		Role:    "system",
-		Content: "",
+		Content: req.SystemMessage,
 		SetupInfo: &models.SetupInfo{
 			SessionName:  sess.Name,
 			BranchName:   sess.Branch,
@@ -3989,6 +4014,107 @@ type PRDashboardItem struct {
 	ChecksTotal  int `json:"checksTotal"`
 	ChecksPassed int `json:"checksPassed"`
 	ChecksFailed int `json:"checksFailed"`
+}
+
+// prURLPattern matches GitHub PR URLs like https://github.com/owner/repo/pull/123
+var prURLPattern = regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
+
+type ResolvePRRequest struct {
+	URL string `json:"url"`
+}
+
+type ResolvePRResponse struct {
+	Owner              string   `json:"owner"`
+	Repo               string   `json:"repo"`
+	PRNumber           int      `json:"prNumber"`
+	Title              string   `json:"title"`
+	Body               string   `json:"body"`
+	Branch             string   `json:"branch"`
+	BaseBranch         string   `json:"baseBranch"`
+	State              string   `json:"state"`
+	IsDraft            bool     `json:"isDraft"`
+	Labels             []string `json:"labels"`
+	Reviewers          []string `json:"reviewers"`
+	Additions          int      `json:"additions"`
+	Deletions          int      `json:"deletions"`
+	ChangedFiles       int      `json:"changedFiles"`
+	MatchedWorkspaceID string   `json:"matchedWorkspaceId,omitempty"`
+	HTMLURL            string   `json:"htmlUrl"`
+}
+
+// ResolvePR parses a GitHub PR URL and returns detailed PR information plus matched workspace
+func (h *Handlers) ResolvePR(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if h.ghClient == nil {
+		writeValidationError(w, "GitHub client not configured")
+		return
+	}
+
+	var req ResolvePRRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Parse PR URL
+	matches := prURLPattern.FindStringSubmatch(req.URL)
+	if matches == nil || len(matches) < 4 {
+		writeValidationError(w, "invalid GitHub PR URL: expected format github.com/owner/repo/pull/number")
+		return
+	}
+
+	owner := matches[1]
+	repoName := matches[2]
+	prNumber, err := strconv.Atoi(matches[3])
+	if err != nil {
+		writeValidationError(w, "invalid PR number in URL")
+		return
+	}
+
+	// Fetch full PR details from GitHub
+	prDetails, err := h.ghClient.GetPRFullDetails(ctx, owner, repoName, prNumber)
+	if err != nil {
+		writeInternalError(w, "failed to fetch PR details", err)
+		return
+	}
+
+	// Try to match the PR's repo to a registered workspace
+	var matchedWorkspaceID string
+	repos, err := h.store.ListRepos(ctx)
+	if err == nil {
+		for _, repo := range repos {
+			repoOwner, repoRepo, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
+			if err != nil {
+				continue
+			}
+			if strings.EqualFold(repoOwner, owner) && strings.EqualFold(repoRepo, repoName) {
+				matchedWorkspaceID = repo.ID
+				break
+			}
+		}
+	}
+
+	resp := ResolvePRResponse{
+		Owner:              owner,
+		Repo:               repoName,
+		PRNumber:           prDetails.Number,
+		Title:              prDetails.Title,
+		Body:               prDetails.Body,
+		Branch:             prDetails.Branch,
+		BaseBranch:         prDetails.BaseBranch,
+		State:              prDetails.State,
+		IsDraft:            prDetails.IsDraft,
+		Labels:             prDetails.Labels,
+		Reviewers:          prDetails.Reviewers,
+		Additions:          prDetails.Additions,
+		Deletions:          prDetails.Deletions,
+		ChangedFiles:       prDetails.ChangedFiles,
+		MatchedWorkspaceID: matchedWorkspaceID,
+		HTMLURL:            prDetails.HTMLURL,
+	}
+
+	writeJSON(w, resp)
 }
 
 // ListPRs returns all open PRs across workspaces fetched directly from GitHub
