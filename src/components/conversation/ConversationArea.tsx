@@ -901,7 +901,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
                   <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
                   <p className="text-xs text-muted-foreground mb-2">Failed to load file</p>
-                  <p className="text-xs text-destructive/70">{currentFileTab.loadError}</p>
+                  <p className="text-xs text-destructive/70 mb-3">{currentFileTab.loadError}</p>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
+                    onClick={() => updateFileTab(currentFileTab.id, {
+                      loadError: undefined,
+                      content: undefined,
+                      diff: undefined,
+                    })}
+                  >
+                    Retry
+                  </button>
                 </div>
               </div>
             ) : currentFileTab.isBinary ? (
