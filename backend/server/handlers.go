@@ -1859,13 +1859,15 @@ func (h *Handlers) updateArchiveSummaryStatus(ctx context.Context, sessionID, st
 	}
 
 	// Broadcast so frontend can update
-	updatedSession, _ := h.store.GetSession(ctx, sessionID)
-	if updatedSession != nil {
-		h.hub.Broadcast(Event{
-			Type:      "archive_summary_updated",
-			SessionID: sessionID,
-			Payload:   updatedSession,
-		})
+	if h.hub != nil {
+		updatedSession, _ := h.store.GetSession(ctx, sessionID)
+		if updatedSession != nil {
+			h.hub.Broadcast(Event{
+				Type:      "archive_summary_updated",
+				SessionID: sessionID,
+				Payload:   updatedSession,
+			})
+		}
 	}
 }
 
