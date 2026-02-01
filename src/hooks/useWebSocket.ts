@@ -133,7 +133,7 @@ export function useWebSocket(enabled: boolean = true) {
 
     // Handle summary_updated events
     if (data.type === 'summary_updated') {
-      const payload = data.payload as Record<string, unknown> | null;
+      const payload = data.payload as unknown as Record<string, unknown> | null;
       if (payload && typeof payload === 'object' && payload.id) {
         // Use updateSummary for partial payloads (e.g., failed status only has id/status/errorMessage)
         // Use setSummary only when we have a full Summary object (completed status with all fields)
