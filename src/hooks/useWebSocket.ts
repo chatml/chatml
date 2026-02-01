@@ -139,9 +139,9 @@ export function useWebSocket(enabled: boolean = true) {
         // Use setSummary only when we have a full Summary object (completed status with all fields)
         const existing = store.summaries[conversationId];
         if (existing) {
-          store.updateSummary(conversationId, payload as Partial<import('@/lib/types').Summary>);
+          store.updateSummary(conversationId, payload as unknown as Partial<import('@/lib/types').Summary>);
         } else {
-          store.setSummary(conversationId, payload as import('@/lib/types').Summary);
+          store.setSummary(conversationId, payload as unknown as import('@/lib/types').Summary);
         }
       }
       return;
