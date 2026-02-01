@@ -478,6 +478,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Auto-scroll management via Virtuoso
   const messageListRef = useRef<VirtualizedMessageListHandle>(null);
+  const selectedConversationIdRef = useRef(selectedConversationId);
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Track at-bottom state from Virtuoso
@@ -514,10 +518,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Reset scroll on conversation change
   useEffect(() => {
+    const conversationId = selectedConversationId;
     // Scroll to bottom after a tick to let Virtuoso render
-    requestAnimationFrame(() => {
+    const frameId = requestAnimationFrame(() => {
+      // Guard: skip if conversation changed before this frame fired
+      if (conversationId !== selectedConversationIdRef.current) return;
       messageListRef.current?.scrollToBottom('auto');
     });
+    return () => cancelAnimationFrame(frameId);
   }, [selectedConversationId]);
 
   // Listen for message submit events to force scroll to bottom
