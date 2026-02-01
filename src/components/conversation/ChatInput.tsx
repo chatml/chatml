@@ -837,25 +837,48 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Listen for drag-drop events from Tauri
   useEffect(() => {
+    let isCancelled = false;
     let unlistenDrop: (() => void) | undefined;
     let unlistenEnter: (() => void) | undefined;
     let unlistenLeave: (() => void) | undefined;
 
     const setupListeners = async () => {
-      unlistenDrop = await listenForFileDrop((paths) => {
-        handleFileDrop(paths);
-      });
-      unlistenEnter = await listenForDragEnter(() => {
-        setIsDragOver(true);
-      });
-      unlistenLeave = await listenForDragLeave(() => {
-        setIsDragOver(false);
-      });
+      try {
+        const [drop, enter, leave] = await Promise.all([
+          listenForFileDrop((paths) => {
+            handleFileDrop(paths);
+          }),
+          listenForDragEnter(() => {
+            setIsDragOver(true);
+          }),
+          listenForDragLeave(() => {
+            setIsDragOver(false);
+          }),
+        ]);
+
+        if (isCancelled) {
+          drop();
+          enter();
+          leave();
+          return;
+        }
+
+        unlistenDrop = drop;
+        unlistenEnter = enter;
+        unlistenLeave = leave;
+      } catch (error) {
+        console.error('Failed to setup drag-drop listeners:', error);
+        // Clean up any listeners that were registered before the failure
+        unlistenDrop?.();
+        unlistenEnter?.();
+        unlistenLeave?.();
+      }
     };
 
     setupListeners();
 
     return () => {
+      isCancelled = true;
       unlistenDrop?.();
       unlistenEnter?.();
       unlistenLeave?.();
