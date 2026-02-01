@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
+
+// maxLogSize is the maximum size of job logs to download (50MB)
+const maxLogSize = 50 * 1024 * 1024
 
 // WorkflowRun represents a GitHub Actions workflow run
 type WorkflowRun struct {
@@ -100,12 +104,12 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo, branch strin
 		return nil, fmt.Errorf("not authenticated")
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=20", c.apiURL, owner, repo)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=20", c.apiURL, owner, repo)
 	if branch != "" {
-		url = fmt.Sprintf("%s&branch=%s", url, branch)
+		reqURL = fmt.Sprintf("%s&branch=%s", reqURL, url.QueryEscape(branch))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -352,7 +356,7 @@ func (c *Client) GetJobLogs(ctx context.Context, owner, repo string, jobID int64
 		return "", fmt.Errorf("logs endpoint returned %d: %s", logsResp.StatusCode, body)
 	}
 
-	logs, err := io.ReadAll(logsResp.Body)
+	logs, err := io.ReadAll(io.LimitReader(logsResp.Body, maxLogSize))
 	if err != nil {
 		return "", fmt.Errorf("reading logs: %w", err)
 	}

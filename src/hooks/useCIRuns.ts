@@ -42,38 +42,46 @@ export function useCIRuns(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isMountedRef = useRef(false);
+  // Stable refs for the current workspaceId/sessionId so fetchRuns
+  // used in polling doesn't need to be recreated on every change.
+  const workspaceIdRef = useRef(workspaceId);
+  const sessionIdRef = useRef(sessionId);
+  workspaceIdRef.current = workspaceId;
+  sessionIdRef.current = sessionId;
 
   // Check if any runs are in progress
   const hasInProgressRuns = runs.some(
     (run) => run.status === 'in_progress' || run.status === 'queued'
   );
 
-  // Fetch workflow runs
-  const fetchRuns = useCallback(async () => {
-    if (!workspaceId || !sessionId) {
+  // Fetch workflow runs (stable — reads from refs)
+  const fetchRuns = useCallback(async (signal?: AbortSignal) => {
+    const wsId = workspaceIdRef.current;
+    const sessId = sessionIdRef.current;
+
+    if (!wsId || !sessId) {
       setRuns([]);
       setLoading(false);
       return;
     }
 
     try {
-      const data = await getCIRuns(workspaceId, sessionId);
-      if (isMountedRef.current) {
+      const data = await getCIRuns(wsId, sessId);
+      if (!signal?.aborted) {
         setRuns(data);
         setError(null);
       }
     } catch (err) {
-      if (isMountedRef.current) {
+      if (!signal?.aborted) {
         console.error('Failed to fetch CI runs:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch CI runs');
       }
     } finally {
-      if (isMountedRef.current) {
+      if (!signal?.aborted) {
         setLoading(false);
       }
     }
-  }, [workspaceId, sessionId]);
+  }, []);
 
   // Exposed refetch function
   const refetch = useCallback(async () => {
@@ -130,17 +138,17 @@ export function useCIRuns(
 
   // Initial fetch and fetch on session change
   useEffect(() => {
-    isMountedRef.current = true;
+    const abortController = new AbortController();
 
     if (workspaceId && sessionId) {
       setLoading(true);
-      fetchRuns();
+      fetchRuns(abortController.signal);
     } else {
       setRuns([]);
     }
 
     return () => {
-      isMountedRef.current = false;
+      abortController.abort();
     };
   }, [fetchRuns, workspaceId, sessionId]);
 

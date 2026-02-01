@@ -153,7 +153,7 @@ function WorkflowRunCard({
     }
   };
 
-  const hasFailedJobs = jobs.some((job) => job.conclusion === 'failure');
+  const runHasFailures = run.conclusion === 'failure' || run.conclusion === 'timed_out';
 
   return (
     <div className="border rounded-lg bg-card">
@@ -191,7 +191,7 @@ function WorkflowRunCard({
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => handleRerun(hasFailedJobs)}
+                onClick={() => handleRerun(runHasFailures)}
                 disabled={rerunning}
               >
                 {rerunning ? (
@@ -199,7 +199,7 @@ function WorkflowRunCard({
                 ) : (
                   <>
                     <RotateCcw className="h-3 w-3 mr-1" />
-                    {hasFailedJobs ? 'Rerun Failed' : 'Rerun'}
+                    {runHasFailures ? 'Rerun Failed' : 'Rerun'}
                   </>
                 )}
               </Button>

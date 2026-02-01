@@ -5,51 +5,65 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/chatml/chatml-backend/models"
 	"github.com/go-chi/chi/v5"
 )
 
-// ListCIRuns returns workflow runs for a session's branch
-func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
+// githubContext holds the resolved GitHub owner/repo and session for CI/status handlers.
+type githubContext struct {
+	owner   string
+	repo    string
+	session *models.Session
+}
+
+// resolveGitHubContext extracts the session, workspace, and GitHub remote info
+// from a request. Returns an error response to the client if any step fails.
+func (h *Handlers) resolveGitHubContext(w http.ResponseWriter, r *http.Request) (*githubContext, bool) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
 
-	// Get session
 	session, err := h.store.GetSession(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
-		return
+		return nil, false
 	}
 	if session == nil {
 		writeNotFound(w, "session")
-		return
+		return nil, false
 	}
 
-	// Get the workspace to find the repo details
 	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
 	if err != nil {
 		writeDBError(w, err)
-		return
+		return nil, false
 	}
 	if repo == nil {
 		writeNotFound(w, "workspace")
-		return
+		return nil, false
 	}
 
-	// Extract owner/repo from git remote
 	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
 	if err != nil {
 		writeInternalError(w, "failed to get GitHub remote", err)
-		return
+		return nil, false
 	}
 
-	// Check if GitHub client is available
 	if h.ghClient == nil {
 		writeInternalError(w, "GitHub client not configured", nil)
+		return nil, false
+	}
+
+	return &githubContext{owner: owner, repo: repoName, session: session}, true
+}
+
+// ListCIRuns returns workflow runs for a session's branch
+func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
 		return
 	}
 
-	// List workflow runs for the session's branch
-	runs, err := h.ghClient.ListWorkflowRuns(ctx, owner, repoName, session.Branch)
+	runs, err := h.ghClient.ListWorkflowRuns(r.Context(), ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
 	if err != nil {
 		writeInternalError(w, "failed to list workflow runs", err)
 		return
@@ -60,53 +74,19 @@ func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
 
 // GetCIRun returns a specific workflow run
 func (h *Handlers) GetCIRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sessionID := chi.URLParam(r, "sessionId")
 	runIDStr := chi.URLParam(r, "runId")
-
 	runID, err := strconv.ParseInt(runIDStr, 10, 64)
 	if err != nil {
 		writeValidationError(w, "invalid run ID")
 		return
 	}
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if session == nil {
-		writeNotFound(w, "session")
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
 		return
 	}
 
-	// Get the workspace to find the repo details
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Extract owner/repo from git remote
-	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
-	if err != nil {
-		writeInternalError(w, "failed to get GitHub remote", err)
-		return
-	}
-
-	// Check if GitHub client is available
-	if h.ghClient == nil {
-		writeInternalError(w, "GitHub client not configured", nil)
-		return
-	}
-
-	// Get workflow run
-	run, err := h.ghClient.GetWorkflowRun(ctx, owner, repoName, runID)
+	run, err := h.ghClient.GetWorkflowRun(r.Context(), ghCtx.owner, ghCtx.repo, runID)
 	if err != nil {
 		writeInternalError(w, "failed to get workflow run", err)
 		return
@@ -121,53 +101,19 @@ func (h *Handlers) GetCIRun(w http.ResponseWriter, r *http.Request) {
 
 // ListCIJobs returns jobs for a workflow run
 func (h *Handlers) ListCIJobs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sessionID := chi.URLParam(r, "sessionId")
 	runIDStr := chi.URLParam(r, "runId")
-
 	runID, err := strconv.ParseInt(runIDStr, 10, 64)
 	if err != nil {
 		writeValidationError(w, "invalid run ID")
 		return
 	}
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if session == nil {
-		writeNotFound(w, "session")
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
 		return
 	}
 
-	// Get the workspace to find the repo details
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Extract owner/repo from git remote
-	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
-	if err != nil {
-		writeInternalError(w, "failed to get GitHub remote", err)
-		return
-	}
-
-	// Check if GitHub client is available
-	if h.ghClient == nil {
-		writeInternalError(w, "GitHub client not configured", nil)
-		return
-	}
-
-	// List jobs for the workflow run
-	jobs, err := h.ghClient.ListWorkflowJobs(ctx, owner, repoName, runID)
+	jobs, err := h.ghClient.ListWorkflowJobs(r.Context(), ghCtx.owner, ghCtx.repo, runID)
 	if err != nil {
 		writeInternalError(w, "failed to list workflow jobs", err)
 		return
@@ -178,59 +124,24 @@ func (h *Handlers) ListCIJobs(w http.ResponseWriter, r *http.Request) {
 
 // GetCIJobLogs returns logs for a specific job
 func (h *Handlers) GetCIJobLogs(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sessionID := chi.URLParam(r, "sessionId")
 	jobIDStr := chi.URLParam(r, "jobId")
-
 	jobID, err := strconv.ParseInt(jobIDStr, 10, 64)
 	if err != nil {
 		writeValidationError(w, "invalid job ID")
 		return
 	}
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if session == nil {
-		writeNotFound(w, "session")
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
 		return
 	}
 
-	// Get the workspace to find the repo details
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Extract owner/repo from git remote
-	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
-	if err != nil {
-		writeInternalError(w, "failed to get GitHub remote", err)
-		return
-	}
-
-	// Check if GitHub client is available
-	if h.ghClient == nil {
-		writeInternalError(w, "GitHub client not configured", nil)
-		return
-	}
-
-	// Get job logs
-	logs, err := h.ghClient.GetJobLogs(ctx, owner, repoName, jobID)
+	logs, err := h.ghClient.GetJobLogs(r.Context(), ghCtx.owner, ghCtx.repo, jobID)
 	if err != nil {
 		writeInternalError(w, "failed to get job logs", err)
 		return
 	}
 
-	// Return logs as JSON with metadata
 	writeJSON(w, map[string]interface{}{
 		"jobId": jobID,
 		"logs":  logs,
@@ -239,58 +150,24 @@ func (h *Handlers) GetCIJobLogs(w http.ResponseWriter, r *http.Request) {
 
 // RerunCIWorkflow triggers a re-run of a workflow
 func (h *Handlers) RerunCIWorkflow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sessionID := chi.URLParam(r, "sessionId")
 	runIDStr := chi.URLParam(r, "runId")
-
 	runID, err := strconv.ParseInt(runIDStr, 10, 64)
 	if err != nil {
 		writeValidationError(w, "invalid run ID")
 		return
 	}
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if session == nil {
-		writeNotFound(w, "session")
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
 		return
 	}
 
-	// Get the workspace to find the repo details
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Extract owner/repo from git remote
-	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
-	if err != nil {
-		writeInternalError(w, "failed to get GitHub remote", err)
-		return
-	}
-
-	// Check if GitHub client is available
-	if h.ghClient == nil {
-		writeInternalError(w, "GitHub client not configured", nil)
-		return
-	}
-
-	// Check for query param to rerun only failed jobs
 	failedOnly := r.URL.Query().Get("failedOnly") == "true"
 
 	if failedOnly {
-		err = h.ghClient.RerunFailedJobs(ctx, owner, repoName, runID)
+		err = h.ghClient.RerunFailedJobs(r.Context(), ghCtx.owner, ghCtx.repo, runID)
 	} else {
-		err = h.ghClient.RerunWorkflow(ctx, owner, repoName, runID)
+		err = h.ghClient.RerunWorkflow(r.Context(), ghCtx.owner, ghCtx.repo, runID)
 	}
 
 	if err != nil {
@@ -310,13 +187,13 @@ type AnalyzeCIFailureRequest struct {
 
 // CIAnalysisResult represents the AI analysis of a CI failure
 type CIAnalysisResult struct {
-	ErrorType     string           `json:"errorType"`
-	Summary       string           `json:"summary"`
-	RootCause     string           `json:"rootCause"`
-	AffectedFiles []string         `json:"affectedFiles"`
-	SuggestedFix  *CISuggestedFix  `json:"suggestedFix,omitempty"`
-	Confidence    float64          `json:"confidence"`
-	RawLogs       string           `json:"rawLogs,omitempty"`
+	ErrorType     string          `json:"errorType"`
+	Summary       string          `json:"summary"`
+	RootCause     string          `json:"rootCause"`
+	AffectedFiles []string        `json:"affectedFiles"`
+	SuggestedFix  *CISuggestedFix `json:"suggestedFix,omitempty"`
+	Confidence    float64         `json:"confidence"`
+	RawLogs       string          `json:"rawLogs,omitempty"`
 }
 
 // CISuggestedFix represents a suggested fix for a CI failure
@@ -335,21 +212,11 @@ type CIPatch struct {
 // Note: The actual AI analysis would be done by the agent-runner, this endpoint
 // provides the logs and context needed for the analysis
 func (h *Handlers) AnalyzeCIFailure(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sessionID := chi.URLParam(r, "sessionId")
-
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if session == nil {
-		writeNotFound(w, "session")
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
 		return
 	}
 
-	// Parse request
 	var req AnalyzeCIFailureRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeValidationError(w, "invalid request body")
@@ -361,85 +228,47 @@ func (h *Handlers) AnalyzeCIFailure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the workspace to find the repo details
-	repo, err := h.store.GetRepo(ctx, session.WorkspaceID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if repo == nil {
-		writeNotFound(w, "workspace")
-		return
-	}
-
-	// Extract owner/repo from git remote
-	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
-	if err != nil {
-		writeInternalError(w, "failed to get GitHub remote", err)
-		return
-	}
-
-	// Check if GitHub client is available
-	if h.ghClient == nil {
-		writeInternalError(w, "GitHub client not configured", nil)
-		return
-	}
+	ctx := r.Context()
 
 	// Get workflow run for context
-	run, err := h.ghClient.GetWorkflowRun(ctx, owner, repoName, req.RunID)
+	run, err := h.ghClient.GetWorkflowRun(ctx, ghCtx.owner, ghCtx.repo, req.RunID)
 	if err != nil {
 		writeInternalError(w, "failed to get workflow run", err)
 		return
 	}
 
-	// Get job details
-	jobs, err := h.ghClient.ListWorkflowJobs(ctx, owner, repoName, req.RunID)
+	// Get job details to find the target job name
+	jobs, err := h.ghClient.ListWorkflowJobs(ctx, ghCtx.owner, ghCtx.repo, req.RunID)
 	if err != nil {
 		writeInternalError(w, "failed to get workflow jobs", err)
 		return
 	}
 
-	// Find the specific job
-	var targetJob *struct {
-		Name       string
-		Conclusion string
-	}
+	var targetJobName string
 	for _, job := range jobs {
 		if job.ID == req.JobID {
-			targetJob = &struct {
-				Name       string
-				Conclusion string
-			}{
-				Name:       job.Name,
-				Conclusion: job.Conclusion,
-			}
+			targetJobName = job.Name
 			break
 		}
 	}
 
 	// Get job logs
-	logs, err := h.ghClient.GetJobLogs(ctx, owner, repoName, req.JobID)
+	logs, err := h.ghClient.GetJobLogs(ctx, ghCtx.owner, ghCtx.repo, req.JobID)
 	if err != nil {
 		writeInternalError(w, "failed to get job logs", err)
 		return
 	}
 
-	// Return the raw data for the frontend/agent to analyze
-	// In a full implementation, this could call an AI service directly
-	// For now, we return the logs and context for the frontend to display
-	// and potentially send to an agent for analysis
 	result := CIAnalysisResult{
 		ErrorType: "ci_failure",
-		Summary:   "",
-		RootCause: "",
 		RawLogs:   logs,
 	}
 
 	if run != nil {
 		result.Summary = "Workflow '" + run.Name + "' failed"
 	}
-	if targetJob != nil {
-		result.Summary += " in job '" + targetJob.Name + "'"
+	if targetJobName != "" {
+		result.Summary += " in job '" + targetJobName + "'"
 	}
 
 	writeJSON(w, result)
