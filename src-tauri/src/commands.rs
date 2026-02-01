@@ -246,6 +246,20 @@ pub fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
     Err("Unsupported image format".to_string())
 }
 
+/// Get the user's preferred shell from environment variables.
+/// Returns $SHELL on Unix or %COMSPEC% on Windows, if set.
+#[tauri::command]
+pub fn get_user_shell() -> Option<String> {
+    #[cfg(unix)]
+    {
+        std::env::var("SHELL").ok()
+    }
+    #[cfg(windows)]
+    {
+        std::env::var("COMSPEC").ok()
+    }
+}
+
 /// Count lines in a text file
 #[tauri::command]
 pub fn count_file_lines(path: String) -> Result<usize, String> {

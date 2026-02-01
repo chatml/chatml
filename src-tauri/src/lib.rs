@@ -146,7 +146,9 @@ pub fn run() {
             commands::read_file_metadata,
             commands::read_file_as_base64,
             commands::get_image_dimensions,
-            commands::count_file_lines
+            commands::count_file_lines,
+            // Shell detection
+            commands::get_user_shell
         ])
         .setup(move |app| {
             // Create and set the menu
