@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/cleanup"
 	"github.com/chatml/chatml-backend/git"
@@ -352,7 +353,10 @@ func main() {
 		}
 	}
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, statsCache)
+	// AI client for PR description generation
+	aiClient := ai.NewClient(os.Getenv("ANTHROPIC_API_KEY"))
+
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, statsCache, aiClient)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{

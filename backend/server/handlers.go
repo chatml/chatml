@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/git"
@@ -321,6 +322,7 @@ type Handlers struct {
 	prCache          *github.PRCache
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
+	aiClient         *ai.Client
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -345,7 +347,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, statsCache *SessionStatsCache) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, statsCache *SessionStatsCache, aiClient *ai.Client) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -369,6 +371,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		prCache:          prCache,
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
+		aiClient:         aiClient,
 	}
 }
 
@@ -395,15 +398,12 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 		workingPath = session.WorkspacePath
 	}
 
-	// Determine base ref: prefer BaseCommitSHA, fall back to workspace branch, then "main".
+	// Determine base ref: prefer BaseCommitSHA, fall back to workspace default branch.
 	// Note: WorkspaceBranch is the repo's default branch (e.g., "main", "master") stored
 	// at workspace creation time - it's not a remote tracking ref like "origin/main".
 	baseRef = session.BaseCommitSHA
 	if baseRef == "" {
-		baseRef = session.WorkspaceBranch
-		if baseRef == "" {
-			baseRef = "main"
-		}
+		baseRef = session.DefaultBranch()
 	}
 
 	return session, workingPath, baseRef, nil
@@ -3213,6 +3213,233 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, prDetails)
+}
+
+// GeneratePRDescription uses AI to generate a PR title and body from session changes
+func (h *Handlers) GeneratePRDescription(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	if h.aiClient == nil {
+		writeServiceUnavailable(w, "AI-generated PR descriptions are not available (ANTHROPIC_API_KEY not configured)")
+		return
+	}
+
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	// Get commits ahead of base
+	commits, err := h.repoManager.GetCommitsAheadOfBase(ctx, workingPath, baseRef)
+	if err != nil {
+		writeInternalError(w, "failed to get commits", err)
+		return
+	}
+
+	if len(commits) == 0 {
+		writeValidationError(w, "no commits ahead of base branch")
+		return
+	}
+
+	// Convert to AI commit info
+	aiCommits := make([]ai.CommitInfo, len(commits))
+	for i, c := range commits {
+		aiCommits[i] = ai.CommitInfo{
+			SHA:     c.SHA,
+			Message: c.Message,
+			Author:  c.Author,
+			Files:   len(c.Files),
+		}
+	}
+
+	// Get diff summary (cap at 4KB)
+	diffSummary, err := h.repoManager.GetDiffSummary(ctx, workingPath, baseRef, 4096)
+	if err != nil {
+		// Non-fatal: continue without diff
+		diffSummary = ""
+	}
+
+	// Load custom PR template for this workspace
+	templateKey := fmt.Sprintf("pr-template:%s", session.WorkspaceID)
+	customPrompt, _, _ := h.store.GetSetting(ctx, templateKey)
+
+	// Generate PR description via AI
+	result, err := h.aiClient.GeneratePRDescription(ctx, ai.GeneratePRRequest{
+		Commits:      aiCommits,
+		DiffSummary:  diffSummary,
+		BranchName:   session.Branch,
+		BaseBranch:   baseRef,
+		CustomPrompt: customPrompt,
+	})
+	if err != nil {
+		writeInternalError(w, "failed to generate PR description", err)
+		return
+	}
+
+	writeJSON(w, result)
+}
+
+// CreatePRRequest is the request body for creating a pull request
+type CreatePRRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Draft bool   `json:"draft"`
+}
+
+// CreatePRResponse is the response from creating a pull request
+type CreatePRResponse struct {
+	Number  int    `json:"number"`
+	HTMLURL string `json:"htmlUrl"`
+}
+
+// CreatePR creates a GitHub pull request for the session's branch
+func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	// Check GitHub auth
+	if h.ghClient == nil || !h.ghClient.IsAuthenticated() {
+		writeUnauthorized(w, "GitHub authentication required. Please sign in with GitHub first.")
+		return
+	}
+
+	session, workingPath, _, err := h.getSessionAndWorkspace(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	// Parse request body
+	var req CreatePRRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	if req.Title == "" {
+		writeValidationError(w, "title is required")
+		return
+	}
+
+	// Get GitHub owner/repo from remote
+	owner, repoName, err := h.repoManager.GetGitHubRemote(ctx, workingPath)
+	if err != nil {
+		writeInternalError(w, "failed to get GitHub remote", err)
+		return
+	}
+
+	// Push branch to remote first (PR requires branch to exist on remote)
+	if err := h.repoManager.PushBranch(ctx, workingPath, session.Branch); err != nil {
+		writeInternalError(w, "failed to push branch", err)
+		return
+	}
+
+	// Use workspace default branch as PR base (not the commit SHA)
+	baseBranch := session.DefaultBranch()
+
+	// Create the PR on GitHub
+	prResult, err := h.ghClient.CreatePullRequest(ctx, owner, repoName, github.CreatePullRequestRequest{
+		Title: req.Title,
+		Body:  req.Body,
+		Head:  session.Branch,
+		Base:  baseBranch,
+		Draft: req.Draft,
+	})
+	if err != nil {
+		writeInternalError(w, "failed to create pull request", err)
+		return
+	}
+
+	// Update session with PR info
+	now := time.Now()
+	if err := h.store.UpdateSession(ctx, sessionID, func(sess *models.Session) {
+		sess.PRStatus = models.PRStatusOpen
+		sess.PRNumber = prResult.Number
+		sess.PRUrl = prResult.HTMLURL
+		sess.UpdatedAt = now
+	}); err != nil {
+		// PR was created but we failed to update local state - log but don't fail
+		logger.Handlers.Errorf("Failed to update session %s after PR creation: %v", sessionID, err)
+	}
+
+	// Register with PR watcher for status tracking
+	if h.prWatcher != nil {
+		repoPath := session.WorkspacePath
+		h.prWatcher.WatchSession(sessionID, session.WorkspaceID, session.Branch, repoPath, models.PRStatusOpen)
+	}
+
+	// Broadcast WebSocket event
+	h.hub.Broadcast(Event{
+		Type:      "session_pr_update",
+		SessionID: sessionID,
+		Payload: map[string]interface{}{
+			"sessionId": sessionID,
+			"prStatus":  models.PRStatusOpen,
+			"prNumber":  prResult.Number,
+			"prUrl":     prResult.HTMLURL,
+		},
+	})
+
+	writeJSON(w, CreatePRResponse{
+		Number:  prResult.Number,
+		HTMLURL: prResult.HTMLURL,
+	})
+}
+
+// GetPRTemplate returns the custom PR template for a workspace
+func (h *Handlers) GetPRTemplate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	key := fmt.Sprintf("pr-template:%s", workspaceID)
+	value, found, err := h.store.GetSetting(ctx, key)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		value = ""
+	}
+
+	writeJSON(w, map[string]string{"template": value})
+}
+
+// SetPRTemplate updates the custom PR template for a workspace
+func (h *Handlers) SetPRTemplate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	var req struct {
+		Template string `json:"template"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	key := fmt.Sprintf("pr-template:%s", workspaceID)
+	if req.Template == "" {
+		if err := h.store.DeleteSetting(ctx, key); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		if err := h.store.SetSetting(ctx, key, req.Template); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 // GetSessionBranchSyncStatus returns how far behind the session is from origin/main

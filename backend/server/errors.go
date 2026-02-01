@@ -21,7 +21,8 @@ const (
 	ErrCodeInternal        = "INTERNAL_ERROR"
 	ErrCodeUnauthorized    = "UNAUTHORIZED"
 	ErrCodeBadGateway      = "BAD_GATEWAY"
-	ErrCodePayloadTooLarge = "PAYLOAD_TOO_LARGE"
+	ErrCodePayloadTooLarge  = "PAYLOAD_TOO_LARGE"
+	ErrCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
 )
 
 // writeError writes a JSON error response and logs the internal error server-side
@@ -73,6 +74,11 @@ func writeUnauthorized(w http.ResponseWriter, msg string) {
 // writeBadGateway writes a 502 bad gateway error response for external service failures
 func writeBadGateway(w http.ResponseWriter, msg string, err error) {
 	writeError(w, http.StatusBadGateway, ErrCodeBadGateway, msg, err)
+}
+
+// writeServiceUnavailable writes a 503 error for features that are not configured
+func writeServiceUnavailable(w http.ResponseWriter, msg string) {
+	writeError(w, http.StatusServiceUnavailable, ErrCodeServiceUnavailable, msg, nil)
 }
 
 // writePayloadTooLarge writes a 413 payload too large error response

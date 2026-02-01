@@ -1385,3 +1385,69 @@ export async function getCommitStatuses(
   );
   return handleResponse<CombinedStatusResponse>(res);
 }
+
+// ============================================================================
+// PR Creation
+// ============================================================================
+
+export interface GeneratePRDescriptionResponse {
+  title: string;
+  body: string;
+}
+
+export interface CreatePRRequestBody {
+  title: string;
+  body: string;
+  draft: boolean;
+}
+
+export interface CreatePRResponse {
+  number: number;
+  htmlUrl: string;
+}
+
+export async function generatePRDescription(
+  workspaceId: string,
+  sessionId: string
+): Promise<GeneratePRDescriptionResponse> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr/generate`
+  );
+  return handleResponse<GeneratePRDescriptionResponse>(res);
+}
+
+export async function createPR(
+  workspaceId: string,
+  sessionId: string,
+  data: CreatePRRequestBody
+): Promise<CreatePRResponse> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr/create`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }
+  );
+  return handleResponse<CreatePRResponse>(res);
+}
+
+export async function getPRTemplate(workspaceId: string): Promise<string> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/pr-template`
+  );
+  const data = await handleResponse<{ template: string }>(res);
+  return data.template;
+}
+
+export async function setPRTemplate(workspaceId: string, template: string): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/pr-template`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template }),
+    }
+  );
+  await handleVoidResponse(res, 'Failed to save PR template');
+}

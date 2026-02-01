@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
@@ -17,10 +18,10 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, statsCache *SessionStatsCache) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, statsCache *SessionStatsCache, aiClient *ai.Client) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
-	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, statsCache)
+	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, statsCache, aiClient)
 	auth := NewAuthHandlers(ghClient)
 
 	r.Use(middleware.Logger)
@@ -89,6 +90,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/sessions/{sessionId}/branch-commits", h.GetSessionBranchCommits)
 		r.Get("/{id}/sessions/{sessionId}/git-status", h.GetSessionGitStatus)
 		r.Get("/{id}/sessions/{sessionId}/pr-status", h.GetSessionPRStatus)
+		r.Get("/{id}/sessions/{sessionId}/pr/generate", h.GeneratePRDescription)
+		r.Post("/{id}/sessions/{sessionId}/pr/create", h.CreatePR)
+		r.Get("/{id}/settings/pr-template", h.GetPRTemplate)
+		r.Put("/{id}/settings/pr-template", h.SetPRTemplate)
 		r.Get("/{id}/sessions/{sessionId}/branch-sync", h.GetSessionBranchSyncStatus)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync", h.SyncSessionBranch)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync/abort", h.AbortSessionSync)

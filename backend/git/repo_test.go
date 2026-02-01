@@ -572,3 +572,108 @@ func TestGetFileAtRef_BranchRef(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, mainContent, "# Test Repository")
 }
+
+// ============================================================================
+// PushBranch Tests
+// ============================================================================
+
+func TestPushBranch_Success(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create a feature branch with a commit
+	runGit(t, repoPath, "checkout", "-b", "feature/push-test")
+	createAndCommitFile(t, repoPath, "push-test.txt", "content\n", "Push test commit")
+
+	err := rm.PushBranch(context.Background(), repoPath, "feature/push-test")
+	require.NoError(t, err)
+
+	// Verify the branch was pushed to origin
+	out := runGit(t, repoPath, "branch", "-r")
+	assert.Contains(t, out, "origin/feature/push-test")
+}
+
+func TestPushBranch_InvalidBranch(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	err := rm.PushBranch(context.Background(), repoPath, "branch; rm -rf /")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid branch name")
+}
+
+func TestPushBranch_ContextCancellation(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := rm.PushBranch(ctx, repoPath, "main")
+	require.Error(t, err)
+}
+
+// ============================================================================
+// GetDiffSummary Tests
+// ============================================================================
+
+func TestGetDiffSummary_WithChanges(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Make some changes (unstaged so they show up in diff against base)
+	runGit(t, repoPath, "checkout", "-b", "feature/diff-test")
+	createAndCommitFile(t, repoPath, "new-file.txt", "line 1\nline 2\nline 3\n", "Add new file")
+
+	summary, err := rm.GetDiffSummary(context.Background(), repoPath, baseSHA, 4096)
+	require.NoError(t, err)
+
+	assert.Contains(t, summary, "=== Diff Stats ===")
+	assert.Contains(t, summary, "=== Diff (truncated) ===")
+	assert.Contains(t, summary, "new-file.txt")
+}
+
+func TestGetDiffSummary_NoChanges(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	headSHA := getCommitSHA(t, repoPath)
+
+	summary, err := rm.GetDiffSummary(context.Background(), repoPath, headSHA, 4096)
+	require.NoError(t, err)
+
+	// Should still have section headers but no actual diff content
+	assert.Contains(t, summary, "=== Diff Stats ===")
+	assert.Contains(t, summary, "=== Diff (truncated) ===")
+}
+
+func TestGetDiffSummary_Truncation(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create a file with enough content to exceed maxBytes
+	largeContent := ""
+	for i := 0; i < 100; i++ {
+		largeContent += "This is a line of content that contributes to a large diff output.\n"
+	}
+	createAndCommitFile(t, repoPath, "large-file.txt", largeContent, "Add large file")
+
+	// Use a very small maxBytes to force truncation
+	summary, err := rm.GetDiffSummary(context.Background(), repoPath, baseSHA, 100)
+	require.NoError(t, err)
+
+	assert.Contains(t, summary, "... (truncated)")
+}
+
+func TestGetDiffSummary_InvalidBaseRef(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	_, err := rm.GetDiffSummary(context.Background(), repoPath, "ref; rm -rf /", 4096)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid base ref")
+}

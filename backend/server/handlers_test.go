@@ -2067,3 +2067,103 @@ func TestApprovePlan_NotInPlanMode(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 	assert.Contains(t, w.Body.String(), "conversation is not in plan mode")
 }
+
+// ============================================================================
+// PR Template Handler Tests
+// ============================================================================
+
+func TestGetPRTemplate_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/settings/pr-template", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.GetPRTemplate(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "", resp["template"])
+}
+
+func TestSetPRTemplate_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set a template
+	body, _ := json.Marshal(map[string]string{"template": "Always mention the ticket number"})
+	req := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/pr-template", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.SetPRTemplate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify it was saved by reading it back
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/pr-template", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+
+	h.GetPRTemplate(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, "Always mention the ticket number", resp["template"])
+}
+
+func TestSetPRTemplate_EmptyDeletesTemplate(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Pre-set a template directly in the store
+	require.NoError(t, s.SetSetting(ctx, "pr-template:ws-1", "existing template"))
+
+	// Set empty to delete
+	body, _ := json.Marshal(map[string]string{"template": ""})
+	req := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/pr-template", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.SetPRTemplate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify template was deleted
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/pr-template", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+
+	h.GetPRTemplate(w2, req2)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, "", resp["template"])
+}
+
+func TestSetPRTemplate_InvalidBody(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/pr-template", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.SetPRTemplate(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGeneratePRDescription_NoAIClient(t *testing.T) {
+	h, _ := setupTestHandlers(t) // handlers created with nil aiClient
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/pr/generate", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.GeneratePRDescription(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "not available")
+}
