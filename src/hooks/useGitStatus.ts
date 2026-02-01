@@ -49,14 +49,12 @@ export function useGitStatus(
       if (isMountedRef.current) {
         setStatus(data);
         setError(null);
+        setLoading(false);
       }
     } catch (err) {
       if (isMountedRef.current) {
         console.error('Failed to fetch git status:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch git status');
-      }
-    } finally {
-      if (isMountedRef.current) {
         setLoading(false);
       }
     }
@@ -81,11 +79,13 @@ export function useGitStatus(
   // Initial fetch and fetch on session change
   useEffect(() => {
     isMountedRef.current = true;
-    setLoading(true);
-    fetchStatus();
+    // Use setTimeout to avoid synchronous setState within the effect body
+    // (satisfies react-hooks/set-state-in-effect)
+    const id = setTimeout(() => fetchStatus(), 0);
 
     return () => {
       isMountedRef.current = false;
+      clearTimeout(id);
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }

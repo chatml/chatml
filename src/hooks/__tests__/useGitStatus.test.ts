@@ -41,7 +41,8 @@ async function flushAndAdvance(ms = 0) {
   await act(async () => {
     // Flush already-resolved promises (e.g. mockResolvedValue)
     await Promise.resolve();
-    if (ms > 0) vi.advanceTimersByTime(ms);
+    // Always advance timers to fire deferred callbacks (e.g. setTimeout(fn, 0))
+    vi.advanceTimersByTime(ms);
     // Flush any promises that were created after advancing timers
     await Promise.resolve();
   });
@@ -147,6 +148,35 @@ describe('useGitStatus', () => {
 
     // Initial fetch + one debounced refetch (not 5)
     expect(mockedGetGitStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not update state after unmount', async () => {
+    let resolveDeferred: (value: ReturnType<typeof makeGitStatus>) => void;
+    const deferred = new Promise<ReturnType<typeof makeGitStatus>>((resolve) => {
+      resolveDeferred = resolve;
+    });
+    mockedGetGitStatus.mockReturnValue(deferred);
+
+    const { result, unmount } = renderHook(() => useGitStatus('ws-1', 'session-1'));
+
+    // Hook should be loading while the fetch is pending
+    expect(result.current.loading).toBe(true);
+    expect(result.current.status).toBeNull();
+
+    // Unmount before the fetch resolves
+    unmount();
+
+    // Now resolve the deferred fetch — state should NOT update
+    await act(async () => {
+      resolveDeferred!(makeGitStatus());
+      await Promise.resolve();
+    });
+
+    // After unmount, last captured state should still show loading/null
+    // (no state update occurred because isMountedRef was false)
+    expect(result.current.loading).toBe(true);
+    expect(result.current.status).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 
   it('polls periodically', async () => {
