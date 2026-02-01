@@ -849,27 +849,28 @@ function handleMessage(message: SDKMessage): void {
         for (const block of content) {
           if (block.type === "tool_result") {
             const toolInfo = activeTools.get(block.tool_use_id);
-            if (toolInfo) {
-              // Flush any buffered text before tool ends
-              flushBlockBuffer();
 
-              const duration = Date.now() - toolInfo.startTime;
-              // Determine success from content
-              const isError = block.is_error === true;
-              let summary = "";
+            // Flush any buffered text before tool ends
+            // Safe for untracked tools — flushBlockBuffer is a no-op when buffer is empty
+            flushBlockBuffer();
 
-              // Try to extract a summary from the result
-              if (typeof block.content === "string") {
-                summary = block.content.slice(0, 100);
-              } else if (Array.isArray(block.content)) {
-                const textContent = block.content.find(
-                  (c: { type: string }) => c.type === "text"
-                );
-                if (textContent && "text" in textContent) {
-                  summary = (textContent as { text: string }).text.slice(0, 100);
-                }
+            const isError = block.is_error === true;
+            let summary = "";
+
+            // Try to extract a summary from the result
+            if (typeof block.content === "string") {
+              summary = block.content.slice(0, 100);
+            } else if (Array.isArray(block.content)) {
+              const textContent = block.content.find(
+                (c: { type: string }) => c.type === "text"
+              );
+              if (textContent && "text" in textContent) {
+                summary = (textContent as { text: string }).text.slice(0, 100);
               }
+            }
 
+            if (toolInfo) {
+              const duration = Date.now() - toolInfo.startTime;
               trackToolEnd(duration);
               emit({
                 type: "tool_end",
@@ -879,8 +880,22 @@ function handleMessage(message: SDKMessage): void {
                 summary,
                 duration,
               });
-
               activeTools.delete(block.tool_use_id);
+            } else {
+              // Race condition: tool_result arrived but tool_start was never tracked.
+              // Emit tool_end anyway to prevent infinite spinner on frontend.
+              console.warn(
+                `[WARNING] tool_result for untracked tool_use_id: ${block.tool_use_id}`
+              );
+              emit({
+                type: "tool_end",
+                id: block.tool_use_id,
+                tool: "Unknown",
+                success: !isError,
+                summary,
+                duration: 0,
+                untracked: true,
+              });
             }
           }
         }

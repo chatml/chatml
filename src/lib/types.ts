@@ -118,6 +118,7 @@ export interface ActiveTool {
   summary?: string;
   stdout?: string;
   stderr?: string;
+  untracked?: boolean; // Tool result arrived without matching tool_start (race condition recovery)
 }
 
 // Setup info for system messages

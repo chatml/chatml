@@ -609,6 +609,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     selectConversation,
     setStreaming,
     setAwaitingPlanApproval,
+    clearActiveTools,
   } = useAppStore();
   const { error: showError } = useToast();
 
@@ -1115,6 +1116,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       await stopConversation(selectedConversationId);
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
+      clearActiveTools(selectedConversationId);
     } catch (error) {
       console.error('Failed to stop conversation:', error);
       showError('Failed to stop conversation. Please try again.');

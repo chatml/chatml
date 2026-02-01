@@ -27,6 +27,32 @@ import type {
 // Maximum number of file tabs before LRU eviction kicks in
 const MAX_FILE_TABS = 10;
 
+// Timeout tracking for orphaned tool cleanup
+const toolTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Maximum time a tool can be active before forced completion (5 minutes)
+const TOOL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** Clear all tool timeouts for a given conversation */
+function clearToolTimeoutsForConversation(conversationId: string, tools: { id: string }[]) {
+  for (const tool of tools) {
+    const key = `${conversationId}:${tool.id}`;
+    const timeout = toolTimeouts.get(key);
+    if (timeout) {
+      clearTimeout(timeout);
+      toolTimeouts.delete(key);
+    }
+  }
+}
+
+/** Clear all tool timeouts globally (for HMR, tests, or app teardown) */
+export function clearAllToolTimeouts() {
+  for (const timeout of toolTimeouts.values()) {
+    clearTimeout(timeout);
+  }
+  toolTimeouts.clear();
+}
+
 // Default streaming state for a conversation (avoids repeating defaults across actions)
 const DEFAULT_STREAMING: StreamingState = {
   text: '',
@@ -226,7 +252,7 @@ interface AppState {
   clearThinking: (conversationId: string) => void;
   setPlanModeActive: (conversationId: string, active: boolean) => void;
   setAwaitingPlanApproval: (conversationId: string, awaiting: boolean) => void;
-  addActiveTool: (conversationId: string, tool: ActiveTool) => void;
+  addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   clearActiveTools: (conversationId: string) => void;
 
@@ -952,54 +978,130 @@ updateFileTabContent: (id, content) => set((state) => ({
       awaitingPlanApproval: awaiting,
     }),
   })),
-  addActiveTool: (conversationId, tool) => set((state) => ({
-    activeTools: {
-      ...state.activeTools,
-      [conversationId]: [...(state.activeTools[conversationId] || []), tool],
-    },
-    // Seal current text segment so next text creates a new segment after this tool
-    streamingState: updateStreamingConv(state.streamingState, conversationId, {
-      currentSegmentId: null,
-    }),
-  })),
-  completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr) => set((state) => ({
-    activeTools: {
-      ...state.activeTools,
-      [conversationId]: (state.activeTools[conversationId] || []).map((t) =>
-        t.id === toolId
-          ? { ...t, endTime: Date.now(), success, summary, stdout, stderr }
-          : t
-      ),
-    },
-  })),
-  clearActiveTools: (conversationId) => set((state) => ({
-    activeTools: {
-      ...state.activeTools,
-      [conversationId]: [],
-    },
-  })),
+  addActiveTool: (conversationId, tool, opts) => {
+    // Set up timeout to force-complete orphaned tools (skip for synthetic entries that will be completed immediately)
+    if (!opts?.skipTimeout) {
+      const timeoutKey = `${conversationId}:${tool.id}`;
+      const existing = toolTimeouts.get(timeoutKey);
+      if (existing) clearTimeout(existing);
+
+      const timeout = setTimeout(() => {
+        toolTimeouts.delete(timeoutKey);
+        const current = useAppStore.getState().activeTools[conversationId] || [];
+        const stillActive = current.find(t => t.id === tool.id && !t.endTime);
+        if (stillActive) {
+          console.warn(`[Store] Tool timeout: ${tool.tool} (${tool.id}) - forcing completion after ${TOOL_TIMEOUT_MS}ms`);
+          useAppStore.getState().completeActiveTool(
+            conversationId, tool.id, false, 'Tool timed out', undefined, undefined
+          );
+        }
+      }, TOOL_TIMEOUT_MS);
+      toolTimeouts.set(timeoutKey, timeout);
+    }
+
+    return set((state) => ({
+      activeTools: {
+        ...state.activeTools,
+        [conversationId]: [...(state.activeTools[conversationId] || []), tool],
+      },
+      // Seal current text segment so next text creates a new segment after this tool
+      streamingState: updateStreamingConv(state.streamingState, conversationId, {
+        currentSegmentId: null,
+      }),
+    }));
+  },
+  completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr) => {
+    // Clear the timeout for this tool
+    const timeoutKey = `${conversationId}:${toolId}`;
+    const timeout = toolTimeouts.get(timeoutKey);
+    if (timeout) {
+      clearTimeout(timeout);
+      toolTimeouts.delete(timeoutKey);
+    }
+
+    return set((state) => {
+      const tools = state.activeTools[conversationId] || [];
+      if (!tools.some(t => t.id === toolId)) {
+        return {}; // Tool not found - no-op (idempotent)
+      }
+      return {
+        activeTools: {
+          ...state.activeTools,
+          [conversationId]: tools.map((t) =>
+            t.id === toolId
+              ? { ...t, endTime: Date.now(), success, summary, stdout, stderr }
+              : t
+          ),
+        },
+      };
+    });
+  },
+  clearActiveTools: (conversationId) => {
+    // Clear all timeouts for this conversation's tools
+    const tools = useAppStore.getState().activeTools[conversationId] || [];
+    clearToolTimeoutsForConversation(conversationId, tools);
+
+    return set((state) => ({
+      activeTools: {
+        ...state.activeTools,
+        [conversationId]: [],
+      },
+    }));
+  },
 
   // Atomic streaming finalization - creates message and clears streaming in one update
   // This prevents the data loss bug where streaming text could be cleared before message is saved
-  finalizeStreamingMessage: (conversationId, metadata) => set((state) => {
-    const streaming = state.streamingState[conversationId];
+  finalizeStreamingMessage: (conversationId, metadata) => {
+    // Clear tool timeouts before clearing active tools
+    const currentTools = useAppStore.getState().activeTools[conversationId] || [];
+    clearToolTimeoutsForConversation(conversationId, currentTools);
 
-    // Build cleared streaming state (preserve planModeActive)
-    const clearedStreaming = {
-      text: '',
-      segments: [],
-      currentSegmentId: null,
-      isStreaming: false,
-      error: null,
-      thinking: null,
-      isThinking: false,
-      planModeActive: streaming?.planModeActive || false,
-      awaitingPlanApproval: false,
-    };
+    return set((state) => {
+      const streaming = state.streamingState[conversationId];
 
-    // If no streaming text, just clear the state
-    if (!streaming?.text) {
+      // Build cleared streaming state (preserve planModeActive)
+      const clearedStreaming = {
+        text: '',
+        segments: [],
+        currentSegmentId: null,
+        isStreaming: false,
+        error: null,
+        thinking: null,
+        isThinking: false,
+        planModeActive: streaming?.planModeActive || false,
+        awaitingPlanApproval: false,
+      };
+
+      // If no streaming text, just clear the state
+      if (!streaming?.text) {
+        return {
+          streamingState: {
+            ...state.streamingState,
+            [conversationId]: clearedStreaming,
+          },
+          activeTools: {
+            ...state.activeTools,
+            [conversationId]: [],
+          },
+        };
+      }
+
+      // Create the message from streaming text
+      const newMessage: Message = {
+        id: `msg-${Date.now()}`,
+        conversationId,
+        role: 'assistant',
+        content: streaming.text,
+        timestamp: new Date().toISOString(),
+        durationMs: metadata.durationMs,
+        toolUsage: metadata.toolUsage,
+        runSummary: metadata.runSummary,
+        ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
+      };
+
+      // Atomically: add message AND clear streaming state
       return {
+        messages: [...state.messages, newMessage],
         streamingState: {
           ...state.streamingState,
           [conversationId]: clearedStreaming,
@@ -1009,34 +1111,8 @@ updateFileTabContent: (id, content) => set((state) => ({
           [conversationId]: [],
         },
       };
-    }
-
-    // Create the message from streaming text
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      conversationId,
-      role: 'assistant',
-      content: streaming.text,
-      timestamp: new Date().toISOString(),
-      durationMs: metadata.durationMs,
-      toolUsage: metadata.toolUsage,
-      runSummary: metadata.runSummary,
-      ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
-    };
-
-    // Atomically: add message AND clear streaming state
-    return {
-      messages: [...state.messages, newMessage],
-      streamingState: {
-        ...state.streamingState,
-        [conversationId]: clearedStreaming,
-      },
-      activeTools: {
-        ...state.activeTools,
-        [conversationId]: [],
-      },
-    };
-  }),
+    });
+  },
 
   // Todo actions
   setAgentTodos: (conversationId, todos) => set((state) => ({
