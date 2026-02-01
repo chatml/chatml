@@ -221,18 +221,31 @@ export function useWebSocket(enabled: boolean = true) {
         // Complete active tool with success/summary info
         // For Bash tools, also capture stdout/stderr
         if (event?.id) {
-          // Check tool name BEFORE completing (to avoid race condition with state update)
           const activeTool = store.activeTools[conversationId]?.find(t => t.id === event.id);
-          const isExitPlanMode = activeTool?.tool === 'ExitPlanMode';
-
           const stdout = event.stdout as string | undefined;
           const stderr = event.stderr as string | undefined;
-          store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
 
-          // Clear awaiting plan approval when ExitPlanMode completes
-          if (isExitPlanMode) {
-            store.setAwaitingPlanApproval(conversationId, false);
+          if (activeTool) {
+            // Normal path: tool exists in state
+            const isExitPlanMode = activeTool.tool === 'ExitPlanMode';
+            store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+
+            if (isExitPlanMode) {
+              store.setAwaitingPlanApproval(conversationId, false);
+            }
+          } else if (event.tool) {
+            // Race condition recovery: tool_end arrived but tool wasn't in state.
+            // Create a synthetic completed entry so the timeline shows it as finished.
+            console.warn(`[WebSocket] tool_end for untracked tool: ${event.id} (${event.tool})`);
+            store.addActiveTool(conversationId, {
+              id: event.id,
+              tool: event.tool as string,
+              startTime: Date.now(),
+              untracked: true,
+            }, { skipTimeout: true });
+            store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
           }
+          // If no tool name and not in state, silently skip - tool was never shown to user
         }
         break;
 
