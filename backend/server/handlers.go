@@ -23,6 +23,7 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
+	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
@@ -326,6 +327,7 @@ type Handlers struct {
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
 	aiClient         *ai.Client
+	scriptRunner     *scripts.Runner
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -353,7 +355,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -379,6 +381,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
 		aiClient:         aiClient,
+		scriptRunner:     scriptRunner,
 	}
 }
 
@@ -1380,6 +1383,20 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Invalidate branch cache after new session/branch creation
 	h.branchCache.InvalidateRepo(repo.Path)
+
+	// Run setup scripts if configured and auto-setup is enabled
+	if h.scriptRunner != nil {
+		config, configErr := scripts.LoadConfig(repo.Path)
+		if configErr != nil {
+			logger.Handlers.Warnf("Failed to load .chatml/config.json for session %s: %v", sess.ID, configErr)
+		} else if config != nil && config.AutoSetup && len(config.SetupScripts) > 0 {
+			if err := h.scriptRunner.RunSetupScripts(context.Background(), sess.ID, worktreePath, config.SetupScripts); err != nil {
+				logger.Handlers.Warnf("Failed to start setup scripts for session %s: %v", sess.ID, err)
+			} else {
+				logger.Handlers.Infof("Started setup scripts for session %s (%d scripts)", sess.ID, len(config.SetupScripts))
+			}
+		}
+	}
 
 	// All operations succeeded - disable rollback
 	rollback = false

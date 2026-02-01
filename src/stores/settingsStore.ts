@@ -2,13 +2,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
-export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history';
+export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history' | 'scripts';
 
 // All bottom panel tabs including the always-visible Tasks
 export type AllBottomPanelTab = 'todos' | BottomPanelTab;
 
 // Default tab order
-export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'history', 'file-history', 'budget', 'mcp'];
+export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'scripts', 'history', 'file-history', 'budget', 'mcp'];
 
 // Top panel (right sidebar) tab IDs - Changes is always visible
 export type TopPanelTab = 'review' | 'checks' | 'files' | 'info';
