@@ -1,27 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { getRepoDetails, type RepoDetailsDTO } from '@/lib/api';
+import {
+  getRepoDetails,
+  type RepoDetailsDTO,
+  getGlobalReviewPrompts,
+  getWorkspaceReviewPrompts,
+  setWorkspaceReviewPrompts,
+} from '@/lib/api';
+import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
+import { useToast } from '@/components/ui/toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ArrowLeft,
+  Eye,
   GitBranch,
   FolderOpen,
   Globe,
   ExternalLink,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface WorkspaceSettingsProps {
   workspaceId: string;
   onBack: () => void;
 }
 
+type WorkspaceSettingsSection = 'repository' | 'review';
+
 export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProps) {
   const workspaces = useAppStore((s) => s.workspaces);
   const workspace = workspaces.find((w) => w.id === workspaceId);
   const [repoDetails, setRepoDetails] = useState<RepoDetailsDTO | null>(null);
+  const [section, setSection] = useState<WorkspaceSettingsSection>('repository');
 
   // Fetch repo details on mount
   useEffect(() => {
@@ -79,6 +93,30 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
               <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                 {workspace.name}
               </div>
+              <Button
+                variant={section === 'repository' ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn(
+                  'w-full justify-start gap-2 h-7 text-[12px]',
+                  section === 'repository' && 'bg-sidebar-accent',
+                )}
+                onClick={() => setSection('repository')}
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                Repository
+              </Button>
+              <Button
+                variant={section === 'review' ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn(
+                  'w-full justify-start gap-2 h-7 text-[12px]',
+                  section === 'review' && 'bg-sidebar-accent',
+                )}
+                onClick={() => setSection('review')}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Review
+              </Button>
             </div>
           </div>
         </ScrollArea>
@@ -91,69 +129,166 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
 
         <ScrollArea className="flex-1">
           <div className="max-w-2xl mx-auto py-8 px-8">
-            {/* Repository Info Section */}
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-5">Repository</h2>
-
-              <div className="space-y-4">
-                <div className="flex items-start gap-3 py-3 border-b border-border/50">
-                  <FolderOpen className="w-4 h-4 mt-0.5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <h4 className="text-[13px] font-medium">Path</h4>
-                    <p className="text-[12px] text-muted-foreground mt-0.5 font-mono">
-                      {workspace.path}
-                    </p>
-                  </div>
-                </div>
-
-                {repoDetails?.workspacesPath && (
-                  <div className="flex items-start gap-3 py-3 border-b border-border/50">
-                    <FolderOpen className="w-4 h-4 mt-0.5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <h4 className="text-[13px] font-medium">Workspaces Path</h4>
-                      <p className="text-[12px] text-muted-foreground mt-0.5 font-mono">
-                        {repoDetails.workspacesPath}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-start gap-3 py-3 border-b border-border/50">
-                  <GitBranch className="w-4 h-4 mt-0.5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <h4 className="text-[13px] font-medium">Default Branch</h4>
-                    <p className="text-[12px] text-muted-foreground mt-0.5">
-                      {workspace.defaultBranch || 'main'}
-                    </p>
-                  </div>
-                </div>
-
-                {repoDetails?.remoteUrl && (
-                  <div className="flex items-start gap-3 py-3 border-b border-border/50">
-                    <Globe className="w-4 h-4 mt-0.5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <h4 className="text-[13px] font-medium">Remote Origin</h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-[12px] text-muted-foreground font-mono">
-                          git+{repoDetails.remoteUrl}.git
-                        </p>
-                        <a
-                          href={repoDetails.remoteUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:text-primary/80 transition-colors"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            {section === 'repository' && (
+              <RepositorySection workspace={workspace} repoDetails={repoDetails} />
+            )}
+            {section === 'review' && (
+              <WorkspaceReviewSettings workspaceId={workspaceId} />
+            )}
           </div>
         </ScrollArea>
       </div>
+    </div>
+  );
+}
+
+function RepositorySection({
+  workspace,
+  repoDetails,
+}: {
+  workspace: { name: string; path: string; defaultBranch: string };
+  repoDetails: RepoDetailsDTO | null;
+}) {
+  return (
+    <div className="mb-8">
+      <h2 className="text-xl font-semibold mb-5">Repository</h2>
+
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 py-3 border-b border-border/50">
+          <FolderOpen className="w-4 h-4 mt-0.5 text-muted-foreground" />
+          <div className="flex-1">
+            <h4 className="text-[13px] font-medium">Path</h4>
+            <p className="text-[12px] text-muted-foreground mt-0.5 font-mono">
+              {workspace.path}
+            </p>
+          </div>
+        </div>
+
+        {repoDetails?.workspacesPath && (
+          <div className="flex items-start gap-3 py-3 border-b border-border/50">
+            <FolderOpen className="w-4 h-4 mt-0.5 text-muted-foreground" />
+            <div className="flex-1">
+              <h4 className="text-[13px] font-medium">Workspaces Path</h4>
+              <p className="text-[12px] text-muted-foreground mt-0.5 font-mono">
+                {repoDetails.workspacesPath}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-start gap-3 py-3 border-b border-border/50">
+          <GitBranch className="w-4 h-4 mt-0.5 text-muted-foreground" />
+          <div className="flex-1">
+            <h4 className="text-[13px] font-medium">Default Branch</h4>
+            <p className="text-[12px] text-muted-foreground mt-0.5">
+              {workspace.defaultBranch || 'main'}
+            </p>
+          </div>
+        </div>
+
+        {repoDetails?.remoteUrl && (
+          <div className="flex items-start gap-3 py-3 border-b border-border/50">
+            <Globe className="w-4 h-4 mt-0.5 text-muted-foreground" />
+            <div className="flex-1">
+              <h4 className="text-[13px] font-medium">Remote Origin</h4>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-[12px] text-muted-foreground font-mono">
+                  git+{repoDetails.remoteUrl}.git
+                </p>
+                <a
+                  href={repoDetails.remoteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/80 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
+  const [prompts, setPrompts] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState<Record<string, string>>({});
+  const [globalPrompts, setGlobalPrompts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const { error: showError } = useToast();
+
+  useEffect(() => {
+    Promise.all([
+      getWorkspaceReviewPrompts(workspaceId).catch(() => ({} as Record<string, string>)),
+      getGlobalReviewPrompts().catch(() => ({} as Record<string, string>)),
+    ]).then(([ws, gl]) => {
+      setPrompts(ws);
+      setSaved(ws);
+      setGlobalPrompts(gl);
+    });
+  }, [workspaceId]);
+
+  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const cleaned: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prompts)) {
+        if (v.trim()) cleaned[k] = v.trim();
+      }
+      await setWorkspaceReviewPrompts(workspaceId, cleaned);
+      setPrompts(cleaned);
+      setSaved(cleaned);
+    } catch {
+      showError('Failed to save review prompts');
+    } finally {
+      setSaving(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, prompts]);
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-1">Review Prompts</h2>
+      <p className="text-sm text-muted-foreground mb-6">
+        Override the global review prompt settings for this workspace.
+        Leave empty to use the global default.
+      </p>
+
+      <div className="space-y-5">
+        {REVIEW_TYPE_META.map(({ key, label, placeholder }) => {
+          const globalOverride = globalPrompts[key];
+          const effectivePlaceholder = globalOverride
+            ? `Global: ${globalOverride.slice(0, 60)}…`
+            : placeholder;
+
+          return (
+            <div key={key}>
+              <label className="text-[13px] font-medium block mb-1.5">{label}</label>
+              <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-1">
+                Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
+              </p>
+              <Textarea
+                className="text-[13px] min-h-[60px]"
+                placeholder={effectivePlaceholder}
+                value={prompts[key] || ''}
+                onChange={(e) => setPrompts((prev) => ({ ...prev, [key]: e.target.value }))}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {hasChanges && (
+        <div className="mt-4 flex justify-end">
+          <Button size="sm" disabled={saving} onClick={handleSave}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

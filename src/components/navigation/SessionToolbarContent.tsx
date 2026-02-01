@@ -67,13 +67,17 @@ import { PrioritySelector } from '@/components/shared/PrioritySelector';
 // ---------------------------------------------------------------------------
 
 const REVIEW_TYPES = [
-  { icon: Zap, title: 'Quick Scan', description: 'Fast pass over changes — catch obvious issues and typos' },
-  { icon: Search, title: 'Deep Review', description: 'Thorough line-by-line analysis with detailed feedback' },
-  { icon: Shield, title: 'Security Audit', description: 'Focus on vulnerabilities, auth gaps, and injection risks' },
-  { icon: Gauge, title: 'Performance', description: 'Check for regressions, memory leaks, and slow paths' },
-  { icon: Boxes, title: 'Architecture', description: 'Evaluate design patterns, coupling, and separation of concerns' },
-  { icon: GitMerge, title: 'Pre-merge Check', description: 'Final review before merge — verify tests, conflicts, and coverage' },
+  { icon: Zap, title: 'Quick Scan', key: 'quick', description: 'Fast pass over changes — catch obvious issues and typos' },
+  { icon: Search, title: 'Deep Review', key: 'deep', description: 'Thorough line-by-line analysis with detailed feedback' },
+  { icon: Shield, title: 'Security Audit', key: 'security', description: 'Focus on vulnerabilities, auth gaps, and injection risks' },
+  { icon: Gauge, title: 'Performance', key: 'performance', description: 'Check for regressions, memory leaks, and slow paths' },
+  { icon: Boxes, title: 'Architecture', key: 'architecture', description: 'Evaluate design patterns, coupling, and separation of concerns' },
+  { icon: GitMerge, title: 'Pre-merge Check', key: 'premerge', description: 'Final review before merge — verify tests, conflicts, and coverage' },
 ] as const;
+
+function dispatchReview(type: string) {
+  window.dispatchEvent(new CustomEvent('start-review', { detail: { type } }));
+}
 
 // ---------------------------------------------------------------------------
 // SessionTitle — inline editable title using session.task
@@ -161,6 +165,7 @@ export function SessionToolbarContent() {
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
+  const [reviewPopoverOpen, setReviewPopoverOpen] = useState(false);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
     onError: () => showError('Failed to archive session'),
@@ -314,11 +319,12 @@ export function SessionToolbarContent() {
                 variant={reviewVariant}
                 size="sm"
                 className="h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none"
+                onClick={() => dispatchReview('quick')}
               >
                 <Eye className="h-3.5 w-3.5" />
                 Review
               </Button>
-              <Popover>
+              <Popover open={reviewPopoverOpen} onOpenChange={setReviewPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant={reviewVariant}
@@ -336,6 +342,10 @@ export function SessionToolbarContent() {
                     <button
                       key={type.title}
                       className="w-full text-left rounded-md px-3 py-2.5 hover:bg-accent transition-colors"
+                      onClick={() => {
+                        dispatchReview(type.key);
+                        setReviewPopoverOpen(false);
+                      }}
                     >
                       <div className="flex items-start gap-3">
                         <type.icon className="h-4 w-4 mt-0.5 text-muted-foreground" />
@@ -411,7 +421,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handlePriorityChange]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handlePriorityChange, reviewPopoverOpen]);
 
   useMainToolbarContent(toolbarConfig);
 

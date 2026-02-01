@@ -3492,6 +3492,81 @@ func (h *Handlers) SetPRTemplate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
+// getReviewPrompts reads review prompt overrides from the given settings key.
+func (h *Handlers) getReviewPrompts(w http.ResponseWriter, ctx context.Context, key string) {
+	value, found, err := h.store.GetSetting(ctx, key)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]any{"prompts": map[string]string{}})
+		return
+	}
+
+	var prompts map[string]string
+	if err := json.Unmarshal([]byte(value), &prompts); err != nil {
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "corrupted review prompts data", err)
+		return
+	}
+
+	writeJSON(w, map[string]any{"prompts": prompts})
+}
+
+// setReviewPrompts writes review prompt overrides to the given settings key.
+func (h *Handlers) setReviewPrompts(w http.ResponseWriter, r *http.Request, key string) {
+	ctx := r.Context()
+
+	var req struct {
+		Prompts map[string]string `json:"prompts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if len(req.Prompts) == 0 {
+		if err := h.store.DeleteSetting(ctx, key); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		data, err := json.Marshal(req.Prompts)
+		if err != nil {
+			writeValidationError(w, "failed to encode prompts")
+			return
+		}
+		if err := h.store.SetSetting(ctx, key, string(data)); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetReviewPrompts returns the global custom review prompt overrides
+func (h *Handlers) GetReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	h.getReviewPrompts(w, r.Context(), "review-prompts")
+}
+
+// SetReviewPrompts updates the global custom review prompt overrides
+func (h *Handlers) SetReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	h.setReviewPrompts(w, r, "review-prompts")
+}
+
+// GetWorkspaceReviewPrompts returns the per-workspace custom review prompt overrides
+func (h *Handlers) GetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.getReviewPrompts(w, r.Context(), fmt.Sprintf("review-prompts:%s", workspaceID))
+}
+
+// SetWorkspaceReviewPrompts updates the per-workspace custom review prompt overrides
+func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
+}
+
 // GetSessionBranchSyncStatus returns how far behind the session is from origin/main
 func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

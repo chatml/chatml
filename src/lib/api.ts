@@ -1492,3 +1492,45 @@ export async function setPRTemplate(workspaceId: string, template: string): Prom
   );
   await handleVoidResponse(res, 'Failed to save PR template');
 }
+
+// ---------------------------------------------------------------------------
+// Review Prompt Overrides
+// ---------------------------------------------------------------------------
+
+export async function getGlobalReviewPrompts(): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/review-prompts`);
+  const data = await handleResponse<{ prompts: Record<string, string> }>(res);
+  return data.prompts;
+}
+
+export async function setGlobalReviewPrompts(prompts: Record<string, string>): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/review-prompts`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompts }),
+  });
+  await handleVoidResponse(res, 'Failed to save review prompts');
+}
+
+export async function getWorkspaceReviewPrompts(workspaceId: string): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/review-prompts`
+  );
+  const data = await handleResponse<{ prompts: Record<string, string> }>(res);
+  return data.prompts;
+}
+
+export async function setWorkspaceReviewPrompts(
+  workspaceId: string,
+  prompts: Record<string, string>,
+): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/review-prompts`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts }),
+    },
+  );
+  await handleVoidResponse(res, 'Failed to save workspace review prompts');
+}

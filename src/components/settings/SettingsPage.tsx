@@ -35,8 +35,11 @@ import {
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openFolderDialog, setMinimizeToTray, requestNotificationPermission } from '@/lib/tauri';
-import { getWorkspacesBasePath, setWorkspacesBasePath } from '@/lib/api';
+import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts } from '@/lib/api';
 import { EDITOR_THEMES } from '@/lib/monacoThemes';
+import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/toast';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -46,6 +49,7 @@ type SettingsCategory =
   | 'chat'
   | 'appearance'
   | 'git'
+  | 'review'
   | 'env'
   | 'claude-code'
   | 'account'
@@ -65,6 +69,7 @@ const mainNavItems: NavItem[] = [
   { id: 'chat', label: 'Chat', icon: <MessageSquare className="w-3.5 h-3.5" /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette className="w-3.5 h-3.5" /> },
   { id: 'git', label: 'Git', icon: <GitBranch className="w-3.5 h-3.5" /> },
+  { id: 'review', label: 'Review', icon: <Eye className="w-3.5 h-3.5" /> },
   { id: 'env', label: 'Env', icon: <FileCode className="w-3.5 h-3.5" /> },
   { id: 'claude-code', label: 'Claude Code', icon: <Bot className="w-3.5 h-3.5" /> },
   { id: 'account', label: 'Account', icon: <User className="w-3.5 h-3.5" /> },
@@ -171,6 +176,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             {selectedCategory === 'chat' && <ChatSettings />}
             {selectedCategory === 'appearance' && <AppearanceSettings />}
             {selectedCategory === 'git' && <GitSettings />}
+            {selectedCategory === 'review' && <ReviewSettings />}
             {selectedCategory === 'env' && <EnvSettings />}
             {selectedCategory === 'claude-code' && <ClaudeCodeSettings />}
             {selectedCategory === 'account' && <AccountSettings />}
@@ -804,6 +810,80 @@ function UpdatesSettings() {
       <p className="text-sm text-muted-foreground">
         ChatML is up to date.
       </p>
+    </div>
+  );
+}
+
+function ReviewSettings() {
+  const [prompts, setPrompts] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const { error: showError } = useToast();
+
+  useEffect(() => {
+    getGlobalReviewPrompts()
+      .then((data) => {
+        setPrompts(data);
+        setSaved(data);
+      })
+      .catch(() => {
+        showError('Failed to load review prompts');
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Filter out empty strings before saving
+      const cleaned: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prompts)) {
+        if (v.trim()) cleaned[k] = v.trim();
+      }
+      await setGlobalReviewPrompts(cleaned);
+      setPrompts(cleaned);
+      setSaved(cleaned);
+    } catch {
+      showError('Failed to save review prompts');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-1">Review</h2>
+      <p className="text-sm text-muted-foreground mb-6">
+        Add custom instructions that will be appended to each review type&apos;s default prompt.
+        These apply globally. Per-workspace overrides can be set in workspace settings.
+      </p>
+
+      <div className="space-y-5">
+        {REVIEW_TYPE_META.map(({ key, label, placeholder }) => (
+          <div key={key}>
+            <label className="text-[13px] font-medium block mb-1.5">{label}</label>
+            <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-1">
+              Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
+            </p>
+            <Textarea
+              className="text-[13px] min-h-[60px]"
+              placeholder={placeholder}
+              value={prompts[key] || ''}
+              onChange={(e) => setPrompts((prev) => ({ ...prev, [key]: e.target.value }))}
+            />
+          </div>
+        ))}
+      </div>
+
+      {hasChanges && (
+        <div className="mt-4 flex justify-end">
+          <Button size="sm" disabled={saving} onClick={handleSave}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

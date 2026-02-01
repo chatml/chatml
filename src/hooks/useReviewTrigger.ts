@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation } from '@/lib/api';
+import {
+  createConversation,
+  getGlobalReviewPrompts,
+  getWorkspaceReviewPrompts,
+} from '@/lib/api';
 import { useSelectedIds } from '@/stores/selectors';
 
 const REVIEW_PROMPTS: Record<string, string> = {
@@ -10,11 +14,51 @@ const REVIEW_PROMPTS: Record<string, string> = {
     'Do a thorough code review of all changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue found. Check for bugs, performance problems, security issues, error handling gaps, and code quality. Be detailed and specific.',
   security:
     'Perform a security audit on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each security concern. Look for injection vulnerabilities, authentication/authorization issues, data exposure, insecure defaults, and other OWASP top 10 risks.',
+  performance:
+    'Review the changes in this session for performance issues. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Look for unnecessary re-renders, memory leaks, expensive computations in hot paths, missing memoization, N+1 queries, and blocking operations. Call get_review_comment_stats at the end to summarize.',
+  architecture:
+    'Review the changes in this session for architectural quality. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Evaluate separation of concerns, coupling between modules, adherence to existing patterns in the codebase, SOLID principles, and appropriate abstractions. Call get_review_comment_stats at the end to summarize.',
+  premerge:
+    'Perform a final pre-merge check on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue. Check for leftover TODOs, console.logs, debug code, commented-out code, missing error handling, incomplete implementations, and anything that should not be merged. Call get_review_comment_stats at the end to summarize.',
 };
 
+const REVIEW_TYPE_META: { key: string; label: string; placeholder: string }[] = [
+  { key: 'quick', label: 'Quick Scan', placeholder: 'e.g., Also check for accessibility issues' },
+  { key: 'deep', label: 'Deep Review', placeholder: 'e.g., Pay attention to test coverage gaps' },
+  { key: 'security', label: 'Security Audit', placeholder: 'e.g., Check for OWASP top 10 specifically' },
+  { key: 'performance', label: 'Performance', placeholder: 'e.g., Watch for unnecessary re-renders in React' },
+  { key: 'architecture', label: 'Architecture', placeholder: 'e.g., We follow hexagonal architecture' },
+  { key: 'premerge', label: 'Pre-merge Check', placeholder: 'e.g., Ensure all TODO comments reference a ticket' },
+];
+
 /**
- * Listens for `start-review` CustomEvents (dispatched by slash commands and command palette)
- * and creates a review conversation with the appropriate prompt.
+ * Fetches global and per-workspace overrides and merges them.
+ * Per-workspace overrides take precedence over global.
+ */
+async function fetchMergedOverrides(workspaceId: string): Promise<Record<string, string>> {
+  const [global, workspace] = await Promise.all([
+    getGlobalReviewPrompts().catch(() => ({} as Record<string, string>)),
+    getWorkspaceReviewPrompts(workspaceId).catch(() => ({} as Record<string, string>)),
+  ]);
+  const merged: Record<string, string> = {};
+  for (const key of Object.keys(REVIEW_PROMPTS)) {
+    const ws = workspace[key];
+    const gl = global[key];
+    if (ws) {
+      merged[key] = ws;
+    } else if (gl) {
+      merged[key] = gl;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Listens for `start-review` CustomEvents (dispatched by slash commands, command palette,
+ * and toolbar review buttons) and creates a review conversation with the appropriate prompt.
+ *
+ * Fetches global and per-workspace custom prompt overrides inline when the review
+ * is triggered, then appends them to the built-in default prompt.
  */
 export function useReviewTrigger() {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
@@ -31,7 +75,20 @@ export function useReviewTrigger() {
     const handler = async (e: Event) => {
       const customEvent = e as CustomEvent<{ type?: string }>;
       const reviewType = customEvent.detail?.type || 'quick';
-      const message = REVIEW_PROMPTS[reviewType] || REVIEW_PROMPTS.quick;
+      const basePrompt = REVIEW_PROMPTS[reviewType] || REVIEW_PROMPTS.quick;
+
+      // Fetch overrides inline to avoid stale-cache race condition
+      let extra: string | undefined;
+      try {
+        const overrides = await fetchMergedOverrides(selectedWorkspaceId);
+        extra = overrides[reviewType];
+      } catch {
+        // Use base prompt without overrides
+      }
+
+      const message = extra
+        ? `${basePrompt}\n\nAdditional instructions:\n${extra}`
+        : basePrompt;
 
       try {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
@@ -75,3 +132,6 @@ export function useReviewTrigger() {
     };
   }, [selectedWorkspaceId, selectedSessionId, addConversation, addMessage, selectConversation, setStreaming]);
 }
+
+/** Exported for use in settings UI */
+export { REVIEW_PROMPTS, REVIEW_TYPE_META };
