@@ -98,6 +98,8 @@ import {
 import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 interface WorkspaceSidebarProps {
   onOpenProject: () => void;
@@ -910,165 +912,199 @@ function SortableWorkspaceItem({
                 No active sessions
               </div>
             ) : (
-              sessions.map((session) => {
-                const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
-                const hasPR = session.prStatus && session.prStatus !== 'none';
-                const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
-
-                // Determine PR status display
-                const getPRStatusInfo = () => {
-                  if (!hasPR) return null;
-                  if (session.hasMergeConflict) {
-                    return { text: 'Merge conflict', color: 'text-text-warning', icon: AlertTriangle };
-                  }
-                  if (session.hasCheckFailures) {
-                    return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
-                  }
-                  if (session.prStatus === 'merged') {
-                    return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
-                  }
-                  if (session.prStatus === 'open') {
-                    return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
-                  }
-                  return null;
-                };
-
-                const prStatusInfo = getPRStatusInfo();
-
-                return (
-                  <ContextMenu key={session.id}>
-                    <ContextMenuTrigger asChild>
-                      <div
-                        className={cn(
-                          'group flex items-start gap-1 pl-0 pr-2 py-2 rounded-md cursor-pointer my-0.5',
-                          isSessionSelected
-                            ? 'bg-surface-2 hover:bg-surface-3'
-                            : 'hover:bg-surface-1'
-                        )}
-                        onClick={(e) => onSelectSession(session.id, e)}
-                      >
-                        {/* Status indicator column */}
-                        <div className="w-3.5 shrink-0 flex items-center justify-center pt-0.5">
-                          {session.status === 'active' && (
-                            <div className="session-active-indicator">
-                              <div className="bar" />
-                              <div className="bar" />
-                              <div className="bar" />
-                            </div>
-                          )}
-                        </div>
-                        {/* Git icon column */}
-                        <div className="w-4 shrink-0 flex items-start justify-center pt-0.5">
-                          {hasPR ? (
-                            <GitPullRequest className="w-3.5 h-3.5 text-purple-500" />
-                          ) : (
-                            <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          {/* First line: branch name + stats/actions */}
-                          <div className="flex items-center gap-1.5">
-                            {/* Branch name container - grows and truncates */}
-                            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-                              <span className={cn(
-                                "text-base font-normal truncate flex-1 w-0",
-                                isSessionSelected ? "text-foreground" : "text-foreground/60"
-                              )}>
-                                {session.branch || session.name}
-                              </span>
-                              {/* Pinned indicator - fade out on hover */}
-                              {session.pinned && (
-                                <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
-                              )}
-                            </div>
-                            {/* Git line stats badge and actions container */}
-                            <div className="relative shrink-0 flex items-center">
-                              {/* Stats - fade out on hover */}
-                              {hasStats && (
-                                <span className="text-2xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
-                                  <span className="text-text-success">+{session.stats!.additions}</span>
-                                  <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
-                                </span>
-                              )}
-                              {/* Actions - positioned absolutely to avoid layout shift */}
-                              <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  className={cn(
-                                    "p-0.5 rounded hover:bg-surface-1 hover:text-foreground",
-                                    session.pinned ? "text-primary" : "text-muted-foreground"
-                                  )}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onPinSession(session.id);
-                                  }}
-                                >
-                                  <Pin className="h-2.5 w-2.5" />
-                                </button>
-                                <button
-                                  className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onArchiveSession(session.id);
-                                  }}
-                                >
-                                  <Archive className="h-2.5 w-2.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          {/* Second line: task status · priority · session name · PR info · status */}
-                          <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
-                            {session.taskStatus && session.taskStatus !== 'backlog' && (() => {
-                              const opt = getTaskStatusOption(session.taskStatus);
-                              return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
-                            })()}
-                            {session.priority > 0 && (() => {
-                              const opt = getPriorityOption(session.priority);
-                              return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
-                            })()}
-                            <span className="truncate">{session.name}</span>
-                            {hasPR && session.prNumber && (
-                              <>
-                                <span className="text-muted-foreground/50">·</span>
-                                <span className="shrink-0">PR #{session.prNumber}</span>
-                              </>
-                            )}
-                            {prStatusInfo && (
-                              <>
-                                <span className="text-muted-foreground/50">·</span>
-                                <span className={cn('shrink-0', prStatusInfo.color)}>
-                                  {prStatusInfo.text}
-                                </span>
-                              </>
-                            )}
-                            {!hasPR && (
-                              <>
-                                <span className="text-muted-foreground/50">·</span>
-                                <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => onPinSession(session.id)}>
-                        <Pin className="h-4 w-4" />
-                        {session.pinned ? 'Unpin' : 'Pin'}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
-                        <Archive className="h-4 w-4" />
-                        Archive
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                );
-              })
+              sessions.map((session) => (
+                <ErrorBoundary
+                  key={session.id}
+                  section="SessionRow"
+                  fallback={<CardErrorFallback message="Error loading session" />}
+                >
+                  <SessionRow
+                    session={session}
+                    contentView={contentView}
+                    selectedSessionId={selectedSessionId}
+                    onSelectSession={onSelectSession}
+                    onPinSession={onPinSession}
+                    onArchiveSession={onArchiveSession}
+                    formatTimeAgo={formatTimeAgo}
+                  />
+                </ErrorBoundary>
+              ))
             )}
           </div>
         </CollapsibleContent>
       </Collapsible>
     </div>
+  );
+}
+
+function SessionRow({
+  session,
+  contentView,
+  selectedSessionId,
+  onSelectSession,
+  onPinSession,
+  onArchiveSession,
+  formatTimeAgo,
+}: {
+  session: WorktreeSession;
+  contentView: ContentView;
+  selectedSessionId: string | null;
+  onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
+  onPinSession: (sessionId: string) => void;
+  onArchiveSession: (sessionId: string) => void;
+  formatTimeAgo: (date: string) => string;
+}) {
+  const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
+  const hasPR = session.prStatus && session.prStatus !== 'none';
+  const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
+
+  // Determine PR status display
+  const getPRStatusInfo = () => {
+    if (!hasPR) return null;
+    if (session.hasMergeConflict) {
+      return { text: 'Merge conflict', color: 'text-text-warning', icon: AlertTriangle };
+    }
+    if (session.hasCheckFailures) {
+      return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
+    }
+    if (session.prStatus === 'merged') {
+      return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
+    }
+    if (session.prStatus === 'open') {
+      return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
+    }
+    return null;
+  };
+
+  const prStatusInfo = getPRStatusInfo();
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={cn(
+            'group flex items-start gap-1 pl-0 pr-2 py-2 rounded-md cursor-pointer my-0.5',
+            isSessionSelected
+              ? 'bg-surface-2 hover:bg-surface-3'
+              : 'hover:bg-surface-1'
+          )}
+          onClick={(e) => onSelectSession(session.id, e)}
+        >
+          {/* Status indicator column */}
+          <div className="w-3.5 shrink-0 flex items-center justify-center pt-0.5">
+            {session.status === 'active' && (
+              <div className="session-active-indicator">
+                <div className="bar" />
+                <div className="bar" />
+                <div className="bar" />
+              </div>
+            )}
+          </div>
+          {/* Git icon column */}
+          <div className="w-4 shrink-0 flex items-start justify-center pt-0.5">
+            {hasPR ? (
+              <GitPullRequest className="w-3.5 h-3.5 text-purple-500" />
+            ) : (
+              <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            {/* First line: branch name + stats/actions */}
+            <div className="flex items-center gap-1.5">
+              {/* Branch name container - grows and truncates */}
+              <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+                <span className={cn(
+                  "text-base font-normal truncate flex-1 w-0",
+                  isSessionSelected ? "text-foreground" : "text-foreground/60"
+                )}>
+                  {session.branch || session.name}
+                </span>
+                {/* Pinned indicator - fade out on hover */}
+                {session.pinned && (
+                  <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
+                )}
+              </div>
+              {/* Git line stats badge and actions container */}
+              <div className="relative shrink-0 flex items-center">
+                {/* Stats - fade out on hover */}
+                {hasStats && (
+                  <span className="text-2xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                    <span className="text-text-success">+{session.stats!.additions}</span>
+                    <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
+                  </span>
+                )}
+                {/* Actions - positioned absolutely to avoid layout shift */}
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    className={cn(
+                      "p-0.5 rounded hover:bg-surface-1 hover:text-foreground",
+                      session.pinned ? "text-primary" : "text-muted-foreground"
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPinSession(session.id);
+                    }}
+                  >
+                    <Pin className="h-2.5 w-2.5" />
+                  </button>
+                  <button
+                    className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onArchiveSession(session.id);
+                    }}
+                  >
+                    <Archive className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            {/* Second line: task status · priority · session name · PR info · status */}
+            <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
+              {session.taskStatus && session.taskStatus !== 'backlog' && (() => {
+                const opt = getTaskStatusOption(session.taskStatus);
+                return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
+              })()}
+              {session.priority > 0 && (() => {
+                const opt = getPriorityOption(session.priority);
+                return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
+              })()}
+              <span className="truncate">{session.name}</span>
+              {hasPR && session.prNumber && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="shrink-0">PR #{session.prNumber}</span>
+                </>
+              )}
+              {prStatusInfo && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className={cn('shrink-0', prStatusInfo.color)}>
+                    {prStatusInfo.text}
+                  </span>
+                </>
+              )}
+              {!hasPR && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => onPinSession(session.id)}>
+          <Pin className="h-4 w-4" />
+          {session.pinned ? 'Unpin' : 'Pin'}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
+          <Archive className="h-4 w-4" />
+          Archive
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

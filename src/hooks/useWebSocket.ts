@@ -3,9 +3,14 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment } from '@/lib/types';
-import { WEBSOCKET_RECONNECT_DELAY_MS } from '@/lib/constants';
+import {
+  WEBSOCKET_RECONNECT_BASE_DELAY_MS,
+  WEBSOCKET_RECONNECT_MAX_DELAY_MS,
+  WEBSOCKET_RECONNECT_MAX_ATTEMPTS,
+} from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
+import { useConnectionStore } from '@/stores/connectionStore';
 
 // Type guards for WebSocket payload validation
 function isAgentEvent(payload: unknown): payload is AgentEvent {
@@ -64,6 +69,7 @@ export function useWebSocket(enabled: boolean = true) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const enabledRef = useRef(enabled);
   const connectRef = useRef<(() => void) | null>(null);
+  const attemptRef = useRef(0);
 
   // Update enabledRef in effect to satisfy linter
   useEffect(() => {
@@ -337,7 +343,8 @@ export function useWebSocket(enabled: boolean = true) {
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      // Connected successfully
+      attemptRef.current = 0;
+      useConnectionStore.getState().setConnected();
     };
 
     ws.onmessage = (event) => {
@@ -486,12 +493,26 @@ export function useWebSocket(enabled: boolean = true) {
     };
 
     ws.onclose = () => {
+      useConnectionStore.getState().setDisconnected();
+
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      // Only reconnect if still enabled
+      // Only reconnect if still enabled and under max attempts
       if (enabledRef.current && connectRef.current) {
-        reconnectTimeoutRef.current = setTimeout(connectRef.current, WEBSOCKET_RECONNECT_DELAY_MS);
+        attemptRef.current += 1;
+        const attempt = attemptRef.current;
+
+        if (attempt <= WEBSOCKET_RECONNECT_MAX_ATTEMPTS) {
+          useConnectionStore.getState().setConnecting(attempt);
+          // Exponential backoff: base * 2^(attempt-1), capped at max delay
+          const delay = Math.min(
+            WEBSOCKET_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 1),
+            WEBSOCKET_RECONNECT_MAX_DELAY_MS,
+          );
+          reconnectTimeoutRef.current = setTimeout(connectRef.current, delay);
+        }
+        // Max attempts exceeded — stay disconnected so the UI can prompt manual reconnect
       }
     };
 
@@ -526,4 +547,25 @@ export function useWebSocket(enabled: boolean = true) {
       wsRef.current?.close();
     };
   }, [enabled, connect]);
+
+  const reconnect = useCallback(() => {
+    attemptRef.current = 0;
+    useConnectionStore.getState().setConnecting(0);
+    // connect() already cancels pending reconnect timers and checks readyState,
+    // so we just need to tear down the old socket without triggering onclose reconnect.
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    const oldWs = wsRef.current;
+    if (oldWs) {
+      // Remove onclose to prevent the auto-reconnect logic from racing with us
+      oldWs.onclose = null;
+      oldWs.close();
+      wsRef.current = null;
+    }
+    connect();
+  }, [connect]);
+
+  return { reconnect };
 }

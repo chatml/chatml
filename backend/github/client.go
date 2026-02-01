@@ -369,6 +369,65 @@ func (c *Client) CreateCommitStatus(ctx context.Context, owner, repo, sha string
 	return &result, nil
 }
 
+// CreatePullRequestRequest contains the parameters for creating a GitHub pull request
+type CreatePullRequestRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Head  string `json:"head"`  // Branch name containing the changes
+	Base  string `json:"base"`  // Target branch (e.g., "main")
+	Draft bool   `json:"draft"` // Whether to create as a draft PR
+}
+
+// CreatePullRequestResponse contains the response from creating a pull request
+type CreatePullRequestResponse struct {
+	Number  int    `json:"number"`
+	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
+	Title   string `json:"title"`
+}
+
+// CreatePullRequest creates a new pull request on GitHub
+func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, pr CreatePullRequestRequest) (*CreatePullRequestResponse, error) {
+	token := c.GetToken()
+	if token == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	prURL := fmt.Sprintf("%s/repos/%s/%s/pulls", c.apiURL, owner, repo)
+
+	body, err := json.Marshal(pr)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling PR request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", prURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("creating pull request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var result CreatePullRequestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // GetCombinedStatus gets the combined status for a ref (branch, tag, or SHA)
 func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string) (*CombinedStatus, error) {
 	token := c.GetToken()

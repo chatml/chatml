@@ -17,6 +17,7 @@ export function ActionButton({
   disabled,
   onSendMessage,
   onArchiveSession,
+  onCreatePR,
   className,
 }: ActionButtonProps) {
   // Nothing to render if action is null (e.g., merged PR)
@@ -34,7 +35,10 @@ export function ActionButton({
   const handleClick = () => {
     if (isDisabled) return;
 
-    if (action.type === 'view-pr' && action.prUrl) {
+    if (action.type === 'create-pr' && onCreatePR) {
+      // Open PR creation dialog
+      onCreatePR();
+    } else if (action.type === 'view-pr' && action.prUrl) {
       // Open PR in browser
       window.open(action.prUrl, '_blank');
     } else if (action.type === 'archive-session' && action.sessionId && onArchiveSession) {

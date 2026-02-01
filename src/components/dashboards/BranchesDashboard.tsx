@@ -24,6 +24,8 @@ import {
 import { BranchCleanupDialog } from '@/components/dialogs/branch-cleanup/BranchCleanupDialog';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 interface BranchesDashboardProps {
   workspaceId: string;
@@ -404,10 +406,12 @@ export function BranchesDashboard({
       header: 'Branch',
       accessorKey: 'name',
       cell: (branch) => (
-        <div className="flex items-center gap-1.5">
-          <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
-          <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
-        </div>
+        <ErrorBoundary section="BranchNameCell" fallback={<InlineErrorFallback message="Error" />}>
+          <div className="flex items-center gap-1.5">
+            <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+            <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
+          </div>
+        </ErrorBoundary>
       ),
       sortable: true,
       // No width = flexible, will truncate
@@ -416,7 +420,11 @@ export function BranchesDashboard({
       id: 'commit',
       header: 'Last Commit',
       accessorKey: 'lastCommitSubject',
-      cell: (branch) => <CommitCell branch={branch} />,
+      cell: (branch) => (
+        <ErrorBoundary section="BranchCommitCell" fallback={<InlineErrorFallback message="Error" />}>
+          <CommitCell branch={branch} />
+        </ErrorBoundary>
+      ),
       // No width = flexible, will truncate
     },
     {

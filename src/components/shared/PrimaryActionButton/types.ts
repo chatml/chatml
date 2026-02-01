@@ -46,5 +46,6 @@ export interface ActionButtonProps {
   disabled: boolean;
   onSendMessage: (content: string) => void;
   onArchiveSession?: (sessionId: string) => void;
+  onCreatePR?: () => void;
   className?: string;
 }

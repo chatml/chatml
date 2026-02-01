@@ -8,7 +8,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Copy, Check, FileText } from 'lucide-react';
+import { Copy, Check, FileText, Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
@@ -23,6 +23,7 @@ import { highlightSearchMatches } from '@/components/conversation/ChatSearchBar'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 export interface MessageBlockProps {
   message: Message;
@@ -43,6 +44,8 @@ export const MessageBlock = memo(function MessageBlock({
   // comparator below to skip re-renders for messages without search matches.
 }: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
+  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+  const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
 
   const copyContent = useCallback(async () => {
     const success = await copyToClipboard(message.content);
@@ -95,6 +98,29 @@ export const MessageBlock = memo(function MessageBlock({
   return (
     <div className={cn('py-2', !isFirst && 'border-t border-border')}>
       <div className="space-y-1.5">
+        {/* Thinking/Reasoning Content */}
+        {message.role === 'assistant' && showThinkingBlocks && message.thinkingContent && (
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
+              className="flex items-center gap-2 text-xs text-ai-thinking hover:text-ai-thinking/80 transition-colors"
+            >
+              <Brain className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span className="font-medium">Thinking</span>
+              {isThinkingExpanded ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+            </button>
+            {isThinkingExpanded && (
+              <div className="ml-5 text-xs px-2 py-1.5 rounded bg-ai-thinking/10 text-muted-foreground font-mono border border-ai-thinking/20 whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                {message.thinkingContent}
+              </div>
+            )}
+          </div>
+        )}
+
           {/* Tool Usage History */}
           {message.toolUsage && message.toolUsage.length > 0 && (
             <ErrorBoundary

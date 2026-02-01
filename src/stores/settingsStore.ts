@@ -50,6 +50,7 @@ interface SettingsState {
   defaultModel: string;
   defaultThinking: boolean;
   maxThinkingTokens: number;
+  showThinkingBlocks: boolean; // Whether to show thinking/reasoning content in messages
   desktopNotifications: boolean;
   soundEffects: boolean;
   sendWithEnter: boolean;
@@ -86,6 +87,8 @@ interface SettingsState {
   setDefaultModel: (value: string) => void;
   setDefaultThinking: (value: boolean) => void;
   setMaxThinkingTokens: (value: number) => void;
+  setShowThinkingBlocks: (value: boolean) => void;
+  toggleShowThinkingBlocks: () => void;
   setDesktopNotifications: (value: boolean) => void;
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
@@ -120,6 +123,7 @@ export const useSettingsStore = create<SettingsState>()(
       defaultModel: 'opus-4.5',
       defaultThinking: true,
       maxThinkingTokens: 10000,
+      showThinkingBlocks: true,
       desktopNotifications: true,
       soundEffects: false,
       sendWithEnter: true,
@@ -147,6 +151,8 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultModel: (value) => set({ defaultModel: value }),
       setDefaultThinking: (value) => set({ defaultThinking: value }),
       setMaxThinkingTokens: (value) => set({ maxThinkingTokens: value }),
+      setShowThinkingBlocks: (value) => set({ showThinkingBlocks: value }),
+      toggleShowThinkingBlocks: () => set((state) => ({ showThinkingBlocks: !state.showThinkingBlocks })),
       setDesktopNotifications: (value) => set({ desktopNotifications: value }),
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),

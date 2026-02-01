@@ -7,6 +7,8 @@ import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Layers, GitBranch, GitPullRequest, FolderGit2, Activity, LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 
 export function GlobalDashboard() {
@@ -194,39 +196,44 @@ export function GlobalDashboard() {
               {recentSessions.map((session) => {
                 const workspace = workspaces.find((w) => w.id === session.workspaceId);
                 return (
-                  <div
+                  <ErrorBoundary
                     key={session.id}
-                    className="bg-surface-1 rounded-lg p-3 border border-border/50 hover:bg-surface-2 cursor-pointer transition-colors"
-                    onClick={() => handleJumpToSession(session.id, session.workspaceId)}
+                    section="SessionCard"
+                    fallback={<CardErrorFallback message="Error loading session" />}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {session.prStatus && session.prStatus !== 'none' ? (
-                          <GitPullRequest className="h-4 w-4 text-purple-400 shrink-0" />
-                        ) : (
-                          <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{session.branch || session.name}</div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {workspace?.name || 'Unknown'} {session.prNumber && `· PR #${session.prNumber}`}
+                    <div
+                      className="bg-surface-1 rounded-lg p-3 border border-border/50 hover:bg-surface-2 cursor-pointer transition-colors"
+                      onClick={() => handleJumpToSession(session.id, session.workspaceId)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {session.prStatus && session.prStatus !== 'none' ? (
+                            <GitPullRequest className="h-4 w-4 text-purple-400 shrink-0" />
+                          ) : (
+                            <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{session.branch || session.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {workspace?.name || 'Unknown'} {session.prNumber && `· PR #${session.prNumber}`}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        {session.stats && (session.stats.additions > 0 || session.stats.deletions > 0) && (
-                          <span className="text-xs font-mono">
-                            <span className="text-green-400">+{session.stats.additions}</span>
-                            {' '}
-                            <span className="text-red-400">-{session.stats.deletions}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          {session.stats && (session.stats.additions > 0 || session.stats.deletions > 0) && (
+                            <span className="text-xs font-mono">
+                              <span className="text-green-400">+{session.stats.additions}</span>
+                              {' '}
+                              <span className="text-red-400">-{session.stats.deletions}</span>
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {formatTimeAgo(session.updatedAt || session.createdAt)}
                           </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {formatTimeAgo(session.updatedAt || session.createdAt)}
-                        </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </ErrorBoundary>
                 );
               })}
             </div>

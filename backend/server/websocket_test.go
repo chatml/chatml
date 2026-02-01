@@ -389,8 +389,8 @@ func TestHub_SlowClientEviction(t *testing.T) {
 	hub.Broadcast(Event{Type: "overflow1"})
 	hub.Broadcast(Event{Type: "overflow2"})
 
-	// Give time for eviction to happen
-	time.Sleep(50 * time.Millisecond)
+	// Give time for timed retry (100ms) + eviction processing
+	time.Sleep(200 * time.Millisecond)
 
 	// Client should be evicted
 	hub.mu.RLock()
@@ -434,8 +434,8 @@ func TestHub_PerClientBuffer_IsolatesSlowClients(t *testing.T) {
 		hub.Broadcast(Event{Type: "test"})
 	}
 
-	// Wait for processing
-	time.Sleep(50 * time.Millisecond)
+	// Wait for timed retry (100ms) + eviction processing
+	time.Sleep(200 * time.Millisecond)
 
 	// Fast client should still be connected
 	hub.mu.RLock()
@@ -448,6 +448,45 @@ func TestHub_PerClientBuffer_IsolatesSlowClients(t *testing.T) {
 
 	// Fast client should have received messages
 	assert.Greater(t, len(fastClient.send), 0, "Fast client should have messages in buffer")
+}
+
+func TestHub_SlowClientRecovery(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+	time.Sleep(10 * time.Millisecond)
+
+	// Create a client with a small buffer (2 slots)
+	client := &Client{
+		hub:  hub,
+		send: make(chan []byte, 2),
+	}
+
+	hub.register <- client
+	time.Sleep(10 * time.Millisecond)
+
+	// Fill the buffer completely
+	client.send <- []byte(`{"type":"msg1"}`)
+	client.send <- []byte(`{"type":"msg2"}`)
+
+	// Broadcast a message - this will trigger the timed retry goroutine
+	hub.Broadcast(Event{Type: "overflow"})
+
+	// Quickly drain the buffer (simulating browser catching up)
+	time.Sleep(10 * time.Millisecond)
+	<-client.send
+	<-client.send
+
+	// Wait for the retry goroutine to deliver and reset evicting flag
+	time.Sleep(50 * time.Millisecond)
+
+	// Client should still be registered (not evicted)
+	hub.mu.RLock()
+	exists := hub.clients[client]
+	hub.mu.RUnlock()
+	assert.True(t, exists, "Client that recovered should not be evicted")
+
+	// No clients should have been dropped
+	assert.Equal(t, uint64(0), hub.metrics.clientsDropped.Load(), "No client drops should be recorded")
 }
 
 // ============================================================================

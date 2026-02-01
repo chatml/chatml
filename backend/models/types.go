@@ -49,6 +49,15 @@ type SessionWithWorkspace struct {
 	WorkspaceBranch string `json:"workspaceBranch"`
 }
 
+// DefaultBranch returns the workspace's default branch name (e.g. "main", "master"),
+// falling back to "main" if not set.
+func (s *SessionWithWorkspace) DefaultBranch() string {
+	if s.WorkspaceBranch != "" {
+		return s.WorkspaceBranch
+	}
+	return "main"
+}
+
 type Agent struct {
 	ID        string    `json:"id"`
 	RepoID    string    `json:"repoId"`

@@ -36,6 +36,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 interface PRDashboardProps {
   initialWorkspaceId?: string;
@@ -478,10 +480,12 @@ export function PRDashboard({
       header: '#',
       accessorKey: 'number',
       cell: (pr) => (
-        <div className="flex items-center gap-1.5">
-          <StatusIconCell pr={pr} />
-          <PRNumberCell pr={pr} />
-        </div>
+        <ErrorBoundary section="PRCell" fallback={<InlineErrorFallback message="Error" />}>
+          <div className="flex items-center gap-1.5">
+            <StatusIconCell pr={pr} />
+            <PRNumberCell pr={pr} />
+          </div>
+        </ErrorBoundary>
       ),
       sortable: true,
       width: '80px',
@@ -490,20 +494,32 @@ export function PRDashboard({
       id: 'title',
       header: 'Title',
       accessorKey: 'title',
-      cell: (pr) => <TitleCell pr={pr} />,
+      cell: (pr) => (
+        <ErrorBoundary section="PRTitleCell" fallback={<InlineErrorFallback message="Error" />}>
+          <TitleCell pr={pr} />
+        </ErrorBoundary>
+      ),
       sortable: true,
     },
     {
       id: 'branch',
       header: 'Branch',
       accessorKey: 'branch',
-      cell: (pr) => <BranchCell pr={pr} />,
+      cell: (pr) => (
+        <ErrorBoundary section="PRBranchCell" fallback={<InlineErrorFallback message="Error" />}>
+          <BranchCell pr={pr} />
+        </ErrorBoundary>
+      ),
     },
     {
       id: 'checks',
       header: 'Checks',
       accessorKey: (pr) => `${pr.checksPassed}/${pr.checksTotal}`,
-      cell: (pr) => <ChecksCell pr={pr} />,
+      cell: (pr) => (
+        <ErrorBoundary section="PRChecksCell" fallback={<InlineErrorFallback message="Error" />}>
+          <ChecksCell pr={pr} />
+        </ErrorBoundary>
+      ),
       width: '80px',
     },
     {

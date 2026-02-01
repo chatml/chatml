@@ -33,7 +33,7 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil)
 
 	return handlers, sqliteStore
 }
@@ -55,7 +55,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil)
+	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil)
 
 	return handlers, sqliteStore, agentManager
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useStreamingState, useActiveTools } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
@@ -87,6 +88,8 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   const budgetStatus = useAppStore((s) => s.budgetStatus);
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number | null>(null);
+
+  const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
 
   // Check if extended thinking is enabled for this conversation
   const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
@@ -209,7 +212,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
                 {streaming.isThinking && (
                   <Loader2 className="w-3 h-3 animate-spin text-ai-thinking" aria-hidden="true" />
                 )}
-                {thinkingNeedsTruncation && (
+                {showThinkingBlocks && thinkingNeedsTruncation && (
                   <button
                     onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                     className="flex items-center gap-0.5 text-xs text-primary hover:text-primary/80 transition-colors"
@@ -228,7 +231,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
                   </button>
                 )}
               </div>
-              {streaming.thinking && (
+              {showThinkingBlocks && streaming.thinking && (
                 <div
                   className={cn(
                     'ml-5 text-xs px-2 py-1.5 rounded bg-ai-thinking/10 text-muted-foreground font-mono',

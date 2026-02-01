@@ -509,6 +509,147 @@ func TestUser_JSONSerialization(t *testing.T) {
 	require.Equal(t, user.AvatarURL, decoded.AvatarURL)
 }
 
+// ============================================================================
+// CreatePullRequest Tests
+// ============================================================================
+
+func TestClient_CreatePullRequest_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/repos/owner/repo/pulls", r.URL.Path)
+		require.Equal(t, "POST", r.Method)
+		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		require.Equal(t, "application/vnd.github+json", r.Header.Get("Accept"))
+
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		var pr CreatePullRequestRequest
+		require.NoError(t, json.Unmarshal(body, &pr))
+		require.Equal(t, "Add auth flow", pr.Title)
+		require.Equal(t, "Description here", pr.Body)
+		require.Equal(t, "feature/auth", pr.Head)
+		require.Equal(t, "main", pr.Base)
+		require.True(t, pr.Draft)
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(CreatePullRequestResponse{
+			Number:  42,
+			HTMLURL: "https://github.com/owner/repo/pull/42",
+			State:   "open",
+			Title:   "Add auth flow",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test-token")
+
+	result, err := client.CreatePullRequest(context.Background(), "owner", "repo", CreatePullRequestRequest{
+		Title: "Add auth flow",
+		Body:  "Description here",
+		Head:  "feature/auth",
+		Base:  "main",
+		Draft: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 42, result.Number)
+	require.Equal(t, "https://github.com/owner/repo/pull/42", result.HTMLURL)
+	require.Equal(t, "open", result.State)
+	require.Equal(t, "Add auth flow", result.Title)
+}
+
+func TestClient_CreatePullRequest_NotAuthenticated(t *testing.T) {
+	client := NewClient("", "")
+	// No token set
+
+	_, err := client.CreatePullRequest(context.Background(), "owner", "repo", CreatePullRequestRequest{
+		Title: "Test",
+		Head:  "branch",
+		Base:  "main",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not authenticated")
+}
+
+func TestClient_CreatePullRequest_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		w.Write([]byte(`{"message":"Validation Failed","errors":[{"resource":"PullRequest","code":"custom","message":"A pull request already exists"}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test-token")
+
+	_, err := client.CreatePullRequest(context.Background(), "owner", "repo", CreatePullRequestRequest{
+		Title: "Test",
+		Head:  "branch",
+		Base:  "main",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "422")
+	require.Contains(t, err.Error(), "already exists")
+}
+
+func TestClient_CreatePullRequest_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(CreatePullRequestResponse{Number: 1})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test-token")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.CreatePullRequest(ctx, "owner", "repo", CreatePullRequestRequest{
+		Title: "Test",
+		Head:  "branch",
+		Base:  "main",
+	})
+
+	require.Error(t, err)
+}
+
+func TestClient_CreatePullRequest_NonDraft(t *testing.T) {
+	var receivedDraft bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var pr CreatePullRequestRequest
+		json.Unmarshal(body, &pr)
+		receivedDraft = pr.Draft
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(CreatePullRequestResponse{Number: 1, State: "open"})
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test-token")
+
+	_, err := client.CreatePullRequest(context.Background(), "owner", "repo", CreatePullRequestRequest{
+		Title: "Test",
+		Head:  "branch",
+		Base:  "main",
+		Draft: false,
+	})
+
+	require.NoError(t, err)
+	require.False(t, receivedDraft)
+}
+
 func TestClient_GetUser_Success_FullFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/user", r.URL.Path)
