@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,100 +12,121 @@ import {
   Clock,
   FileCode,
   ChevronRight,
-  Filter,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/stores/appStore';
+import {
+  listReviewComments,
+  updateReviewComment as apiUpdateReviewComment,
+} from '@/lib/api';
+import type { ReviewComment } from '@/lib/types';
 
-// Review comment severity levels
-export type CommentSeverity = 'error' | 'warning' | 'info' | 'suggestion';
+type CommentSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 
-// Review comment status
-export type CommentStatus = 'open' | 'resolved' | 'wont-fix';
-
-// Review comment interface
-export interface ReviewComment {
-  id: string;
-  filePath: string;
-  lineNumber?: number;
-  severity: CommentSeverity;
-  status: CommentStatus;
-  title: string;
-  description?: string;
-  author?: string;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-// Mock data for demonstration - this would come from backend/store in real implementation
-const MOCK_COMMENTS: ReviewComment[] = [
-  {
-    id: '1',
-    filePath: 'src/components/ChatInput.tsx',
-    lineNumber: 42,
-    severity: 'error',
-    status: 'open',
-    title: 'Potential memory leak',
-    description: 'useEffect cleanup function not properly disposing event listener',
-    author: 'AI Review',
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 min ago
-  },
-  {
-    id: '2',
-    filePath: 'src/lib/api.ts',
-    lineNumber: 156,
-    severity: 'warning',
-    status: 'open',
-    title: 'Missing error handling',
-    description: 'API call should handle network errors gracefully',
-    author: 'AI Review',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // 1 hour ago
-  },
-  {
-    id: '3',
-    filePath: 'src/stores/appStore.ts',
-    lineNumber: 89,
-    severity: 'suggestion',
-    status: 'open',
-    title: 'Consider memoization',
-    description: 'This selector could benefit from memoization to prevent re-renders',
-    author: 'AI Review',
-    createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(), // 2 hours ago
-  },
-  {
-    id: '4',
-    filePath: 'src/components/WorkspaceSidebar.tsx',
-    severity: 'info',
-    status: 'open',
-    title: 'Documentation needed',
-    description: 'Complex component would benefit from JSDoc comments',
-    author: 'AI Review',
-    createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(), // 3 hours ago
-  },
-];
+const EMPTY: ReviewComment[] = [];
 
 interface ReviewPanelProps {
+  workspaceId: string | null;
+  sessionId: string | null;
   onFileSelect?: (path: string, line?: number) => void;
 }
 
-export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
+export function ReviewPanel({ workspaceId, sessionId, onFileSelect }: ReviewPanelProps) {
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
-  const [comments] = useState<ReviewComment[]>(MOCK_COMMENTS);
+  const [loading, setLoading] = useState(false);
+  const [fetchSession, setFetchSession] = useState<string | null>(null);
+
+  const comments = useAppStore((s) =>
+    sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
+  );
+  const setReviewComments = useAppStore((s) => s.setReviewComments);
+  const updateReviewComment = useAppStore((s) => s.updateReviewComment);
+
+  // Track when session changes to trigger loading state outside the effect
+  if (sessionId !== fetchSession) {
+    setFetchSession(sessionId);
+    if (workspaceId && sessionId) {
+      setLoading(true);
+    }
+  }
+
+  // Fetch comments from API on mount / session change
+  useEffect(() => {
+    if (!workspaceId || !sessionId) return;
+
+    let cancelled = false;
+
+    listReviewComments(workspaceId, sessionId)
+      .then((data) => {
+        if (!cancelled) {
+          setReviewComments(sessionId, data as ReviewComment[]);
+        }
+      })
+      .catch(() => {
+        // Silently fail - store may already have data from WebSocket
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [workspaceId, sessionId, setReviewComments]);
 
   // Filter comments by severity and only show unresolved
   const filteredComments = comments.filter((c) => {
-    if (c.status !== 'open') return false;
+    if (c.resolved) return false;
     if (filter === 'all') return true;
     return c.severity === filter;
   });
 
   // Count by severity for filter badges
+  const unresolvedComments = comments.filter((c) => !c.resolved);
   const counts = {
-    all: comments.filter((c) => c.status === 'open').length,
-    error: comments.filter((c) => c.status === 'open' && c.severity === 'error').length,
-    warning: comments.filter((c) => c.status === 'open' && c.severity === 'warning').length,
-    info: comments.filter((c) => c.status === 'open' && c.severity === 'info').length,
-    suggestion: comments.filter((c) => c.status === 'open' && c.severity === 'suggestion').length,
+    all: unresolvedComments.length,
+    error: unresolvedComments.filter((c) => c.severity === 'error').length,
+    warning: unresolvedComments.filter((c) => c.severity === 'warning').length,
+    info: unresolvedComments.filter((c) => c.severity === 'info').length,
+    suggestion: unresolvedComments.filter((c) => c.severity === 'suggestion').length,
   };
+
+  const handleResolve = useCallback(
+    async (commentId: string) => {
+      if (!workspaceId || !sessionId) return;
+
+      // Optimistically update the store immediately
+      updateReviewComment(sessionId, commentId, {
+        resolved: true,
+        resolvedBy: 'user',
+      });
+
+      try {
+        await apiUpdateReviewComment(workspaceId, sessionId, commentId, {
+          resolved: true,
+          resolvedBy: 'user',
+        });
+      } catch {
+        // Revert optimistic update on failure
+        updateReviewComment(sessionId, commentId, {
+          resolved: false,
+          resolvedBy: undefined,
+        });
+      }
+    },
+    [workspaceId, sessionId, updateReviewComment]
+  );
+
+  if (!sessionId) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Select a session to view review comments</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -158,15 +179,29 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
-        <Filter className="h-3 w-3 text-muted-foreground ml-auto" />
       </div>
 
       {/* Comments list */}
-      {filteredComments.length === 0 ? (
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredComments.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
             <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No unresolved comments</p>
+            <p className="text-sm">
+              {comments.length === 0
+                ? 'No review comments yet'
+                : counts.all === 0
+                  ? 'All comments resolved'
+                  : 'No unresolved comments'}
+            </p>
+            {comments.length === 0 && (
+              <p className="text-xs mt-1 opacity-70">
+                Use /review to start a code review
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -177,6 +212,7 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
                 key={comment.id}
                 comment={comment}
                 onClick={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
+                onResolve={() => handleResolve(comment.id)}
               />
             ))}
           </div>
@@ -189,26 +225,36 @@ export function ReviewPanel({ onFileSelect }: ReviewPanelProps) {
 function ReviewCommentCard({
   comment,
   onClick,
+  onResolve,
 }: {
   comment: ReviewComment;
   onClick?: () => void;
+  onResolve?: () => void;
 }) {
   const fileName = comment.filePath.split('/').pop() || comment.filePath;
   const dirPath = comment.filePath.split('/').slice(0, -1).join('/');
+
+  // Use title field if available, otherwise extract first line of content
+  const title = comment.title || comment.content.split('\n')[0];
+  const description = comment.title
+    ? comment.content
+    : comment.content.split('\n').slice(1).join('\n').trim();
+
+  const severity = comment.severity || 'info';
 
   const SeverityIcon = {
     error: AlertCircle,
     warning: AlertTriangle,
     info: Info,
     suggestion: MessageSquare,
-  }[comment.severity];
+  }[severity];
 
   const severityColor = {
     error: 'text-text-error bg-red-500/10 border-red-500/20',
     warning: 'text-text-warning bg-yellow-500/10 border-yellow-500/20',
     info: 'text-text-info bg-blue-500/10 border-blue-500/20',
     suggestion: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
-  }[comment.severity];
+  }[severity];
 
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -235,14 +281,28 @@ function ReviewCommentCard({
       <div className="flex items-start gap-2">
         <SeverityIcon className="h-4 w-4 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm leading-tight">{comment.title}</div>
-          {comment.description && (
+          <div className="font-medium text-sm leading-tight">{title}</div>
+          {description && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-              {comment.description}
+              {description}
             </p>
           )}
         </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="flex items-center gap-0.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 w-5 p-0 hover:bg-green-500/20 hover:text-green-500"
+            onClick={(e) => {
+              e.stopPropagation();
+              onResolve?.();
+            }}
+            title="Resolve comment"
+          >
+            <Check className="h-3 w-3" />
+          </Button>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </div>
       </div>
 
       {/* Footer row */}

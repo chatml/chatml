@@ -2854,10 +2854,11 @@ func (h *Handlers) DeleteFileTab(w http.ResponseWriter, r *http.Request) {
 type CreateReviewCommentRequest struct {
 	FilePath   string `json:"filePath"`
 	LineNumber int    `json:"lineNumber"`
+	Title      string `json:"title,omitempty"`
 	Content    string `json:"content"`
 	Source     string `json:"source"`             // "claude" or "user"
 	Author     string `json:"author"`             // Display name
-	Severity   string `json:"severity,omitempty"` // "error", "warning", "suggestion"
+	Severity   string `json:"severity,omitempty"` // "error", "warning", "suggestion", "info"
 }
 
 func (h *Handlers) ListReviewComments(w http.ResponseWriter, r *http.Request) {
@@ -2943,8 +2944,9 @@ func (h *Handlers) CreateReviewComment(w http.ResponseWriter, r *http.Request) {
 
 	// Validate severity if provided
 	if req.Severity != "" && req.Severity != models.CommentSeverityError &&
-		req.Severity != models.CommentSeverityWarning && req.Severity != models.CommentSeveritySuggestion {
-		writeValidationError(w, "severity must be 'error', 'warning', or 'suggestion'")
+		req.Severity != models.CommentSeverityWarning && req.Severity != models.CommentSeveritySuggestion &&
+		req.Severity != models.CommentSeverityInfo {
+		writeValidationError(w, "severity must be 'error', 'warning', 'suggestion', or 'info'")
 		return
 	}
 
@@ -2953,6 +2955,7 @@ func (h *Handlers) CreateReviewComment(w http.ResponseWriter, r *http.Request) {
 		SessionID:  sessionID,
 		FilePath:   req.FilePath,
 		LineNumber: req.LineNumber,
+		Title:      req.Title,
 		Content:    req.Content,
 		Source:     req.Source,
 		Author:     req.Author,
@@ -3004,6 +3007,7 @@ func (h *Handlers) GetReviewCommentStats(w http.ResponseWriter, r *http.Request)
 }
 
 type UpdateReviewCommentRequest struct {
+	Title      *string `json:"title,omitempty"`
 	Content    *string `json:"content,omitempty"`
 	Severity   *string `json:"severity,omitempty"`
 	Resolved   *bool   `json:"resolved,omitempty"`
@@ -3047,12 +3051,16 @@ func (h *Handlers) UpdateReviewComment(w http.ResponseWriter, r *http.Request) {
 	if req.Severity != nil && *req.Severity != "" &&
 		*req.Severity != models.CommentSeverityError &&
 		*req.Severity != models.CommentSeverityWarning &&
-		*req.Severity != models.CommentSeveritySuggestion {
-		writeValidationError(w, "severity must be 'error', 'warning', or 'suggestion'")
+		*req.Severity != models.CommentSeveritySuggestion &&
+		*req.Severity != models.CommentSeverityInfo {
+		writeValidationError(w, "severity must be 'error', 'warning', 'suggestion', or 'info'")
 		return
 	}
 
 	if err := h.store.UpdateReviewComment(ctx, commentID, func(c *models.ReviewComment) {
+		if req.Title != nil {
+			c.Title = *req.Title
+		}
 		if req.Content != nil {
 			c.Content = *req.Content
 		}

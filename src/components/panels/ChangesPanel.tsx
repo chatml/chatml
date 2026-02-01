@@ -545,7 +545,7 @@ export function ChangesPanel() {
               </ScrollArea>
             )
           ) : selectedTab === 'review' ? (
-            <ReviewPanel onFileSelect={handleFileSelect} />
+            <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} />
           ) : selectedTab === 'checks' ? (
             <div className="h-full px-1.5">
               <GitStatusSection onSendMessage={handleGitActionMessage} />

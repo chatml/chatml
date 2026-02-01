@@ -508,10 +508,11 @@ export interface ReviewComment {
   sessionId: string;
   filePath: string;
   lineNumber: number;
+  title?: string;
   content: string;
   source: 'claude' | 'user';
   author: string;
-  severity?: 'error' | 'warning' | 'suggestion';
+  severity?: 'error' | 'warning' | 'suggestion' | 'info';
   createdAt: string;
   resolved: boolean;
   resolvedAt?: string;

@@ -5,13 +5,13 @@
  *
  * Displays a review comment with:
  * - Author and timestamp
- * - Severity indicator (error/warning/suggestion)
+ * - Severity indicator (error/warning/info/suggestion)
  * - Markdown content
  * - Resolve/delete actions
  */
 
 import { memo, useCallback } from 'react';
-import { AlertCircle, AlertTriangle, Lightbulb, CheckCircle2, Circle, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, Lightbulb, CheckCircle2, Circle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ReviewComment } from '@/lib/types';
@@ -53,12 +53,14 @@ function formatRelativeTime(isoTimestamp: string): string {
 /**
  * Severity icon component.
  */
-function SeverityIcon({ severity }: { severity?: 'error' | 'warning' | 'suggestion' }) {
+function SeverityIcon({ severity }: { severity?: 'error' | 'warning' | 'suggestion' | 'info' }) {
   switch (severity) {
     case 'error':
       return <AlertCircle className="w-4 h-4 text-text-error shrink-0" />;
     case 'warning':
       return <AlertTriangle className="w-4 h-4 text-text-warning shrink-0" />;
+    case 'info':
+      return <Info className="w-4 h-4 text-text-info shrink-0" />;
     case 'suggestion':
       return <Lightbulb className="w-4 h-4 text-text-info shrink-0" />;
     default:
@@ -69,12 +71,14 @@ function SeverityIcon({ severity }: { severity?: 'error' | 'warning' | 'suggesti
 /**
  * Get border color class based on severity.
  */
-function getSeverityBorderClass(severity?: 'error' | 'warning' | 'suggestion'): string {
+function getSeverityBorderClass(severity?: 'error' | 'warning' | 'suggestion' | 'info'): string {
   switch (severity) {
     case 'error':
       return 'border-l-red-500';
     case 'warning':
       return 'border-l-yellow-500';
+    case 'info':
+      return 'border-l-blue-500';
     case 'suggestion':
       return 'border-l-blue-500';
     default:
