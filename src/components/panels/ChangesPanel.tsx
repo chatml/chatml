@@ -60,6 +60,8 @@ import {
   GitCommitHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { FileTab } from '@/lib/types';
 
 // Common binary file extensions
@@ -436,12 +438,14 @@ export function ChangesPanel() {
               </div>
             ) : (
               <div className="h-full min-h-0 p-1 overflow-hidden">
-                <FileTree
-                  files={files}
-                  onFileSelect={handleFileSelect}
-                  workspacePath={currentSession?.worktreePath}
-                  workspaceName={currentWorkspace?.name}
-                />
+                <ErrorBoundary section="FileTree" fallback={<InlineErrorFallback message="Unable to display file tree" />}>
+                  <FileTree
+                    files={files}
+                    onFileSelect={handleFileSelect}
+                    workspacePath={currentSession?.worktreePath}
+                    workspaceName={currentWorkspace?.name}
+                  />
+                </ErrorBoundary>
               </div>
             )
           ) : selectedTab === 'changes' ? (
@@ -545,13 +549,19 @@ export function ChangesPanel() {
               </ScrollArea>
             )
           ) : selectedTab === 'review' ? (
-            <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} />
+            <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
+              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} />
+            </ErrorBoundary>
           ) : selectedTab === 'checks' ? (
-            <div className="h-full px-1.5">
-              <GitStatusSection onSendMessage={handleGitActionMessage} />
-            </div>
+            <ErrorBoundary section="GitStatus" fallback={<InlineErrorFallback message="Unable to display git status" />}>
+              <div className="h-full px-1.5">
+                <GitStatusSection onSendMessage={handleGitActionMessage} />
+              </div>
+            </ErrorBoundary>
           ) : selectedTab === 'info' ? (
-            <SessionInfoPanel />
+            <ErrorBoundary section="SessionInfo" fallback={<InlineErrorFallback message="Unable to display session info" />}>
+              <SessionInfoPanel />
+            </ErrorBoundary>
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
@@ -575,12 +585,36 @@ export function ChangesPanel() {
             />
             {/* Tab content */}
             <div className="flex-1 min-h-0">
-              {bottomTab === 'todos' && <TodoPanel />}
-              {bottomTab === 'plans' && <PlansPanel />}
-              {bottomTab === 'budget' && <BudgetStatusPanel />}
-              {bottomTab === 'mcp' && <McpServersPanel />}
-              {bottomTab === 'history' && <CheckpointTimeline />}
-              {bottomTab === 'file-history' && <FileHistoryPanel />}
+              {bottomTab === 'todos' && (
+                <ErrorBoundary section="TodoPanel" fallback={<InlineErrorFallback message="Unable to display tasks" />}>
+                  <TodoPanel />
+                </ErrorBoundary>
+              )}
+              {bottomTab === 'plans' && (
+                <ErrorBoundary section="PlansPanel" fallback={<InlineErrorFallback message="Unable to display plans" />}>
+                  <PlansPanel />
+                </ErrorBoundary>
+              )}
+              {bottomTab === 'budget' && (
+                <ErrorBoundary section="BudgetPanel" fallback={<InlineErrorFallback message="Unable to display budget" />}>
+                  <BudgetStatusPanel />
+                </ErrorBoundary>
+              )}
+              {bottomTab === 'mcp' && (
+                <ErrorBoundary section="McpPanel" fallback={<InlineErrorFallback message="Unable to display MCP servers" />}>
+                  <McpServersPanel />
+                </ErrorBoundary>
+              )}
+              {bottomTab === 'history' && (
+                <ErrorBoundary section="CheckpointTimeline" fallback={<InlineErrorFallback message="Unable to display checkpoints" />}>
+                  <CheckpointTimeline />
+                </ErrorBoundary>
+              )}
+              {bottomTab === 'file-history' && (
+                <ErrorBoundary section="FileHistory" fallback={<InlineErrorFallback message="Unable to display file history" />}>
+                  <FileHistoryPanel />
+                </ErrorBoundary>
+              )}
             </div>
           </div>
         </ResizablePanel>

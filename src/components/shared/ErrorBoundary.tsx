@@ -4,9 +4,14 @@ import { Component, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+export interface ErrorBoundaryFallbackProps {
+  error: Error;
+  retry: () => void;
+}
+
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
+  fallback?: ReactNode | ((props: ErrorBoundaryFallbackProps) => ReactNode);
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
   /** Name of the section for error reporting */
   section?: string;
@@ -39,6 +44,12 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
+        if (typeof this.props.fallback === 'function') {
+          return this.props.fallback({
+            error: this.state.error!,
+            retry: this.handleRetry,
+          });
+        }
         return this.props.fallback;
       }
 
