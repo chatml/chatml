@@ -353,10 +353,14 @@ func main() {
 		}
 	}
 
+	// Issue cache for GitHub Issues API
+	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)
+	defer issueCache.Close()
+
 	// AI client for PR description generation
 	aiClient := ai.NewClient(os.Getenv("ANTHROPIC_API_KEY"))
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, statsCache, aiClient)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{

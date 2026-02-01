@@ -320,6 +320,7 @@ type Handlers struct {
 	hub              *Hub // For broadcasting WebSocket events
 	ghClient         *github.Client
 	prCache          *github.PRCache
+	issueCache       *github.IssueCache
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
 	aiClient         *ai.Client
@@ -347,7 +348,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, statsCache *SessionStatsCache, aiClient *ai.Client) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -369,6 +370,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		hub:              hub,
 		ghClient:         ghClient,
 		prCache:          prCache,
+		issueCache:       issueCache,
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
 		aiClient:         aiClient,
