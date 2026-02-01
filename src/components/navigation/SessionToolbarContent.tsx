@@ -15,6 +15,8 @@ import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInVSCode, openInTerminal, showInFinder, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
+import { CreatePRDialog } from '@/components/dialogs/CreatePRDialog';
+import { openUrlInBrowser } from '@/lib/tauri';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import {
   ChevronRight,
@@ -158,6 +160,7 @@ export function SessionToolbarContent() {
   const selectConversation = useAppStore((s) => s.selectConversation);
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
     onError: () => showError('Failed to archive session'),
@@ -282,6 +285,7 @@ export function SessionToolbarContent() {
               session={selectedSession}
               onSendMessage={handleGitActionMessage}
               onArchiveSession={requestArchive}
+              onCreatePR={() => setShowCreatePRDialog(true)}
             />
 
             <div className="w-1.5" />
@@ -384,7 +388,7 @@ export function SessionToolbarContent() {
                   <FolderOpen /> Show in Finder
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => handleGitActionMessage('Create a pull request for this branch. Write a descriptive title based on the changes and a comprehensive PR body. Use `gh pr create` to create it.')}>
+                <DropdownMenuItem onSelect={() => setShowCreatePRDialog(true)}>
                   <GitMerge /> Create Pull Request
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => handleGitActionMessage('Rebase this branch on origin/main, resolving any conflicts.')}>
@@ -416,6 +420,18 @@ export function SessionToolbarContent() {
         sessionName={selectedSession?.task || selectedSession?.branch || 'this session'}
       />
       {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
+      {selectedWorkspaceId && selectedSessionId && (
+        <CreatePRDialog
+          open={showCreatePRDialog}
+          onOpenChange={setShowCreatePRDialog}
+          workspaceId={selectedWorkspaceId}
+          sessionId={selectedSessionId}
+          onSuccess={(prUrl) => {
+            showSuccess('Pull request created');
+            openUrlInBrowser(prUrl);
+          }}
+        />
+      )}
     </>
   );
 }

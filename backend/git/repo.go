@@ -1282,3 +1282,58 @@ func (rm *RepoManager) AbortMerge(ctx context.Context, worktreePath string) erro
 	}
 	return nil
 }
+
+// PushBranch pushes the current branch to origin, setting upstream tracking.
+// Uses a 60-second timeout since pushes can take longer than normal git operations.
+func (rm *RepoManager) PushBranch(ctx context.Context, worktreePath, branch string) error {
+	if err := ValidateGitRef(branch); err != nil {
+		return fmt.Errorf("invalid branch name: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "push", "-u", "origin", branch)
+	cmd.Dir = worktreePath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("push failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// GetDiffSummary returns a truncated diff output suitable for AI consumption.
+// Includes diff --stat and a truncated unified diff capped at maxBytes.
+func (rm *RepoManager) GetDiffSummary(ctx context.Context, repoPath, baseRef string, maxBytes int) (string, error) {
+	if err := ValidateGitRef(baseRef); err != nil {
+		return "", fmt.Errorf("invalid base ref: %w", err)
+	}
+
+	// Get diff stat first
+	statCmd, statCancel := gitCmdWithContext(ctx, repoPath, "diff", "--stat", baseRef)
+	defer statCancel()
+	statOut, err := statCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("diff --stat failed: %w", err)
+	}
+
+	// Get unified diff
+	diffCmd, diffCancel := gitCmdWithContext(ctx, repoPath, "diff", baseRef)
+	defer diffCancel()
+	diffOut, err := diffCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("diff failed: %w", err)
+	}
+
+	// Build the summary
+	var result strings.Builder
+	result.WriteString("=== Diff Stats ===\n")
+	result.Write(statOut)
+	result.WriteString("\n=== Diff (truncated) ===\n")
+
+	diff := string(diffOut)
+	if len(diff) > maxBytes {
+		diff = diff[:maxBytes] + "\n... (truncated)"
+	}
+	result.WriteString(diff)
+
+	return result.String(), nil
+}
