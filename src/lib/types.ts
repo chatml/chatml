@@ -137,6 +137,8 @@ export interface Message {
   runSummary?: RunSummary;
   // File attachments (images, code, text files)
   attachments?: Attachment[];
+  // Extended thinking/reasoning content from the model
+  thinkingContent?: string;
 }
 
 // Run statistics from agent

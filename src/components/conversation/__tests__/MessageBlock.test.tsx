@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MessageBlock } from '../MessageBlock';
 import { clearMarkdownCache } from '@/lib/markdownCache';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { Message } from '@/lib/types';
 
 // Mock Tauri utilities
@@ -225,6 +226,205 @@ describe('MessageBlock', () => {
       const marks = container.querySelectorAll('mark');
       expect(marks.length).toBe(1);
       expect(marks[0].textContent).toBe('needle');
+    });
+  });
+
+  describe('thinking blocks', () => {
+    beforeEach(() => {
+      useSettingsStore.setState({ showThinkingBlocks: true });
+    });
+
+    it('renders thinking header when thinkingContent is present and visible', () => {
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'The answer is 42.',
+            thinkingContent: 'Let me reason step by step...',
+          })}
+          isFirst={false}
+        />
+      );
+
+      expect(screen.getByText('Thinking')).toBeInTheDocument();
+    });
+
+    it('does not render thinking block when thinkingContent is absent', () => {
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'No thinking here.',
+          })}
+          isFirst={false}
+        />
+      );
+
+      expect(screen.queryByText('Thinking')).not.toBeInTheDocument();
+    });
+
+    it('hides thinking block when showThinkingBlocks is false', () => {
+      useSettingsStore.setState({ showThinkingBlocks: false });
+
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'Response.',
+            thinkingContent: 'Hidden reasoning...',
+          })}
+          isFirst={false}
+        />
+      );
+
+      expect(screen.queryByText('Thinking')).not.toBeInTheDocument();
+      expect(screen.queryByText('Hidden reasoning...')).not.toBeInTheDocument();
+    });
+
+    it('starts collapsed by default — thinking content not visible initially', () => {
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'Response.',
+            thinkingContent: 'My detailed reasoning process...',
+          })}
+          isFirst={false}
+        />
+      );
+
+      // Header visible, content hidden
+      expect(screen.getByText('Thinking')).toBeInTheDocument();
+      expect(screen.queryByText('My detailed reasoning process...')).not.toBeInTheDocument();
+    });
+
+    it('expands thinking content on click', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'Response.',
+            thinkingContent: 'My detailed reasoning process...',
+          })}
+          isFirst={false}
+        />
+      );
+
+      // Click to expand
+      const thinkingButton = screen.getByText('Thinking').closest('button');
+      expect(thinkingButton).toBeInTheDocument();
+      await user.click(thinkingButton!);
+
+      // Content should now be visible
+      expect(screen.getByText('My detailed reasoning process...')).toBeInTheDocument();
+    });
+
+    it('collapses thinking content on second click', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'Response.',
+            thinkingContent: 'Collapsible content.',
+          })}
+          isFirst={false}
+        />
+      );
+
+      const thinkingButton = screen.getByText('Thinking').closest('button');
+
+      // Expand
+      await user.click(thinkingButton!);
+      expect(screen.getByText('Collapsible content.')).toBeInTheDocument();
+
+      // Collapse
+      await user.click(thinkingButton!);
+      expect(screen.queryByText('Collapsible content.')).not.toBeInTheDocument();
+    });
+
+    it('does not show thinking block for user messages', () => {
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'user',
+            content: 'User message.',
+            thinkingContent: 'Should not appear.',
+          })}
+          isFirst={false}
+        />
+      );
+
+      expect(screen.queryByText('Thinking')).not.toBeInTheDocument();
+    });
+
+    it('does not show thinking block for system messages', () => {
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'system',
+            content: 'System notice.',
+            thinkingContent: 'Should not appear.',
+          })}
+          isFirst={false}
+        />
+      );
+
+      expect(screen.queryByText('Thinking')).not.toBeInTheDocument();
+    });
+
+    it('renders thinking block with correct styling', async () => {
+      const user = userEvent.setup();
+
+      const { container } = render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'Styled response.',
+            thinkingContent: 'Styled thinking content.',
+          })}
+          isFirst={false}
+        />
+      );
+
+      // Expand to see content
+      const thinkingButton = screen.getByText('Thinking').closest('button');
+      await user.click(thinkingButton!);
+
+      // Check monospace font class
+      const thinkingContent = container.querySelector('.font-mono');
+      expect(thinkingContent).toBeInTheDocument();
+      expect(thinkingContent?.textContent).toBe('Styled thinking content.');
+    });
+
+    it('renders alongside other message blocks', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <MessageBlock
+          message={makeMessage({
+            role: 'assistant',
+            content: 'Main response.',
+            thinkingContent: 'My reasoning.',
+            toolUsage: [
+              { id: 't1', tool: 'Read', success: true, durationMs: 100 },
+            ],
+          })}
+          isFirst={false}
+        />
+      );
+
+      // Both thinking header and tool usage should be present
+      expect(screen.getByText('Thinking')).toBeInTheDocument();
+      expect(screen.getByText('1 passed')).toBeInTheDocument();
+
+      // Expand thinking
+      const thinkingButton = screen.getByText('Thinking').closest('button');
+      await user.click(thinkingButton!);
+      expect(screen.getByText('My reasoning.')).toBeInTheDocument();
     });
   });
 

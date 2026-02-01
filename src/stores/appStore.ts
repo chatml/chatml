@@ -937,6 +937,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       durationMs: metadata.durationMs,
       toolUsage: metadata.toolUsage,
       runSummary: metadata.runSummary,
+      ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
     };
 
     // Atomically: add message AND clear streaming state
