@@ -132,6 +132,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 
 	// Conversation endpoints (top-level for direct access)
 	r.Route("/api/conversations", func(r chi.Router) {
+		r.Get("/active-streaming", h.GetActiveStreamingConversations)
 		r.Get("/{convId}", h.GetConversation)
 		r.Get("/{convId}/messages", h.GetConversationMessages)
 		r.With(messageRateLimiter).Post("/{convId}/messages", h.SendConversationMessage)

@@ -584,6 +584,22 @@ func (m *Manager) GetConversationProcess(convID string) *Process {
 	return m.convProcesses[convID]
 }
 
+// GetActiveStreamingConversations returns the IDs of conversations that currently
+// have an active (running) agent process. Used by the frontend to reconcile
+// stale streaming state after WebSocket reconnection.
+func (m *Manager) GetActiveStreamingConversations() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var active []string
+	for convID, proc := range m.convProcesses {
+		if proc.IsRunning() {
+			active = append(active, convID)
+		}
+	}
+	return active
+}
+
 // formatSessionName converts a human-readable name into a branch-friendly format.
 // Example: "Fix the login bug" -> "login-bug"
 // Returns empty string for generic/non-specific names that shouldn't be used.

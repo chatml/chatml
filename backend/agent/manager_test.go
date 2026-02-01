@@ -949,3 +949,65 @@ func TestHandleConversationOutput_FinalDropReport(t *testing.T) {
 	require.NotEmpty(t, warningEvents, "Expected final drop report warning")
 	assert.Contains(t, warningEvents[len(warningEvents)-1].Message, "3 streaming events were dropped")
 }
+
+// ============================================================================
+// GetActiveStreamingConversations Tests
+// ============================================================================
+
+func TestGetActiveStreamingConversations_Empty(t *testing.T) {
+	manager, _ := setupTestManager(t)
+
+	active := manager.GetActiveStreamingConversations()
+	assert.Empty(t, active)
+}
+
+func TestGetActiveStreamingConversations_NoRunning(t *testing.T) {
+	manager, _ := setupTestManager(t)
+
+	// Insert stopped processes (not running)
+	proc1 := NewProcess("proc-1", t.TempDir(), "conv-1")
+	proc2 := NewProcess("proc-2", t.TempDir(), "conv-2")
+	manager.InsertProcessForTest("conv-1", proc1)
+	manager.InsertProcessForTest("conv-2", proc2)
+
+	active := manager.GetActiveStreamingConversations()
+	assert.Empty(t, active)
+}
+
+func TestGetActiveStreamingConversations_OneRunning(t *testing.T) {
+	manager, _ := setupTestManager(t)
+
+	// One running, one not
+	proc1 := NewProcess("proc-1", t.TempDir(), "conv-1")
+	proc1.SetRunningForTest(true)
+
+	proc2 := NewProcess("proc-2", t.TempDir(), "conv-2")
+
+	manager.InsertProcessForTest("conv-1", proc1)
+	manager.InsertProcessForTest("conv-2", proc2)
+
+	active := manager.GetActiveStreamingConversations()
+	assert.Len(t, active, 1)
+	assert.Equal(t, "conv-1", active[0])
+}
+
+func TestGetActiveStreamingConversations_MultipleRunning(t *testing.T) {
+	manager, _ := setupTestManager(t)
+
+	proc1 := NewProcess("proc-1", t.TempDir(), "conv-1")
+	proc1.SetRunningForTest(true)
+
+	proc2 := NewProcess("proc-2", t.TempDir(), "conv-2")
+	proc2.SetRunningForTest(true)
+
+	proc3 := NewProcess("proc-3", t.TempDir(), "conv-3")
+	// proc3 is not running
+
+	manager.InsertProcessForTest("conv-1", proc1)
+	manager.InsertProcessForTest("conv-2", proc2)
+	manager.InsertProcessForTest("conv-3", proc3)
+
+	active := manager.GetActiveStreamingConversations()
+	assert.Len(t, active, 2)
+	assert.ElementsMatch(t, []string{"conv-1", "conv-2"}, active)
+}

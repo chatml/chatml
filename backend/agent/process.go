@@ -503,6 +503,13 @@ func (p *Process) DroppedMessages() uint64 {
 	return p.droppedMessages.Load()
 }
 
+// SetRunningForTest sets the running flag. Intended for testing only.
+func (p *Process) SetRunningForTest(running bool) {
+	p.mu.Lock()
+	p.running = running
+	p.mu.Unlock()
+}
+
 // SimulateDrops adds n to the drop counter. Intended for testing only.
 func (p *Process) SimulateDrops(n uint64) {
 	p.droppedMessages.Add(n)

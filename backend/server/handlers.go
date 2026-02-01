@@ -2623,6 +2623,16 @@ func (h *Handlers) GetConversationDropStats(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, stats)
 }
 
+func (h *Handlers) GetActiveStreamingConversations(w http.ResponseWriter, r *http.Request) {
+	active := h.agentManager.GetActiveStreamingConversations()
+	if active == nil {
+		active = []string{}
+	}
+	writeJSON(w, map[string]interface{}{
+		"conversationIds": active,
+	})
+}
+
 type RewindConversationRequest struct {
 	CheckpointUuid string `json:"checkpointUuid"`
 }
