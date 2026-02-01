@@ -441,6 +441,21 @@ export async function getSessionChanges(workspaceId: string, sessionId: string):
   return handleResponse<FileChangeDTO[]>(res);
 }
 
+export interface BranchCommitDTO {
+  sha: string;
+  shortSha: string;
+  message: string;
+  author: string;
+  email: string;
+  timestamp: string;
+  files: FileChangeDTO[];
+}
+
+export async function getSessionBranchCommits(workspaceId: string, sessionId: string): Promise<BranchCommitDTO[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branch-commits`);
+  return handleResponse<BranchCommitDTO[]>(res);
+}
+
 // Git status types matching backend response
 export interface GitStatusDTO {
   workingDirectory: {

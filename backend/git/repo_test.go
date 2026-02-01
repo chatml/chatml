@@ -323,6 +323,234 @@ func TestGetChangedFiles_EmptyResult(t *testing.T) {
 	assert.Empty(t, files)
 }
 
+// ============================================================================
+// GetCommitsAheadOfBase Tests
+// ============================================================================
+
+func TestGetCommitsAheadOfBase_NoCommitsAhead(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Get the current HEAD (same as base) — no commits ahead
+	baseSHA := getCommitSHA(t, repoPath)
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	assert.Empty(t, commits)
+}
+
+func TestGetCommitsAheadOfBase_SingleCommit(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create a new commit ahead of base
+	createAndCommitFile(t, repoPath, "new-file.txt", "hello world\nline 2\n", "Add new file")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+
+	assert.Equal(t, "Add new file", commits[0].Message)
+	assert.NotEmpty(t, commits[0].SHA)
+	assert.NotEmpty(t, commits[0].ShortSHA)
+	assert.Equal(t, "Test User", commits[0].Author)
+	assert.Equal(t, "test@test.com", commits[0].Email)
+	assert.False(t, commits[0].Timestamp.IsZero())
+
+	// Verify file changes
+	require.Len(t, commits[0].Files, 1)
+	assert.Equal(t, "new-file.txt", commits[0].Files[0].Path)
+	assert.Equal(t, 2, commits[0].Files[0].Additions)
+	assert.Equal(t, 0, commits[0].Files[0].Deletions)
+}
+
+func TestGetCommitsAheadOfBase_MultipleCommits(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create multiple commits
+	createAndCommitFile(t, repoPath, "file1.txt", "content 1\n", "First commit")
+	createAndCommitFile(t, repoPath, "file2.txt", "content 2\n", "Second commit")
+	createAndCommitFile(t, repoPath, "file3.txt", "content 3\n", "Third commit")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 3)
+
+	// Commits should be in reverse chronological order (newest first)
+	assert.Equal(t, "Third commit", commits[0].Message)
+	assert.Equal(t, "Second commit", commits[1].Message)
+	assert.Equal(t, "First commit", commits[2].Message)
+}
+
+func TestGetCommitsAheadOfBase_CommitWithMultipleFiles(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create multiple files and commit them together
+	writeFile(t, repoPath, "fileA.txt", "line 1\nline 2\n")
+	writeFile(t, repoPath, "fileB.txt", "line 1\nline 2\nline 3\n")
+	runGit(t, repoPath, "add", ".")
+	runGit(t, repoPath, "commit", "-m", "Add multiple files")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+	require.Len(t, commits[0].Files, 2)
+
+	// Files should be present with correct stats
+	fileMap := make(map[string]FileChange)
+	for _, f := range commits[0].Files {
+		fileMap[f.Path] = f
+	}
+
+	assert.Equal(t, 2, fileMap["fileA.txt"].Additions)
+	assert.Equal(t, 3, fileMap["fileB.txt"].Additions)
+}
+
+func TestGetCommitsAheadOfBase_ModifiedAndDeletedFiles(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create some files first
+	createAndCommitFile(t, repoPath, "modify-me.txt", "original\ncontent\n", "Add file to modify")
+	createAndCommitFile(t, repoPath, "delete-me.txt", "will be deleted\n", "Add file to delete")
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Modify a file
+	modifyAndCommitFile(t, repoPath, "modify-me.txt", "modified\ncontent\nnew line\n", "Modify file")
+
+	// Delete a file
+	deleteFile(t, repoPath, "delete-me.txt")
+	runGit(t, repoPath, "add", "delete-me.txt")
+	runGit(t, repoPath, "commit", "-m", "Delete file")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 2)
+
+	// Most recent commit first (delete)
+	assert.Equal(t, "Delete file", commits[0].Message)
+	require.Len(t, commits[0].Files, 1)
+	assert.Equal(t, "delete-me.txt", commits[0].Files[0].Path)
+	assert.Equal(t, 0, commits[0].Files[0].Additions)
+	assert.Equal(t, 1, commits[0].Files[0].Deletions)
+
+	// Second commit (modify)
+	assert.Equal(t, "Modify file", commits[1].Message)
+	require.Len(t, commits[1].Files, 1)
+	assert.Equal(t, "modify-me.txt", commits[1].Files[0].Path)
+	assert.True(t, commits[1].Files[0].Additions > 0)
+}
+
+func TestGetCommitsAheadOfBase_OnFeatureBranch(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create a feature branch and add commits
+	runGit(t, repoPath, "checkout", "-b", "feature/test")
+	createAndCommitFile(t, repoPath, "feature.txt", "feature code\n", "Add feature")
+	createAndCommitFile(t, repoPath, "tests.txt", "test code\n", "Add tests")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 2)
+
+	assert.Equal(t, "Add tests", commits[0].Message)
+	assert.Equal(t, "Add feature", commits[1].Message)
+}
+
+func TestGetCommitsAheadOfBase_InvalidBaseRef(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Use a ref with special characters that should fail validation
+	_, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, "ref; rm -rf /")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid base ref")
+}
+
+func TestGetCommitsAheadOfBase_NonExistentBaseRef(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	_, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, "0000000000000000000000000000000000000000")
+	assert.Error(t, err)
+}
+
+func TestGetCommitsAheadOfBase_SHAFieldsArePopulated(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+	createAndCommitFile(t, repoPath, "test.txt", "content\n", "Test commit")
+
+	expectedSHA := getCommitSHA(t, repoPath)
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+
+	// Full SHA should match
+	assert.Equal(t, expectedSHA, commits[0].SHA)
+	// Short SHA should be a prefix of the full SHA
+	assert.True(t, len(commits[0].ShortSHA) >= 7)
+	assert.Equal(t, commits[0].SHA[:len(commits[0].ShortSHA)], commits[0].ShortSHA)
+}
+
+func TestGetCommitsAheadOfBase_EmptyFilesSliceNotNil(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create an empty commit (amend with allow-empty)
+	runGit(t, repoPath, "commit", "--allow-empty", "-m", "Empty commit")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+
+	// Files slice should be initialized (not nil), even if empty
+	assert.NotNil(t, commits[0].Files)
+	assert.Len(t, commits[0].Files, 0)
+}
+
+func TestGetCommitsAheadOfBase_SubdirectoryFiles(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Create files in subdirectories
+	writeFile(t, repoPath, "src/components/Button.tsx", "export function Button() {}\n")
+	writeFile(t, repoPath, "src/utils/helpers.ts", "export const helper = () => {}\n")
+	runGit(t, repoPath, "add", ".")
+	runGit(t, repoPath, "commit", "-m", "Add component files")
+
+	commits, err := rm.GetCommitsAheadOfBase(context.Background(), repoPath, baseSHA)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+	require.Len(t, commits[0].Files, 2)
+
+	paths := make(map[string]bool)
+	for _, f := range commits[0].Files {
+		paths[f.Path] = true
+	}
+
+	assert.True(t, paths["src/components/Button.tsx"])
+	assert.True(t, paths["src/utils/helpers.ts"])
+}
+
 func TestGetFileAtRef_BranchRef(t *testing.T) {
 	repoPath := createTestGitRepo(t)
 	rm := NewRepoManager()

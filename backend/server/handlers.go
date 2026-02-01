@@ -1552,6 +1552,30 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, allChanges)
 }
 
+// GetSessionBranchCommits returns commits on the session's branch that are ahead of the base ref.
+func (h *Handlers) GetSessionBranchCommits(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	commits, err := h.repoManager.GetCommitsAheadOfBase(ctx, workingPath, baseRef)
+	if err != nil {
+		logger.Handlers.Warnf("Failed to get branch commits for session %s: %v", sessionID, err)
+		commits = []git.BranchCommit{}
+	}
+
+	writeJSON(w, commits)
+}
+
 // GetSessionFileDiff returns the diff for a specific file in a session's worktree
 func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

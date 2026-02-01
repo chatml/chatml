@@ -321,6 +321,114 @@ func (rm *RepoManager) GetFileCommitHistory(ctx context.Context, repoPath, fileP
 	return commits, nil
 }
 
+// BranchCommit represents a commit on the current branch ahead of the base ref,
+// along with the files changed in that commit.
+type BranchCommit struct {
+	SHA       string     `json:"sha"`
+	ShortSHA  string     `json:"shortSha"`
+	Message   string     `json:"message"`
+	Author    string     `json:"author"`
+	Email     string     `json:"email"`
+	Timestamp time.Time  `json:"timestamp"`
+	Files     []FileChange `json:"files"`
+}
+
+// GetCommitsAheadOfBase returns commits on the current branch that are ahead of the base ref.
+// These are commits that exist in HEAD but not in baseRef (i.e. local work not yet on main).
+func (rm *RepoManager) GetCommitsAheadOfBase(ctx context.Context, repoPath, baseRef string) ([]BranchCommit, error) {
+	if err := ValidateGitRef(baseRef); err != nil {
+		return nil, fmt.Errorf("invalid base ref: %w", err)
+	}
+
+	// Format: SHA|ShortSHA|AuthorName|AuthorEmail|Timestamp|Subject
+	args := []string{
+		"log",
+		"--pretty=format:%H|%h|%an|%ae|%aI|%s",
+		"--numstat",
+		baseRef + "..HEAD",
+	}
+
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, args...)
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(out) == 0 {
+		return []BranchCommit{}, nil
+	}
+
+	var commits []BranchCommit
+	lines := strings.Split(string(out), "\n")
+
+	var current *BranchCommit
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Check if this is a commit line (contains 5 pipes for our format)
+		if strings.Count(line, "|") == 5 {
+			// Save previous commit if exists
+			if current != nil {
+				commits = append(commits, *current)
+			}
+
+			parts := strings.SplitN(line, "|", 6)
+			if len(parts) != 6 {
+				continue
+			}
+
+			timestamp, _ := time.Parse(time.RFC3339, parts[4])
+			current = &BranchCommit{
+				SHA:       parts[0],
+				ShortSHA:  parts[1],
+				Author:    parts[2],
+				Email:     parts[3],
+				Timestamp: timestamp,
+				Message:   parts[5],
+				Files:     []FileChange{},
+			}
+		} else if current != nil {
+			// Parse numstat line: additions deletions filename
+			statParts := strings.Fields(line)
+			if len(statParts) >= 3 {
+				additions := 0
+				deletions := 0
+				if statParts[0] != "-" {
+					additions, _ = strconv.Atoi(statParts[0])
+				}
+				if statParts[1] != "-" {
+					deletions, _ = strconv.Atoi(statParts[1])
+				}
+				filePath := strings.Join(statParts[2:], " ")
+				// Determine status based on additions/deletions (heuristic — not git's actual A/M/D status)
+				status := "modified"
+				if additions > 0 && deletions == 0 {
+					status = "added"
+				} else if additions == 0 && deletions > 0 {
+					status = "deleted"
+				}
+				current.Files = append(current.Files, FileChange{
+					Path:      filePath,
+					Additions: additions,
+					Deletions: deletions,
+					Status:    status,
+				})
+			}
+		}
+	}
+
+	// Don't forget the last commit
+	if current != nil {
+		commits = append(commits, *current)
+	}
+
+	return commits, nil
+}
+
 // HasMergeConflicts checks if there are any merge conflicts in the repo
 func (rm *RepoManager) HasMergeConflicts(ctx context.Context, repoPath string) (bool, error) {
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--check")
