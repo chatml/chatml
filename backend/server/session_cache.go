@@ -4,7 +4,10 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
+
+const defaultSessionCacheTTL = 5 * time.Minute
 
 // SessionNameCache provides an in-memory cache for existing session directory names.
 // It eliminates the need for filesystem scans on every session creation by maintaining
@@ -13,17 +16,15 @@ import (
 // Thread-safety: All methods are safe for concurrent use.
 // Initialization: Lazy-loaded from filesystem on first GetAll() call.
 // Invalidation: Automatic via Add() and Remove() methods.
-//
-// Staleness: This cache may become stale if sessions are created or deleted externally
-// (outside this process). The session creation logic handles this gracefully via retry
-// loops that detect ErrDirectoryExists collisions and update the cache accordingly.
-// For most use cases, this eventual consistency is acceptable since the cache is primarily
-// an optimization to avoid filesystem scans, not a source of truth.
+// TTL: The cache re-reads the filesystem after the TTL expires to pick up
+// external changes (sessions created/deleted outside this process).
 type SessionNameCache struct {
-	mu            sync.RWMutex
-	names         map[string]bool // lowercase name -> exists
-	initialized   bool
-	workspacesDir string
+	mu              sync.RWMutex
+	names           map[string]bool // lowercase name -> exists
+	initialized     bool
+	lastInitialized time.Time
+	ttl             time.Duration
+	workspacesDir   string
 }
 
 // NewSessionNameCache creates a new cache instance for the given workspaces directory.
@@ -31,8 +32,37 @@ type SessionNameCache struct {
 func NewSessionNameCache(workspacesDir string) *SessionNameCache {
 	return &SessionNameCache{
 		names:         make(map[string]bool),
+		ttl:           defaultSessionCacheTTL,
 		workspacesDir: workspacesDir,
 	}
+}
+
+// initialize loads existing session directory names from the filesystem.
+// Must be called with c.mu held for writing.
+func (c *SessionNameCache) initialize() error {
+	entries, err := os.ReadDir(c.workspacesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Directory doesn't exist yet - that's fine, start with empty cache
+			c.names = make(map[string]bool)
+			c.initialized = true
+			c.lastInitialized = time.Now()
+			return nil
+		}
+		return err
+	}
+
+	fresh := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			fresh[strings.ToLower(entry.Name())] = true
+		}
+	}
+
+	c.names = fresh
+	c.initialized = true
+	c.lastInitialized = time.Now()
+	return nil
 }
 
 // Initialize loads existing session directory names from the filesystem.
@@ -46,24 +76,7 @@ func (c *SessionNameCache) Initialize() error {
 		return nil
 	}
 
-	entries, err := os.ReadDir(c.workspacesDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Directory doesn't exist yet - that's fine, start with empty cache
-			c.initialized = true
-			return nil
-		}
-		return err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			c.names[strings.ToLower(entry.Name())] = true
-		}
-	}
-
-	c.initialized = true
-	return nil
+	return c.initialize()
 }
 
 // Add registers a session name in the cache (case-insensitive).
@@ -83,6 +96,7 @@ func (c *SessionNameCache) Remove(name string) {
 }
 
 // Contains checks if a session name exists in the cache (case-insensitive).
+// Does not trigger a TTL refresh; call GetAll() first to ensure freshness.
 func (c *SessionNameCache) Contains(name string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -90,17 +104,27 @@ func (c *SessionNameCache) Contains(name string) bool {
 }
 
 // GetAll returns all cached session names.
-// Initializes the cache from filesystem on first call.
+// Initializes the cache from filesystem on first call and refreshes it
+// when the TTL has expired to pick up external changes.
 // Returns the list of names and any initialization error.
 func (c *SessionNameCache) GetAll() ([]string, error) {
 	c.mu.RLock()
-	initialized := c.initialized
+	// Zero lastInitialized means never initialized, not expired.
+	expired := !c.lastInitialized.IsZero() && time.Since(c.lastInitialized) > c.ttl
+	needsRefresh := !c.initialized || expired
 	c.mu.RUnlock()
 
-	if !initialized {
-		if err := c.Initialize(); err != nil {
-			return nil, err
+	if needsRefresh {
+		c.mu.Lock()
+		// Double-check after acquiring write lock
+		expired = !c.lastInitialized.IsZero() && time.Since(c.lastInitialized) > c.ttl
+		if !c.initialized || expired {
+			if err := c.initialize(); err != nil {
+				c.mu.Unlock()
+				return nil, err
+			}
 		}
+		c.mu.Unlock()
 	}
 
 	c.mu.RLock()

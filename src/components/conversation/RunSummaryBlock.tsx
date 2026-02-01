@@ -16,6 +16,8 @@ import {
   ChevronDown,
   ChevronRight,
   Globe,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from 'lucide-react';
 import {
   Collapsible,
@@ -23,6 +25,8 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import { formatTokens } from '@/lib/format';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { RunSummary } from '@/lib/types';
 
 interface RunSummaryBlockProps {
@@ -31,6 +35,7 @@ interface RunSummaryBlockProps {
 
 export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
 
   const formatDuration = (ms?: number) => {
     if (!ms) return null;
@@ -52,8 +57,13 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
   const cost = formatCost(summary.cost);
   const toolDuration = stats?.totalToolDurationMs ? formatDuration(stats.totalToolDurationMs) : null;
 
+  const totalInputTokens = summary.usage?.inputTokens ?? 0;
+  const totalOutputTokens = summary.usage?.outputTokens ?? 0;
+  const hasModelUsage = summary.modelUsage && Object.keys(summary.modelUsage).length > 0;
+
   // Check if we have detailed breakdown to show
-  const hasDetailedStats = stats?.toolsByType && Object.keys(stats.toolsByType).length > 0;
+  const hasDetailedStats = (stats?.toolsByType && Object.keys(stats.toolsByType).length > 0) ||
+    (showTokenUsage && hasModelUsage);
 
   // Get tool icon for breakdown
   const getToolIcon = (tool: string) => {
@@ -117,6 +127,20 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
           </span>
         )}
 
+        {/* Token counts */}
+        {showTokenUsage && totalInputTokens > 0 && (
+          <span className="flex items-center gap-1">
+            <ArrowDownToLine className="w-3 h-3" />
+            {formatTokens(totalInputTokens)} in
+          </span>
+        )}
+        {showTokenUsage && totalOutputTokens > 0 && (
+          <span className="flex items-center gap-1">
+            <ArrowUpFromLine className="w-3 h-3" />
+            {formatTokens(totalOutputTokens)} out
+          </span>
+        )}
+
         {/* Turns */}
         {summary.turns !== undefined && (
           <span className="flex items-center gap-1">
@@ -149,65 +173,104 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
         <CollapsibleContent>
           <div className="mt-2 ml-4 p-2 rounded border bg-muted/30 space-y-2">
             {/* Tool breakdown by type */}
-            <div>
-              <div className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium">
-                Tool Breakdown
+            {stats?.toolsByType && Object.keys(stats.toolsByType).length > 0 && (
+              <div>
+                <div className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium">
+                  Tool Breakdown
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {Object.entries(stats.toolsByType || {}).map(([tool, count]) => {
+                    const Icon = getToolIcon(tool);
+                    return (
+                      <div
+                        key={tool}
+                        className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                      >
+                        <Icon className="w-3 h-3 shrink-0" />
+                        <span className="font-medium">{tool}</span>
+                        <span className="text-muted-foreground/60">{'\u00D7'}{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {Object.entries(stats.toolsByType || {}).map(([tool, count]) => {
-                  const Icon = getToolIcon(tool);
-                  return (
-                    <div
-                      key={tool}
-                      className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
-                    >
-                      <Icon className="w-3 h-3 shrink-0" />
-                      <span className="font-medium">{tool}</span>
-                      <span className="text-muted-foreground/60">×{count}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            )}
 
             {/* File operations summary */}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
-              {stats.filesRead > 0 && (
-                <span className="flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
-                  {stats.filesRead} file{stats.filesRead !== 1 ? 's' : ''} read
-                </span>
-              )}
-              {stats.filesWritten > 0 && (
-                <span className="flex items-center gap-1">
-                  <FileEdit className="w-3 h-3" />
-                  {stats.filesWritten} file{stats.filesWritten !== 1 ? 's' : ''} written
-                </span>
-              )}
-              {stats.bashCommands > 0 && (
-                <span className="flex items-center gap-1">
-                  <Terminal className="w-3 h-3" />
-                  {stats.bashCommands} command{stats.bashCommands !== 1 ? 's' : ''}
-                </span>
-              )}
-              {stats.webSearches > 0 && (
-                <span className="flex items-center gap-1">
-                  <Globe className="w-3 h-3" />
-                  {stats.webSearches} web search{stats.webSearches !== 1 ? 'es' : ''}
-                </span>
-              )}
-              {stats.subAgents > 0 && (
-                <span className="flex items-center gap-1">
-                  <GitBranch className="w-3 h-3" />
-                  {stats.subAgents} sub-agent{stats.subAgents !== 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
+            {stats && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+                {stats.filesRead > 0 && (
+                  <span className="flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    {stats.filesRead} file{stats.filesRead !== 1 ? 's' : ''} read
+                  </span>
+                )}
+                {stats.filesWritten > 0 && (
+                  <span className="flex items-center gap-1">
+                    <FileEdit className="w-3 h-3" />
+                    {stats.filesWritten} file{stats.filesWritten !== 1 ? 's' : ''} written
+                  </span>
+                )}
+                {stats.bashCommands > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Terminal className="w-3 h-3" />
+                    {stats.bashCommands} command{stats.bashCommands !== 1 ? 's' : ''}
+                  </span>
+                )}
+                {stats.webSearches > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Globe className="w-3 h-3" />
+                    {stats.webSearches} web search{stats.webSearches !== 1 ? 'es' : ''}
+                  </span>
+                )}
+                {stats.subAgents > 0 && (
+                  <span className="flex items-center gap-1">
+                    <GitBranch className="w-3 h-3" />
+                    {stats.subAgents} sub-agent{stats.subAgents !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Tool execution time */}
             {toolDuration && (
               <div className="text-[10px] text-muted-foreground/60">
                 Total tool execution time: {toolDuration}
+              </div>
+            )}
+
+            {/* Token usage breakdown */}
+            {showTokenUsage && hasModelUsage && (
+              <div className="pt-2 border-t border-border/50">
+                <div className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium">
+                  Token Usage
+                </div>
+                {/* Aggregate usage */}
+                {summary.usage && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground mb-2">
+                    <span>Input: {totalInputTokens.toLocaleString()}</span>
+                    <span>Output: {totalOutputTokens.toLocaleString()}</span>
+                    {summary.usage.cacheReadInputTokens ? (
+                      <span>Cache read: {summary.usage.cacheReadInputTokens.toLocaleString()}</span>
+                    ) : null}
+                    {summary.usage.cacheCreationInputTokens ? (
+                      <span>Cache write: {summary.usage.cacheCreationInputTokens.toLocaleString()}</span>
+                    ) : null}
+                  </div>
+                )}
+                {/* Per-model breakdown */}
+                <div className="space-y-1.5">
+                  {Object.entries(summary.modelUsage ?? {}).map(([model, usage]) => (
+                    <div key={model} className="text-[10px] text-muted-foreground">
+                      <span className="font-medium">{model}</span>
+                      <div className="ml-2 flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span>In: {usage.inputTokens.toLocaleString()}</span>
+                        <span>Out: {usage.outputTokens.toLocaleString()}</span>
+                        <span>Cost: ${usage.costUSD.toFixed(4)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

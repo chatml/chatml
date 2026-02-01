@@ -212,6 +212,8 @@ function SettingsRow({
 function ChatSettings() {
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
   const setConfirmCloseActiveTab = useSettingsStore((s) => s.setConfirmCloseActiveTab);
+  const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
+  const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
   const desktopNotifications = useSettingsStore((s) => s.desktopNotifications);
   const setDesktopNotifications = useSettingsStore((s) => s.setDesktopNotifications);
 
@@ -334,10 +336,13 @@ function ChatSettings() {
       </SettingsRow>
 
       <SettingsRow
-        title="Show chat cost"
-        description="Display chat cost in the top bar"
+        title="Show token usage"
+        description="Display token counts and cost breakdown in run summaries"
       >
-        <Switch defaultChecked />
+        <Switch
+          checked={showTokenUsage}
+          onCheckedChange={setShowTokenUsage}
+        />
       </SettingsRow>
 
       <SettingsRow

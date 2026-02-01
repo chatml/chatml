@@ -77,10 +77,16 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
       {/* Header with tabs */}
       <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30 shrink-0">
         {/* Terminal tabs */}
-        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
+        <div role="tablist" aria-label="Terminal tabs" className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
           {instances.map((terminal) => (
             <button
               key={terminal.id}
+              id={`terminal-tab-${terminal.id}`}
+              role="tab"
+              aria-selected={activeId === terminal.id}
+              aria-label={`Terminal ${terminal.slotNumber}${terminal.status === 'exited' ? ' (exited)' : ''}`}
+              aria-controls={`terminal-panel-${terminal.id}`}
+              tabIndex={activeId === terminal.id ? 0 : -1}
               onClick={() => setActiveTerminal(sessionId, terminal.id)}
               className={cn(
                 'flex items-center gap-1 px-2 py-1 text-xs rounded-sm shrink-0',
@@ -94,10 +100,14 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
               {terminal.status === 'exited' && (
                 <span className="text-[10px] text-text-warning">(exited)</span>
               )}
-              <X
-                className="h-3 w-3 hover:text-destructive"
+              <span
+                role="button"
+                tabIndex={-1}
+                aria-label={`Close Terminal ${terminal.slotNumber}`}
                 onClick={(e) => handleCloseTerminal(terminal.id, e)}
-              />
+              >
+                <X className="h-3 w-3 hover:text-destructive" />
+              </span>
             </button>
           ))}
 
@@ -109,6 +119,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
             onClick={handleCreateTerminal}
             disabled={!canCreateMore}
             title={canCreateMore ? 'New terminal' : 'Maximum 5 terminals'}
+            aria-label={canCreateMore ? 'New terminal' : 'Maximum 5 terminals'}
           >
             <Plus className="h-3 w-3" />
           </Button>
@@ -121,6 +132,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
           className="h-6 w-6 shrink-0"
           onClick={onHide}
           title="Hide terminal panel"
+          aria-label="Hide terminal panel"
         >
           <X className="h-3 w-3" />
         </Button>
@@ -136,6 +148,9 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
           instances.map((terminal) => (
             <div
               key={terminal.id}
+              id={`terminal-panel-${terminal.id}`}
+              role="tabpanel"
+              aria-labelledby={`terminal-tab-${terminal.id}`}
               className={cn(
                 'absolute inset-0 bg-background',
                 activeId === terminal.id ? 'block' : 'hidden'

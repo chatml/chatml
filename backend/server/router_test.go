@@ -36,7 +36,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	t.Cleanup(func() { prCache.Close() })
 
 	// Create router without orchestrator, branch watcher, pr watcher, or stats cache
-	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil, nil, prCache, nil, nil)
+	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil, nil, prCache, nil, nil, nil)
 
 	return router, s
 }
