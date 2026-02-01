@@ -179,7 +179,7 @@ export function ScriptsPanel() {
   }
 
   // Empty state: no config
-  const hasConfig = config && (config.setupScripts.length > 0 || Object.keys(config.runScripts).length > 0);
+  const hasConfig = config && ((config.setupScripts?.length ?? 0) > 0 || Object.keys(config.runScripts ?? {}).length > 0);
   if (!hasConfig) {
     return (
       <div className="h-full flex items-center justify-center">
