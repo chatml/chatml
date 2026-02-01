@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -542,10 +543,18 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, repos)
 }
 
+// ArchivedSessionDirJSON is the JSON representation of an archived session's directory info.
+// Used by the frontend to register archived worktrees with the file watcher.
+type ArchivedSessionDirJSON struct {
+	DirName   string `json:"dirName"`
+	SessionID string `json:"sessionId"`
+}
+
 // DashboardData represents the combined data for initial dashboard load
 type DashboardData struct {
-	Workspaces []*models.Repo              `json:"workspaces"`
-	Sessions   []*SessionWithConversations `json:"sessions"`
+	Workspaces          []*models.Repo              `json:"workspaces"`
+	Sessions            []*SessionWithConversations  `json:"sessions"`
+	ArchivedSessionDirs []ArchivedSessionDirJSON     `json:"archivedSessionDirs"`
 }
 
 // SessionWithConversations embeds session data with its conversations
@@ -566,6 +575,22 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetch archived session dirs for file watcher registration
+	archivedDirs, err := h.store.ListArchivedSessionDirs(ctx)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	archivedSessionDirs := make([]ArchivedSessionDirJSON, 0, len(archivedDirs))
+	for _, d := range archivedDirs {
+		if d.WorktreePath != "" {
+			archivedSessionDirs = append(archivedSessionDirs, ArchivedSessionDirJSON{
+				DirName:   filepath.Base(d.WorktreePath),
+				SessionID: d.ID,
+			})
+		}
+	}
+
 	// Fetch all sessions across all workspaces in a single query
 	// Pass false to exclude archived sessions from dashboard data
 	allSessions, err := h.store.ListAllSessions(ctx, false)
@@ -577,8 +602,9 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 	// Early return if no sessions
 	if len(allSessions) == 0 {
 		writeJSON(w, DashboardData{
-			Workspaces: repos,
-			Sessions:   []*SessionWithConversations{},
+			Workspaces:          repos,
+			Sessions:            []*SessionWithConversations{},
+			ArchivedSessionDirs: archivedSessionDirs,
 		})
 		return
 	}
@@ -654,8 +680,9 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, DashboardData{
-		Workspaces: repos,
-		Sessions:   sessionsWithConvs,
+		Workspaces:          repos,
+		Sessions:            sessionsWithConvs,
+		ArchivedSessionDirs: archivedSessionDirs,
 	})
 }
 
@@ -1098,6 +1125,10 @@ type CreateSessionRequest struct {
 	Task string `json:"task,omitempty"`
 	// TargetBranch is optional - overrides the workspace default branch for PRs and sync (e.g. "origin/develop")
 	TargetBranch string `json:"targetBranch,omitempty"`
+	// CheckoutExisting checks out an existing remote branch instead of creating a new one
+	CheckoutExisting bool `json:"checkoutExisting,omitempty"`
+	// SystemMessage is optional custom content for the initial system message (e.g. PR context)
+	SystemMessage string `json:"systemMessage,omitempty"`
 }
 
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
@@ -1125,6 +1156,11 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
 			return
 		}
+	}
+
+	if req.CheckoutExisting && req.Branch == "" {
+		writeValidationError(w, "branch is required when checkoutExisting is true")
+		return
 	}
 
 	// Generate session ID
@@ -1222,12 +1258,27 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create git worktree in the atomically created directory
-	worktreePath, branchName, baseCommitSHA, err := h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName, targetBranch)
+	var worktreePath, baseCommitSHA string
+	if req.CheckoutExisting {
+		// Checkout an existing remote branch (e.g. a PR branch)
+		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, sessionPath, branchName)
+	} else {
+		// Create a new branch based on the target branch
+		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName, targetBranch)
+	}
 	if err != nil {
 		// Rollback: remove the atomically created directory and cache entry
 		h.sessionNameCache.Remove(sessionName)
 		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
 			logger.Handlers.Warnf("Failed to rollback session directory %s: %v", sessionPath, removeErr)
+		}
+		if errors.Is(err, git.ErrBranchAlreadyCheckedOut) {
+			writeConflict(w, fmt.Sprintf("branch '%s' is already checked out in another session", branchName))
+			return
+		}
+		if errors.Is(err, git.ErrLocalBranchExists) {
+			writeConflict(w, fmt.Sprintf("local branch '%s' already exists; delete it first or use a different branch name", branchName))
+			return
 		}
 		writeInternalError(w, "failed to create worktree", err)
 		return
@@ -1312,7 +1363,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	setupMsg := models.Message{
 		ID:      uuid.New().String()[:8],
 		Role:    "system",
-		Content: "",
+		Content: req.SystemMessage,
 		SetupInfo: &models.SetupInfo{
 			SessionName:  sess.Name,
 			BranchName:   sess.Branch,
@@ -3732,6 +3783,81 @@ func (h *Handlers) SetPRTemplate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
+// getReviewPrompts reads review prompt overrides from the given settings key.
+func (h *Handlers) getReviewPrompts(w http.ResponseWriter, ctx context.Context, key string) {
+	value, found, err := h.store.GetSetting(ctx, key)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]any{"prompts": map[string]string{}})
+		return
+	}
+
+	var prompts map[string]string
+	if err := json.Unmarshal([]byte(value), &prompts); err != nil {
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "corrupted review prompts data", err)
+		return
+	}
+
+	writeJSON(w, map[string]any{"prompts": prompts})
+}
+
+// setReviewPrompts writes review prompt overrides to the given settings key.
+func (h *Handlers) setReviewPrompts(w http.ResponseWriter, r *http.Request, key string) {
+	ctx := r.Context()
+
+	var req struct {
+		Prompts map[string]string `json:"prompts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if len(req.Prompts) == 0 {
+		if err := h.store.DeleteSetting(ctx, key); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		data, err := json.Marshal(req.Prompts)
+		if err != nil {
+			writeValidationError(w, "failed to encode prompts")
+			return
+		}
+		if err := h.store.SetSetting(ctx, key, string(data)); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetReviewPrompts returns the global custom review prompt overrides
+func (h *Handlers) GetReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	h.getReviewPrompts(w, r.Context(), "review-prompts")
+}
+
+// SetReviewPrompts updates the global custom review prompt overrides
+func (h *Handlers) SetReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	h.setReviewPrompts(w, r, "review-prompts")
+}
+
+// GetWorkspaceReviewPrompts returns the per-workspace custom review prompt overrides
+func (h *Handlers) GetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.getReviewPrompts(w, r.Context(), fmt.Sprintf("review-prompts:%s", workspaceID))
+}
+
+// SetWorkspaceReviewPrompts updates the per-workspace custom review prompt overrides
+func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
+}
+
 // GetSessionBranchSyncStatus returns how far behind the session is from the target branch
 func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -3923,6 +4049,107 @@ type PRDashboardItem struct {
 	ChecksTotal  int `json:"checksTotal"`
 	ChecksPassed int `json:"checksPassed"`
 	ChecksFailed int `json:"checksFailed"`
+}
+
+// prURLPattern matches GitHub PR URLs like https://github.com/owner/repo/pull/123
+var prURLPattern = regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
+
+type ResolvePRRequest struct {
+	URL string `json:"url"`
+}
+
+type ResolvePRResponse struct {
+	Owner              string   `json:"owner"`
+	Repo               string   `json:"repo"`
+	PRNumber           int      `json:"prNumber"`
+	Title              string   `json:"title"`
+	Body               string   `json:"body"`
+	Branch             string   `json:"branch"`
+	BaseBranch         string   `json:"baseBranch"`
+	State              string   `json:"state"`
+	IsDraft            bool     `json:"isDraft"`
+	Labels             []string `json:"labels"`
+	Reviewers          []string `json:"reviewers"`
+	Additions          int      `json:"additions"`
+	Deletions          int      `json:"deletions"`
+	ChangedFiles       int      `json:"changedFiles"`
+	MatchedWorkspaceID string   `json:"matchedWorkspaceId,omitempty"`
+	HTMLURL            string   `json:"htmlUrl"`
+}
+
+// ResolvePR parses a GitHub PR URL and returns detailed PR information plus matched workspace
+func (h *Handlers) ResolvePR(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if h.ghClient == nil {
+		writeValidationError(w, "GitHub client not configured")
+		return
+	}
+
+	var req ResolvePRRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Parse PR URL
+	matches := prURLPattern.FindStringSubmatch(req.URL)
+	if matches == nil || len(matches) < 4 {
+		writeValidationError(w, "invalid GitHub PR URL: expected format github.com/owner/repo/pull/number")
+		return
+	}
+
+	owner := matches[1]
+	repoName := matches[2]
+	prNumber, err := strconv.Atoi(matches[3])
+	if err != nil {
+		writeValidationError(w, "invalid PR number in URL")
+		return
+	}
+
+	// Fetch full PR details from GitHub
+	prDetails, err := h.ghClient.GetPRFullDetails(ctx, owner, repoName, prNumber)
+	if err != nil {
+		writeInternalError(w, "failed to fetch PR details", err)
+		return
+	}
+
+	// Try to match the PR's repo to a registered workspace
+	var matchedWorkspaceID string
+	repos, err := h.store.ListRepos(ctx)
+	if err == nil {
+		for _, repo := range repos {
+			repoOwner, repoRepo, err := h.repoManager.GetGitHubRemote(ctx, repo.Path)
+			if err != nil {
+				continue
+			}
+			if strings.EqualFold(repoOwner, owner) && strings.EqualFold(repoRepo, repoName) {
+				matchedWorkspaceID = repo.ID
+				break
+			}
+		}
+	}
+
+	resp := ResolvePRResponse{
+		Owner:              owner,
+		Repo:               repoName,
+		PRNumber:           prDetails.Number,
+		Title:              prDetails.Title,
+		Body:               prDetails.Body,
+		Branch:             prDetails.Branch,
+		BaseBranch:         prDetails.BaseBranch,
+		State:              prDetails.State,
+		IsDraft:            prDetails.IsDraft,
+		Labels:             prDetails.Labels,
+		Reviewers:          prDetails.Reviewers,
+		Additions:          prDetails.Additions,
+		Deletions:          prDetails.Deletions,
+		ChangedFiles:       prDetails.ChangedFiles,
+		MatchedWorkspaceID: matchedWorkspaceID,
+		HTMLURL:            prDetails.HTMLURL,
+	}
+
+	writeJSON(w, resp)
 }
 
 // ListPRs returns all open PRs across workspaces fetched directly from GitHub

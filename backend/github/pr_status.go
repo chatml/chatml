@@ -190,6 +190,116 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 	return details, nil
 }
 
+// PRFullDetails contains extended pull request information for session context
+type PRFullDetails struct {
+	Number       int       `json:"number"`
+	State        string    `json:"state"`
+	Title        string    `json:"title"`
+	HTMLURL      string    `json:"htmlUrl"`
+	Body         string    `json:"body"`
+	Branch       string    `json:"branch"`     // head ref (source branch)
+	BaseBranch   string    `json:"baseBranch"` // base ref (target branch)
+	IsDraft      bool      `json:"isDraft"`
+	Labels       []string  `json:"labels"`
+	Reviewers    []string  `json:"reviewers"`
+	Additions    int       `json:"additions"`
+	Deletions    int       `json:"deletions"`
+	ChangedFiles int       `json:"changedFiles"`
+}
+
+// githubPRFull extends the API response to decode additional fields
+type githubPRFull struct {
+	Number         int    `json:"number"`
+	State          string `json:"state"`
+	Title          string `json:"title"`
+	HTMLURL        string `json:"html_url"`
+	Body           string `json:"body"`
+	Draft          bool   `json:"draft"`
+	Additions      int    `json:"additions"`
+	Deletions      int    `json:"deletions"`
+	ChangedFiles   int    `json:"changed_files"`
+	Head           struct {
+		Ref string `json:"ref"`
+		SHA string `json:"sha"`
+	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	RequestedReviewers []struct {
+		Login string `json:"login"`
+	} `json:"requested_reviewers"`
+}
+
+// GetPRFullDetails fetches extended pull request information including body, branch refs,
+// labels, reviewers, and diff stats. Used for the "create session from PR" flow.
+func (c *Client) GetPRFullDetails(ctx context.Context, owner, repo string, prNumber int) (*PRFullDetails, error) {
+	token := c.GetToken()
+	if token == "" {
+		return nil, fmt.Errorf("not authenticated")
+	}
+
+	prURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", c.apiURL, owner, repo, prNumber)
+	req, err := http.NewRequestWithContext(ctx, "GET", prURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating PR request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching PR: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("PR #%d not found in %s/%s", prNumber, owner, repo)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("GitHub returned %d (body unreadable: %v)", resp.StatusCode, readErr)
+		}
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var pr githubPRFull
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		return nil, fmt.Errorf("decoding PR: %w", err)
+	}
+
+	labels := make([]string, len(pr.Labels))
+	for i, l := range pr.Labels {
+		labels[i] = l.Name
+	}
+
+	reviewers := make([]string, len(pr.RequestedReviewers))
+	for i, r := range pr.RequestedReviewers {
+		reviewers[i] = r.Login
+	}
+
+	return &PRFullDetails{
+		Number:       pr.Number,
+		State:        pr.State,
+		Title:        pr.Title,
+		HTMLURL:      pr.HTMLURL,
+		Body:         pr.Body,
+		Branch:       pr.Head.Ref,
+		BaseBranch:   pr.Base.Ref,
+		IsDraft:      pr.Draft,
+		Labels:       labels,
+		Reviewers:    reviewers,
+		Additions:    pr.Additions,
+		Deletions:    pr.Deletions,
+		ChangedFiles: pr.ChangedFiles,
+	}, nil
+}
+
 // GetPRDetailsBatch fetches details for multiple PRs concurrently with rate limiting.
 // Returns a map of PR number -> PRDetails and a slice of PR numbers that failed to fetch.
 // Uses goroutines with a semaphore to avoid overwhelming the GitHub API (default maxConcurrent is 5).

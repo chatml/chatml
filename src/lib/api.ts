@@ -267,7 +267,7 @@ export async function listSessions(workspaceId: string, includeArchived?: boolea
 
 export async function createSession(
   workspaceId: string,
-  data: { name?: string; branch?: string; worktreePath?: string; task?: string } = {}
+  data: { name?: string; branch?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
 ): Promise<SessionDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
@@ -355,6 +355,35 @@ export async function listBranches(
   const url = `${getApiBase()}/api/repos/${workspaceId}/branches${queryString ? `?${queryString}` : ''}`;
   const res = await fetchWithAuth(url);
   return handleResponse<BranchListResponse>(res);
+}
+
+// Resolve PR from URL
+export interface ResolvePRResponse {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  title: string;
+  body: string;
+  branch: string;
+  baseBranch: string;
+  state: string;
+  isDraft: boolean;
+  labels: string[];
+  reviewers: string[];
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  matchedWorkspaceId: string | null;
+  htmlUrl: string;
+}
+
+export async function resolvePR(url: string): Promise<ResolvePRResponse> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/resolve-pr`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  return handleResponse<ResolvePRResponse>(res);
 }
 
 // Branch cleanup types and API
@@ -1194,9 +1223,15 @@ export interface SessionWithConversationsDTO extends SessionDTO {
   conversations: ConversationDTO[];
 }
 
+export interface ArchivedSessionDirDTO {
+  dirName: string;
+  sessionId: string;
+}
+
 export interface DashboardDataDTO {
   workspaces: RepoDTO[];
   sessions: SessionWithConversationsDTO[];
+  archivedSessionDirs?: ArchivedSessionDirDTO[];
 }
 
 /**
@@ -1535,4 +1570,46 @@ export async function setPRTemplate(workspaceId: string, template: string): Prom
     }
   );
   await handleVoidResponse(res, 'Failed to save PR template');
+}
+
+// ---------------------------------------------------------------------------
+// Review Prompt Overrides
+// ---------------------------------------------------------------------------
+
+export async function getGlobalReviewPrompts(): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/review-prompts`);
+  const data = await handleResponse<{ prompts: Record<string, string> }>(res);
+  return data.prompts;
+}
+
+export async function setGlobalReviewPrompts(prompts: Record<string, string>): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/review-prompts`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompts }),
+  });
+  await handleVoidResponse(res, 'Failed to save review prompts');
+}
+
+export async function getWorkspaceReviewPrompts(workspaceId: string): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/review-prompts`
+  );
+  const data = await handleResponse<{ prompts: Record<string, string> }>(res);
+  return data.prompts;
+}
+
+export async function setWorkspaceReviewPrompts(
+  workspaceId: string,
+  prompts: Record<string, string>,
+): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/review-prompts`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts }),
+    },
+  );
+  await handleVoidResponse(res, 'Failed to save workspace review prompts');
 }
