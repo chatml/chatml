@@ -359,7 +359,6 @@ export const AgentEventTypes = {
 
   // User question events (AskUserQuestion tool)
   USER_QUESTION_REQUEST: 'user_question_request',
-  USER_QUESTION_TIMEOUT: 'user_question_timeout',
 } as const;
 
 // AskUserQuestion tool types

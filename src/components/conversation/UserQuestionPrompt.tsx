@@ -105,6 +105,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
             size="icon"
             className="h-6 w-6 -mt-1 -mr-1 text-muted-foreground hover:text-foreground"
             onClick={handleDismiss}
+            data-testid="dismiss-question"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -201,6 +202,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
             className="h-8 w-8 rounded-md"
             disabled={!canSubmit || isSubmitting}
             onClick={handleSubmit}
+            data-testid="submit-question"
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />

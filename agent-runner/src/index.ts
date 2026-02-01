@@ -151,12 +151,11 @@ let queryRef: Query | null = null;
 let currentSessionId: string | undefined = undefined;
 
 // Pending user question requests (for AskUserQuestion tool)
-const USER_QUESTION_TIMEOUT_MS = 60000; // 60 seconds (SDK requirement)
+const ASK_USER_QUESTION_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as long as they need
 
 interface PendingQuestionRequest {
   resolve: (answers: Record<string, string>) => void;
   reject: (error: Error) => void;
-  timeoutId: NodeJS.Timeout;
 }
 const pendingQuestionRequests = new Map<string, PendingQuestionRequest>();
 let questionRequestCounter = 0;
@@ -252,7 +251,6 @@ async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
         if (input.type === "user_question_response" && input.questionRequestId && input.answers) {
           const pending = pendingQuestionRequests.get(input.questionRequestId);
           if (pending) {
-            clearTimeout(pending.timeoutId);
             pendingQuestionRequests.delete(input.questionRequestId);
             // Check if user cancelled the question
             if (input.answers.__cancelled === "true") {
@@ -562,21 +560,8 @@ const subagentStopHook: HookCallback = async (input) => {
   return {};
 };
 
-// Hooks configuration - all always enabled
-const hooks = {
-  PreToolUse: [{ hooks: [preToolUseHook] }],
-  PostToolUse: [{ hooks: [postToolUseHook] }],
-  PostToolUseFailure: [{ hooks: [postToolUseFailureHook] }],
-  Notification: [{ hooks: [notificationHook] }],
-  SessionStart: [{ hooks: [sessionStartHook] }],
-  SessionEnd: [{ hooks: [sessionEndHook] }],
-  Stop: [{ hooks: [stopHook] }],
-  SubagentStart: [{ hooks: [subagentStartHook] }],
-  SubagentStop: [{ hooks: [subagentStopHook] }],
-};
-
 // ============================================================================
-// CAN USE TOOL - AskUserQuestion Handler
+// ASK USER QUESTION - PreToolUse Hook Handler
 // ============================================================================
 
 interface AskUserQuestionInput {
@@ -592,63 +577,74 @@ interface AskUserQuestionInput {
   answers?: Record<string, string>;
 }
 
-const canUseTool = async (
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  _options: { signal: AbortSignal; toolUseID: string }
-): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
-  // Only handle AskUserQuestion tool
-  if (toolName !== "AskUserQuestion") {
-    return { behavior: "allow" };
-  }
-
-  const input = toolInput as unknown as AskUserQuestionInput;
+// PreToolUse hook that intercepts AskUserQuestion to route through our UI.
+// Uses a hook instead of canUseTool to avoid the SDK's 60-second canUseTool timeout.
+// The hook has a 24-hour timeout, effectively letting users take as long as they need.
+const askUserQuestionHook: HookCallback = async (input) => {
+  const hookInput = input as PreToolUseHookInput;
+  const toolInput = hookInput.tool_input as unknown as AskUserQuestionInput;
   const requestId = `question-${++questionRequestCounter}-${Date.now()}`;
 
   // Emit the question request to the Go backend
   emit({
     type: "user_question_request",
     requestId,
-    questions: input.questions,
+    questions: toolInput.questions,
     sessionId: currentSessionId,
   });
 
-  // Wait for response with timeout (SDK requirement)
+  // Wait indefinitely for user response (no timeout — user answers or cancels)
   try {
     const answers = await new Promise<Record<string, string>>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        pendingQuestionRequests.delete(requestId);
-        reject(new Error(`User question timed out after ${USER_QUESTION_TIMEOUT_MS / 1000} seconds`));
-      }, USER_QUESTION_TIMEOUT_MS);
-
-      pendingQuestionRequests.set(requestId, {
-        resolve,
-        reject,
-        timeoutId,
-      });
+      pendingQuestionRequests.set(requestId, { resolve, reject });
     });
 
-    // Return updated input with answers populated
+    // Allow tool execution with answers populated
     return {
-      behavior: "allow",
-      updatedInput: {
-        ...toolInput,
-        answers,
+      hookSpecificOutput: {
+        hookEventName: input.hook_event_name,
+        permissionDecision: "allow" as const,
+        updatedInput: {
+          ...hookInput.tool_input,
+          answers,
+        },
       },
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    emit({
-      type: "user_question_timeout",
-      requestId,
-      error: errorMessage,
-      sessionId: currentSessionId,
-    });
     return {
-      behavior: "deny",
-      message: errorMessage,
+      hookSpecificOutput: {
+        hookEventName: input.hook_event_name,
+        permissionDecision: "deny" as const,
+        permissionDecisionReason: errorMessage,
+      },
     };
   }
+};
+
+// Required by SDK interface; AskUserQuestion is handled via PreToolUse hook above
+const canUseTool = async (
+  _toolName: string,
+  _toolInput: Record<string, unknown>,
+  _options: { signal: AbortSignal; toolUseID: string }
+): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
+  return { behavior: "allow" };
+};
+
+// Hooks configuration - all always enabled
+const hooks = {
+  PreToolUse: [
+    { matcher: "AskUserQuestion", timeout: ASK_USER_QUESTION_HOOK_TIMEOUT_S, hooks: [askUserQuestionHook] },
+    { hooks: [preToolUseHook] },
+  ],
+  PostToolUse: [{ hooks: [postToolUseHook] }],
+  PostToolUseFailure: [{ hooks: [postToolUseFailureHook] }],
+  Notification: [{ hooks: [notificationHook] }],
+  SessionStart: [{ hooks: [sessionStartHook] }],
+  SessionEnd: [{ hooks: [sessionEndHook] }],
+  Stop: [{ hooks: [stopHook] }],
+  SubagentStart: [{ hooks: [subagentStartHook] }],
+  SubagentStop: [{ hooks: [subagentStopHook] }],
 };
 
 // ============================================================================
@@ -1047,7 +1043,6 @@ async function cleanup(reason: string): Promise<void> {
 
   // 2. Cancel all pending question requests
   for (const [requestId, pending] of pendingQuestionRequests) {
-    clearTimeout(pending.timeoutId);
     pending.reject(new Error(`Cleanup: ${reason}`));
     pendingQuestionRequests.delete(requestId);
   }
