@@ -15,8 +15,13 @@ import (
 )
 
 const (
-	// Per-client send buffer size
-	clientSendBufferSize = 256
+	// Per-client send buffer size. Set high because this is a local desktop app
+	// where memory is cheap and the browser may briefly lag during fast streaming.
+	clientSendBufferSize = 2048
+
+	// clientSendTimeout is how long to wait for space in a client's send buffer
+	// before evicting. Gives the browser time to catch up during fast streaming.
+	clientSendTimeout = 100 * time.Millisecond
 
 	// Time allowed to write a message to the client
 	writeWait = 10 * time.Second
@@ -26,6 +31,10 @@ const (
 
 	// Send pings to client with this period (must be less than pongWait)
 	pingPeriod = (pongWait * 9) / 10
+
+	// evictionWarningDeadline is the write deadline for the best-effort
+	// warning message sent to a client just before eviction.
+	evictionWarningDeadline = 500 * time.Millisecond
 
 	// broadcastTimeout is how long to wait for buffer space before dropping
 	// a broadcast message. This gives Hub.Run() time to catch up.
@@ -51,9 +60,10 @@ type Event struct {
 type Client struct {
 	hub       *Hub
 	conn      *websocket.Conn
-	send      chan []byte // Buffered channel for outgoing messages
+	send      chan []byte  // Buffered channel for outgoing messages
 	closeOnce sync.Once   // Ensures send channel is closed only once
 	evicting  atomic.Bool // Prevents multiple eviction goroutines
+	writeMu   sync.Mutex  // Protects concurrent writes to conn
 }
 
 // HubMetrics tracks WebSocket hub statistics
@@ -171,22 +181,35 @@ func (h *Hub) runLoop() {
 			for client := range h.clients {
 				select {
 				case client.send <- message:
-					// Message queued successfully
+					// Message queued successfully (fast path)
 				default:
-					// Client buffer full - they can't keep up, schedule for removal
-					// Use CompareAndSwap to ensure only one eviction goroutine is spawned
+					// Buffer full - spawn goroutine for timed retry instead of instant eviction.
+					// CAS ensures only one retry goroutine runs per client at a time.
 					if client.evicting.CompareAndSwap(false, true) {
-						h.metrics.recordClientDropped()
-						logger.WebSocket.Warnf("Client send buffer full, evicting slow client")
-						go func(c *Client) {
+						go func(c *Client, msg []byte) {
 							defer func() {
 								if r := recover(); r != nil {
 									logger.WebSocket.Errorf("Hub PANIC in eviction goroutine: %v", r)
 								}
 							}()
-							h.unregister <- c
-						}(client)
-					}
+
+							select {
+							case c.send <- msg:
+								// Client caught up - reset flag, continue normally
+								c.evicting.Store(false)
+							case <-time.After(clientSendTimeout):
+								// Still full after timeout - evict
+								h.metrics.recordClientDropped()
+								logger.WebSocket.Warnf("Client send buffer full after %v, evicting", clientSendTimeout)
+								c.sendEvictionWarning()
+								h.unregister <- c
+							}
+						}(client, message)
+					} else {
+					// Another retry goroutine is already handling this client.
+					// Drop this message and record the metric.
+					h.metrics.recordDropped()
+				}
 				}
 			}
 			h.mu.RUnlock()
@@ -325,29 +348,52 @@ func (c *Client) writePump() {
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				// Hub closed the channel - client was unregistered
-				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					logger.WebSocket.Errorf("Error sending close message: %v", err)
-				}
+			if !c.handleSendMessage(message, ok) {
 				return
 			}
-
-			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-				logger.WebSocket.Errorf("Error writing message to client: %v", err)
-				return
-			}
-			c.hub.metrics.recordDelivered()
-
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				logger.WebSocket.Errorf("Error sending ping to client: %v", err)
+			if !c.handlePing() {
 				return
 			}
 		}
 	}
+}
+
+// handleSendMessage writes a queued message to the WebSocket connection.
+// Returns false if the pump should exit (channel closed or write error).
+func (c *Client) handleSendMessage(message []byte, ok bool) bool {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if !ok {
+		// Hub closed the channel - client was unregistered
+		if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+			logger.WebSocket.Errorf("Error sending close message: %v", err)
+		}
+		return false
+	}
+
+	if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+		logger.WebSocket.Errorf("Error writing message to client: %v", err)
+		return false
+	}
+	c.hub.metrics.recordDelivered()
+	return true
+}
+
+// handlePing sends a WebSocket ping to the client.
+// Returns false if the pump should exit (write error).
+func (c *Client) handlePing() bool {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+		logger.WebSocket.Errorf("Error sending ping to client: %v", err)
+		return false
+	}
+	return true
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -378,6 +424,31 @@ func (c *Client) readPump() {
 			break
 		}
 	}
+}
+
+// sendEvictionWarning attempts to send a warning event to the client before
+// eviction. Writes directly to the connection (bypassing the full send channel)
+// with a short deadline. Best-effort; errors are ignored.
+func (c *Client) sendEvictionWarning() {
+	if c.conn == nil {
+		return
+	}
+	warningEvent := Event{
+		Type: "streaming_warning",
+		Payload: map[string]interface{}{
+			"source":  "hub",
+			"reason":  "client_eviction",
+			"message": "Connection closed due to slow message processing. Reconnecting...",
+		},
+	}
+	data, err := json.Marshal(warningEvent)
+	if err != nil {
+		return
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	c.conn.SetWriteDeadline(time.Now().Add(evictionWarningDeadline))
+	c.conn.WriteMessage(websocket.TextMessage, data)
 }
 
 // GetStats returns current hub statistics
