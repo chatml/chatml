@@ -3584,9 +3584,15 @@ func (h *Handlers) GeneratePRDescription(w http.ResponseWriter, r *http.Request)
 		diffSummary = ""
 	}
 
-	// Load custom PR template for this workspace
-	templateKey := fmt.Sprintf("pr-template:%s", session.WorkspaceID)
-	customPrompt, _, _ := h.store.GetSetting(ctx, templateKey)
+	// Load custom PR templates (global + workspace, workspace takes precedence)
+	globalTemplate, _, _ := h.store.GetSetting(ctx, "pr-template")
+	workspaceTemplateKey := fmt.Sprintf("pr-template:%s", session.WorkspaceID)
+	workspaceTemplate, _, _ := h.store.GetSetting(ctx, workspaceTemplateKey)
+
+	customPrompt := strings.TrimSpace(globalTemplate)
+	if strings.TrimSpace(workspaceTemplate) != "" {
+		customPrompt = strings.TrimSpace(workspaceTemplate)
+	}
 
 	// Generate PR description via AI
 	result, err := h.aiClient.GeneratePRDescription(ctx, ai.GeneratePRRequest{
@@ -3746,13 +3752,58 @@ func (h *Handlers) SetPRTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := fmt.Sprintf("pr-template:%s", workspaceID)
-	if req.Template == "" {
+	trimmed := strings.TrimSpace(req.Template)
+	if trimmed == "" {
 		if err := h.store.DeleteSetting(ctx, key); err != nil {
 			writeDBError(w, err)
 			return
 		}
 	} else {
-		if err := h.store.SetSetting(ctx, key, req.Template); err != nil {
+		if err := h.store.SetSetting(ctx, key, trimmed); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetGlobalPRTemplate returns the global custom PR template
+func (h *Handlers) GetGlobalPRTemplate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	value, found, err := h.store.GetSetting(ctx, "pr-template")
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		value = ""
+	}
+
+	writeJSON(w, map[string]string{"template": value})
+}
+
+// SetGlobalPRTemplate updates the global custom PR template
+func (h *Handlers) SetGlobalPRTemplate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Template string `json:"template"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	trimmed := strings.TrimSpace(req.Template)
+	if trimmed == "" {
+		if err := h.store.DeleteSetting(ctx, "pr-template"); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		if err := h.store.SetSetting(ctx, "pr-template", trimmed); err != nil {
 			writeDBError(w, err)
 			return
 		}
