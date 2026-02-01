@@ -41,7 +41,8 @@ async function flushAndAdvance(ms = 0) {
   await act(async () => {
     // Flush already-resolved promises (e.g. mockResolvedValue)
     await Promise.resolve();
-    if (ms > 0) vi.advanceTimersByTime(ms);
+    // Always advance timers to fire deferred callbacks (e.g. setTimeout(fn, 0))
+    vi.advanceTimersByTime(ms);
     // Flush any promises that were created after advancing timers
     await Promise.resolve();
   });
