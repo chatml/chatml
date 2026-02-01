@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { spawn, type IPty } from 'tauri-pty';
+import { invoke } from '@tauri-apps/api/core';
 
 // Platform detection with modern API fallback
 function detectPlatform(): 'windows' | 'unix' {
@@ -18,16 +19,23 @@ function detectPlatform(): 'windows' | 'unix' {
   return 'unix';
 }
 
-// Get shell fallback chain based on platform
-function getShellFallbackChain(): string[] {
-  if (detectPlatform() === 'windows') {
-    return ['powershell.exe', 'pwsh.exe', 'cmd.exe'];
+// Get shell fallback chain based on platform, preferring the user's $SHELL
+async function getShellFallbackChain(): Promise<string[]> {
+  const defaults =
+    detectPlatform() === 'windows'
+      ? ['powershell.exe', 'pwsh.exe', 'cmd.exe']
+      : ['/bin/zsh', '/bin/bash', '/bin/sh'];
+
+  try {
+    const userShell = await invoke<string | null>('get_user_shell');
+    if (userShell) {
+      return [userShell, ...defaults.filter(s => s !== userShell)];
+    }
+  } catch {
+    // Invoke failed (e.g. running outside Tauri) — use defaults
   }
 
-  // Unix (macOS/Linux): /bin/zsh -> /bin/bash -> /bin/sh
-  // Note: process.env.SHELL isn't available in browser/Tauri context,
-  // so we rely on a fixed fallback chain starting with common defaults.
-  return ['/bin/zsh', '/bin/bash', '/bin/sh'];
+  return defaults;
 }
 
 // Terminal theme matching the app's dark theme
@@ -157,7 +165,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
       const initPty = async () => {
         if (cleanupCalled) return;
 
-        const shellChain = getShellFallbackChain();
+        const shellChain = await getShellFallbackChain();
         let lastError: unknown = null;
 
         for (const shell of shellChain) {
