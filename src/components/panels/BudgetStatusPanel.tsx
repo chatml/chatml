@@ -1,13 +1,49 @@
 'use client';
 
 import { useBudgetStatus } from '@/stores/selectors';
+import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AlertCircle, DollarSign, RefreshCw, Brain, Gauge } from 'lucide-react';
+import { AlertCircle, DollarSign, RefreshCw, Brain, Gauge, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatTokens } from '@/lib/format';
 import { EmptyState } from '@/components/ui/empty-state';
+import type { TokenUsage } from '@/lib/types';
+
+interface CumulativeTokens {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+const EMPTY_CUMULATIVE: CumulativeTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+
+/** Derive cumulative token usage directly from the store to avoid unstable array references. */
+const useCumulativeTokens = (conversationId: string | null): CumulativeTokens =>
+  useAppStore((s) => {
+    if (!conversationId) return EMPTY_CUMULATIVE;
+    let input = 0, output = 0, cacheRead = 0, cacheWrite = 0;
+    for (const msg of s.messages) {
+      if (msg.conversationId !== conversationId) continue;
+      const usage: TokenUsage | undefined = msg.runSummary?.usage;
+      if (usage) {
+        input += usage.inputTokens;
+        output += usage.outputTokens;
+        cacheRead += usage.cacheReadInputTokens ?? 0;
+        cacheWrite += usage.cacheCreationInputTokens ?? 0;
+      }
+    }
+    if (input === 0 && output === 0) return EMPTY_CUMULATIVE;
+    return { input, output, cacheRead, cacheWrite, total: input + output };
+  });
 
 export function BudgetStatusPanel() {
   const budgetStatus = useBudgetStatus();
+  const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
+  const selectedConversationId = useAppStore((s) => s.selectedConversationId);
+  const cumulativeTokens = useCumulativeTokens(selectedConversationId);
 
   // Show empty state when no budget status at all
   if (!budgetStatus) {
@@ -103,6 +139,38 @@ export function BudgetStatusPanel() {
           </div>
         )}
       </div>
+
+      {/* Cumulative token usage */}
+      {showTokenUsage && cumulativeTokens.total > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <ArrowDownToLine className="w-3 h-3" />
+              <span>Input tokens</span>
+            </div>
+            <span className="font-mono">{formatTokens(cumulativeTokens.input)}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <ArrowUpFromLine className="w-3 h-3" />
+              <span>Output tokens</span>
+            </div>
+            <span className="font-mono">{formatTokens(cumulativeTokens.output)}</span>
+          </div>
+          {cumulativeTokens.cacheRead > 0 && (
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+              <span className="ml-4">Cache read</span>
+              <span className="font-mono">{formatTokens(cumulativeTokens.cacheRead)}</span>
+            </div>
+          )}
+          {cumulativeTokens.cacheWrite > 0 && (
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+              <span className="ml-4">Cache write</span>
+              <span className="font-mono">{formatTokens(cumulativeTokens.cacheWrite)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Extended Thinking — status card */}
       <div className={cn(

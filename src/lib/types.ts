@@ -61,6 +61,27 @@ export interface ToolAction {
   success: boolean;
 }
 
+// Token usage from an agent run (aggregated across all API calls).
+// Cache fields are optional because some API responses omit them when zero.
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+}
+
+// Per-model usage breakdown (matches Claude Agent SDK's ModelUsage).
+// All fields are required here because the SDK always provides them, defaulting to 0.
+export interface ModelUsageInfo {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  webSearchRequests: number;
+  costUSD: number;
+  contextWindow: number;
+}
+
 // Run summary displayed at end of agent turn
 export interface RunSummary {
   success: boolean;
@@ -69,6 +90,8 @@ export interface RunSummary {
   durationMs?: number;
   stats?: RunStats;
   errors?: unknown[];
+  usage?: TokenUsage;
+  modelUsage?: Record<string, ModelUsageInfo>;
 }
 
 // Tool usage record for message history
@@ -205,6 +228,7 @@ export interface AgentEvent {
   // Extended result fields
   durationMs?: number;
   durationApiMs?: number;
+  // Raw from WebSocket — normalized to TokenUsage in useWebSocket before storing
   usage?: Record<string, unknown>;
   modelUsage?: Record<string, unknown>;
   structuredOutput?: unknown;

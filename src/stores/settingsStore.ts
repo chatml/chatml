@@ -51,6 +51,7 @@ interface SettingsState {
   defaultThinking: boolean;
   maxThinkingTokens: number;
   showThinkingBlocks: boolean; // Whether to show thinking/reasoning content in messages
+  showTokenUsage: boolean; // Whether to show token counts and cost breakdown in run summaries
   desktopNotifications: boolean;
   soundEffects: boolean;
   sendWithEnter: boolean;
@@ -89,6 +90,7 @@ interface SettingsState {
   setMaxThinkingTokens: (value: number) => void;
   setShowThinkingBlocks: (value: boolean) => void;
   toggleShowThinkingBlocks: () => void;
+  setShowTokenUsage: (value: boolean) => void;
   setDesktopNotifications: (value: boolean) => void;
   setSoundEffects: (value: boolean) => void;
   setSendWithEnter: (value: boolean) => void;
@@ -124,6 +126,7 @@ export const useSettingsStore = create<SettingsState>()(
       defaultThinking: true,
       maxThinkingTokens: 10000,
       showThinkingBlocks: true,
+      showTokenUsage: true,
       desktopNotifications: true,
       soundEffects: false,
       sendWithEnter: true,
@@ -153,6 +156,7 @@ export const useSettingsStore = create<SettingsState>()(
       setMaxThinkingTokens: (value) => set({ maxThinkingTokens: value }),
       setShowThinkingBlocks: (value) => set({ showThinkingBlocks: value }),
       toggleShowThinkingBlocks: () => set((state) => ({ showThinkingBlocks: !state.showThinkingBlocks })),
+      setShowTokenUsage: (value) => set({ showTokenUsage: value }),
       setDesktopNotifications: (value) => set({ desktopNotifications: value }),
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
