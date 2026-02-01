@@ -11,7 +11,7 @@ import {
   usePageActions,
   useMessages,
 } from '@/stores/selectors';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
@@ -30,6 +30,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
 import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
+import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
@@ -424,6 +425,7 @@ export default function Home() {
   useFileWatcher();
   useExternalLinkGuard();
   useDesktopNotifications();
+  useFontSize();
 
   // Keyboard shortcut: Cmd+/ to show shortcuts dialog
   useShortcut('shortcutsDialog', useCallback(() => {
@@ -593,7 +595,10 @@ export default function Home() {
 
     try {
       // Backend generates city-based session name, branch, and worktree path
-      const newSession = await createSession(selectedWorkspaceId);
+      const branchPrefix = getBranchPrefix();
+      const newSession = await createSession(selectedWorkspaceId, {
+        ...(branchPrefix !== undefined && { branchPrefix }),
+      });
 
       // Register with global file watcher before adding to store
       if (newSession.worktreePath) {
@@ -725,7 +730,10 @@ export default function Home() {
       useAppStore.getState().addWorkspace(workspace);
 
       // Auto-create first session for the new workspace (backend generates city-based name)
-      const session = await createSession(workspace.id);
+      const prefix = getBranchPrefix();
+      const session = await createSession(workspace.id, {
+        ...(prefix !== undefined && { branchPrefix: prefix }),
+      });
 
       addSession(mapSessionDTO(session));
 

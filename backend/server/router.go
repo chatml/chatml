@@ -167,6 +167,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Put("/api/settings/workspaces-base-dir", h.SetWorkspacesBaseDir)
 	r.Get("/api/settings/review-prompts", h.GetReviewPrompts)
 	r.Put("/api/settings/review-prompts", h.SetReviewPrompts)
+	r.Get("/api/settings/env", h.GetEnvSettings)
+	r.Put("/api/settings/env", h.SetEnvSettings)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

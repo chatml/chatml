@@ -340,6 +340,9 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 // settingKeyWorkspacesBaseDir is the settings key for the workspaces base directory
 const settingKeyWorkspacesBaseDir = "workspaces-base-dir"
 
+// settingKeyEnvVars is the settings key for custom environment variables
+const settingKeyEnvVars = "env-vars"
+
 // getWorkspacesBaseDir returns the configured workspaces base directory,
 // falling back to the default (~/.chatml/workspaces) if not configured.
 func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
@@ -1119,6 +1122,8 @@ type CreateSessionRequest struct {
 	Name string `json:"name,omitempty"`
 	// Branch is optional - if not provided, will be generated from the session name
 	Branch string `json:"branch,omitempty"`
+	// BranchPrefix is optional - prefix for auto-generated branch names (default: "session")
+	BranchPrefix string `json:"branchPrefix,omitempty"`
 	// WorktreePath is deprecated - worktrees are now created at ~/.chatml/workspaces/{name}
 	WorktreePath string `json:"worktreePath,omitempty"`
 	// Task is an optional description of what this session is for
@@ -1231,7 +1236,11 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Generate or use provided branch name
 	branchName := req.Branch
 	if branchName == "" {
-		branchName = fmt.Sprintf("session/%s", sessionName)
+		prefix := req.BranchPrefix
+		if prefix == "" {
+			prefix = "session"
+		}
+		branchName = fmt.Sprintf("%s/%s", prefix, sessionName)
 	}
 
 	// Lock on the session path to prevent race conditions with delete operations
@@ -4399,3 +4408,38 @@ func (h *Handlers) SetWorkspacesBaseDir(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, map[string]string{"path": dir})
 }
+
+// GetEnvSettings returns the saved environment variables string
+func (h *Handlers) GetEnvSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	envVars, found, err := h.store.GetSetting(ctx, settingKeyEnvVars)
+	if err != nil {
+		writeInternalError(w, "failed to get env settings", err)
+		return
+	}
+	if !found {
+		envVars = ""
+	}
+	writeJSON(w, map[string]string{"envVars": envVars})
+}
+
+// SetEnvSettings saves environment variables to the settings store
+func (h *Handlers) SetEnvSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		EnvVars string `json:"envVars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyEnvVars, req.EnvVars); err != nil {
+		writeInternalError(w, "failed to save env settings", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"envVars": req.EnvVars})
+}
+
