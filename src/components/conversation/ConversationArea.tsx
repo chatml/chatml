@@ -43,7 +43,7 @@ import { StreamingMessage } from '@/components/conversation/StreamingMessage';
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary } from '@/lib/api';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -205,6 +205,36 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameConvId, setRenameConvId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+
+  // Summary state
+  const summaries = useAppStore((s) => s.summaries);
+  const setSummary = useAppStore((s) => s.setSummary);
+  const [summaryViewerOpen, setSummaryViewerOpen] = useState(false);
+  const [summaryViewerConvId, setSummaryViewerConvId] = useState<string | null>(null);
+
+  const handleGenerateSummary = useCallback(async (conversationId: string) => {
+    try {
+      const summary = await generateSummary(conversationId);
+      setSummary(conversationId, summary);
+    } catch (error) {
+      console.error('Failed to generate summary:', error);
+    }
+  }, [setSummary]);
+
+  const handleViewSummary = useCallback((conversationId: string) => {
+    // Fetch latest if not in store
+    if (!summaries[conversationId]) {
+      getConversationSummary(conversationId).then((s) => {
+        if (s) setSummary(conversationId, s);
+      });
+    }
+    setSummaryViewerConvId(conversationId);
+    setSummaryViewerOpen(true);
+  }, [summaries, setSummary]);
+
+  const getSummaryStatus = useCallback((conversationId: string) => {
+    return summaries[conversationId]?.status ?? null;
+  }, [summaries]);
 
   // Chat search state - keyed by conversation to auto-reset
   const [searchOpen, setSearchOpen] = useState(false);
@@ -855,6 +885,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         onReorder={reorderFileTabs}
         onNewSession={() => handleNewConversation('task')}
         onRenameConversation={handleRenameConversation}
+        onGenerateSummary={handleGenerateSummary}
+        onViewSummary={handleViewSummary}
+        getSummaryStatus={getSummaryStatus}
       />
 
       {/* Content Area - Either file viewer or messages */}
@@ -1048,6 +1081,27 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               Cancel
             </Button>
             <Button onClick={handleRenameSubmit}>Rename</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Summary Viewer Dialog */}
+      <Dialog open={summaryViewerOpen} onOpenChange={setSummaryViewerOpen}>
+        <DialogContent className="sm:max-w-[500px] max-h-[60vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Conversation Summary</DialogTitle>
+          </DialogHeader>
+          {summaryViewerConvId && summaries[summaryViewerConvId] ? (
+            <div className="text-sm whitespace-pre-wrap text-foreground">
+              {summaries[summaryViewerConvId].content}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">Loading summary...</div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSummaryViewerOpen(false)}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

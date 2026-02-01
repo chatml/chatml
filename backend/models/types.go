@@ -229,6 +229,26 @@ var ValidTaskStatuses = map[string]bool{
 	TaskStatusCancelled:  true,
 }
 
+// Summary represents a generated summary of a conversation
+type Summary struct {
+	ID               string    `json:"id"`
+	ConversationID   string    `json:"conversationId"`
+	SessionID        string    `json:"sessionId"`
+	ConversationName string    `json:"conversationName,omitempty"`
+	Content          string    `json:"content"`
+	Status           string    `json:"status"` // "generating", "completed", "failed"
+	ErrorMessage     string    `json:"errorMessage,omitempty"`
+	MessageCount     int       `json:"messageCount"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+// SummaryStatus constants
+const (
+	SummaryStatusGenerating = "generating"
+	SummaryStatusCompleted  = "completed"
+	SummaryStatusFailed     = "failed"
+)
+
 // PRStatus constants
 const (
 	PRStatusNone   = "none"

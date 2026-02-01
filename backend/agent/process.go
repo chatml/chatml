@@ -43,7 +43,8 @@ type ProcessOptions struct {
 	MaxBudgetUsd        float64
 	MaxTurns            int
 	MaxThinkingTokens   int
-	PlanMode            bool // Start agent in plan mode
+	PlanMode            bool   // Start agent in plan mode
+	Instructions        string // Additional instructions for the agent (e.g., conversation summaries)
 	StructuredOutput    string
 	SettingSources      string // Comma-separated: project,user,local
 	Betas               string // Comma-separated beta features
@@ -65,7 +66,8 @@ type Process struct {
 	stopped         bool // Prevents double-stop race conditions
 	exitErr         error
 	planModeActive  bool // Tracks whether the process is in plan mode
-	droppedMessages atomic.Uint64 // Count of messages dropped due to full output buffer
+	droppedMessages    atomic.Uint64 // Count of messages dropped due to full output buffer
+	instructionsFile   string        // Temp file for instructions, cleaned up on stop
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -172,6 +174,19 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		args = append(args, "--permission-mode", "plan")
 	}
 
+	// Add instructions (e.g., from conversation summaries)
+	var instructionsFile string
+	if opts.Instructions != "" {
+		// Write to temp file to avoid shell arg length limits
+		tmpFile, err := os.CreateTemp("", "chatml-instructions-*.txt")
+		if err == nil {
+			_, _ = tmpFile.WriteString(opts.Instructions)
+			tmpFile.Close()
+			instructionsFile = tmpFile.Name()
+			args = append(args, "--instructions-file", instructionsFile)
+		}
+	}
+
 	// Add structured output schema if provided
 	if opts.StructuredOutput != "" {
 		args = append(args, "--structured-output", opts.StructuredOutput)
@@ -202,9 +217,10 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		// This allows the process to continue producing output even if
 		// consumers (WebSocket clients) are temporarily slow. Large buffer
 		// absorbs transient spikes from tool results and large code blocks.
-		output:         make(chan string, 4000),
-		done:           make(chan struct{}),
-		planModeActive: opts.PlanMode,
+		output:           make(chan string, 4000),
+		done:             make(chan struct{}),
+		planModeActive:   opts.PlanMode,
+		instructionsFile: instructionsFile,
 	}
 }
 
@@ -445,6 +461,12 @@ func (p *Process) doStopLocked() {
 	if p.stdin != nil {
 		p.stdin.Close()
 		p.stdin = nil
+	}
+
+	// Clean up instructions temp file
+	if p.instructionsFile != "" {
+		_ = os.Remove(p.instructionsFile)
+		p.instructionsFile = ""
 	}
 
 	// Try graceful shutdown with SIGTERM first

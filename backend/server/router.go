@@ -109,6 +109,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		// Conversation endpoints nested under sessions
 		r.Get("/{id}/sessions/{sessionId}/conversations", h.ListConversations)
 		r.With(conversationRateLimiter).Post("/{id}/sessions/{sessionId}/conversations", h.CreateConversation)
+		// Session-level summary listing
+		r.Get("/{id}/sessions/{sessionId}/summaries", h.ListSessionSummaries)
 		// Review comment endpoints nested under sessions
 		r.Get("/{id}/sessions/{sessionId}/comments", h.ListReviewComments)
 		r.With(commentRateLimiter).Post("/{id}/sessions/{sessionId}/comments", h.CreateReviewComment)
@@ -150,6 +152,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
 		r.Delete("/{convId}", h.DeleteConversation)
+		// Summary endpoints
+		r.With(conversationRateLimiter).Post("/{convId}/summary", h.GenerateConversationSummary)
+		r.Get("/{convId}/summary", h.GetConversationSummary)
 	})
 
 	// Settings endpoints

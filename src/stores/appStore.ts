@@ -22,6 +22,7 @@ import type {
   BranchSyncStatus,
   PendingUserQuestion,
   ActiveTool,
+  Summary,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -144,6 +145,9 @@ interface AppState {
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
 
+  // Conversation summaries (keyed by conversationId)
+  summaries: { [conversationId: string]: Summary };
+
   // File watcher: last file change event (for reactive subscriptions)
   lastFileChange: { workspaceId: string; path: string; fullPath: string; timestamp: number } | null;
 
@@ -169,6 +173,10 @@ interface AppState {
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
   removeConversation: (id: string) => void;
   selectConversation: (id: string | null) => void;
+
+  // Summary actions
+  setSummary: (conversationId: string, summary: Summary) => void;
+  updateSummary: (conversationId: string, updates: Partial<Summary>) => void;
 
   // Message actions
   setMessages: (messages: Message[]) => void;
@@ -336,6 +344,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncDismissed: {},
   branchSyncCompletedAt: {},
   pendingUserQuestion: {},
+  summaries: {},
   lastFileChange: null,
   messagePagination: {},
 
@@ -584,6 +593,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
   }),
   selectConversation: (id) => set({ selectedConversationId: id }),
+
+  // Summary actions
+  setSummary: (conversationId, summary) => set((state) => ({
+    summaries: { ...state.summaries, [conversationId]: summary },
+  })),
+  updateSummary: (conversationId, updates) => set((state) => {
+    const existing = state.summaries[conversationId];
+    if (!existing) return state;
+    return {
+      summaries: { ...state.summaries, [conversationId]: { ...existing, ...updates } },
+    };
+  }),
 
   // Message actions
   setMessages: (messages) => set({ messages }),

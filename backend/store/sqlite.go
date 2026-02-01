@@ -484,6 +484,34 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	logger.SQLite.Infof("Migration: sessions workspace_name index ready")
 
+	// Migration: Create summaries table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS summaries (
+			id TEXT PRIMARY KEY,
+			conversation_id TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			content TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'generating',
+			error_message TEXT,
+			message_count INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_summaries_conversation ON summaries(conversation_id)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_summaries_session ON summaries(session_id)`)
+	if err != nil {
+		return err
+	}
+	logger.SQLite.Infof("Migration: summaries table ready")
+
 	return nil
 }
 
@@ -2374,4 +2402,146 @@ func (s *SQLiteStore) GetAttachmentData(ctx context.Context, attachmentID string
 		return "", nil
 	}
 	return data.String, nil
+}
+
+// ============================================================================
+// Summary methods
+// ============================================================================
+
+// AddSummary inserts a new summary record.
+func (s *SQLiteStore) AddSummary(ctx context.Context, summary *models.Summary) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO summaries (id, conversation_id, session_id, content, status, error_message, message_count, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		summary.ID, summary.ConversationID, summary.SessionID,
+		summary.Content, summary.Status, summary.ErrorMessage,
+		summary.MessageCount, summary.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("AddSummary: %w", err)
+	}
+	return nil
+}
+
+// GetSummaryByConversation returns the summary for a conversation, or nil if none exists.
+func (s *SQLiteStore) GetSummaryByConversation(ctx context.Context, conversationID string) (*models.Summary, error) {
+	var summary models.Summary
+	var errorMsg sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, conversation_id, session_id, content, status, error_message, message_count, created_at
+		FROM summaries WHERE conversation_id = ?
+		ORDER BY created_at DESC LIMIT 1`,
+		conversationID,
+	).Scan(
+		&summary.ID, &summary.ConversationID, &summary.SessionID,
+		&summary.Content, &summary.Status, &errorMsg,
+		&summary.MessageCount, &summary.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetSummaryByConversation: %w", err)
+	}
+	if errorMsg.Valid {
+		summary.ErrorMessage = errorMsg.String
+	}
+	return &summary, nil
+}
+
+// GetSummary returns a summary by ID.
+func (s *SQLiteStore) GetSummary(ctx context.Context, id string) (*models.Summary, error) {
+	var summary models.Summary
+	var errorMsg sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, conversation_id, session_id, content, status, error_message, message_count, created_at
+		FROM summaries WHERE id = ?`,
+		id,
+	).Scan(
+		&summary.ID, &summary.ConversationID, &summary.SessionID,
+		&summary.Content, &summary.Status, &errorMsg,
+		&summary.MessageCount, &summary.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetSummary: %w", err)
+	}
+	if errorMsg.Valid {
+		summary.ErrorMessage = errorMsg.String
+	}
+	return &summary, nil
+}
+
+// ListSummariesBySession returns all completed summaries for a session.
+func (s *SQLiteStore) ListSummariesBySession(ctx context.Context, sessionID string) ([]*models.Summary, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT s.id, s.conversation_id, s.session_id, s.content, s.status, s.error_message, s.message_count, s.created_at,
+		       COALESCE(c.name, '')
+		FROM summaries s
+		LEFT JOIN conversations c ON c.id = s.conversation_id
+		WHERE s.session_id = ? AND s.status = ?
+		ORDER BY s.created_at DESC`,
+		sessionID, models.SummaryStatusCompleted,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ListSummariesBySession: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []*models.Summary
+	for rows.Next() {
+		var summary models.Summary
+		var errorMsg sql.NullString
+		if err := rows.Scan(
+			&summary.ID, &summary.ConversationID, &summary.SessionID,
+			&summary.Content, &summary.Status, &errorMsg,
+			&summary.MessageCount, &summary.CreatedAt,
+			&summary.ConversationName,
+		); err != nil {
+			return nil, fmt.Errorf("ListSummariesBySession scan: %w", err)
+		}
+		if errorMsg.Valid {
+			summary.ErrorMessage = errorMsg.String
+		}
+		summaries = append(summaries, &summary)
+	}
+	return summaries, rows.Err()
+}
+
+// UpdateSummary updates the status, content, and error message of a summary.
+func (s *SQLiteStore) UpdateSummary(ctx context.Context, id, status, content, errorMessage string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE summaries SET status = ?, content = ?, error_message = ?
+		WHERE id = ?`,
+		status, content, errorMessage, id,
+	)
+	if err != nil {
+		return fmt.Errorf("UpdateSummary: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("UpdateSummary rows: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteSummary deletes a summary by ID.
+func (s *SQLiteStore) DeleteSummary(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM summaries WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("DeleteSummary: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("DeleteSummary rows: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

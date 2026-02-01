@@ -2094,3 +2094,257 @@ func TestListConversationsForSessions_ReturnsMessageCount(t *testing.T) {
 	assert.Equal(t, 3, counts["conv-1"])
 	assert.Equal(t, 8, counts["conv-2"])
 }
+
+
+// ============================================================================
+// Summary Tests
+// ============================================================================
+
+func createTestSummary(id, conversationID, sessionID, status string) *models.Summary {
+	return &models.Summary{
+		ID:             id,
+		ConversationID: conversationID,
+		SessionID:      sessionID,
+		Content:        "Summary content for " + id,
+		Status:         status,
+		MessageCount:   10,
+		CreatedAt:      time.Now(),
+	}
+}
+
+func TestAddSummary_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	summary := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusCompleted)
+	require.NoError(t, s.AddSummary(ctx, summary))
+
+	got, err := s.GetSummary(ctx, "sum-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "sum-1", got.ID)
+	assert.Equal(t, "conv-1", got.ConversationID)
+	assert.Equal(t, "sess-1", got.SessionID)
+	assert.Equal(t, "Summary content for sum-1", got.Content)
+	assert.Equal(t, models.SummaryStatusCompleted, got.Status)
+	assert.Equal(t, 10, got.MessageCount)
+}
+
+func TestGetSummaryByConversation_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	summary := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusCompleted)
+	require.NoError(t, s.AddSummary(ctx, summary))
+
+	got, err := s.GetSummaryByConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "sum-1", got.ID)
+	assert.Equal(t, "conv-1", got.ConversationID)
+	assert.Equal(t, models.SummaryStatusCompleted, got.Status)
+}
+
+func TestGetSummaryByConversation_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	got, err := s.GetSummaryByConversation(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestGetSummary_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	summary := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusGenerating)
+	summary.ErrorMessage = ""
+	require.NoError(t, s.AddSummary(ctx, summary))
+
+	got, err := s.GetSummary(ctx, "sum-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "sum-1", got.ID)
+	assert.Equal(t, "conv-1", got.ConversationID)
+	assert.Equal(t, "sess-1", got.SessionID)
+	assert.Equal(t, models.SummaryStatusGenerating, got.Status)
+	assert.Equal(t, 10, got.MessageCount)
+}
+
+func TestGetSummary_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	got, err := s.GetSummary(ctx, "nonexistent")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNotFound)
+	assert.Nil(t, got)
+}
+
+func TestListSummariesBySession_OnlyCompleted(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	createTestConversation(t, s, "conv-2", "sess-1")
+
+	// Add a generating summary
+	generating := createTestSummary("sum-gen", "conv-1", "sess-1", models.SummaryStatusGenerating)
+	require.NoError(t, s.AddSummary(ctx, generating))
+
+	// Add a completed summary
+	completed := createTestSummary("sum-done", "conv-2", "sess-1", models.SummaryStatusCompleted)
+	require.NoError(t, s.AddSummary(ctx, completed))
+
+	summaries, err := s.ListSummariesBySession(ctx, "sess-1")
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, "sum-done", summaries[0].ID)
+	assert.Equal(t, models.SummaryStatusCompleted, summaries[0].Status)
+}
+
+func TestListSummariesBySession_Empty(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	summaries, err := s.ListSummariesBySession(ctx, "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, summaries)
+}
+
+func TestListSummariesBySession_MultipleConversations(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	createTestConversation(t, s, "conv-2", "sess-1")
+	createTestConversation(t, s, "conv-3", "sess-1")
+
+	// Add completed summaries for different conversations in the same session
+	sum1 := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusCompleted)
+	sum2 := createTestSummary("sum-2", "conv-2", "sess-1", models.SummaryStatusCompleted)
+	sum3 := createTestSummary("sum-3", "conv-3", "sess-1", models.SummaryStatusCompleted)
+	require.NoError(t, s.AddSummary(ctx, sum1))
+	require.NoError(t, s.AddSummary(ctx, sum2))
+	require.NoError(t, s.AddSummary(ctx, sum3))
+
+	summaries, err := s.ListSummariesBySession(ctx, "sess-1")
+	require.NoError(t, err)
+	require.Len(t, summaries, 3)
+
+	// Collect IDs to verify all are present
+	ids := make(map[string]bool)
+	for _, s := range summaries {
+		ids[s.ID] = true
+	}
+	assert.True(t, ids["sum-1"])
+	assert.True(t, ids["sum-2"])
+	assert.True(t, ids["sum-3"])
+}
+
+func TestUpdateSummary_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	summary := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusGenerating)
+	require.NoError(t, s.AddSummary(ctx, summary))
+
+	// Update to completed with content
+	require.NoError(t, s.UpdateSummary(ctx, "sum-1", models.SummaryStatusCompleted, "Final summary content", ""))
+
+	got, err := s.GetSummary(ctx, "sum-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, models.SummaryStatusCompleted, got.Status)
+	assert.Equal(t, "Final summary content", got.Content)
+	assert.Equal(t, "", got.ErrorMessage)
+}
+
+func TestUpdateSummary_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	err := s.UpdateSummary(ctx, "nonexistent", models.SummaryStatusCompleted, "content", "")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestSummary_CascadeDeleteConversation(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	summary := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusCompleted)
+	require.NoError(t, s.AddSummary(ctx, summary))
+
+	// Verify summary exists
+	got, err := s.GetSummary(ctx, "sum-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// Delete the conversation
+	require.NoError(t, s.DeleteConversation(ctx, "conv-1"))
+
+	// Summary should be cascade deleted
+	got, err = s.GetSummary(ctx, "sum-1")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNotFound)
+	assert.Nil(t, got)
+}
+
+func TestSummary_CascadeDeleteSession(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	createTestConversation(t, s, "conv-2", "sess-1")
+
+	sum1 := createTestSummary("sum-1", "conv-1", "sess-1", models.SummaryStatusCompleted)
+	sum2 := createTestSummary("sum-2", "conv-2", "sess-1", models.SummaryStatusCompleted)
+	require.NoError(t, s.AddSummary(ctx, sum1))
+	require.NoError(t, s.AddSummary(ctx, sum2))
+
+	// Verify summaries exist
+	summaries, err := s.ListSummariesBySession(ctx, "sess-1")
+	require.NoError(t, err)
+	require.Len(t, summaries, 2)
+
+	// Delete the session
+	require.NoError(t, s.DeleteSession(ctx, "sess-1"))
+
+	// All summaries should be cascade deleted
+	got1, err := s.GetSummary(ctx, "sum-1")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNotFound)
+	assert.Nil(t, got1)
+
+	got2, err := s.GetSummary(ctx, "sum-2")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNotFound)
+	assert.Nil(t, got2)
+
+	// ListSummariesBySession should return empty
+	summaries, err = s.ListSummariesBySession(ctx, "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, summaries)
+}

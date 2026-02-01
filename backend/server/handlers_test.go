@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/chatml/chatml-backend/agent"
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
@@ -2252,6 +2253,341 @@ func TestGetConversationDropStats_ResponseFormat(t *testing.T) {
 	require.NoError(t, err)
 	_, hasDropped := result["droppedMessages"]
 	assert.True(t, hasDropped, "Response should contain droppedMessages key")
+}
+
+// ============================================================================
+// Summary handler tests
+// ============================================================================
+
+func TestGetConversationSummary_Found(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv := createTestConversation(t, s, "c1", sess.ID)
+
+	err := s.AddSummary(ctx, &models.Summary{
+		ID:             "sum1",
+		ConversationID: conv.ID,
+		SessionID:      sess.ID,
+		Content:        "This conversation was about testing.",
+		Status:         models.SummaryStatusCompleted,
+		MessageCount:   5,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/api/conversations/c1/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": conv.ID})
+	w := httptest.NewRecorder()
+
+	h.GetConversationSummary(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var summary models.Summary
+	err = json.Unmarshal(w.Body.Bytes(), &summary)
+	require.NoError(t, err)
+	assert.Equal(t, "sum1", summary.ID)
+	assert.Equal(t, conv.ID, summary.ConversationID)
+	assert.Equal(t, "This conversation was about testing.", summary.Content)
+	assert.Equal(t, models.SummaryStatusCompleted, summary.Status)
+	assert.Equal(t, 5, summary.MessageCount)
+}
+
+func TestGetConversationSummary_NotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/conversations/nonexistent/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetConversationSummary(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeNotFound, apiErr.Code)
+}
+
+func TestListSessionSummaries_ReturnsSummaries(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv1 := createTestConversation(t, s, "c1", sess.ID)
+	conv2 := createTestConversation(t, s, "c2", sess.ID)
+
+	err := s.AddSummary(ctx, &models.Summary{
+		ID:             "sum1",
+		ConversationID: conv1.ID,
+		SessionID:      sess.ID,
+		Content:        "Summary one",
+		Status:         models.SummaryStatusCompleted,
+		MessageCount:   3,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	err = s.AddSummary(ctx, &models.Summary{
+		ID:             "sum2",
+		ConversationID: conv2.ID,
+		SessionID:      sess.ID,
+		Content:        "Summary two",
+		Status:         models.SummaryStatusCompleted,
+		MessageCount:   4,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/api/repos/r1/sessions/s1/summaries", nil)
+	req = withChiContext(req, map[string]string{"sessionId": sess.ID})
+	w := httptest.NewRecorder()
+
+	h.ListSessionSummaries(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var summaries []*models.Summary
+	err = json.Unmarshal(w.Body.Bytes(), &summaries)
+	require.NoError(t, err)
+	assert.Len(t, summaries, 2)
+}
+
+func TestListSessionSummaries_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/repos/r1/sessions/no-session/summaries", nil)
+	req = withChiContext(req, map[string]string{"sessionId": "no-session"})
+	w := httptest.NewRecorder()
+
+	h.ListSessionSummaries(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Should return empty array, not null
+	var summaries []*models.Summary
+	err := json.Unmarshal(w.Body.Bytes(), &summaries)
+	require.NoError(t, err)
+	assert.NotNil(t, summaries)
+	assert.Len(t, summaries, 0)
+	assert.Equal(t, "[]", strings.TrimSpace(w.Body.String()))
+}
+
+func TestListSessionSummaries_OnlyCompleted(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv1 := createTestConversation(t, s, "c1", sess.ID)
+	conv2 := createTestConversation(t, s, "c2", sess.ID)
+
+	// Add a completed summary
+	err := s.AddSummary(ctx, &models.Summary{
+		ID:             "sum-completed",
+		ConversationID: conv1.ID,
+		SessionID:      sess.ID,
+		Content:        "Done summary",
+		Status:         models.SummaryStatusCompleted,
+		MessageCount:   3,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	// Add a generating summary - should be excluded
+	err = s.AddSummary(ctx, &models.Summary{
+		ID:             "sum-generating",
+		ConversationID: conv2.ID,
+		SessionID:      sess.ID,
+		Content:        "",
+		Status:         models.SummaryStatusGenerating,
+		MessageCount:   2,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/api/repos/r1/sessions/s1/summaries", nil)
+	req = withChiContext(req, map[string]string{"sessionId": sess.ID})
+	w := httptest.NewRecorder()
+
+	h.ListSessionSummaries(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var summaries []*models.Summary
+	err = json.Unmarshal(w.Body.Bytes(), &summaries)
+	require.NoError(t, err)
+	assert.Len(t, summaries, 1)
+	assert.Equal(t, "sum-completed", summaries[0].ID)
+}
+
+func TestGenerateConversationSummary_ConversationNotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("POST", "/api/conversations/nonexistent/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GenerateConversationSummary(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeNotFound, apiErr.Code)
+}
+
+func TestGenerateConversationSummary_NoAIClient(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv := createTestConversation(t, s, "c1", sess.ID)
+
+	// Add enough messages
+	err := s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m1", Role: "user", Content: "Hello", Timestamp: time.Now()})
+	require.NoError(t, err)
+	err = s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m2", Role: "assistant", Content: "Hi there", Timestamp: time.Now()})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/conversations/c1/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": conv.ID})
+	w := httptest.NewRecorder()
+
+	h.GenerateConversationSummary(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var apiErr APIError
+	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeServiceUnavailable, apiErr.Code)
+}
+
+func TestGenerateConversationSummary_TooFewMessages(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Set a non-nil aiClient so we get past the nil check
+	h.aiClient = ai.NewClient("fake-test-key")
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv := createTestConversation(t, s, "c1", sess.ID)
+
+	// Add only 1 message (need at least 2 user/assistant messages)
+	err := s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m1", Role: "user", Content: "Hello", Timestamp: time.Now()})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/conversations/c1/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": conv.ID})
+	w := httptest.NewRecorder()
+
+	h.GenerateConversationSummary(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var apiErr APIError
+	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeValidation, apiErr.Code)
+	assert.Contains(t, apiErr.Error, "at least 2 messages")
+}
+
+func TestGenerateConversationSummary_AlreadyGenerating(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Set a non-nil aiClient so we get past the nil check
+	h.aiClient = ai.NewClient("fake-test-key")
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv := createTestConversation(t, s, "c1", sess.ID)
+
+	// Add enough messages
+	err := s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m1", Role: "user", Content: "Hello", Timestamp: time.Now()})
+	require.NoError(t, err)
+	err = s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m2", Role: "assistant", Content: "Hi there", Timestamp: time.Now()})
+	require.NoError(t, err)
+
+	// Add a generating summary
+	err = s.AddSummary(ctx, &models.Summary{
+		ID:             "sum-gen",
+		ConversationID: conv.ID,
+		SessionID:      sess.ID,
+		Status:         models.SummaryStatusGenerating,
+		MessageCount:   2,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/conversations/c1/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": conv.ID})
+	w := httptest.NewRecorder()
+
+	h.GenerateConversationSummary(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var apiErr APIError
+	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Equal(t, ErrCodeConflict, apiErr.Code)
+	assert.Contains(t, apiErr.Error, "already being generated")
+}
+
+func TestGenerateConversationSummary_AlreadyCompleted(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Set a non-nil aiClient so we get past the nil check
+	h.aiClient = ai.NewClient("fake-test-key")
+
+	repo := createTestRepo(t, s, "r1", "/fake/path")
+	sess := createTestSession(t, s, "s1", repo.ID)
+	conv := createTestConversation(t, s, "c1", sess.ID)
+
+	// Add enough messages
+	err := s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m1", Role: "user", Content: "Hello", Timestamp: time.Now()})
+	require.NoError(t, err)
+	err = s.AddMessageToConversation(ctx, conv.ID, models.Message{ID: "m2", Role: "assistant", Content: "Hi there", Timestamp: time.Now()})
+	require.NoError(t, err)
+
+	// Add a completed summary
+	err = s.AddSummary(ctx, &models.Summary{
+		ID:             "sum-done",
+		ConversationID: conv.ID,
+		SessionID:      sess.ID,
+		Content:        "Already summarized",
+		Status:         models.SummaryStatusCompleted,
+		MessageCount:   2,
+		CreatedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/conversations/c1/summary", nil)
+	req = withChiContext(req, map[string]string{"convId": conv.ID})
+	w := httptest.NewRecorder()
+
+	h.GenerateConversationSummary(w, req)
+
+	// Should return 200 with existing summary, not start a new generation
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var summary models.Summary
+	err = json.Unmarshal(w.Body.Bytes(), &summary)
+	require.NoError(t, err)
+	assert.Equal(t, "sum-done", summary.ID)
+	assert.Equal(t, "Already summarized", summary.Content)
+	assert.Equal(t, models.SummaryStatusCompleted, summary.Status)
 }
 
 // ============================================================================

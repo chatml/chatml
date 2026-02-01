@@ -113,6 +113,18 @@ const fallbackModelIndex = args.indexOf("--fallback-model");
 const model = modelIndex !== -1 ? args[modelIndex + 1] : undefined;
 const fallbackModel = fallbackModelIndex !== -1 ? args[fallbackModelIndex + 1] : undefined;
 
+// Instructions (e.g., from conversation summaries)
+import { readFileSync } from "fs";
+const instructionsFileIndex = args.indexOf("--instructions-file");
+let instructions: string | undefined;
+if (instructionsFileIndex !== -1 && instructionsFileIndex + 1 < args.length) {
+  try {
+    instructions = readFileSync(args[instructionsFileIndex + 1], "utf-8");
+  } catch (e) {
+    emit({ type: "warning", message: `Failed to read instructions file: ${e}` });
+  }
+}
+
 // Output event types for Go backend
 interface OutputEvent {
   type: string;
@@ -702,7 +714,9 @@ async function main(): Promise<void> {
         mcpServers: { chatml: chatmlMcp },
         includePartialMessages: true,
         tools: { type: "preset", preset: "claude_code" },
-        systemPrompt: { type: "preset", preset: "claude_code" },
+        systemPrompt: instructions
+          ? { type: "preset", preset: "claude_code", append: instructions }
+          : { type: "preset", preset: "claude_code" },
         abortController,
         hooks,
         // Session management

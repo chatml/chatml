@@ -84,6 +84,7 @@ type StartConversationOptions struct {
 	MaxThinkingTokens int                 // Enable extended thinking with this token budget
 	Attachments       []models.Attachment // File attachments for the initial message
 	PlanMode          bool                // Start agent in plan mode
+	Instructions      string              // Additional instructions (e.g., from conversation summaries)
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -151,6 +152,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	if opts != nil {
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
 		procOpts.PlanMode = opts.PlanMode
+		procOpts.Instructions = opts.Instructions
 	}
 
 	// Create and start process
