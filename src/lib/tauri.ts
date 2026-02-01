@@ -247,35 +247,66 @@ export interface FileChangedEvent {
 }
 
 /**
- * Start watching a workspace directory for file changes
+ * Start the global file watcher on the base worktrees directory.
+ * Should be called once at app launch.
+ *
+ * @param basePath - The base worktrees directory to watch
+ * @param createIfNeeded - If true, create the directory if it doesn't exist (use for default path only)
  */
-export async function watchWorkspace(workspaceId: string, workspacePath: string): Promise<boolean> {
+export async function startFileWatcher(basePath: string, createIfNeeded = false): Promise<boolean> {
   if (!isTauri()) return false;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('watch_workspace', { workspaceId, workspacePath });
+    await invoke('start_file_watcher', { basePath, createIfNeeded });
     return true;
   } catch (e) {
-    console.error('Failed to watch workspace', e);
+    console.error('Failed to start file watcher', e);
     return false;
   }
 }
 
 /**
- * Stop watching a workspace directory
+ * Stop the global file watcher.
  */
-export async function unwatchWorkspace(workspaceId: string): Promise<void> {
+export async function stopFileWatcher(): Promise<void> {
   if (!isTauri()) return;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('unwatch_workspace', { workspaceId });
+    await invoke('stop_file_watcher');
   } catch (e) {
-    console.error('Failed to unwatch workspace', e);
+    console.error('Failed to stop file watcher', e);
   }
 }
 
 /**
- * Listen for file change events
+ * Register a session so its file change events are routed with the correct workspace ID.
+ * The sessionDirName is the directory name under the base worktrees path.
+ */
+export async function registerSession(sessionDirName: string, workspaceId: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('register_session', { sessionDirName, workspaceId });
+  } catch (e) {
+    console.error('Failed to register session', e);
+  }
+}
+
+/**
+ * Unregister a session from file change event routing.
+ */
+export async function unregisterSession(sessionDirName: string): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('unregister_session', { sessionDirName });
+  } catch (e) {
+    console.error('Failed to unregister session', e);
+  }
+}
+
+/**
+ * Listen for file change events from the global watcher.
  */
 export async function listenForFileChanges(
   handler: (event: FileChangedEvent) => void
@@ -291,6 +322,14 @@ export async function listenForFileChanges(
     console.error('Failed to listen for file changes', e);
     return () => {};
   }
+}
+
+/**
+ * Extract the session directory name from a worktree path.
+ * The directory name is the last path component (e.g. "/base/workspaces/my-session" → "my-session").
+ */
+export function getSessionDirName(worktreePath: string): string | undefined {
+  return worktreePath.split('/').pop() || undefined;
 }
 
 // ============================================

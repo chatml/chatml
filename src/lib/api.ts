@@ -1153,3 +1153,26 @@ export async function abortBranchSync(
   );
   await handleVoidResponse(res, 'Failed to abort branch sync');
 }
+
+// ============================================
+// Settings API
+// ============================================
+
+export async function getWorkspacesBasePath(): Promise<string> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/workspaces-base-dir`);
+  const data = await handleResponse<{ path: string }>(res);
+  return data.path;
+}
+
+export async function setWorkspacesBasePath(path: string): Promise<string> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/settings/workspaces-base-dir`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    }
+  );
+  const data = await handleResponse<{ path: string }>(res);
+  return data.path;
+}

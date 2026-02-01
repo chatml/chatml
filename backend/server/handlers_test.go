@@ -1628,3 +1628,145 @@ func TestBranchCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 	// Should not panic
 }
+
+// ============================================================================
+// Settings Endpoint Tests (Workspaces Base Dir)
+// ============================================================================
+
+func TestGetWorkspacesBaseDir_Default(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/settings/workspaces-base-dir", nil)
+	w := httptest.NewRecorder()
+
+	h.GetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.NotEmpty(t, response["path"], "default path should be non-empty")
+	assert.Contains(t, response["path"], "workspaces", "default path should contain 'workspaces'")
+}
+
+func TestGetWorkspacesBaseDir_CustomPath(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Pre-configure a custom path
+	require.NoError(t, s.SetSetting(ctx, "workspaces-base-dir", "/custom/workspaces"))
+
+	req := httptest.NewRequest("GET", "/api/settings/workspaces-base-dir", nil)
+	w := httptest.NewRecorder()
+
+	h.GetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "/custom/workspaces", response["path"])
+}
+
+func TestSetWorkspacesBaseDir_ValidPath(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Use a real temp directory
+	validDir := t.TempDir()
+
+	body, _ := json.Marshal(map[string]string{"path": validDir})
+	req := httptest.NewRequest("PUT", "/api/settings/workspaces-base-dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, validDir, response["path"])
+
+	// Verify persisted in store
+	val, found, err := s.GetSetting(ctx, "workspaces-base-dir")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, validDir, val)
+}
+
+func TestSetWorkspacesBaseDir_ResetToDefault(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// First set a custom path
+	require.NoError(t, s.SetSetting(ctx, "workspaces-base-dir", "/custom/path"))
+
+	// Reset by sending empty path
+	body, _ := json.Marshal(map[string]string{"path": ""})
+	req := httptest.NewRequest("PUT", "/api/settings/workspaces-base-dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	// Should return default path (contains "workspaces")
+	assert.Contains(t, response["path"], "workspaces")
+
+	// Verify setting was deleted from store
+	_, found, err := s.GetSetting(ctx, "workspaces-base-dir")
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
+func TestSetWorkspacesBaseDir_InvalidJSON(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("PUT", "/api/settings/workspaces-base-dir", bytes.NewReader([]byte("invalid json")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSetWorkspacesBaseDir_PathNotExists(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	body, _ := json.Marshal(map[string]string{"path": "/nonexistent/absolutely/fake"})
+	req := httptest.NewRequest("PUT", "/api/settings/workspaces-base-dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "path does not exist")
+}
+
+func TestSetWorkspacesBaseDir_PathIsFile(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Create a temp file (not a directory)
+	tmpFile := filepath.Join(t.TempDir(), "not-a-dir.txt")
+	require.NoError(t, os.WriteFile(tmpFile, []byte("hello"), 0644))
+
+	body, _ := json.Marshal(map[string]string{"path": tmpFile})
+	req := httptest.NewRequest("PUT", "/api/settings/workspaces-base-dir", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetWorkspacesBaseDir(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "path is not a directory")
+}

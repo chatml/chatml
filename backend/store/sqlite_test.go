@@ -1362,3 +1362,101 @@ func TestListConversationsForSessions_AttachmentsExcludeBase64(t *testing.T) {
 	assert.Equal(t, "att-batch", loadedAtt.ID)
 	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in batch queries")
 }
+
+// ============================================================================
+// Settings Tests
+// ============================================================================
+
+func TestGetSetting_NotFound_ReturnsEmpty(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	val, found, err := s.GetSetting(ctx, "nonexistent-key")
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.Equal(t, "", val)
+}
+
+func TestSetSetting_AndGet(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	require.NoError(t, s.SetSetting(ctx, "my-key", "my-value"))
+
+	val, found, err := s.GetSetting(ctx, "my-key")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "my-value", val)
+}
+
+func TestSetSetting_Upsert(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	require.NoError(t, s.SetSetting(ctx, "key", "value1"))
+	require.NoError(t, s.SetSetting(ctx, "key", "value2"))
+
+	val, found, err := s.GetSetting(ctx, "key")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "value2", val)
+}
+
+func TestSetSetting_MultipleKeys(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	require.NoError(t, s.SetSetting(ctx, "key-a", "alpha"))
+	require.NoError(t, s.SetSetting(ctx, "key-b", "beta"))
+	require.NoError(t, s.SetSetting(ctx, "key-c", "gamma"))
+
+	val, found, err := s.GetSetting(ctx, "key-a")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "alpha", val)
+
+	val, found, err = s.GetSetting(ctx, "key-b")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "beta", val)
+
+	val, found, err = s.GetSetting(ctx, "key-c")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "gamma", val)
+}
+
+func TestDeleteSetting_Exists(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	require.NoError(t, s.SetSetting(ctx, "to-delete", "some-value"))
+
+	require.NoError(t, s.DeleteSetting(ctx, "to-delete"))
+
+	val, found, err := s.GetSetting(ctx, "to-delete")
+	require.NoError(t, err)
+	assert.False(t, found)
+	assert.Equal(t, "", val)
+}
+
+func TestDeleteSetting_NotExists_NoError(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	err := s.DeleteSetting(ctx, "never-existed")
+	require.NoError(t, err)
+}
+
+func TestSetSetting_EmptyValue(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	// Empty string should be allowed (TEXT NOT NULL allows empty strings)
+	require.NoError(t, s.SetSetting(ctx, "empty-key", ""))
+
+	val, found, err := s.GetSetting(ctx, "empty-key")
+	require.NoError(t, err)
+	assert.True(t, found, "key with empty value should still be found")
+	assert.Equal(t, "", val)
+}

@@ -17,6 +17,7 @@ type Store interface {
 	ListRepos(ctx context.Context) ([]*models.Repo, error)
 	ListSessions(ctx context.Context, workspaceID string, includeArchived bool) ([]*models.Session, error)
 	GetSession(ctx context.Context, sessionID string) (*models.Session, error)
+	GetSetting(ctx context.Context, key string) (string, bool, error)
 }
 
 // WorktreeManager defines the minimal interface for worktree operations.
@@ -31,7 +32,8 @@ type WorktreeManager interface {
 // An orphaned worktree is one that exists on disk (in ~/.chatml/workspaces/) but has
 // no corresponding session record in the database.
 func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager) error {
-	workspacesDir, err := git.WorkspacesBaseDir()
+	configured, _, _ := store.GetSetting(ctx, "workspaces-base-dir")
+	workspacesDir, err := git.WorkspacesBaseDirWithOverride(configured)
 	if err != nil {
 		return fmt.Errorf("failed to get workspaces directory: %w", err)
 	}

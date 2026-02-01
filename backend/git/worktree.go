@@ -12,13 +12,22 @@ import (
 // ErrDirectoryExists indicates a name collision during atomic directory creation
 var ErrDirectoryExists = errors.New("directory already exists")
 
-// WorkspacesBaseDir returns the base directory for session worktrees: ~/.chatml/workspaces
+// WorkspacesBaseDir returns the default base directory for session worktrees: ~/.chatml/workspaces
 func WorkspacesBaseDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 	return filepath.Join(homeDir, ".chatml", "workspaces"), nil
+}
+
+// WorkspacesBaseDirWithOverride returns the configured base directory if non-empty,
+// otherwise falls back to the default (~/.chatml/workspaces).
+func WorkspacesBaseDirWithOverride(configuredPath string) (string, error) {
+	if configuredPath != "" {
+		return configuredPath, nil
+	}
+	return WorkspacesBaseDir()
 }
 
 // CreateSessionDirectoryAtomic attempts to atomically create a session directory.

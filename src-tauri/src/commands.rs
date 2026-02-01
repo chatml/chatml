@@ -43,20 +43,33 @@ pub fn is_window_visible(app: tauri::AppHandle) -> bool {
     }
 }
 
-/// Start watching a workspace directory for file changes
+/// Start the global file watcher on the base worktrees directory.
+/// If `create_if_needed` is true, the directory will be created when it doesn't exist.
 #[tauri::command]
-pub fn watch_workspace(
+pub fn start_file_watcher(
     app: tauri::AppHandle,
-    workspace_id: String,
-    workspace_path: String,
+    base_path: String,
+    create_if_needed: bool,
 ) -> AppResult<()> {
-    watcher::watch_workspace(&app, workspace_id, workspace_path)
+    watcher::start_global_watcher(&app, base_path, create_if_needed)
 }
 
-/// Stop watching a workspace directory
+/// Stop the global file watcher
 #[tauri::command]
-pub fn unwatch_workspace(workspace_id: String) -> AppResult<()> {
-    watcher::unwatch_workspace(&workspace_id)
+pub fn stop_file_watcher() -> AppResult<()> {
+    watcher::stop_global_watcher()
+}
+
+/// Register a session for file change event routing
+#[tauri::command]
+pub fn register_session(session_dir_name: String, workspace_id: String) -> AppResult<()> {
+    watcher::register_session(session_dir_name, workspace_id)
+}
+
+/// Unregister a session from file change event routing
+#[tauri::command]
+pub fn unregister_session(session_dir_name: String) -> AppResult<()> {
+    watcher::unregister_session(&session_dir_name)
 }
 
 /// Get the authentication token for backend API calls
