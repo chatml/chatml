@@ -381,7 +381,7 @@ function ScriptRunItem({
       {expanded && hasOutput && (
         <ScriptLogViewer
           lines={outputLines}
-          streaming={run.status === 'running'}
+          streaming={run?.status === 'running'}
         />
       )}
     </div>
