@@ -32,7 +32,7 @@ import { useToast } from '@/components/ui/toast';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
-import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents } from '@/lib/attachments';
+import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId, formatFileSize, ATTACHMENT_LIMITS } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -700,16 +700,117 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       result.errors.forEach(err => showError(err));
     }
 
-    // Validate total attachments
-    const newAttachments = [...attachments, ...result.attachments];
-    const validation = validateAttachments(newAttachments);
-    if (!validation.valid) {
-      showError(validation.error || 'Invalid attachments');
-      return;
+    if (result.attachments.length === 0) return;
+
+    // Use functional updater to avoid stale closure over attachments
+    let validationError: string | null = null;
+    setAttachments(prev => {
+      const newAttachments = [...prev, ...result.attachments];
+      const validation = validateAttachments(newAttachments);
+      if (!validation.valid) {
+        validationError = validation.error || 'Invalid attachments';
+        return prev;
+      }
+      return newAttachments;
+    });
+    if (validationError) showError(validationError);
+  }, [showError]);
+
+  // Handle clipboard paste (images)
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    // Check if any clipboard items are images
+    const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+
+    // Prevent default paste behavior for images
+    e.preventDefault();
+
+    const pastedAttachments: Attachment[] = [];
+    const errors: string[] = [];
+
+    for (const item of imageItems) {
+      const blob = item.getAsFile();
+      if (!blob) continue;
+
+      if (blob.size > ATTACHMENT_LIMITS.MAX_FILE_SIZE) {
+        errors.push(`Image too large (max ${formatFileSize(ATTACHMENT_LIMITS.MAX_FILE_SIZE)})`);
+        continue;
+      }
+
+      try {
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            const base64 = result.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        const mimeExtensionMap: Record<string, string> = { 'svg+xml': 'svg', 'jpeg': 'jpg' };
+        const rawExt = blob.type.split('/')[1] || 'png';
+        const extension = mimeExtensionMap[rawExt] || rawExt;
+        const filename = `clipboard-image-${Date.now()}-${imageItems.indexOf(item)}.${extension}`;
+
+        const attachment: Attachment = {
+          id: generateAttachmentId(),
+          type: 'image',
+          name: filename,
+          mimeType: blob.type,
+          size: blob.size,
+          base64Data,
+        };
+
+        // Try to get image dimensions
+        try {
+          const objectUrl = URL.createObjectURL(blob);
+          try {
+            const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve({ width: img.width, height: img.height });
+              img.onerror = () => resolve({ width: 0, height: 0 });
+              img.src = objectUrl;
+            });
+            if (dimensions.width > 0 && dimensions.height > 0) {
+              attachment.width = dimensions.width;
+              attachment.height = dimensions.height;
+            }
+          } finally {
+            URL.revokeObjectURL(objectUrl);
+          }
+        } catch {
+          // Dimensions are optional
+        }
+
+        pastedAttachments.push(attachment);
+      } catch (err) {
+        errors.push(`Failed to process clipboard image: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
     }
 
-    setAttachments(newAttachments);
-  }, [attachments, showError]);
+    if (errors.length > 0) {
+      errors.forEach(err => showError(err));
+    }
+
+    if (pastedAttachments.length === 0) return;
+
+    let validationError: string | null = null;
+    setAttachments(prev => {
+      const newAttachments = [...prev, ...pastedAttachments];
+      const validation = validateAttachments(newAttachments);
+      if (!validation.valid) {
+        validationError = validation.error || 'Invalid attachments';
+        return prev;
+      }
+      return newAttachments;
+    });
+    if (validationError) showError(validationError);
+  }, [showError]);
 
   // Handle attachment removal
   const handleRemoveAttachment = useCallback((id: string) => {
@@ -1183,6 +1284,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               slashMenu.handleInputChange(value, pos);
             }}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onClick={() => {
               const pos = textareaRef.current?.selectionStart ?? 0;
               slashMenu.handleInputChange(message, pos);

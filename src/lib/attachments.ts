@@ -17,17 +17,18 @@ export const ATTACHMENT_LIMITS = {
 };
 
 export const SUPPORTED_EXTENSIONS: Record<string, string[]> = {
-  images: ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
-  text: ['.txt', '.md', '.markdown', '.csv'],
+  images: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'],
+  text: ['.txt', '.md', '.markdown', '.csv', '.log'],
   code: [
     '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
     '.go', '.py', '.rs', '.rb', '.java', '.c', '.cpp', '.h', '.hpp',
     '.swift', '.kt', '.scala', '.php', '.cs', '.fs',
   ],
-  config: ['.json', '.yaml', '.yml', '.toml', '.xml', '.env', '.ini', '.conf'],
+  config: ['.json', '.yaml', '.yml', '.toml', '.xml', '.env', '.ini', '.conf', '.dockerfile'],
   shell: ['.sh', '.bash', '.zsh', '.fish', '.ps1'],
   markup: ['.html', '.htm', '.css', '.scss', '.sass', '.less'],
   data: ['.sql', '.graphql', '.proto'],
+  documents: ['.pdf'],
 };
 
 // Flatten all supported extensions for easy lookup
@@ -43,11 +44,13 @@ const MIME_TYPES: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
   // Text
   '.txt': 'text/plain',
   '.md': 'text/markdown',
   '.markdown': 'text/markdown',
   '.csv': 'text/csv',
+  '.log': 'text/plain',
   // Code
   '.ts': 'text/typescript',
   '.tsx': 'text/typescript',
@@ -79,6 +82,7 @@ const MIME_TYPES: Record<string, string> = {
   '.env': 'text/plain',
   '.ini': 'text/plain',
   '.conf': 'text/plain',
+  '.dockerfile': 'text/plain',
   // Shell
   '.sh': 'text/x-shellscript',
   '.bash': 'text/x-shellscript',
@@ -96,6 +100,8 @@ const MIME_TYPES: Record<string, string> = {
   '.sql': 'text/x-sql',
   '.graphql': 'text/x-graphql',
   '.proto': 'text/x-protobuf',
+  // Documents
+  '.pdf': 'application/pdf',
 };
 
 // ============================================================================
@@ -138,11 +144,11 @@ export function getMimeType(path: string): string {
 /**
  * Get file category based on extension
  */
-export function getFileCategory(path: string): 'image' | 'code' | 'text' | 'config' | 'shell' | 'markup' | 'data' | 'unknown' {
+export function getFileCategory(path: string): 'image' | 'code' | 'text' | 'config' | 'shell' | 'markup' | 'data' | 'documents' | 'unknown' {
   const ext = getFileExtension(path);
   for (const [category, extensions] of Object.entries(SUPPORTED_EXTENSIONS)) {
     if (extensions.includes(ext)) {
-      return category as 'image' | 'code' | 'text' | 'config' | 'shell' | 'markup' | 'data';
+      return category as 'image' | 'code' | 'text' | 'config' | 'shell' | 'markup' | 'data' | 'documents';
     }
   }
   return 'unknown';
