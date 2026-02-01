@@ -3104,6 +3104,110 @@ func TestGetActiveStreamingConversations_MixedProcesses(t *testing.T) {
 }
 
 // ============================================================================
+// UpdateSession TargetBranch Tests
+// ============================================================================
+
+func TestUpdateSession_SetTargetBranch(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	targetBranch := "origin/develop"
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &targetBranch})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", gotSession.TargetBranch)
+
+	// Verify persisted in DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", sess.TargetBranch)
+}
+
+func TestUpdateSession_ClearTargetBranch(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// First set it
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-1", func(sess *models.Session) {
+		sess.TargetBranch = "origin/develop"
+	}))
+
+	// Clear it by sending empty string
+	empty := ""
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &empty})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify cleared in DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, sess.TargetBranch)
+}
+
+func TestUpdateSession_TargetBranch_ValidationRejectsInvalidPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Attempt to set target branch without "origin/" prefix
+	invalid := "develop"
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &invalid})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Verify not persisted
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, sess.TargetBranch)
+}
+
+func TestUpdateSession_TargetBranch_ValidationRejectsBareOriginSlash(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// "origin/" with no branch name should be rejected
+	invalid := "origin/"
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &invalid})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ============================================================================
 // ResolvePR Handler Tests
 // ============================================================================
 
@@ -3466,6 +3570,82 @@ func TestResolvePR_InvalidRequestBody(t *testing.T) {
 	h.ResolvePR(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateSession_TargetBranch_ValidationAcceptsEmptyString(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Empty string is valid (clears the override)
+	empty := ""
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &empty})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestUpdateSession_TargetBranch_ValidationAcceptsOriginPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	branches := []string{
+		"origin/main",
+		"origin/develop",
+		"origin/release/v2.0",
+		"origin/feature/deep/nested",
+	}
+
+	for _, branch := range branches {
+		b := branch
+		body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &b})
+		req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+		w := httptest.NewRecorder()
+
+		h.UpdateSession(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code, "should accept %q", branch)
+	}
+}
+
+func TestUpdateSession_TargetBranch_NilDoesNotModify(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Set target branch directly
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-1", func(sess *models.Session) {
+		sess.TargetBranch = "origin/develop"
+	}))
+
+	// Update name without touching target branch (TargetBranch is nil in request)
+	name := "renamed"
+	body, _ := json.Marshal(UpdateSessionRequest{Name: &name})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Target branch should be unchanged
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", sess.TargetBranch)
+	assert.Equal(t, "renamed", sess.Name)
 }
 
 func TestResolvePR_NoGitHubClient(t *testing.T) {

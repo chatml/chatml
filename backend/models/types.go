@@ -17,7 +17,8 @@ type Session struct {
 	Name             string        `json:"name"`
 	Branch           string        `json:"branch"`
 	WorktreePath     string        `json:"worktreePath"`
-	BaseCommitSHA    string        `json:"baseCommitSha,omitempty"` // Commit SHA the session was created from
+	BaseCommitSHA    string        `json:"baseCommitSha,omitempty"`    // Commit SHA the session was created from
+	TargetBranch     string        `json:"targetBranch,omitempty"`    // Per-session target branch override (e.g. "origin/develop")
 	Task             string        `json:"task,omitempty"`
 	Status           string        `json:"status"`            // active, idle, done, error
 	AgentID          string        `json:"agentId,omitempty"` // ID of running agent process
@@ -56,6 +57,16 @@ func (s *SessionWithWorkspace) DefaultBranch() string {
 		return s.WorkspaceBranch
 	}
 	return "main"
+}
+
+// EffectiveTargetBranch returns the session's target branch if set,
+// otherwise returns "origin/" + the workspace default branch.
+// Used for git sync operations and PR base branch.
+func (s *SessionWithWorkspace) EffectiveTargetBranch() string {
+	if s.TargetBranch != "" {
+		return s.TargetBranch
+	}
+	return "origin/" + s.DefaultBranch()
 }
 
 type Agent struct {

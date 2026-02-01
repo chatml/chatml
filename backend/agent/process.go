@@ -50,6 +50,7 @@ type ProcessOptions struct {
 	Betas               string // Comma-separated beta features
 	Model               string // Model name override
 	FallbackModel       string // Fallback model name
+	TargetBranch        string // Target branch for PR base and sync (e.g. "origin/develop")
 	EnvVars             map[string]string // Custom environment variables to inject
 }
 
@@ -203,6 +204,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.FallbackModel != "" {
 		args = append(args, "--fallback-model", opts.FallbackModel)
+	}
+	if opts.TargetBranch != "" {
+		args = append(args, "--target-branch", opts.TargetBranch)
 	}
 
 	// Spawn the Node agent runner

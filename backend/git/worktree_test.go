@@ -448,7 +448,7 @@ func TestCreateInExistingDir_Success(t *testing.T) {
 	require.NoError(t, os.Mkdir(sessionDir, 0755))
 
 	// Create worktree in existing directory
-	worktreePath, branch, baseCommit, err := wm.CreateInExistingDir(context.Background(), repoPath, sessionDir, "session/test-branch")
+	worktreePath, branch, baseCommit, err := wm.CreateInExistingDir(context.Background(), repoPath, sessionDir, "session/test-branch", "origin/main")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

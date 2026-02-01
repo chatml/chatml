@@ -1131,6 +1131,8 @@ type CreateSessionRequest struct {
 	WorktreePath string `json:"worktreePath,omitempty"`
 	// Task is an optional description of what this session is for
 	Task string `json:"task,omitempty"`
+	// TargetBranch is optional - overrides the workspace default branch for PRs and sync (e.g. "origin/develop")
+	TargetBranch string `json:"targetBranch,omitempty"`
 	// CheckoutExisting checks out an existing remote branch instead of creating a new one
 	CheckoutExisting bool `json:"checkoutExisting,omitempty"`
 	// SystemMessage is optional custom content for the initial system message (e.g. PR context)
@@ -1154,6 +1156,14 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeValidationError(w, "invalid request body")
 		return
+	}
+
+	// Validate optional targetBranch
+	if req.TargetBranch != "" {
+		if !strings.HasPrefix(req.TargetBranch, "origin/") || strings.TrimPrefix(req.TargetBranch, "origin/") == "" {
+			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
 	}
 
 	if req.CheckoutExisting && req.Branch == "" {
@@ -1250,14 +1260,23 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	h.sessionLocks.Lock(sessionPath)
 	defer h.sessionLocks.Unlock(sessionPath)
 
+	// Determine target branch for worktree creation
+	targetBranch := req.TargetBranch
+	if targetBranch == "" {
+		targetBranch = "origin/" + repo.Branch
+		if targetBranch == "origin/" {
+			targetBranch = "origin/main"
+		}
+	}
+
 	// Create git worktree in the atomically created directory
 	var worktreePath, baseCommitSHA string
 	if req.CheckoutExisting {
 		// Checkout an existing remote branch (e.g. a PR branch)
 		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, sessionPath, branchName)
 	} else {
-		// Create a new branch (default behavior)
-		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName)
+		// Create a new branch based on the target branch
+		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName, targetBranch)
 	}
 	if err != nil {
 		// Rollback: remove the atomically created directory and cache entry
@@ -1315,6 +1334,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Branch:        branchName,
 		WorktreePath:  worktreePath,
 		BaseCommitSHA: baseCommitSHA,
+		TargetBranch:  req.TargetBranch,
 		Task:          req.Task,
 		Status:        "idle",
 		PRStatus:      "none",
@@ -1422,6 +1442,7 @@ type UpdateSessionRequest struct {
 	Name             *string `json:"name,omitempty"`
 	Task             *string `json:"task,omitempty"`
 	Status           *string `json:"status,omitempty"`
+	TargetBranch     *string `json:"targetBranch,omitempty"`
 	PRStatus         *string `json:"prStatus,omitempty"`
 	PRUrl            *string `json:"prUrl,omitempty"`
 	PRNumber         *int    `json:"prNumber,omitempty"`
@@ -1469,6 +1490,12 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, "invalid taskStatus value")
 		return
 	}
+	if req.TargetBranch != nil && *req.TargetBranch != "" {
+		if !strings.HasPrefix(*req.TargetBranch, "origin/") || strings.TrimPrefix(*req.TargetBranch, "origin/") == "" {
+			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
+	}
 
 	if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
 		if req.Name != nil {
@@ -1479,6 +1506,9 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Status != nil {
 			s.Status = *req.Status
+		}
+		if req.TargetBranch != nil {
+			s.TargetBranch = *req.TargetBranch
 		}
 		if req.PRStatus != nil {
 			s.PRStatus = *req.PRStatus
@@ -3679,8 +3709,9 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use workspace default branch as PR base (not the commit SHA)
-	baseBranch := session.DefaultBranch()
+	// Use the session's effective target branch as PR base
+	// Strip "origin/" prefix since GitHub expects just the branch name (e.g. "develop", not "origin/develop")
+	baseBranch := strings.TrimPrefix(session.EffectiveTargetBranch(), "origin/")
 
 	// Create the PR on GitHub
 	prResult, err := h.ghClient.CreatePullRequest(ctx, owner, repoName, github.CreatePullRequestRequest{
@@ -3853,13 +3884,13 @@ func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Requ
 	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
 }
 
-// GetSessionBranchSyncStatus returns how far behind the session is from origin/main
+// GetSessionBranchSyncStatus returns how far behind the session is from the target branch
 func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
+	// Get session with workspace data to determine effective target branch
+	session, err := h.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -3869,8 +3900,9 @@ func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Get sync status
-	status, err := h.repoManager.GetBranchSyncStatus(ctx, session.WorktreePath, session.BaseCommitSHA)
+	// Get sync status using effective target branch
+	targetBranch := session.EffectiveTargetBranch()
+	status, err := h.repoManager.GetBranchSyncStatus(ctx, session.WorktreePath, session.BaseCommitSHA, targetBranch)
 	if err != nil {
 		writeInternalError(w, "failed to get branch sync status", err)
 		return
@@ -3911,8 +3943,8 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
+	// Get session with workspace data to determine effective target branch
+	session, err := h.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -3922,12 +3954,15 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Perform the operation
+	// Determine effective target branch
+	targetBranch := session.EffectiveTargetBranch()
+
+	// Perform the operation with the effective target branch
 	var result *git.BranchSyncResult
 	if req.Operation == "rebase" {
-		result, err = h.repoManager.RebaseOntoMain(ctx, session.WorktreePath)
+		result, err = h.repoManager.RebaseOntoTarget(ctx, session.WorktreePath, targetBranch)
 	} else {
-		result, err = h.repoManager.MergeFromMain(ctx, session.WorktreePath)
+		result, err = h.repoManager.MergeFromTarget(ctx, session.WorktreePath, targetBranch)
 	}
 
 	if err != nil {

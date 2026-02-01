@@ -89,13 +89,14 @@ type StartConversationOptions struct {
 
 // StartConversation creates and starts a new conversation within a session
 func (m *Manager) StartConversation(ctx context.Context, sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
-	session, err := m.store.GetSession(ctx, sessionID)
+	sessionWithWs, err := m.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
-	if session == nil {
+	if sessionWithWs == nil {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
+	session := &sessionWithWs.Session
 
 	convID := uuid.New().String()[:8]
 
@@ -147,6 +148,10 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		Workdir:        session.WorktreePath,
 		ConversationID: convID,
 	}
+
+	// Always pass the effective target branch to the agent-runner so it doesn't
+	// need to independently detect the base branch (which could disagree with the backend).
+	procOpts.TargetBranch = sessionWithWs.EffectiveTargetBranch()
 
 	// Apply optional parameters
 	if opts != nil {

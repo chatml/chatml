@@ -51,7 +51,7 @@ export const handlers = [
 
   // Update session (PATCH)
   http.patch(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId`, async ({ request, params }) => {
-    const body = await request.json() as { archived?: boolean; pinned?: boolean; name?: string };
+    const body = await request.json() as { archived?: boolean; pinned?: boolean; name?: string; targetBranch?: string };
     const session = mockSessions.find(s => s.id === params.sessionId);
 
     if (!session) {
@@ -67,6 +67,9 @@ export const handlers = [
     }
     if (body.name !== undefined) {
       session.name = body.name;
+    }
+    if (body.targetBranch !== undefined) {
+      (session as Record<string, unknown>).targetBranch = body.targetBranch || undefined;
     }
     session.updatedAt = new Date().toISOString();
 

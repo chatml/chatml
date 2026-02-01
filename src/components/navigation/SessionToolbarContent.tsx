@@ -61,6 +61,7 @@ import {
 import type { WorktreeSession, SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { PrioritySelector } from '@/components/shared/PrioritySelector';
+import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 
 // ---------------------------------------------------------------------------
 // Review type options for the split button popover
@@ -264,6 +265,13 @@ export function SessionToolbarContent() {
           <span className="flex items-center gap-1.5 shrink-0">
             <GitBranch className="h-4 w-4 text-purple-400" />
             <span className="text-base font-semibold truncate">{selectedSession.branch || selectedSession.name}</span>
+            <TargetBranchSelector
+              sessionId={selectedSession.id}
+              workspaceId={selectedWorkspace!.id}
+              currentTargetBranch={selectedSession.targetBranch}
+              workspaceDefaultBranch={selectedWorkspace!.defaultBranch || 'main'}
+              variant="toolbar"
+            />
           </span>
         </span>
       ),
