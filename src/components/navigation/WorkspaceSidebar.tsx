@@ -74,6 +74,7 @@ import {
   Search,
   X,
   LayoutDashboard,
+  Layers,
   Bot,
   Clock,
 } from 'lucide-react';
@@ -362,6 +363,28 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               : "text-muted-foreground group-hover:text-foreground"
           )}>
             Dashboard
+          </span>
+        </div>
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'session-manager'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={() => navigate({ contentView: { type: 'session-manager' } })}
+        >
+          <Layers className={cn(
+            "w-4 h-4",
+            contentView.type === 'session-manager' ? "text-orange-400" : "text-orange-400/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            contentView.type === 'session-manager'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Sessions
           </span>
         </div>
       </div>
