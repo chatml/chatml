@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo } from '@/lib/types';
+
 import {
   WEBSOCKET_RECONNECT_BASE_DELAY_MS,
   WEBSOCKET_RECONNECT_MAX_DELAY_MS,
@@ -13,6 +14,23 @@ import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats } from '@/lib/api';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
+
+// Safely coerce an unknown value to a number, returning undefined for non-numeric values.
+const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+
+// Normalize SDK usage object (snake_case) to our TokenUsage type (camelCase)
+function normalizeUsage(raw: Record<string, unknown> | undefined): TokenUsage | undefined {
+  if (!raw) return undefined;
+  const inputTokens = num(raw.input_tokens) ?? num(raw.inputTokens);
+  const outputTokens = num(raw.output_tokens) ?? num(raw.outputTokens);
+  if (inputTokens == null && outputTokens == null) return undefined;
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    cacheReadInputTokens: num(raw.cache_read_input_tokens) ?? num(raw.cacheReadInputTokens),
+    cacheCreationInputTokens: num(raw.cache_creation_input_tokens) ?? num(raw.cacheCreationInputTokens),
+  };
+}
 
 // Debounce interval for drop stats REST fetches (ms).
 // The backend ticker fires every 2s, so 3s avoids redundant requests during bursty drops.
@@ -248,6 +266,8 @@ export function useWebSocket(enabled: boolean = true) {
             durationMs,
             stats: event.stats,
             errors: event.errors,
+            usage: normalizeUsage(event.usage),
+            modelUsage: event.modelUsage as Record<string, ModelUsageInfo> | undefined,
           },
         });
         // Update budget status from result event, preserving max values
