@@ -11,6 +11,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
 import { useNavigationStore, type NavigationEntry } from '@/stores/navigationStore';
 import { useTabStore } from '@/stores/tabStore';
+import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 
 export interface NavigateParams {
   workspaceId?: string | null;
@@ -175,7 +176,6 @@ function applyEntry(entry: NavigationEntry): void {
   startTransition(() => {
     const appStore = useAppStore.getState();
     const settingsStore = useSettingsStore.getState();
-    const tabStore = useTabStore.getState();
 
     if (entry.workspaceId !== undefined) {
       appStore.selectWorkspace(entry.workspaceId);
@@ -193,13 +193,15 @@ function applyEntry(entry: NavigationEntry): void {
     }
 
     // Sync to active browser tab
-    tabStore.updateActiveTab({
-      selectedWorkspaceId: entry.workspaceId,
-      selectedSessionId: entry.sessionId,
-      selectedConversationId: entry.conversationId,
-      contentView: entry.contentView,
-      label: entry.label,
-    });
+    if (ENABLE_BROWSER_TABS) {
+      useTabStore.getState().updateActiveTab({
+        selectedWorkspaceId: entry.workspaceId,
+        selectedSessionId: entry.sessionId,
+        selectedConversationId: entry.conversationId,
+        contentView: entry.contentView,
+        label: entry.label,
+      });
+    }
   });
 }
 
@@ -222,7 +224,6 @@ export function navigate(params: NavigateParams): void {
   startTransition(() => {
     const appStore = useAppStore.getState();
     const settingsStore = useSettingsStore.getState();
-    const tabStore = useTabStore.getState();
 
     if (params.workspaceId !== undefined) {
       appStore.selectWorkspace(params.workspaceId);
@@ -238,13 +239,15 @@ export function navigate(params: NavigateParams): void {
     }
 
     // Sync to active browser tab
-    tabStore.updateActiveTab({
-      ...(params.workspaceId !== undefined && { selectedWorkspaceId: params.workspaceId }),
-      ...(params.sessionId !== undefined && { selectedSessionId: params.sessionId }),
-      ...(params.conversationId !== undefined && { selectedConversationId: params.conversationId }),
-      ...(params.contentView !== undefined && { contentView: params.contentView }),
-      label: params.label ?? buildLabelForParams(params),
-    });
+    if (ENABLE_BROWSER_TABS) {
+      useTabStore.getState().updateActiveTab({
+        ...(params.workspaceId !== undefined && { selectedWorkspaceId: params.workspaceId }),
+        ...(params.sessionId !== undefined && { selectedSessionId: params.sessionId }),
+        ...(params.conversationId !== undefined && { selectedConversationId: params.conversationId }),
+        ...(params.contentView !== undefined && { contentView: params.contentView }),
+        label: params.label ?? buildLabelForParams(params),
+      });
+    }
   });
 }
 
@@ -253,7 +256,7 @@ export function navigate(params: NavigateParams): void {
  * Use this as the click handler for sidebar navigation items.
  */
 export function navigateOrOpenTab(params: NavigateParams, event?: React.MouseEvent): void {
-  if (event && (event.metaKey || event.button === 1)) {
+  if (ENABLE_BROWSER_TABS && event && (event.metaKey || event.button === 1)) {
     // Cmd+Click or middle-click: open in new tab
     event.preventDefault();
     const tabStore = useTabStore.getState();

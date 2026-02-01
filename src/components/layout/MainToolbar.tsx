@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useUIStore, type ToolbarSlots } from '@/stores/uiStore';
 import { useTabStore } from '@/stores/tabStore';
 import { BrowserTabStrip, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
+import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
 
 /** Renders the shared leading | title | spacer | actions slot layout */
@@ -104,12 +105,12 @@ export function MainToolbar({
   const setTabTitle = useUIStore((s) => s.setTabTitle);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const tabCount = useTabStore((s) => s.tabOrder.length);
-  const hasMultipleTabs = tabCount > 1;
+  const hasMultipleTabs = ENABLE_BROWSER_TABS && tabCount > 1;
 
   // Cache the active tab's rich toolbar title whenever it changes
   const toolbarTitle = toolbarConfig?.title;
   useEffect(() => {
-    if (toolbarTitle && activeTabId) {
+    if (ENABLE_BROWSER_TABS && toolbarTitle && activeTabId) {
       setTabTitle(activeTabId, toolbarTitle);
     }
   }, [toolbarTitle, activeTabId, setTabTitle]);
@@ -134,24 +135,28 @@ export function MainToolbar({
 
               {/* New Tab + Toggle Sidebar */}
               <div className="flex items-center gap-0.5">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={createAndSwitchToNewTab}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    New Tab <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ T</span>
-                  </TooltipContent>
-                </Tooltip>
+                {ENABLE_BROWSER_TABS && (
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={createAndSwitchToNewTab}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        New Tab <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ T</span>
+                      </TooltipContent>
+                    </Tooltip>
 
-                {/* Spacer */}
-                <div className="mx-1" />
+                    {/* Spacer */}
+                    <div className="mx-1" />
+                  </>
+                )}
 
                 <Tooltip>
                   <TooltipTrigger asChild>

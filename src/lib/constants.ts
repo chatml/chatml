@@ -19,3 +19,7 @@ export const SIDECAR_RESTART_DELAY_MS = 1000;
 
 // Git status polling interval
 export const GIT_STATUS_POLL_INTERVAL_MS = 30000; // 30 seconds
+
+// Feature flags (build-time)
+/** Enable browser-style multi-tab navigation. Set to false to disable. */
+export const ENABLE_BROWSER_TABS = true;

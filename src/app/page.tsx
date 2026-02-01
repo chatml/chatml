@@ -13,6 +13,7 @@ import {
 } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
+import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
 import { switchToTab, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
 import { useNavigationStore } from '@/stores/navigationStore';
@@ -490,9 +491,9 @@ export default function Home() {
         setConversations(allConversations);
 
         // Restore active tab state if persisted tabs exist, otherwise fall back to defaults
-        const tabState = useTabStore.getState();
-        const activeTab = tabState.tabs[tabState.activeTabId];
-        const hasPersistedTab = activeTab && tabState.tabOrder.length > 0 &&
+        const tabState = ENABLE_BROWSER_TABS ? useTabStore.getState() : null;
+        const activeTab = tabState?.tabs[tabState.activeTabId];
+        const hasPersistedTab = ENABLE_BROWSER_TABS && activeTab && tabState!.tabOrder.length > 0 &&
           (activeTab.selectedWorkspaceId || activeTab.contentView.type !== 'conversation');
 
         if (hasPersistedTab) {
@@ -506,8 +507,8 @@ export default function Home() {
           if (activeTab.selectedConversationId) {
             selectConversation(activeTab.selectedConversationId);
           }
-          useSettingsStore.getState().setContentView(activeTab.contentView);
-          useNavigationStore.getState().setActiveTabId(tabState.activeTabId);
+          useSettingsStore.getState().setContentView(activeTab!.contentView);
+          useNavigationStore.getState().setActiveTabId(tabState!.activeTabId);
         } else if (mappedWorkspaces.length > 0) {
           // First launch — select first workspace and session
           selectWorkspace(mappedWorkspaces[0].id);
@@ -845,7 +846,7 @@ export default function Home() {
         selectPreviousTab();
       }
       // Cmd+T to open new browser tab
-      if (e.key === 't' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      if (ENABLE_BROWSER_TABS && e.key === 't' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         createAndSwitchToNewTab();
       }
@@ -855,7 +856,7 @@ export default function Home() {
         // If a file tab is selected, close it first
         if (selectedFileTabId) {
           handleCloseFileTab(selectedFileTabId);
-        } else if (useTabStore.getState().tabOrder.length > 1) {
+        } else if (ENABLE_BROWSER_TABS && useTabStore.getState().tabOrder.length > 1) {
           // Close the browser tab if more than one exists
           const tabStore = useTabStore.getState();
           const closingId = tabStore.activeTabId;
@@ -871,7 +872,7 @@ export default function Home() {
         }
       }
       // Cmd+Shift+] for next browser tab
-      if (e.key === ']' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+      if (ENABLE_BROWSER_TABS && e.key === ']' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
         e.preventDefault();
         const { tabOrder, activeTabId: currentTabId } = useTabStore.getState();
         if (tabOrder.length > 1) {
@@ -881,7 +882,7 @@ export default function Home() {
         }
       }
       // Cmd+Shift+[ for previous browser tab
-      if (e.key === '[' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
+      if (ENABLE_BROWSER_TABS && e.key === '[' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
         e.preventDefault();
         const { tabOrder, activeTabId: currentTabId } = useTabStore.getState();
         if (tabOrder.length > 1) {
@@ -896,7 +897,7 @@ export default function Home() {
         saveCurrentTab();
       }
       // Cmd+1-9 to select browser tabs by position (Cmd+9 = last tab)
-      if (e.key >= '1' && e.key <= '9' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      if (ENABLE_BROWSER_TABS && e.key >= '1' && e.key <= '9' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         const { tabOrder } = useTabStore.getState();
         if (tabOrder.length > 1) {
