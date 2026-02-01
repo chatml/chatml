@@ -49,14 +49,12 @@ export function useGitStatus(
       if (isMountedRef.current) {
         setStatus(data);
         setError(null);
+        setLoading(false);
       }
     } catch (err) {
       if (isMountedRef.current) {
         console.error('Failed to fetch git status:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch git status');
-      }
-    } finally {
-      if (isMountedRef.current) {
         setLoading(false);
       }
     }
