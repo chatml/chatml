@@ -174,16 +174,22 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const getWorkspaceSessions = (workspaceId: string) => {
-    return sessions.filter((s) => {
-      if (s.workspaceId !== workspaceId || s.archived) return false;
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return (
-        s.name.toLowerCase().includes(term) ||
-        s.branch?.toLowerCase().includes(term) ||
-        s.task?.toLowerCase().includes(term)
-      );
-    });
+    return sessions
+      .filter((s) => {
+        if (s.workspaceId !== workspaceId || s.archived) return false;
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+          s.name.toLowerCase().includes(term) ||
+          s.branch?.toLowerCase().includes(term) ||
+          s.task?.toLowerCase().includes(term)
+        );
+      })
+      .sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      });
   };
 
   const getInitial = (name: string) => {
