@@ -52,6 +52,19 @@ Object.defineProperty(window, 'matchMedia', {
 // Mock scrollIntoView
 Element.prototype.scrollIntoView = vi.fn();
 
+// Suppress known @iconify/react teardown error (fires timers after jsdom window is gone)
+process.on('uncaughtException', (err) => {
+  if (
+    err instanceof ReferenceError &&
+    err.message === 'window is not defined' &&
+    err.stack?.includes('iconify')
+  ) {
+    // Swallow known @iconify/react teardown error
+    return;
+  }
+  throw err;
+});
+
 // Mock crypto.randomUUID
 Object.defineProperty(crypto, 'randomUUID', {
   value: () => 'test-uuid-' + Math.random().toString(36).slice(2, 11),
