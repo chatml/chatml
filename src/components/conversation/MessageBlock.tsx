@@ -22,6 +22,7 @@ import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { highlightSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 
 export interface MessageBlockProps {
   message: Message;
@@ -80,6 +81,9 @@ export const MessageBlock = memo(function MessageBlock({
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
         <div className="bg-[#090909] rounded-lg px-4 py-2.5">
+          {message.attachments && message.attachments.length > 0 && (
+            <AttachmentGrid attachments={message.attachments} readOnly />
+          )}
           <p className="text-md leading-relaxed whitespace-pre-wrap">
             {highlightedContent || message.content}
           </p>

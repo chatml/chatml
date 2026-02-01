@@ -21,6 +21,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   text: FileText,
   markup: FileText,
   data: FileText,
+  documents: FileText,
   unknown: FileType,
 };
 
