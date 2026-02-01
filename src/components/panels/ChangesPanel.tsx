@@ -9,7 +9,7 @@ import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
-import { GitStatusSection } from '@/components/panels/GitStatusSection';
+import { ChecksPanel } from '@/components/panels/ChecksPanel';
 
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
@@ -573,10 +573,8 @@ export function ChangesPanel() {
               <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} onSendFeedback={handleSendFeedback} />
             </ErrorBoundary>
           ) : selectedTab === 'checks' ? (
-            <ErrorBoundary section="GitStatus" fallback={<InlineErrorFallback message="Unable to display git status" />}>
-              <div className="h-full px-1.5">
-                <GitStatusSection onSendMessage={handleGitActionMessage} />
-              </div>
+            <ErrorBoundary section="ChecksPanel" fallback={<InlineErrorFallback message="Unable to display checks" />}>
+              <ChecksPanel onSendMessage={handleGitActionMessage} />
             </ErrorBoundary>
           ) : selectedTab === 'info' ? (
             <ErrorBoundary section="SessionInfo" fallback={<InlineErrorFallback message="Unable to display session info" />}>
