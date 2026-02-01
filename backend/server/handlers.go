@@ -26,6 +26,7 @@ import (
 	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -184,13 +185,172 @@ func (c *BranchCache) cleanupLoop() {
 	}
 }
 
-// DirListingCache provides TTL-based caching for directory listing operations.
-// This reduces filesystem operations for frequently accessed directory trees.
+// dirCacheWatcher uses fsnotify to watch directories and immediately invalidate
+// cache entries when filesystem changes are detected, rather than waiting for TTL.
+type dirCacheWatcher struct {
+	fsw              *fsnotify.Watcher
+	mu               sync.Mutex
+	watches          map[string]int            // path -> reference count
+	pendingPaths     map[string]struct{}        // paths awaiting debounced invalidation
+	debounceTimer    *time.Timer
+	debounceDuration time.Duration
+	invalidateFunc   func(string)               // callback to DirListingCache.InvalidatePath
+	ctx              context.Context
+	cancel           context.CancelFunc
+}
+
+func newDirCacheWatcher(invalidateFunc func(string), debounceDuration time.Duration) (*dirCacheWatcher, error) {
+	fsw, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, fmt.Errorf("create fsnotify watcher: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &dirCacheWatcher{
+		fsw:              fsw,
+		watches:          make(map[string]int),
+		pendingPaths:     make(map[string]struct{}),
+		debounceDuration: debounceDuration,
+		invalidateFunc:   invalidateFunc,
+		ctx:              ctx,
+		cancel:           cancel,
+	}
+	go w.run()
+	return w, nil
+}
+
+func (w *dirCacheWatcher) addWatch(path string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if count, exists := w.watches[path]; exists {
+		w.watches[path] = count + 1
+		return nil
+	}
+
+	if err := w.fsw.Add(path); err != nil {
+		return fmt.Errorf("watch %s: %w", path, err)
+	}
+
+	w.watches[path] = 1
+	logger.DirCache.Debugf("watching %s", path)
+	return nil
+}
+
+func (w *dirCacheWatcher) removeWatch(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	count, exists := w.watches[path]
+	if !exists {
+		return
+	}
+
+	if count > 1 {
+		w.watches[path] = count - 1
+		return
+	}
+
+	delete(w.watches, path)
+	if err := w.fsw.Remove(path); err != nil {
+		logger.DirCache.Debugf("remove watch %s: %v", path, err)
+	} else {
+		logger.DirCache.Debugf("unwatched %s", path)
+	}
+}
+
+func (w *dirCacheWatcher) run() {
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		case event, ok := <-w.fsw.Events:
+			if !ok {
+				return
+			}
+			if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Remove|fsnotify.Rename) == 0 {
+				continue
+			}
+			// The event path is inside one of the watched root dirs.
+			// Find which watched root it belongs to and schedule invalidation.
+			dir := filepath.Dir(event.Name)
+			w.mu.Lock()
+			for watchedPath := range w.watches {
+				if dir == watchedPath || strings.HasPrefix(dir, watchedPath+string(filepath.Separator)) {
+					w.pendingPaths[watchedPath] = struct{}{}
+				}
+			}
+			w.scheduleFlush()
+			w.mu.Unlock()
+
+		case err, ok := <-w.fsw.Errors:
+			if !ok {
+				return
+			}
+			logger.DirCache.Warnf("fsnotify error: %v", err)
+		}
+	}
+}
+
+// scheduleFlush resets the debounce timer. Must be called with mu held.
+func (w *dirCacheWatcher) scheduleFlush() {
+	if w.debounceTimer != nil {
+		w.debounceTimer.Stop()
+	}
+	w.debounceTimer = time.AfterFunc(w.debounceDuration, w.flush)
+}
+
+func (w *dirCacheWatcher) flush() {
+	if w.ctx.Err() != nil {
+		return
+	}
+
+	w.mu.Lock()
+	paths := w.pendingPaths
+	w.pendingPaths = make(map[string]struct{})
+	w.mu.Unlock()
+
+	for path := range paths {
+		logger.DirCache.Debugf("invalidating cache for %s", path)
+		w.invalidateFunc(path)
+	}
+}
+
+func (w *dirCacheWatcher) close() {
+	w.cancel()
+	w.mu.Lock()
+	if w.debounceTimer != nil {
+		w.debounceTimer.Stop()
+	}
+	w.mu.Unlock()
+	w.fsw.Close()
+}
+
+// extractRootPath extracts the filesystem path from a cache key.
+// Keys are formatted as "repo:/path/to/dir:depth:N" or "session:/path/to/dir:depth:N".
+func extractRootPath(cacheKey string) (string, bool) {
+	parts := strings.SplitN(cacheKey, ":depth:", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+	pathPart := parts[0]
+	if strings.HasPrefix(pathPart, "repo:") {
+		return strings.TrimPrefix(pathPart, "repo:"), true
+	}
+	if strings.HasPrefix(pathPart, "session:") {
+		return strings.TrimPrefix(pathPart, "session:"), true
+	}
+	return "", false
+}
+
+// DirListingCache provides TTL-based caching for directory listing operations
+// with optional fsnotify-based immediate invalidation on filesystem changes.
 type DirListingCache struct {
 	mu      sync.RWMutex
 	entries map[string]*dirCacheEntry
 	ttl     time.Duration
 	done    chan struct{}
+	watcher *dirCacheWatcher
 }
 
 type dirCacheEntry struct {
@@ -198,20 +358,34 @@ type dirCacheEntry struct {
 	expiresAt time.Time
 }
 
-// NewDirListingCache creates a new directory listing cache with the given TTL
+// NewDirListingCache creates a new directory listing cache with the given TTL.
+// It also starts a filesystem watcher for immediate cache invalidation.
+// If the watcher fails to initialize, the cache falls back to TTL-only mode.
 func NewDirListingCache(ttl time.Duration) *DirListingCache {
 	cache := &DirListingCache{
 		entries: make(map[string]*dirCacheEntry),
 		ttl:     ttl,
 		done:    make(chan struct{}),
 	}
+
+	w, err := newDirCacheWatcher(cache.InvalidatePath, 100*time.Millisecond)
+	if err != nil {
+		logger.DirCache.Warnf("filesystem watcher unavailable, using TTL-only mode: %v", err)
+	} else {
+		cache.watcher = w
+		logger.DirCache.Infof("filesystem watcher active (debounce=100ms)")
+	}
+
 	go cache.cleanupLoop()
 	return cache
 }
 
-// Close stops the cleanup goroutine. Should be called when the cache is no longer needed.
+// Close stops the cleanup goroutine and filesystem watcher.
 func (c *DirListingCache) Close() {
 	close(c.done)
+	if c.watcher != nil {
+		c.watcher.close()
+	}
 }
 
 // Get retrieves a cached directory listing by key
@@ -231,14 +405,22 @@ func (c *DirListingCache) Get(key string) ([]*FileNode, bool) {
 	return entry.data, true
 }
 
-// Set stores a directory listing in the cache
+// Set stores a directory listing in the cache and registers a filesystem watch
+// on the root path for immediate invalidation.
 func (c *DirListingCache) Set(key string, data []*FileNode) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.entries[key] = &dirCacheEntry{
 		data:      data,
 		expiresAt: time.Now().Add(c.ttl),
+	}
+	c.mu.Unlock()
+
+	if c.watcher != nil {
+		if rootPath, ok := extractRootPath(key); ok {
+			if err := c.watcher.addWatch(rootPath); err != nil {
+				logger.DirCache.Debugf("watch %s: %v", rootPath, err)
+			}
+		}
 	}
 }
 
@@ -248,14 +430,24 @@ func (c *DirListingCache) Set(key string, data []*FileNode) {
 // starts with basePath to avoid over-invalidation of unrelated paths.
 func (c *DirListingCache) InvalidatePath(basePath string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
+	var removedPaths []string
 	for key := range c.entries {
 		// Extract path from cache key format "type:path:depth:N"
 		// We need to check if the path portion starts with basePath
 		if strings.HasPrefix(key, "repo:"+basePath) || strings.HasPrefix(key, "session:"+basePath) {
 			delete(c.entries, key)
+			if c.watcher != nil {
+				if rootPath, ok := extractRootPath(key); ok {
+					removedPaths = append(removedPaths, rootPath)
+				}
+			}
 		}
+	}
+	c.mu.Unlock()
+
+	for _, p := range removedPaths {
+		c.watcher.removeWatch(p)
 	}
 }
 
@@ -283,13 +475,23 @@ func (c *DirListingCache) cleanupLoop() {
 // cleanup removes expired entries
 func (c *DirListingCache) cleanup() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
+	var removedPaths []string
 	now := time.Now()
 	for key, entry := range c.entries {
 		if now.After(entry.expiresAt) {
 			delete(c.entries, key)
+			if c.watcher != nil {
+				if rootPath, ok := extractRootPath(key); ok {
+					removedPaths = append(removedPaths, rootPath)
+				}
+			}
 		}
+	}
+	c.mu.Unlock()
+
+	for _, p := range removedPaths {
+		c.watcher.removeWatch(p)
 	}
 }
 
