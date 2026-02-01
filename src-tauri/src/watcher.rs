@@ -18,7 +18,7 @@ type SessionMap = Arc<RwLock<HashMap<String, String>>>;
 /// Single global watcher that monitors the base worktrees directory
 struct GlobalFileWatcher {
     _debouncer: FileWatcherHandle, // kept alive to maintain the OS watch
-    base_path: PathBuf,
+    _base_path: PathBuf,           // retained for diagnostics / future use
     sessions: SessionMap,
 }
 
@@ -228,7 +228,7 @@ pub fn start_global_watcher(
             .map_err(|e| AppError::Watcher(format!("Lock error: {}", e)))?;
         *watcher = Some(GlobalFileWatcher {
             _debouncer: debouncer,
-            base_path: path.clone(),
+            _base_path: path.clone(),
             sessions,
         });
     }
