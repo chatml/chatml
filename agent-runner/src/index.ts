@@ -714,7 +714,9 @@ async function main(): Promise<void> {
         mcpServers: { chatml: chatmlMcp },
         includePartialMessages: true,
         tools: { type: "preset", preset: "claude_code" },
-        systemPrompt: { type: "preset", preset: "claude_code" },
+        systemPrompt: instructions
+          ? { type: "preset", preset: "claude_code", append: instructions }
+          : { type: "preset", preset: "claude_code" },
         abortController,
         hooks,
         // Session management
@@ -738,8 +740,6 @@ async function main(): Promise<void> {
         // Task 8: Model configuration
         model,
         fallbackModel,
-        // Conversation summary context
-        instructions,
         // stderr callback for debugging
         stderr: (data: string) => {
           emit({ type: "agent_stderr", data });
