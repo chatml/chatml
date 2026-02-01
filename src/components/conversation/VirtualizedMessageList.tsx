@@ -3,6 +3,8 @@
 import { forwardRef, useCallback, useMemo, useRef, useImperativeHandle } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { MessageBlock } from '@/components/conversation/MessageBlock';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { Message } from '@/lib/types';
 
 export interface VirtualizedMessageListHandle {
@@ -57,14 +59,19 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
     const itemContent = useCallback(
       (index: number, message: Message) => (
         <div className="pl-5 pr-12">
-          <MessageBlock
-            message={message}
-            isFirst={index === 0}
-            searchQuery={searchQuery}
-            currentMatchIndex={currentMatchIndex}
-            matchOffset={searchMatches.messageOffsets[index] ?? 0}
-            hasMatches={messageHasMatches[index] ?? false}
-          />
+          <ErrorBoundary
+            section="Message"
+            fallback={<CardErrorFallback message="Error rendering message" />}
+          >
+            <MessageBlock
+              message={message}
+              isFirst={index === 0}
+              searchQuery={searchQuery}
+              currentMatchIndex={currentMatchIndex}
+              matchOffset={searchMatches.messageOffsets[index] ?? 0}
+              hasMatches={messageHasMatches[index] ?? false}
+            />
+          </ErrorBoundary>
         </div>
       ),
       [searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches]

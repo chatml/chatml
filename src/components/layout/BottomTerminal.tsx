@@ -6,6 +6,8 @@ import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTerminalState } from '@/stores/selectors';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 const Terminal = dynamic(
   () => import('@/components/shared/Terminal').then((mod) => mod.Terminal),
@@ -139,11 +141,16 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
                 activeId === terminal.id ? 'block' : 'hidden'
               )}
             >
-              <Terminal
-                sessionId={terminal.id}
-                workspacePath={workspacePath}
-                onExit={() => handleTerminalExit(terminal.id)}
-              />
+              <ErrorBoundary
+                section="TerminalTab"
+                fallback={<BlockErrorFallback title="Terminal error" description="This terminal encountered an error" />}
+              >
+                <Terminal
+                  sessionId={terminal.id}
+                  workspacePath={workspacePath}
+                  onExit={() => handleTerminalExit(terminal.id)}
+                />
+              </ErrorBoundary>
             </div>
           ))
         )}
