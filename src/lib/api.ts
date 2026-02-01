@@ -226,6 +226,7 @@ export interface SessionDTO {
   prNumber?: number;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
+  targetBranch?: string;
   pinned?: boolean;
   archived?: boolean;
   createdAt: string;
@@ -250,6 +251,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     prNumber: session.prNumber,
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
+    targetBranch: session.targetBranch,
     pinned: session.pinned,
     archived: session.archived,
     createdAt: session.createdAt,

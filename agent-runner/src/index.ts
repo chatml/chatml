@@ -72,6 +72,10 @@ if (structuredOutputSchema) {
   }
 }
 
+// Target branch for PR base and sync operations
+const targetBranchIndex = args.indexOf("--target-branch");
+const targetBranch = targetBranchIndex !== -1 ? args[targetBranchIndex + 1] : undefined;
+
 // Task 5: Budget Controls
 const maxBudgetIndex = args.indexOf("--max-budget-usd");
 const maxTurnsIndex = args.indexOf("--max-turns");
@@ -696,6 +700,7 @@ async function main(): Promise<void> {
       workspaceId: conversationId, // Use conversation ID as workspace ID for now
       sessionId: currentSessionId || "pending",
       linearIssue,
+      targetBranch,
     });
 
     // Create ChatML MCP server

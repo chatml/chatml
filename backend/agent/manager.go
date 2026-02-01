@@ -148,6 +148,11 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		ConversationID: convID,
 	}
 
+	// Pass session's target branch to agent-runner
+	if session.TargetBranch != "" {
+		procOpts.TargetBranch = session.TargetBranch
+	}
+
 	// Apply optional parameters
 	if opts != nil {
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens

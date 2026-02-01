@@ -512,10 +512,35 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	logger.SQLite.Infof("Migration: summaries table ready")
 
+	// Migration: Add target_branch column to sessions if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'target_branch'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN target_branch TEXT DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added target_branch column to sessions")
+	}
+
 	return nil
 }
 
 // Helper functions
+
+// nullString converts a string to sql.NullString for nullable TEXT columns.
+// Empty string maps to NULL.
+func nullString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
 func boolToInt(b bool) int {
 	if b {
 		return 1
@@ -615,13 +640,14 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 		}
 
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, task,
-				status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
+			INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
+				task, status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
 				has_check_failures, stats_additions, stats_deletions, pinned, archived,
 				priority, task_status, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			session.ID, session.WorkspaceID, session.Name, session.Branch,
-			session.WorktreePath, session.BaseCommitSHA, session.Task, session.Status, session.AgentID,
+			session.WorktreePath, session.BaseCommitSHA, nullString(session.TargetBranch),
+			session.Task, session.Status, session.AgentID,
 			session.PRStatus, session.PRUrl, session.PRNumber,
 			boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
 			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
@@ -634,16 +660,18 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
-	var agentID sql.NullString
+	var agentID, targetBranch sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
+			task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
 			created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-		&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
+		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
+		&session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
@@ -662,6 +690,9 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 	if agentID.Valid {
 		session.AgentID = agentID.String
 	}
+	if targetBranch.Valid {
+		session.TargetBranch = targetBranch.String
+	}
 	if statsAdditions > 0 || statsDeletions > 0 {
 		session.Stats = &models.SessionStats{
 			Additions: statsAdditions,
@@ -677,11 +708,11 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*models.SessionWithWorkspace, error) {
 	var result models.SessionWithWorkspace
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
-	var agentID sql.NullString
+	var agentID, targetBranch sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.id, s.workspace_id, s.name, s.branch, s.worktree_path, s.base_commit_sha,
-			s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number,
+			s.target_branch, s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number,
 			s.has_merge_conflict, s.has_check_failures, s.stats_additions, s.stats_deletions,
 			s.pinned, s.archived, s.priority, s.task_status, s.created_at, s.updated_at,
 			r.path, r.branch
@@ -689,7 +720,8 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 		JOIN repos r ON s.workspace_id = r.id
 		WHERE s.id = ?`, id).Scan(
 		&result.ID, &result.WorkspaceID, &result.Name, &result.Branch,
-		&result.WorktreePath, &result.BaseCommitSHA, &result.Task, &result.Status, &agentID,
+		&result.WorktreePath, &result.BaseCommitSHA, &targetBranch,
+		&result.Task, &result.Status, &agentID,
 		&result.PRStatus, &result.PRUrl, &result.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &result.Priority, &result.TaskStatus, &result.CreatedAt, &result.UpdatedAt,
@@ -708,6 +740,9 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 	if agentID.Valid {
 		result.AgentID = agentID.String
 	}
+	if targetBranch.Valid {
+		result.TargetBranch = targetBranch.String
+	}
 	if statsAdditions > 0 || statsDeletions > 0 {
 		result.Stats = &models.SessionStats{
 			Additions: statsAdditions,
@@ -719,7 +754,8 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 }
 
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, includeArchived bool) ([]*models.Session, error) {
-	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
+		task, status, agent_id,
 		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
 		created_at, updated_at
@@ -738,11 +774,12 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 	for rows.Next() {
 		var session models.Session
 		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
-		var agentID sql.NullString
+		var agentID, targetBranch sql.NullString
 
 		if err := rows.Scan(
 			&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-			&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
+			&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
+			&session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
@@ -756,6 +793,9 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 		session.Archived = intToBool(archived)
 		if agentID.Valid {
 			session.AgentID = agentID.String
+		}
+		if targetBranch.Valid {
+			session.TargetBranch = targetBranch.String
 		}
 		if statsAdditions > 0 || statsDeletions > 0 {
 			session.Stats = &models.SessionStats{
@@ -775,7 +815,8 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 // ListAllSessions returns all sessions across all workspaces
 // Used for dashboard data loading to avoid N queries for N workspaces
 func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool) ([]*models.Session, error) {
-	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
+		task, status, agent_id,
 		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
 		created_at, updated_at
@@ -794,11 +835,12 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 	for rows.Next() {
 		var session models.Session
 		var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
-		var agentID sql.NullString
+		var agentID, targetBranch sql.NullString
 
 		if err := rows.Scan(
 			&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-			&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
+			&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
+			&session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
@@ -812,6 +854,9 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 		session.Archived = intToBool(archived)
 		if agentID.Valid {
 			session.AgentID = agentID.String
+		}
+		if targetBranch.Valid {
+			session.TargetBranch = targetBranch.String
 		}
 		if statsAdditions > 0 || statsDeletions > 0 {
 			session.Stats = &models.SessionStats{
@@ -852,14 +897,15 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 	return RetryDBExec(ctx, "UpdateSession", DefaultRetryConfig(), func(ctx context.Context) error {
 		_, err := s.db.ExecContext(ctx, `
 			UPDATE sessions SET
-				name = ?, branch = ?, worktree_path = ?, base_commit_sha = ?, task = ?,
-				status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
+				name = ?, branch = ?, worktree_path = ?, base_commit_sha = ?, target_branch = ?,
+				task = ?, status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
 				pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
 				stats_additions = ?, stats_deletions = ?, pinned = ?, archived = ?,
 				priority = ?, task_status = ?, updated_at = ?
 			WHERE id = ?`,
-			session.Name, session.Branch, session.WorktreePath, session.BaseCommitSHA, session.Task,
-			session.Status, session.AgentID, session.PRStatus, session.PRUrl,
+			session.Name, session.Branch, session.WorktreePath, session.BaseCommitSHA,
+			nullString(session.TargetBranch),
+			session.Task, session.Status, session.AgentID, session.PRStatus, session.PRUrl,
 			session.PRNumber, boolToInt(session.HasMergeConflict),
 			boolToInt(session.HasCheckFailures),
 			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
@@ -872,16 +918,18 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
 	var hasMergeConflict, hasCheckFailures, statsAdditions, statsDeletions, pinned, archived int
-	var agentID sql.NullString
+	var agentID, targetBranch sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, task, status, agent_id,
+		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
+			task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
 			created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
-		&session.WorktreePath, &session.BaseCommitSHA, &session.Task, &session.Status, &agentID,
+		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
+		&session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
@@ -899,6 +947,9 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 	session.Archived = intToBool(archived)
 	if agentID.Valid {
 		session.AgentID = agentID.String
+	}
+	if targetBranch.Valid {
+		session.TargetBranch = targetBranch.String
 	}
 	if statsAdditions > 0 || statsDeletions > 0 {
 		session.Stats = &models.SessionStats{
