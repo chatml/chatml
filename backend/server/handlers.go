@@ -2575,6 +2575,17 @@ func (h *Handlers) StopConversation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handlers) GetConversationDropStats(w http.ResponseWriter, r *http.Request) {
+	convID := chi.URLParam(r, "convId")
+	stats := h.agentManager.GetConversationDropStats(convID)
+	if stats == nil {
+		// No active process - return zero drops
+		writeJSON(w, map[string]uint64{"droppedMessages": 0})
+		return
+	}
+	writeJSON(w, stats)
+}
+
 type RewindConversationRequest struct {
 	CheckpointUuid string `json:"checkpointUuid"`
 }

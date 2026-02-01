@@ -219,74 +219,108 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	ctx := m.ctx
 	var currentAssistantMessage string
+	var lastReportedDrops uint64
 
-	for line := range proc.Output() {
-		event := ParseAgentLine(line)
-		if event == nil {
-			continue
-		}
+	// Periodically check for dropped messages and emit warnings out-of-band.
+	// This bypasses the process output channel, so warnings are delivered even
+	// when the output channel is congested (which is exactly when drops occur).
+	dropCheckTicker := time.NewTicker(2 * time.Second)
+	defer dropCheckTicker.Stop()
 
-		// Handle specific event types
-		switch event.Type {
-		case EventTypeAssistantText:
-			currentAssistantMessage += event.Content
-
-		case EventTypeToolStart:
-			// Record tool start (will be updated on tool_end)
-
-		case EventTypeToolEnd:
-			// Store tool action in summary
-			if err := m.store.AddToolActionToConversation(ctx, convID, models.ToolAction{
-				ID:      event.ID,
-				Tool:    event.Tool,
-				Target:  event.Summary,
-				Success: event.Success,
-			}); err != nil {
-				logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
+	outputCh := proc.Output()
+outer:
+	for {
+		select {
+		case line, ok := <-outputCh:
+			if !ok {
+				// Channel closed - process ended
+				break outer
 			}
 
-		case EventTypeNameSuggestion:
-			// Update conversation name
-			var sessionID string
-			if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
-				c.Name = event.Name
-				c.UpdatedAt = time.Now()
-				sessionID = c.SessionID
-			}); err != nil {
-				logger.Manager.Errorf("Failed to update conversation name for %s: %v", convID, err)
+			event := ParseAgentLine(line)
+			if event == nil {
+				continue
 			}
 
-			// Also update session name if it hasn't been auto-named yet
-			if sessionID != "" && event.Name != "" {
-				m.tryAutoNameSession(ctx, sessionID, event.Name)
-			}
+			// Handle specific event types
+			switch event.Type {
+			case EventTypeAssistantText:
+				currentAssistantMessage += event.Content
 
-		case EventTypeComplete, EventTypeResult:
-			// Store accumulated assistant message
-			if currentAssistantMessage != "" {
-				if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
-					ID:        uuid.New().String()[:8],
-					Role:      "assistant",
-					Content:   currentAssistantMessage,
-					Timestamp: time.Now(),
+			case EventTypeToolStart:
+				// Record tool start (will be updated on tool_end)
+
+			case EventTypeToolEnd:
+				// Store tool action in summary
+				if err := m.store.AddToolActionToConversation(ctx, convID, models.ToolAction{
+					ID:      event.ID,
+					Tool:    event.Tool,
+					Target:  event.Summary,
+					Success: event.Success,
 				}); err != nil {
-					logger.Manager.Errorf("Failed to store assistant message for conv %s: %v", convID, err)
+					logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
 				}
-				currentAssistantMessage = ""
+
+			case EventTypeNameSuggestion:
+				// Update conversation name
+				var sessionID string
+				if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+					c.Name = event.Name
+					c.UpdatedAt = time.Now()
+					sessionID = c.SessionID
+				}); err != nil {
+					logger.Manager.Errorf("Failed to update conversation name for %s: %v", convID, err)
+				}
+
+				// Also update session name if it hasn't been auto-named yet
+				if sessionID != "" && event.Name != "" {
+					m.tryAutoNameSession(ctx, sessionID, event.Name)
+				}
+
+			case EventTypeComplete, EventTypeResult:
+				// Store accumulated assistant message
+				if currentAssistantMessage != "" {
+					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
+						ID:        uuid.New().String()[:8],
+						Role:      "assistant",
+						Content:   currentAssistantMessage,
+						Timestamp: time.Now(),
+					}); err != nil {
+						logger.Manager.Errorf("Failed to store assistant message for conv %s: %v", convID, err)
+					}
+					currentAssistantMessage = ""
+				}
 			}
-		}
 
-		// Forward event to handler
-		if m.onConversationEvent != nil {
-			m.onConversationEvent(convID, event)
-		}
+			// Forward event to handler
+			if m.onConversationEvent != nil {
+				m.onConversationEvent(convID, event)
+			}
 
-		// Also support legacy output handler (for backwards compatibility)
-		if m.onOutput != nil {
-			legacy := ParseStreamLine(line)
-			formatted := FormatEvent(legacy)
-			if formatted != "" {
-				m.onOutput(convID, formatted)
+			// Also support legacy output handler (for backwards compatibility)
+			if m.onOutput != nil {
+				legacy := ParseStreamLine(line)
+				formatted := FormatEvent(legacy)
+				if formatted != "" {
+					m.onOutput(convID, formatted)
+				}
+			}
+
+		case <-dropCheckTicker.C:
+			// Check for new drops and emit warning out-of-band
+			currentDrops := proc.DroppedMessages()
+			if currentDrops > lastReportedDrops {
+				newDrops := currentDrops - lastReportedDrops
+				lastReportedDrops = currentDrops
+				logger.Manager.Warnf("Conversation %s: %d new message drops detected (total: %d)", convID, newDrops, currentDrops)
+				if m.onConversationEvent != nil {
+					m.onConversationEvent(convID, &AgentEvent{
+						Type:    "streaming_warning",
+						Source:  "process",
+						Reason:  "buffer_full",
+						Message: fmt.Sprintf("%d streaming events were dropped due to slow processing", newDrops),
+					})
+				}
 			}
 		}
 	}
@@ -300,6 +334,21 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 			Timestamp: time.Now(),
 		}); err != nil {
 			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
+		}
+	}
+
+	// Emit final drop stats if any drops occurred
+	finalDrops := proc.DroppedMessages()
+	if finalDrops > 0 {
+		logger.Manager.Warnf("Conversation %s: process ended with %d total dropped messages", convID, finalDrops)
+		if finalDrops > lastReportedDrops && m.onConversationEvent != nil {
+			newDrops := finalDrops - lastReportedDrops
+			m.onConversationEvent(convID, &AgentEvent{
+				Type:    "streaming_warning",
+				Source:  "process",
+				Reason:  "buffer_full",
+				Message: fmt.Sprintf("%d streaming events were dropped due to slow processing", newDrops),
+			})
 		}
 	}
 }
@@ -455,6 +504,22 @@ func (m *Manager) IsConversationInPlanMode(convID string) bool {
 	return proc.IsPlanModeActive()
 }
 
+// GetConversationDropStats returns the number of messages dropped for a conversation's process.
+// Returns nil if no process is running for the given conversation.
+func (m *Manager) GetConversationDropStats(convID string) map[string]uint64 {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok {
+		return nil
+	}
+
+	return map[string]uint64{
+		"droppedMessages": proc.DroppedMessages(),
+	}
+}
+
 // StopConversation stops a running conversation
 func (m *Manager) StopConversation(ctx context.Context, convID string) {
 
@@ -502,6 +567,14 @@ func (m *Manager) CompleteConversation(ctx context.Context, convID string) {
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, models.ConversationStatusCompleted)
 	}
+}
+
+// InsertProcessForTest inserts a process into the conversation map for testing purposes.
+// This bypasses the normal spawn flow and should only be used in tests.
+func (m *Manager) InsertProcessForTest(convID string, proc *Process) {
+	m.mu.Lock()
+	m.convProcesses[convID] = proc
+	m.mu.Unlock()
 }
 
 // GetConversationProcess returns the process for a conversation

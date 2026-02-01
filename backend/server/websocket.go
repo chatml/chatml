@@ -127,7 +127,7 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		clients:   make(map[*Client]bool),
-		broadcast: make(chan []byte, 1024),
+		broadcast: make(chan []byte, 4096),
 		register:  make(chan *Client),
 		// Buffered to prevent eviction goroutines from blocking during
 		// high-churn scenarios or if the Hub is slow to process unregisters

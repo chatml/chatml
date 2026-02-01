@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -24,9 +25,6 @@ const (
 	// a message from stdout/stderr. This gives slow consumers time to catch up.
 	processOutputTimeout = 5 * time.Second
 
-	// bufferFullWarningJSON is emitted to the frontend when messages are dropped
-	// due to a full output buffer. This is best-effort (non-blocking).
-	bufferFullWarningJSON = `{"type":"streaming_warning","source":"process","reason":"buffer_full","message":"Some streaming events were dropped due to slow processing"}`
 )
 
 // AgentRunnerPath can be set to override the default agent-runner location
@@ -67,6 +65,7 @@ type Process struct {
 	stopped         bool // Prevents double-stop race conditions
 	exitErr         error
 	planModeActive  bool // Tracks whether the process is in plan mode
+	droppedMessages atomic.Uint64 // Count of messages dropped due to full output buffer
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -199,13 +198,11 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		ConversationID: opts.ConversationID,
 		cmd:            cmd,
 		cancel:         cancel,
-		// Buffer size of 1000 provides headroom for bursty agent output.
+		// Buffer size of 4000 provides headroom for bursty agent output.
 		// This allows the process to continue producing output even if
-		// consumers (WebSocket clients) are temporarily slow. The buffer
-		// size was increased from 100 to handle high-throughput scenarios
-		// where agents produce rapid bursts of output (e.g., streaming
-		// tool results or large code blocks).
-		output:         make(chan string, 1000),
+		// consumers (WebSocket clients) are temporarily slow. Large buffer
+		// absorbs transient spikes from tool results and large code blocks.
+		output:         make(chan string, 4000),
 		done:           make(chan struct{}),
 		planModeActive: opts.PlanMode,
 	}
@@ -259,13 +256,8 @@ func (p *Process) Start() error {
 				// Successfully queued
 			case <-time.After(processOutputTimeout):
 				// Buffer full after timeout - downstream reader is persistently slow
-				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stdout message (slow reader)", p.ID, processOutputTimeout)
-				// Emit warning to frontend (best-effort, non-blocking)
-				select {
-				case p.output <- bufferFullWarningJSON:
-				default:
-					// Warning itself couldn't be queued
-				}
+				dropped := p.droppedMessages.Add(1)
+				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stdout message (total dropped: %d)", p.ID, processOutputTimeout, dropped)
 			}
 		}
 	}()
@@ -285,13 +277,8 @@ func (p *Process) Start() error {
 				// Successfully queued
 			case <-time.After(processOutputTimeout):
 				// Buffer full after timeout - downstream reader is persistently slow
-				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stderr message (slow reader)", p.ID, processOutputTimeout)
-				// Emit warning to frontend (best-effort, non-blocking)
-				select {
-				case p.output <- bufferFullWarningJSON:
-				default:
-					// Warning itself couldn't be queued
-				}
+				dropped := p.droppedMessages.Add(1)
+				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stderr message (total dropped: %d)", p.ID, processOutputTimeout, dropped)
 			}
 		}
 	}()
@@ -509,6 +496,16 @@ func (p *Process) TryStop() bool {
 
 func (p *Process) Output() <-chan string {
 	return p.output
+}
+
+// DroppedMessages returns the total number of messages dropped due to a full output buffer.
+func (p *Process) DroppedMessages() uint64 {
+	return p.droppedMessages.Load()
+}
+
+// SimulateDrops adds n to the drop counter. Intended for testing only.
+func (p *Process) SimulateDrops(n uint64) {
+	p.droppedMessages.Add(n)
 }
 
 func (p *Process) Done() <-chan struct{} {

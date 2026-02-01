@@ -415,33 +415,6 @@ func TestNewProcessWithOptions_MinimalOptions(t *testing.T) {
 }
 
 // ============================================================================
-// Streaming Warning Tests
-// ============================================================================
-
-func TestStreamingWarningJSON_ValidFormat(t *testing.T) {
-	// Verify the exported constant is valid and parseable
-	event := ParseAgentLine(bufferFullWarningJSON)
-	require.NotNil(t, event)
-
-	assert.Equal(t, "streaming_warning", event.Type)
-	assert.Equal(t, "process", event.Source)
-	assert.Equal(t, "buffer_full", event.Reason)
-	assert.Equal(t, "Some streaming events were dropped due to slow processing", event.Message)
-}
-
-func TestProcess_OutputBufferFull_EmitsWarning(t *testing.T) {
-	// Verify the warning JSON constant structure is correct
-	var event map[string]interface{}
-	err := json.Unmarshal([]byte(bufferFullWarningJSON), &event)
-	require.NoError(t, err)
-
-	assert.Equal(t, "streaming_warning", event["type"])
-	assert.Equal(t, "process", event["source"])
-	assert.Equal(t, "buffer_full", event["reason"])
-	assert.Equal(t, "Some streaming events were dropped due to slow processing", event["message"])
-}
-
-// ============================================================================
 // Stop with SIGTERM/SIGKILL Escalation Tests
 // ============================================================================
 
@@ -550,4 +523,85 @@ func TestStartConversationOptions_PlanModeSet(t *testing.T) {
 	}
 	assert.True(t, opts.PlanMode)
 	assert.Equal(t, 1000, opts.MaxThinkingTokens)
+}
+
+// ============================================================================
+// Dropped Messages Counter Tests
+// ============================================================================
+
+func TestProcess_DroppedMessages_InitiallyZero(t *testing.T) {
+	p := NewProcess("test-drops", "/tmp", "conv-drops")
+	assert.Equal(t, uint64(0), p.DroppedMessages())
+}
+
+func TestProcess_DroppedMessages_Increment(t *testing.T) {
+	p := NewProcess("test-drops", "/tmp", "conv-drops")
+
+	p.SimulateDrops(1)
+	assert.Equal(t, uint64(1), p.DroppedMessages())
+
+	p.SimulateDrops(1)
+	assert.Equal(t, uint64(2), p.DroppedMessages())
+
+	p.SimulateDrops(5)
+	assert.Equal(t, uint64(7), p.DroppedMessages())
+}
+
+func TestProcess_DroppedMessages_ConcurrentAccess(t *testing.T) {
+	p := NewProcess("test-concurrent-drops", "/tmp", "conv-concurrent")
+
+	var wg sync.WaitGroup
+	numGoroutines := 100
+	incrementsPerGoroutine := 10
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < incrementsPerGoroutine; j++ {
+				p.SimulateDrops(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	expected := uint64(numGoroutines * incrementsPerGoroutine)
+	assert.Equal(t, expected, p.DroppedMessages())
+}
+
+func TestProcess_DroppedMessages_ConcurrentReadWrite(t *testing.T) {
+	p := NewProcess("test-readwrite-drops", "/tmp", "conv-readwrite")
+
+	var wg sync.WaitGroup
+
+	// Writers
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				p.SimulateDrops(1)
+			}
+		}()
+	}
+
+	// Readers - should never panic
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				_ = p.DroppedMessages()
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.Equal(t, uint64(500), p.DroppedMessages())
+}
+
+func TestProcess_OutputBufferSize_Increased(t *testing.T) {
+	p := NewProcess("test-bufsize", "/tmp", "conv-bufsize")
+	// Buffer should be 4000 (increased from 1000)
+	assert.Equal(t, 4000, cap(p.output))
 }
