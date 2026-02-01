@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import type { Workspace } from '@/lib/types';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
-import { showInFinder, openInTerminal } from '@/lib/tauri';
+import { showInFinder, openInTerminal, copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 
 interface RepositoriesDashboardProps {
   onOpenProject: () => void;
@@ -114,6 +115,7 @@ export function RepositoriesDashboard({
   onOpenWorkspaceSettings,
   showLeftSidebar,
 }: RepositoriesDashboardProps) {
+  const toast = useToast();
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
   const removeWorkspace = useAppStore((s) => s.removeWorkspace);
@@ -186,7 +188,10 @@ export function RepositoriesDashboard({
       {
         label: 'Copy Path',
         icon: <Copy className="h-4 w-4" />,
-        onClick: () => navigator.clipboard.writeText(workspace.path),
+        onClick: async () => {
+          const success = await copyToClipboard(workspace.path);
+          if (!success) toast.error('Failed to copy to clipboard');
+        },
       },
       { label: '', onClick: () => {}, separator: true },
       {
@@ -199,7 +204,7 @@ export function RepositoriesDashboard({
         },
       },
     ];
-  }, [onOpenWorkspaceSettings, removeWorkspace]);
+  }, [onOpenWorkspaceSettings, removeWorkspace, toast]);
 
   // Define columns for the data table
   const columns: Column<Workspace & { sessionCount: number }>[] = useMemo(() => [

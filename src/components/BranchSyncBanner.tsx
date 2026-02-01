@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import {
   HoverCard,
@@ -39,6 +41,7 @@ export function BranchSyncBanner({
   onMerge,
   onDismiss,
 }: BranchSyncBannerProps) {
+  const toast = useToast();
   const [copiedSha, setCopiedSha] = useState<string | null>(null);
 
   if (status.behindBy === 0) {
@@ -46,12 +49,12 @@ export function BranchSyncBanner({
   }
 
   const handleCopySha = async (sha: string) => {
-    try {
-      await navigator.clipboard.writeText(sha);
+    const success = await copyToClipboard(sha);
+    if (success) {
       setCopiedSha(sha);
       setTimeout(() => setCopiedSha(null), 2000);
-    } catch (err) {
-      console.error('Failed to copy SHA:', err);
+    } else {
+      toast.error('Failed to copy to clipboard');
     }
   };
 

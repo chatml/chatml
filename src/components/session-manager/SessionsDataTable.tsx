@@ -17,6 +17,7 @@ import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { getPriorityOption, getTaskStatusOption } from '@/lib/session-fields';
 import { useAppStore } from '@/stores/appStore';
 import { updateSession as apiUpdateSession } from '@/lib/api';
+import { copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 
 // Row type for the data table
@@ -85,7 +86,8 @@ export function SessionsDataTable({
     );
 
   const storeUpdateSession = useAppStore((s) => s.updateSession);
-  const { error: showError } = useToast();
+  const toast = useToast();
+  const showError = toast.error;
 
   const handlePriorityChange = useCallback((session: WorktreeSession, value: SessionPriority) => {
     const prev = session.priority;
@@ -244,12 +246,15 @@ export function SessionsDataTable({
       items.push({
         label: 'Copy branch name',
         icon: <Copy className="h-4 w-4" />,
-        onClick: () => navigator.clipboard.writeText(row.session.branch),
+        onClick: async () => {
+          const success = await copyToClipboard(row.session.branch);
+          if (!success) toast.error('Failed to copy to clipboard');
+        },
       });
 
       return items;
     },
-    [onSelectSession, onArchiveSession, onUnarchiveSession]
+    [onSelectSession, onArchiveSession, onUnarchiveSession, toast]
   );
 
   // Display options configuration

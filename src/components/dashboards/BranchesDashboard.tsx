@@ -22,6 +22,8 @@ import {
   Wand2,
 } from 'lucide-react';
 import { BranchCleanupDialog } from '@/components/dialogs/branch-cleanup/BranchCleanupDialog';
+import { copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -210,6 +212,7 @@ const GROUP_SORT_ORDER = ['session', 'main', 'master', 'feature', 'fix', 'releas
 export function BranchesDashboard({
   workspaceId,
 }: BranchesDashboardProps) {
+  const toast = useToast();
   const [branchData, setBranchData] = useState<BranchListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -386,7 +389,10 @@ export function BranchesDashboard({
       label: 'Copy branch name',
       icon: <Copy className="h-4 w-4" />,
       shortcut: '⌘C',
-      onClick: () => navigator.clipboard.writeText(branch.name),
+      onClick: async () => {
+        const success = await copyToClipboard(branch.name);
+        if (!success) toast.error('Failed to copy to clipboard');
+      },
     });
 
     // View on GitHub (placeholder - would need repo info)
@@ -397,7 +403,7 @@ export function BranchesDashboard({
     // });
 
     return items;
-  }, [handleJumpToSession]);
+  }, [handleJumpToSession, toast]);
 
   // Define columns for the data table
   const columns: Column<BranchDTO>[] = useMemo(() => [

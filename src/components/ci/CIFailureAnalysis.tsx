@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { type WorkflowJobDTO, type CIAnalysisResult, getCIJobLogs } from '@/lib/api';
+import { copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import {
   X,
@@ -33,6 +35,7 @@ export function CIFailureAnalysis({
   onClose,
   onAnalyze,
 }: CIFailureAnalysisProps) {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<CIAnalysisResult | null>(null);
@@ -73,9 +76,13 @@ export function CIFailureAnalysis({
 
   const handleCopyLogs = async () => {
     if (!logs) return;
-    await navigator.clipboard.writeText(logs);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(logs);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error('Failed to copy logs to clipboard');
+    }
   };
 
   return (

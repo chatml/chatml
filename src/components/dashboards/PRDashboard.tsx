@@ -13,7 +13,8 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
-import { isTauri } from '@/lib/tauri';
+import { isTauri, copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 import { getLabelStyles } from '@/lib/label-colors';
 import { useTheme } from 'next-themes';
 import {
@@ -319,6 +320,7 @@ function RepositoryCell({ pr }: { pr: PRWithStatus }) {
 export function PRDashboard({
   initialWorkspaceId,
 }: PRDashboardProps) {
+  const toast = useToast();
   const [prs, setPRs] = useState<PRDashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -452,26 +454,31 @@ export function PRDashboard({
     items.push({ label: '', onClick: () => {}, separator: true });
 
     // Copy actions
+    const handleCopy = async (text: string) => {
+      const success = await copyToClipboard(text);
+      if (!success) toast.error('Failed to copy to clipboard');
+    };
+
     items.push({
       label: 'Copy PR URL',
       icon: <Copy className="h-4 w-4" />,
-      onClick: () => navigator.clipboard.writeText(pr.htmlUrl),
+      onClick: () => handleCopy(pr.htmlUrl),
     });
 
     items.push({
       label: 'Copy PR Number',
       icon: <Copy className="h-4 w-4" />,
-      onClick: () => navigator.clipboard.writeText(`#${pr.number}`),
+      onClick: () => handleCopy(`#${pr.number}`),
     });
 
     items.push({
       label: 'Copy Branch Name',
       icon: <GitBranch className="h-4 w-4" />,
-      onClick: () => navigator.clipboard.writeText(pr.branch),
+      onClick: () => handleCopy(pr.branch),
     });
 
     return items;
-  }, [handleJumpToSession, handleSendMessage]);
+  }, [handleJumpToSession, handleSendMessage, toast]);
 
   // Define columns for the data table
   const columns: Column<PRWithStatus>[] = useMemo(() => [

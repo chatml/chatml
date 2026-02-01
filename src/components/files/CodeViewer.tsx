@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { MonacoEditor, MonacoDiffEditor } from '@/components/files/MonacoEditor';
 import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
+import { useToast } from '@/components/ui/toast';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import type { ReviewComment } from '@/lib/types';
 
@@ -61,6 +62,7 @@ export function CodeViewer({
   onCreateComment,
 }: CodeViewerProps) {
   const { resolvedTheme } = useTheme();
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
@@ -76,6 +78,8 @@ export function CodeViewer({
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+    } else {
+      toast.error('Failed to copy to clipboard');
     }
   };
 
