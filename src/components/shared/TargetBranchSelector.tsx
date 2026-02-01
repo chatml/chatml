@@ -32,6 +32,90 @@ function stripOriginPrefix(branch: string): string {
   return branch.replace(/^origin\//, '');
 }
 
+/** Shared popover content for branch selection — used by both toolbar and panel variants. */
+function BranchPickerContent({
+  branches,
+  loading,
+  search,
+  onSearchChange,
+  effectiveTarget,
+  workspaceDefaultBranch,
+  isDefault,
+  onSelect,
+}: {
+  branches: BranchDTO[];
+  loading: boolean;
+  search: string;
+  onSearchChange: (value: string) => void;
+  effectiveTarget: string;
+  workspaceDefaultBranch: string;
+  isDefault: boolean;
+  onSelect: (remoteRef: string) => void;
+}) {
+  const filteredBranches = branches.filter((b) => {
+    if (!search) return true;
+    const lower = search.toLowerCase();
+    return b.name.toLowerCase().includes(lower);
+  });
+
+  return (
+    <>
+      <Command shouldFilter={false}>
+        <CommandInput
+          placeholder="Search branches..."
+          value={search}
+          onValueChange={onSearchChange}
+        />
+        <CommandList>
+          <CommandEmpty>
+            {loading ? 'Loading...' : 'No branches found'}
+          </CommandEmpty>
+          <CommandGroup>
+            {filteredBranches.map((branch) => {
+              const remoteRef = branch.isRemote
+                ? branch.name
+                : `origin/${branch.name}`;
+              const isSelected = remoteRef === effectiveTarget;
+              const isWorkspaceDefault = stripOriginPrefix(remoteRef) === workspaceDefaultBranch;
+              return (
+                <CommandItem
+                  key={branch.name}
+                  value={branch.name}
+                  onSelect={() => onSelect(remoteRef)}
+                >
+                  <GitBranch className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="flex-1 truncate">
+                    {stripOriginPrefix(branch.name)}
+                  </span>
+                  {isWorkspaceDefault && (
+                    <span className="text-[10px] text-muted-foreground mr-1">default</span>
+                  )}
+                  {isSelected && (
+                    <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        </CommandList>
+      </Command>
+      {!isDefault && (
+        <div className="border-t p-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start h-7 text-xs text-muted-foreground"
+            onClick={() => onSelect(`origin/${workspaceDefaultBranch}`)}
+          >
+            <RotateCcw className="mr-2 h-3 w-3" />
+            Reset to workspace default ({workspaceDefaultBranch})
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function TargetBranchSelector({
   sessionId,
   workspaceId,
@@ -44,7 +128,7 @@ export function TargetBranchSelector({
   const [branches, setBranches] = useState<BranchDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const { showError } = useToast();
+  const { error: showError } = useToast();
   const updateSession = useAppStore((s) => s.updateSession);
 
   const effectiveTarget = currentTargetBranch || `origin/${workspaceDefaultBranch}`;
@@ -95,11 +179,16 @@ export function TargetBranchSelector({
     [workspaceId, sessionId, workspaceDefaultBranch, updateSession, showError],
   );
 
-  const filteredBranches = branches.filter((b) => {
-    if (!search) return true;
-    const lower = search.toLowerCase();
-    return b.name.toLowerCase().includes(lower);
-  });
+  const pickerProps = {
+    branches,
+    loading,
+    search,
+    onSearchChange: setSearch,
+    effectiveTarget,
+    workspaceDefaultBranch,
+    isDefault,
+    onSelect: handleSelect,
+  };
 
   if (variant === 'toolbar') {
     return (
@@ -126,58 +215,7 @@ export function TargetBranchSelector({
           </TooltipContent>
         </Tooltip>
         <PopoverContent className="w-64 p-0" align="start">
-          <Command shouldFilter={false}>
-            <CommandInput
-              placeholder="Search branches..."
-              value={search}
-              onValueChange={setSearch}
-            />
-            <CommandList>
-              <CommandEmpty>
-                {loading ? 'Loading...' : 'No branches found'}
-              </CommandEmpty>
-              <CommandGroup>
-                {filteredBranches.map((branch) => {
-                  const remoteRef = branch.isRemote
-                    ? branch.name
-                    : `origin/${branch.name}`;
-                  const isSelected = remoteRef === effectiveTarget;
-                  const isWorkspaceDefault = stripOriginPrefix(remoteRef) === workspaceDefaultBranch;
-                  return (
-                    <CommandItem
-                      key={branch.name}
-                      value={branch.name}
-                      onSelect={() => handleSelect(remoteRef)}
-                    >
-                      <GitBranch className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="flex-1 truncate">
-                        {stripOriginPrefix(branch.name)}
-                      </span>
-                      {isWorkspaceDefault && (
-                        <span className="text-[10px] text-muted-foreground mr-1">default</span>
-                      )}
-                      {isSelected && (
-                        <Check className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-          {!isDefault && (
-            <div className="border-t p-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start h-7 text-xs text-muted-foreground"
-                onClick={() => handleSelect(`origin/${workspaceDefaultBranch}`)}
-              >
-                <RotateCcw className="mr-2 h-3 w-3" />
-                Reset to workspace default ({workspaceDefaultBranch})
-              </Button>
-            </div>
-          )}
+          <BranchPickerContent {...pickerProps} />
         </PopoverContent>
       </Popover>
     );
@@ -204,58 +242,7 @@ export function TargetBranchSelector({
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="Search branches..."
-            value={search}
-            onValueChange={setSearch}
-          />
-          <CommandList>
-            <CommandEmpty>
-              {loading ? 'Loading...' : 'No branches found'}
-            </CommandEmpty>
-            <CommandGroup>
-              {filteredBranches.map((branch) => {
-                const remoteRef = branch.isRemote
-                  ? branch.name
-                  : `origin/${branch.name}`;
-                const isSelected = remoteRef === effectiveTarget;
-                const isWorkspaceDefault = stripOriginPrefix(remoteRef) === workspaceDefaultBranch;
-                return (
-                  <CommandItem
-                    key={branch.name}
-                    value={branch.name}
-                    onSelect={() => handleSelect(remoteRef)}
-                  >
-                    <GitBranch className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="flex-1 truncate">
-                      {stripOriginPrefix(branch.name)}
-                    </span>
-                    {isWorkspaceDefault && (
-                      <span className="text-[10px] text-muted-foreground mr-1">default</span>
-                    )}
-                    {isSelected && (
-                      <Check className="h-3.5 w-3.5 text-muted-foreground" />
-                    )}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-        {!isDefault && (
-          <div className="border-t p-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start h-7 text-xs text-muted-foreground"
-              onClick={() => handleSelect(`origin/${workspaceDefaultBranch}`)}
-            >
-              <RotateCcw className="mr-2 h-3 w-3" />
-              Reset to workspace default ({workspaceDefaultBranch})
-            </Button>
-          </div>
-        )}
+        <BranchPickerContent {...pickerProps} />
       </PopoverContent>
     </Popover>
   );

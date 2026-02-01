@@ -1079,8 +1079,8 @@ func (rm *RepoManager) GetBranchSyncStatus(ctx context.Context, worktreePath, ba
 	return status, nil
 }
 
-// RebaseOntoMain rebases the current branch onto the specified target branch
-func (rm *RepoManager) RebaseOntoMain(ctx context.Context, worktreePath, targetBranch string) (*BranchSyncResult, error) {
+// RebaseOntoTarget rebases the current branch onto the specified target branch (e.g. "origin/develop").
+func (rm *RepoManager) RebaseOntoTarget(ctx context.Context, worktreePath, targetBranch string) (*BranchSyncResult, error) {
 	result := &BranchSyncResult{
 		ConflictFiles: []string{},
 	}
@@ -1164,8 +1164,8 @@ func (rm *RepoManager) RebaseOntoMain(ctx context.Context, worktreePath, targetB
 	return result, nil
 }
 
-// MergeFromMain merges the target branch into the current branch
-func (rm *RepoManager) MergeFromMain(ctx context.Context, worktreePath, targetBranch string) (*BranchSyncResult, error) {
+// MergeFromTarget merges the specified target branch into the current branch (e.g. "origin/develop").
+func (rm *RepoManager) MergeFromTarget(ctx context.Context, worktreePath, targetBranch string) (*BranchSyncResult, error) {
 	result := &BranchSyncResult{
 		ConflictFiles: []string{},
 	}

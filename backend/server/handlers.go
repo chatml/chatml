@@ -1096,6 +1096,8 @@ type CreateSessionRequest struct {
 	WorktreePath string `json:"worktreePath,omitempty"`
 	// Task is an optional description of what this session is for
 	Task string `json:"task,omitempty"`
+	// TargetBranch is optional - overrides the workspace default branch for PRs and sync (e.g. "origin/develop")
+	TargetBranch string `json:"targetBranch,omitempty"`
 }
 
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
@@ -1115,6 +1117,14 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeValidationError(w, "invalid request body")
 		return
+	}
+
+	// Validate optional targetBranch
+	if req.TargetBranch != "" {
+		if !strings.HasPrefix(req.TargetBranch, "origin/") || strings.TrimPrefix(req.TargetBranch, "origin/") == "" {
+			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
 	}
 
 	// Generate session ID
@@ -1203,9 +1213,12 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	defer h.sessionLocks.Unlock(sessionPath)
 
 	// Determine target branch for worktree creation
-	targetBranch := "origin/" + repo.Branch
-	if targetBranch == "origin/" {
-		targetBranch = "origin/main"
+	targetBranch := req.TargetBranch
+	if targetBranch == "" {
+		targetBranch = "origin/" + repo.Branch
+		if targetBranch == "origin/" {
+			targetBranch = "origin/main"
+		}
 	}
 
 	// Create git worktree in the atomically created directory
@@ -1258,6 +1271,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Branch:        branchName,
 		WorktreePath:  worktreePath,
 		BaseCommitSHA: baseCommitSHA,
+		TargetBranch:  req.TargetBranch,
 		Task:          req.Task,
 		Status:        "idle",
 		PRStatus:      "none",
@@ -1399,9 +1413,11 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, "invalid taskStatus value")
 		return
 	}
-	if req.TargetBranch != nil && *req.TargetBranch != "" && !strings.HasPrefix(*req.TargetBranch, "origin/") {
-		writeValidationError(w, "targetBranch must start with 'origin/' (e.g. 'origin/develop')")
-		return
+	if req.TargetBranch != nil && *req.TargetBranch != "" {
+		if !strings.HasPrefix(*req.TargetBranch, "origin/") || strings.TrimPrefix(*req.TargetBranch, "origin/") == "" {
+			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
 	}
 
 	if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
@@ -3792,9 +3808,9 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 	// Perform the operation with the effective target branch
 	var result *git.BranchSyncResult
 	if req.Operation == "rebase" {
-		result, err = h.repoManager.RebaseOntoMain(ctx, session.WorktreePath, targetBranch)
+		result, err = h.repoManager.RebaseOntoTarget(ctx, session.WorktreePath, targetBranch)
 	} else {
-		result, err = h.repoManager.MergeFromMain(ctx, session.WorktreePath, targetBranch)
+		result, err = h.repoManager.MergeFromTarget(ctx, session.WorktreePath, targetBranch)
 	}
 
 	if err != nil {

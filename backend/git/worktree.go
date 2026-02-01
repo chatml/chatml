@@ -57,7 +57,8 @@ func (wm *WorktreeManager) Create(ctx context.Context, repoPath, agentID string)
 
 // CreateWithBranch creates a worktree with a custom branch name in the repo's .worktrees directory.
 // Returns the worktree path, branch name, and the base commit SHA that the worktree was created from.
-// Deprecated: Use CreateAtPath for new code - it allows specifying the worktree location.
+// Deprecated: Use CreateAtPath or CreateInExistingDir for new code — they accept a targetBranch parameter.
+// This method always bases the worktree on origin/main.
 func (wm *WorktreeManager) CreateWithBranch(ctx context.Context, repoPath, worktreeID, branchName string) (worktreePath string, branch string, baseCommit string, err error) {
 	worktreesDir := filepath.Join(repoPath, ".worktrees")
 	worktreePath = filepath.Join(worktreesDir, worktreeID)
