@@ -7,7 +7,7 @@ import type { ReviewComment } from '@/lib/types';
  * Groups comments by file path, sorts by line number within each file,
  * and includes severity when present.
  */
-export function formatReviewFeedback(comments: ReviewComment[]): string | null {
+export function formatReviewFeedback(comments: readonly ReviewComment[]): string | null {
   const unresolvedComments = comments.filter((c) => !c.resolved);
   if (unresolvedComments.length === 0) return null;
 
