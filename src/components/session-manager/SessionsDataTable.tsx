@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback } from 'react';
-import { Layers, Archive, ExternalLink, Copy, FolderOpen, ArrowLeft } from 'lucide-react';
+import { Layers, Archive, ExternalLink, Copy, FolderOpen } from 'lucide-react';
 import type { WorktreeSession, Workspace, SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { DataTable, type Column, type ContextMenuItem, type DisplayOptionsConfig } from '@/components/data-table';
 import {
@@ -37,7 +37,6 @@ interface SessionsDataTableProps {
   onSelectSession: (workspaceId: string, sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
   onUnarchiveSession: (sessionId: string) => void;
-  onClose: () => void;
 }
 
 // Helper to get date group label
@@ -62,7 +61,6 @@ export function SessionsDataTable({
   onSelectSession,
   onArchiveSession,
   onUnarchiveSession,
-  onClose,
 }: SessionsDataTableProps) {
   // Transform sessions into table rows
   const tableData = sessions
@@ -283,18 +281,6 @@ export function SessionsDataTable({
     []
   );
 
-  // Back link for toolbar
-  const backButton = (
-    <button
-      type="button"
-      onClick={onClose}
-      className="flex items-center gap-2 text-foreground hover:text-foreground/80 transition-colors"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      <span className="text-sm font-medium">Back</span>
-    </button>
-  );
-
   // Empty state
   const emptyState = (
     <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -326,7 +312,6 @@ export function SessionsDataTable({
         emptyState={emptyState}
         searchPlaceholder="Filter sessions by branch, workspace, or task..."
         displayOptionsConfig={displayOptionsConfig}
-        toolbarLeftContent={backButton}
       />
     </div>
   );

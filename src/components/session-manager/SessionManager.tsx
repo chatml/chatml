@@ -1,30 +1,54 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
-import { useUIStore } from '@/stores/uiStore';
 import { updateSession as updateSessionApi } from '@/lib/api';
 import { SessionsDataTable } from './SessionsDataTable';
-import { cn } from '@/lib/utils';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
+import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
+import { Layers } from 'lucide-react';
 
-interface SessionManagerProps {
-  onClose: () => void;
-}
-
-export function SessionManager({
-  onClose,
-}: SessionManagerProps) {
+export function SessionManager() {
 
   const workspaces = useAppStore((s) => s.workspaces);
   const sessions = useAppStore((s) => s.sessions);
   const unarchiveSession = useAppStore((s) => s.unarchiveSession);
   const { expandWorkspace } = useSettingsStore();
-  const leftToolbarBg = useUIStore((state) => state.toolbarBackgrounds.left);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession();
+
+  // Set dynamic toolbar content
+  const { activeSessions, archivedSessions } = useMemo(() => {
+    let active = 0;
+    let archived = 0;
+    for (const s of sessions) {
+      if (s.archived) archived++;
+      else active++;
+    }
+    return { activeSessions: active, archivedSessions: archived };
+  }, [sessions]);
+
+  const toolbarConfig = useMemo(() => ({
+    titlePosition: 'center' as const,
+    title: (
+      <span className="flex items-center gap-1.5">
+        <Layers className="h-4 w-4 text-orange-400" />
+        <h1 className="text-base font-semibold">Sessions</h1>
+      </span>
+    ),
+    bottom: {
+      title: (
+        <span className="text-sm text-muted-foreground">
+          {activeSessions} {activeSessions === 1 ? 'session' : 'sessions'}
+          {archivedSessions > 0 && <span className="ml-2">{archivedSessions} archived</span>}
+        </span>
+      ),
+      titlePosition: 'left' as const,
+    },
+  }), [activeSessions, archivedSessions]);
+  useMainToolbarContent(toolbarConfig);
 
   // Handle session selection - navigate to conversation view
   const handleSelectSession = useCallback(
@@ -67,14 +91,6 @@ export function SessionManager({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header - minimal drag region */}
-      <div
-        data-tauri-drag-region
-        className={cn('h-10 flex items-center justify-center border-b shrink-0', leftToolbarBg)}
-      >
-        <h1 className="text-sm font-medium">Session Manager</h1>
-      </div>
-
       {/* Content: Sessions data table */}
       <div className="flex-1 overflow-hidden">
         <SessionsDataTable
@@ -83,7 +99,6 @@ export function SessionManager({
           onSelectSession={handleSelectSession}
           onArchiveSession={handleArchiveSession}
           onUnarchiveSession={handleUnarchiveSession}
-          onClose={onClose}
         />
       </div>
       {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}

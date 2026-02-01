@@ -202,9 +202,9 @@ export default function Home() {
     resetLayouts,
   } = useSettingsStore();
 
-  // Determine if we're in a Full Content view (not conversation or session-manager overlay)
+  // Determine if we're in a Full Content view (not conversation)
   // Also treat as full content view when no session is selected (to show welcome screen)
-  const isFullContentView = contentView.type !== 'conversation' && contentView.type !== 'session-manager';
+  const isFullContentView = contentView.type !== 'conversation';
 
   const {
     isLoading: authLoading,
@@ -851,12 +851,9 @@ export default function Home() {
         // Force page reload to apply default layouts
         window.location.reload();
       }
-      // Escape to close session manager or exit zen mode
+      // Escape to exit zen mode
       if (e.key === 'Escape') {
-        if (contentViewRef.current.type === 'session-manager') {
-          e.preventDefault();
-          navigate({ contentView: { type: 'conversation' } });
-        } else if (zenModeRef.current) {
+        if (zenModeRef.current) {
           e.preventDefault();
           setZenMode(false);
         }
@@ -1129,6 +1126,9 @@ export default function Home() {
                     showLeftSidebar={!leftSidebarCollapsed}
                   />
                 )}
+                {contentView.type === 'session-manager' && (
+                  <SessionManager />
+                )}
                 {contentView.type === 'workspace-dashboard' && (
                   <WorkspaceDashboard
                     workspaceId={contentView.workspaceId}
@@ -1248,15 +1248,6 @@ export default function Home() {
           </ResizablePanel>
         </ResizablePanelGroup>
 
-
-        {/* Session Manager Overlay - full screen */}
-        {contentView.type === 'session-manager' && (
-          <div className="absolute inset-0 z-20 bg-content-background">
-            <SessionManager
-              onClose={() => navigate({ contentView: { type: 'conversation' } })}
-            />
-          </div>
-        )}
 
         {/* Settings Overlay - full screen */}
         {showSettings && (
