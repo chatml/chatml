@@ -76,18 +76,18 @@ export function createScriptTools(context: WorkspaceContext) {
           name: z.string().describe("Human-readable name for the script"),
           command: z.string().describe("Shell command to run"),
         })).optional().describe("Scripts to run when setting up a new session"),
-        runScripts: z.record(z.object({
+        runScripts: z.record(z.string(), z.object({
           name: z.string().describe("Human-readable name"),
           command: z.string().describe("Shell command to run"),
         })).optional().describe("Named scripts that can be run on-demand (key is the script ID)"),
-        hooks: z.record(z.string()).optional().describe("Lifecycle hooks (pre-session, post-session, post-merge)"),
+        hooks: z.record(z.string(), z.string()).optional().describe("Lifecycle hooks (pre-session, post-session, post-merge)"),
         autoSetup: z.boolean().optional().describe("Whether to auto-run setup scripts on session creation"),
       },
       async ({ setupScripts, runScripts, hooks, autoSetup }) => {
         const config: ChatMLConfig = {
           setupScripts: setupScripts || [],
-          runScripts: runScripts || {},
-          hooks: hooks || {},
+          runScripts: (runScripts || {}) as Record<string, ScriptDef>,
+          hooks: (hooks || {}) as Record<string, string>,
           autoSetup: autoSetup ?? true,
         };
 
