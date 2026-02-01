@@ -86,6 +86,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Patch("/{id}/sessions/{sessionId}", h.UpdateSession)
 		r.Delete("/{id}/sessions/{sessionId}", h.DeleteSession)
 		r.Get("/{id}/sessions/{sessionId}/changes", h.GetSessionChanges)
+		r.Get("/{id}/sessions/{sessionId}/branch-commits", h.GetSessionBranchCommits)
 		r.Get("/{id}/sessions/{sessionId}/git-status", h.GetSessionGitStatus)
 		r.Get("/{id}/sessions/{sessionId}/pr-status", h.GetSessionPRStatus)
 		r.Get("/{id}/sessions/{sessionId}/branch-sync", h.GetSessionBranchSyncStatus)
