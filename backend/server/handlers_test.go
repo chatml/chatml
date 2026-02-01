@@ -18,6 +18,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/git"
+	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/stretchr/testify/assert"
@@ -2899,4 +2900,446 @@ func TestGetActiveStreamingConversations_MixedProcesses(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, result["conversationIds"], 1)
 	assert.Contains(t, result["conversationIds"], "conv-running")
+}
+
+// ============================================================================
+// ResolvePR Handler Tests
+// ============================================================================
+
+// setupTestHandlersWithGitHub creates handlers with a mock GitHub client for testing
+func setupTestHandlersWithGitHub(t *testing.T, ghServer *httptest.Server) (*Handlers, *store.SQLiteStore) {
+	t.Helper()
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetAPIURL(ghServer.URL)
+	ghClient.SetToken("test_token")
+
+	t.Cleanup(func() {
+		sqliteStore.Close()
+		prCache.Close()
+	})
+
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil)
+
+	return handlers, sqliteStore
+}
+
+func TestResolvePR_Success(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/repos/myorg/myrepo/pulls/42", r.URL.Path)
+
+		pr := map[string]interface{}{
+			"number":        42,
+			"state":         "open",
+			"title":         "Add authentication",
+			"html_url":      "https://github.com/myorg/myrepo/pull/42",
+			"body":          "Adds OAuth2 authentication flow",
+			"draft":         false,
+			"additions":     200,
+			"deletions":     50,
+			"changed_files": 8,
+			"head":          map[string]string{"ref": "feature/auth", "sha": "abc123"},
+			"base":          map[string]string{"ref": "main"},
+			"labels": []map[string]string{
+				{"name": "feature"},
+			},
+			"requested_reviewers": []map[string]string{
+				{"login": "alice"},
+			},
+		}
+		json.NewEncoder(w).Encode(pr)
+	}))
+	defer ghServer.Close()
+
+	h, _ := setupTestHandlersWithGitHub(t, ghServer)
+
+	body, _ := json.Marshal(ResolvePRRequest{URL: "https://github.com/myorg/myrepo/pull/42"})
+	req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ResolvePR(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp ResolvePRResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, "myorg", resp.Owner)
+	assert.Equal(t, "myrepo", resp.Repo)
+	assert.Equal(t, 42, resp.PRNumber)
+	assert.Equal(t, "Add authentication", resp.Title)
+	assert.Equal(t, "Adds OAuth2 authentication flow", resp.Body)
+	assert.Equal(t, "feature/auth", resp.Branch)
+	assert.Equal(t, "main", resp.BaseBranch)
+	assert.Equal(t, "open", resp.State)
+	assert.False(t, resp.IsDraft)
+	assert.Equal(t, 200, resp.Additions)
+	assert.Equal(t, 50, resp.Deletions)
+	assert.Equal(t, 8, resp.ChangedFiles)
+	assert.Equal(t, []string{"feature"}, resp.Labels)
+	assert.Equal(t, []string{"alice"}, resp.Reviewers)
+	assert.Equal(t, "https://github.com/myorg/myrepo/pull/42", resp.HTMLURL)
+	// No workspace registered, so matchedWorkspaceId should be empty
+	assert.Empty(t, resp.MatchedWorkspaceID)
+}
+
+func TestResolvePR_MatchesWorkspace(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pr := map[string]interface{}{
+			"number":              10,
+			"state":               "open",
+			"title":               "Test PR",
+			"html_url":            "https://github.com/testowner/testrepo/pull/10",
+			"body":                "Test body",
+			"draft":               false,
+			"additions":           5,
+			"deletions":           2,
+			"changed_files":       1,
+			"head":                map[string]string{"ref": "test-branch", "sha": "sha1"},
+			"base":                map[string]string{"ref": "main"},
+			"labels":              []map[string]string{},
+			"requested_reviewers": []map[string]string{},
+		}
+		json.NewEncoder(w).Encode(pr)
+	}))
+	defer ghServer.Close()
+
+	h, s := setupTestHandlersWithGitHub(t, ghServer)
+
+	// Create a git repo with a github remote that matches the PR URL
+	repoPath := createTestGitRepo(t)
+	// Set origin to a GitHub URL so GetGitHubRemote can parse it
+	runGit(t, repoPath, "remote", "set-url", "origin", "https://github.com/testowner/testrepo.git")
+
+	createTestRepo(t, s, "workspace-1", repoPath)
+
+	body, _ := json.Marshal(ResolvePRRequest{URL: "https://github.com/testowner/testrepo/pull/10"})
+	req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ResolvePR(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp ResolvePRResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, "workspace-1", resp.MatchedWorkspaceID)
+}
+
+func TestResolvePR_InvalidURL(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("GitHub API should not be called for invalid URLs")
+	}))
+	defer ghServer.Close()
+
+	h, _ := setupTestHandlersWithGitHub(t, ghServer)
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"empty URL", ""},
+		{"not a GitHub URL", "https://gitlab.com/org/repo/pull/1"},
+		{"missing PR number", "https://github.com/org/repo/pull/"},
+		{"not a PR URL", "https://github.com/org/repo/issues/1"},
+		{"random text", "not-a-url-at-all"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(ResolvePRRequest{URL: tc.url})
+			req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.ResolvePR(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+
+			var apiErr APIError
+			err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+			require.NoError(t, err)
+			assert.Equal(t, ErrCodeValidation, apiErr.Code)
+		})
+	}
+}
+
+func TestResolvePR_InvalidRequestBody(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("GitHub API should not be called for invalid request body")
+	}))
+	defer ghServer.Close()
+
+	h, _ := setupTestHandlersWithGitHub(t, ghServer)
+
+	req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ResolvePR(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestResolvePR_NoGitHubClient(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	body, _ := json.Marshal(ResolvePRRequest{URL: "https://github.com/org/repo/pull/1"})
+	req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ResolvePR(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestResolvePR_GitHubAPIError(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ghServer.Close()
+
+	h, _ := setupTestHandlersWithGitHub(t, ghServer)
+
+	body, _ := json.Marshal(ResolvePRRequest{URL: "https://github.com/org/repo/pull/999"})
+	req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.ResolvePR(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// ============================================================================
+// CreateSession with CheckoutExisting Tests
+// ============================================================================
+
+func TestCreateSession_CheckoutExisting_Success(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	// Create a real git repo with a remote branch to checkout
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Create a feature branch on origin
+	// First get the origin path from the repo
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = repoPath
+	originOut, err := cmd.Output()
+	require.NoError(t, err)
+	originPath := strings.TrimSpace(string(originOut))
+
+	// Clone origin to a temp dir, create a branch, push it
+	cloneDir := t.TempDir()
+	runGit(t, cloneDir, "clone", originPath, ".")
+	runGit(t, cloneDir, "config", "user.email", "test@test.com")
+	runGit(t, cloneDir, "config", "user.name", "Test User")
+	runGit(t, cloneDir, "checkout", "-b", "feature/existing-pr")
+	writeFile(t, cloneDir, "feature.txt", "new feature content")
+	runGit(t, cloneDir, "add", ".")
+	runGit(t, cloneDir, "commit", "-m", "Add feature")
+	runGit(t, cloneDir, "push", "origin", "feature/existing-pr")
+
+	// Clean up test session directory after test
+	t.Cleanup(func() {
+		workspacesDir, _ := git.WorkspacesBaseDir()
+		entries, _ := os.ReadDir(workspacesDir)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				os.RemoveAll(filepath.Join(workspacesDir, entry.Name()))
+			}
+		}
+	})
+
+	body, _ := json.Marshal(CreateSessionRequest{
+		Name:             "test-checkout-session",
+		Branch:           "feature/existing-pr",
+		CheckoutExisting: true,
+		Task:             "Review the PR",
+		SystemMessage:    "## PR Context\nThis is a test PR",
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions", bytes.NewReader(body))
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.CreateSession(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "Response: %s", w.Body.String())
+
+	var sess models.Session
+	err = json.Unmarshal(w.Body.Bytes(), &sess)
+	require.NoError(t, err)
+
+	assert.Equal(t, "test-checkout-session", sess.Name)
+	assert.Equal(t, "feature/existing-pr", sess.Branch)
+	assert.NotEmpty(t, sess.WorktreePath)
+	assert.Equal(t, "Review the PR", sess.Task)
+}
+
+func TestCreateSession_CheckoutExisting_BranchNotFound(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Clean up
+	t.Cleanup(func() {
+		workspacesDir, _ := git.WorkspacesBaseDir()
+		entries, _ := os.ReadDir(workspacesDir)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				os.RemoveAll(filepath.Join(workspacesDir, entry.Name()))
+			}
+		}
+	})
+
+	body, _ := json.Marshal(CreateSessionRequest{
+		Name:             "test-nonexistent",
+		Branch:           "nonexistent-branch",
+		CheckoutExisting: true,
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions", bytes.NewReader(body))
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.CreateSession(w, req)
+
+	// Should fail because the remote branch doesn't exist
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestCreateSession_CheckoutExisting_SystemMessageStored(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	// Create a real git repo with a remote branch
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Create a feature branch on origin
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = repoPath
+	originOut, err := cmd.Output()
+	require.NoError(t, err)
+	originPath := strings.TrimSpace(string(originOut))
+
+	cloneDir := t.TempDir()
+	runGit(t, cloneDir, "clone", originPath, ".")
+	runGit(t, cloneDir, "config", "user.email", "test@test.com")
+	runGit(t, cloneDir, "config", "user.name", "Test User")
+	runGit(t, cloneDir, "checkout", "-b", "feature/sys-msg-test")
+	writeFile(t, cloneDir, "test.txt", "content")
+	runGit(t, cloneDir, "add", ".")
+	runGit(t, cloneDir, "commit", "-m", "Test commit")
+	runGit(t, cloneDir, "push", "origin", "feature/sys-msg-test")
+
+	t.Cleanup(func() {
+		workspacesDir, _ := git.WorkspacesBaseDir()
+		entries, _ := os.ReadDir(workspacesDir)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				os.RemoveAll(filepath.Join(workspacesDir, entry.Name()))
+			}
+		}
+	})
+
+	systemMsg := "## PR #42: Add auth\n**Branch:** feature/sys-msg-test → main\n**Changes:** +200 -50 across 8 files"
+
+	body, _ := json.Marshal(CreateSessionRequest{
+		Name:             "test-sys-msg",
+		Branch:           "feature/sys-msg-test",
+		CheckoutExisting: true,
+		SystemMessage:    systemMsg,
+	})
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions", bytes.NewReader(body))
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.CreateSession(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "Response: %s", w.Body.String())
+
+	var sess models.Session
+	err = json.Unmarshal(w.Body.Bytes(), &sess)
+	require.NoError(t, err)
+
+	// Verify the session was created with the correct branch
+	assert.Equal(t, "feature/sys-msg-test", sess.Branch)
+
+	// Verify system message was stored - fetch the conversation and its messages
+	ctx := context.Background()
+	conversations, err := s.ListConversations(ctx, sess.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, conversations, "session should have at least one conversation")
+
+	// Get messages from the first conversation
+	msgPage, err := s.GetConversationMessages(ctx, conversations[0].ID, nil, 100)
+	require.NoError(t, err)
+
+	// Find the system message
+	foundSystemMsg := false
+	for _, msg := range msgPage.Messages {
+		if msg.Role == "system" && msg.Content == systemMsg {
+			foundSystemMsg = true
+			break
+		}
+	}
+	assert.True(t, foundSystemMsg, "System message should be stored in the conversation")
+}
+
+func TestResolvePR_URLVariants(t *testing.T) {
+	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pr := map[string]interface{}{
+			"number":              1,
+			"state":               "open",
+			"title":               "Test",
+			"html_url":            "https://github.com/org/repo/pull/1",
+			"body":                "",
+			"draft":               false,
+			"additions":           0,
+			"deletions":           0,
+			"changed_files":       0,
+			"head":                map[string]string{"ref": "branch", "sha": "sha"},
+			"base":                map[string]string{"ref": "main"},
+			"labels":              []map[string]string{},
+			"requested_reviewers": []map[string]string{},
+		}
+		json.NewEncoder(w).Encode(pr)
+	}))
+	defer ghServer.Close()
+
+	h, _ := setupTestHandlersWithGitHub(t, ghServer)
+
+	// Various valid PR URL formats
+	urls := []string{
+		"https://github.com/org/repo/pull/1",
+		"http://github.com/org/repo/pull/1",
+		"github.com/org/repo/pull/1",
+		"https://github.com/org/repo/pull/1/files",
+		"https://github.com/org/repo/pull/1/commits",
+	}
+
+	for _, url := range urls {
+		t.Run(url, func(t *testing.T) {
+			body, _ := json.Marshal(ResolvePRRequest{URL: url})
+			req := httptest.NewRequest("POST", "/api/resolve-pr", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.ResolvePR(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code, "URL %s should be accepted", url)
+		})
+	}
 }

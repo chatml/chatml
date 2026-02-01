@@ -466,6 +466,96 @@ func TestCreateInExistingDir_Success(t *testing.T) {
 }
 
 // ============================================================================
+// CheckoutExistingBranchInDir Tests
+// ============================================================================
+
+func TestCheckoutExistingBranchInDir_Success(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	// Create a branch and push it to origin so it exists as a remote branch
+	runGit(t, repoPath, "checkout", "-b", "feature/existing-branch")
+	writeFile(t, repoPath, "feature.txt", "feature content\n")
+	runGit(t, repoPath, "add", ".")
+	runGit(t, repoPath, "commit", "-m", "Add feature")
+	runGit(t, repoPath, "push", "origin", "feature/existing-branch")
+
+	// Go back to main so the branch isn't checked out
+	runGit(t, repoPath, "checkout", "main")
+	// Delete the local branch so only the remote ref exists
+	runGit(t, repoPath, "branch", "-D", "feature/existing-branch")
+
+	// Create directory first (simulating atomic creation)
+	sessionDir := filepath.Join(t.TempDir(), "test-session")
+	require.NoError(t, os.Mkdir(sessionDir, 0755))
+
+	// Checkout the existing remote branch
+	worktreePath, branch, baseCommit, err := wm.CheckoutExistingBranchInDir(context.Background(), repoPath, sessionDir, "feature/existing-branch")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		wm.RemoveAtPath(context.Background(), repoPath, sessionDir, "feature/existing-branch")
+	})
+
+	// Verify results
+	assert.Equal(t, sessionDir, worktreePath)
+	assert.Equal(t, "feature/existing-branch", branch)
+	assert.Len(t, baseCommit, 40, "base commit should be a valid SHA")
+
+	// Verify worktree is functional (has .git file)
+	gitFile := filepath.Join(sessionDir, ".git")
+	assert.FileExists(t, gitFile)
+
+	// Verify the feature file exists in the worktree
+	assert.FileExists(t, filepath.Join(sessionDir, "feature.txt"))
+}
+
+func TestCheckoutExistingBranchInDir_BranchNotFound(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	sessionDir := filepath.Join(t.TempDir(), "test-session")
+	require.NoError(t, os.Mkdir(sessionDir, 0755))
+
+	_, _, _, err := wm.CheckoutExistingBranchInDir(context.Background(), repoPath, sessionDir, "nonexistent-branch")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "nonexistent-branch")
+}
+
+func TestCheckoutExistingBranchInDir_LocalBranchExists(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	// Create a branch and push it to origin
+	runGit(t, repoPath, "checkout", "-b", "feature/shared-branch")
+	writeFile(t, repoPath, "shared.txt", "shared content\n")
+	runGit(t, repoPath, "add", ".")
+	runGit(t, repoPath, "commit", "-m", "Add shared")
+	runGit(t, repoPath, "push", "origin", "feature/shared-branch")
+	runGit(t, repoPath, "checkout", "main")
+	runGit(t, repoPath, "branch", "-D", "feature/shared-branch")
+
+	// First checkout should succeed — this creates the local branch
+	sessionDir1 := filepath.Join(t.TempDir(), "session-1")
+	require.NoError(t, os.Mkdir(sessionDir1, 0755))
+	_, _, _, err := wm.CheckoutExistingBranchInDir(context.Background(), repoPath, sessionDir1, "feature/shared-branch")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		wm.RemoveAtPath(context.Background(), repoPath, sessionDir1, "feature/shared-branch")
+	})
+
+	// Second checkout of the same branch fails because the local branch already exists
+	// (git worktree add -b errors with "already exists" when -b tries to create a branch
+	// that was already created by the first worktree)
+	sessionDir2 := filepath.Join(t.TempDir(), "session-2")
+	require.NoError(t, os.Mkdir(sessionDir2, 0755))
+	_, _, _, err = wm.CheckoutExistingBranchInDir(context.Background(), repoPath, sessionDir2, "feature/shared-branch")
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrLocalBranchExists)
+}
+
+// ============================================================================
 // WorkspacesBaseDirWithOverride Tests
 // ============================================================================
 

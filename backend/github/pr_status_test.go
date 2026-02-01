@@ -462,3 +462,140 @@ func TestClient_FindPRForBranch_NotAuthenticated(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not authenticated")
 }
+
+// ============================================================================
+// GetPRFullDetails Tests
+// ============================================================================
+
+func TestClient_GetPRFullDetails_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/repos/testowner/testrepo/pulls/42", r.URL.Path)
+		require.Equal(t, "Bearer test_token", r.Header.Get("Authorization"))
+
+		pr := map[string]interface{}{
+			"number":        42,
+			"state":         "open",
+			"title":         "Add new feature",
+			"html_url":      "https://github.com/testowner/testrepo/pull/42",
+			"body":          "This PR adds a great new feature.\n\nCloses #10",
+			"draft":         false,
+			"additions":     150,
+			"deletions":     30,
+			"changed_files": 5,
+			"head": map[string]string{
+				"ref": "feature/new-thing",
+				"sha": "abc123",
+			},
+			"base": map[string]string{
+				"ref": "main",
+			},
+			"labels": []map[string]string{
+				{"name": "enhancement"},
+				{"name": "needs-review"},
+			},
+			"requested_reviewers": []map[string]string{
+				{"login": "reviewer1"},
+				{"login": "reviewer2"},
+			},
+		}
+		json.NewEncoder(w).Encode(pr)
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	details, err := client.GetPRFullDetails(context.Background(), "testowner", "testrepo", 42)
+	require.NoError(t, err)
+	require.NotNil(t, details)
+
+	require.Equal(t, 42, details.Number)
+	require.Equal(t, "open", details.State)
+	require.Equal(t, "Add new feature", details.Title)
+	require.Equal(t, "https://github.com/testowner/testrepo/pull/42", details.HTMLURL)
+	require.Equal(t, "This PR adds a great new feature.\n\nCloses #10", details.Body)
+	require.Equal(t, "feature/new-thing", details.Branch)
+	require.Equal(t, "main", details.BaseBranch)
+	require.False(t, details.IsDraft)
+	require.Equal(t, 150, details.Additions)
+	require.Equal(t, 30, details.Deletions)
+	require.Equal(t, 5, details.ChangedFiles)
+	require.Equal(t, []string{"enhancement", "needs-review"}, details.Labels)
+	require.Equal(t, []string{"reviewer1", "reviewer2"}, details.Reviewers)
+}
+
+func TestClient_GetPRFullDetails_DraftPR(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pr := map[string]interface{}{
+			"number":        7,
+			"state":         "open",
+			"title":         "WIP: Draft feature",
+			"html_url":      "https://github.com/testowner/testrepo/pull/7",
+			"body":          "",
+			"draft":         true,
+			"additions":     10,
+			"deletions":     0,
+			"changed_files": 1,
+			"head":          map[string]string{"ref": "draft-branch", "sha": "def456"},
+			"base":          map[string]string{"ref": "develop"},
+			"labels":        []map[string]string{},
+			"requested_reviewers": []map[string]string{},
+		}
+		json.NewEncoder(w).Encode(pr)
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	details, err := client.GetPRFullDetails(context.Background(), "testowner", "testrepo", 7)
+	require.NoError(t, err)
+	require.NotNil(t, details)
+
+	require.True(t, details.IsDraft)
+	require.Equal(t, "", details.Body)
+	require.Equal(t, "develop", details.BaseBranch)
+	require.Empty(t, details.Labels)
+	require.Empty(t, details.Reviewers)
+}
+
+func TestClient_GetPRFullDetails_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	_, err := client.GetPRFullDetails(context.Background(), "testowner", "testrepo", 999)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestClient_GetPRFullDetails_NotAuthenticated(t *testing.T) {
+	client := NewClient("", "")
+
+	_, err := client.GetPRFullDetails(context.Background(), "testowner", "testrepo", 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not authenticated")
+}
+
+func TestClient_GetPRFullDetails_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("", "")
+	client.apiURL = server.URL
+	client.SetToken("test_token")
+
+	_, err := client.GetPRFullDetails(context.Background(), "testowner", "testrepo", 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "403")
+}

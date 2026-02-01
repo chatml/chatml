@@ -64,6 +64,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// PR Dashboard endpoint
 	r.Get("/api/prs", h.ListPRs)
 
+	// Resolve PR from URL (for "create session from PR" flow)
+	r.Post("/api/resolve-pr", h.ResolvePR)
+
 	// Avatar lookup endpoint
 	r.Get("/api/avatars", h.GetAvatars)
 

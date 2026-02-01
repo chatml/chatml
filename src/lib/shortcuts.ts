@@ -59,6 +59,13 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'General',
   },
   {
+    id: 'createFromPR',
+    key: 'o',
+    modifiers: ['meta', 'shift'],
+    label: 'New session from PR/Branch',
+    category: 'General',
+  },
+  {
     id: 'resetLayouts',
     key: 'r',
     modifiers: ['meta', 'shift'],

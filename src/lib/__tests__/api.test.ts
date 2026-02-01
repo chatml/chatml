@@ -9,6 +9,7 @@ import {
   createConversation,
   setConversationPlanMode,
   approvePlan,
+  resolvePR,
 } from '../api';
 
 const API_BASE = 'http://localhost:9876';
@@ -336,5 +337,116 @@ describe('Plan Mode API', () => {
 
       await expect(approvePlan('conv-1')).rejects.toThrow();
     });
+  });
+});
+
+// ============================================================================
+// ResolvePR API Tests
+// ============================================================================
+
+describe('ResolvePR API', () => {
+  const mockPRResponse = {
+    owner: 'testorg',
+    repo: 'testrepo',
+    prNumber: 42,
+    title: 'Add authentication',
+    body: 'Adds OAuth2 flow',
+    branch: 'feature/auth',
+    baseBranch: 'main',
+    state: 'open',
+    isDraft: false,
+    labels: ['enhancement'],
+    reviewers: ['reviewer1'],
+    additions: 200,
+    deletions: 50,
+    changedFiles: 8,
+    matchedWorkspaceId: 'workspace-123',
+    htmlUrl: 'https://github.com/testorg/testrepo/pull/42',
+  };
+
+  it('resolves a PR URL successfully', async () => {
+    server.use(
+      http.post(`${API_BASE}/api/resolve-pr`, async ({ request }) => {
+        const body = await request.json() as { url: string };
+        expect(body.url).toBe('https://github.com/testorg/testrepo/pull/42');
+        return HttpResponse.json(mockPRResponse);
+      })
+    );
+
+    const result = await resolvePR('https://github.com/testorg/testrepo/pull/42');
+
+    expect(result.owner).toBe('testorg');
+    expect(result.repo).toBe('testrepo');
+    expect(result.prNumber).toBe(42);
+    expect(result.title).toBe('Add authentication');
+    expect(result.body).toBe('Adds OAuth2 flow');
+    expect(result.branch).toBe('feature/auth');
+    expect(result.baseBranch).toBe('main');
+    expect(result.state).toBe('open');
+    expect(result.isDraft).toBe(false);
+    expect(result.labels).toEqual(['enhancement']);
+    expect(result.reviewers).toEqual(['reviewer1']);
+    expect(result.additions).toBe(200);
+    expect(result.deletions).toBe(50);
+    expect(result.changedFiles).toBe(8);
+    expect(result.matchedWorkspaceId).toBe('workspace-123');
+    expect(result.htmlUrl).toBe('https://github.com/testorg/testrepo/pull/42');
+  });
+
+  it('resolves a PR with no matched workspace', async () => {
+    server.use(
+      http.post(`${API_BASE}/api/resolve-pr`, () => {
+        return HttpResponse.json({
+          ...mockPRResponse,
+          matchedWorkspaceId: null,
+        });
+      })
+    );
+
+    const result = await resolvePR('https://github.com/other/repo/pull/1');
+    expect(result.matchedWorkspaceId).toBeNull();
+  });
+
+  it('rejects on invalid PR URL', async () => {
+    server.use(
+      http.post(`${API_BASE}/api/resolve-pr`, () => {
+        return HttpResponse.json(
+          { error: 'invalid GitHub PR URL' },
+          { status: 400 }
+        );
+      })
+    );
+
+    await expect(resolvePR('not-a-valid-url')).rejects.toThrow();
+  });
+
+  it('rejects on server error', async () => {
+    server.use(
+      http.post(`${API_BASE}/api/resolve-pr`, () => {
+        return HttpResponse.json(
+          { error: 'failed to fetch PR details' },
+          { status: 500 }
+        );
+      })
+    );
+
+    await expect(
+      resolvePR('https://github.com/org/repo/pull/999')
+    ).rejects.toThrow();
+  });
+
+  it('rejects when not authenticated', async () => {
+    server.use(
+      http.post(`${API_BASE}/api/resolve-pr`, () => {
+        return HttpResponse.json(
+          { error: 'GitHub client not configured' },
+          { status: 400 }
+        );
+      })
+    );
+
+    await expect(
+      resolvePR('https://github.com/org/repo/pull/1')
+    ).rejects.toThrow();
   });
 });

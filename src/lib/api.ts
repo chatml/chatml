@@ -265,7 +265,7 @@ export async function listSessions(workspaceId: string, includeArchived?: boolea
 
 export async function createSession(
   workspaceId: string,
-  data: { name?: string; branch?: string; worktreePath?: string; task?: string } = {}
+  data: { name?: string; branch?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
 ): Promise<SessionDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
@@ -353,6 +353,35 @@ export async function listBranches(
   const url = `${getApiBase()}/api/repos/${workspaceId}/branches${queryString ? `?${queryString}` : ''}`;
   const res = await fetchWithAuth(url);
   return handleResponse<BranchListResponse>(res);
+}
+
+// Resolve PR from URL
+export interface ResolvePRResponse {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  title: string;
+  body: string;
+  branch: string;
+  baseBranch: string;
+  state: string;
+  isDraft: boolean;
+  labels: string[];
+  reviewers: string[];
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  matchedWorkspaceId: string | null;
+  htmlUrl: string;
+}
+
+export async function resolvePR(url: string): Promise<ResolvePRResponse> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/resolve-pr`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  return handleResponse<ResolvePRResponse>(res);
 }
 
 // Branch cleanup types and API
