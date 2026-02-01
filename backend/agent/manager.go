@@ -160,6 +160,15 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.Instructions = opts.Instructions
 	}
 
+	// Load custom environment variables from settings
+	envVars, err := m.loadEnvVars(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load env vars from settings: %w", err)
+	}
+	if envVars != nil {
+		procOpts.EnvVars = envVars
+	}
+
 	// Create and start process
 	proc := NewProcessWithOptions(procOpts)
 
@@ -896,4 +905,16 @@ func (m *Manager) SendMessage(agentID, message string) error {
 	}
 
 	return proc.SendMessage(message)
+}
+
+// loadEnvVars reads custom environment variables from the settings store.
+func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
+	raw, found, err := m.store.GetSetting(ctx, "env-vars")
+	if err != nil {
+		return nil, err
+	}
+	if !found || raw == "" {
+		return nil, nil
+	}
+	return store.ParseEnvVars(raw), nil
 }

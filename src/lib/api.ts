@@ -267,7 +267,7 @@ export async function listSessions(workspaceId: string, includeArchived?: boolea
 
 export async function createSession(
   workspaceId: string,
-  data: { name?: string; branch?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
+  data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
 ): Promise<SessionDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
@@ -1322,6 +1322,24 @@ export async function setWorkspacesBasePath(path: string): Promise<string> {
   );
   const data = await handleResponse<{ path: string }>(res);
   return data.path;
+}
+
+export async function getEnvSettings(): Promise<string> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/env`);
+  const data = await handleResponse<{ envVars: string }>(res);
+  return data.envVars;
+}
+
+export async function setEnvSettings(envVars: string): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/settings/env`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ envVars }),
+    }
+  );
+  await handleResponse(res);
 }
 
 // =============================================================================

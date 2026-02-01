@@ -583,11 +583,17 @@ interface ChatInputProps {
 
 export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [selectedModel, setSelectedModel] = useState(MODELS[0]);
+  // Read store defaults once at mount time — these initialize per-conversation
+  // state and intentionally don't sync if the user changes settings mid-session.
+  const defaultModel = useSettingsStore((s) => s.defaultModel);
+  const defaultThinking = useSettingsStore((s) => s.defaultThinking);
+  const [selectedModel, setSelectedModel] = useState(
+    () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
+  );
   const [isSending, setIsSending] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
-  const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);

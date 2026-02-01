@@ -2625,3 +2625,33 @@ func (s *SQLiteStore) DeleteSummary(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// ParseEnvVars parses a newline-separated KEY=VALUE string into a map.
+// Supports optional "export " prefix on each line. Blank lines and
+// lines starting with "#" are skipped. Surrounding double or single
+// quotes on values are stripped to match .env file conventions.
+func ParseEnvVars(raw string) map[string]string {
+	result := make(map[string]string)
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Strip optional "export " prefix
+		line = strings.TrimPrefix(line, "export ")
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			// Strip surrounding quotes (double or single)
+			if len(val) >= 2 {
+				if (val[0] == '"' && val[len(val)-1] == '"') ||
+					(val[0] == '\'' && val[len(val)-1] == '\'') {
+					val = val[1 : len(val)-1]
+				}
+			}
+			result[key] = val
+		}
+	}
+	return result
+}

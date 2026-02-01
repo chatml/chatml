@@ -19,7 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
-import { useSettingsStore, type ContentView } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, type ContentView } from '@/stores/settingsStore';
 import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { Button } from '@/components/ui/button';
@@ -219,7 +219,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const handleCreateSession = async (workspaceId: string) => {
     try {
       // Create session via backend API (generates city-based name, branch, and worktree path)
-      const session = await createSessionApi(workspaceId);
+      const branchPrefix = getBranchPrefix();
+      const session = await createSessionApi(workspaceId, {
+        ...(branchPrefix !== undefined && { branchPrefix }),
+      });
 
       // Register with global file watcher for event routing
       if (session.worktreePath) {
