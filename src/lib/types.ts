@@ -38,6 +38,7 @@ export interface WorktreeSession {
   prNumber?: number;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
+  targetBranch?: string; // Per-session target branch override (e.g. "origin/develop")
   createdAt: string;
   updatedAt: string;
 }
@@ -607,4 +608,39 @@ export interface BranchSyncResult {
   newBaseSha?: string;
   conflictFiles?: string[];
   errorMessage?: string;
+}
+
+// Scripts config (.chatml/config.json)
+export interface ScriptDef {
+  name: string;
+  command: string;
+}
+
+export interface ChatMLConfig {
+  setupScripts: ScriptDef[];
+  runScripts: Record<string, ScriptDef>;
+  hooks: Record<string, string>;
+  autoSetup: boolean;
+}
+
+export type ScriptRunStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+
+export interface ScriptRun {
+  id: string;
+  sessionId: string;
+  scriptKey?: string;
+  scriptName: string;
+  command: string;
+  status: ScriptRunStatus;
+  exitCode?: number;
+  output: string[];
+  startedAt?: string;
+  finishedAt?: string;
+  createdAt: string;
+}
+
+export interface SetupProgress {
+  current: number;
+  total: number;
+  status: 'running' | 'completed' | 'failed';
 }

@@ -226,6 +226,7 @@ export interface SessionDTO {
   prNumber?: number;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
+  targetBranch?: string;
   pinned?: boolean;
   archived?: boolean;
   archiveSummary?: string;
@@ -252,6 +253,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     prNumber: session.prNumber,
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
+    targetBranch: session.targetBranch,
     pinned: session.pinned,
     archived: session.archived,
     archiveSummary: session.archiveSummary,
@@ -269,7 +271,7 @@ export async function listSessions(workspaceId: string, includeArchived?: boolea
 
 export async function createSession(
   workspaceId: string,
-  data: { name?: string; branch?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
+  data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
 ): Promise<SessionDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions`, {
     method: 'POST',
@@ -1326,6 +1328,24 @@ export async function setWorkspacesBasePath(path: string): Promise<string> {
   return data.path;
 }
 
+export async function getEnvSettings(): Promise<string> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/env`);
+  const data = await handleResponse<{ envVars: string }>(res);
+  return data.envVars;
+}
+
+export async function setEnvSettings(envVars: string): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/settings/env`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ envVars }),
+    }
+  );
+  await handleResponse(res);
+}
+
 // =============================================================================
 // CI / GitHub Actions Types and Functions
 // =============================================================================
@@ -1453,6 +1473,44 @@ export async function analyzeCIFailure(
 }
 
 // =============================================================================
+// CI Failure Context (aggregated failures for forwarding to AI)
+// =============================================================================
+
+export interface FailedJobContext {
+  jobId: number;
+  jobName: string;
+  jobUrl: string;
+  failedSteps: string[];
+  logs: string;
+  logLines: number;
+  truncated: boolean;
+}
+
+export interface FailedRunContext {
+  runId: number;
+  runName: string;
+  runUrl: string;
+  failedJobs: FailedJobContext[];
+}
+
+export interface CIFailureContextDTO {
+  branch: string;
+  failedRuns: FailedRunContext[];
+  totalFailed: number;
+  truncated: boolean;
+}
+
+export async function getCIFailureContext(
+  workspaceId: string,
+  sessionId: string
+): Promise<CIFailureContextDTO> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/ci/failure-context`
+  );
+  return handleResponse<CIFailureContextDTO>(res);
+}
+
+// =============================================================================
 // Commit Status Types and Functions
 // =============================================================================
 
@@ -1574,6 +1632,21 @@ export async function setPRTemplate(workspaceId: string, template: string): Prom
   await handleVoidResponse(res, 'Failed to save PR template');
 }
 
+export async function getGlobalPRTemplate(): Promise<string> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/pr-template`);
+  const data = await handleResponse<{ template: string }>(res);
+  return data.template;
+}
+
+export async function setGlobalPRTemplate(template: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/pr-template`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template }),
+  });
+  await handleVoidResponse(res, 'Failed to save PR template');
+}
+
 // ---------------------------------------------------------------------------
 // Review Prompt Overrides
 // ---------------------------------------------------------------------------
@@ -1614,4 +1687,73 @@ export async function setWorkspaceReviewPrompts(
     },
   );
   await handleVoidResponse(res, 'Failed to save workspace review prompts');
+}
+
+// ==================== Scripts API ====================
+
+import type { ChatMLConfig, ScriptRun } from '@/lib/types';
+
+export async function getWorkspaceConfig(workspaceId: string): Promise<ChatMLConfig> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/config`
+  );
+  return handleResponse<ChatMLConfig>(res);
+}
+
+export async function updateWorkspaceConfig(workspaceId: string, config: ChatMLConfig): Promise<ChatMLConfig> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/config`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    }
+  );
+  return handleResponse<ChatMLConfig>(res);
+}
+
+export async function detectWorkspaceConfig(workspaceId: string): Promise<ChatMLConfig> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/config/detect`
+  );
+  return handleResponse<ChatMLConfig>(res);
+}
+
+export async function runScript(workspaceId: string, sessionId: string, scriptKey: string): Promise<{ runId: string }> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/scripts/run`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scriptKey }),
+    }
+  );
+  return handleResponse<{ runId: string }>(res);
+}
+
+export async function rerunSetupScripts(workspaceId: string, sessionId: string): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/scripts/setup`,
+    { method: 'POST' }
+  );
+  await handleVoidResponse(res, 'Failed to start setup scripts');
+}
+
+export async function stopScript(workspaceId: string, sessionId: string, runId: string): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/scripts/stop`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runId }),
+    }
+  );
+  await handleVoidResponse(res, 'Failed to stop script');
+}
+
+export async function getScriptRuns(workspaceId: string, sessionId: string): Promise<ScriptRun[]> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/scripts/runs`
+  );
+  return handleResponse<ScriptRun[]>(res);
 }

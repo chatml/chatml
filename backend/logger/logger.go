@@ -39,6 +39,12 @@ var (
 	Runner       *log.Logger
 	Polling      *log.Logger
 
+	// Scripts
+	Scripts *log.Logger
+
+	// Caching
+	DirCache *log.Logger
+
 	// Utilities
 	Cleanup *log.Logger
 	GitHub  *log.Logger
@@ -118,6 +124,12 @@ func init() {
 	Scheduler = base.WithPrefix(colorOrch.Render("scheduler"))
 	Runner = base.WithPrefix(colorOrch.Render("runner"))
 	Polling = base.WithPrefix(colorOrch.Render("polling"))
+
+	// Scripts
+	Scripts = base.WithPrefix(colorAgent.Render("scripts"))
+
+	// Caching
+	DirCache = base.WithPrefix(colorWatch.Render("dir-cache"))
 
 	// Utilities
 	Cleanup = base.WithPrefix(colorUtil.Render("cleanup"))

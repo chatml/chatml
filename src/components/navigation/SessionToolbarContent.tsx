@@ -10,7 +10,9 @@ import {
   createConversation,
   deleteSession as apiDeleteSession,
   toStoreConversation,
+  getCIFailureContext,
 } from '@/lib/api';
+import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInVSCode, openInTerminal, showInFinder, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
@@ -61,6 +63,7 @@ import {
 import type { WorktreeSession, SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { PrioritySelector } from '@/components/shared/PrioritySelector';
+import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 
 // ---------------------------------------------------------------------------
 // Review type options for the split button popover
@@ -182,6 +185,39 @@ export function SessionToolbarContent() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId, showWarning]);
 
+  const [fixIssuesLoading, setFixIssuesLoading] = useState(false);
+
+  const handleFixIssues = useCallback(async () => {
+    if (!selectedConversationId || !selectedWorkspaceId || !selectedSessionId) {
+      showWarning('No active conversation');
+      return;
+    }
+
+    setFixIssuesLoading(true);
+    try {
+      const context = await getCIFailureContext(selectedWorkspaceId, selectedSessionId);
+
+      if (context.failedRuns.length === 0) {
+        showWarning('No CI failures found. Checks may have passed.');
+        return;
+      }
+
+      const message = formatCIFailureMessage(context);
+      await sendConversationMessage(selectedConversationId, message);
+    } catch (error) {
+      console.error('Failed to fetch CI failure context:', error);
+      // Fallback to generic message
+      try {
+        await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks');
+        showWarning('Could not fetch CI details. Sent generic request.');
+      } catch {
+        showWarning('Failed to send message to agent.');
+      }
+    } finally {
+      setFixIssuesLoading(false);
+    }
+  }, [selectedConversationId, selectedWorkspaceId, selectedSessionId, showWarning]);
+
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
     try {
@@ -264,6 +300,13 @@ export function SessionToolbarContent() {
           <span className="flex items-center gap-1.5 shrink-0">
             <GitBranch className="h-4 w-4 text-purple-400" />
             <span className="text-base font-semibold truncate">{selectedSession.branch || selectedSession.name}</span>
+            <TargetBranchSelector
+              sessionId={selectedSession.id}
+              workspaceId={selectedWorkspace!.id}
+              currentTargetBranch={selectedSession.targetBranch}
+              workspaceDefaultBranch={selectedWorkspace!.defaultBranch || 'main'}
+              variant="toolbar"
+            />
           </span>
         </span>
       ),
@@ -293,6 +336,7 @@ export function SessionToolbarContent() {
               workspaceId={selectedWorkspaceId}
               session={selectedSession}
               onSendMessage={handleGitActionMessage}
+              onFixIssues={handleFixIssues}
               onArchiveSession={requestArchive}
               onCreatePR={() => setShowCreatePRDialog(true)}
             />
@@ -421,7 +465,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handlePriorityChange, reviewPopoverOpen]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handlePriorityChange, reviewPopoverOpen]);
 
   useMainToolbarContent(toolbarConfig);
 

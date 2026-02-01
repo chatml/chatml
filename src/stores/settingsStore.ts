@@ -2,13 +2,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
-export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history';
+export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history' | 'scripts';
 
 // All bottom panel tabs including the always-visible Tasks
 export type AllBottomPanelTab = 'todos' | BottomPanelTab;
 
 // Default tab order
-export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'history', 'file-history', 'budget', 'mcp'];
+export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'scripts', 'history', 'file-history', 'budget', 'mcp'];
 
 // Top panel (right sidebar) tab IDs - Changes is always visible
 export type TopPanelTab = 'review' | 'checks' | 'files' | 'info';
@@ -21,6 +21,12 @@ export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['changes', 'review', 'ch
 
 // Theme options
 export type ThemeOption = 'system' | 'light' | 'dark';
+
+// Font size options
+export type FontSize = 'small' | 'medium' | 'large';
+
+// Branch prefix options
+export type BranchPrefixType = 'github' | 'custom' | 'none';
 
 // Content view types for Full Content Area pattern
 export type ContentView =
@@ -54,14 +60,34 @@ interface SettingsState {
   showTokenUsage: boolean; // Whether to show token counts and cost breakdown in run summaries
   desktopNotifications: boolean;
   soundEffects: boolean;
+  soundEffectType: string;
   sendWithEnter: boolean;
+  reviewModel: string;
+  defaultPlanMode: boolean;
+  autoConvertLongText: boolean;
+  showChatCost: boolean;
   // Window settings
   minimizeToTray: boolean;
   // Appearance settings
   theme: ThemeOption; // App theme (system, light, dark)
   editorTheme: string; // Monaco editor theme (e.g., 'vs-dark', 'monokai', 'dracula')
+  fontSize: FontSize;
+  // Git settings
+  branchPrefixType: BranchPrefixType;
+  branchPrefixCustom: string;
+  deleteBranchOnArchive: boolean;
+  archiveOnMerge: boolean;
+  // Claude Code settings
+  autoApproveSafeCommands: boolean;
+  // Account settings
+  strictPrivacy: boolean;
+  // Experimental settings
+  parallelAgents: boolean;
+  // Advanced settings
+  developerMode: boolean;
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
+  unreadWorkspaces: string[]; // Workspace IDs marked as unread
   showBottomTerminal: boolean;
   zenMode: boolean; // Distraction-free mode that hides sidebars
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
@@ -93,14 +119,30 @@ interface SettingsState {
   setShowTokenUsage: (value: boolean) => void;
   setDesktopNotifications: (value: boolean) => void;
   setSoundEffects: (value: boolean) => void;
+  setSoundEffectType: (value: string) => void;
   setSendWithEnter: (value: boolean) => void;
+  setReviewModel: (value: string) => void;
+  setDefaultPlanMode: (value: boolean) => void;
+  setAutoConvertLongText: (value: boolean) => void;
+  setShowChatCost: (value: boolean) => void;
   setMinimizeToTray: (value: boolean) => void;
   setTheme: (value: ThemeOption) => void;
   setEditorTheme: (value: string) => void;
+  setFontSize: (value: FontSize) => void;
+  setBranchPrefixType: (value: BranchPrefixType) => void;
+  setBranchPrefixCustom: (value: string) => void;
+  setDeleteBranchOnArchive: (value: boolean) => void;
+  setArchiveOnMerge: (value: boolean) => void;
+  setAutoApproveSafeCommands: (value: boolean) => void;
+  setStrictPrivacy: (value: boolean) => void;
+  setParallelAgents: (value: boolean) => void;
+  setDeveloperMode: (value: boolean) => void;
   setShowBottomTerminal: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
+  markWorkspaceUnread: (workspaceId: string) => void;
+  markWorkspaceRead: (workspaceId: string) => void;
   toggleBottomTab: (tab: BottomPanelTab) => void;
   setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
   toggleTopTab: (tab: TopPanelTab) => void;
@@ -129,11 +171,26 @@ export const useSettingsStore = create<SettingsState>()(
       showTokenUsage: true,
       desktopNotifications: true,
       soundEffects: false,
+      soundEffectType: 'chime',
       sendWithEnter: true,
+      reviewModel: 'opus-4.5',
+      defaultPlanMode: false,
+      autoConvertLongText: true,
+      showChatCost: true,
       minimizeToTray: false,
       theme: 'system',
       editorTheme: 'vs-dark',
+      fontSize: 'medium',
+      branchPrefixType: 'github',
+      branchPrefixCustom: '',
+      deleteBranchOnArchive: false,
+      archiveOnMerge: false,
+      autoApproveSafeCommands: true,
+      strictPrivacy: false,
+      parallelAgents: false,
+      developerMode: false,
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
+      unreadWorkspaces: [], // Workspace IDs marked as unread
       showBottomTerminal: false,
       zenMode: false,
       hiddenBottomTabs: [], // All tabs visible by default
@@ -159,21 +216,53 @@ export const useSettingsStore = create<SettingsState>()(
       setShowTokenUsage: (value) => set({ showTokenUsage: value }),
       setDesktopNotifications: (value) => set({ desktopNotifications: value }),
       setSoundEffects: (value) => set({ soundEffects: value }),
+      setSoundEffectType: (value) => set({ soundEffectType: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
+      setReviewModel: (value) => set({ reviewModel: value }),
+      setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
+      setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
+      setShowChatCost: (value) => set({ showChatCost: value }),
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
       setTheme: (value) => set({ theme: value }),
       setEditorTheme: (value) => set({ editorTheme: value }),
+      setFontSize: (value) => set({ fontSize: value }),
+      setBranchPrefixType: (value) => set({ branchPrefixType: value }),
+      setBranchPrefixCustom: (value) => set({ branchPrefixCustom: value }),
+      setDeleteBranchOnArchive: (value) => set({ deleteBranchOnArchive: value }),
+      setArchiveOnMerge: (value) => set({ archiveOnMerge: value }),
+      setAutoApproveSafeCommands: (value) => set({ autoApproveSafeCommands: value }),
+      setStrictPrivacy: (value) => set({ strictPrivacy: value }),
+      setParallelAgents: (value) => set({ parallelAgents: value }),
+      setDeveloperMode: (value) => set({ developerMode: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
-        set((state) => ({
-          collapsedWorkspaces: state.collapsedWorkspaces.includes(workspaceId)
-            ? state.collapsedWorkspaces.filter((id) => id !== workspaceId)
-            : [...state.collapsedWorkspaces, workspaceId],
-        })),
+        set((state) => {
+          const isCollapsed = state.collapsedWorkspaces.includes(workspaceId);
+          return {
+            collapsedWorkspaces: isCollapsed
+              ? state.collapsedWorkspaces.filter((id) => id !== workspaceId)
+              : [...state.collapsedWorkspaces, workspaceId],
+            // Auto-clear unread when expanding a workspace
+            ...(isCollapsed && {
+              unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
+            }),
+          };
+        }),
       expandWorkspace: (workspaceId) =>
         set((state) => ({
           collapsedWorkspaces: state.collapsedWorkspaces.filter((id) => id !== workspaceId),
+          unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
+        })),
+      markWorkspaceUnread: (workspaceId) =>
+        set((state) => ({
+          unreadWorkspaces: state.unreadWorkspaces.includes(workspaceId)
+            ? state.unreadWorkspaces
+            : [...state.unreadWorkspaces, workspaceId],
+        })),
+      markWorkspaceRead: (workspaceId) =>
+        set((state) => ({
+          unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
         })),
       toggleBottomTab: (tab) =>
         set((state) => ({
@@ -253,3 +342,22 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+/**
+ * Get the computed branch prefix string based on current settings.
+ * Returns undefined if no prefix should be applied (uses backend default).
+ */
+export function getBranchPrefix(): string | undefined {
+  const { branchPrefixType, branchPrefixCustom } = useSettingsStore.getState();
+  switch (branchPrefixType) {
+    case 'custom':
+      return branchPrefixCustom.trim() || undefined;
+    case 'none':
+      return '';
+    case 'github':
+    default:
+      // 'github' uses the default backend behavior (session/ prefix)
+      // TODO: Pass GitHub username when available
+      return undefined;
+  }
+}

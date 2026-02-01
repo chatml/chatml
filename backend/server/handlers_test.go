@@ -2270,6 +2270,123 @@ func TestSetPRTemplate_InvalidBody(t *testing.T) {
 }
 
 // ============================================================================
+// Global PR Template Handler Tests
+// ============================================================================
+
+func TestGetGlobalPRTemplate_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w := httptest.NewRecorder()
+
+	h.GetGlobalPRTemplate(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "", resp["template"])
+}
+
+func TestSetGlobalPRTemplate_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	body, _ := json.Marshal(map[string]string{"template": "Include testing checklist"})
+	req := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetGlobalPRTemplate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify it was saved
+	req2 := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w2 := httptest.NewRecorder()
+
+	h.GetGlobalPRTemplate(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, "Include testing checklist", resp["template"])
+}
+
+func TestSetGlobalPRTemplate_EmptyDeletes(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.SetSetting(ctx, "pr-template", "old template"))
+
+	body, _ := json.Marshal(map[string]string{"template": ""})
+	req := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetGlobalPRTemplate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify deleted
+	req2 := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w2 := httptest.NewRecorder()
+	h.GetGlobalPRTemplate(w2, req2)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, "", resp["template"])
+}
+
+func TestSetGlobalPRTemplate_InvalidBody(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetGlobalPRTemplate(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPRTemplate_GlobalAndWorkspaceIsolated(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set a global template
+	globalBody, _ := json.Marshal(map[string]string{"template": "global instructions"})
+	req1 := httptest.NewRequest("PUT", "/api/settings/pr-template", bytes.NewReader(globalBody))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	h.SetGlobalPRTemplate(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Workspace endpoint should still be empty
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/pr-template", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+	h.GetPRTemplate(w2, req2)
+
+	var wsResp map[string]string
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &wsResp))
+	assert.Equal(t, "", wsResp["template"])
+
+	// Set a workspace template
+	wsBody, _ := json.Marshal(map[string]string{"template": "workspace instructions"})
+	req3 := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/pr-template", bytes.NewReader(wsBody))
+	req3.Header.Set("Content-Type", "application/json")
+	req3 = withChiContext(req3, map[string]string{"id": "ws-1"})
+	w3 := httptest.NewRecorder()
+	h.SetPRTemplate(w3, req3)
+	assert.Equal(t, http.StatusOK, w3.Code)
+
+	// Global should still have its value
+	req4 := httptest.NewRequest("GET", "/api/settings/pr-template", nil)
+	w4 := httptest.NewRecorder()
+	h.GetGlobalPRTemplate(w4, req4)
+
+	var globalResp map[string]string
+	require.NoError(t, json.Unmarshal(w4.Body.Bytes(), &globalResp))
+	assert.Equal(t, "global instructions", globalResp["template"])
+}
+
+// ============================================================================
 // Review Prompts Settings Tests
 // ============================================================================
 
@@ -3214,6 +3331,110 @@ func TestGetActiveStreamingConversations_MixedProcesses(t *testing.T) {
 }
 
 // ============================================================================
+// UpdateSession TargetBranch Tests
+// ============================================================================
+
+func TestUpdateSession_SetTargetBranch(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	targetBranch := "origin/develop"
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &targetBranch})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", gotSession.TargetBranch)
+
+	// Verify persisted in DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", sess.TargetBranch)
+}
+
+func TestUpdateSession_ClearTargetBranch(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// First set it
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-1", func(sess *models.Session) {
+		sess.TargetBranch = "origin/develop"
+	}))
+
+	// Clear it by sending empty string
+	empty := ""
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &empty})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify cleared in DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, sess.TargetBranch)
+}
+
+func TestUpdateSession_TargetBranch_ValidationRejectsInvalidPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Attempt to set target branch without "origin/" prefix
+	invalid := "develop"
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &invalid})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Verify not persisted
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, sess.TargetBranch)
+}
+
+func TestUpdateSession_TargetBranch_ValidationRejectsBareOriginSlash(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// "origin/" with no branch name should be rejected
+	invalid := "origin/"
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &invalid})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ============================================================================
 // ResolvePR Handler Tests
 // ============================================================================
 
@@ -3235,7 +3456,7 @@ func setupTestHandlersWithGitHub(t *testing.T, ghServer *httptest.Server) (*Hand
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil, nil)
 
 	return handlers, sqliteStore
 }
@@ -3385,6 +3606,182 @@ func TestResolvePR_InvalidURL(t *testing.T) {
 	}
 }
 
+func TestGetEnvSettings_Empty(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	req := httptest.NewRequest("GET", "/api/settings/env", nil)
+	w := httptest.NewRecorder()
+
+	h.GetEnvSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, "", result["envVars"])
+}
+
+func TestSetEnvSettings_Success(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	envVars := "API_KEY=test123\nDEBUG=true"
+	reqBody := map[string]string{"envVars": envVars}
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("PUT", "/api/settings/env", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetEnvSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]string
+	err = json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, envVars, result["envVars"])
+}
+
+func TestGetEnvSettings_AfterSet(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	envVars := "FOO=bar\nBAZ=qux"
+	reqBody := map[string]string{"envVars": envVars}
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	// Set env vars
+	setReq := httptest.NewRequest("PUT", "/api/settings/env", bytes.NewReader(body))
+	setReq.Header.Set("Content-Type", "application/json")
+	setW := httptest.NewRecorder()
+	h.SetEnvSettings(setW, setReq)
+	assert.Equal(t, http.StatusOK, setW.Code)
+
+	// Get env vars
+	getReq := httptest.NewRequest("GET", "/api/settings/env", nil)
+	getW := httptest.NewRecorder()
+	h.GetEnvSettings(getW, getReq)
+
+	assert.Equal(t, http.StatusOK, getW.Code)
+
+	var result map[string]string
+	err = json.Unmarshal(getW.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, envVars, result["envVars"])
+}
+
+func TestSetEnvSettings_InvalidJSON(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	req := httptest.NewRequest("PUT", "/api/settings/env", strings.NewReader("{invalid json}"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetEnvSettings(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestParseEnvVars(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]string
+	}{
+		{
+			name:  "basic KEY=VALUE parsing",
+			input: "KEY1=value1\nKEY2=value2",
+			expected: map[string]string{
+				"KEY1": "value1",
+				"KEY2": "value2",
+			},
+		},
+		{
+			name:  "strips export prefix",
+			input: "export API_KEY=secret\nexport DEBUG=true",
+			expected: map[string]string{
+				"API_KEY": "secret",
+				"DEBUG":   "true",
+			},
+		},
+		{
+			name:     "skips blank lines and comments",
+			input:    "KEY1=value1\n\n# This is a comment\nKEY2=value2\n   \n# Another comment",
+			expected: map[string]string{
+				"KEY1": "value1",
+				"KEY2": "value2",
+			},
+		},
+		{
+			name:  "handles values with = signs",
+			input: "CONNECTION_STRING=host=localhost;user=admin;password=pass=123",
+			expected: map[string]string{
+				"CONNECTION_STRING": "host=localhost;user=admin;password=pass=123",
+			},
+		},
+		{
+			name:     "returns empty map for empty string",
+			input:    "",
+			expected: map[string]string{},
+		},
+		{
+			name:     "returns empty map for only whitespace",
+			input:    "   \n\n   \n",
+			expected: map[string]string{},
+		},
+		{
+			name:  "mixed format",
+			input: "export KEY1=value1\nKEY2=value2\n\n# Comment\nexport KEY3=value=with=equals",
+			expected: map[string]string{
+				"KEY1": "value1",
+				"KEY2": "value2",
+				"KEY3": "value=with=equals",
+			},
+		},
+		{
+			name:  "strips double quotes from values",
+			input: `MY_VAR="hello world"`,
+			expected: map[string]string{
+				"MY_VAR": "hello world",
+			},
+		},
+		{
+			name:  "strips single quotes from values",
+			input: `MY_VAR='hello world'`,
+			expected: map[string]string{
+				"MY_VAR": "hello world",
+			},
+		},
+		{
+			name:  "preserves inner quotes",
+			input: `MY_VAR="it's a test"`,
+			expected: map[string]string{
+				"MY_VAR": "it's a test",
+			},
+		},
+		{
+			name:  "does not strip mismatched quotes",
+			input: `MY_VAR="hello'`,
+			expected: map[string]string{
+				"MY_VAR": `"hello'`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := store.ParseEnvVars(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestResolvePR_InvalidRequestBody(t *testing.T) {
 	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("GitHub API should not be called for invalid request body")
@@ -3400,6 +3797,82 @@ func TestResolvePR_InvalidRequestBody(t *testing.T) {
 	h.ResolvePR(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateSession_TargetBranch_ValidationAcceptsEmptyString(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Empty string is valid (clears the override)
+	empty := ""
+	body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &empty})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestUpdateSession_TargetBranch_ValidationAcceptsOriginPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	branches := []string{
+		"origin/main",
+		"origin/develop",
+		"origin/release/v2.0",
+		"origin/feature/deep/nested",
+	}
+
+	for _, branch := range branches {
+		b := branch
+		body, _ := json.Marshal(UpdateSessionRequest{TargetBranch: &b})
+		req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+		w := httptest.NewRecorder()
+
+		h.UpdateSession(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code, "should accept %q", branch)
+	}
+}
+
+func TestUpdateSession_TargetBranch_NilDoesNotModify(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Set target branch directly
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-1", func(sess *models.Session) {
+		sess.TargetBranch = "origin/develop"
+	}))
+
+	// Update name without touching target branch (TargetBranch is nil in request)
+	name := "renamed"
+	body, _ := json.Marshal(UpdateSessionRequest{Name: &name})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Target branch should be unchanged
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", sess.TargetBranch)
+	assert.Equal(t, "renamed", sess.Name)
 }
 
 func TestResolvePR_NoGitHubClient(t *testing.T) {
@@ -3653,4 +4126,186 @@ func TestResolvePR_URLVariants(t *testing.T) {
 			assert.Equal(t, http.StatusOK, w.Code, "URL %s should be accepted", url)
 		})
 	}
+}
+
+func TestCreateSession_WithBranchPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	// Create a real git repo
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-1", repoPath)
+
+	// Use timestamp-based session name to avoid conflicts
+	sessionName := fmt.Sprintf("test-session-%d", time.Now().UnixNano())
+
+	// Clean up test session directory after test
+	t.Cleanup(func() {
+		workspacesDir, _ := git.WorkspacesBaseDir()
+		os.RemoveAll(filepath.Join(workspacesDir, sessionName))
+	})
+
+	// Create session with BranchPrefix
+	reqBody := CreateSessionRequest{
+		Name:         sessionName,
+		BranchPrefix: "feature",
+	}
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions", bytes.NewReader(body))
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.CreateSession(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "Response: %s", w.Body.String())
+
+	var session models.Session
+	err = json.Unmarshal(w.Body.Bytes(), &session)
+	require.NoError(t, err)
+
+	// Verify branch name starts with the prefix
+	assert.True(t, strings.HasPrefix(session.Branch, "feature/"),
+		"Expected branch name to start with 'feature/', got: %s", session.Branch)
+}
+
+// ============================================================================
+// DirListingCache Watcher Tests
+// ============================================================================
+
+func TestExtractRootPath(t *testing.T) {
+	tests := []struct {
+		key      string
+		wantPath string
+		wantOK   bool
+	}{
+		{"repo:/Users/me/project:depth:1", "/Users/me/project", true},
+		{"session:/Users/me/worktree:depth:10", "/Users/me/worktree", true},
+		{"repo:/path/with:colons:depth:3", "/path/with:colons", true},
+		{"unknown:/foo:depth:1", "", false},
+		{"invalid-key", "", false},
+		{"", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			path, ok := extractRootPath(tt.key)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.wantPath, path)
+		})
+	}
+}
+
+func TestDirCacheWatcherRefCounting(t *testing.T) {
+	dir := t.TempDir()
+
+	calls := 0
+	w, err := newDirCacheWatcher(func(string) { calls++ }, 50*time.Millisecond)
+	require.NoError(t, err)
+	defer w.close()
+
+	// First add creates the watch
+	require.NoError(t, w.addWatch(dir))
+	assert.Equal(t, 1, w.watches[dir])
+
+	// Second add increments refcount
+	require.NoError(t, w.addWatch(dir))
+	assert.Equal(t, 2, w.watches[dir])
+
+	// First remove decrements but keeps watch
+	w.removeWatch(dir)
+	assert.Equal(t, 1, w.watches[dir])
+
+	// Second remove actually removes the watch
+	w.removeWatch(dir)
+	_, exists := w.watches[dir]
+	assert.False(t, exists)
+}
+
+func TestDirCacheWatcherInvalidatesOnChange(t *testing.T) {
+	dir := t.TempDir()
+
+	invalidated := make(chan string, 10)
+	w, err := newDirCacheWatcher(func(path string) {
+		invalidated <- path
+	}, 50*time.Millisecond)
+	require.NoError(t, err)
+	defer w.close()
+
+	require.NoError(t, w.addWatch(dir))
+
+	// Create a file in the watched directory
+	err = os.WriteFile(filepath.Join(dir, "test.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
+	// Should receive invalidation within a reasonable time
+	select {
+	case path := <-invalidated:
+		assert.Equal(t, dir, path)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for cache invalidation")
+	}
+}
+
+func TestDirCacheWatcherDebounce(t *testing.T) {
+	dir := t.TempDir()
+
+	var mu sync.Mutex
+	invalidations := 0
+	w, err := newDirCacheWatcher(func(string) {
+		mu.Lock()
+		invalidations++
+		mu.Unlock()
+	}, 100*time.Millisecond)
+	require.NoError(t, err)
+	defer w.close()
+
+	require.NoError(t, w.addWatch(dir))
+
+	// Rapidly create multiple files
+	for i := 0; i < 5; i++ {
+		err = os.WriteFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), []byte("data"), 0644)
+		require.NoError(t, err)
+	}
+
+	// Wait for debounce to flush
+	time.Sleep(300 * time.Millisecond)
+
+	mu.Lock()
+	count := invalidations
+	mu.Unlock()
+
+	// Should have been debounced to a small number of invalidations (ideally 1)
+	assert.LessOrEqual(t, count, 3, "expected debouncing to reduce invalidation count")
+	assert.GreaterOrEqual(t, count, 1, "expected at least one invalidation")
+}
+
+func TestDirListingCacheWithWatcher(t *testing.T) {
+	dir := t.TempDir()
+
+	cache := NewDirListingCache(5 * time.Minute)
+	defer cache.Close()
+
+	// Watcher should be active
+	require.NotNil(t, cache.watcher)
+
+	// Set a cache entry for this directory
+	key := fmt.Sprintf("repo:%s:depth:1", dir)
+	cache.Set(key, []*FileNode{{Name: "old.txt"}})
+
+	// Verify it's cached
+	data, ok := cache.Get(key)
+	require.True(t, ok)
+	assert.Len(t, data, 1)
+
+	// Create a file to trigger invalidation
+	err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
+	// Wait for debounce + processing
+	time.Sleep(500 * time.Millisecond)
+
+	// Cache entry should be invalidated
+	_, ok = cache.Get(key)
+	assert.False(t, ok, "expected cache entry to be invalidated after filesystem change")
 }

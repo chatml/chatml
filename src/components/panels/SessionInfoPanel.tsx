@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/toast';
 import type { SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { PrioritySelector } from '@/components/shared/PrioritySelector';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
+import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 import {
   formatRelativeTime,
   SectionHeader,
@@ -111,6 +112,15 @@ export function SessionInfoPanel() {
             copyValue={session.branch}
             mono
           />
+          {workspace && (
+            <TargetBranchSelector
+              sessionId={session.id}
+              workspaceId={workspace.id}
+              currentTargetBranch={session.targetBranch}
+              workspaceDefaultBranch={workspace.defaultBranch || 'main'}
+              variant="panel"
+            />
+          )}
           {workspace && (
             <InfoRow icon={FolderOpen} label="Workspace" value={workspace.name} />
           )}

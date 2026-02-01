@@ -8,6 +8,7 @@ import {
   Play,
   type LucideIcon,
 } from 'lucide-react';
+import type { CIFailureContextDTO } from '@/lib/api';
 
 export interface StatusInfo {
   icon: LucideIcon;
@@ -63,4 +64,48 @@ export function formatDuration(seconds: number): string {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
+/**
+ * Format CI failure context into a structured message for the AI agent.
+ */
+export function formatCIFailureMessage(context: CIFailureContextDTO): string {
+  const parts: string[] = [
+    'Fix the failing CI checks. Here is the failure context:',
+    '',
+  ];
+
+  for (const run of context.failedRuns) {
+    parts.push(`## Workflow: "${run.runName}"`);
+    parts.push('');
+
+    for (const job of run.failedJobs) {
+      parts.push(`### Job: "${job.jobName}" - FAILED`);
+
+      if (job.failedSteps && job.failedSteps.length > 0) {
+        parts.push(`Failed steps: ${job.failedSteps.join(', ')}`);
+      }
+
+      if (job.logs && job.logs !== '(logs unavailable)') {
+        if (job.truncated) {
+          parts.push(`(log truncated, showing tail of ${job.logLines} total lines)`);
+        }
+        parts.push('');
+        parts.push('<logs>');
+        parts.push(job.logs);
+        parts.push('</logs>');
+      } else {
+        parts.push('(logs unavailable)');
+      }
+
+      parts.push('');
+    }
+  }
+
+  if (context.truncated) {
+    parts.push(`Note: ${context.totalFailed} total jobs failed. Only the first 5 are shown above.`);
+    parts.push('');
+  }
+
+  return parts.join('\n');
 }

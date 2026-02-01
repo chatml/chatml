@@ -34,7 +34,7 @@ func setupTestHandlers(t *testing.T) (*Handlers, *store.SQLiteStore) {
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil)
 
 	return handlers, sqliteStore
 }
@@ -56,7 +56,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, agentManager, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, nil, nil)
 
 	return handlers, sqliteStore, agentManager
 }
@@ -195,7 +195,7 @@ func setupTestHandlersWithAIClient(t *testing.T, aiServerURL string) (*Handlers,
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, aiClient)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, aiClient, nil)
 
 	return handlers, sqliteStore
 }

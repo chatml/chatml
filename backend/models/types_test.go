@@ -664,3 +664,119 @@ func TestCommentStats_JSONSerialization(t *testing.T) {
 	require.Equal(t, stats.Total, decoded.Total)
 	require.Equal(t, stats.Unresolved, decoded.Unresolved)
 }
+
+// ============================================================================
+// SessionWithWorkspace Tests
+// ============================================================================
+
+func TestSessionWithWorkspace_DefaultBranch(t *testing.T) {
+	t.Run("returns workspace branch when set", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceBranch: "develop",
+		}
+		require.Equal(t, "develop", sw.DefaultBranch())
+	})
+
+	t.Run("returns main when workspace branch is empty", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceBranch: "",
+		}
+		require.Equal(t, "main", sw.DefaultBranch())
+	})
+
+	t.Run("returns main for zero-value struct", func(t *testing.T) {
+		sw := &SessionWithWorkspace{}
+		require.Equal(t, "main", sw.DefaultBranch())
+	})
+
+	t.Run("returns master when workspace uses master", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceBranch: "master",
+		}
+		require.Equal(t, "master", sw.DefaultBranch())
+	})
+}
+
+func TestSessionWithWorkspace_EffectiveTargetBranch(t *testing.T) {
+	t.Run("returns session target branch when set", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: "origin/develop"},
+			WorkspaceBranch: "main",
+		}
+		require.Equal(t, "origin/develop", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("falls back to origin/workspace-branch when target not set", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: ""},
+			WorkspaceBranch: "main",
+		}
+		require.Equal(t, "origin/main", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("falls back to origin/main when both empty", func(t *testing.T) {
+		sw := &SessionWithWorkspace{}
+		require.Equal(t, "origin/main", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("falls back to origin/master for master workspace", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: ""},
+			WorkspaceBranch: "master",
+		}
+		require.Equal(t, "origin/master", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("session override takes precedence over workspace default", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: "origin/release/v2"},
+			WorkspaceBranch: "main",
+		}
+		require.Equal(t, "origin/release/v2", sw.EffectiveTargetBranch())
+	})
+}
+
+func TestSession_TargetBranch_JSONSerialization(t *testing.T) {
+	t.Run("included when set", func(t *testing.T) {
+		session := Session{
+			ID:           "sess-1",
+			WorkspaceID:  "ws-1",
+			Name:         "test",
+			Branch:       "feature/test",
+			Status:       SessionStatusIdle,
+			TargetBranch: "origin/develop",
+			CreatedAt:    time.Now().Truncate(time.Millisecond),
+			UpdatedAt:    time.Now().Truncate(time.Millisecond),
+		}
+
+		data, err := json.Marshal(session)
+		require.NoError(t, err)
+
+		var decoded Session
+		err = json.Unmarshal(data, &decoded)
+		require.NoError(t, err)
+		require.Equal(t, "origin/develop", decoded.TargetBranch)
+	})
+
+	t.Run("omitted when empty", func(t *testing.T) {
+		session := Session{
+			ID:          "sess-1",
+			WorkspaceID: "ws-1",
+			Name:        "test",
+			Branch:      "feature/test",
+			Status:      SessionStatusIdle,
+			CreatedAt:   time.Now().Truncate(time.Millisecond),
+			UpdatedAt:   time.Now().Truncate(time.Millisecond),
+		}
+
+		data, err := json.Marshal(session)
+		require.NoError(t, err)
+
+		var rawMap map[string]interface{}
+		err = json.Unmarshal(data, &rawMap)
+		require.NoError(t, err)
+
+		_, hasTargetBranch := rawMap["targetBranch"]
+		require.False(t, hasTargetBranch, "targetBranch should be omitted when empty")
+	})
+}

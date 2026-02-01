@@ -35,11 +35,12 @@ import {
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openFolderDialog, setMinimizeToTray, requestNotificationPermission } from '@/lib/tauri';
-import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts } from '@/lib/api';
+import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts, getGlobalPRTemplate, setGlobalPRTemplate, getEnvSettings, setEnvSettings } from '@/lib/api';
 import { EDITOR_THEMES } from '@/lib/monacoThemes';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/toast';
+import { useTheme } from 'next-themes';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -222,6 +223,22 @@ function ChatSettings() {
   const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
   const desktopNotifications = useSettingsStore((s) => s.desktopNotifications);
   const setDesktopNotifications = useSettingsStore((s) => s.setDesktopNotifications);
+  const defaultModel = useSettingsStore((s) => s.defaultModel);
+  const setDefaultModel = useSettingsStore((s) => s.setDefaultModel);
+  const defaultThinking = useSettingsStore((s) => s.defaultThinking);
+  const setDefaultThinking = useSettingsStore((s) => s.setDefaultThinking);
+  const reviewModel = useSettingsStore((s) => s.reviewModel);
+  const setReviewModel = useSettingsStore((s) => s.setReviewModel);
+  const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
+  const setDefaultPlanMode = useSettingsStore((s) => s.setDefaultPlanMode);
+  const soundEffects = useSettingsStore((s) => s.soundEffects);
+  const setSoundEffects = useSettingsStore((s) => s.setSoundEffects);
+  const soundEffectType = useSettingsStore((s) => s.soundEffectType);
+  const setSoundEffectType = useSettingsStore((s) => s.setSoundEffectType);
+  const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
+  const setSendWithEnter = useSettingsStore((s) => s.setSendWithEnter);
+  const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
+  const setAutoConvertLongText = useSettingsStore((s) => s.setAutoConvertLongText);
 
   const handleNotificationToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
@@ -237,7 +254,7 @@ function ChatSettings() {
 
       <SettingsRow title="Default model" description="Model for new chats">
         <div className="flex gap-2">
-          <Select defaultValue="opus-4.5">
+          <Select value={defaultModel} onValueChange={setDefaultModel}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -247,7 +264,10 @@ function ChatSettings() {
               <SelectItem value="haiku-3.5">Haiku 3.5</SelectItem>
             </SelectContent>
           </Select>
-          <Select defaultValue="thinking-on">
+          <Select
+            value={defaultThinking ? 'thinking-on' : 'thinking-off'}
+            onValueChange={(v) => setDefaultThinking(v === 'thinking-on')}
+          >
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -261,7 +281,7 @@ function ChatSettings() {
 
       <SettingsRow title="Review model" description="Model for code reviews">
         <div className="flex gap-2">
-          <Select defaultValue="opus-4.5">
+          <Select value={reviewModel} onValueChange={setReviewModel}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -271,15 +291,6 @@ function ChatSettings() {
               <SelectItem value="haiku-3.5">Haiku 3.5</SelectItem>
             </SelectContent>
           </Select>
-          <Select defaultValue="thinking-on">
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="thinking-on">Thinking on</SelectItem>
-              <SelectItem value="thinking-off">Thinking off</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </SettingsRow>
 
@@ -287,7 +298,7 @@ function ChatSettings() {
         title="Default to plan mode"
         description="Start new chats in plan mode (Claude only)"
       >
-        <Switch />
+        <Switch checked={defaultPlanMode} onCheckedChange={setDefaultPlanMode} />
       </SettingsRow>
 
       <SettingsRow
@@ -302,7 +313,7 @@ function ChatSettings() {
         description="Play a sound when AI finishes working in a chat"
       >
         <div className="flex items-center gap-2">
-          <Select defaultValue="chime">
+          <Select value={soundEffectType} onValueChange={setSoundEffectType}>
             <SelectTrigger className="w-24">
               <SelectValue />
             </SelectTrigger>
@@ -315,7 +326,7 @@ function ChatSettings() {
           <Button variant="outline" size="sm">
             Test
           </Button>
-          <Switch />
+          <Switch checked={soundEffects} onCheckedChange={setSoundEffects} />
         </div>
       </SettingsRow>
 
@@ -323,7 +334,10 @@ function ChatSettings() {
         title="Send messages with"
         description="Choose which key combination sends messages. Use ⇧↵ for new lines"
       >
-        <Select defaultValue="enter">
+        <Select
+          value={sendWithEnter ? 'enter' : 'cmd-enter'}
+          onValueChange={(v) => setSendWithEnter(v === 'enter')}
+        >
           <SelectTrigger className="w-28">
             <SelectValue />
           </SelectTrigger>
@@ -338,7 +352,7 @@ function ChatSettings() {
         title="Auto-convert long text"
         description="Convert pasted text over 5000 characters into text attachments"
       >
-        <Switch defaultChecked />
+        <Switch checked={autoConvertLongText} onCheckedChange={setAutoConvertLongText} />
       </SettingsRow>
 
       <SettingsRow
@@ -368,6 +382,9 @@ function ChatSettings() {
 function AppearanceSettings() {
   const editorTheme = useSettingsStore((s) => s.editorTheme);
   const setEditorTheme = useSettingsStore((s) => s.setEditorTheme);
+  const fontSize = useSettingsStore((s) => s.fontSize);
+  const setFontSize = useSettingsStore((s) => s.setFontSize);
+  const { theme, setTheme } = useTheme();
 
   // Group themes by light/dark
   const darkThemes = EDITOR_THEMES.filter((t) => t.isDark);
@@ -377,7 +394,7 @@ function AppearanceSettings() {
     <div>
       <h2 className="text-xl font-semibold mb-5">Appearance</h2>
       <SettingsRow title="Theme" description="Choose your preferred theme">
-        <Select defaultValue="system">
+        <Select value={theme} onValueChange={setTheme}>
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
@@ -410,7 +427,7 @@ function AppearanceSettings() {
         </Select>
       </SettingsRow>
       <SettingsRow title="Font size" description="Adjust the interface font size">
-        <Select defaultValue="medium">
+        <Select value={fontSize} onValueChange={setFontSize}>
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
@@ -426,10 +443,14 @@ function AppearanceSettings() {
 }
 
 function GitSettings() {
-  const [branchPrefixType, setBranchPrefixType] = useState<'github' | 'custom' | 'none'>('github');
-  const [customPrefix, setCustomPrefix] = useState('');
-  const [deleteBranchOnArchive, setDeleteBranchOnArchive] = useState(false);
-  const [archiveOnMerge, setArchiveOnMerge] = useState(false);
+  const branchPrefixType = useSettingsStore((s) => s.branchPrefixType);
+  const setBranchPrefixType = useSettingsStore((s) => s.setBranchPrefixType);
+  const customPrefix = useSettingsStore((s) => s.branchPrefixCustom);
+  const setCustomPrefix = useSettingsStore((s) => s.setBranchPrefixCustom);
+  const deleteBranchOnArchive = useSettingsStore((s) => s.deleteBranchOnArchive);
+  const setDeleteBranchOnArchive = useSettingsStore((s) => s.setDeleteBranchOnArchive);
+  const archiveOnMerge = useSettingsStore((s) => s.archiveOnMerge);
+  const setArchiveOnMerge = useSettingsStore((s) => s.setArchiveOnMerge);
 
   // TODO: Get actual GitHub username from git config or API
   const githubUsername = 'mcastilho';
@@ -565,16 +586,46 @@ function ConfirmArchiveSetting() {
 }
 
 function EnvSettings() {
-  const [envVars, setEnvVars] = useState(`ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_CODE_USE_BEDROCK=1
-AWS_REGION=us-east-1
-AWS_PROFILE=default`);
+  const [envVars, setEnvVarsLocal] = useState('');
+  const [savedEnvVars, setSavedEnvVars] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getEnvSettings()
+      .then((vars) => {
+        setEnvVarsLocal(vars);
+        setSavedEnvVars(vars);
+      })
+      .catch((err) => {
+        console.error('Failed to load env settings:', err);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const hasUnsavedChanges = envVars !== savedEnvVars;
+
+  const handleSave = useCallback(async () => {
+    if (!hasUnsavedChanges) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await setEnvSettings(envVars);
+      setSavedEnvVars(envVars);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }, [envVars, hasUnsavedChanges]);
 
   return (
     <div>
       <h2 className="text-xl font-semibold mb-2">Environment variables</h2>
       <p className="text-sm text-muted-foreground mb-6">
         Useful for using third-party providers like Bedrock or Vertex.
+        Changes take effect for new agent sessions.
       </p>
 
       {/* Claude Code section */}
@@ -594,21 +645,32 @@ AWS_PROFILE=default`);
       {/* Environment variables textarea */}
       <textarea
         value={envVars}
-        onChange={(e) => setEnvVars(e.target.value)}
-        className="w-full h-64 px-4 py-3 font-mono text-sm bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+        onChange={(e) => setEnvVarsLocal(e.target.value)}
+        disabled={loading}
+        className="w-full h-64 px-4 py-3 font-mono text-sm bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none disabled:opacity-50"
         placeholder="VAR_NAME=value"
       />
 
       {/* Footer with format hint and save button */}
       <div className="flex items-center justify-between mt-4">
-        <p className="text-sm text-muted-foreground">
-          One per line, format:{' '}
-          <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">VAR_NAME=value</code>
-          {' '}or{' '}
-          <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">export VAR_NAME=value</code>
-        </p>
-        <Button variant="secondary" size="sm">
-          Save
+        <div>
+          <p className="text-sm text-muted-foreground">
+            One per line, format:{' '}
+            <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">VAR_NAME=value</code>
+            {' '}or{' '}
+            <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">export VAR_NAME=value</code>
+          </p>
+          {saveError && (
+            <p className="text-sm text-destructive mt-1">{saveError}</p>
+          )}
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!hasUnsavedChanges || saving}
+          onClick={handleSave}
+        >
+          {saving ? 'Saving...' : 'Save'}
         </Button>
       </div>
     </div>
@@ -618,6 +680,8 @@ AWS_PROFILE=default`);
 function ClaudeCodeSettings() {
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
+  const autoApproveSafeCommands = useSettingsStore((s) => s.autoApproveSafeCommands);
+  const setAutoApproveSafeCommands = useSettingsStore((s) => s.setAutoApproveSafeCommands);
 
   return (
     <div>
@@ -626,7 +690,7 @@ function ClaudeCodeSettings() {
         title="Auto-approve safe commands"
         description="Automatically approve read-only commands"
       >
-        <Switch defaultChecked />
+        <Switch checked={autoApproveSafeCommands} onCheckedChange={setAutoApproveSafeCommands} />
       </SettingsRow>
       <SettingsRow
         title="Max thinking tokens"
@@ -657,7 +721,8 @@ function ClaudeCodeSettings() {
 function AccountSettings() {
   const [showToken, setShowToken] = useState(false);
   const [token, setToken] = useState('ghp_xxxxxxxxxxxxxxxxxxxx');
-  const [strictPrivacy, setStrictPrivacy] = useState(false);
+  const strictPrivacy = useSettingsStore((s) => s.strictPrivacy);
+  const setStrictPrivacy = useSettingsStore((s) => s.setStrictPrivacy);
 
   // TODO: Get actual user data from auth
   const user = {
@@ -776,6 +841,9 @@ function AccountSettings() {
 }
 
 function ExperimentalSettings() {
+  const parallelAgents = useSettingsStore((s) => s.parallelAgents);
+  const setParallelAgents = useSettingsStore((s) => s.setParallelAgents);
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Experimental</h2>
@@ -786,7 +854,7 @@ function ExperimentalSettings() {
         title="Parallel agents"
         description="Enable multiple agents working in parallel"
       >
-        <Switch />
+        <Switch checked={parallelAgents} onCheckedChange={setParallelAgents} />
       </SettingsRow>
     </div>
   );
@@ -817,22 +885,26 @@ function UpdatesSettings() {
 function ReviewSettings() {
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, string>>({});
+  const [prTemplate, setPRTemplate] = useState('');
+  const [savedPRTemplate, setSavedPRTemplate] = useState('');
   const [saving, setSaving] = useState(false);
   const { error: showError } = useToast();
 
   useEffect(() => {
-    getGlobalReviewPrompts()
-      .then((data) => {
-        setPrompts(data);
-        setSaved(data);
+    Promise.all([getGlobalReviewPrompts(), getGlobalPRTemplate()])
+      .then(([reviewData, prData]) => {
+        setPrompts(reviewData);
+        setSaved(reviewData);
+        setPRTemplate(prData);
+        setSavedPRTemplate(prData);
       })
       .catch(() => {
-        showError('Failed to load review prompts');
+        showError('Failed to load settings');
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved);
+  const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved) || prTemplate !== savedPRTemplate;
 
   const handleSave = async () => {
     setSaving(true);
@@ -842,11 +914,16 @@ function ReviewSettings() {
       for (const [k, v] of Object.entries(prompts)) {
         if (v.trim()) cleaned[k] = v.trim();
       }
-      await setGlobalReviewPrompts(cleaned);
+      await Promise.all([
+        setGlobalReviewPrompts(cleaned),
+        setGlobalPRTemplate(prTemplate.trim()),
+      ]);
       setPrompts(cleaned);
       setSaved(cleaned);
+      setPRTemplate(prTemplate.trim());
+      setSavedPRTemplate(prTemplate.trim());
     } catch {
-      showError('Failed to save review prompts');
+      showError('Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -877,6 +954,25 @@ function ReviewSettings() {
         ))}
       </div>
 
+      <div className="mt-8 pt-8 border-t border-border/50">
+        <h3 className="text-lg font-semibold mb-1">PR Creation</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Add custom instructions for AI-generated PR descriptions. These apply globally.
+          Per-workspace overrides can be set in workspace settings.
+        </p>
+
+        <label className="text-[13px] font-medium block mb-1.5">PR Description Prompt</label>
+        <p className="text-[11px] text-muted-foreground mb-1.5">
+          These instructions will be prepended to the default PR generation prompt
+        </p>
+        <Textarea
+          className="text-[13px] min-h-[80px]"
+          placeholder="e.g., Include a testing checklist, link to related issues, use conventional commit format for title"
+          value={prTemplate}
+          onChange={(e) => setPRTemplate(e.target.value)}
+        />
+      </div>
+
       {hasChanges && (
         <div className="mt-4 flex justify-end">
           <Button size="sm" disabled={saving} onClick={handleSave}>
@@ -895,6 +991,8 @@ function AdvancedSettings() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const minimizeToTray = useSettingsStore((s) => s.minimizeToTray);
   const setMinimizeToTraySetting = useSettingsStore((s) => s.setMinimizeToTray);
+  const developerMode = useSettingsStore((s) => s.developerMode);
+  const setDeveloperMode = useSettingsStore((s) => s.setDeveloperMode);
 
   // Fetch the current configured base path from the backend
   useEffect(() => {
@@ -993,7 +1091,10 @@ function AdvancedSettings() {
         title="Developer mode"
         description="Show additional debugging information"
       >
-        <Switch />
+        <Switch
+          checked={developerMode}
+          onCheckedChange={setDeveloperMode}
+        />
       </SettingsRow>
       <SettingsRow
         title="Clear cache"

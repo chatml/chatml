@@ -23,8 +23,10 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
+	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
+	"github.com/fsnotify/fsnotify"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -183,13 +185,172 @@ func (c *BranchCache) cleanupLoop() {
 	}
 }
 
-// DirListingCache provides TTL-based caching for directory listing operations.
-// This reduces filesystem operations for frequently accessed directory trees.
+// dirCacheWatcher uses fsnotify to watch directories and immediately invalidate
+// cache entries when filesystem changes are detected, rather than waiting for TTL.
+type dirCacheWatcher struct {
+	fsw              *fsnotify.Watcher
+	mu               sync.Mutex
+	watches          map[string]int            // path -> reference count
+	pendingPaths     map[string]struct{}        // paths awaiting debounced invalidation
+	debounceTimer    *time.Timer
+	debounceDuration time.Duration
+	invalidateFunc   func(string)               // callback to DirListingCache.InvalidatePath
+	ctx              context.Context
+	cancel           context.CancelFunc
+}
+
+func newDirCacheWatcher(invalidateFunc func(string), debounceDuration time.Duration) (*dirCacheWatcher, error) {
+	fsw, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, fmt.Errorf("create fsnotify watcher: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &dirCacheWatcher{
+		fsw:              fsw,
+		watches:          make(map[string]int),
+		pendingPaths:     make(map[string]struct{}),
+		debounceDuration: debounceDuration,
+		invalidateFunc:   invalidateFunc,
+		ctx:              ctx,
+		cancel:           cancel,
+	}
+	go w.run()
+	return w, nil
+}
+
+func (w *dirCacheWatcher) addWatch(path string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if count, exists := w.watches[path]; exists {
+		w.watches[path] = count + 1
+		return nil
+	}
+
+	if err := w.fsw.Add(path); err != nil {
+		return fmt.Errorf("watch %s: %w", path, err)
+	}
+
+	w.watches[path] = 1
+	logger.DirCache.Debugf("watching %s", path)
+	return nil
+}
+
+func (w *dirCacheWatcher) removeWatch(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	count, exists := w.watches[path]
+	if !exists {
+		return
+	}
+
+	if count > 1 {
+		w.watches[path] = count - 1
+		return
+	}
+
+	delete(w.watches, path)
+	if err := w.fsw.Remove(path); err != nil {
+		logger.DirCache.Debugf("remove watch %s: %v", path, err)
+	} else {
+		logger.DirCache.Debugf("unwatched %s", path)
+	}
+}
+
+func (w *dirCacheWatcher) run() {
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		case event, ok := <-w.fsw.Events:
+			if !ok {
+				return
+			}
+			if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Remove|fsnotify.Rename) == 0 {
+				continue
+			}
+			// The event path is inside one of the watched root dirs.
+			// Find which watched root it belongs to and schedule invalidation.
+			dir := filepath.Dir(event.Name)
+			w.mu.Lock()
+			for watchedPath := range w.watches {
+				if dir == watchedPath || strings.HasPrefix(dir, watchedPath+string(filepath.Separator)) {
+					w.pendingPaths[watchedPath] = struct{}{}
+				}
+			}
+			w.scheduleFlush()
+			w.mu.Unlock()
+
+		case err, ok := <-w.fsw.Errors:
+			if !ok {
+				return
+			}
+			logger.DirCache.Warnf("fsnotify error: %v", err)
+		}
+	}
+}
+
+// scheduleFlush resets the debounce timer. Must be called with mu held.
+func (w *dirCacheWatcher) scheduleFlush() {
+	if w.debounceTimer != nil {
+		w.debounceTimer.Stop()
+	}
+	w.debounceTimer = time.AfterFunc(w.debounceDuration, w.flush)
+}
+
+func (w *dirCacheWatcher) flush() {
+	if w.ctx.Err() != nil {
+		return
+	}
+
+	w.mu.Lock()
+	paths := w.pendingPaths
+	w.pendingPaths = make(map[string]struct{})
+	w.mu.Unlock()
+
+	for path := range paths {
+		logger.DirCache.Debugf("invalidating cache for %s", path)
+		w.invalidateFunc(path)
+	}
+}
+
+func (w *dirCacheWatcher) close() {
+	w.cancel()
+	w.mu.Lock()
+	if w.debounceTimer != nil {
+		w.debounceTimer.Stop()
+	}
+	w.mu.Unlock()
+	w.fsw.Close()
+}
+
+// extractRootPath extracts the filesystem path from a cache key.
+// Keys are formatted as "repo:/path/to/dir:depth:N" or "session:/path/to/dir:depth:N".
+func extractRootPath(cacheKey string) (string, bool) {
+	parts := strings.SplitN(cacheKey, ":depth:", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+	pathPart := parts[0]
+	if strings.HasPrefix(pathPart, "repo:") {
+		return strings.TrimPrefix(pathPart, "repo:"), true
+	}
+	if strings.HasPrefix(pathPart, "session:") {
+		return strings.TrimPrefix(pathPart, "session:"), true
+	}
+	return "", false
+}
+
+// DirListingCache provides TTL-based caching for directory listing operations
+// with optional fsnotify-based immediate invalidation on filesystem changes.
 type DirListingCache struct {
 	mu      sync.RWMutex
 	entries map[string]*dirCacheEntry
 	ttl     time.Duration
 	done    chan struct{}
+	watcher *dirCacheWatcher
 }
 
 type dirCacheEntry struct {
@@ -197,20 +358,34 @@ type dirCacheEntry struct {
 	expiresAt time.Time
 }
 
-// NewDirListingCache creates a new directory listing cache with the given TTL
+// NewDirListingCache creates a new directory listing cache with the given TTL.
+// It also starts a filesystem watcher for immediate cache invalidation.
+// If the watcher fails to initialize, the cache falls back to TTL-only mode.
 func NewDirListingCache(ttl time.Duration) *DirListingCache {
 	cache := &DirListingCache{
 		entries: make(map[string]*dirCacheEntry),
 		ttl:     ttl,
 		done:    make(chan struct{}),
 	}
+
+	w, err := newDirCacheWatcher(cache.InvalidatePath, 100*time.Millisecond)
+	if err != nil {
+		logger.DirCache.Warnf("filesystem watcher unavailable, using TTL-only mode: %v", err)
+	} else {
+		cache.watcher = w
+		logger.DirCache.Infof("filesystem watcher active (debounce=100ms)")
+	}
+
 	go cache.cleanupLoop()
 	return cache
 }
 
-// Close stops the cleanup goroutine. Should be called when the cache is no longer needed.
+// Close stops the cleanup goroutine and filesystem watcher.
 func (c *DirListingCache) Close() {
 	close(c.done)
+	if c.watcher != nil {
+		c.watcher.close()
+	}
 }
 
 // Get retrieves a cached directory listing by key
@@ -230,14 +405,22 @@ func (c *DirListingCache) Get(key string) ([]*FileNode, bool) {
 	return entry.data, true
 }
 
-// Set stores a directory listing in the cache
+// Set stores a directory listing in the cache and registers a filesystem watch
+// on the root path for immediate invalidation.
 func (c *DirListingCache) Set(key string, data []*FileNode) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.entries[key] = &dirCacheEntry{
 		data:      data,
 		expiresAt: time.Now().Add(c.ttl),
+	}
+	c.mu.Unlock()
+
+	if c.watcher != nil {
+		if rootPath, ok := extractRootPath(key); ok {
+			if err := c.watcher.addWatch(rootPath); err != nil {
+				logger.DirCache.Debugf("watch %s: %v", rootPath, err)
+			}
+		}
 	}
 }
 
@@ -247,14 +430,24 @@ func (c *DirListingCache) Set(key string, data []*FileNode) {
 // starts with basePath to avoid over-invalidation of unrelated paths.
 func (c *DirListingCache) InvalidatePath(basePath string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
+	var removedPaths []string
 	for key := range c.entries {
 		// Extract path from cache key format "type:path:depth:N"
 		// We need to check if the path portion starts with basePath
 		if strings.HasPrefix(key, "repo:"+basePath) || strings.HasPrefix(key, "session:"+basePath) {
 			delete(c.entries, key)
+			if c.watcher != nil {
+				if rootPath, ok := extractRootPath(key); ok {
+					removedPaths = append(removedPaths, rootPath)
+				}
+			}
 		}
+	}
+	c.mu.Unlock()
+
+	for _, p := range removedPaths {
+		c.watcher.removeWatch(p)
 	}
 }
 
@@ -282,13 +475,23 @@ func (c *DirListingCache) cleanupLoop() {
 // cleanup removes expired entries
 func (c *DirListingCache) cleanup() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
+	var removedPaths []string
 	now := time.Now()
 	for key, entry := range c.entries {
 		if now.After(entry.expiresAt) {
 			delete(c.entries, key)
+			if c.watcher != nil {
+				if rootPath, ok := extractRootPath(key); ok {
+					removedPaths = append(removedPaths, rootPath)
+				}
+			}
 		}
+	}
+	c.mu.Unlock()
+
+	for _, p := range removedPaths {
+		c.watcher.removeWatch(p)
 	}
 }
 
@@ -326,6 +529,7 @@ type Handlers struct {
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
 	aiClient         *ai.Client
+	scriptRunner     *scripts.Runner
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -340,6 +544,9 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 // settingKeyWorkspacesBaseDir is the settings key for the workspaces base directory
 const settingKeyWorkspacesBaseDir = "workspaces-base-dir"
 
+// settingKeyEnvVars is the settings key for custom environment variables
+const settingKeyEnvVars = "env-vars"
+
 // getWorkspacesBaseDir returns the configured workspaces base directory,
 // falling back to the default (~/.chatml/workspaces) if not configured.
 func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
@@ -350,7 +557,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()
@@ -376,6 +583,7 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		avatarCache:      github.NewAvatarCache(24 * time.Hour), // Cache avatars for 24 hours
 		statsCache:       statsCache,
 		aiClient:         aiClient,
+		scriptRunner:     scriptRunner,
 	}
 }
 
@@ -1119,10 +1327,14 @@ type CreateSessionRequest struct {
 	Name string `json:"name,omitempty"`
 	// Branch is optional - if not provided, will be generated from the session name
 	Branch string `json:"branch,omitempty"`
+	// BranchPrefix is optional - prefix for auto-generated branch names (default: "session")
+	BranchPrefix string `json:"branchPrefix,omitempty"`
 	// WorktreePath is deprecated - worktrees are now created at ~/.chatml/workspaces/{name}
 	WorktreePath string `json:"worktreePath,omitempty"`
 	// Task is an optional description of what this session is for
 	Task string `json:"task,omitempty"`
+	// TargetBranch is optional - overrides the workspace default branch for PRs and sync (e.g. "origin/develop")
+	TargetBranch string `json:"targetBranch,omitempty"`
 	// CheckoutExisting checks out an existing remote branch instead of creating a new one
 	CheckoutExisting bool `json:"checkoutExisting,omitempty"`
 	// SystemMessage is optional custom content for the initial system message (e.g. PR context)
@@ -1146,6 +1358,14 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeValidationError(w, "invalid request body")
 		return
+	}
+
+	// Validate optional targetBranch
+	if req.TargetBranch != "" {
+		if !strings.HasPrefix(req.TargetBranch, "origin/") || strings.TrimPrefix(req.TargetBranch, "origin/") == "" {
+			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
 	}
 
 	if req.CheckoutExisting && req.Branch == "" {
@@ -1231,12 +1451,25 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Generate or use provided branch name
 	branchName := req.Branch
 	if branchName == "" {
-		branchName = fmt.Sprintf("session/%s", sessionName)
+		prefix := req.BranchPrefix
+		if prefix == "" {
+			prefix = "session"
+		}
+		branchName = fmt.Sprintf("%s/%s", prefix, sessionName)
 	}
 
 	// Lock on the session path to prevent race conditions with delete operations
 	h.sessionLocks.Lock(sessionPath)
 	defer h.sessionLocks.Unlock(sessionPath)
+
+	// Determine target branch for worktree creation
+	targetBranch := req.TargetBranch
+	if targetBranch == "" {
+		targetBranch = "origin/" + repo.Branch
+		if targetBranch == "origin/" {
+			targetBranch = "origin/main"
+		}
+	}
 
 	// Create git worktree in the atomically created directory
 	var worktreePath, baseCommitSHA string
@@ -1244,8 +1477,8 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		// Checkout an existing remote branch (e.g. a PR branch)
 		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, sessionPath, branchName)
 	} else {
-		// Create a new branch (default behavior)
-		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName)
+		// Create a new branch based on the target branch
+		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName, targetBranch)
 	}
 	if err != nil {
 		// Rollback: remove the atomically created directory and cache entry
@@ -1303,6 +1536,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Branch:        branchName,
 		WorktreePath:  worktreePath,
 		BaseCommitSHA: baseCommitSHA,
+		TargetBranch:  req.TargetBranch,
 		Task:          req.Task,
 		Status:        "idle",
 		PRStatus:      "none",
@@ -1372,6 +1606,20 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Invalidate branch cache after new session/branch creation
 	h.branchCache.InvalidateRepo(repo.Path)
 
+	// Run setup scripts if configured and auto-setup is enabled
+	if h.scriptRunner != nil {
+		config, configErr := scripts.LoadConfig(repo.Path)
+		if configErr != nil {
+			logger.Handlers.Warnf("Failed to load .chatml/config.json for session %s: %v", sess.ID, configErr)
+		} else if config != nil && config.AutoSetup && len(config.SetupScripts) > 0 {
+			if err := h.scriptRunner.RunSetupScripts(context.Background(), sess.ID, worktreePath, config.SetupScripts); err != nil {
+				logger.Handlers.Warnf("Failed to start setup scripts for session %s: %v", sess.ID, err)
+			} else {
+				logger.Handlers.Infof("Started setup scripts for session %s (%d scripts)", sess.ID, len(config.SetupScripts))
+			}
+		}
+	}
+
 	// All operations succeeded - disable rollback
 	rollback = false
 	writeJSON(w, sess)
@@ -1396,6 +1644,7 @@ type UpdateSessionRequest struct {
 	Name             *string `json:"name,omitempty"`
 	Task             *string `json:"task,omitempty"`
 	Status           *string `json:"status,omitempty"`
+	TargetBranch     *string `json:"targetBranch,omitempty"`
 	PRStatus         *string `json:"prStatus,omitempty"`
 	PRUrl            *string `json:"prUrl,omitempty"`
 	PRNumber         *int    `json:"prNumber,omitempty"`
@@ -1443,6 +1692,12 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, "invalid taskStatus value")
 		return
 	}
+	if req.TargetBranch != nil && *req.TargetBranch != "" {
+		if !strings.HasPrefix(*req.TargetBranch, "origin/") || strings.TrimPrefix(*req.TargetBranch, "origin/") == "" {
+			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
+	}
 
 	if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
 		if req.Name != nil {
@@ -1453,6 +1708,9 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Status != nil {
 			s.Status = *req.Status
+		}
+		if req.TargetBranch != nil {
+			s.TargetBranch = *req.TargetBranch
 		}
 		if req.PRStatus != nil {
 			s.PRStatus = *req.PRStatus
@@ -3691,9 +3949,15 @@ func (h *Handlers) GeneratePRDescription(w http.ResponseWriter, r *http.Request)
 		diffSummary = ""
 	}
 
-	// Load custom PR template for this workspace
-	templateKey := fmt.Sprintf("pr-template:%s", session.WorkspaceID)
-	customPrompt, _, _ := h.store.GetSetting(ctx, templateKey)
+	// Load custom PR templates (global + workspace, workspace takes precedence)
+	globalTemplate, _, _ := h.store.GetSetting(ctx, "pr-template")
+	workspaceTemplateKey := fmt.Sprintf("pr-template:%s", session.WorkspaceID)
+	workspaceTemplate, _, _ := h.store.GetSetting(ctx, workspaceTemplateKey)
+
+	customPrompt := strings.TrimSpace(globalTemplate)
+	if strings.TrimSpace(workspaceTemplate) != "" {
+		customPrompt = strings.TrimSpace(workspaceTemplate)
+	}
 
 	// Generate PR description via AI
 	result, err := h.aiClient.GeneratePRDescription(ctx, ai.GeneratePRRequest{
@@ -3769,8 +4033,9 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use workspace default branch as PR base (not the commit SHA)
-	baseBranch := session.DefaultBranch()
+	// Use the session's effective target branch as PR base
+	// Strip "origin/" prefix since GitHub expects just the branch name (e.g. "develop", not "origin/develop")
+	baseBranch := strings.TrimPrefix(session.EffectiveTargetBranch(), "origin/")
 
 	// Create the PR on GitHub
 	prResult, err := h.ghClient.CreatePullRequest(ctx, owner, repoName, github.CreatePullRequestRequest{
@@ -3853,13 +4118,58 @@ func (h *Handlers) SetPRTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := fmt.Sprintf("pr-template:%s", workspaceID)
-	if req.Template == "" {
+	trimmed := strings.TrimSpace(req.Template)
+	if trimmed == "" {
 		if err := h.store.DeleteSetting(ctx, key); err != nil {
 			writeDBError(w, err)
 			return
 		}
 	} else {
-		if err := h.store.SetSetting(ctx, key, req.Template); err != nil {
+		if err := h.store.SetSetting(ctx, key, trimmed); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetGlobalPRTemplate returns the global custom PR template
+func (h *Handlers) GetGlobalPRTemplate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	value, found, err := h.store.GetSetting(ctx, "pr-template")
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		value = ""
+	}
+
+	writeJSON(w, map[string]string{"template": value})
+}
+
+// SetGlobalPRTemplate updates the global custom PR template
+func (h *Handlers) SetGlobalPRTemplate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Template string `json:"template"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	trimmed := strings.TrimSpace(req.Template)
+	if trimmed == "" {
+		if err := h.store.DeleteSetting(ctx, "pr-template"); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		if err := h.store.SetSetting(ctx, "pr-template", trimmed); err != nil {
 			writeDBError(w, err)
 			return
 		}
@@ -3943,13 +4253,13 @@ func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Requ
 	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
 }
 
-// GetSessionBranchSyncStatus returns how far behind the session is from origin/main
+// GetSessionBranchSyncStatus returns how far behind the session is from the target branch
 func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
+	// Get session with workspace data to determine effective target branch
+	session, err := h.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -3959,8 +4269,9 @@ func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Get sync status
-	status, err := h.repoManager.GetBranchSyncStatus(ctx, session.WorktreePath, session.BaseCommitSHA)
+	// Get sync status using effective target branch
+	targetBranch := session.EffectiveTargetBranch()
+	status, err := h.repoManager.GetBranchSyncStatus(ctx, session.WorktreePath, session.BaseCommitSHA, targetBranch)
 	if err != nil {
 		writeInternalError(w, "failed to get branch sync status", err)
 		return
@@ -4001,8 +4312,8 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get session
-	session, err := h.store.GetSession(ctx, sessionID)
+	// Get session with workspace data to determine effective target branch
+	session, err := h.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -4012,12 +4323,15 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Perform the operation
+	// Determine effective target branch
+	targetBranch := session.EffectiveTargetBranch()
+
+	// Perform the operation with the effective target branch
 	var result *git.BranchSyncResult
 	if req.Operation == "rebase" {
-		result, err = h.repoManager.RebaseOntoMain(ctx, session.WorktreePath)
+		result, err = h.repoManager.RebaseOntoTarget(ctx, session.WorktreePath, targetBranch)
 	} else {
-		result, err = h.repoManager.MergeFromMain(ctx, session.WorktreePath)
+		result, err = h.repoManager.MergeFromTarget(ctx, session.WorktreePath, targetBranch)
 	}
 
 	if err != nil {
@@ -4515,3 +4829,38 @@ func (h *Handlers) SetWorkspacesBaseDir(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, map[string]string{"path": dir})
 }
+
+// GetEnvSettings returns the saved environment variables string
+func (h *Handlers) GetEnvSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	envVars, found, err := h.store.GetSetting(ctx, settingKeyEnvVars)
+	if err != nil {
+		writeInternalError(w, "failed to get env settings", err)
+		return
+	}
+	if !found {
+		envVars = ""
+	}
+	writeJSON(w, map[string]string{"envVars": envVars})
+}
+
+// SetEnvSettings saves environment variables to the settings store
+func (h *Handlers) SetEnvSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		EnvVars string `json:"envVars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyEnvVars, req.EnvVars); err != nil {
+		writeInternalError(w, "failed to save env settings", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"envVars": req.EnvVars})
+}
+

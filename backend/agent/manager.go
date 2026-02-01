@@ -89,13 +89,14 @@ type StartConversationOptions struct {
 
 // StartConversation creates and starts a new conversation within a session
 func (m *Manager) StartConversation(ctx context.Context, sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
-	session, err := m.store.GetSession(ctx, sessionID)
+	sessionWithWs, err := m.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
-	if session == nil {
+	if sessionWithWs == nil {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
+	session := &sessionWithWs.Session
 
 	convID := uuid.New().String()[:8]
 
@@ -148,11 +149,24 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		ConversationID: convID,
 	}
 
+	// Always pass the effective target branch to the agent-runner so it doesn't
+	// need to independently detect the base branch (which could disagree with the backend).
+	procOpts.TargetBranch = sessionWithWs.EffectiveTargetBranch()
+
 	// Apply optional parameters
 	if opts != nil {
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
 		procOpts.PlanMode = opts.PlanMode
 		procOpts.Instructions = opts.Instructions
+	}
+
+	// Load custom environment variables from settings
+	envVars, err := m.loadEnvVars(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load env vars from settings: %w", err)
+	}
+	if envVars != nil {
+		procOpts.EnvVars = envVars
 	}
 
 	// Create and start process
@@ -891,4 +905,16 @@ func (m *Manager) SendMessage(agentID, message string) error {
 	}
 
 	return proc.SendMessage(message)
+}
+
+// loadEnvVars reads custom environment variables from the settings store.
+func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
+	raw, found, err := m.store.GetSetting(ctx, "env-vars")
+	if err != nil {
+		return nil, err
+	}
+	if !found || raw == "" {
+		return nil, nil
+	}
+	return store.ParseEnvVars(raw), nil
 }

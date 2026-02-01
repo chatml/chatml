@@ -65,6 +65,21 @@ describe('Session API', () => {
       expect(result.archived).toBe(true);
       expect(result.pinned).toBe(true);
     });
+
+    it('should set targetBranch', async () => {
+      const result = await updateSession('workspace-1', 'session-1', {
+        targetBranch: 'origin/develop',
+      });
+      expect(result.targetBranch).toBe('origin/develop');
+    });
+
+    it('should clear targetBranch', async () => {
+      // First set it
+      await updateSession('workspace-1', 'session-1', { targetBranch: 'origin/develop' });
+      // Then clear it
+      const result = await updateSession('workspace-1', 'session-1', { targetBranch: '' });
+      expect(result.targetBranch).toBeUndefined();
+    });
   });
 });
 

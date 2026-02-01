@@ -24,6 +24,7 @@ export interface WorkspaceContextOptions {
   cwd: string;
   workspaceId: string;
   sessionId: string;
+  targetBranch?: string; // e.g. "origin/develop" — target branch for PRs and sync
   linearIssue?: string; // CLI arg like "LIN-123"
 }
 
@@ -31,6 +32,7 @@ export class WorkspaceContext {
   readonly cwd: string;
   readonly workspaceId: string;
   readonly sessionId: string;
+  readonly targetBranch: string; // Effective target branch for PRs and sync
   private _linearIssue: LinearIssue | null = null;
   private _gitState: GitState | null = null;
 
@@ -38,6 +40,7 @@ export class WorkspaceContext {
     this.cwd = options.cwd;
     this.workspaceId = options.workspaceId;
     this.sessionId = options.sessionId;
+    this.targetBranch = options.targetBranch || this.detectBaseBranch();
 
     // Resolve Linear issue from CLI arg or other sources
     if (options.linearIssue) {
@@ -68,7 +71,7 @@ export class WorkspaceContext {
   private fetchGitState(): GitState {
     try {
       const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: this.cwd, encoding: "utf-8" }).trim();
-      const baseBranch = this.detectBaseBranch();
+      const baseBranch = this.targetBranch;
       const status = execSync("git status --porcelain", { cwd: this.cwd, encoding: "utf-8" });
       const uncommittedChanges = status.trim().length > 0;
 

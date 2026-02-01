@@ -605,3 +605,60 @@ func TestProcess_OutputBufferSize_Increased(t *testing.T) {
 	// Buffer should be 4000 (increased from 1000)
 	assert.Equal(t, 4000, cap(p.output))
 }
+
+func TestNewProcessWithOptions_EnvVars(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-env",
+		Workdir:        "/tmp",
+		ConversationID: "conv-env",
+		EnvVars: map[string]string{
+			"MY_CUSTOM_VAR": "hello",
+			"ANOTHER_VAR":   "world",
+		},
+	}
+	p := NewProcessWithOptions(opts)
+
+	assert.NotNil(t, p.cmd.Env)
+	// Should contain OS env + custom vars
+	assert.True(t, len(p.cmd.Env) > 2, "should include OS env vars plus custom vars")
+
+	// Check custom vars are present
+	found := map[string]bool{"MY_CUSTOM_VAR": false, "ANOTHER_VAR": false}
+	for _, e := range p.cmd.Env {
+		if e == "MY_CUSTOM_VAR=hello" {
+			found["MY_CUSTOM_VAR"] = true
+		}
+		if e == "ANOTHER_VAR=world" {
+			found["ANOTHER_VAR"] = true
+		}
+	}
+	assert.True(t, found["MY_CUSTOM_VAR"], "MY_CUSTOM_VAR should be in env")
+	assert.True(t, found["ANOTHER_VAR"], "ANOTHER_VAR should be in env")
+}
+
+func TestNewProcessWithOptions_NoEnvVars(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-no-env",
+		Workdir:        "/tmp",
+		ConversationID: "conv-no-env",
+		EnvVars:        nil,
+	}
+	p := NewProcessWithOptions(opts)
+
+	// When no custom env vars are provided, cmd.Env should be nil
+	// (process will inherit parent environment)
+	assert.Nil(t, p.cmd.Env, "cmd.Env should be nil when no custom env vars provided")
+}
+
+func TestNewProcessWithOptions_EmptyEnvVars(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-empty-env",
+		Workdir:        "/tmp",
+		ConversationID: "conv-empty-env",
+		EnvVars:        map[string]string{},
+	}
+	p := NewProcessWithOptions(opts)
+
+	// When empty env vars map is provided, cmd.Env should be nil
+	assert.Nil(t, p.cmd.Env, "cmd.Env should be nil when empty env vars map provided")
+}

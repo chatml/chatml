@@ -2489,3 +2489,182 @@ func TestGetSessionWithWorkspace_IncludesArchiveSummaryFields(t *testing.T) {
 	assert.Equal(t, "Session summary via join", result.Session.ArchiveSummary)
 	assert.Equal(t, models.SummaryStatusCompleted, result.Session.ArchiveSummaryStatus)
 }
+
+// ============================================================================
+// Session TargetBranch Tests
+// ============================================================================
+
+func TestSession_TargetBranch_AddAndGet(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	session := &models.Session{
+		ID:           "sess-tb-1",
+		WorkspaceID:  "ws-1",
+		Name:         "target-branch-session",
+		Branch:       "feature/tb",
+		TargetBranch: "origin/develop",
+		Status:       "idle",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	got, err := s.GetSession(ctx, "sess-tb-1")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/develop", got.TargetBranch)
+}
+
+func TestSession_TargetBranch_EmptyStoredAsNull(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	session := &models.Session{
+		ID:          "sess-tb-2",
+		WorkspaceID: "ws-1",
+		Name:        "no-target-branch",
+		Branch:      "feature/no-tb",
+		Status:      "idle",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	got, err := s.GetSession(ctx, "sess-tb-2")
+	require.NoError(t, err)
+	assert.Empty(t, got.TargetBranch)
+}
+
+func TestSession_TargetBranch_Update(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-tb-3", "ws-1")
+
+	// Set target branch
+	require.NoError(t, s.UpdateSession(ctx, "sess-tb-3", func(sess *models.Session) {
+		sess.TargetBranch = "origin/release/v2"
+	}))
+
+	got, err := s.GetSession(ctx, "sess-tb-3")
+	require.NoError(t, err)
+	assert.Equal(t, "origin/release/v2", got.TargetBranch)
+}
+
+func TestSession_TargetBranch_Clear(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	// Create session with target branch set
+	session := &models.Session{
+		ID:           "sess-tb-4",
+		WorkspaceID:  "ws-1",
+		Name:         "clear-tb",
+		Branch:       "feature/clear",
+		TargetBranch: "origin/staging",
+		Status:       "idle",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	// Clear target branch by setting to empty string
+	require.NoError(t, s.UpdateSession(ctx, "sess-tb-4", func(sess *models.Session) {
+		sess.TargetBranch = ""
+	}))
+
+	got, err := s.GetSession(ctx, "sess-tb-4")
+	require.NoError(t, err)
+	assert.Empty(t, got.TargetBranch)
+}
+
+func TestSession_TargetBranch_GetSessionWithWorkspace(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	session := &models.Session{
+		ID:           "sess-tb-5",
+		WorkspaceID:  "ws-1",
+		Name:         "with-workspace",
+		Branch:       "feature/ws",
+		TargetBranch: "origin/develop",
+		Status:       "idle",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	got, err := s.GetSessionWithWorkspace(ctx, "sess-tb-5")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "origin/develop", got.TargetBranch)
+	assert.Equal(t, "origin/develop", got.EffectiveTargetBranch())
+}
+
+func TestSession_TargetBranch_EffectiveTargetBranch_FallsBack(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1") // repo has Branch: "main"
+
+	session := &models.Session{
+		ID:          "sess-tb-6",
+		WorkspaceID: "ws-1",
+		Name:        "fallback",
+		Branch:      "feature/fb",
+		Status:      "idle",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+
+	got, err := s.GetSessionWithWorkspace(ctx, "sess-tb-6")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Empty(t, got.TargetBranch)
+	assert.Equal(t, "origin/main", got.EffectiveTargetBranch())
+}
+
+func TestSession_TargetBranch_ListSessions(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+
+	// Create two sessions: one with target branch, one without
+	s1 := &models.Session{
+		ID:           "sess-tb-7a",
+		WorkspaceID:  "ws-1",
+		Name:         "with-target",
+		Branch:       "feature/a",
+		TargetBranch: "origin/staging",
+		Status:       "idle",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	s2 := &models.Session{
+		ID:          "sess-tb-7b",
+		WorkspaceID: "ws-1",
+		Name:        "no-target",
+		Branch:      "feature/b",
+		Status:      "idle",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, s1))
+	require.NoError(t, s.AddSession(ctx, s2))
+
+	sessions, err := s.ListSessions(ctx, "ws-1", false)
+	require.NoError(t, err)
+	require.Len(t, sessions, 2)
+
+	// Find each session and verify targetBranch
+	byID := map[string]*models.Session{}
+	for i := range sessions {
+		byID[sessions[i].ID] = sessions[i]
+	}
+	assert.Equal(t, "origin/staging", byID["sess-tb-7a"].TargetBranch)
+	assert.Empty(t, byID["sess-tb-7b"].TargetBranch)
+}

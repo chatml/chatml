@@ -1011,3 +1011,70 @@ func TestGetActiveStreamingConversations_MultipleRunning(t *testing.T) {
 	assert.Len(t, active, 2)
 	assert.ElementsMatch(t, []string{"conv-1", "conv-2"}, active)
 }
+
+func TestManager_LoadEnvVars(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Store env vars in settings
+	envVarsContent := `API_KEY=secret123
+DB_HOST=localhost
+PORT=8080`
+
+	err := s.SetSetting(ctx, "env-vars", envVarsContent)
+	require.NoError(t, err)
+
+	// Load env vars
+	envMap, err := m.loadEnvVars(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, envMap)
+
+	// Verify parsed map
+	assert.Equal(t, "secret123", envMap["API_KEY"])
+	assert.Equal(t, "localhost", envMap["DB_HOST"])
+	assert.Equal(t, "8080", envMap["PORT"])
+	assert.Len(t, envMap, 3)
+}
+
+func TestManager_LoadEnvVars_Empty(t *testing.T) {
+	ctx := context.Background()
+	m, _ := setupTestManager(t)
+
+	// Don't store any env vars
+	// loadEnvVars should return nil, nil when no settings exist
+	envMap, err := m.loadEnvVars(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, envMap)
+}
+
+func TestManager_LoadEnvVars_WithComments(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Store env vars with comments and blank lines
+	envVarsContent := `# Database configuration
+DB_HOST=localhost
+DB_PORT=5432
+
+# API Keys
+API_KEY=secret123
+# This is a comment in the middle
+API_SECRET=topsecret
+
+# End of config`
+
+	err := s.SetSetting(ctx, "env-vars", envVarsContent)
+	require.NoError(t, err)
+
+	// Load env vars
+	envMap, err := m.loadEnvVars(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, envMap)
+
+	// Verify comments and blank lines are skipped
+	assert.Equal(t, "localhost", envMap["DB_HOST"])
+	assert.Equal(t, "5432", envMap["DB_PORT"])
+	assert.Equal(t, "secret123", envMap["API_KEY"])
+	assert.Equal(t, "topsecret", envMap["API_SECRET"])
+	assert.Len(t, envMap, 4, "should only have 4 env vars, comments and blanks skipped")
+}

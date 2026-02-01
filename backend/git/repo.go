@@ -1017,27 +1017,23 @@ type BranchSyncResult struct {
 	ErrorMessage  string
 }
 
-// GetBranchSyncStatus checks how far behind a worktree is from origin/main
-func (rm *RepoManager) GetBranchSyncStatus(ctx context.Context, worktreePath, baseCommitSHA string) (*BranchSyncStatus, error) {
+// GetBranchSyncStatus checks how far behind a worktree is from the target branch
+func (rm *RepoManager) GetBranchSyncStatus(ctx context.Context, worktreePath, baseCommitSHA, targetBranch string) (*BranchSyncStatus, error) {
 	status := &BranchSyncStatus{
-		BaseBranch:  "origin/main",
+		BaseBranch:  targetBranch,
 		LastChecked: time.Now(),
 		Commits:     []SyncCommit{},
 	}
 
-	// Fetch origin main to get latest commits
-	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "main")
+	// Extract branch name from remote ref (e.g. "origin/develop" -> "develop")
+	branchName := strings.TrimPrefix(targetBranch, "origin/")
+
+	// Fetch the target branch to get latest commits
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", branchName)
 	_, err := cmd.CombinedOutput()
 	cancel()
 	if err != nil {
-		// Try master if main doesn't exist
-		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "master")
-		_, err = cmd.CombinedOutput()
-		cancel()
-		if err != nil {
-			return status, nil // Return empty status if fetch fails
-		}
-		status.BaseBranch = "origin/master"
+		return status, nil // Return empty status if fetch fails
 	}
 
 	// Validate baseCommitSHA
@@ -1083,27 +1079,23 @@ func (rm *RepoManager) GetBranchSyncStatus(ctx context.Context, worktreePath, ba
 	return status, nil
 }
 
-// RebaseOntoMain rebases the current branch onto origin/main
-func (rm *RepoManager) RebaseOntoMain(ctx context.Context, worktreePath string) (*BranchSyncResult, error) {
+// RebaseOntoTarget rebases the current branch onto the specified target branch (e.g. "origin/develop").
+func (rm *RepoManager) RebaseOntoTarget(ctx context.Context, worktreePath, targetBranch string) (*BranchSyncResult, error) {
 	result := &BranchSyncResult{
 		ConflictFiles: []string{},
 	}
 
-	// Fetch origin to ensure we have the latest
-	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "main")
+	// Extract branch name from remote ref (e.g. "origin/develop" -> "develop")
+	branchName := strings.TrimPrefix(targetBranch, "origin/")
+	baseBranch := targetBranch
+
+	// Fetch the target branch to ensure we have the latest
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", branchName)
 	_, err := cmd.CombinedOutput()
 	cancel()
-	baseBranch := "origin/main"
 	if err != nil {
-		// Try master if main doesn't exist
-		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "master")
-		_, err = cmd.CombinedOutput()
-		cancel()
-		if err != nil {
-			result.ErrorMessage = "failed to fetch from origin"
-			return result, nil
-		}
-		baseBranch = "origin/master"
+		result.ErrorMessage = fmt.Sprintf("failed to fetch %s from origin", branchName)
+		return result, nil
 	}
 
 	// Check for uncommitted changes first
@@ -1172,27 +1164,23 @@ func (rm *RepoManager) RebaseOntoMain(ctx context.Context, worktreePath string) 
 	return result, nil
 }
 
-// MergeFromMain merges origin/main into the current branch
-func (rm *RepoManager) MergeFromMain(ctx context.Context, worktreePath string) (*BranchSyncResult, error) {
+// MergeFromTarget merges the specified target branch into the current branch (e.g. "origin/develop").
+func (rm *RepoManager) MergeFromTarget(ctx context.Context, worktreePath, targetBranch string) (*BranchSyncResult, error) {
 	result := &BranchSyncResult{
 		ConflictFiles: []string{},
 	}
 
-	// Fetch origin to ensure we have the latest
-	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "main")
+	// Extract branch name from remote ref (e.g. "origin/develop" -> "develop")
+	branchName := strings.TrimPrefix(targetBranch, "origin/")
+	baseBranch := targetBranch
+
+	// Fetch the target branch to ensure we have the latest
+	cmd, cancel := gitCmdWithContext(ctx, worktreePath, "fetch", "origin", branchName)
 	_, err := cmd.CombinedOutput()
 	cancel()
-	baseBranch := "origin/main"
 	if err != nil {
-		// Try master if main doesn't exist
-		cmd, cancel = gitCmdWithContext(ctx, worktreePath, "fetch", "origin", "master")
-		_, err = cmd.CombinedOutput()
-		cancel()
-		if err != nil {
-			result.ErrorMessage = "failed to fetch from origin"
-			return result, nil
-		}
-		baseBranch = "origin/master"
+		result.ErrorMessage = fmt.Sprintf("failed to fetch %s from origin", branchName)
+		return result, nil
 	}
 
 	// Check for uncommitted changes first

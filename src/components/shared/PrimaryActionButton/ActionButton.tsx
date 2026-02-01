@@ -16,6 +16,7 @@ export function ActionButton({
   isLoading,
   disabled,
   onSendMessage,
+  onFixIssues,
   onArchiveSession,
   onCreatePR,
   className,
@@ -35,7 +36,10 @@ export function ActionButton({
   const handleClick = () => {
     if (isDisabled) return;
 
-    if (action.type === 'create-pr' && onCreatePR) {
+    if (action.type === 'fix-issues' && onFixIssues) {
+      // Fetch CI failure context and forward to agent
+      onFixIssues();
+    } else if (action.type === 'create-pr' && onCreatePR) {
       // Open PR creation dialog
       onCreatePR();
     } else if (action.type === 'view-pr' && action.prUrl) {

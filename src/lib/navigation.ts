@@ -218,6 +218,16 @@ export function navigate(params: NavigateParams): void {
     navStore.pushEntry(currentEntry, params.tabId);
   }
 
+  // Auto-clear unread when navigating into a workspace
+  if (params.sessionId) {
+    const session = useAppStore.getState().sessions.find(s => s.id === params.sessionId);
+    if (session) {
+      useSettingsStore.getState().markWorkspaceRead(session.workspaceId);
+    }
+  } else if (params.workspaceId) {
+    useSettingsStore.getState().markWorkspaceRead(params.workspaceId);
+  }
+
   // Wrap state mutations in startTransition so React can keep displaying
   // the current UI while the new session's component tree renders.
   // This eliminates the perceived 1+ second freeze on session navigation.
