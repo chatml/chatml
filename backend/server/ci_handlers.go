@@ -2,8 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/chatml/chatml-backend/models"
 	"github.com/go-chi/chi/v5"
@@ -269,6 +272,192 @@ func (h *Handlers) AnalyzeCIFailure(w http.ResponseWriter, r *http.Request) {
 	}
 	if targetJobName != "" {
 		result.Summary += " in job '" + targetJobName + "'"
+	}
+
+	writeJSON(w, result)
+}
+
+// CIFailureContext holds aggregated CI failure information for all failing jobs.
+type CIFailureContext struct {
+	Branch      string             `json:"branch"`
+	FailedRuns  []FailedRunContext `json:"failedRuns"`
+	TotalFailed int                `json:"totalFailed"`
+	Truncated   bool               `json:"truncated"`
+}
+
+// FailedRunContext holds failure details for a single workflow run.
+type FailedRunContext struct {
+	RunID      int64              `json:"runId"`
+	RunName    string             `json:"runName"`
+	RunURL     string             `json:"runUrl"`
+	FailedJobs []FailedJobContext `json:"failedJobs"`
+}
+
+// FailedJobContext holds failure details and truncated logs for a single job.
+type FailedJobContext struct {
+	JobID       int64    `json:"jobId"`
+	JobName     string   `json:"jobName"`
+	JobURL      string   `json:"jobUrl"`
+	FailedSteps []string `json:"failedSteps"`
+	Logs        string   `json:"logs"`
+	LogLines    int      `json:"logLines"`
+	Truncated   bool     `json:"truncated"`
+}
+
+const (
+	maxLogLinesPerJob = 150
+	// maxFailedJobs is the total number of failed jobs collected across all workflow runs.
+	// Jobs beyond this limit are still counted in TotalFailed but their logs are not fetched.
+	maxFailedJobs = 5
+)
+
+// truncateLogLines returns the last n lines of a log string.
+func truncateLogLines(logs string, maxLines int) (string, int, bool) {
+	lines := strings.Split(logs, "\n")
+	totalLines := len(lines)
+	if totalLines <= maxLines {
+		return logs, totalLines, false
+	}
+	truncated := strings.Join(lines[totalLines-maxLines:], "\n")
+	return truncated, totalLines, true
+}
+
+// GetCIFailureContext aggregates CI failure context for a session's branch.
+// Returns failed workflow runs, their failed jobs, failed step names, and truncated logs.
+func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
+	ghCtx, ok := h.resolveGitHubContext(w, r)
+	if !ok {
+		return
+	}
+
+	ctx := r.Context()
+	branch := ghCtx.session.Branch
+
+	// Fetch workflow runs for this branch
+	runs, err := h.ghClient.ListWorkflowRuns(ctx, ghCtx.owner, ghCtx.repo, branch)
+	if err != nil {
+		writeInternalError(w, "failed to list workflow runs", err)
+		return
+	}
+
+	// Find the latest head SHA from completed runs
+	var latestSHA string
+	for _, run := range runs {
+		if run.Status == "completed" {
+			latestSHA = run.HeadSHA
+			break // runs are returned newest first
+		}
+	}
+
+	if latestSHA == "" {
+		writeJSON(w, CIFailureContext{
+			Branch:      branch,
+			FailedRuns:  []FailedRunContext{},
+			TotalFailed: 0,
+		})
+		return
+	}
+
+	// Filter to failed runs from the latest SHA
+	var failedRuns []FailedRunContext
+	totalFailed := 0
+	truncatedOverall := false
+	jobCount := 0
+
+	for _, run := range runs {
+		if run.HeadSHA != latestSHA {
+			continue
+		}
+		if run.Status != "completed" {
+			continue
+		}
+		if run.Conclusion != "failure" && run.Conclusion != "timed_out" {
+			continue
+		}
+
+		// Fetch jobs for this failed run
+		jobs, err := h.ghClient.ListWorkflowJobs(ctx, ghCtx.owner, ghCtx.repo, run.ID)
+		if err != nil {
+			log.Printf("Failed to fetch jobs for run %d: %v", run.ID, err)
+			continue
+		}
+
+		var failedJobs []FailedJobContext
+		for _, job := range jobs {
+			if job.Conclusion != "failure" && job.Conclusion != "timed_out" {
+				continue
+			}
+
+			totalFailed++
+			jobCount++
+			if jobCount > maxFailedJobs {
+				truncatedOverall = true
+				continue
+			}
+
+			// Extract failed step names
+			var failedSteps []string
+			for _, step := range job.Steps {
+				if step.Conclusion == "failure" || step.Conclusion == "timed_out" {
+					failedSteps = append(failedSteps, step.Name)
+				}
+			}
+
+			failedJobs = append(failedJobs, FailedJobContext{
+				JobID:       job.ID,
+				JobName:     job.Name,
+				JobURL:      job.HTMLURL,
+				FailedSteps: failedSteps,
+			})
+		}
+
+		if len(failedJobs) > 0 {
+			failedRuns = append(failedRuns, FailedRunContext{
+				RunID:      run.ID,
+				RunName:    run.Name,
+				RunURL:     run.HTMLURL,
+				FailedJobs: failedJobs,
+			})
+		}
+	}
+
+	// Fetch logs for all failed jobs in parallel.
+	// Each goroutine writes to a distinct slice element so no mutex is needed.
+	var wg sync.WaitGroup
+
+	for i := range failedRuns {
+		for j := range failedRuns[i].FailedJobs {
+			wg.Add(1)
+			go func(runIdx, jobIdx int) {
+				defer wg.Done()
+				job := &failedRuns[runIdx].FailedJobs[jobIdx]
+
+				logs, err := h.ghClient.GetJobLogs(ctx, ghCtx.owner, ghCtx.repo, job.JobID)
+				if err != nil {
+					log.Printf("Failed to fetch logs for job %d: %v", job.JobID, err)
+					job.Logs = "(logs unavailable)"
+					job.LogLines = 0
+					return
+				}
+
+				truncatedLogs, totalLines, wasTruncated := truncateLogLines(logs, maxLogLinesPerJob)
+				job.Logs = truncatedLogs
+				job.LogLines = totalLines
+				job.Truncated = wasTruncated
+			}(i, j)
+		}
+	}
+	wg.Wait()
+
+	result := CIFailureContext{
+		Branch:      branch,
+		FailedRuns:  failedRuns,
+		TotalFailed: totalFailed,
+		Truncated:   truncatedOverall,
+	}
+
+	if result.FailedRuns == nil {
+		result.FailedRuns = []FailedRunContext{}
 	}
 
 	writeJSON(w, result)
