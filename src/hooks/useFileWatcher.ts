@@ -3,47 +3,49 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import {
-  watchWorkspace,
-  unwatchWorkspace,
+  startFileWatcher,
+  stopFileWatcher,
   listenForFileChanges,
   type FileChangedEvent,
   sendNotification,
 } from '@/lib/tauri';
-import { getRepoFileContent } from '@/lib/api';
+import { getRepoFileContent, getWorkspacesBasePath } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 
 /**
- * Hook to watch for file changes in the selected workspace
- * - When a file changes on disk:
- *   - If the file is open in a tab and NOT dirty: reload content
- *   - If the file is open in a tab and IS dirty: show conflict warning
+ * Global file watcher coordinator hook.
+ *
+ * Responsibilities:
+ * 1. Start the single global file watcher on mount (fetches base path from backend)
+ * 2. Register ONE Tauri event listener that writes to the Zustand store
+ * 3. React to file change events for dirty-tab / reload logic
+ * 4. Stop the watcher on unmount
+ *
+ * Other hooks (useGitStatus, ChangesPanel) subscribe to `lastFileChange` in the
+ * store instead of registering their own Tauri listeners.
  */
 export function useFileWatcher() {
-  // Use targeted selectors to prevent re-renders on unrelated store updates
-  const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
-  const workspaces = useAppStore((s) => s.workspaces);
-  const fileTabs = useAppStore((s) => s.fileTabs);
-  const updateFileTab = useAppStore((s) => s.updateFileTab);
+  const setLastFileChange = useAppStore((s) => s.setLastFileChange);
   const { error: showError } = useToast();
 
-  // Track the currently watched workspace to avoid duplicate watches
-  const watchedWorkspaceRef = useRef<string | null>(null);
+  // Track whether we've started the global watcher
+  const watcherStartedRef = useRef(false);
 
-  // Handle file change events
+  // Handle file change events — check open tabs for conflicts/reloads.
+  // Reads fileTabs from the store directly to always get the latest state,
+  // avoiding stale closures when the Tauri listener outlives a render cycle.
   const handleFileChange = useCallback(async (event: FileChangedEvent) => {
+    const { fileTabs, updateFileTab } = useAppStore.getState();
+
     // Find if this file is open in a tab
     const openTab = fileTabs.find(
       (tab) => tab.workspaceId === event.workspaceId && tab.path === event.path
     );
 
-    if (!openTab) {
-      // File is not open, nothing to do
-      return;
-    }
+    if (!openTab) return;
 
-    // Check if the tab has unsaved changes
     if (openTab.isDirty) {
-      // Show conflict warning - don't reload
+      // Show conflict warning — don't reload
       sendNotification(
         `${openTab.name} changed on disk`,
         'The file has been modified externally. Your unsaved changes may conflict.'
@@ -52,79 +54,77 @@ export function useFileWatcher() {
       return;
     }
 
-    // File is open and not dirty - reload content
+    // File is open and not dirty — reload content
     try {
-      // Reload the file content
       const response = await getRepoFileContent(event.workspaceId, event.path);
-
-      // Update the tab with new content
       updateFileTab(openTab.id, {
         content: response.content,
         originalContent: response.content,
         isLoading: false,
       });
-
-      // Log that file was reloaded (keeping it subtle since reload is automatic)
       console.log(`File reloaded: ${openTab.name} was modified externally`);
     } catch (error) {
       console.error('Failed to reload file:', error);
     }
-  }, [fileTabs, updateFileTab]);
+  }, []);
 
-  // Start/stop watching when workspace changes
+  // Start global watcher once on mount
   useEffect(() => {
-    if (!selectedWorkspaceId) {
-      // No workspace selected - stop watching if we were
-      if (watchedWorkspaceRef.current) {
-        unwatchWorkspace(watchedWorkspaceRef.current);
-        watchedWorkspaceRef.current = null;
+    let isMounted = true;
+
+    async function initWatcher() {
+      if (watcherStartedRef.current) return;
+
+      try {
+        const basePath = await getWorkspacesBasePath();
+        if (!isMounted) return;
+
+        // createIfNeeded=true: the default path may not exist yet on first launch
+        const started = await startFileWatcher(basePath, true);
+        if (started && isMounted) {
+          watcherStartedRef.current = true;
+          console.log('Global file watcher started on:', basePath);
+        }
+      } catch (err) {
+        console.error('Failed to start global file watcher:', err);
       }
-      return;
     }
 
-    const workspace = workspaces.find((w) => w.id === selectedWorkspaceId);
-    if (!workspace) return;
+    initWatcher();
 
-    // If already watching this workspace, don't restart
-    if (watchedWorkspaceRef.current === selectedWorkspaceId) {
-      return;
-    }
-
-    // Stop watching previous workspace
-    if (watchedWorkspaceRef.current) {
-      unwatchWorkspace(watchedWorkspaceRef.current);
-    }
-
-    // Start watching new workspace
-    watchWorkspace(selectedWorkspaceId, workspace.path);
-    watchedWorkspaceRef.current = selectedWorkspaceId;
-
-    // Cleanup on unmount
     return () => {
-      if (watchedWorkspaceRef.current) {
-        unwatchWorkspace(watchedWorkspaceRef.current);
-        watchedWorkspaceRef.current = null;
+      isMounted = false;
+      if (watcherStartedRef.current) {
+        stopFileWatcher();
+        watcherStartedRef.current = false;
       }
     };
-  }, [selectedWorkspaceId, workspaces]);
+  // Empty deps: the watcher lifecycle is app-scoped (start once on mount, stop on unmount).
+  // We intentionally don't re-run when basePath could change — SettingsPage handles that separately.
+  }, []);
 
-  // Listen for file change events
+  // Register single Tauri event listener → store + tab conflict handling
   useEffect(() => {
     const cleanupRef = { current: null as (() => void) | null };
     let isMounted = true;
 
-    listenForFileChanges(handleFileChange)
+    const onFileChange = (event: FileChangedEvent) => {
+      // Write to store so other hooks can react
+      setLastFileChange(event);
+      // Handle tab conflicts/reloads
+      handleFileChange(event);
+    };
+
+    listenForFileChanges(onFileChange)
       .then((unlisten) => {
         if (isMounted) {
           cleanupRef.current = unlisten;
         } else {
-          // Component unmounted before listener was registered
-          // Store for cleanup - the cleanup function will handle it safely
           cleanupRef.current = unlisten;
         }
       })
       .catch((err) => {
-        console.error('Failed to initialize file watcher:', err);
+        console.error('Failed to initialize file watcher listener:', err);
         if (isMounted) {
           showError("File watching unavailable. External file changes won't be detected.");
         }
@@ -132,8 +132,6 @@ export function useFileWatcher() {
 
     return () => {
       isMounted = false;
-      // Delay cleanup slightly to allow Tauri listener to fully register
-      // This prevents "listeners[eventId].handlerId is undefined" errors
       setTimeout(() => {
         try {
           cleanupRef.current?.();
@@ -142,5 +140,5 @@ export function useFileWatcher() {
         }
       }, 10);
     };
-  }, [handleFileChange, showError]);
+  }, [handleFileChange, setLastFileChange, showError]);
 }

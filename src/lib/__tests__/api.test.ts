@@ -1,14 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { setupServer } from 'msw/node';
-import { handlers } from '../../__mocks__/handlers';
-import { listSessions, updateSession } from '../api';
+import { describe, it, expect } from 'vitest';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../__mocks__/server';
+import { listSessions, updateSession, getWorkspacesBasePath, setWorkspacesBasePath } from '../api';
 
-// Setup MSW server
-const server = setupServer(...handlers);
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterAll(() => server.close());
-afterEach(() => server.resetHandlers());
+const API_BASE = 'http://localhost:9876';
 
 describe('Session API', () => {
   describe('listSessions', () => {
@@ -60,6 +55,66 @@ describe('Session API', () => {
       });
       expect(result.archived).toBe(true);
       expect(result.pinned).toBe(true);
+    });
+  });
+});
+
+describe('Settings API', () => {
+  describe('getWorkspacesBasePath', () => {
+    it('returns path from API', async () => {
+      server.use(
+        http.get(`${API_BASE}/api/settings/workspaces-base-dir`, () => {
+          return HttpResponse.json({ path: '/custom/workspaces' });
+        })
+      );
+
+      const result = await getWorkspacesBasePath();
+      expect(result).toBe('/custom/workspaces');
+    });
+
+    it('rejects on server error', async () => {
+      server.use(
+        http.get(`${API_BASE}/api/settings/workspaces-base-dir`, () => {
+          return HttpResponse.json({ error: 'Internal error' }, { status: 500 });
+        })
+      );
+
+      await expect(getWorkspacesBasePath()).rejects.toThrow();
+    });
+  });
+
+  describe('setWorkspacesBasePath', () => {
+    it('sends path and returns result', async () => {
+      server.use(
+        http.put(`${API_BASE}/api/settings/workspaces-base-dir`, async ({ request }) => {
+          const body = await request.json() as { path: string };
+          return HttpResponse.json({ path: body.path });
+        })
+      );
+
+      const result = await setWorkspacesBasePath('/new/path');
+      expect(result).toBe('/new/path');
+    });
+
+    it('resets with empty path', async () => {
+      server.use(
+        http.put(`${API_BASE}/api/settings/workspaces-base-dir`, () => {
+          return HttpResponse.json({ path: '/default/workspaces' });
+        })
+      );
+
+      const result = await setWorkspacesBasePath('');
+      expect(result).toBe('/default/workspaces');
+    });
+
+    it('rejects on validation error', async () => {
+      server.use(
+        http.put(`${API_BASE}/api/settings/workspaces-base-dir`, () => {
+          return HttpResponse.json({ error: 'path does not exist' }, { status: 400 });
+        })
+      );
+
+      await expect(setWorkspacesBasePath('/nonexistent')).rejects.toThrow();
     });
   });
 });

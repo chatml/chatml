@@ -16,7 +16,7 @@ import { navigate } from '@/lib/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
-import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, registerSession, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
@@ -470,6 +470,16 @@ export default function Home() {
         const allSessions = dashboardData.sessions.map(s => mapSessionDTO(s));
         setSessions(allSessions);
 
+        // Register all sessions with the global file watcher for event routing
+        for (const session of allSessions) {
+          if (session.worktreePath) {
+            const dirName = getSessionDirName(session.worktreePath);
+            if (dirName) {
+              registerSession(dirName, session.id);
+            }
+          }
+        }
+
         // Map conversations (already included in the batch response)
         const allConversations = dashboardData.sessions.flatMap(s =>
           s.conversations.map(conversationToConversation)
@@ -518,6 +528,14 @@ export default function Home() {
     try {
       // Backend generates city-based session name, branch, and worktree path
       const newSession = await createSession(selectedWorkspaceId);
+
+      // Register with global file watcher before adding to store
+      if (newSession.worktreePath) {
+        const dirName = getSessionDirName(newSession.worktreePath);
+        if (dirName) {
+          registerSession(dirName, newSession.id);
+        }
+      }
 
       // Add to store and select
       addSession(mapSessionDTO(newSession));

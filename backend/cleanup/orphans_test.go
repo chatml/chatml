@@ -40,6 +40,10 @@ func (m *mockStore) ListSessions(ctx context.Context, workspaceID string, includ
 	return filtered, nil
 }
 
+func (m *mockStore) GetSetting(ctx context.Context, key string) (string, bool, error) {
+	return "", false, nil
+}
+
 func (m *mockStore) GetSession(ctx context.Context, sessionID string) (*models.Session, error) {
 	if m.getSessionErr != nil {
 		return nil, m.getSessionErr

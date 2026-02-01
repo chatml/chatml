@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionFileDiff, sendConversationMessage, type FileChangeDTO } from '@/lib/api';
-import { watchWorkspace, unwatchWorkspace, listenForFileChanges, type FileChangedEvent } from '@/lib/tauri';
 import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
@@ -357,66 +356,15 @@ export function ChangesPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchSyncCompletedAt]);
 
-  // Watch session worktree for file changes and auto-refresh
-  // Deferred so the Tauri IPC setup doesn't block session navigation render
+  // React to file change events from centralized store
+  // Note: session registration is handled at creation/dashboard load time (page.tsx, WorkspaceSidebar)
+  const lastFileChange = useAppStore((s) => s.lastFileChange);
   useEffect(() => {
-    if (!selectedSessionId || !currentSession?.worktreePath) return;
-
-    const cleanupRef = { current: null as (() => void) | null };
-    let isMounted = true;
-
-    // Defer the file watcher setup via requestIdleCallback to avoid blocking the navigation render
-    const setupWatcher = () => {
-      if (!isMounted) return;
-
-      // Start watching the session's worktree directory (using session ID as the key)
-      watchWorkspace(selectedSessionId, currentSession.worktreePath);
-
-      const handleFileChange = (event: FileChangedEvent) => {
-        // Only refetch if the file change is for this session's worktree
-        if (event.workspaceId === selectedSessionId) {
-          debouncedFetchChanges();
-        }
-      };
-
-      listenForFileChanges(handleFileChange).then((unlisten) => {
-        if (isMounted) {
-          cleanupRef.current = unlisten;
-        } else {
-          try {
-            unlisten();
-          } catch {
-            // Ignore errors if listener wasn't fully registered
-          }
-        }
-      });
-    };
-
-    let cancelDefer: () => void;
-    if (typeof requestIdleCallback === 'function') {
-      const id = requestIdleCallback(setupWatcher, { timeout: 3000 });
-      cancelDefer = () => cancelIdleCallback(id);
-    } else {
-      const id = setTimeout(setupWatcher, 150);
-      cancelDefer = () => clearTimeout(id);
+    if (!selectedSessionId || !lastFileChange) return;
+    if (lastFileChange.workspaceId === selectedSessionId) {
+      debouncedFetchChanges();
     }
-
-    return () => {
-      isMounted = false;
-      cancelDefer();
-      try {
-        cleanupRef.current?.();
-      } catch {
-        // Ignore errors if listener cleanup fails
-      }
-      // Stop watching this session's worktree
-      unwatchWorkspace(selectedSessionId);
-      // Clear any pending debounce timeout
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, [selectedSessionId, currentSession?.worktreePath, debouncedFetchChanges]);
+  }, [lastFileChange, selectedSessionId, debouncedFetchChanges]);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">

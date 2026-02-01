@@ -134,8 +134,11 @@ pub fn run() {
             commands::restart_sidecar,
             commands::set_minimize_to_tray,
             commands::is_window_visible,
-            commands::watch_workspace,
-            commands::unwatch_workspace,
+            // Global file watcher commands
+            commands::start_file_watcher,
+            commands::stop_file_watcher,
+            commands::register_session,
+            commands::unregister_session,
             commands::get_auth_token,
             commands::get_backend_port,
             commands::get_pending_oauth_callback,

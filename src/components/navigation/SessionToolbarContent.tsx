@@ -12,7 +12,7 @@ import {
   toStoreConversation,
 } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
-import { copyToClipboard, openInVSCode, openInTerminal, showInFinder } from '@/lib/tauri';
+import { copyToClipboard, openInVSCode, openInTerminal, showInFinder, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
@@ -200,6 +200,13 @@ export function SessionToolbarContent() {
   const handleDelete = useCallback(async () => {
     if (!selectedSession || !selectedWorkspaceId) return;
     try {
+      // Unregister from global file watcher before deleting
+      if (selectedSession.worktreePath) {
+        const dirName = getSessionDirName(selectedSession.worktreePath);
+        if (dirName) {
+          unregisterSession(dirName);
+        }
+      }
       await apiDeleteSession(selectedWorkspaceId, selectedSession.id);
       removeSession(selectedSession.id);
       showSuccess('Session deleted');
