@@ -828,6 +828,35 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 	return sessions, nil
 }
 
+// ArchivedSessionDir holds the minimal info needed to register an archived session with the file watcher.
+type ArchivedSessionDir struct {
+	ID           string
+	WorktreePath string
+}
+
+// ListArchivedSessionDirs returns id and worktree_path for archived sessions.
+// This is a lightweight query used to register archived worktrees with the file watcher.
+func (s *SQLiteStore) ListArchivedSessionDirs(ctx context.Context) ([]ArchivedSessionDir, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, worktree_path FROM sessions WHERE archived = 1`)
+	if err != nil {
+		return nil, fmt.Errorf("ListArchivedSessionDirs: %w", err)
+	}
+	defer rows.Close()
+
+	var dirs []ArchivedSessionDir
+	for rows.Next() {
+		var d ArchivedSessionDir
+		if err := rows.Scan(&d.ID, &d.WorktreePath); err != nil {
+			return nil, fmt.Errorf("ListArchivedSessionDirs scan: %w", err)
+		}
+		dirs = append(dirs, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListArchivedSessionDirs rows: %w", err)
+	}
+	return dirs, nil
+}
+
 func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func(*models.Session)) error {
 	// Read current state outside retry to avoid stale data on retry
 	session, err := s.getSessionNoLock(ctx, id)

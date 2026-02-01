@@ -542,10 +542,18 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, repos)
 }
 
+// ArchivedSessionDirJSON is the JSON representation of an archived session's directory info.
+// Used by the frontend to register archived worktrees with the file watcher.
+type ArchivedSessionDirJSON struct {
+	DirName   string `json:"dirName"`
+	SessionID string `json:"sessionId"`
+}
+
 // DashboardData represents the combined data for initial dashboard load
 type DashboardData struct {
-	Workspaces []*models.Repo              `json:"workspaces"`
-	Sessions   []*SessionWithConversations `json:"sessions"`
+	Workspaces          []*models.Repo              `json:"workspaces"`
+	Sessions            []*SessionWithConversations  `json:"sessions"`
+	ArchivedSessionDirs []ArchivedSessionDirJSON     `json:"archivedSessionDirs"`
 }
 
 // SessionWithConversations embeds session data with its conversations
@@ -566,6 +574,22 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetch archived session dirs for file watcher registration
+	archivedDirs, err := h.store.ListArchivedSessionDirs(ctx)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	archivedSessionDirs := make([]ArchivedSessionDirJSON, 0, len(archivedDirs))
+	for _, d := range archivedDirs {
+		if d.WorktreePath != "" {
+			archivedSessionDirs = append(archivedSessionDirs, ArchivedSessionDirJSON{
+				DirName:   filepath.Base(d.WorktreePath),
+				SessionID: d.ID,
+			})
+		}
+	}
+
 	// Fetch all sessions across all workspaces in a single query
 	// Pass false to exclude archived sessions from dashboard data
 	allSessions, err := h.store.ListAllSessions(ctx, false)
@@ -577,8 +601,9 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 	// Early return if no sessions
 	if len(allSessions) == 0 {
 		writeJSON(w, DashboardData{
-			Workspaces: repos,
-			Sessions:   []*SessionWithConversations{},
+			Workspaces:          repos,
+			Sessions:            []*SessionWithConversations{},
+			ArchivedSessionDirs: archivedSessionDirs,
 		})
 		return
 	}
@@ -654,8 +679,9 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, DashboardData{
-		Workspaces: repos,
-		Sessions:   sessionsWithConvs,
+		Workspaces:          repos,
+		Sessions:            sessionsWithConvs,
+		ArchivedSessionDirs: archivedSessionDirs,
 	})
 }
 

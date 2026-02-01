@@ -1192,9 +1192,15 @@ export interface SessionWithConversationsDTO extends SessionDTO {
   conversations: ConversationDTO[];
 }
 
+export interface ArchivedSessionDirDTO {
+  dirName: string;
+  sessionId: string;
+}
+
 export interface DashboardDataDTO {
   workspaces: RepoDTO[];
   sessions: SessionWithConversationsDTO[];
+  archivedSessionDirs?: ArchivedSessionDirDTO[];
 }
 
 /**

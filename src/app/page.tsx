@@ -498,6 +498,13 @@ export default function Home() {
           }
         }
 
+        // Register archived sessions so the file watcher doesn't log noise for their worktrees
+        if (dashboardData.archivedSessionDirs) {
+          for (const entry of dashboardData.archivedSessionDirs) {
+            registerSession(entry.dirName, entry.sessionId);
+          }
+        }
+
         // Map conversations (already included in the batch response)
         const allConversations = dashboardData.sessions.flatMap(s =>
           s.conversations.map(conversationToConversation)
