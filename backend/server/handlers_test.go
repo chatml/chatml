@@ -3125,7 +3125,7 @@ func setupTestHandlersWithGitHub(t *testing.T, ghServer *httptest.Server) (*Hand
 		prCache.Close()
 	})
 
-	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil)
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil, nil)
 
 	return handlers, sqliteStore
 }
