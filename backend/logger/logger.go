@@ -42,6 +42,9 @@ var (
 	// Scripts
 	Scripts *log.Logger
 
+	// Caching
+	DirCache *log.Logger
+
 	// Utilities
 	Cleanup *log.Logger
 	GitHub  *log.Logger
@@ -124,6 +127,9 @@ func init() {
 
 	// Scripts
 	Scripts = base.WithPrefix(colorAgent.Render("scripts"))
+
+	// Caching
+	DirCache = base.WithPrefix(colorWatch.Render("dir-cache"))
 
 	// Utilities
 	Cleanup = base.WithPrefix(colorUtil.Render("cleanup"))

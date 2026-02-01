@@ -4058,3 +4058,144 @@ func TestCreateSession_WithBranchPrefix(t *testing.T) {
 	assert.True(t, strings.HasPrefix(session.Branch, "feature/"),
 		"Expected branch name to start with 'feature/', got: %s", session.Branch)
 }
+
+// ============================================================================
+// DirListingCache Watcher Tests
+// ============================================================================
+
+func TestExtractRootPath(t *testing.T) {
+	tests := []struct {
+		key      string
+		wantPath string
+		wantOK   bool
+	}{
+		{"repo:/Users/me/project:depth:1", "/Users/me/project", true},
+		{"session:/Users/me/worktree:depth:10", "/Users/me/worktree", true},
+		{"repo:/path/with:colons:depth:3", "/path/with:colons", true},
+		{"unknown:/foo:depth:1", "", false},
+		{"invalid-key", "", false},
+		{"", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			path, ok := extractRootPath(tt.key)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.wantPath, path)
+		})
+	}
+}
+
+func TestDirCacheWatcherRefCounting(t *testing.T) {
+	dir := t.TempDir()
+
+	calls := 0
+	w, err := newDirCacheWatcher(func(string) { calls++ }, 50*time.Millisecond)
+	require.NoError(t, err)
+	defer w.close()
+
+	// First add creates the watch
+	require.NoError(t, w.addWatch(dir))
+	assert.Equal(t, 1, w.watches[dir])
+
+	// Second add increments refcount
+	require.NoError(t, w.addWatch(dir))
+	assert.Equal(t, 2, w.watches[dir])
+
+	// First remove decrements but keeps watch
+	w.removeWatch(dir)
+	assert.Equal(t, 1, w.watches[dir])
+
+	// Second remove actually removes the watch
+	w.removeWatch(dir)
+	_, exists := w.watches[dir]
+	assert.False(t, exists)
+}
+
+func TestDirCacheWatcherInvalidatesOnChange(t *testing.T) {
+	dir := t.TempDir()
+
+	invalidated := make(chan string, 10)
+	w, err := newDirCacheWatcher(func(path string) {
+		invalidated <- path
+	}, 50*time.Millisecond)
+	require.NoError(t, err)
+	defer w.close()
+
+	require.NoError(t, w.addWatch(dir))
+
+	// Create a file in the watched directory
+	err = os.WriteFile(filepath.Join(dir, "test.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
+	// Should receive invalidation within a reasonable time
+	select {
+	case path := <-invalidated:
+		assert.Equal(t, dir, path)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for cache invalidation")
+	}
+}
+
+func TestDirCacheWatcherDebounce(t *testing.T) {
+	dir := t.TempDir()
+
+	var mu sync.Mutex
+	invalidations := 0
+	w, err := newDirCacheWatcher(func(string) {
+		mu.Lock()
+		invalidations++
+		mu.Unlock()
+	}, 100*time.Millisecond)
+	require.NoError(t, err)
+	defer w.close()
+
+	require.NoError(t, w.addWatch(dir))
+
+	// Rapidly create multiple files
+	for i := 0; i < 5; i++ {
+		err = os.WriteFile(filepath.Join(dir, fmt.Sprintf("file%d.txt", i)), []byte("data"), 0644)
+		require.NoError(t, err)
+	}
+
+	// Wait for debounce to flush
+	time.Sleep(300 * time.Millisecond)
+
+	mu.Lock()
+	count := invalidations
+	mu.Unlock()
+
+	// Should have been debounced to a small number of invalidations (ideally 1)
+	assert.LessOrEqual(t, count, 3, "expected debouncing to reduce invalidation count")
+	assert.GreaterOrEqual(t, count, 1, "expected at least one invalidation")
+}
+
+func TestDirListingCacheWithWatcher(t *testing.T) {
+	dir := t.TempDir()
+
+	cache := NewDirListingCache(5 * time.Minute)
+	defer cache.Close()
+
+	// Watcher should be active
+	require.NotNil(t, cache.watcher)
+
+	// Set a cache entry for this directory
+	key := fmt.Sprintf("repo:%s:depth:1", dir)
+	cache.Set(key, []*FileNode{{Name: "old.txt"}})
+
+	// Verify it's cached
+	data, ok := cache.Get(key)
+	require.True(t, ok)
+	assert.Len(t, data, 1)
+
+	// Create a file to trigger invalidation
+	err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("hello"), 0644)
+	require.NoError(t, err)
+
+	// Wait for debounce + processing
+	time.Sleep(500 * time.Millisecond)
+
+	// Cache entry should be invalidated
+	_, ok = cache.Get(key)
+	assert.False(t, ok, "expected cache entry to be invalidated after filesystem change")
+}
