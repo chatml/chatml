@@ -15,6 +15,7 @@ import type {
   McpServerStatus,
   CheckpointInfo,
   BudgetStatus,
+  ContextUsage,
   ToolUsage,
   RunSummary,
   ReviewComment,
@@ -126,6 +127,9 @@ interface AppState {
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
   budgetStatus: BudgetStatus | null;
+
+  // Context window usage (keyed by conversationId)
+  contextUsage: { [conversationId: string]: ContextUsage };
 
   // Review comments state (keyed by sessionId)
   reviewComments: { [sessionId: string]: ReviewComment[] };
@@ -247,6 +251,10 @@ interface AppState {
   clearCheckpoints: () => void;
   setBudgetStatus: (status: BudgetStatus | null) => void;
 
+  // Context usage actions
+  setContextUsage: (conversationId: string, usage: Partial<ContextUsage>) => void;
+  clearContextUsage: (conversationId: string) => void;
+
   // Review comments actions
   setReviewComments: (sessionId: string, comments: ReviewComment[]) => void;
   addReviewComment: (sessionId: string, comment: ReviewComment) => void;
@@ -310,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpServers: [],
   checkpoints: [],
   budgetStatus: null,
+  contextUsage: {},
   reviewComments: {},
   branchSyncStatus: {},
   branchSyncLoading: {},
@@ -412,10 +421,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cleanedStreamingState = { ...state.streamingState };
     const cleanedActiveTools = { ...state.activeTools };
     const cleanedAgentTodos = { ...state.agentTodos };
+    const cleanedContextUsage = { ...state.contextUsage };
     for (const convId of sessionConvIds) {
       delete cleanedStreamingState[convId];
       delete cleanedActiveTools[convId];
       delete cleanedAgentTodos[convId];
+      delete cleanedContextUsage[convId];
     }
 
     // Clean up custom todos, session outputs, and review comments
@@ -434,6 +445,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       streamingState: cleanedStreamingState,
       activeTools: cleanedActiveTools,
       agentTodos: cleanedAgentTodos,
+      contextUsage: cleanedContextUsage,
       customTodos: remainingCustomTodos,
       sessionOutputs: remainingSessionOutputs,
       reviewComments: remainingReviewComments,
@@ -526,6 +538,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
+    const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -553,6 +566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
       pendingUserQuestion: remainingPendingQuestions,
+      contextUsage: remainingContextUsage,
     };
   }),
   selectConversation: (id) => set({ selectedConversationId: id }),
@@ -1088,6 +1102,28 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
   clearCheckpoints: () => set({ checkpoints: [] }),
   setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
+
+  // Context usage actions
+  setContextUsage: (conversationId, usage) => set((state) => {
+    const existing = state.contextUsage[conversationId] || {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      contextWindow: 200000,
+      lastUpdated: Date.now(),
+    };
+    return {
+      contextUsage: {
+        ...state.contextUsage,
+        [conversationId]: { ...existing, ...usage, lastUpdated: Date.now() },
+      },
+    };
+  }),
+  clearContextUsage: (conversationId) => set((state) => {
+    const { [conversationId]: _, ...rest } = state.contextUsage;
+    return { contextUsage: rest };
+  }),
 
   // Review comments actions
   setReviewComments: (sessionId, comments) => set((state) => ({

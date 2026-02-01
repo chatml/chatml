@@ -366,6 +366,37 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
+      case 'context_usage':
+        // Update context usage from per-assistant-message token counts
+        if (event?.inputTokens !== undefined) {
+          store.setContextUsage(conversationId, {
+            inputTokens: event.inputTokens ?? 0,
+            outputTokens: event.outputTokens ?? 0,
+            cacheReadInputTokens: event.cacheReadInputTokens ?? 0,
+            cacheCreationInputTokens: event.cacheCreationInputTokens ?? 0,
+          });
+        }
+        break;
+
+      case 'context_window_size':
+        // Update the max context window from modelUsage in result
+        if (event?.contextWindow) {
+          store.setContextUsage(conversationId, {
+            contextWindow: event.contextWindow,
+          });
+        }
+        break;
+
+      case 'compact_boundary':
+        // After compaction, reset all token fields until next assistant message provides fresh data
+        store.setContextUsage(conversationId, {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        });
+        break;
+
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
