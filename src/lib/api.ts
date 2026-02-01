@@ -835,6 +835,7 @@ export async function createConversation(
   data: {
     type?: 'task' | 'review' | 'chat';
     message?: string;
+    planMode?: boolean;
     maxThinkingTokens?: number;
     attachments?: AttachmentDTO[];
   }

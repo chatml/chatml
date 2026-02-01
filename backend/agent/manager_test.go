@@ -670,3 +670,32 @@ func TestHandleConversationCompletion_CompletesNormally(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.ConversationStatusIdle, conv.Status)
 }
+
+// ============================================================================
+// SetConversationPlanMode Tests
+// ============================================================================
+
+func TestSetConversationPlanMode_NoProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	// Should fail when no process exists for the conversation
+	err := m.SetConversationPlanMode("nonexistent-conv", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conversation process not running")
+}
+
+func TestSetConversationPlanMode_StoppedProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	// Create a process and stop it
+	proc := NewProcess("stopped-proc", "/tmp", "conv-stopped")
+	proc.Stop()
+
+	m.mu.Lock()
+	m.convProcesses["conv-stopped"] = proc
+	m.mu.Unlock()
+
+	err := m.SetConversationPlanMode("conv-stopped", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conversation process not running")
+}

@@ -81,6 +81,20 @@ const maxBudgetUsd = maxBudgetIndex !== -1 ? parseFloat(args[maxBudgetIndex + 1]
 const maxTurns = maxTurnsIndex !== -1 ? parseInt(args[maxTurnsIndex + 1], 10) : undefined;
 const maxThinkingTokens = maxThinkingTokensIndex !== -1 ? parseInt(args[maxThinkingTokensIndex + 1], 10) : undefined;
 
+// Permission mode (e.g., "plan" for plan mode at startup)
+const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
+type PermissionMode = typeof validPermissionModes[number];
+const permissionModeIndex = args.indexOf("--permission-mode");
+let initialPermissionMode: PermissionMode = "bypassPermissions";
+if (permissionModeIndex !== -1 && permissionModeIndex + 1 < args.length) {
+  const value = args[permissionModeIndex + 1];
+  if ((validPermissionModes as readonly string[]).includes(value)) {
+    initialPermissionMode = value as PermissionMode;
+  } else {
+    console.error(`Invalid --permission-mode value: "${value}". Using default "bypassPermissions".`);
+  }
+}
+
 // Task 6: Settings Sources Configuration
 const settingSourcesIndex = args.indexOf("--setting-sources");
 const settingSourcesArg = settingSourcesIndex !== -1 ? args[settingSourcesIndex + 1] : undefined;
@@ -686,7 +700,7 @@ async function main(): Promise<void> {
       prompt: createMessageStream(),
       options: {
         cwd,
-        permissionMode: "bypassPermissions",
+        permissionMode: initialPermissionMode,
         allowDangerouslySkipPermissions: true,
         canUseTool,
         mcpServers: { chatml: chatmlMcp },

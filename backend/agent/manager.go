@@ -83,6 +83,7 @@ func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 type StartConversationOptions struct {
 	MaxThinkingTokens int                 // Enable extended thinking with this token budget
 	Attachments       []models.Attachment // File attachments for the initial message
+	PlanMode          bool                // Start agent in plan mode
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -149,6 +150,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	// Apply optional parameters
 	if opts != nil {
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
+		procOpts.PlanMode = opts.PlanMode
 	}
 
 	// Create and start process
@@ -438,6 +440,19 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 	}
 
 	return proc.SetPermissionMode(mode)
+}
+
+// IsConversationInPlanMode returns whether the conversation process is in plan mode
+func (m *Manager) IsConversationInPlanMode(convID string) bool {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || proc.IsStopped() || !proc.IsRunning() {
+		return false
+	}
+
+	return proc.IsPlanModeActive()
 }
 
 // StopConversation stops a running conversation

@@ -900,6 +900,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
           message: content,
+          // Pass plan mode so agent starts in plan mode if toggled on before first message
+          planMode: planModeEnabled ? true : undefined,
           // Pass thinking tokens when thinking mode is enabled
           maxThinkingTokens: thinkingEnabled ? maxThinkingTokens : undefined,
           // Pass attachments with loaded content

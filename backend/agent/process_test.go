@@ -35,6 +35,7 @@ func TestNewProcessWithOptions(t *testing.T) {
 		MaxBudgetUsd:        10.0,
 		MaxTurns:            50,
 		MaxThinkingTokens:   1000,
+		PlanMode:            true,
 		StructuredOutput:    `{"type": "object"}`,
 		SettingSources:      "project,user",
 		Betas:               "feature1,feature2",
@@ -390,6 +391,7 @@ func TestProcessOptions_Defaults(t *testing.T) {
 	assert.Zero(t, opts.MaxBudgetUsd)
 	assert.Zero(t, opts.MaxTurns)
 	assert.Zero(t, opts.MaxThinkingTokens)
+	assert.False(t, opts.PlanMode)
 	assert.Empty(t, opts.StructuredOutput)
 	assert.Empty(t, opts.SettingSources)
 	assert.Empty(t, opts.Betas)
@@ -458,4 +460,94 @@ func TestProcess_Stop_ClosesStdin(t *testing.T) {
 	// Writing to the closed pipe should fail
 	_, writeErr := w.Write([]byte("test"))
 	assert.Error(t, writeErr, "stdin should be closed after Stop()")
+}
+
+// ============================================================================
+// Plan Mode CLI Arg Tests
+// ============================================================================
+
+func TestNewProcessWithOptions_PlanModeEnabled(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "plan-test",
+		Workdir:        "/tmp/test",
+		ConversationID: "conv-plan",
+		PlanMode:       true,
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	// Verify --permission-mode plan appears in the command args
+	args := p.cmd.Args
+	found := false
+	for i, arg := range args {
+		if arg == "--permission-mode" && i+1 < len(args) && args[i+1] == "plan" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected --permission-mode plan in args: %v", args)
+}
+
+func TestNewProcessWithOptions_PlanModeDisabled(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "no-plan-test",
+		Workdir:        "/tmp/test",
+		ConversationID: "conv-no-plan",
+		PlanMode:       false,
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	// Verify --permission-mode does NOT appear in args when plan mode is off
+	args := p.cmd.Args
+	for _, arg := range args {
+		assert.NotEqual(t, "--permission-mode", arg, "Should not have --permission-mode when PlanMode is false")
+	}
+}
+
+func TestNewProcessWithOptions_PlanModeWithThinking(t *testing.T) {
+	opts := ProcessOptions{
+		ID:                "combo-test",
+		Workdir:           "/tmp/test",
+		ConversationID:    "conv-combo",
+		PlanMode:          true,
+		MaxThinkingTokens: 5000,
+	}
+
+	p := NewProcessWithOptions(opts)
+	args := p.cmd.Args
+
+	// Both flags should be present
+	foundPlanMode := false
+	foundThinking := false
+	for i, arg := range args {
+		if arg == "--permission-mode" && i+1 < len(args) && args[i+1] == "plan" {
+			foundPlanMode = true
+		}
+		if arg == "--max-thinking-tokens" && i+1 < len(args) && args[i+1] == "5000" {
+			foundThinking = true
+		}
+	}
+	assert.True(t, foundPlanMode, "Expected --permission-mode plan in args: %v", args)
+	assert.True(t, foundThinking, "Expected --max-thinking-tokens 5000 in args: %v", args)
+}
+
+// ============================================================================
+// StartConversationOptions Plan Mode Tests
+// ============================================================================
+
+func TestStartConversationOptions_PlanModeDefaults(t *testing.T) {
+	opts := StartConversationOptions{}
+	assert.False(t, opts.PlanMode)
+	assert.Zero(t, opts.MaxThinkingTokens)
+	assert.Nil(t, opts.Attachments)
+}
+
+func TestStartConversationOptions_PlanModeSet(t *testing.T) {
+	opts := StartConversationOptions{
+		PlanMode:          true,
+		MaxThinkingTokens: 1000,
+	}
+	assert.True(t, opts.PlanMode)
+	assert.Equal(t, 1000, opts.MaxThinkingTokens)
 }
