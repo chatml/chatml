@@ -61,6 +61,8 @@ import { SessionManager } from '@/components/session-manager';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider, useToast } from '@/components/ui/toast';
 import { StreamingWarningHandler } from '@/components/shared/StreamingWarningHandler';
+import { ConnectionStatusHandler } from '@/components/shared/ConnectionStatusHandler';
+import { ConnectionBanner } from '@/components/shared/ConnectionBanner';
 import { HEALTH_CHECK_MAX_RETRIES, HEALTH_CHECK_INITIAL_DELAY_MS } from '@/lib/constants';
 import { EmptyView } from '@/components/shared/EmptyView';
 import {
@@ -398,7 +400,7 @@ export default function Home() {
   }, [selectedSessionId]);
 
   // Connect WebSocket for real-time updates (only when backend is connected)
-  useWebSocket(backendConnected);
+  const { reconnect } = useWebSocket(backendConnected);
 
   // Listen for /review, /deep-review, /security slash commands
   useReviewTrigger();
@@ -1094,6 +1096,7 @@ export default function Home() {
   return (
     <ToastProvider>
       <StreamingWarningHandler />
+      <ConnectionStatusHandler />
       <TooltipProvider>
         <div className="h-screen overflow-hidden flex relative bg-background">
         {/* OUTER GROUP: Left Sidebar | Main Content */}
@@ -1169,6 +1172,7 @@ export default function Home() {
               )}>
               {/* Action bar — context-aware bar at top of main content */}
               <ContentActionBar />
+              <ConnectionBanner onReconnect={reconnect} />
 
               {/* Content Area */}
               <div className="flex-1 min-h-0">

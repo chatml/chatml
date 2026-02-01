@@ -11,6 +11,7 @@ import { type ReactNode, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useUIStore, type ToolbarSlots } from '@/stores/uiStore';
 import { useTabStore } from '@/stores/tabStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 import { BrowserTabStrip, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
@@ -130,6 +131,9 @@ export function MainToolbar({
           tabStripOverride={hasMultipleTabs ? <BrowserTabStrip /> : undefined}
           trailing={
             <>
+              {/* Connection status indicator */}
+              <ConnectionIndicator />
+
               {/* Spacer before panel toggles */}
               <div className="mx-1.5" />
 
@@ -231,6 +235,34 @@ export function MainToolbar({
       </div>
 
     </div>
+  );
+}
+
+export function ConnectionIndicator() {
+  const status = useConnectionStore((s) => s.status);
+
+  if (status === 'connected') return null;
+
+  const isReconnecting = status === 'connecting';
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center justify-center h-6 w-6">
+          <div
+            className={cn(
+              'h-2 w-2 rounded-full',
+              isReconnecting
+                ? 'bg-yellow-500 animate-pulse'
+                : 'bg-destructive',
+            )}
+          />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {isReconnecting ? 'Reconnecting...' : 'Disconnected'}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

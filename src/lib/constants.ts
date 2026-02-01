@@ -3,7 +3,10 @@ export const COPY_FEEDBACK_DURATION_MS = 2000;
 export const TOAST_DURATION_MS = 2000;
 
 // WebSocket constants
-export const WEBSOCKET_RECONNECT_DELAY_MS = 3000;
+export const WEBSOCKET_RECONNECT_BASE_DELAY_MS = 1000;
+export const WEBSOCKET_RECONNECT_MAX_DELAY_MS = 30000;
+export const WEBSOCKET_RECONNECT_MAX_ATTEMPTS = 50;
+export const WEBSOCKET_DISCONNECT_GRACE_MS = 5000;
 
 // Health check constants
 export const HEALTH_CHECK_MAX_RETRIES = 15;
