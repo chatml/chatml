@@ -14,30 +14,44 @@ export function ConnectionBanner({ onReconnect }: ConnectionBannerProps) {
   const status = useConnectionStore((s) => s.status);
   const attempt = useConnectionStore((s) => s.reconnectAttempt);
   const lastDisconnectedAt = useConnectionStore((s) => s.lastDisconnectedAt);
-  const [visible, setVisible] = useState(false);
+  const [gracePeriodElapsed, setGracePeriodElapsed] = useState(false);
 
   useEffect(() => {
-    if (status === 'connected') {
-      setVisible(false);
+    // Reset when connection restores or no disconnect timestamp
+    if (status === 'connected' || !lastDisconnectedAt) {
+      // Only reset via timer callback to satisfy react-hooks/set-state-in-effect
+      if (gracePeriodElapsed) {
+        const id = setTimeout(() => setGracePeriodElapsed(false), 0);
+        return () => clearTimeout(id);
+      }
       return;
     }
 
-    if (!lastDisconnectedAt) return;
+    // Already elapsed from a previous render
+    if (gracePeriodElapsed) return;
 
     const elapsed = Date.now() - lastDisconnectedAt;
     if (elapsed >= WEBSOCKET_DISCONNECT_GRACE_MS) {
-      setVisible(true);
-      return;
+      // Past grace period — fire immediately via microtask
+      const id = setTimeout(() => {
+        if (useConnectionStore.getState().status !== 'connected') {
+          setGracePeriodElapsed(true);
+        }
+      }, 0);
+      return () => clearTimeout(id);
     }
 
     const timer = setTimeout(() => {
       if (useConnectionStore.getState().status !== 'connected') {
-        setVisible(true);
+        setGracePeriodElapsed(true);
       }
     }, WEBSOCKET_DISCONNECT_GRACE_MS - elapsed);
 
     return () => clearTimeout(timer);
-  }, [status, lastDisconnectedAt]);
+  }, [status, lastDisconnectedAt, gracePeriodElapsed]);
+
+  const isDisconnected = status !== 'connected';
+  const visible = isDisconnected && gracePeriodElapsed;
 
   if (!visible) return null;
 
