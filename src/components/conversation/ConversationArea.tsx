@@ -660,7 +660,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     } catch (error) {
       console.error('Failed to create comment:', error);
     }
-  }, [selectedWorkspaceId, selectedSessionId, currentFileTab?.path, addReviewCommentToStore]);
+  }, [selectedWorkspaceId, selectedSessionId, currentFileTab, addReviewCommentToStore]);
 
   // Unified tab select handler for TabBar
   const handleTabSelect = useCallback(

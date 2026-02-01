@@ -266,7 +266,9 @@ export function MonacoDiffEditor({
 
   // Stable ref for onCreateComment to avoid re-registering mouse handler
   const onCreateCommentRef = useRef(onCreateComment);
-  onCreateCommentRef.current = onCreateComment;
+  useEffect(() => {
+    onCreateCommentRef.current = onCreateComment;
+  }, [onCreateComment]);
 
   const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
     editorRef.current = editor;
