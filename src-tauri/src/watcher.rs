@@ -136,6 +136,9 @@ pub fn start_global_watcher(
         loop {
             match rx.recv() {
                 Ok(Ok(events)) => {
+                    // Track per-session file counts for summary logging
+                    let mut session_counts: HashMap<String, usize> = HashMap::new();
+
                     for event in events {
                         if event.kind == DebouncedEventKind::Any {
                             let event_path_str = event.path.to_string_lossy().to_string();
@@ -150,10 +153,6 @@ pub fn start_global_watcher(
                                 match extract_session_dir(&watcher_base_path, &event.path) {
                                     Some(dir) => dir,
                                     None => {
-                                        log::debug!(
-                                            "Ignoring event outside session dirs: {}",
-                                            event_path_str
-                                        );
                                         continue;
                                     }
                                 };
@@ -180,10 +179,6 @@ pub fn start_global_watcher(
                             let workspace_id = match workspace_id {
                                 Some(id) => id,
                                 None => {
-                                    log::debug!(
-                                        "Ignoring event for unregistered session: {}",
-                                        session_dir
-                                    );
                                     continue;
                                 }
                             };
@@ -196,11 +191,7 @@ pub fn start_global_watcher(
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_else(|_| event_path_str.clone());
 
-                            log::debug!(
-                                "File changed in session {}: {}",
-                                session_dir,
-                                relative_path
-                            );
+                            *session_counts.entry(session_dir.clone()).or_insert(0) += 1;
 
                             // Emit event to frontend with same payload format
                             if let Some(window) = app_handle.get_webview_window("main") {
@@ -214,6 +205,15 @@ pub fn start_global_watcher(
                                 }
                             }
                         }
+                    }
+
+                    // Log a single summary line per session instead of per-file
+                    for (session, count) in &session_counts {
+                        log::debug!(
+                            "File changes detected in session {}: {} files",
+                            session,
+                            count
+                        );
                     }
                 }
                 Ok(Err(error)) => {

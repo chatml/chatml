@@ -97,8 +97,9 @@ type Conversation struct {
 	Type         string       `json:"type"`   // "task", "review", "chat"
 	Name         string       `json:"name"`   // AI-updatable display name
 	Status       string       `json:"status"` // "active", "idle", "completed"
-	Model        string       `json:"model,omitempty"`
-	Messages     []Message    `json:"messages"`
+	Model          string       `json:"model,omitempty"`
+	AgentSessionID string       `json:"agentSessionId,omitempty"` // Claude SDK session ID for resume
+	Messages       []Message    `json:"messages"`
 	MessageCount int          `json:"messageCount,omitempty"`
 	ToolSummary  []ToolAction `json:"toolSummary"`
 	CreatedAt    time.Time    `json:"createdAt"`

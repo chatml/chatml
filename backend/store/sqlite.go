@@ -574,6 +574,21 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added streaming_snapshot column to conversations")
 	}
 
+	// Migration: Add agent_session_id column to conversations (for SDK session resume)
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('conversations') WHERE name = 'agent_session_id'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE conversations ADD COLUMN agent_session_id TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added agent_session_id column to conversations")
+	}
+
 	// Migration: Convert 'todo' task_status to 'backlog' (todo status was removed)
 	err = s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE task_status = 'todo'`).Scan(&count)
 	if err != nil {
@@ -1156,10 +1171,10 @@ func (s *SQLiteStore) DeleteAgent(ctx context.Context, id string) error {
 func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversation) error {
 	return RetryDBExec(ctx, "AddConversation", DefaultRetryConfig(), func(ctx context.Context) error {
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO conversations (id, session_id, type, name, status, model, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			INSERT INTO conversations (id, session_id, type, name, status, model, agent_session_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			conv.ID, conv.SessionID, conv.Type, conv.Name,
-			conv.Status, conv.Model, conv.CreatedAt, conv.UpdatedAt)
+			conv.Status, conv.Model, conv.AgentSessionID, conv.CreatedAt, conv.UpdatedAt)
 		return err
 	})
 }
@@ -1169,10 +1184,10 @@ func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversa
 func (s *SQLiteStore) GetConversationMeta(ctx context.Context, id string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, type, name, status, model, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-		&conv.Status, &conv.Model, &conv.CreatedAt, &conv.UpdatedAt)
+		&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1185,10 +1200,10 @@ func (s *SQLiteStore) GetConversationMeta(ctx context.Context, id string) (*mode
 func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, type, name, status, model, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-		&conv.Status, &conv.Model, &conv.CreatedAt, &conv.UpdatedAt)
+		&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -1237,7 +1252,7 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 // Uses 3 queries total regardless of conversation count (1 for conversations + 1 for all messages + 1 for all tool actions).
 func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) ([]*models.Conversation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, type, name, status, model, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
 		FROM conversations WHERE session_id = ?`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("ListConversations: %w", err)
@@ -1250,7 +1265,7 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 	for rows.Next() {
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-			&conv.Status, &conv.Model, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("ListConversations scan: %w", err)
 		}
@@ -1309,7 +1324,7 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 
 	// Query all conversations for all sessions in one query
 	query := fmt.Sprintf(`
-		SELECT id, session_id, type, name, status, model, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
 		FROM conversations WHERE session_id IN (%s)`, strings.Join(placeholders, ","))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1323,7 +1338,7 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 	for rows.Next() {
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-			&conv.Status, &conv.Model, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("ListConversationsForSessions scan: %w", err)
 		}
@@ -1762,9 +1777,9 @@ func (s *SQLiteStore) UpdateConversation(ctx context.Context, id string, updates
 	// Write back (only conversation table, not messages/tools)
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE conversations SET
-			type = ?, name = ?, status = ?, model = ?, updated_at = ?
+			type = ?, name = ?, status = ?, model = ?, agent_session_id = ?, updated_at = ?
 		WHERE id = ?`,
-		conv.Type, conv.Name, conv.Status, conv.Model, conv.UpdatedAt, id)
+		conv.Type, conv.Name, conv.Status, conv.Model, conv.AgentSessionID, conv.UpdatedAt, id)
 	if err != nil {
 		return fmt.Errorf("UpdateConversation: %w", err)
 	}
@@ -1774,10 +1789,10 @@ func (s *SQLiteStore) UpdateConversation(ctx context.Context, id string, updates
 func (s *SQLiteStore) getConversationNoLock(ctx context.Context, id string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, type, name, status, model, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-		&conv.Status, &conv.Model, &conv.CreatedAt, &conv.UpdatedAt)
+		&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
