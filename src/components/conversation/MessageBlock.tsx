@@ -196,20 +196,37 @@ export const MessageBlock = memo(function MessageBlock({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // If neither has matches, skip comparing search navigation state
-  if (!nextProps.hasMatches && !prevProps.hasMatches) {
-    return prevProps.message.id === nextProps.message.id &&
-           prevProps.message.content === nextProps.message.content &&
-           prevProps.message.timestamp === nextProps.message.timestamp &&
-           prevProps.isFirst === nextProps.isFirst &&
-           prevProps.searchQuery === nextProps.searchQuery;
+  const prev = prevProps.message;
+  const next = nextProps.message;
+
+  // Core fields
+  if (prev.id !== next.id ||
+      prev.content !== next.content ||
+      prev.timestamp !== next.timestamp ||
+      prev.role !== next.role ||
+      prev.thinkingContent !== next.thinkingContent ||
+      prevProps.isFirst !== nextProps.isFirst ||
+      prevProps.searchQuery !== nextProps.searchQuery) {
+    return false;
   }
-  // Full comparison for messages with matches
-  return prevProps.message.id === nextProps.message.id &&
-         prevProps.message.content === nextProps.message.content &&
-         prevProps.message.timestamp === nextProps.message.timestamp &&
-         prevProps.isFirst === nextProps.isFirst &&
-         prevProps.searchQuery === nextProps.searchQuery &&
-         prevProps.currentMatchIndex === nextProps.currentMatchIndex &&
-         prevProps.matchOffset === nextProps.matchOffset;
+
+  // Structured fields — reference equality (updateMessage spreads new objects/arrays)
+  if (prev.toolUsage !== next.toolUsage ||
+      prev.fileChanges !== next.fileChanges ||
+      prev.verificationResults !== next.verificationResults ||
+      prev.attachments !== next.attachments ||
+      prev.runSummary !== next.runSummary ||
+      prev.setupInfo !== next.setupInfo) {
+    return false;
+  }
+
+  // Search navigation — only compare when relevant
+  if (nextProps.hasMatches || prevProps.hasMatches) {
+    if (prevProps.currentMatchIndex !== nextProps.currentMatchIndex ||
+        prevProps.matchOffset !== nextProps.matchOffset) {
+      return false;
+    }
+  }
+
+  return true;
 });
