@@ -295,6 +295,13 @@ interface AppState {
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   clearActiveTools: (conversationId: string) => void;
+  restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
+    text: string;
+    activeTools: { id: string; tool: string; startTime: number }[];
+    thinking?: string;
+    isThinking: boolean;
+    planModeActive: boolean;
+  }) => void;
 
   // Atomic streaming finalization - creates message and clears streaming in one update
   finalizeStreamingMessage: (
@@ -1147,6 +1154,30 @@ updateFileTabContent: (id, content) => set((state) => ({
       activeTools: {
         ...state.activeTools,
         [conversationId]: [],
+      },
+    }));
+  },
+  restoreStreamingFromSnapshot: (conversationId, snapshot) => {
+    // Restore streaming state from a backend snapshot after WebSocket reconnection.
+    // Creates a single segment from the recovered text so existing rendering works.
+    const segmentId = `recovered-${conversationId}-${crypto.randomUUID()}`;
+    set((state) => ({
+      streamingState: updateStreamingConv(state.streamingState, conversationId, {
+        text: snapshot.text,
+        segments: [{ id: segmentId, text: snapshot.text, timestamp: Date.now() }],
+        currentSegmentId: segmentId,
+        isStreaming: true,
+        thinking: snapshot.thinking || null,
+        isThinking: snapshot.isThinking,
+        planModeActive: snapshot.planModeActive,
+      }),
+      activeTools: {
+        ...state.activeTools,
+        [conversationId]: snapshot.activeTools.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          startTime: t.startTime * 1000, // Convert seconds to ms
+        })),
       },
     }));
   },

@@ -12,7 +12,7 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, toStoreMessage } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage } from '@/lib/api';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
@@ -453,7 +453,8 @@ export function useWebSocket(enabled: boolean = true) {
   }, []);
 
   // After a WebSocket reconnection, reconcile frontend streaming state with backend reality.
-  // If the agent finished while we were disconnected, clear orphaned streaming state and reload messages.
+  // If the agent finished while disconnected: clear orphaned streaming state and reload messages.
+  // If the agent is still active: fetch the streaming snapshot to restore the view.
   const reconcileStreamingState = useCallback(async () => {
     const store = getStore();
 
@@ -482,6 +483,30 @@ export function useWebSocket(enabled: boolean = true) {
             store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
           } catch (err) {
             console.warn(`Failed to reload messages for ${convId} after reconnect:`, err);
+          }
+        } else {
+          // Agent still active — restore streaming view from snapshot.
+          // Note: the snapshot may be up to 500ms stale (debounce interval). Text
+          // emitted between the last flush and the disconnect is lost. New WebSocket
+          // events after reconnect append from where the backend left off, so there's
+          // no duplication — just a small gap.
+          try {
+            const snapshot = await getStreamingSnapshot(convId);
+            if (snapshot && snapshot.text) {
+              store.restoreStreamingFromSnapshot(convId, snapshot);
+            } else {
+              // No snapshot (race: result just persisted but process hasn't exited yet)
+              // Reload messages as safety net, keep streaming active
+              try {
+                const page = await getConversationMessages(convId);
+                const messages = page.messages.map(m => toStoreMessage(m, convId));
+                store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+              } catch (innerErr) {
+                console.warn(`Failed to reload messages for ${convId} during snapshot fallback:`, innerErr);
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to fetch streaming snapshot for ${convId}:`, err);
           }
         }
       }

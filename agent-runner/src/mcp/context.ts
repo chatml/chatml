@@ -69,16 +69,17 @@ export class WorkspaceContext {
   }
 
   private fetchGitState(): GitState {
+    const gitOpts = { cwd: this.cwd, encoding: "utf-8" as const, timeout: 10000 };
     try {
-      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: this.cwd, encoding: "utf-8" }).trim();
+      const branch = execSync("git rev-parse --abbrev-ref HEAD", gitOpts).trim();
       const baseBranch = this.targetBranch;
-      const status = execSync("git status --porcelain", { cwd: this.cwd, encoding: "utf-8" });
+      const status = execSync("git status --porcelain", gitOpts);
       const uncommittedChanges = status.trim().length > 0;
 
       let aheadBy = 0;
       let behindBy = 0;
       try {
-        const counts = execSync(`git rev-list --left-right --count ${baseBranch}...HEAD`, { cwd: this.cwd, encoding: "utf-8" }).trim();
+        const counts = execSync(`git rev-list --left-right --count ${baseBranch}...HEAD`, gitOpts).trim();
         const [behind, ahead] = counts.split("\t").map(Number);
         aheadBy = ahead || 0;
         behindBy = behind || 0;
@@ -95,7 +96,7 @@ export class WorkspaceContext {
   private detectBaseBranch(): string {
     try {
       // Check for common base branch names
-      const branches = execSync("git branch -r", { cwd: this.cwd, encoding: "utf-8" });
+      const branches = execSync("git branch -r", { cwd: this.cwd, encoding: "utf-8", timeout: 10000 });
       if (branches.includes("origin/main")) return "origin/main";
       if (branches.includes("origin/master")) return "origin/master";
       return "main";
@@ -127,7 +128,7 @@ export class WorkspaceContext {
 
     // 2. Branch name pattern (feat/LIN-123-description)
     try {
-      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: options.cwd, encoding: "utf-8" }).trim();
+      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: options.cwd, encoding: "utf-8", timeout: 10000 }).trim();
       const match = branch.match(/([A-Z]+-\d+)/);
       if (match) {
         return match[1];
@@ -138,7 +139,7 @@ export class WorkspaceContext {
 
     // 3. Recent commit messages
     try {
-      const logs = execSync("git log -5 --oneline", { cwd: options.cwd, encoding: "utf-8" });
+      const logs = execSync("git log -5 --oneline", { cwd: options.cwd, encoding: "utf-8", timeout: 10000 });
       const match = logs.match(/([A-Z]+-\d+)/);
       if (match) {
         return match[1];

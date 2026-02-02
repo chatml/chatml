@@ -41,26 +41,42 @@ function resolveToolPreset(preset: string): { allowedTools?: string[]; disallowe
 
 // CLI arguments
 const args = process.argv.slice(2);
-const cwdIndex = args.indexOf("--cwd");
-const conversationIdIndex = args.indexOf("--conversation-id");
-const resumeIndex = args.indexOf("--resume");
-const forkIndex = args.indexOf("--fork");
 
-const cwd = cwdIndex !== -1 ? args[cwdIndex + 1] : process.cwd();
-const conversationId = conversationIdIndex !== -1 ? args[conversationIdIndex + 1] : "default";
-const resumeSessionId = resumeIndex !== -1 ? args[resumeIndex + 1] : undefined;
-const forkSession = forkIndex !== -1;
-const linearIssueIndex = args.indexOf("--linear-issue");
-const toolPresetIndex = args.indexOf("--tool-preset");
+// Safe arg getter: returns the value after a flag, or undefined if missing/out of bounds
+function getArg(flag: string): string | undefined {
+  const idx = args.indexOf(flag);
+  if (idx === -1 || idx + 1 >= args.length) return undefined;
+  return args[idx + 1];
+}
 
-const linearIssue = linearIssueIndex !== -1 ? args[linearIssueIndex + 1] : undefined;
-const toolPreset = toolPresetIndex !== -1 ? args[toolPresetIndex + 1] as "full" | "read-only" | "no-bash" | "safe-edit" : "full";
-const enableCheckpointingIndex = args.indexOf("--enable-checkpointing");
-const enableCheckpointing = enableCheckpointingIndex !== -1;
+function hasFlag(flag: string): boolean {
+  return args.indexOf(flag) !== -1;
+}
+
+function getNumericArg(flag: string): number | undefined {
+  const val = getArg(flag);
+  if (val === undefined) return undefined;
+  // Always use parseFloat — integer values parse fine with it, and this avoids
+  // a fragile heuristic for deciding float vs int based on flag name.
+  const num = parseFloat(val);
+  if (isNaN(num)) {
+    console.error(`Invalid numeric value for ${flag}: "${val}". Ignoring.`);
+    return undefined;
+  }
+  return num;
+}
+
+const cwd = getArg("--cwd") || process.cwd();
+const conversationId = getArg("--conversation-id") || "default";
+const resumeSessionId = getArg("--resume");
+const forkSession = hasFlag("--fork");
+
+const linearIssue = getArg("--linear-issue");
+const toolPreset = (getArg("--tool-preset") || "full") as "full" | "read-only" | "no-bash" | "safe-edit";
+const enableCheckpointing = hasFlag("--enable-checkpointing");
 
 // Task 4: Structured Output Support
-const structuredOutputIndex = args.indexOf("--structured-output");
-const structuredOutputSchema = structuredOutputIndex !== -1 ? args[structuredOutputIndex + 1] : undefined;
+const structuredOutputSchema = getArg("--structured-output");
 
 // Parse schema if provided
 let outputFormat: { type: 'json_schema'; schema: Record<string, unknown> } | undefined;
@@ -68,64 +84,60 @@ if (structuredOutputSchema) {
   try {
     outputFormat = { type: 'json_schema', schema: JSON.parse(structuredOutputSchema) as Record<string, unknown> };
   } catch (e) {
-    emit({ type: "warning", message: `Invalid structured output schema: ${e}` });
+    // Log to stderr since emit() before ready event may confuse the Go parser
+    console.error(`Invalid structured output schema: ${e}`);
   }
 }
 
 // Target branch for PR base and sync operations
-const targetBranchIndex = args.indexOf("--target-branch");
-const targetBranch = targetBranchIndex !== -1 ? args[targetBranchIndex + 1] : undefined;
+const targetBranch = getArg("--target-branch");
 
 // Task 5: Budget Controls
-const maxBudgetIndex = args.indexOf("--max-budget-usd");
-const maxTurnsIndex = args.indexOf("--max-turns");
-const maxThinkingTokensIndex = args.indexOf("--max-thinking-tokens");
-
-const maxBudgetUsd = maxBudgetIndex !== -1 ? parseFloat(args[maxBudgetIndex + 1]) : undefined;
-const maxTurns = maxTurnsIndex !== -1 ? parseInt(args[maxTurnsIndex + 1], 10) : undefined;
-const maxThinkingTokens = maxThinkingTokensIndex !== -1 ? parseInt(args[maxThinkingTokensIndex + 1], 10) : undefined;
+const maxBudgetUsd = getNumericArg("--max-budget-usd");
+const maxTurns = getNumericArg("--max-turns");
+const maxThinkingTokens = getNumericArg("--max-thinking-tokens");
 
 // Permission mode (e.g., "plan" for plan mode at startup)
 const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
 type PermissionMode = typeof validPermissionModes[number];
-const permissionModeIndex = args.indexOf("--permission-mode");
 let initialPermissionMode: PermissionMode = "bypassPermissions";
-if (permissionModeIndex !== -1 && permissionModeIndex + 1 < args.length) {
-  const value = args[permissionModeIndex + 1];
-  if ((validPermissionModes as readonly string[]).includes(value)) {
-    initialPermissionMode = value as PermissionMode;
-  } else {
-    console.error(`Invalid --permission-mode value: "${value}". Using default "bypassPermissions".`);
+{
+  const value = getArg("--permission-mode");
+  if (value) {
+    if ((validPermissionModes as readonly string[]).includes(value)) {
+      initialPermissionMode = value as PermissionMode;
+    } else {
+      console.error(`Invalid --permission-mode value: "${value}". Using default "bypassPermissions".`);
+    }
   }
 }
 
 // Task 6: Settings Sources Configuration
-const settingSourcesIndex = args.indexOf("--setting-sources");
-const settingSourcesArg = settingSourcesIndex !== -1 ? args[settingSourcesIndex + 1] : undefined;
+const settingSourcesArg = getArg("--setting-sources");
 const settingSources = settingSourcesArg
   ? settingSourcesArg.split(',').map(s => s.trim()) as ('project' | 'user' | 'local')[]
   : undefined;
 
 // Task 7: Beta Features Flag
-const betasIndex = args.indexOf("--betas");
-const betasArg = betasIndex !== -1 ? args[betasIndex + 1] : undefined;
+const betasArg = getArg("--betas");
 const betas = betasArg ? betasArg.split(',').map(s => s.trim()) as ("context-1m-2025-08-07")[] : undefined;
 
 // Task 8: Model Configuration
-const modelIndex = args.indexOf("--model");
-const fallbackModelIndex = args.indexOf("--fallback-model");
-const model = modelIndex !== -1 ? args[modelIndex + 1] : undefined;
-const fallbackModel = fallbackModelIndex !== -1 ? args[fallbackModelIndex + 1] : undefined;
+const model = getArg("--model");
+const fallbackModel = getArg("--fallback-model");
 
 // Instructions (e.g., from conversation summaries)
 import { readFileSync } from "fs";
-const instructionsFileIndex = args.indexOf("--instructions-file");
 let instructions: string | undefined;
-if (instructionsFileIndex !== -1 && instructionsFileIndex + 1 < args.length) {
-  try {
-    instructions = readFileSync(args[instructionsFileIndex + 1], "utf-8");
-  } catch (e) {
-    emit({ type: "warning", message: `Failed to read instructions file: ${e}` });
+{
+  const instructionsFilePath = getArg("--instructions-file");
+  if (instructionsFilePath) {
+    try {
+      instructions = readFileSync(instructionsFilePath, "utf-8");
+    } catch (e) {
+      // Log to stderr since emit() may not be safe before ready event
+      console.error(`Failed to read instructions file: ${e}`);
+    }
   }
 }
 
@@ -165,6 +177,11 @@ interface InputMessage {
   // User question response fields
   questionRequestId?: string;
   answers?: Record<string, string>;
+}
+
+// Escape a string for use in XML attribute values
+function escapeXmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // Track if we've suggested a name yet
@@ -224,46 +241,75 @@ async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
           break;
         }
 
-        // Handle runtime control commands
+        // Handle runtime control commands — each wrapped in its own try/catch
+        // to prevent SDK errors from being misreported as JSON parse errors.
         if (input.type === "interrupt" && queryRef) {
-          await queryRef.interrupt();
-          emit({ type: "interrupted" });
+          try {
+            await queryRef.interrupt();
+            emit({ type: "interrupted" });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "interrupt", error: String(cmdErr) });
+          }
           continue;
         }
 
         if (input.type === "set_model" && queryRef && input.model) {
-          await queryRef.setModel(input.model);
-          emit({ type: "model_changed", model: input.model });
+          try {
+            await queryRef.setModel(input.model);
+            emit({ type: "model_changed", model: input.model });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "set_model", error: String(cmdErr) });
+          }
           continue;
         }
 
         if (input.type === "set_permission_mode" && queryRef && input.permissionMode) {
-          await queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk");
-          emit({ type: "permission_mode_changed", mode: input.permissionMode });
+          try {
+            await queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk");
+            emit({ type: "permission_mode_changed", mode: input.permissionMode });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "set_permission_mode", error: String(cmdErr) });
+          }
           continue;
         }
 
         if (input.type === "get_supported_models" && queryRef) {
-          const models = await queryRef.supportedModels();
-          emit({ type: "supported_models", models });
+          try {
+            const models = await queryRef.supportedModels();
+            emit({ type: "supported_models", models });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "get_supported_models", error: String(cmdErr) });
+          }
           continue;
         }
 
         if (input.type === "get_supported_commands" && queryRef) {
-          const commands = await queryRef.supportedCommands();
-          emit({ type: "supported_commands", commands });
+          try {
+            const commands = await queryRef.supportedCommands();
+            emit({ type: "supported_commands", commands });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "get_supported_commands", error: String(cmdErr) });
+          }
           continue;
         }
 
         if (input.type === "get_mcp_status" && queryRef) {
-          const status = await queryRef.mcpServerStatus();
-          emit({ type: "mcp_status", servers: status });
+          try {
+            const status = await queryRef.mcpServerStatus();
+            emit({ type: "mcp_status", servers: status });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "get_mcp_status", error: String(cmdErr) });
+          }
           continue;
         }
 
         if (input.type === "get_account_info" && queryRef) {
-          const info = await queryRef.accountInfo();
-          emit({ type: "account_info", info });
+          try {
+            const info = await queryRef.accountInfo();
+            emit({ type: "account_info", info });
+          } catch (cmdErr) {
+            emit({ type: "command_error", command: "get_account_info", error: String(cmdErr) });
+          }
           continue;
         }
 
@@ -328,10 +374,10 @@ async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
                 // Escape any occurrences of the closing tag to prevent injection
                 content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
                 const lineInfo = attachment.lineCount ? ` lines="${attachment.lineCount}"` : "";
-                const pathInfo = attachment.path ? ` path="${attachment.path}"` : "";
+                const pathInfo = attachment.path ? ` path="${escapeXmlAttr(attachment.path)}"` : "";
                 contentBlocks.push({
                   type: "text",
-                  text: `<attached_file name="${attachment.name}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
+                  text: `<attached_file name="${escapeXmlAttr(attachment.name)}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
                 });
               }
             }
@@ -394,6 +440,7 @@ function extractNameSuggestion(text: string): string | null {
 
 // Buffer for block-level streaming (emit on paragraph breaks)
 let blockBuffer = "";
+const BLOCK_BUFFER_MAX_SIZE = 4096; // Flush even without paragraph break to ensure progressive rendering
 
 function processTextChunk(text: string): void {
   blockBuffer += text;
@@ -410,6 +457,12 @@ function processTextChunk(text: string): void {
     if (block.trim()) {
       emit({ type: "assistant_text", content: block + "\n\n" });
     }
+  }
+
+  // Force flush if buffer exceeds max size (e.g., large code blocks without paragraph breaks)
+  if (blockBuffer.length > BLOCK_BUFFER_MAX_SIZE) {
+    emit({ type: "assistant_text", content: blockBuffer });
+    blockBuffer = "";
   }
 
   // Try to suggest a name after accumulating some text
@@ -623,10 +676,17 @@ const askUserQuestionHook: HookCallback = async (input) => {
     sessionId: currentSessionId,
   });
 
-  // Wait indefinitely for user response (no timeout — user answers or cancels)
+  // Wait for user response with a safety timeout matching the hook timeout
   try {
     const answers = await new Promise<Record<string, string>>((resolve, reject) => {
       pendingQuestionRequests.set(requestId, { resolve, reject });
+      // Safety timeout to prevent infinite hang if Go backend crashes/restarts
+      setTimeout(() => {
+        if (pendingQuestionRequests.has(requestId)) {
+          pendingQuestionRequests.delete(requestId);
+          reject(new Error("User question timed out after 24 hours"));
+        }
+      }, ASK_USER_QUESTION_HOOK_TIMEOUT_S * 1000);
     });
 
     // Allow tool execution with answers populated
@@ -903,9 +963,10 @@ function handleMessage(message: SDKMessage): void {
             } else {
               // Race condition: tool_result arrived but tool_start was never tracked.
               // Emit tool_end anyway to prevent infinite spinner on frontend.
-              console.warn(
-                `[WARNING] tool_result for untracked tool_use_id: ${block.tool_use_id}`
-              );
+              emit({
+                type: "warning",
+                message: `tool_result for untracked tool_use_id: ${block.tool_use_id}`,
+              });
               emit({
                 type: "tool_end",
                 id: block.tool_use_id,
@@ -1122,7 +1183,24 @@ async function cleanup(reason: string): Promise<void> {
     pendingQuestionRequests.delete(requestId);
   }
 
-  // 3. Interrupt the query if active
+  // 3. Emit tool_end for any in-flight tools to prevent infinite spinners on frontend
+  for (const [toolId, toolInfo] of activeTools) {
+    const duration = Date.now() - toolInfo.startTime;
+    emit({
+      type: "tool_end",
+      id: toolId,
+      tool: toolInfo.tool,
+      success: false,
+      summary: `Interrupted: ${reason}`,
+      duration,
+    });
+  }
+  activeTools.clear();
+
+  // 4. Flush any remaining buffered text
+  flushBlockBuffer();
+
+  // 5. Interrupt the query if active
   if (queryRef) {
     try {
       await queryRef.interrupt();
@@ -1131,10 +1209,10 @@ async function cleanup(reason: string): Promise<void> {
     }
   }
 
-  // 4. Close readline
+  // 6. Close readline
   closeReadline();
 
-  // 5. Emit shutdown event
+  // 7. Emit shutdown event
   emit({ type: "shutdown", reason });
 }
 
