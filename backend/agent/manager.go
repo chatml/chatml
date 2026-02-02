@@ -449,8 +449,10 @@ outer:
 					markSnapshotDirty()
 				}
 
-			case EventTypeComplete, EventTypeResult:
-				// Store accumulated assistant message
+			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
+				// Turn or session completed — store accumulated message and reset
+				// streaming state. turn_complete means the process stays alive;
+				// complete/result means it will exit shortly.
 				if currentAssistantMessage != "" {
 					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 						ID:        uuid.New().String()[:8],
@@ -462,16 +464,13 @@ outer:
 					}
 					currentAssistantMessage = ""
 				}
-				// Clear thinking on completion
 				currentThinking = ""
 				isThinking = false
 				activeToolsMap = make(map[string]ActiveToolEntry)
 				activeSubAgents = make(map[string]*SubAgentEntry)
 				pendingSubAgentTools = make(map[string][]ActiveToolEntry)
-				snapshotDirty = false // No need to flush — we're about to clear
+				snapshotDirty = false
 
-				// Clear snapshot directly (skipping flush: the snapshot is about to be
-				// removed anyway, so writing an intermediate state is wasted I/O).
 				if err := m.store.ClearStreamingSnapshot(ctx, convID); err != nil {
 					logger.Manager.Errorf("Failed to clear streaming snapshot for conv %s: %v", convID, err)
 				}
@@ -664,7 +663,7 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			restartOpts.ResumeSession = conv.AgentSessionID
 		}
 
-		logger.Manager.Infof("Auto-restarting process for conversation %s (previous exit error: %v)", convID, prevExitErr)
+		logger.Manager.Warnf("Unexpected: auto-restarting process for conversation %s (previous exit error: %v). Multi-turn processes should stay alive between turns.", convID, prevExitErr)
 
 		// Cancel any pending user questions from the old process so the frontend
 		// doesn't show a stale question UI pointing at the dead process.

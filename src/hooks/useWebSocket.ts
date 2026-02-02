@@ -157,6 +157,15 @@ export function useWebSocket(enabled: boolean = true) {
 
     switch (data.type) {
       case 'init':
+        // If an init event arrives for an already-streaming conversation, it means the
+        // process was restarted. Clear stale streaming state before processing new events.
+        if (store.streamingState[conversationId]?.isStreaming) {
+          store.clearStreamingText(conversationId);
+          store.setStreaming(conversationId, false);
+          store.clearActiveTools(conversationId);
+          store.clearThinking(conversationId);
+          store.clearSubAgents(conversationId);
+        }
         // Capture budget configuration from init event
         if (event?.budgetConfig) {
           const config = event.budgetConfig as { maxBudgetUsd?: number; maxTurns?: number; maxThinkingTokens?: number };
@@ -349,6 +358,37 @@ export function useWebSocket(enabled: boolean = true) {
           getConversationLabel(conversationId),
         );
         break;
+
+      case 'turn_complete': {
+        // Turn completed but process is still alive — finalize streaming state
+        // but keep conversation as active (ready for next message without restart)
+        const turnStore = getStore();
+        const turnStartTime = turnStore.streamingState[conversationId]?.startTime;
+        const turnDurationMs = turnStartTime ? Date.now() - turnStartTime : undefined;
+
+        const turnTools = turnStore.activeTools[conversationId] || [];
+        const turnToolUsage = turnTools.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          params: t.params,
+          success: t.success,
+          summary: t.summary,
+          durationMs: t.endTime && t.startTime ? t.endTime - t.startTime : undefined,
+          stdout: t.stdout,
+          stderr: t.stderr,
+        }));
+
+        // Atomic finalization - creates message and clears streaming/activeTools
+        turnStore.finalizeStreamingMessage(conversationId, {
+          durationMs: turnDurationMs,
+          toolUsage: turnToolUsage.length > 0 ? turnToolUsage : undefined,
+        });
+        // Explicitly set status to active — finalizeStreamingMessage only clears
+        // streaming/activeTools state but does NOT update conversation status.
+        // The process is still alive and ready for the next message.
+        turnStore.updateConversation(conversationId, { status: 'active' });
+        break;
+      }
 
       case 'complete':
         // Complete event signals the entire conversation ended (stdin closed)

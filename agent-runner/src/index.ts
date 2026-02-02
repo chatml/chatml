@@ -213,6 +213,18 @@ let abortControllerRef: AbortController | null = null;
 // Shutdown state
 let isShuttingDown = false;
 let cleanupCalled = false;
+// Multi-turn loop control: set to false to break the main loop
+let mainLoopRunning = false;
+// Pending model change queued between turns (applied on next query start)
+let pendingModel: string | undefined;
+
+// Debug logging (enabled via CHATML_DEBUG=1 env var)
+const debugEnabled = process.env.CHATML_DEBUG === "1";
+function debug(msg: string, ...args: unknown[]): void {
+  if (!debugEnabled) return;
+  const ts = new Date().toISOString();
+  console.error(`[DEBUG ${ts}] ${msg}`, ...args);
+}
 
 // Close readline interface if it exists
 function closeReadline(): void {
@@ -222,192 +234,286 @@ function closeReadline(): void {
   }
 }
 
-// Create async generator for streaming input mode
-async function* createMessageStream(): AsyncGenerator<SDKUserMessage> {
+// ============================================================================
+// EVENT-DRIVEN INPUT QUEUE
+// Replaces the async generator with a queue that decouples stdin reading
+// from SDK message feeding. Runtime control commands are handled inline.
+// ============================================================================
+
+interface QueuedMessage {
+  content: string;
+  attachments?: Attachment[];
+}
+
+// Input queue for "message" type inputs (queued for the next turn)
+const messageQueue: QueuedMessage[] = [];
+// Resolver for waitForNextMessage — set when waiting, cleared when resolved
+let messageWaiter: ((msg: QueuedMessage | null) => void) | null = null;
+// Whether stdin has been closed (signals end of input)
+let stdinClosed = false;
+
+function setupInputQueue(): void {
   rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: false,
   });
 
-  try {
-    for await (const line of rl) {
-      if (!line.trim()) continue;
+  rl.on("line", (line: string) => {
+    if (!line.trim()) return;
 
-      try {
-        const input: InputMessage = JSON.parse(line);
+    try {
+      const input: InputMessage = JSON.parse(line);
+      debug(`Input received: type=${input.type}, content=${(input.content || "").slice(0, 50)}`);
 
-        if (input.type === "stop") {
-          break;
+      if (input.type === "stop") {
+        debug("Stop command received, breaking main loop");
+        mainLoopRunning = false;
+        // Resolve any pending waiter with null to unblock
+        if (messageWaiter) {
+          messageWaiter(null);
+          messageWaiter = null;
         }
-
-        // Handle runtime control commands — each wrapped in its own try/catch
-        // to prevent SDK errors from being misreported as JSON parse errors.
-        if (input.type === "interrupt" && queryRef) {
-          try {
-            await queryRef.interrupt();
-            emit({ type: "interrupted" });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "interrupt", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "set_model" && queryRef && input.model) {
-          try {
-            await queryRef.setModel(input.model);
-            emit({ type: "model_changed", model: input.model });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "set_model", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "set_permission_mode" && queryRef && input.permissionMode) {
-          try {
-            await queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk");
-            emit({ type: "permission_mode_changed", mode: input.permissionMode });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "set_permission_mode", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "get_supported_models" && queryRef) {
-          try {
-            const models = await queryRef.supportedModels();
-            emit({ type: "supported_models", models });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "get_supported_models", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "get_supported_commands" && queryRef) {
-          try {
-            const commands = await queryRef.supportedCommands();
-            emit({ type: "supported_commands", commands });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "get_supported_commands", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "get_mcp_status" && queryRef) {
-          try {
-            const status = await queryRef.mcpServerStatus();
-            emit({ type: "mcp_status", servers: status });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "get_mcp_status", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "get_account_info" && queryRef) {
-          try {
-            const info = await queryRef.accountInfo();
-            emit({ type: "account_info", info });
-          } catch (cmdErr) {
-            emit({ type: "command_error", command: "get_account_info", error: String(cmdErr) });
-          }
-          continue;
-        }
-
-        if (input.type === "rewind_files" && input.checkpointUuid && queryRef) {
-          try {
-            await queryRef.rewindFiles(input.checkpointUuid);
-            emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: true });
-          } catch (error) {
-            emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: false, error: String(error) });
-          }
-          continue;
-        }
-
-        // Handle user question responses from the Go backend
-        if (input.type === "user_question_response" && input.questionRequestId && input.answers) {
-          const pending = pendingQuestionRequests.get(input.questionRequestId);
-          if (pending) {
-            pendingQuestionRequests.delete(input.questionRequestId);
-            // Check if user cancelled the question
-            if (input.answers.__cancelled === "true") {
-              pending.reject(new Error("User cancelled the question"));
-            } else {
-              pending.resolve(input.answers);
-            }
-          } else {
-            emit({
-              type: "warning",
-              message: `Received response for unknown question request: ${input.questionRequestId}`,
-            });
-          }
-          continue;
-        }
-
-        if (input.type === "message" && input.content) {
-          // Build message content - simple string or multipart with attachments
-          let messageContent: string | Array<{type: string; [key: string]: unknown}> = input.content;
-
-          // If there are attachments, build multipart content
-          if (input.attachments && input.attachments.length > 0) {
-            const contentBlocks: Array<{type: string; [key: string]: unknown}> = [];
-
-            // Add text content first
-            if (input.content) {
-              contentBlocks.push({ type: "text", text: input.content });
-            }
-
-            // Add attachments
-            for (const attachment of input.attachments) {
-              if (attachment.type === "image" && attachment.base64Data) {
-                // Images sent as image content blocks
-                contentBlocks.push({
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: attachment.mimeType,
-                    data: attachment.base64Data,
-                  }
-                });
-              } else if (attachment.base64Data) {
-                // Text/code files sent as text with file markers
-                let content = Buffer.from(attachment.base64Data, "base64").toString("utf-8");
-                // Escape any occurrences of the closing tag to prevent injection
-                content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
-                const lineInfo = attachment.lineCount ? ` lines="${attachment.lineCount}"` : "";
-                const pathInfo = attachment.path ? ` path="${escapeXmlAttr(attachment.path)}"` : "";
-                contentBlocks.push({
-                  type: "text",
-                  text: `<attached_file name="${escapeXmlAttr(attachment.name)}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
-                });
-              }
-            }
-
-            messageContent = contentBlocks;
-          }
-
-          yield {
-            type: "user",
-            message: {
-              role: "user",
-              content: messageContent,
-            },
-            parent_tool_use_id: null,
-            session_id: currentSessionId || "",
-          } as SDKUserMessage;
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        emit({
-          type: "json_parse_error",
-          message: `Failed to parse input: ${errorMessage}`,
-          rawInput: line.length > 1000 ? line.slice(0, 1000) + "...[truncated]" : line,
-          errorDetails: errorMessage,
-        });
+        return;
       }
+
+      // Handle runtime control commands that execute immediately
+      if (input.type === "interrupt") {
+        if (queryRef) {
+          debug("Interrupting active query");
+          void queryRef.interrupt().then(() => {
+            emit({ type: "interrupted" });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "interrupt", error: String(cmdErr) });
+          });
+        } else {
+          debug("Interrupt received but no active query");
+          emit({ type: "interrupted" });
+        }
+        return;
+      }
+
+      if (input.type === "set_model" && input.model) {
+        if (queryRef) {
+          debug(`Setting model on active query: ${input.model}`);
+          void queryRef.setModel(input.model).then(() => {
+            emit({ type: "model_changed", model: input.model! });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "set_model", error: String(cmdErr) });
+          });
+        } else {
+          // Queue model change — will be applied when next query starts
+          debug(`Model change queued (between turns): ${input.model}`);
+          pendingModel = input.model;
+          emit({ type: "model_changed", model: input.model });
+        }
+        return;
+      }
+
+      if (input.type === "set_permission_mode" && input.permissionMode) {
+        if (queryRef) {
+          debug(`Setting permission mode: ${input.permissionMode}`);
+          void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
+            emit({ type: "permission_mode_changed", mode: input.permissionMode! });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "set_permission_mode", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "set_permission_mode", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "get_supported_models") {
+        if (queryRef) {
+          void queryRef.supportedModels().then((models: unknown) => {
+            emit({ type: "supported_models", models });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "get_supported_models", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "get_supported_models", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "get_supported_commands") {
+        if (queryRef) {
+          void queryRef.supportedCommands().then((commands: unknown) => {
+            emit({ type: "supported_commands", commands });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "get_supported_commands", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "get_supported_commands", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "get_mcp_status") {
+        if (queryRef) {
+          void queryRef.mcpServerStatus().then((status: unknown) => {
+            emit({ type: "mcp_status", servers: status });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "get_mcp_status", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "get_mcp_status", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "get_account_info") {
+        if (queryRef) {
+          void queryRef.accountInfo().then((info: unknown) => {
+            emit({ type: "account_info", info });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "get_account_info", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "get_account_info", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "rewind_files" && input.checkpointUuid) {
+        if (queryRef) {
+          void queryRef.rewindFiles(input.checkpointUuid).then(() => {
+            emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid!, success: true });
+          }).catch((error: unknown) => {
+            emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid!, success: false, error: String(error) });
+          });
+        } else {
+          emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: false, error: "No active query" });
+        }
+        return;
+      }
+
+      // Handle user question responses from the Go backend
+      if (input.type === "user_question_response" && input.questionRequestId && input.answers) {
+        const pending = pendingQuestionRequests.get(input.questionRequestId);
+        if (pending) {
+          pendingQuestionRequests.delete(input.questionRequestId);
+          if (input.answers.__cancelled === "true") {
+            pending.reject(new Error("User cancelled the question"));
+          } else {
+            pending.resolve(input.answers);
+          }
+        } else {
+          emit({
+            type: "warning",
+            message: `Received response for unknown question request: ${input.questionRequestId}`,
+          });
+        }
+        return;
+      }
+
+      // Queue "message" type inputs for the next turn
+      if (input.type === "message" && input.content) {
+        const queued: QueuedMessage = {
+          content: input.content,
+          attachments: input.attachments,
+        };
+
+        // If someone is waiting for a message, resolve immediately
+        if (messageWaiter) {
+          const waiter = messageWaiter;
+          messageWaiter = null;
+          waiter(queued);
+        } else {
+          messageQueue.push(queued);
+        }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      emit({
+        type: "json_parse_error",
+        message: `Failed to parse input: ${errorMessage}`,
+        rawInput: line.length > 1000 ? line.slice(0, 1000) + "...[truncated]" : line,
+        errorDetails: errorMessage,
+      });
     }
-  } finally {
-    closeReadline();
+  });
+
+  rl.on("close", () => {
+    debug("Stdin closed (readline 'close' event)");
+    stdinClosed = true;
+    mainLoopRunning = false;
+    // Resolve any pending waiter with null to unblock
+    if (messageWaiter) {
+      messageWaiter(null);
+      messageWaiter = null;
+    }
+  });
+}
+
+// Wait for the next "message" type input. Returns null if stdin closes or stop is received.
+function waitForNextMessage(): Promise<QueuedMessage | null> {
+  // Check queue first
+  if (messageQueue.length > 0) {
+    return Promise.resolve(messageQueue.shift()!);
   }
+  // Check if we should stop
+  if (stdinClosed || !mainLoopRunning) {
+    return Promise.resolve(null);
+  }
+  // Wait for next message
+  return new Promise((resolve) => {
+    messageWaiter = resolve;
+  });
+}
+
+// Build prompt for a queued message.
+// For plain text: returns the string directly (used as query prompt).
+// For messages with attachments: returns a single-yield async generator
+// (the V1 SDK only accepts string | AsyncIterable<SDKUserMessage> for prompt).
+function buildPrompt(msg: QueuedMessage): string | AsyncIterable<SDKUserMessage> {
+  if (!msg.attachments || msg.attachments.length === 0) {
+    return msg.content;
+  }
+
+  // Build multipart content blocks
+  const contentBlocks: Array<{type: string; [key: string]: unknown}> = [];
+
+  if (msg.content) {
+    contentBlocks.push({ type: "text", text: msg.content });
+  }
+
+  for (const attachment of msg.attachments) {
+    if (attachment.type === "image" && attachment.base64Data) {
+      contentBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: attachment.mimeType,
+          data: attachment.base64Data,
+        }
+      });
+    } else if (attachment.base64Data) {
+      let content = Buffer.from(attachment.base64Data, "base64").toString("utf-8");
+      content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
+      const lineInfo = attachment.lineCount ? ` lines="${attachment.lineCount}"` : "";
+      const pathInfo = attachment.path ? ` path="${escapeXmlAttr(attachment.path)}"` : "";
+      contentBlocks.push({
+        type: "text",
+        text: `<attached_file name="${escapeXmlAttr(attachment.name)}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
+      });
+    }
+  }
+
+  // Return a single-yield async generator for multipart content
+  async function* singleMessage(): AsyncGenerator<SDKUserMessage> {
+    yield {
+      type: "user",
+      message: {
+        role: "user",
+        content: contentBlocks,
+      },
+      parent_tool_use_id: null,
+      session_id: currentSessionId || "",
+    } as SDKUserMessage;
+  }
+  return singleMessage();
 }
 
 // Extract a suggested name from the first meaningful response
@@ -824,13 +930,13 @@ const hooks = {
 };
 
 // ============================================================================
-// MAIN
+// MAIN — Multi-turn loop
+// Each user message creates a new query() call. Between turns, the process
+// stays alive reading stdin. The process only exits on "stop", SIGTERM, or
+// stdin close.
 // ============================================================================
 
 async function main(): Promise<void> {
-  const abortController = new AbortController();
-  abortControllerRef = abortController;
-
   emit({
     type: "ready",
     conversationId,
@@ -839,11 +945,20 @@ async function main(): Promise<void> {
     forking: forkSession,
   });
 
+  // Set up the event-driven input queue (replaces createMessageStream)
+  setupInputQueue();
+  mainLoopRunning = true;
+
+  // Track the session ID for resume across turns
+  let resumeId: string | undefined = resumeSessionId;
+  let isFirstTurn = true;
+  let turnCount = 0;
+
   try {
     // Create workspace context for MCP tools
     const workspaceContext = new WorkspaceContext({
       cwd,
-      workspaceId: conversationId, // Use conversation ID as workspace ID for now
+      workspaceId: conversationId,
       sessionId: currentSessionId || "pending",
       linearIssue,
       targetBranch,
@@ -855,58 +970,128 @@ async function main(): Promise<void> {
     // Resolve tool preset to allowedTools/disallowedTools
     const presetConfig = resolveToolPreset(toolPreset);
 
-    const result = query({
-      prompt: createMessageStream(),
-      options: {
-        cwd,
-        permissionMode: initialPermissionMode,
-        allowDangerouslySkipPermissions: true,
-        canUseTool,
-        mcpServers: { chatml: chatmlMcp },
-        includePartialMessages: true,
-        tools: { type: "preset", preset: "claude_code" },
-        systemPrompt: instructions
-          ? { type: "preset", preset: "claude_code", append: instructions }
-          : { type: "preset", preset: "claude_code" },
-        abortController,
-        hooks,
-        // Session management
-        resume: resumeSessionId,
-        forkSession: forkSession && !!resumeSessionId,
-        // Tool preset configuration
-        allowedTools: presetConfig.allowedTools,
-        disallowedTools: presetConfig.disallowedTools,
-        // File checkpointing
-        enableFileCheckpointing: enableCheckpointing,
-        // Task 4: Structured output
-        outputFormat,
-        // Task 5: Budget controls
-        maxBudgetUsd,
-        maxTurns,
-        maxThinkingTokens,
-        // Task 6: Settings sources
-        settingSources,
-        // Task 7: Beta features
-        betas,
-        // Task 8: Model configuration
-        model,
-        fallbackModel,
-        // stderr callback for debugging
-        stderr: (data: string) => {
-          emit({ type: "agent_stderr", data });
-        },
+    // Shared query options (reused across turns — abortController added per-turn)
+    const baseOptions = {
+      cwd,
+      permissionMode: initialPermissionMode,
+      allowDangerouslySkipPermissions: true,
+      canUseTool,
+      mcpServers: { chatml: chatmlMcp },
+      includePartialMessages: true,
+      tools: { type: "preset" as const, preset: "claude_code" as const },
+      systemPrompt: instructions
+        ? { type: "preset" as const, preset: "claude_code" as const, append: instructions }
+        : { type: "preset" as const, preset: "claude_code" as const },
+      hooks,
+      // Tool preset configuration
+      allowedTools: presetConfig.allowedTools,
+      disallowedTools: presetConfig.disallowedTools,
+      // File checkpointing
+      enableFileCheckpointing: enableCheckpointing,
+      // Task 4: Structured output
+      outputFormat,
+      // Task 5: Budget controls
+      maxBudgetUsd,
+      maxTurns,
+      maxThinkingTokens,
+      // Task 6: Settings sources
+      settingSources,
+      // Task 7: Beta features
+      betas,
+      // Task 8: Model configuration
+      model,
+      fallbackModel,
+      // stderr callback for debugging
+      stderr: (data: string) => {
+        emit({ type: "agent_stderr", data });
       },
-    });
+    };
 
-    // Store query reference for runtime control
-    queryRef = result;
+    // ====================================================================
+    // Multi-turn loop: wait for message → query() → stream → turn_complete
+    // ====================================================================
+    while (mainLoopRunning) {
+      debug(`Waiting for next message (turn ${turnCount + 1}, resumeId=${resumeId || "none"})`);
 
-    for await (const message of result) {
-      handleMessage(message);
+      const nextMsg = await waitForNextMessage();
+      if (!nextMsg) {
+        debug("No more messages (stdin closed or stop received)");
+        break;
+      }
+
+      turnCount++;
+      const turnStartTime = Date.now();
+      debug(`Turn ${turnCount} starting: content="${nextMsg.content.slice(0, 80)}"`);
+
+      // Reset per-turn state so previous turn's data doesn't leak
+      accumulatedText = "";
+      blockBuffer = "";
+
+      // Fresh AbortController per turn — aborting turn N must not affect turn N+1
+      const turnAbortController = new AbortController();
+      abortControllerRef = turnAbortController;
+
+      // Apply pending model change if queued between turns
+      const turnModel = pendingModel || model;
+      pendingModel = undefined;
+
+      // Update workspace context with current session ID if it changed
+      if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
+        workspaceContext.updateSessionId(currentSessionId);
+      }
+
+      // Build the prompt (string for plain text, async generator for attachments)
+      const prompt = buildPrompt(nextMsg);
+
+      // Set isFirstTurn before query() so forkSession is evaluated correctly
+      const shouldFork = isFirstTurn && forkSession && !!resumeId;
+      isFirstTurn = false;
+
+      // Create a new query for this turn
+      const result = query({
+        prompt,
+        options: {
+          ...baseOptions,
+          abortController: turnAbortController,
+          model: turnModel,
+          // Session management: resume from previous turn's session
+          resume: resumeId,
+          // Only fork on the very first turn if --fork was specified
+          forkSession: shouldFork,
+        },
+      });
+
+      // Store query reference for runtime control during this turn
+      queryRef = result;
+
+      // Stream all messages for this turn
+      for await (const message of result) {
+        handleMessage(message);
+      }
+
+      // Turn complete — flush and emit turn_complete
+      flushBlockBuffer();
+
+      // Update resume ID for the next turn
+      if (currentSessionId) {
+        resumeId = currentSessionId;
+      }
+
+      // Clear query reference between turns
+      queryRef = null;
+
+      const turnDurationMs = Date.now() - turnStartTime;
+      debug(`Turn ${turnCount} completed in ${turnDurationMs}ms (sessionId=${currentSessionId})`);
+
+      // Emit turn_complete to signal the Go backend that this turn is done
+      // but the process is still alive and ready for more input
+      emit({ type: "turn_complete", sessionId: currentSessionId });
     }
 
+    // Loop exited — emit complete to signal process is done
     flushBlockBuffer();
     emit({ type: "complete", sessionId: currentSessionId });
+    debug(`Main loop exited after ${turnCount} turns`);
   } catch (err) {
     // Re-throw to let the top-level handler deal with cleanup and exit
     throw err;
@@ -1257,19 +1442,23 @@ async function cleanup(reason: string): Promise<void> {
   // Idempotency guard - prevent duplicate cleanup
   if (cleanupCalled) return;
   cleanupCalled = true;
+  debug(`Cleanup called: ${reason}`);
 
-  // 1. Signal abort to cancel pending operations
+  // 1. Break the main loop
+  mainLoopRunning = false;
+
+  // 2. Signal abort to cancel pending operations
   if (abortControllerRef) {
     abortControllerRef.abort();
   }
 
-  // 2. Cancel all pending question requests
+  // 3. Cancel all pending question requests
   for (const [requestId, pending] of pendingQuestionRequests) {
     pending.reject(new Error(`Cleanup: ${reason}`));
     pendingQuestionRequests.delete(requestId);
   }
 
-  // 3. Emit tool_end for any in-flight tools to prevent infinite spinners on frontend
+  // 4. Emit tool_end for any in-flight tools to prevent infinite spinners on frontend
   for (const [toolId, toolInfo] of activeTools) {
     const duration = Date.now() - toolInfo.startTime;
     emit({
@@ -1283,22 +1472,29 @@ async function cleanup(reason: string): Promise<void> {
   }
   activeTools.clear();
 
-  // 4. Flush any remaining buffered text
+  // 5. Flush any remaining buffered text
   flushBlockBuffer();
 
-  // 5. Interrupt the query if active
+  // 6. Interrupt the query if active (may be null between turns)
   if (queryRef) {
     try {
       await queryRef.interrupt();
     } catch {
       // Ignore errors during shutdown
     }
+    queryRef = null;
   }
 
-  // 6. Close readline
+  // 7. Unblock any pending message waiter
+  if (messageWaiter) {
+    messageWaiter(null);
+    messageWaiter = null;
+  }
+
+  // 8. Close readline
   closeReadline();
 
-  // 7. Emit shutdown event
+  // 9. Emit shutdown event
   emit({ type: "shutdown", reason });
 }
 

@@ -180,6 +180,7 @@ const (
 	EventTypeTodoUpdate     = "todo_update"
 	EventTypeResult         = "result"
 	EventTypeComplete       = "complete"
+	EventTypeTurnComplete   = "turn_complete"
 	EventTypeError          = "error"
 	EventTypeShutdown       = "shutdown"
 

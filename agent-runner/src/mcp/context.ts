@@ -31,7 +31,7 @@ export interface WorkspaceContextOptions {
 export class WorkspaceContext {
   readonly cwd: string;
   readonly workspaceId: string;
-  readonly sessionId: string;
+  private _sessionId: string;
   readonly targetBranch: string; // Effective target branch for PRs and sync
   private _linearIssue: LinearIssue | null = null;
   private _gitState: GitState | null = null;
@@ -39,13 +39,21 @@ export class WorkspaceContext {
   constructor(options: WorkspaceContextOptions) {
     this.cwd = options.cwd;
     this.workspaceId = options.workspaceId;
-    this.sessionId = options.sessionId;
+    this._sessionId = options.sessionId;
     this.targetBranch = options.targetBranch || this.detectBaseBranch();
 
     // Resolve Linear issue from CLI arg or other sources
     if (options.linearIssue) {
       this._linearIssue = this.resolveLinearIssue(options.linearIssue);
     }
+  }
+
+  get sessionId(): string {
+    return this._sessionId;
+  }
+
+  updateSessionId(sessionId: string): void {
+    this._sessionId = sessionId;
   }
 
   get linearIssue(): LinearIssue | null {
