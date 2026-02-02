@@ -219,6 +219,7 @@ interface AppState {
   // Workspace actions
   setWorkspaces: (workspaces: Workspace[]) => void;
   addWorkspace: (workspace: Workspace) => void;
+  updateWorkspace: (id: string, updates: Partial<Workspace>) => void;
   removeWorkspace: (id: string) => void;
   selectWorkspace: (id: string | null) => void;
   reorderWorkspaces: (activeId: string, overId: string) => void;
@@ -494,6 +495,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setWorkspaces: (workspaces) => set({ workspaces }),
   addWorkspace: (workspace) => set((state) => ({
     workspaces: [...state.workspaces, workspace]
+  })),
+  updateWorkspace: (id, updates) => set((state) => ({
+    workspaces: state.workspaces.map((w) =>
+      w.id === id ? { ...w, ...updates } : w
+    ),
   })),
   removeWorkspace: (id) => set((state) => {
     // Get all sessions for this workspace

@@ -3,11 +3,14 @@ package models
 import "time"
 
 type Repo struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Path      string    `json:"path"`
-	Branch    string    `json:"branch"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Path         string    `json:"path"`
+	Branch       string    `json:"branch"`
+	Remote       string    `json:"remote"`       // git remote name, default "origin"
+	BranchPrefix string    `json:"branchPrefix"` // "github", "custom", "none", or "" (use global)
+	CustomPrefix string    `json:"customPrefix"` // custom prefix value when BranchPrefix=="custom"
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // Session represents a worktree session within a workspace
@@ -50,6 +53,7 @@ type SessionWithWorkspace struct {
 	Session
 	WorkspacePath   string `json:"workspacePath"`
 	WorkspaceBranch string `json:"workspaceBranch"`
+	WorkspaceRemote string `json:"workspaceRemote,omitempty"`
 }
 
 // DefaultBranch returns the workspace's default branch name (e.g. "main", "master"),
@@ -61,14 +65,22 @@ func (s *SessionWithWorkspace) DefaultBranch() string {
 	return "main"
 }
 
+// EffectiveRemote returns the workspace's configured remote, defaulting to "origin".
+func (s *SessionWithWorkspace) EffectiveRemote() string {
+	if s.WorkspaceRemote != "" {
+		return s.WorkspaceRemote
+	}
+	return "origin"
+}
+
 // EffectiveTargetBranch returns the session's target branch if set,
-// otherwise returns "origin/" + the workspace default branch.
+// otherwise returns "<remote>/" + the workspace default branch.
 // Used for git sync operations and PR base branch.
 func (s *SessionWithWorkspace) EffectiveTargetBranch() string {
 	if s.TargetBranch != "" {
 		return s.TargetBranch
 	}
-	return "origin/" + s.DefaultBranch()
+	return s.EffectiveRemote() + "/" + s.DefaultBranch()
 }
 
 type Agent struct {

@@ -1030,7 +1030,7 @@ func TestAddConversation_WithModel(t *testing.T) {
 		Type:      models.ConversationTypeTask,
 		Name:      "Model Test",
 		Status:    models.ConversationStatusActive,
-		Model:     "sonnet-4",
+		Model:     "claude-sonnet-4-20250514",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -1039,7 +1039,7 @@ func TestAddConversation_WithModel(t *testing.T) {
 	got, err := s.GetConversation(ctx, "conv-1")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "sonnet-4", got.Model)
+	assert.Equal(t, "claude-sonnet-4-20250514", got.Model)
 }
 
 func TestAddConversation_ModelDefaultsToEmpty(t *testing.T) {
@@ -1069,7 +1069,7 @@ func TestGetConversationMeta_IncludesModel(t *testing.T) {
 		Type:      models.ConversationTypeTask,
 		Name:      "Meta Model Test",
 		Status:    models.ConversationStatusActive,
-		Model:     "haiku-3.5",
+		Model:     "claude-haiku-4-5-20251001",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -1078,7 +1078,7 @@ func TestGetConversationMeta_IncludesModel(t *testing.T) {
 	got, err := s.GetConversationMeta(ctx, "conv-1")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "haiku-3.5", got.Model)
+	assert.Equal(t, "claude-haiku-4-5-20251001", got.Model)
 }
 
 func TestListConversations_IncludesModel(t *testing.T) {
@@ -1088,8 +1088,8 @@ func TestListConversations_IncludesModel(t *testing.T) {
 	createTestSession(t, s, "sess-1", "ws-1")
 
 	for _, tc := range []struct{ id, model string }{
-		{"c1", "opus-4.5"},
-		{"c2", "sonnet-4"},
+		{"c1", "claude-opus-4-5-20251101"},
+		{"c2", "claude-sonnet-4-20250514"},
 		{"c3", ""},
 	} {
 		conv := &models.Conversation{
@@ -1113,8 +1113,8 @@ func TestListConversations_IncludesModel(t *testing.T) {
 	for _, c := range convs {
 		modelsByID[c.ID] = c.Model
 	}
-	assert.Equal(t, "opus-4.5", modelsByID["c1"])
-	assert.Equal(t, "sonnet-4", modelsByID["c2"])
+	assert.Equal(t, "claude-opus-4-5-20251101", modelsByID["c1"])
+	assert.Equal(t, "claude-sonnet-4-20250514", modelsByID["c2"])
 	assert.Equal(t, "", modelsByID["c3"])
 }
 
@@ -1127,12 +1127,12 @@ func TestListConversationsForSessions_IncludesModel(t *testing.T) {
 
 	conv1 := &models.Conversation{
 		ID: "c1", SessionID: "sess-1", Type: models.ConversationTypeTask,
-		Name: "C1", Status: models.ConversationStatusActive, Model: "opus-4.5",
+		Name: "C1", Status: models.ConversationStatusActive, Model: "claude-opus-4-5-20251101",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	conv2 := &models.Conversation{
 		ID: "c2", SessionID: "sess-2", Type: models.ConversationTypeTask,
-		Name: "C2", Status: models.ConversationStatusActive, Model: "haiku-3.5",
+		Name: "C2", Status: models.ConversationStatusActive, Model: "claude-haiku-4-5-20251001",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	require.NoError(t, s.AddConversation(ctx, conv1))
@@ -1142,8 +1142,8 @@ func TestListConversationsForSessions_IncludesModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result["sess-1"], 1)
 	require.Len(t, result["sess-2"], 1)
-	assert.Equal(t, "opus-4.5", result["sess-1"][0].Model)
-	assert.Equal(t, "haiku-3.5", result["sess-2"][0].Model)
+	assert.Equal(t, "claude-opus-4-5-20251101", result["sess-1"][0].Model)
+	assert.Equal(t, "claude-haiku-4-5-20251001", result["sess-2"][0].Model)
 }
 
 func TestUpdateConversation_ModelChange(t *testing.T) {
@@ -1158,20 +1158,20 @@ func TestUpdateConversation_ModelChange(t *testing.T) {
 		Type:      models.ConversationTypeTask,
 		Name:      "Update Model Test",
 		Status:    models.ConversationStatusActive,
-		Model:     "opus-4.5",
+		Model:     "claude-opus-4-5-20251101",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 	require.NoError(t, s.AddConversation(ctx, conv))
 
 	require.NoError(t, s.UpdateConversation(ctx, "conv-1", func(c *models.Conversation) {
-		c.Model = "sonnet-4"
+		c.Model = "claude-sonnet-4-20250514"
 	}))
 
 	got, err := s.GetConversation(ctx, "conv-1")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "sonnet-4", got.Model)
+	assert.Equal(t, "claude-sonnet-4-20250514", got.Model)
 }
 
 // ============================================================================
@@ -2827,4 +2827,282 @@ func TestSession_TargetBranch_ListSessions(t *testing.T) {
 	}
 	assert.Equal(t, "origin/staging", byID["sess-tb-7a"].TargetBranch)
 	assert.Empty(t, byID["sess-tb-7b"].TargetBranch)
+}
+
+// ============================================================================
+// Repo Settings Tests (remote, branch_prefix, custom_prefix)
+// ============================================================================
+
+func TestUpdateRepo_Success(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-upd-1")
+
+	t.Run("updates branch, remote, branch_prefix, custom_prefix", func(t *testing.T) {
+		repo.Branch = "develop"
+		repo.Remote = "upstream"
+		repo.BranchPrefix = "feat"
+		repo.CustomPrefix = "my-prefix"
+		require.NoError(t, s.UpdateRepo(ctx, repo))
+
+		got, err := s.GetRepo(ctx, "repo-upd-1")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "develop", got.Branch)
+		assert.Equal(t, "upstream", got.Remote)
+		assert.Equal(t, "feat", got.BranchPrefix)
+		assert.Equal(t, "my-prefix", got.CustomPrefix)
+	})
+
+	t.Run("preserves ID, Name, Path, CreatedAt", func(t *testing.T) {
+		got, err := s.GetRepo(ctx, "repo-upd-1")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, repo.ID, got.ID)
+		assert.Equal(t, repo.Name, got.Name)
+		assert.Equal(t, repo.Path, got.Path)
+		assert.False(t, got.CreatedAt.IsZero())
+	})
+
+	t.Run("fields default to empty strings when not set", func(t *testing.T) {
+		createTestRepo(t, s, "repo-upd-defaults")
+		got, err := s.GetRepo(ctx, "repo-upd-defaults")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "", got.Remote)
+		assert.Equal(t, "", got.BranchPrefix)
+		assert.Equal(t, "", got.CustomPrefix)
+	})
+}
+
+func TestUpdateRepo_ClearsFields(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	repo := &models.Repo{
+		ID:           "repo-clear-1",
+		Name:         "clear-repo",
+		Path:         "/path/to/clear",
+		Branch:       "main",
+		Remote:       "upstream",
+		BranchPrefix: "feat",
+		CustomPrefix: "prefix",
+		CreatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddRepo(ctx, repo))
+
+	// Clear the settings
+	repo.Remote = ""
+	repo.BranchPrefix = ""
+	repo.CustomPrefix = ""
+	require.NoError(t, s.UpdateRepo(ctx, repo))
+
+	got, err := s.GetRepo(ctx, "repo-clear-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "", got.Remote)
+	assert.Equal(t, "", got.BranchPrefix)
+	assert.Equal(t, "", got.CustomPrefix)
+}
+
+func TestAddRepo_WithRepoSettings(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	t.Run("stores remote, branch_prefix, custom_prefix", func(t *testing.T) {
+		repo := &models.Repo{
+			ID:           "repo-settings-1",
+			Name:         "settings-repo",
+			Path:         "/path/to/settings",
+			Branch:       "main",
+			Remote:       "upstream",
+			BranchPrefix: "fix",
+			CustomPrefix: "team-alpha",
+			CreatedAt:    time.Now(),
+		}
+		require.NoError(t, s.AddRepo(ctx, repo))
+
+		got, err := s.GetRepo(ctx, "repo-settings-1")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "upstream", got.Remote)
+		assert.Equal(t, "fix", got.BranchPrefix)
+		assert.Equal(t, "team-alpha", got.CustomPrefix)
+	})
+
+	t.Run("upsert updates new columns", func(t *testing.T) {
+		repo1 := &models.Repo{
+			ID:           "repo-upsert-settings",
+			Name:         "upsert-repo",
+			Path:         "/path/to/upsert",
+			Branch:       "main",
+			Remote:       "origin",
+			BranchPrefix: "feat",
+			CustomPrefix: "v1",
+			CreatedAt:    time.Now(),
+		}
+		require.NoError(t, s.AddRepo(ctx, repo1))
+
+		// Upsert with new settings
+		repo2 := &models.Repo{
+			ID:           "repo-upsert-settings",
+			Name:         "upsert-repo-updated",
+			Path:         "/path/to/upsert/updated",
+			Branch:       "develop",
+			Remote:       "upstream",
+			BranchPrefix: "fix",
+			CustomPrefix: "v2",
+			CreatedAt:    time.Now(),
+		}
+		require.NoError(t, s.AddRepo(ctx, repo2))
+
+		got, err := s.GetRepo(ctx, "repo-upsert-settings")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "upsert-repo-updated", got.Name)
+		assert.Equal(t, "/path/to/upsert/updated", got.Path)
+		assert.Equal(t, "develop", got.Branch)
+		assert.Equal(t, "upstream", got.Remote)
+		assert.Equal(t, "fix", got.BranchPrefix)
+		assert.Equal(t, "v2", got.CustomPrefix)
+
+		// Verify only one repo exists
+		repos, err := s.ListRepos(ctx)
+		require.NoError(t, err)
+		count := 0
+		for _, r := range repos {
+			if r.ID == "repo-upsert-settings" {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count)
+	})
+}
+
+func TestGetRepo_ReadsNewColumns(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	repo := &models.Repo{
+		ID:           "repo-get-cols",
+		Name:         "get-cols-repo",
+		Path:         "/path/to/get-cols",
+		Branch:       "main",
+		Remote:       "upstream",
+		BranchPrefix: "feat",
+		CustomPrefix: "project-x",
+		CreatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddRepo(ctx, repo))
+
+	got, err := s.GetRepo(ctx, "repo-get-cols")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "upstream", got.Remote)
+	assert.Equal(t, "feat", got.BranchPrefix)
+	assert.Equal(t, "project-x", got.CustomPrefix)
+}
+
+func TestListRepos_ReadsNewColumns(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	repo1 := &models.Repo{
+		ID:           "repo-list-1",
+		Name:         "list-repo-1",
+		Path:         "/path/to/list-1",
+		Branch:       "main",
+		Remote:       "origin",
+		BranchPrefix: "feat",
+		CustomPrefix: "alpha",
+		CreatedAt:    time.Now(),
+	}
+	repo2 := &models.Repo{
+		ID:           "repo-list-2",
+		Name:         "list-repo-2",
+		Path:         "/path/to/list-2",
+		Branch:       "develop",
+		Remote:       "upstream",
+		BranchPrefix: "fix",
+		CustomPrefix: "beta",
+		CreatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddRepo(ctx, repo1))
+	require.NoError(t, s.AddRepo(ctx, repo2))
+
+	repos, err := s.ListRepos(ctx)
+	require.NoError(t, err)
+	require.Len(t, repos, 2)
+
+	byID := map[string]*models.Repo{}
+	for _, r := range repos {
+		byID[r.ID] = r
+	}
+
+	assert.Equal(t, "origin", byID["repo-list-1"].Remote)
+	assert.Equal(t, "feat", byID["repo-list-1"].BranchPrefix)
+	assert.Equal(t, "alpha", byID["repo-list-1"].CustomPrefix)
+
+	assert.Equal(t, "upstream", byID["repo-list-2"].Remote)
+	assert.Equal(t, "fix", byID["repo-list-2"].BranchPrefix)
+	assert.Equal(t, "beta", byID["repo-list-2"].CustomPrefix)
+}
+
+func TestGetRepoByPath_ReadsNewColumns(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	repo := &models.Repo{
+		ID:           "repo-bypath-cols",
+		Name:         "bypath-repo",
+		Path:         "/unique/path/for/test",
+		Branch:       "main",
+		Remote:       "upstream",
+		BranchPrefix: "chore",
+		CustomPrefix: "team-beta",
+		CreatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddRepo(ctx, repo))
+
+	got, err := s.GetRepoByPath(ctx, "/unique/path/for/test")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "upstream", got.Remote)
+	assert.Equal(t, "chore", got.BranchPrefix)
+	assert.Equal(t, "team-beta", got.CustomPrefix)
+}
+
+func TestGetSessionWithWorkspace_IncludesWorkspaceRemote(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	t.Run("returns workspace remote when set", func(t *testing.T) {
+		repo := &models.Repo{
+			ID:        "ws-remote-1",
+			Name:      "remote-repo",
+			Path:      "/path/to/remote-repo",
+			Branch:    "main",
+			Remote:    "upstream",
+			CreatedAt: time.Now(),
+		}
+		require.NoError(t, s.AddRepo(ctx, repo))
+		createTestSession(t, s, "sess-remote-1", "ws-remote-1")
+
+		result, err := s.GetSessionWithWorkspace(ctx, "sess-remote-1")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "upstream", result.WorkspaceRemote)
+		assert.Equal(t, "/path/to/remote-repo", result.WorkspacePath)
+		assert.Equal(t, "main", result.WorkspaceBranch)
+	})
+
+	t.Run("returns empty string when remote not set", func(t *testing.T) {
+		createTestRepo(t, s, "ws-remote-2")
+		createTestSession(t, s, "sess-remote-2", "ws-remote-2")
+
+		result, err := s.GetSessionWithWorkspace(ctx, "sess-remote-2")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "", result.WorkspaceRemote)
+	})
 }

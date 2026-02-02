@@ -96,6 +96,9 @@ export interface RepoDTO {
   name: string;
   path: string;
   branch: string;
+  remote: string;
+  branchPrefix: string;
+  customPrefix: string;
   createdAt: string;
 }
 
@@ -152,6 +155,30 @@ export interface RepoDetailsDTO extends RepoDTO {
 export async function getRepoDetails(id: string): Promise<RepoDetailsDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${id}/details`);
   return handleResponse<RepoDetailsDTO>(res);
+}
+
+export async function updateRepoSettings(id: string, settings: {
+  branch?: string;
+  remote?: string;
+  branchPrefix?: string;
+  customPrefix?: string;
+}): Promise<RepoDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  return handleResponse<RepoDTO>(res);
+}
+
+export interface RepoRemotesDTO {
+  remotes: string[];
+  branches: Record<string, string[]>;
+}
+
+export async function getRepoRemotes(id: string): Promise<RepoRemotesDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${id}/remotes`);
+  return handleResponse<RepoRemotesDTO>(res);
 }
 
 export async function listRepoFiles(repoId: string, depth: number | 'all' = 1): Promise<FileNodeDTO[]> {
@@ -1380,6 +1407,27 @@ export async function setEnvSettings(envVars: string): Promise<void> {
     }
   );
   await handleResponse(res);
+}
+
+// =============================================================================
+// Anthropic API Key
+// =============================================================================
+
+export async function getAnthropicApiKey(): Promise<{ configured: boolean; maskedKey: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/anthropic-api-key`);
+  return handleResponse<{ configured: boolean; maskedKey: string }>(res);
+}
+
+export async function setAnthropicApiKey(apiKey: string): Promise<{ configured: boolean; maskedKey: string }> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/settings/anthropic-api-key`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey }),
+    }
+  );
+  return handleResponse<{ configured: boolean; maskedKey: string }>(res);
 }
 
 // =============================================================================

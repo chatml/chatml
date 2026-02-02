@@ -43,9 +43,9 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { SummaryPicker } from './SummaryPicker';
 
 const MODELS = [
-  { id: 'opus-4.5', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
-  { id: 'sonnet-4', name: 'Sonnet 4', icon: Snowflake, supportsThinking: true },
-  { id: 'haiku-3.5', name: 'Haiku 3.5', icon: Snowflake, supportsThinking: false },
+  { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
+  { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', icon: Snowflake, supportsThinking: true },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', icon: Snowflake, supportsThinking: false },
 ];
 
 // Models that support extended thinking mode (derived from MODELS)

@@ -60,6 +60,9 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
         name: repo.name,
         path: repo.path,
         defaultBranch: repo.branch,
+        remote: repo.remote || 'origin',
+        branchPrefix: repo.branchPrefix || '',
+        customPrefix: repo.customPrefix || '',
         createdAt: repo.createdAt,
       };
       addWorkspace(workspace);

@@ -71,6 +71,8 @@ type Process struct {
 	droppedMessages    atomic.Uint64 // Count of messages dropped due to full output buffer
 	instructionsFile   string        // Temp file for instructions, cleaned up on stop
 	opts               ProcessOptions // Original options for restart
+	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
+	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -320,10 +322,22 @@ func (p *Process) Start() error {
 		scanner := bufio.NewScanner(stderr)
 		timer := time.NewTimer(processOutputTimeout)
 		defer timer.Stop()
+		const maxStderrLines = 10
 		for scanner.Scan() {
+			line := scanner.Text()
+			// Log to Go logger so stderr appears in sidecar logs (for debugging)
+			logger.Process.Infof("[%s] %s", p.ID, line)
+			// Keep last N stderr lines for crash diagnostics
+			p.mu.Lock()
+			if len(p.lastStderrLines) >= maxStderrLines {
+				p.lastStderrLines = p.lastStderrLines[1:]
+			}
+			p.lastStderrLines = append(p.lastStderrLines, line)
+			p.mu.Unlock()
+
 			timer.Reset(processOutputTimeout)
 			select {
-			case p.output <- "[stderr] " + scanner.Text():
+			case p.output <- "[stderr] " + line:
 				// Successfully queued — stop the timer to avoid leak
 				if !timer.Stop() {
 					<-timer.C
@@ -563,6 +577,29 @@ func (p *Process) Output() <-chan string {
 // DroppedMessages returns the total number of messages dropped due to a full output buffer.
 func (p *Process) DroppedMessages() uint64 {
 	return p.droppedMessages.Load()
+}
+
+// LastStderrLines returns the last N lines captured from stderr.
+func (p *Process) LastStderrLines() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]string, len(p.lastStderrLines))
+	copy(out, p.lastStderrLines)
+	return out
+}
+
+// SetSawErrorEvent marks that the agent emitted an error or auth_error event.
+func (p *Process) SetSawErrorEvent() {
+	p.mu.Lock()
+	p.sawErrorEvent = true
+	p.mu.Unlock()
+}
+
+// SawErrorEvent returns whether the agent emitted an error or auth_error event.
+func (p *Process) SawErrorEvent() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sawErrorEvent
 }
 
 // SetRunningForTest sets the running flag. Intended for testing only.

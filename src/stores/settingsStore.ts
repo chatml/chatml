@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { Workspace } from '@/lib/types';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
 export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history' | 'scripts';
@@ -164,7 +165,7 @@ export const useSettingsStore = create<SettingsState>()(
       // Default values
       confirmCloseActiveTab: true,
       confirmArchiveDirtySession: true,
-      defaultModel: 'opus-4.5',
+      defaultModel: 'claude-opus-4-5-20251101',
       defaultThinking: true,
       maxThinkingTokens: 10000,
       showThinkingBlocks: true,
@@ -173,7 +174,7 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffects: false,
       soundEffectType: 'chime',
       sendWithEnter: true,
-      reviewModel: 'opus-4.5',
+      reviewModel: 'claude-opus-4-5-20251101',
       defaultPlanMode: false,
       autoConvertLongText: true,
       showChatCost: true,
@@ -358,6 +359,26 @@ export function getBranchPrefix(): string | undefined {
     default:
       // 'github' uses the default backend behavior (session/ prefix)
       // TODO: Pass GitHub username when available
+      return undefined;
+  }
+}
+
+/**
+ * Get branch prefix for a specific workspace, falling back to global setting.
+ * If the workspace has its own branchPrefix setting, use that; otherwise use global.
+ */
+export function getWorkspaceBranchPrefix(workspace: Workspace): string | undefined {
+  if (!workspace.branchPrefix) {
+    // Empty string = "use global default"
+    return getBranchPrefix();
+  }
+  switch (workspace.branchPrefix) {
+    case 'custom':
+      return workspace.customPrefix?.trim() || undefined;
+    case 'none':
+      return '';
+    case 'github':
+    default:
       return undefined;
   }
 }

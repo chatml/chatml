@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openFolderDialog, setMinimizeToTray, requestNotificationPermission } from '@/lib/tauri';
-import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts, getGlobalPRTemplate, setGlobalPRTemplate, getEnvSettings, setEnvSettings } from '@/lib/api';
+import { getWorkspacesBasePath, setWorkspacesBasePath, getGlobalReviewPrompts, setGlobalReviewPrompts, getGlobalPRTemplate, setGlobalPRTemplate, getEnvSettings, setEnvSettings, getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { EDITOR_THEMES } from '@/lib/monacoThemes';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
 import { Textarea } from '@/components/ui/textarea';
@@ -259,9 +259,9 @@ function ChatSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="opus-4.5">Opus 4.5</SelectItem>
-              <SelectItem value="sonnet-4">Sonnet 4</SelectItem>
-              <SelectItem value="haiku-3.5">Haiku 3.5</SelectItem>
+              <SelectItem value="claude-opus-4-5-20251101">Opus 4.5</SelectItem>
+              <SelectItem value="claude-sonnet-4-20250514">Sonnet 4</SelectItem>
+              <SelectItem value="claude-haiku-4-5-20251001">Haiku 4.5</SelectItem>
             </SelectContent>
           </Select>
           <Select
@@ -286,9 +286,9 @@ function ChatSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="opus-4.5">Opus 4.5</SelectItem>
-              <SelectItem value="sonnet-4">Sonnet 4</SelectItem>
-              <SelectItem value="haiku-3.5">Haiku 3.5</SelectItem>
+              <SelectItem value="claude-opus-4-5-20251101">Opus 4.5</SelectItem>
+              <SelectItem value="claude-sonnet-4-20250514">Sonnet 4</SelectItem>
+              <SelectItem value="claude-haiku-4-5-20251001">Haiku 4.5</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -683,6 +683,51 @@ function ClaudeCodeSettings() {
   const autoApproveSafeCommands = useSettingsStore((s) => s.autoApproveSafeCommands);
   const setAutoApproveSafeCommands = useSettingsStore((s) => s.setAutoApproveSafeCommands);
 
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
+  const [apiKeyMasked, setApiKeyMasked] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKeySaving, setApiKeySaving] = useState(false);
+  const toasts = useToast();
+
+  useEffect(() => {
+    getAnthropicApiKey().then((data) => {
+      setApiKeyConfigured(data.configured);
+      setApiKeyMasked(data.maskedKey);
+    }).catch(() => {
+      // ignore — settings page should still render
+    });
+  }, []);
+
+  const handleSaveApiKey = async () => {
+    setApiKeySaving(true);
+    try {
+      const result = await setAnthropicApiKey(apiKeyInput);
+      setApiKeyConfigured(result.configured);
+      setApiKeyMasked(result.maskedKey);
+      setApiKeyInput('');
+      toasts.success('New sessions will use this key.', 'API key saved');
+    } catch {
+      toasts.error('Failed to save API key');
+    } finally {
+      setApiKeySaving(false);
+    }
+  };
+
+  const handleRemoveApiKey = async () => {
+    setApiKeySaving(true);
+    try {
+      await setAnthropicApiKey('');
+      setApiKeyConfigured(false);
+      setApiKeyMasked('');
+      toasts.success('API key removed');
+    } catch {
+      toasts.error('Failed to remove API key');
+    } finally {
+      setApiKeySaving(false);
+    }
+  };
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Claude Code</h2>
@@ -714,6 +759,59 @@ function ClaudeCodeSettings() {
           </SelectContent>
         </Select>
       </SettingsRow>
+
+      {/* Anthropic API Key */}
+      <div className="py-4 border-b border-border/50">
+        <h4 className="text-[13px] font-medium">Anthropic API Key</h4>
+        <p className="text-[12px] text-muted-foreground mt-0.5">
+          Set an API key to bypass OAuth authentication. Get one from{' '}
+          <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+            console.anthropic.com
+          </a>.
+        </p>
+
+        {apiKeyConfigured && (
+          <p className="text-[12px] text-muted-foreground mt-2">
+            Current key: <code className="text-[11px] bg-muted px-1 py-0.5 rounded">{apiKeyMasked}</code>
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 mt-3">
+          <div className="relative flex-1 max-w-xs">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder={apiKeyConfigured ? 'Enter new key to replace' : 'sk-ant-...'}
+              className="w-full px-3 py-1.5 pr-8 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+          <Button
+            size="sm"
+            disabled={!apiKeyInput.trim() || apiKeySaving}
+            onClick={handleSaveApiKey}
+          >
+            {apiKeySaving ? 'Saving...' : 'Save'}
+          </Button>
+          {apiKeyConfigured && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={apiKeySaving}
+              onClick={handleRemoveApiKey}
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

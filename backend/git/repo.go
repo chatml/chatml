@@ -85,6 +85,53 @@ func (rm *RepoManager) GetRepoName(path string) string {
 	return filepath.Base(path)
 }
 
+// ListRemotes returns the names of all git remotes in the repository.
+func (rm *RepoManager) ListRemotes(ctx context.Context, repoPath string) ([]string, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "remote")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list remotes: %w", err)
+	}
+	var remotes []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			remotes = append(remotes, line)
+		}
+	}
+	return remotes, nil
+}
+
+// ListRemoteBranches returns remote branch refs for a given remote (e.g., ["origin/main", "origin/develop"]).
+func (rm *RepoManager) ListRemoteBranches(ctx context.Context, repoPath string, remote string) ([]string, error) {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "branch", "-r", "--list", remote+"/*")
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list remote branches: %w", err)
+	}
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasSuffix(line, "/HEAD") {
+			continue
+		}
+		// Remove "-> origin/main" from HEAD pointers like "origin/HEAD -> origin/main"
+		if idx := strings.Index(line, " -> "); idx >= 0 {
+			continue
+		}
+		branches = append(branches, line)
+	}
+	return branches, nil
+}
+
+// RefExists checks whether a git ref (branch, tag, or commit) exists in the repository.
+func (rm *RepoManager) RefExists(ctx context.Context, repoPath, ref string) bool {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "rev-parse", "--verify", "--quiet", ref)
+	defer cancel()
+	return cmd.Run() == nil
+}
+
 // GetFileAtRef returns the content of a file at a specific git ref (branch, tag, or commit)
 func (rm *RepoManager) GetFileAtRef(ctx context.Context, repoPath, ref, filePath string) (string, error) {
 	if err := ValidateGitRef(ref); err != nil {

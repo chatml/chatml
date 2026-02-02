@@ -2157,8 +2157,8 @@ func TestCreateConversation_RequestParsing_WithModel(t *testing.T) {
 	}{
 		{
 			name:     "model specified",
-			body:     `{"type": "task", "message": "hello", "model": "sonnet-4"}`,
-			expected: "sonnet-4",
+			body:     `{"type": "task", "message": "hello", "model": "claude-sonnet-4-20250514"}`,
+			expected: "claude-sonnet-4-20250514",
 		},
 		{
 			name:     "model omitted defaults to empty",
@@ -2167,8 +2167,8 @@ func TestCreateConversation_RequestParsing_WithModel(t *testing.T) {
 		},
 		{
 			name:     "model with plan mode and thinking",
-			body:     `{"type": "task", "message": "hello", "model": "haiku-3.5", "planMode": true, "maxThinkingTokens": 5000}`,
-			expected: "haiku-3.5",
+			body:     `{"type": "task", "message": "hello", "model": "claude-haiku-4-5-20251001", "planMode": true, "maxThinkingTokens": 5000}`,
+			expected: "claude-haiku-4-5-20251001",
 		},
 	}
 
@@ -2190,8 +2190,8 @@ func TestSendConversationMessage_RequestParsing_WithModel(t *testing.T) {
 	}{
 		{
 			name:     "model specified",
-			body:     `{"content": "hello", "model": "opus-4.5"}`,
-			expected: "opus-4.5",
+			body:     `{"content": "hello", "model": "claude-opus-4-5-20251101"}`,
+			expected: "claude-opus-4-5-20251101",
 		},
 		{
 			name:     "model omitted defaults to empty",
@@ -2200,8 +2200,8 @@ func TestSendConversationMessage_RequestParsing_WithModel(t *testing.T) {
 		},
 		{
 			name:     "model with attachments",
-			body:     `{"content": "check this", "model": "sonnet-4", "attachments": []}`,
-			expected: "sonnet-4",
+			body:     `{"content": "check this", "model": "claude-sonnet-4-20250514", "attachments": []}`,
+			expected: "claude-sonnet-4-20250514",
 		},
 	}
 
@@ -2233,7 +2233,7 @@ func TestGetConversation_IncludesModel(t *testing.T) {
 		Type:      "task",
 		Name:      "Model Test",
 		Status:    "active",
-		Model:     "haiku-3.5",
+		Model:     "claude-haiku-4-5-20251001",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -2250,7 +2250,7 @@ func TestGetConversation_IncludesModel(t *testing.T) {
 	var gotConv models.Conversation
 	err := json.Unmarshal(w.Body.Bytes(), &gotConv)
 	require.NoError(t, err)
-	assert.Equal(t, "haiku-3.5", gotConv.Model)
+	assert.Equal(t, "claude-haiku-4-5-20251001", gotConv.Model)
 }
 
 func TestListConversations_IncludesModel(t *testing.T) {
@@ -2261,8 +2261,8 @@ func TestListConversations_IncludesModel(t *testing.T) {
 
 	ctx := context.Background()
 	for _, tc := range []struct{ id, model string }{
-		{"c1", "opus-4.5"},
-		{"c2", "sonnet-4"},
+		{"c1", "claude-opus-4-5-20251101"},
+		{"c2", "claude-sonnet-4-20250514"},
 	} {
 		conv := &models.Conversation{
 			ID: tc.id, SessionID: "sess-1", Type: "task",
@@ -2289,8 +2289,8 @@ func TestListConversations_IncludesModel(t *testing.T) {
 	for _, c := range convs {
 		modelsByID[c.ID] = c.Model
 	}
-	assert.Equal(t, "opus-4.5", modelsByID["c1"])
-	assert.Equal(t, "sonnet-4", modelsByID["c2"])
+	assert.Equal(t, "claude-opus-4-5-20251101", modelsByID["c1"])
+	assert.Equal(t, "claude-sonnet-4-20250514", modelsByID["c2"])
 }
 
 // ============================================================================
@@ -4456,4 +4456,267 @@ func TestDirListingCacheWithWatcher(t *testing.T) {
 	// Cache entry should be invalidated
 	_, ok = cache.Get(key)
 	assert.False(t, ok, "expected cache entry to be invalidated after filesystem change")
+}
+
+// ============================================================================
+// Helper: stringPtr
+// ============================================================================
+
+func stringPtr(s string) *string { return &s }
+
+// ============================================================================
+// UpdateRepoSettings Handler Tests
+// ============================================================================
+
+func TestUpdateRepoSettings_Branch(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	// Create a "develop" branch and push it to origin
+	runGit(t, repoPath, "checkout", "-b", "develop")
+	runGit(t, repoPath, "push", "origin", "develop")
+	runGit(t, repoPath, "checkout", "main")
+
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{Branch: stringPtr("develop")})
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var repo models.Repo
+	err := json.Unmarshal(w.Body.Bytes(), &repo)
+	require.NoError(t, err)
+	assert.Equal(t, "develop", repo.Branch)
+}
+
+func TestUpdateRepoSettings_Remote(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	// Add an "upstream" remote
+	upstreamDir := t.TempDir()
+	runGit(t, upstreamDir, "init", "--bare")
+	runGit(t, repoPath, "remote", "add", "upstream", upstreamDir)
+
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{Remote: stringPtr("upstream")})
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var repo models.Repo
+	err := json.Unmarshal(w.Body.Bytes(), &repo)
+	require.NoError(t, err)
+	assert.Equal(t, "upstream", repo.Remote)
+}
+
+func TestUpdateRepoSettings_BranchPrefixAndCustomPrefix(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{
+		BranchPrefix: stringPtr("custom"),
+		CustomPrefix: stringPtr("my-prefix"),
+	})
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var repo models.Repo
+	err := json.Unmarshal(w.Body.Bytes(), &repo)
+	require.NoError(t, err)
+	assert.Equal(t, "custom", repo.BranchPrefix)
+	assert.Equal(t, "my-prefix", repo.CustomPrefix)
+}
+
+func TestUpdateRepoSettings_NotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{Branch: stringPtr("main")})
+	req := httptest.NewRequest("PATCH", "/api/repos/nonexistent", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestUpdateRepoSettings_InvalidJSON(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateRepoSettings_RemoteDoesNotExist(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{Remote: stringPtr("nonexistent-remote")})
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Contains(t, apiErr.Error, "nonexistent-remote")
+}
+
+func TestUpdateRepoSettings_BranchDoesNotExist(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{Branch: stringPtr("nonexistent-branch")})
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var apiErr APIError
+	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	require.NoError(t, err)
+	assert.Contains(t, apiErr.Error, "nonexistent-branch")
+}
+
+func TestUpdateRepoSettings_PartialUpdate(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "repo-1", repoPath)
+
+	// Set initial values via store
+	repo.Remote = "origin"
+	repo.BranchPrefix = "none"
+	repo.CustomPrefix = "old-prefix"
+	require.NoError(t, s.UpdateRepo(context.Background(), repo))
+
+	// Only update BranchPrefix, leave everything else unchanged
+	body, _ := json.Marshal(UpdateRepoSettingsRequest{BranchPrefix: stringPtr("custom")})
+	req := httptest.NewRequest("PATCH", "/api/repos/repo-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateRepoSettings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var updated models.Repo
+	err := json.Unmarshal(w.Body.Bytes(), &updated)
+	require.NoError(t, err)
+	assert.Equal(t, "main", updated.Branch, "branch should remain unchanged")
+	assert.Equal(t, "origin", updated.Remote, "remote should remain unchanged")
+	assert.Equal(t, "custom", updated.BranchPrefix, "branchPrefix should be updated")
+	assert.Equal(t, "old-prefix", updated.CustomPrefix, "customPrefix should remain unchanged")
+}
+
+// ============================================================================
+// GetRepoRemotes Handler Tests
+// ============================================================================
+
+func TestGetRepoRemotes_Success(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "repo-1", repoPath)
+
+	// Add an upstream remote
+	upstreamDir := t.TempDir()
+	runGit(t, upstreamDir, "init", "--bare")
+	runGit(t, repoPath, "remote", "add", "upstream", upstreamDir)
+
+	// Push a branch to upstream
+	runGit(t, repoPath, "push", "upstream", "main")
+
+	req := httptest.NewRequest("GET", "/api/repos/repo-1/remotes", nil)
+	req = withChiContext(req, map[string]string{"id": "repo-1"})
+	w := httptest.NewRecorder()
+
+	h.GetRepoRemotes(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp RepoRemotesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Contains(t, resp.Remotes, "origin")
+	assert.Contains(t, resp.Remotes, "upstream")
+	assert.Contains(t, resp.Branches, "origin")
+	// Remote branches may include the remote prefix depending on implementation
+	require.NotEmpty(t, resp.Branches["origin"], "origin should have at least one branch")
+}
+
+func TestGetRepoRemotes_NotFound(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/repos/nonexistent/remotes", nil)
+	req = withChiContext(req, map[string]string{"id": "nonexistent"})
+	w := httptest.NewRecorder()
+
+	h.GetRepoRemotes(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ============================================================================
+// resolveRepoBranchPrefix Tests
+// ============================================================================
+
+func TestResolveRepoBranchPrefix_EmptyDefault(t *testing.T) {
+	repo := &models.Repo{BranchPrefix: ""}
+	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+}
+
+func TestResolveRepoBranchPrefix_None(t *testing.T) {
+	repo := &models.Repo{BranchPrefix: "none"}
+	assert.Equal(t, "", resolveRepoBranchPrefix(repo))
+}
+
+func TestResolveRepoBranchPrefix_CustomWithValue(t *testing.T) {
+	repo := &models.Repo{BranchPrefix: "custom", CustomPrefix: "my-prefix"}
+	assert.Equal(t, "my-prefix", resolveRepoBranchPrefix(repo))
+}
+
+func TestResolveRepoBranchPrefix_CustomWithEmptyPrefix(t *testing.T) {
+	repo := &models.Repo{BranchPrefix: "custom", CustomPrefix: ""}
+	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+}
+
+func TestResolveRepoBranchPrefix_GitHub(t *testing.T) {
+	repo := &models.Repo{BranchPrefix: "github"}
+	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+}
+
+func TestResolveRepoBranchPrefix_Unknown(t *testing.T) {
+	repo := &models.Repo{BranchPrefix: "something-unknown"}
+	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
 }

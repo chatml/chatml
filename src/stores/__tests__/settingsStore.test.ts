@@ -32,12 +32,12 @@ describe('settingsStore', () => {
 
   describe('reviewModel', () => {
     beforeEach(() => {
-      useSettingsStore.setState({ reviewModel: 'opus-4.5' });
+      useSettingsStore.setState({ reviewModel: 'claude-opus-4-5-20251101' });
     });
 
-    it('should have a default value of opus-4.5', () => {
+    it('should have a default value of claude-opus-4-5-20251101', () => {
       const { reviewModel } = useSettingsStore.getState();
-      expect(reviewModel).toBe('opus-4.5');
+      expect(reviewModel).toBe('claude-opus-4-5-20251101');
     });
 
     it('should update reviewModel when setReviewModel is called', () => {

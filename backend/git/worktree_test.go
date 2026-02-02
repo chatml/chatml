@@ -465,6 +465,44 @@ func TestCreateInExistingDir_Success(t *testing.T) {
 	assert.FileExists(t, gitFile)
 }
 
+func TestCreateInExistingDir_BranchAlreadyExists(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	// Create a branch that will collide
+	createBranch(t, repoPath, "session/collide")
+
+	// Create directory first (simulating atomic creation)
+	sessionDir := filepath.Join(t.TempDir(), "test-session")
+	require.NoError(t, os.Mkdir(sessionDir, 0755))
+
+	// Try to create worktree with the same branch name
+	_, _, _, err := wm.CreateInExistingDir(context.Background(), repoPath, sessionDir, "session/collide", "origin/main")
+	assert.ErrorIs(t, err, ErrLocalBranchExists)
+}
+
+func TestCreateInExistingDir_BranchCheckedOutInWorktree(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	// Create a worktree that checks out the branch
+	dir1 := filepath.Join(t.TempDir(), "wt1")
+	require.NoError(t, os.Mkdir(dir1, 0755))
+	_, _, _, err := wm.CreateInExistingDir(context.Background(), repoPath, dir1, "session/checked-out", "origin/main")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		wm.RemoveAtPath(context.Background(), repoPath, dir1, "session/checked-out")
+	})
+
+	// Try to create another worktree with the same branch name.
+	// With -b flag, git reports "already exists" (not "already checked out"),
+	// so this surfaces as ErrLocalBranchExists.
+	dir2 := filepath.Join(t.TempDir(), "wt2")
+	require.NoError(t, os.Mkdir(dir2, 0755))
+	_, _, _, err = wm.CreateInExistingDir(context.Background(), repoPath, dir2, "session/checked-out", "origin/main")
+	assert.ErrorIs(t, err, ErrLocalBranchExists)
+}
+
 // ============================================================================
 // CheckoutExistingBranchInDir Tests
 // ============================================================================

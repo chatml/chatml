@@ -17,6 +17,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
+	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/git"
@@ -547,6 +548,9 @@ const settingKeyWorkspacesBaseDir = "workspaces-base-dir"
 // settingKeyEnvVars is the settings key for custom environment variables
 const settingKeyEnvVars = "env-vars"
 
+// settingKeyAnthropicAPIKey is the settings key for the encrypted Anthropic API key
+const settingKeyAnthropicAPIKey = "anthropic-api-key"
+
 // getWorkspacesBaseDir returns the configured workspaces base directory,
 // falling back to the default (~/.chatml/workspaces) if not configured.
 func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
@@ -974,6 +978,121 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type UpdateRepoSettingsRequest struct {
+	Branch       *string `json:"branch,omitempty"`
+	Remote       *string `json:"remote,omitempty"`
+	BranchPrefix *string `json:"branchPrefix,omitempty"`
+	CustomPrefix *string `json:"customPrefix,omitempty"`
+}
+
+func (h *Handlers) UpdateRepoSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "repo")
+		return
+	}
+
+	var req UpdateRepoSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.Remote != nil {
+		remote := *req.Remote
+		if remote != "" {
+			// Validate that the remote exists
+			remotes, err := h.repoManager.ListRemotes(ctx, repo.Path)
+			if err != nil {
+				writeInternalError(w, "failed to list remotes", err)
+				return
+			}
+			found := false
+			for _, r := range remotes {
+				if r == remote {
+					found = true
+					break
+				}
+			}
+			if !found {
+				writeValidationError(w, fmt.Sprintf("remote '%s' does not exist", remote))
+				return
+			}
+		}
+		repo.Remote = remote
+	}
+
+	if req.Branch != nil {
+		branch := *req.Branch
+		if branch != "" {
+			if !h.repoManager.RefExists(ctx, repo.Path, branch) {
+				writeValidationError(w, fmt.Sprintf("branch '%s' does not exist", branch))
+				return
+			}
+		}
+		repo.Branch = branch
+	}
+
+	if req.BranchPrefix != nil {
+		repo.BranchPrefix = *req.BranchPrefix
+	}
+	if req.CustomPrefix != nil {
+		repo.CustomPrefix = *req.CustomPrefix
+	}
+
+	if err := h.store.UpdateRepo(ctx, repo); err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	writeJSON(w, repo)
+}
+
+type RepoRemotesResponse struct {
+	Remotes  []string            `json:"remotes"`
+	Branches map[string][]string `json:"branches"`
+}
+
+func (h *Handlers) GetRepoRemotes(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "repo")
+		return
+	}
+
+	remotes, err := h.repoManager.ListRemotes(ctx, repo.Path)
+	if err != nil {
+		writeInternalError(w, "failed to list remotes", err)
+		return
+	}
+
+	branches := make(map[string][]string)
+	for _, remote := range remotes {
+		remoteBranches, err := h.repoManager.ListRemoteBranches(ctx, repo.Path, remote)
+		if err != nil {
+			continue
+		}
+		branches[remote] = remoteBranches
+	}
+
+	writeJSON(w, RepoRemotesResponse{
+		Remotes:  remotes,
+		Branches: branches,
+	})
+}
+
 // Session handlers
 
 func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
@@ -1355,6 +1474,21 @@ type CreateSessionRequest struct {
 	SystemMessage string `json:"systemMessage,omitempty"`
 }
 
+// resolveRepoBranchPrefix returns the branch prefix based on repo-level settings.
+// Returns "session" as the default fallback.
+func resolveRepoBranchPrefix(repo *models.Repo) string {
+	switch repo.BranchPrefix {
+	case "custom":
+		if repo.CustomPrefix != "" {
+			return repo.CustomPrefix
+		}
+	case "none":
+		return ""
+	}
+	// "github", "", or anything else → "session" (backend default)
+	return "session"
+}
+
 func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	workspaceID := chi.URLParam(r, "id")
@@ -1374,10 +1508,10 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate optional targetBranch
+	// Validate optional targetBranch — must be in the form "<remote>/<branch>"
 	if req.TargetBranch != "" {
-		if !strings.HasPrefix(req.TargetBranch, "origin/") || strings.TrimPrefix(req.TargetBranch, "origin/") == "" {
-			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+		if !strings.Contains(req.TargetBranch, "/") {
+			writeValidationError(w, "targetBranch must be in the form '<remote>/<branch>' (e.g. 'origin/develop')")
 			return
 		}
 	}
@@ -1403,13 +1537,45 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate or use provided session name with atomic directory creation
-	sessionName := req.Name
-	var sessionPath string
+	// Determine remote and target branch for worktree creation (needed by retry loop)
+	remote := repo.Remote
+	if remote == "" {
+		remote = "origin"
+	}
 
-	if sessionName == "" {
-		// Atomic session name generation with retry loop
-		const maxRetries = 5
+	targetBranch := req.TargetBranch
+	if targetBranch == "" {
+		targetBranch = remote + "/" + repo.Branch
+		if targetBranch == remote+"/" {
+			targetBranch = remote + "/main"
+		}
+		// Verify the target ref exists; fall back to <remote>/main or <remote>/master
+		if !h.repoManager.RefExists(ctx, repo.Path, targetBranch) {
+			for _, fallback := range []string{remote + "/main", remote + "/master"} {
+				if fallback != targetBranch && h.repoManager.RefExists(ctx, repo.Path, fallback) {
+					targetBranch = fallback
+					break
+				}
+			}
+		}
+	}
+
+	// Resolve branch prefix once (used for auto-generated names)
+	branchPrefix := req.BranchPrefix
+	if branchPrefix == "" && req.Branch == "" {
+		branchPrefix = resolveRepoBranchPrefix(repo)
+	}
+
+	// Generate or use provided session name with atomic directory + worktree creation
+	sessionName := req.Name
+	var sessionPath, branchName, worktreePath, baseCommitSHA string
+	autoGeneratedName := sessionName == ""
+
+	if autoGeneratedName {
+		// Atomic session name generation with retry loop.
+		// Retries on both directory collisions AND branch collisions, so stale
+		// git branches from previously deleted sessions don't block the user.
+		const maxRetries = 10
 		for attempt := 0; attempt < maxRetries; attempt++ {
 			// Get existing names from cache (initializes on first call)
 			existingNames, err := h.sessionNameCache.GetAll()
@@ -1423,31 +1589,69 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 			// Attempt atomic directory creation
 			path, err := git.CreateSessionDirectoryAtomic(workspacesDir, candidateName)
-			if err == nil {
+			if err != nil {
+				if errors.Is(err, git.ErrDirectoryExists) {
+					// Directory collision - add to cache and retry
+					h.sessionNameCache.Add(candidateName)
+					continue
+				}
+				writeInternalError(w, "failed to create session directory", err)
+				return
+			}
+
+			// Directory created - now try to create the worktree with this name
+			h.sessionNameCache.Add(candidateName)
+
+			candidateBranch := candidateName
+			if branchPrefix != "" {
+				candidateBranch = fmt.Sprintf("%s/%s", branchPrefix, candidateName)
+			}
+
+			h.sessionLocks.Lock(path)
+			var wtPath, wtBranch, wtCommit string
+			var wtErr error
+			if req.CheckoutExisting {
+				wtPath, wtBranch, wtCommit, wtErr = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, path, req.Branch)
+			} else {
+				wtPath, wtBranch, wtCommit, wtErr = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, path, candidateBranch, targetBranch)
+			}
+			h.sessionLocks.Unlock(path)
+
+			if wtErr == nil {
+				// Success - use this name
 				sessionName = candidateName
 				sessionPath = path
-				// Add to cache after successful creation
-				h.sessionNameCache.Add(sessionName)
+				branchName = wtBranch
+				worktreePath = wtPath
+				baseCommitSHA = wtCommit
 				break
 			}
 
-			if errors.Is(err, git.ErrDirectoryExists) {
-				// Name collision (external change or race) - add to cache and retry
-				h.sessionNameCache.Add(candidateName)
+			// Branch collision - roll back directory and retry with a new name
+			if errors.Is(wtErr, git.ErrLocalBranchExists) || errors.Is(wtErr, git.ErrBranchAlreadyCheckedOut) {
+				h.sessionNameCache.Remove(candidateName)
+				if removeErr := os.RemoveAll(path); removeErr != nil {
+					logger.Handlers.Warnf("Failed to rollback session directory %s: %v", path, removeErr)
+				}
+				logger.Handlers.Infof("Branch collision on '%s', retrying with new name (attempt %d/%d)", candidateBranch, attempt+1, maxRetries)
 				continue
 			}
 
-			// Other error - fail the request
-			writeInternalError(w, "failed to create session directory", err)
+			// Non-collision error - roll back and fail
+			h.sessionNameCache.Remove(candidateName)
+			if removeErr := os.RemoveAll(path); removeErr != nil {
+				logger.Handlers.Warnf("Failed to rollback session directory %s: %v", path, removeErr)
+			}
+			writeInternalError(w, "failed to create worktree", wtErr)
 			return
 		}
 
 		if sessionName == "" {
-			writeConflict(w, "failed to generate unique session name after retries")
+			writeConflict(w, "failed to generate unique session name after retries; too many branch collisions")
 			return
 		}
 	} else {
-		// User provided a name - attempt atomic creation
+		// User provided a name - attempt atomic directory creation (no retry)
 		path, err := git.CreateSessionDirectoryAtomic(workspacesDir, sessionName)
 		if err != nil {
 			if errors.Is(err, git.ErrDirectoryExists) {
@@ -1458,58 +1662,50 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessionPath = path
-		// Add to cache after successful creation
 		h.sessionNameCache.Add(sessionName)
-	}
 
-	// Generate or use provided branch name
-	branchName := req.Branch
-	if branchName == "" {
-		prefix := req.BranchPrefix
-		if prefix == "" {
-			prefix = "session"
+		// Determine branch name
+		branchName = req.Branch
+		if branchName == "" {
+			if branchPrefix != "" {
+				branchName = fmt.Sprintf("%s/%s", branchPrefix, sessionName)
+			} else {
+				branchName = sessionName
+			}
 		}
-		branchName = fmt.Sprintf("%s/%s", prefix, sessionName)
-	}
 
-	// Lock on the session path to prevent race conditions with delete operations
-	h.sessionLocks.Lock(sessionPath)
-	defer h.sessionLocks.Unlock(sessionPath)
+		// Lock on the session path to prevent race conditions
+		h.sessionLocks.Lock(sessionPath)
+		defer h.sessionLocks.Unlock(sessionPath)
 
-	// Determine target branch for worktree creation
-	targetBranch := req.TargetBranch
-	if targetBranch == "" {
-		targetBranch = "origin/" + repo.Branch
-		if targetBranch == "origin/" {
-			targetBranch = "origin/main"
+		// Create git worktree
+		if req.CheckoutExisting {
+			worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, sessionPath, branchName)
+		} else {
+			worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName, targetBranch)
 		}
-	}
-
-	// Create git worktree in the atomically created directory
-	var worktreePath, baseCommitSHA string
-	if req.CheckoutExisting {
-		// Checkout an existing remote branch (e.g. a PR branch)
-		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CheckoutExistingBranchInDir(ctx, repo.Path, sessionPath, branchName)
-	} else {
-		// Create a new branch based on the target branch
-		worktreePath, branchName, baseCommitSHA, err = h.worktreeManager.CreateInExistingDir(ctx, repo.Path, sessionPath, branchName, targetBranch)
-	}
-	if err != nil {
-		// Rollback: remove the atomically created directory and cache entry
-		h.sessionNameCache.Remove(sessionName)
-		if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
-			logger.Handlers.Warnf("Failed to rollback session directory %s: %v", sessionPath, removeErr)
-		}
-		if errors.Is(err, git.ErrBranchAlreadyCheckedOut) {
-			writeConflict(w, fmt.Sprintf("branch '%s' is already checked out in another session", branchName))
+		if err != nil {
+			h.sessionNameCache.Remove(sessionName)
+			if removeErr := os.RemoveAll(sessionPath); removeErr != nil {
+				logger.Handlers.Warnf("Failed to rollback session directory %s: %v", sessionPath, removeErr)
+			}
+			if errors.Is(err, git.ErrBranchAlreadyCheckedOut) {
+				writeConflict(w, fmt.Sprintf("branch '%s' is already checked out in another session", branchName))
+				return
+			}
+			if errors.Is(err, git.ErrLocalBranchExists) {
+				writeConflict(w, fmt.Sprintf("local branch '%s' already exists; delete it first or use a different branch name", branchName))
+				return
+			}
+			writeInternalError(w, "failed to create worktree", err)
 			return
 		}
-		if errors.Is(err, git.ErrLocalBranchExists) {
-			writeConflict(w, fmt.Sprintf("local branch '%s' already exists; delete it first or use a different branch name", branchName))
-			return
-		}
-		writeInternalError(w, "failed to create worktree", err)
-		return
+	}
+
+	// Lock on the session path for the remainder of setup (auto-generated path needs locking here)
+	if autoGeneratedName {
+		h.sessionLocks.Lock(sessionPath)
+		defer h.sessionLocks.Unlock(sessionPath)
 	}
 
 	// Track rollback state - if any subsequent operation fails, clean up the worktree
@@ -2911,9 +3107,9 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 
 // validModels is the allowlist of accepted model identifiers.
 var validModels = map[string]bool{
-	"opus-4.5":  true,
-	"sonnet-4":  true,
-	"haiku-3.5": true,
+	"claude-opus-4-5-20251101":  true,
+	"claude-sonnet-4-20250514":  true,
+	"claude-haiku-4-5-20251001": true,
 }
 
 func isValidModel(model string) bool {
@@ -4966,5 +5162,97 @@ func (h *Handlers) SetEnvSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]string{"envVars": req.EnvVars})
+}
+
+// GetAnthropicApiKey returns whether an API key is configured and a masked version.
+func (h *Handlers) GetAnthropicApiKey(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	encrypted, found, err := h.store.GetSetting(ctx, settingKeyAnthropicAPIKey)
+	if err != nil {
+		writeInternalError(w, "failed to get API key setting", err)
+		return
+	}
+	if !found || encrypted == "" {
+		writeJSON(w, map[string]interface{}{"configured": false, "maskedKey": ""})
+		return
+	}
+
+	// Decrypt to produce a masked version
+	decrypted, err := crypto.Decrypt(encrypted)
+	if err != nil {
+		writeInternalError(w, "failed to decrypt API key", err)
+		return
+	}
+
+	masked := maskAPIKey(decrypted)
+	writeJSON(w, map[string]interface{}{"configured": true, "maskedKey": masked})
+}
+
+// SetAnthropicApiKey encrypts and stores (or removes) the Anthropic API key.
+func (h *Handlers) SetAnthropicApiKey(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Empty key = remove
+	if req.APIKey == "" {
+		if err := h.store.DeleteSetting(ctx, settingKeyAnthropicAPIKey); err != nil {
+			writeInternalError(w, "failed to remove API key", err)
+			return
+		}
+		writeJSON(w, map[string]interface{}{"configured": false, "maskedKey": ""})
+		return
+	}
+
+	encrypted, err := crypto.Encrypt(req.APIKey)
+	if err != nil {
+		writeInternalError(w, "failed to encrypt API key", err)
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyAnthropicAPIKey, encrypted); err != nil {
+		writeInternalError(w, "failed to save API key", err)
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{"configured": true, "maskedKey": maskAPIKey(req.APIKey)})
+}
+
+// maskAPIKey returns a masked version of an API key, showing a recognizable
+// prefix and the last 4 characters. The prefix is determined dynamically by
+// finding the boundary after the third hyphen (e.g. "sk-ant-api03-" → 13 chars)
+// or falling back to the first 7 characters.
+func maskAPIKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+
+	// Find prefix boundary: up to the 3rd hyphen (inclusive)
+	prefixEnd := 0
+	hyphens := 0
+	for i, ch := range key {
+		if ch == '-' {
+			hyphens++
+			if hyphens == 3 {
+				prefixEnd = i + 1 // include the hyphen
+				break
+			}
+		}
+	}
+	if prefixEnd == 0 || prefixEnd >= len(key)-4 {
+		prefixEnd = 7 // fallback for keys without hyphens
+		if prefixEnd >= len(key)-4 {
+			return "****"
+		}
+	}
+
+	suffix := key[len(key)-4:]
+	return key[:prefixEnd] + "..." + suffix
 }
 

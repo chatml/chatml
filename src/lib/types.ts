@@ -10,6 +10,9 @@ export interface Workspace {
   name: string;
   path: string;
   defaultBranch: string;
+  remote: string;
+  branchPrefix: string;   // "github" | "custom" | "none" | ""
+  customPrefix: string;
   createdAt: string;
 }
 
@@ -50,7 +53,7 @@ export interface Conversation {
   type: 'task' | 'review' | 'chat';
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
-  model?: string; // Last-used model (e.g., "opus-4.5", "sonnet-4", "haiku-3.5")
+  model?: string; // Last-used model (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-20250514")
   messages: Message[];
   messageCount?: number; // Total messages (set when messages are loaded lazily)
   toolSummary: ToolAction[];

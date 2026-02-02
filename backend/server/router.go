@@ -80,7 +80,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/", h.AddRepo)
 		r.Get("/{id}", h.GetRepo)
 		r.Get("/{id}/details", h.GetRepoDetails)
+		r.Patch("/{id}", h.UpdateRepoSettings)
 		r.Delete("/{id}", h.DeleteRepo)
+		r.Get("/{id}/remotes", h.GetRepoRemotes)
 		r.Get("/{id}/branches", h.ListBranches)
 		r.Post("/{id}/branches/analyze-cleanup", h.AnalyzeBranchCleanup)
 		r.Post("/{id}/branches/cleanup", h.ExecuteBranchCleanup)
@@ -183,6 +185,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Put("/api/settings/env", h.SetEnvSettings)
 	r.Get("/api/settings/pr-template", h.GetGlobalPRTemplate)
 	r.Put("/api/settings/pr-template", h.SetGlobalPRTemplate)
+	r.Get("/api/settings/anthropic-api-key", h.GetAnthropicApiKey)
+	r.Put("/api/settings/anthropic-api-key", h.SetAnthropicApiKey)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

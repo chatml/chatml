@@ -697,6 +697,34 @@ func TestSessionWithWorkspace_DefaultBranch(t *testing.T) {
 	})
 }
 
+func TestSessionWithWorkspace_EffectiveRemote(t *testing.T) {
+	t.Run("returns workspace remote when set", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceRemote: "upstream",
+		}
+		require.Equal(t, "upstream", sw.EffectiveRemote())
+	})
+
+	t.Run("returns origin when workspace remote is empty", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceRemote: "",
+		}
+		require.Equal(t, "origin", sw.EffectiveRemote())
+	})
+
+	t.Run("returns origin for zero-value struct", func(t *testing.T) {
+		sw := &SessionWithWorkspace{}
+		require.Equal(t, "origin", sw.EffectiveRemote())
+	})
+
+	t.Run("preserves custom remote name", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceRemote: "my-fork",
+		}
+		require.Equal(t, "my-fork", sw.EffectiveRemote())
+	})
+}
+
 func TestSessionWithWorkspace_EffectiveTargetBranch(t *testing.T) {
 	t.Run("returns session target branch when set", func(t *testing.T) {
 		sw := &SessionWithWorkspace{
@@ -733,6 +761,40 @@ func TestSessionWithWorkspace_EffectiveTargetBranch(t *testing.T) {
 			WorkspaceBranch: "main",
 		}
 		require.Equal(t, "origin/release/v2", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("uses custom remote when workspace remote is set", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: ""},
+			WorkspaceBranch: "main",
+			WorkspaceRemote: "upstream",
+		}
+		require.Equal(t, "upstream/main", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("uses custom remote with custom default branch", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: ""},
+			WorkspaceBranch: "develop",
+			WorkspaceRemote: "upstream",
+		}
+		require.Equal(t, "upstream/develop", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("session target branch overrides custom remote fallback", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			Session:         Session{TargetBranch: "origin/hotfix"},
+			WorkspaceBranch: "main",
+			WorkspaceRemote: "upstream",
+		}
+		require.Equal(t, "origin/hotfix", sw.EffectiveTargetBranch())
+	})
+
+	t.Run("custom remote with default branch fallback to main", func(t *testing.T) {
+		sw := &SessionWithWorkspace{
+			WorkspaceRemote: "upstream",
+		}
+		require.Equal(t, "upstream/main", sw.EffectiveTargetBranch())
 	})
 }
 
