@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -347,8 +347,10 @@ export default function Home() {
     }
   }, [zenMode, leftSidebarCollapsed, rightSidebarCollapsed]);
 
-  // Sync bottom terminal panel collapse state with showBottomTerminal
-  useEffect(() => {
+  // Sync bottom terminal panel collapse state with showBottomTerminal.
+  // Re-runs on session change so a fresh session starts with the correct panel state.
+  // When selectedSession is null the panel is unmounted, so the ref is null and we bail out.
+  useLayoutEffect(() => {
     const panel = bottomTerminalPanelRef.current;
     if (!panel) return;
 
@@ -359,7 +361,7 @@ export default function Home() {
     } else if (!showBottomTerminal && !isCollapsed) {
       panel.collapse();
     }
-  }, [showBottomTerminal]);
+  }, [showBottomTerminal, selectedSession?.id]);
 
   // Track left sidebar width for overlay positioning
   useEffect(() => {
