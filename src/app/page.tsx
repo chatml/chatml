@@ -529,17 +529,37 @@ export default function Home() {
         const hasPersistedTab = ENABLE_BROWSER_TABS && activeTab && tabState!.tabOrder.length > 0 &&
           (activeTab.selectedWorkspaceId || activeTab.contentView.type !== 'conversation');
 
-        if (hasPersistedTab) {
-          // Restore from persisted active tab
-          if (activeTab.selectedWorkspaceId) {
+        // Validate persisted IDs against loaded data before restoring
+        const workspaceValid = hasPersistedTab && activeTab.selectedWorkspaceId &&
+          mappedWorkspaces.some(w => w.id === activeTab.selectedWorkspaceId);
+        const sessionValid = hasPersistedTab && activeTab.selectedSessionId &&
+          allSessions.some(s => s.id === activeTab.selectedSessionId);
+        // Only validate conversation if its session is also valid
+        const conversationValid = sessionValid && activeTab.selectedConversationId &&
+          allConversations.some(c => c.id === activeTab.selectedConversationId);
+        // For non-conversation views that carry a workspaceId, validate it exists
+        const contentViewWorkspaceId = activeTab?.contentView &&
+          'workspaceId' in activeTab.contentView
+          ? (activeTab.contentView as { workspaceId?: string }).workspaceId
+          : undefined;
+        const contentViewWorkspaceValid = contentViewWorkspaceId
+          ? mappedWorkspaces.some(w => w.id === contentViewWorkspaceId)
+          : true; // views without workspaceId (global-dashboard, repositories, session-manager) are always valid
+        const hasValidPersistedState = workspaceValid || sessionValid ||
+          (hasPersistedTab && activeTab.contentView.type !== 'conversation' && contentViewWorkspaceValid);
+
+        if (hasValidPersistedState) {
+          // Restore only IDs that still exist in backend data
+          if (workspaceValid) {
             selectWorkspace(activeTab.selectedWorkspaceId);
+            // If workspace is valid but session is stale, select first available session in this workspace
+            if (!sessionValid) {
+              const fallbackSession = allSessions.find(s => s.workspaceId === activeTab.selectedWorkspaceId);
+              if (fallbackSession) selectSession(fallbackSession.id);
+            }
           }
-          if (activeTab.selectedSessionId) {
-            selectSession(activeTab.selectedSessionId);
-          }
-          if (activeTab.selectedConversationId) {
-            selectConversation(activeTab.selectedConversationId);
-          }
+          if (sessionValid) selectSession(activeTab.selectedSessionId);
+          if (conversationValid) selectConversation(activeTab.selectedConversationId);
           useSettingsStore.getState().setContentView(activeTab!.contentView);
           useNavigationStore.getState().setActiveTabId(tabState!.activeTabId);
         } else if (mappedWorkspaces.length > 0) {
