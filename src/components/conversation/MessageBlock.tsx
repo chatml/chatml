@@ -87,7 +87,7 @@ export const MessageBlock = memo(function MessageBlock({
           {message.attachments && message.attachments.length > 0 && (
             <AttachmentGrid attachments={message.attachments} readOnly />
           )}
-          <p className="text-md leading-relaxed whitespace-pre-wrap">
+          <p className="text-base leading-relaxed whitespace-pre-wrap">
             {highlightedContent || message.content}
           </p>
         </div>
@@ -141,7 +141,7 @@ export const MessageBlock = memo(function MessageBlock({
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <div className="group relative">
-                <div className="prose prose-base dark:prose-invert max-w-none text-md leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+                <div className="prose prose-base dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
                   <ErrorBoundary
                     section="MessageContent"
                     fallback={
