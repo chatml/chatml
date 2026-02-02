@@ -365,6 +365,12 @@ outer:
 				// Track the session ID so restarts can resume the correct session
 				if event.SessionID != "" {
 					proc.SetSessionID(event.SessionID)
+					// Persist to DB so the session ID survives process cleanup
+					if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+						c.AgentSessionID = event.SessionID
+					}); err != nil {
+						logger.Manager.Errorf("Failed to persist agent session ID for conv %s: %v", convID, err)
+					}
 				}
 
 			case EventTypePermModeChanged:
@@ -647,11 +653,15 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		// (e.g., process crashed before emitting session_id_update), the restart will
 		// lack original instructions — an acceptable degradation for a crash scenario.
 		restartOpts.Instructions = ""
-		// Resume the previous session if we have a session ID
+		// Resume the previous session if we have a session ID.
+		// Try in-memory first, fall back to DB-persisted value.
 		if ok && proc != nil {
 			if sid := proc.GetSessionID(); sid != "" {
 				restartOpts.ResumeSession = sid
 			}
+		}
+		if restartOpts.ResumeSession == "" && conv.AgentSessionID != "" {
+			restartOpts.ResumeSession = conv.AgentSessionID
 		}
 
 		logger.Manager.Infof("Auto-restarting process for conversation %s (previous exit error: %v)", convID, prevExitErr)
