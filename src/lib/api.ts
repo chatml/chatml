@@ -25,6 +25,8 @@ export const API_BASE = typeof window !== 'undefined' && (window as Window & { _
 
 // Custom error class for API errors
 export class ApiError extends Error {
+  public code?: string;
+
   constructor(
     message: string,
     public status: number,
@@ -32,8 +34,25 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+
+    // Try to parse a structured error code from the JSON response body
+    if (response) {
+      try {
+        const parsed = JSON.parse(response);
+        if (parsed.code) {
+          this.code = parsed.code;
+        }
+      } catch {
+        // Response is not JSON, ignore
+      }
+    }
   }
 }
+
+/** Well-known backend error codes */
+export const ErrorCode = {
+  WORKTREE_NOT_FOUND: 'WORKTREE_NOT_FOUND',
+} as const;
 
 // Fetch helper that adds authentication token for Tauri builds
 // Also catches network-level TypeErrors (e.g. server unreachable) and

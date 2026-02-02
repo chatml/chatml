@@ -14,6 +14,7 @@ import {
   Circle,
   AlertTriangle,
   XCircle,
+  FolderX,
   Loader2,
   RefreshCw,
   ChevronDown,
@@ -22,7 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { GitStatusDTO } from '@/lib/api';
+import { ErrorCode, type GitStatusDTO } from '@/lib/api';
 
 interface DropdownAction {
   icon: LucideIcon;
@@ -326,7 +327,7 @@ interface GitStatusSectionProps {
 
 export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
-  const { status, loading, error, refetch } = useGitStatus(selectedWorkspaceId, selectedSessionId);
+  const { status, loading, error, errorCode, refetch } = useGitStatus(selectedWorkspaceId, selectedSessionId);
 
   // Wrapper that handles missing callback
   const sendMessage = (content: string) => {
@@ -346,6 +347,17 @@ export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
   }
 
   if (error) {
+    if (errorCode === ErrorCode.WORKTREE_NOT_FOUND) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
+          <FolderX className="h-5 w-5 text-muted-foreground" />
+          <p className="text-xs text-muted-foreground text-center">
+            Worktree directory no longer exists
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
         <XCircle className="h-5 w-5 text-text-error" />
