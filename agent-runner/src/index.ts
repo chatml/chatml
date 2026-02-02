@@ -215,8 +215,8 @@ let isShuttingDown = false;
 let cleanupCalled = false;
 // Multi-turn loop control: set to false to break the main loop
 let mainLoopRunning = false;
-// Pending model change queued between turns (applied on next query start)
-let pendingModel: string | undefined;
+// Track when the current turn started (for duration reporting)
+let currentTurnStartTime = 0;
 
 // Debug logging (enabled via CHATML_DEBUG=1 env var)
 const debugEnabled = process.env.CHATML_DEBUG === "1";
@@ -231,6 +231,15 @@ function closeReadline(): void {
   if (rl) {
     rl.close();
     rl = null;
+  }
+}
+
+// Stop the main loop and unblock any pending message waiter
+function stopMainLoop(): void {
+  mainLoopRunning = false;
+  if (messageWaiter) {
+    messageWaiter(null);
+    messageWaiter = null;
   }
 }
 
@@ -302,10 +311,8 @@ function setupInputQueue(): void {
             emit({ type: "command_error", command: "set_model", error: String(cmdErr) });
           });
         } else {
-          // Queue model change — will be applied when next query starts
-          debug(`Model change queued (between turns): ${input.model}`);
-          pendingModel = input.model;
-          emit({ type: "model_changed", model: input.model });
+          debug(`Model change ignored (no active query): ${input.model}`);
+          emit({ type: "command_error", command: "set_model", error: "No active query" });
         }
         return;
       }
@@ -463,13 +470,15 @@ function waitForNextMessage(): Promise<QueuedMessage | null> {
   });
 }
 
-// Build prompt for a queued message.
-// For plain text: returns the string directly (used as query prompt).
-// For messages with attachments: returns a single-yield async generator
-// (the V1 SDK only accepts string | AsyncIterable<SDKUserMessage> for prompt).
-function buildPrompt(msg: QueuedMessage): string | AsyncIterable<SDKUserMessage> {
+// Build an SDKUserMessage from a queued message (text or text+attachments).
+function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
   if (!msg.attachments || msg.attachments.length === 0) {
-    return msg.content;
+    return {
+      type: "user",
+      message: { role: "user", content: msg.content },
+      parent_tool_use_id: null,
+      session_id: currentSessionId || "",
+    } as SDKUserMessage;
   }
 
   // Build multipart content blocks
@@ -501,19 +510,12 @@ function buildPrompt(msg: QueuedMessage): string | AsyncIterable<SDKUserMessage>
     }
   }
 
-  // Return a single-yield async generator for multipart content
-  async function* singleMessage(): AsyncGenerator<SDKUserMessage> {
-    yield {
-      type: "user",
-      message: {
-        role: "user",
-        content: contentBlocks,
-      },
-      parent_tool_use_id: null,
-      session_id: currentSessionId || "",
-    } as SDKUserMessage;
-  }
-  return singleMessage();
+  return {
+    type: "user",
+    message: { role: "user", content: contentBlocks },
+    parent_tool_use_id: null,
+    session_id: currentSessionId || "",
+  } as SDKUserMessage;
 }
 
 // Extract a suggested name from the first meaningful response
@@ -930,10 +932,23 @@ const hooks = {
 };
 
 // ============================================================================
-// MAIN — Multi-turn loop
-// Each user message creates a new query() call. Between turns, the process
-// stays alive reading stdin. The process only exits on "stop", SIGTERM, or
-// stdin close.
+// MAIN — Streaming Input Mode (single query, persistent generator)
+//
+// Per the Claude Agent SDK docs, streaming input is the recommended mode for
+// multi-turn conversations. A SINGLE query() call is made with a long-lived
+// AsyncGenerator that yields user messages as they arrive on stdin.
+//
+// The generator stays alive across turns:
+//   1. Generator yields message 1 → CLI processes → result streamed back
+//   2. Generator awaits next stdin message
+//   3. Generator yields message 2 → CLI processes → result streamed back
+//   4. ... continues until process shutdown
+//
+// Benefits:
+//   - Single CLI subprocess lives for the entire session
+//   - No --resume needed between turns (session persists naturally)
+//   - stdin stays open so hooks, canUseTool, and MCP work correctly
+//   - endInput() only called when the generator returns (shutdown)
 // ============================================================================
 
 async function main(): Promise<void> {
@@ -945,13 +960,10 @@ async function main(): Promise<void> {
     forking: forkSession,
   });
 
-  // Set up the event-driven input queue (replaces createMessageStream)
+  // Set up the event-driven input queue
   setupInputQueue();
   mainLoopRunning = true;
 
-  // Track the session ID for resume across turns
-  let resumeId: string | undefined = resumeSessionId;
-  let isFirstTurn = true;
   let turnCount = 0;
 
   try {
@@ -970,132 +982,154 @@ async function main(): Promise<void> {
     // Resolve tool preset to allowedTools/disallowedTools
     const presetConfig = resolveToolPreset(toolPreset);
 
-    // Shared query options (reused across turns — abortController added per-turn)
-    const baseOptions = {
-      cwd,
-      permissionMode: initialPermissionMode,
-      allowDangerouslySkipPermissions: true,
-      canUseTool,
-      mcpServers: { chatml: chatmlMcp },
-      includePartialMessages: true,
-      tools: { type: "preset" as const, preset: "claude_code" as const },
-      systemPrompt: instructions
-        ? { type: "preset" as const, preset: "claude_code" as const, append: instructions }
-        : { type: "preset" as const, preset: "claude_code" as const },
-      hooks,
-      // Tool preset configuration
-      allowedTools: presetConfig.allowedTools,
-      disallowedTools: presetConfig.disallowedTools,
-      // File checkpointing
-      enableFileCheckpointing: enableCheckpointing,
-      // Task 4: Structured output
-      outputFormat,
-      // Task 5: Budget controls
-      maxBudgetUsd,
-      maxTurns,
-      maxThinkingTokens,
-      // Task 6: Settings sources
-      settingSources,
-      // Task 7: Beta features
-      betas,
-      // Task 8: Model configuration
-      model,
-      fallbackModel,
-      // stderr callback for debugging
-      stderr: (data: string) => {
-        emit({ type: "agent_stderr", data });
-      },
-    };
+    // Single AbortController for the entire session
+    const sessionAbortController = new AbortController();
+    abortControllerRef = sessionAbortController;
 
     // ====================================================================
-    // Multi-turn loop: wait for message → query() → stream → turn_complete
+    // Persistent message generator: yields user messages across turns.
+    // The generator stays alive for the entire process lifetime. The SDK's
+    // streamInput() iterates this, writing each yielded message to CLI stdin.
+    // Between yields, the generator blocks on waitForNextMessage(), keeping
+    // stdin open (endInput() is NOT called until the generator returns).
     // ====================================================================
-    while (mainLoopRunning) {
-      debug(`Waiting for next message (turn ${turnCount + 1}, resumeId=${resumeId || "none"})`);
+    async function* messageStream(): AsyncGenerator<SDKUserMessage> {
+      while (mainLoopRunning) {
+        const msg = await waitForNextMessage();
+        if (!msg) {
+          debug("messageStream: no more messages, returning");
+          break;
+        }
 
-      const nextMsg = await waitForNextMessage();
-      if (!nextMsg) {
-        debug("No more messages (stdin closed or stop received)");
-        break;
+        turnCount++;
+        currentTurnStartTime = Date.now();
+        debug(`Turn ${turnCount} starting: content="${msg.content.slice(0, 80)}"`);
+
+        // Reset per-turn state
+        accumulatedText = "";
+        blockBuffer = "";
+
+        // Update workspace context with current session ID if it changed
+        if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
+          workspaceContext.updateSessionId(currentSessionId);
+        }
+
+        console.error(`[DIAG] Turn ${turnCount}: streaming mode, cwd=${cwd}, model=${model}, yielding message to SDK`);
+        yield buildUserMessage(msg);
+        console.error(`[DIAG] Turn ${turnCount}: yield consumed, SDK requested next message`);
       }
-
-      turnCount++;
-      const turnStartTime = Date.now();
-      debug(`Turn ${turnCount} starting: content="${nextMsg.content.slice(0, 80)}"`);
-
-      // Reset per-turn state so previous turn's data doesn't leak
-      accumulatedText = "";
-      blockBuffer = "";
-
-      // Fresh AbortController per turn — aborting turn N must not affect turn N+1
-      const turnAbortController = new AbortController();
-      abortControllerRef = turnAbortController;
-
-      // Apply pending model change if queued between turns
-      const turnModel = pendingModel || model;
-      pendingModel = undefined;
-
-      // Update workspace context with current session ID if it changed
-      if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
-        workspaceContext.updateSessionId(currentSessionId);
-      }
-
-      // Build the prompt (string for plain text, async generator for attachments)
-      const prompt = buildPrompt(nextMsg);
-
-      // Set isFirstTurn before query() so forkSession is evaluated correctly
-      const shouldFork = isFirstTurn && forkSession && !!resumeId;
-      isFirstTurn = false;
-
-      // Create a new query for this turn
-      const result = query({
-        prompt,
-        options: {
-          ...baseOptions,
-          abortController: turnAbortController,
-          model: turnModel,
-          // Session management: resume from previous turn's session
-          resume: resumeId,
-          // Only fork on the very first turn if --fork was specified
-          forkSession: shouldFork,
-        },
-      });
-
-      // Store query reference for runtime control during this turn
-      queryRef = result;
-
-      // Stream all messages for this turn
-      for await (const message of result) {
-        handleMessage(message);
-      }
-
-      // Turn complete — flush and emit turn_complete
-      flushBlockBuffer();
-
-      // Update resume ID for the next turn
-      if (currentSessionId) {
-        resumeId = currentSessionId;
-      }
-
-      // Clear query reference between turns
-      queryRef = null;
-
-      const turnDurationMs = Date.now() - turnStartTime;
-      debug(`Turn ${turnCount} completed in ${turnDurationMs}ms (sessionId=${currentSessionId})`);
-
-      // Emit turn_complete to signal the Go backend that this turn is done
-      // but the process is still alive and ready for more input
-      emit({ type: "turn_complete", sessionId: currentSessionId });
+      console.error(`[DIAG] messageStream generator returning (mainLoopRunning=${mainLoopRunning})`);
     }
 
-    // Loop exited — emit complete to signal process is done
+    // ====================================================================
+    // Single query() call for the entire process lifetime.
+    // The CLI subprocess persists across all turns. Messages are fed via
+    // the messageStream generator. Results from ALL turns stream through
+    // the same for-await loop below.
+    // ====================================================================
+    const result = query({
+      prompt: messageStream(),
+      options: {
+        cwd,
+        permissionMode: initialPermissionMode,
+        allowDangerouslySkipPermissions: true,
+        canUseTool,
+        mcpServers: { chatml: chatmlMcp },
+        includePartialMessages: true,
+        tools: { type: "preset" as const, preset: "claude_code" as const },
+        systemPrompt: instructions
+          ? { type: "preset" as const, preset: "claude_code" as const, append: instructions }
+          : { type: "preset" as const, preset: "claude_code" as const },
+        hooks,
+        allowedTools: presetConfig.allowedTools,
+        disallowedTools: presetConfig.disallowedTools,
+        enableFileCheckpointing: enableCheckpointing,
+        outputFormat,
+        maxBudgetUsd,
+        maxTurns,
+        maxThinkingTokens,
+        settingSources,
+        betas,
+        model,
+        fallbackModel,
+        abortController: sessionAbortController,
+        // Resume a previous session if requested (first turn loads its state)
+        resume: resumeSessionId,
+        forkSession,
+        // Pass through DEBUG_CLAUDE_AGENT_SDK if set in environment
+        ...(process.env.DEBUG_CLAUDE_AGENT_SDK ? { env: { ...process.env, DEBUG_CLAUDE_AGENT_SDK: process.env.DEBUG_CLAUDE_AGENT_SDK } } : {}),
+        stderr: (data: string) => {
+          console.error(`[CLI stderr] ${data.trimEnd()}`);
+          emit({ type: "agent_stderr", data });
+        },
+      },
+    });
+
+    queryRef = result;
+
+    // ====================================================================
+    // Process ALL messages from ALL turns in a single loop.
+    // Result messages mark turn boundaries but don't end the session.
+    // ====================================================================
+    for await (const message of result) {
+      handleMessage(message);
+
+      // Result messages mark the end of a turn
+      if (message.type === "result") {
+        flushBlockBuffer();
+
+        const turnDurationMs = Date.now() - currentTurnStartTime;
+        debug(`Turn ${turnCount} completed in ${turnDurationMs}ms (sessionId=${currentSessionId})`);
+
+        emit({ type: "turn_complete", sessionId: currentSessionId });
+        currentTurnStartTime = 0;
+
+        // Check for auth errors in result
+        const resultMsg = message as SDKResultMessage;
+        if (resultMsg.subtype !== "success") {
+          const resultErrors = "errors" in resultMsg ? resultMsg.errors : [];
+          const errorText = Array.isArray(resultErrors) ? resultErrors.join(" ") : String(resultErrors);
+          if (detectAuthError(errorText)) {
+            emit({
+              type: "auth_error",
+              message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+            });
+            // Auth errors are fatal — break out to stop the session
+            stopMainLoop();
+          }
+        }
+      }
+    }
+
+    // Session ended (generator returned or CLI exited)
+    console.error(`[DIAG] Result stream ended after ${turnCount} turns — CLI process likely exited`);
+    queryRef = null;
     flushBlockBuffer();
     emit({ type: "complete", sessionId: currentSessionId });
-    debug(`Main loop exited after ${turnCount} turns`);
+    debug(`Session ended after ${turnCount} turns`);
   } catch (err) {
     // Re-throw to let the top-level handler deal with cleanup and exit
     throw err;
   }
+}
+
+const AUTH_ERROR_PATTERNS = [
+  "authentication_error",
+  "oauth token has expired",
+  "oauth token expired",
+  "invalid api key",
+  "invalid x-api-key",
+  "401 unauthorized",
+  "status 401",
+  "http 401",
+  "request unauthorized",
+  "unauthorized request",
+  "token has been revoked",
+];
+
+function detectAuthError(text: string): boolean {
+  const lower = text.toLowerCase();
+  return AUTH_ERROR_PATTERNS.some((p) => lower.includes(p));
 }
 
 function handleMessage(message: SDKMessage): void {
@@ -1309,11 +1343,12 @@ function handleMessage(message: SDKMessage): void {
       } else {
         // Handle all error subtypes: error_during_execution, error_max_turns,
         // error_max_budget_usd, error_max_structured_output_retries
+        const resultErrors = "errors" in resultMsg ? resultMsg.errors : [];
         emit({
           type: "result",
           success: false,
           subtype: resultMsg.subtype,
-          errors: "errors" in resultMsg ? resultMsg.errors : [],
+          errors: resultErrors,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,
           durationMs: resultMsg.duration_ms,
@@ -1332,6 +1367,15 @@ function handleMessage(message: SDKMessage): void {
             totalToolDurationMs: runStats.totalToolDurationMs,
           },
         });
+
+        // Check if the error is auth-related and emit a user-friendly auth_error event
+        const errorText = Array.isArray(resultErrors) ? resultErrors.join(" ") : String(resultErrors);
+        if (detectAuthError(errorText)) {
+          emit({
+            type: "auth_error",
+            message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+          });
+        }
       }
 
       // Extract context window size from modelUsage for context meter
@@ -1529,6 +1573,15 @@ main().catch(async (err) => {
   await cleanup("error");
   const errorMessage =
     err instanceof Error ? `${err.message}\n${err.stack || ""}` : String(err);
+
+  // Check if the fatal error is auth-related and emit a specific event
+  if (detectAuthError(errorMessage)) {
+    emit({
+      type: "auth_error",
+      message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+    });
+  }
+
   emit({ type: "error", message: `Unhandled error: ${errorMessage}` });
   process.exit(1);
 });

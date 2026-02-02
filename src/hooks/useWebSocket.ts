@@ -37,6 +37,12 @@ function normalizeUsage(raw: Record<string, unknown> | undefined): TokenUsage | 
 const DROP_STATS_DEBOUNCE_MS = 3000;
 let lastDropStatsFetchTime = 0;
 
+// Check if an error message is auth-related (used for deduplication)
+function isAuthErrorMessage(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return lower.includes('authentication') || lower.includes('api key') || lower.includes('oauth');
+}
+
 // Type guards for WebSocket payload validation
 function isAgentEvent(payload: unknown): payload is AgentEvent {
   if (typeof payload !== 'object' || payload === null) {
@@ -413,16 +419,34 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      case 'error':
+      case 'auth_error': {
+        // Handle auth error with a clear, actionable message
+        const authMessage = event?.message || 'Authentication failed. Check your API key in Settings > Claude Code.';
+        console.error('Auth error:', authMessage);
+        store.setStreamingError(conversationId, authMessage);
+        store.updateConversation(conversationId, { status: 'idle' });
+        notifyDesktop(conversationId, 'Authentication error', (authMessage as string).slice(0, 100));
+        break;
+      }
+
+      case 'error': {
         // Handle error - capture the error message and stop streaming
         const errorMessage = event?.message || 'An unknown error occurred';
         console.error('Conversation error:', errorMessage);
+
+        // Don't overwrite an auth error with a generic crash error
+        const currentError = useAppStore.getState().streamingState[conversationId]?.error;
+        if (currentError && isAuthErrorMessage(currentError)) {
+          break;
+        }
+
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
         // Desktop notification for error
         notifyDesktop(conversationId, 'Task error', (errorMessage || 'Unknown error').slice(0, 100));
         break;
+      }
 
       case 'streaming_warning': {
         // Emit custom event for StreamingWarningHandler to display toast.

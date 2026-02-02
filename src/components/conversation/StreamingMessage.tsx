@@ -33,6 +33,10 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
   // Try to detect if error looks like a stack trace or structured error
   const hasStackTrace = error.includes('\n') && (error.includes('at ') || error.includes('Error:'));
 
+  // Detect auth errors
+  const lowerError = error.toLowerCase();
+  const isAuthError = lowerError.includes('authentication') || lowerError.includes('api key') || lowerError.includes('oauth');
+
   return (
     <div
       role="alert"
@@ -41,7 +45,7 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
       <div className="flex items-start gap-2 p-2">
         <AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-destructive">Error</p>
+          <p className="text-xs font-medium text-destructive">{isAuthError ? 'Authentication Error' : 'Error'}</p>
           <p
             className={cn(
               'text-xs text-destructive/80 mt-0.5',
@@ -50,6 +54,14 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
           >
             {displayError}
           </p>
+          {isAuthError && (
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('open-settings'))}
+              className="mt-1.5 px-2 py-1 text-xs font-medium bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/30 rounded transition-colors"
+            >
+              Open Settings
+            </button>
+          )}
           {needsTruncation && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}

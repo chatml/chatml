@@ -3107,9 +3107,9 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 
 // validModels is the allowlist of accepted model identifiers.
 var validModels = map[string]bool{
-	"opus-4.5":  true,
-	"sonnet-4":  true,
-	"haiku-3.5": true,
+	"claude-opus-4-5-20251101":  true,
+	"claude-sonnet-4-20250514":  true,
+	"claude-haiku-4-5-20251001": true,
 }
 
 func isValidModel(model string) bool {

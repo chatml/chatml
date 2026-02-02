@@ -165,7 +165,7 @@ export const useSettingsStore = create<SettingsState>()(
       // Default values
       confirmCloseActiveTab: true,
       confirmArchiveDirtySession: true,
-      defaultModel: 'opus-4.5',
+      defaultModel: 'claude-opus-4-5-20251101',
       defaultThinking: true,
       maxThinkingTokens: 10000,
       showThinkingBlocks: true,
@@ -174,7 +174,7 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffects: false,
       soundEffectType: 'chime',
       sendWithEnter: true,
-      reviewModel: 'opus-4.5',
+      reviewModel: 'claude-opus-4-5-20251101',
       defaultPlanMode: false,
       autoConvertLongText: true,
       showChatCost: true,

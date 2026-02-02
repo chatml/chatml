@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
@@ -88,7 +89,7 @@ type StartConversationOptions struct {
 	Attachments       []models.Attachment // File attachments for the initial message
 	PlanMode          bool                // Start agent in plan mode
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
-	Model             string              // Model name override (e.g., "opus-4.5", "sonnet-4", "haiku-3.5")
+	Model             string              // Model name override (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-20250514")
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -335,6 +336,11 @@ outer:
 				continue
 			}
 
+			// Track whether the agent emitted an error event (for crash fallback)
+			if event.Type == EventTypeError || event.Type == "auth_error" {
+				proc.SetSawErrorEvent()
+			}
+
 			// Handle specific event types
 			switch event.Type {
 			case EventTypeAssistantText:
@@ -568,6 +574,20 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	exitErr := proc.ExitError()
 	if exitErr != nil {
 		logger.Manager.Warnf("Conversation %s process exited with error: %v", convID, exitErr)
+
+		// If the agent-runner didn't emit its own error event, synthesize one
+		// so the frontend shows a useful message instead of silently going idle.
+		if !proc.SawErrorEvent() && m.onConversationEvent != nil {
+			stderrLines := proc.LastStderrLines()
+			errMsg := fmt.Sprintf("Claude Code process exited with code 1")
+			if len(stderrLines) > 0 {
+				errMsg += ": " + strings.Join(stderrLines, "\n")
+			}
+			m.onConversationEvent(convID, &AgentEvent{
+				Type:    EventTypeError,
+				Message: errMsg,
+			})
+		}
 	} else {
 		logger.Manager.Infof("Conversation %s process exited cleanly", convID)
 	}
@@ -1184,8 +1204,28 @@ func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !found || raw == "" {
-		return nil, nil
+
+	var envMap map[string]string
+	if found && raw != "" {
+		envMap = store.ParseEnvVars(raw)
 	}
-	return store.ParseEnvVars(raw), nil
+
+	// Load encrypted Anthropic API key if configured
+	encrypted, found, err := m.store.GetSetting(ctx, "anthropic-api-key")
+	if err != nil {
+		return envMap, nil // non-fatal: proceed without the key
+	}
+	if found && encrypted != "" {
+		decrypted, err := crypto.Decrypt(encrypted)
+		if err != nil {
+			logger.Manager.Errorf("failed to decrypt Anthropic API key: %v", err)
+			return envMap, nil
+		}
+		if envMap == nil {
+			envMap = make(map[string]string)
+		}
+		envMap["ANTHROPIC_API_KEY"] = decrypted
+	}
+
+	return envMap, nil
 }

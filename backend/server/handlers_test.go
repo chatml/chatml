@@ -2157,8 +2157,8 @@ func TestCreateConversation_RequestParsing_WithModel(t *testing.T) {
 	}{
 		{
 			name:     "model specified",
-			body:     `{"type": "task", "message": "hello", "model": "sonnet-4"}`,
-			expected: "sonnet-4",
+			body:     `{"type": "task", "message": "hello", "model": "claude-sonnet-4-20250514"}`,
+			expected: "claude-sonnet-4-20250514",
 		},
 		{
 			name:     "model omitted defaults to empty",
@@ -2167,8 +2167,8 @@ func TestCreateConversation_RequestParsing_WithModel(t *testing.T) {
 		},
 		{
 			name:     "model with plan mode and thinking",
-			body:     `{"type": "task", "message": "hello", "model": "haiku-3.5", "planMode": true, "maxThinkingTokens": 5000}`,
-			expected: "haiku-3.5",
+			body:     `{"type": "task", "message": "hello", "model": "claude-haiku-4-5-20251001", "planMode": true, "maxThinkingTokens": 5000}`,
+			expected: "claude-haiku-4-5-20251001",
 		},
 	}
 
@@ -2190,8 +2190,8 @@ func TestSendConversationMessage_RequestParsing_WithModel(t *testing.T) {
 	}{
 		{
 			name:     "model specified",
-			body:     `{"content": "hello", "model": "opus-4.5"}`,
-			expected: "opus-4.5",
+			body:     `{"content": "hello", "model": "claude-opus-4-5-20251101"}`,
+			expected: "claude-opus-4-5-20251101",
 		},
 		{
 			name:     "model omitted defaults to empty",
@@ -2200,8 +2200,8 @@ func TestSendConversationMessage_RequestParsing_WithModel(t *testing.T) {
 		},
 		{
 			name:     "model with attachments",
-			body:     `{"content": "check this", "model": "sonnet-4", "attachments": []}`,
-			expected: "sonnet-4",
+			body:     `{"content": "check this", "model": "claude-sonnet-4-20250514", "attachments": []}`,
+			expected: "claude-sonnet-4-20250514",
 		},
 	}
 
@@ -2233,7 +2233,7 @@ func TestGetConversation_IncludesModel(t *testing.T) {
 		Type:      "task",
 		Name:      "Model Test",
 		Status:    "active",
-		Model:     "haiku-3.5",
+		Model:     "claude-haiku-4-5-20251001",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -2250,7 +2250,7 @@ func TestGetConversation_IncludesModel(t *testing.T) {
 	var gotConv models.Conversation
 	err := json.Unmarshal(w.Body.Bytes(), &gotConv)
 	require.NoError(t, err)
-	assert.Equal(t, "haiku-3.5", gotConv.Model)
+	assert.Equal(t, "claude-haiku-4-5-20251001", gotConv.Model)
 }
 
 func TestListConversations_IncludesModel(t *testing.T) {
@@ -2261,8 +2261,8 @@ func TestListConversations_IncludesModel(t *testing.T) {
 
 	ctx := context.Background()
 	for _, tc := range []struct{ id, model string }{
-		{"c1", "opus-4.5"},
-		{"c2", "sonnet-4"},
+		{"c1", "claude-opus-4-5-20251101"},
+		{"c2", "claude-sonnet-4-20250514"},
 	} {
 		conv := &models.Conversation{
 			ID: tc.id, SessionID: "sess-1", Type: "task",
@@ -2289,8 +2289,8 @@ func TestListConversations_IncludesModel(t *testing.T) {
 	for _, c := range convs {
 		modelsByID[c.ID] = c.Model
 	}
-	assert.Equal(t, "opus-4.5", modelsByID["c1"])
-	assert.Equal(t, "sonnet-4", modelsByID["c2"])
+	assert.Equal(t, "claude-opus-4-5-20251101", modelsByID["c1"])
+	assert.Equal(t, "claude-sonnet-4-20250514", modelsByID["c2"])
 }
 
 // ============================================================================
