@@ -626,6 +626,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
 
+  // Restore per-conversation model when switching conversations
+  const currentConversationModel = currentConversation?.model;
+  useEffect(() => {
+    if (currentConversationModel) {
+      const found = MODELS.find((m) => m.id === currentConversationModel);
+      if (found) setSelectedModel(found);
+    } else {
+      // Reset to default when conversation has no saved model
+      setSelectedModel(MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]);
+    }
+  }, [selectedConversationId, currentConversationModel, defaultModel]);
+
   // Get all messages for the current session to extract previous user prompts
   const allMessages = useAppStore((s) => s.messages);
   const sessionConversationIds = useMemo(
@@ -1036,6 +1048,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
           message: content,
+          // Pass selected model so agent uses the correct model
+          model: selectedModel.id,
           // Pass plan mode so agent starts in plan mode if toggled on before first message
           planMode: planModeEnabled ? true : undefined,
           // Pass thinking tokens when thinking mode is enabled
@@ -1058,6 +1072,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           type: conv.type,
           name: conv.name,
           status: conv.status,
+          model: conv.model || selectedModel.id,
           messages: [],
           toolSummary: [],
           createdAt: conv.createdAt,
@@ -1094,10 +1109,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         setStreaming(selectedConversationId, true);
 
         // Send message to existing conversation
+        // Only send model when it differs from the conversation's current model
+        const modelChanged = selectedModel.id !== currentConversation?.model;
         await sendConversationMessage(
           selectedConversationId,
           content,
-          loadedAttachments.length > 0 ? loadedAttachments : undefined
+          loadedAttachments.length > 0 ? loadedAttachments : undefined,
+          modelChanged ? selectedModel.id : undefined
         );
       }
 

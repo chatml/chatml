@@ -1015,6 +1015,166 @@ func TestDeleteConversation(t *testing.T) {
 }
 
 // ============================================================================
+// Conversation Model Field Tests
+// ============================================================================
+
+func TestAddConversation_WithModel(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	conv := &models.Conversation{
+		ID:        "conv-1",
+		SessionID: "sess-1",
+		Type:      models.ConversationTypeTask,
+		Name:      "Model Test",
+		Status:    models.ConversationStatusActive,
+		Model:     "sonnet-4",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, s.AddConversation(ctx, conv))
+
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "sonnet-4", got.Model)
+}
+
+func TestAddConversation_ModelDefaultsToEmpty(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Use helper which doesn't set Model
+	createTestConversation(t, s, "conv-1", "sess-1")
+
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "", got.Model)
+}
+
+func TestGetConversationMeta_IncludesModel(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	conv := &models.Conversation{
+		ID:        "conv-1",
+		SessionID: "sess-1",
+		Type:      models.ConversationTypeTask,
+		Name:      "Meta Model Test",
+		Status:    models.ConversationStatusActive,
+		Model:     "haiku-3.5",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, s.AddConversation(ctx, conv))
+
+	got, err := s.GetConversationMeta(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "haiku-3.5", got.Model)
+}
+
+func TestListConversations_IncludesModel(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	for _, tc := range []struct{ id, model string }{
+		{"c1", "opus-4.5"},
+		{"c2", "sonnet-4"},
+		{"c3", ""},
+	} {
+		conv := &models.Conversation{
+			ID:        tc.id,
+			SessionID: "sess-1",
+			Type:      models.ConversationTypeTask,
+			Name:      "Conv " + tc.id,
+			Status:    models.ConversationStatusActive,
+			Model:     tc.model,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		require.NoError(t, s.AddConversation(ctx, conv))
+	}
+
+	convs, err := s.ListConversations(ctx, "sess-1")
+	require.NoError(t, err)
+	require.Len(t, convs, 3)
+
+	modelsByID := map[string]string{}
+	for _, c := range convs {
+		modelsByID[c.ID] = c.Model
+	}
+	assert.Equal(t, "opus-4.5", modelsByID["c1"])
+	assert.Equal(t, "sonnet-4", modelsByID["c2"])
+	assert.Equal(t, "", modelsByID["c3"])
+}
+
+func TestListConversationsForSessions_IncludesModel(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestSession(t, s, "sess-2", "ws-1")
+
+	conv1 := &models.Conversation{
+		ID: "c1", SessionID: "sess-1", Type: models.ConversationTypeTask,
+		Name: "C1", Status: models.ConversationStatusActive, Model: "opus-4.5",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	conv2 := &models.Conversation{
+		ID: "c2", SessionID: "sess-2", Type: models.ConversationTypeTask,
+		Name: "C2", Status: models.ConversationStatusActive, Model: "haiku-3.5",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, s.AddConversation(ctx, conv1))
+	require.NoError(t, s.AddConversation(ctx, conv2))
+
+	result, err := s.ListConversationsForSessions(ctx, []string{"sess-1", "sess-2"})
+	require.NoError(t, err)
+	require.Len(t, result["sess-1"], 1)
+	require.Len(t, result["sess-2"], 1)
+	assert.Equal(t, "opus-4.5", result["sess-1"][0].Model)
+	assert.Equal(t, "haiku-3.5", result["sess-2"][0].Model)
+}
+
+func TestUpdateConversation_ModelChange(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	conv := &models.Conversation{
+		ID:        "conv-1",
+		SessionID: "sess-1",
+		Type:      models.ConversationTypeTask,
+		Name:      "Update Model Test",
+		Status:    models.ConversationStatusActive,
+		Model:     "opus-4.5",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, s.AddConversation(ctx, conv))
+
+	require.NoError(t, s.UpdateConversation(ctx, "conv-1", func(c *models.Conversation) {
+		c.Model = "sonnet-4"
+	}))
+
+	got, err := s.GetConversation(ctx, "conv-1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "sonnet-4", got.Model)
+}
+
+// ============================================================================
 // Message Tests
 // ============================================================================
 

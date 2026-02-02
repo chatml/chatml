@@ -85,6 +85,7 @@ type StartConversationOptions struct {
 	Attachments       []models.Attachment // File attachments for the initial message
 	PlanMode          bool                // Start agent in plan mode
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
+	Model             string              // Model name override (e.g., "opus-4.5", "sonnet-4", "haiku-3.5")
 }
 
 // StartConversation creates and starts a new conversation within a session
@@ -137,6 +138,9 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
+	if opts != nil && opts.Model != "" {
+		conv.Model = opts.Model
+	}
 
 	if err := m.store.AddConversation(ctx, conv); err != nil {
 		return nil, fmt.Errorf("failed to add conversation: %w", err)
@@ -158,6 +162,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
 		procOpts.PlanMode = opts.PlanMode
 		procOpts.Instructions = opts.Instructions
+		procOpts.Model = opts.Model
 	}
 
 	// Load custom environment variables from settings
@@ -905,6 +910,18 @@ func (m *Manager) SendMessage(agentID, message string) error {
 	}
 
 	return proc.SendMessage(message)
+}
+
+// SetConversationModel switches the model for a running conversation process.
+func (m *Manager) SetConversationModel(convID, model string) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("no active process for conversation %s", convID)
+	}
+	return proc.SetModel(model)
 }
 
 // loadEnvVars reads custom environment variables from the settings store.

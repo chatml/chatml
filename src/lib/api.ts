@@ -786,6 +786,7 @@ export interface ConversationDTO {
   type: 'task' | 'review' | 'chat';
   name: string;
   status: 'active' | 'idle' | 'completed';
+  model?: string;
   messages: MessageDTO[];
   messageCount?: number;
   toolSummary: ToolActionDTO[];
@@ -866,6 +867,7 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
     type: dto.type,
     name: dto.name,
     status: dto.status,
+    model: dto.model,
     messages: (dto.messages || []).map((m) => ({
       id: m.id,
       conversationId: dto.id,
@@ -917,6 +919,7 @@ export async function createConversation(
   data: {
     type?: 'task' | 'review' | 'chat';
     message?: string;
+    model?: string;
     planMode?: boolean;
     maxThinkingTokens?: number;
     attachments?: AttachmentDTO[];
@@ -955,12 +958,13 @@ export async function getConversationMessages(
 export async function sendConversationMessage(
   convId: string,
   content: string,
-  attachments?: AttachmentDTO[]
+  attachments?: AttachmentDTO[],
+  model?: string
 ): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, attachments }),
+    body: JSON.stringify({ content, attachments, model }),
   });
   if (!res.ok) {
     const text = await res.text();

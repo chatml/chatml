@@ -2880,9 +2880,21 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, convs)
 }
 
+// validModels is the allowlist of accepted model identifiers.
+var validModels = map[string]bool{
+	"opus-4.5":  true,
+	"sonnet-4":  true,
+	"haiku-3.5": true,
+}
+
+func isValidModel(model string) bool {
+	return model == "" || validModels[model]
+}
+
 type CreateConversationRequest struct {
 	Type              string              `json:"type"`              // "task", "review", "chat"
 	Message           string              `json:"message"`           // Initial message (optional)
+	Model             string              `json:"model"`             // Model name override (optional)
 	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
@@ -2911,6 +2923,11 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	// Default to "task" type if not specified
 	if req.Type == "" {
 		req.Type = "task"
+	}
+
+	if !isValidModel(req.Model) {
+		writeValidationError(w, fmt.Sprintf("invalid model: %s", req.Model))
+		return
 	}
 
 	// Build instructions from attached summaries
@@ -2950,12 +2967,13 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
 			Attachments:       req.Attachments,
 			PlanMode:          req.PlanMode,
 			Instructions:      instructions,
+			Model:             req.Model,
 		}
 	}
 
@@ -3026,6 +3044,7 @@ func (h *Handlers) GetConversationMessages(w http.ResponseWriter, r *http.Reques
 type SendConversationMessageRequest struct {
 	Content     string              `json:"content"`
 	Attachments []models.Attachment `json:"attachments"` // File attachments (optional)
+	Model       string              `json:"model"`       // Model override for this message (optional)
 }
 
 func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Request) {
@@ -3050,6 +3069,26 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 	if req.Content == "" {
 		writeValidationError(w, "content is required")
 		return
+	}
+
+	if !isValidModel(req.Model) {
+		writeValidationError(w, fmt.Sprintf("invalid model: %s", req.Model))
+		return
+	}
+
+	// Switch model if specified
+	if req.Model != "" {
+		if err := h.agentManager.SetConversationModel(convID, req.Model); err != nil {
+			logger.Handlers.Warnf("Failed to set model for conv %s: %v", convID, err)
+			// Don't persist to DB if the process switch failed — keeps DB and process in sync
+		} else {
+			// Persist model to conversation record only on successful process switch
+			if err := h.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+				c.Model = req.Model
+			}); err != nil {
+				logger.Handlers.Warnf("Failed to persist model for conv %s: %v", convID, err)
+			}
+		}
 	}
 
 	if err := h.agentManager.SendConversationMessage(ctx, convID, req.Content, req.Attachments); err != nil {
