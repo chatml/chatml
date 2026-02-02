@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback } from 'react';
-import { Layers, Archive, ExternalLink, Copy, FolderOpen } from 'lucide-react';
+import { Layers, Archive, ExternalLink, Copy, FolderOpen, Eye, Trash2 } from 'lucide-react';
 import type { WorktreeSession, Workspace, SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { DataTable, type Column, type ContextMenuItem, type DisplayOptionsConfig } from '@/components/data-table';
 import {
@@ -38,6 +38,8 @@ interface SessionsDataTableProps {
   onSelectSession: (workspaceId: string, sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
   onUnarchiveSession: (sessionId: string) => void;
+  onPreviewSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 // Helper to get date group label
@@ -62,6 +64,8 @@ export function SessionsDataTable({
   onSelectSession,
   onArchiveSession,
   onUnarchiveSession,
+  onPreviewSession,
+  onDeleteSession,
 }: SessionsDataTableProps) {
   // Transform sessions into table rows
   const tableData = sessions
@@ -184,11 +188,12 @@ export function SessionsDataTable({
             session={row.session}
             onArchive={() => onArchiveSession(row.session.id)}
             onUnarchive={() => onUnarchiveSession(row.session.id)}
+            onPreview={row.session.archived && onPreviewSession ? () => onPreviewSession(row.session.id) : undefined}
           />
         ),
       },
     ],
-    [onArchiveSession, onUnarchiveSession, handlePriorityChange, handleTaskStatusChange]
+    [onArchiveSession, onUnarchiveSession, onPreviewSession, handlePriorityChange, handleTaskStatusChange]
   );
 
   // Row ID getter
@@ -228,13 +233,33 @@ export function SessionsDataTable({
         onClick: () => {},
       });
 
-      // Archive/Unarchive
+      // Archive/Unarchive + archived-specific actions
       if (row.session.archived) {
+        if (onPreviewSession) {
+          items.push({
+            label: 'Preview',
+            icon: <Eye className="h-4 w-4" />,
+            onClick: () => onPreviewSession(row.session.id),
+          });
+        }
         items.push({
           label: 'Restore',
           icon: <Archive className="h-4 w-4" />,
           onClick: () => onUnarchiveSession(row.session.id),
         });
+        if (onDeleteSession) {
+          items.push({
+            label: '',
+            separator: true,
+            onClick: () => {},
+          });
+          items.push({
+            label: 'Delete permanently',
+            icon: <Trash2 className="h-4 w-4" />,
+            onClick: () => onDeleteSession(row.session.id),
+            variant: 'destructive',
+          });
+        }
       } else {
         items.push({
           label: 'Archive',
@@ -254,7 +279,7 @@ export function SessionsDataTable({
 
       return items;
     },
-    [onSelectSession, onArchiveSession, onUnarchiveSession, toast]
+    [onSelectSession, onArchiveSession, onUnarchiveSession, onPreviewSession, onDeleteSession, toast]
   );
 
   // Display options configuration

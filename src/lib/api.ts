@@ -229,6 +229,8 @@ export interface SessionDTO {
   targetBranch?: string;
   pinned?: boolean;
   archived?: boolean;
+  archiveSummary?: string;
+  archiveSummaryStatus?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -254,6 +256,8 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     targetBranch: session.targetBranch,
     pinned: session.pinned,
     archived: session.archived,
+    archiveSummary: session.archiveSummary,
+    archiveSummaryStatus: (session.archiveSummaryStatus || '') as import('@/lib/types').WorktreeSession['archiveSummaryStatus'],
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };

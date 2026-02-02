@@ -1,18 +1,23 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useSessionConversations } from '@/stores/selectors';
-import { copyToClipboard } from '@/lib/tauri';
 import { updateSession as apiUpdateSession } from '@/lib/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
-import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 import type { SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { PrioritySelector } from '@/components/shared/PrioritySelector';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
+import {
+  formatRelativeTime,
+  SectionHeader,
+  InfoRow,
+  StatusDot,
+  PrStatusBadge,
+} from '@/components/shared/SessionInfoParts';
 import {
   Info,
   GitBranch,
@@ -28,166 +33,7 @@ import {
   Plus,
   Minus,
   GitCompare,
-  Copy,
-  Check,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatRelativeTime(isoDate: string): string {
-  const ms = new Date(isoDate).getTime();
-  if (isNaN(ms)) return '—';
-  const seconds = Math.floor((Date.now() - ms) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function SectionHeader({ label }: { label: string }) {
-  return (
-    <div className="text-[10px] font-medium text-foreground/60 uppercase tracking-wider pt-1">
-      {label}
-    </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      copyToClipboard(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    },
-    [text],
-  );
-  return (
-    <button
-      onClick={handleCopy}
-      className="ml-1 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0"
-      title="Copy to clipboard"
-    >
-      {copied ? (
-        <Check className="w-3 h-3 text-text-success" />
-      ) : (
-        <Copy className="w-3 h-3 text-muted-foreground" />
-      )}
-    </button>
-  );
-}
-
-function InfoRow({
-  icon: Icon,
-  label,
-  value,
-  copyValue,
-  mono,
-  className,
-}: {
-  icon?: LucideIcon;
-  label: string;
-  value: React.ReactNode;
-  copyValue?: string;
-  mono?: boolean;
-  className?: string;
-}) {
-  return (
-    <div className="group/row flex items-center justify-between text-xs gap-2 min-h-[20px]">
-      <div className="flex items-center gap-1.5 text-muted-foreground shrink-0">
-        {Icon && <Icon className="w-3 h-3 shrink-0" />}
-        <span>{label}</span>
-      </div>
-      <div
-        className={cn(
-          'flex items-center text-right truncate min-w-0',
-          mono && 'font-mono text-[11px]',
-          className,
-        )}
-      >
-        <span className="truncate">{value}</span>
-        {copyValue && <CopyButton text={copyValue} />}
-      </div>
-    </div>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    active: 'bg-text-success',
-    idle: 'bg-muted-foreground',
-    done: 'bg-blue-500',
-    error: 'bg-text-error',
-  };
-  return (
-    <span className="flex items-center gap-1.5">
-      <span
-        className={cn(
-          'w-1.5 h-1.5 rounded-full shrink-0',
-          colorMap[status] || 'bg-muted-foreground',
-        )}
-      />
-      <span className="capitalize">{status}</span>
-    </span>
-  );
-}
-
-function PrStatusBadge({
-  status,
-  prNumber,
-  prUrl,
-}: {
-  status: string;
-  prNumber?: number;
-  prUrl?: string;
-}) {
-  const colorMap: Record<string, string> = {
-    open: 'text-text-success',
-    merged: 'text-purple-400',
-    closed: 'text-text-error',
-    none: 'text-muted-foreground',
-  };
-
-  if (status === 'none') {
-    return <span className="text-muted-foreground">None</span>;
-  }
-
-  const label = prNumber ? `#${prNumber}` : status;
-
-  if (prUrl) {
-    return (
-      <a
-        href={prUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={cn('hover:underline capitalize', colorMap[status])}
-      >
-        {label} &middot; {status}
-      </a>
-    );
-  }
-
-  return (
-    <span className={cn('capitalize', colorMap[status])}>
-      {label} &middot; {status}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function SessionInfoPanel() {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
@@ -250,7 +96,7 @@ export function SessionInfoPanel() {
   // Worktree display — show last 2-3 path segments
   const worktreeDisplay = session.worktreePath
     ? session.worktreePath.split('/').slice(-3).join('/')
-    : '—';
+    : '\u2014';
 
   return (
     <ScrollArea className="h-full">

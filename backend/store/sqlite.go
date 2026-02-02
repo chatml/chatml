@@ -319,6 +319,23 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added task_status column to sessions")
 	}
 
+	// Migration: Add archive_summary and archive_summary_status columns to sessions
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'archive_summary'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archive_summary TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archive_summary_status TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added archive_summary columns to sessions")
+	}
+
 	// Migration: Create file_tabs table if it doesn't exist
 	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS file_tabs (
@@ -643,8 +660,8 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 			INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
 				task, status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
 				has_check_failures, stats_additions, stats_deletions, pinned, archived,
-				priority, task_status, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				priority, task_status, archive_summary, archive_summary_status, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			session.ID, session.WorkspaceID, session.Name, session.Branch,
 			session.WorktreePath, session.BaseCommitSHA, nullString(session.TargetBranch),
 			session.Task, session.Status, session.AgentID,
@@ -652,6 +669,7 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 			boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
 			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
 			session.Priority, session.TaskStatus,
+			session.ArchiveSummary, session.ArchiveSummaryStatus,
 			session.CreatedAt, session.UpdatedAt)
 		return err
 	})
@@ -667,7 +685,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 			task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
-			created_at, updated_at
+			archive_summary, archive_summary_status, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
@@ -675,6 +693,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
+		&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 		&session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -714,7 +733,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 		SELECT s.id, s.workspace_id, s.name, s.branch, s.worktree_path, s.base_commit_sha,
 			s.target_branch, s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number,
 			s.has_merge_conflict, s.has_check_failures, s.stats_additions, s.stats_deletions,
-			s.pinned, s.archived, s.priority, s.task_status, s.created_at, s.updated_at,
+			s.pinned, s.archived, s.priority, s.task_status, s.archive_summary, s.archive_summary_status, s.created_at, s.updated_at,
 			r.path, r.branch
 		FROM sessions s
 		JOIN repos r ON s.workspace_id = r.id
@@ -724,7 +743,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 		&result.Task, &result.Status, &agentID,
 		&result.PRStatus, &result.PRUrl, &result.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
-		&pinned, &archived, &result.Priority, &result.TaskStatus, &result.CreatedAt, &result.UpdatedAt,
+		&pinned, &archived, &result.Priority, &result.TaskStatus, &result.ArchiveSummary, &result.ArchiveSummaryStatus, &result.CreatedAt, &result.UpdatedAt,
 		&result.WorkspacePath, &result.WorkspaceBranch)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -758,7 +777,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 		task, status, agent_id,
 		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
-		created_at, updated_at
+		archive_summary, archive_summary_status, created_at, updated_at
 		FROM sessions WHERE workspace_id = ?`
 	if !includeArchived {
 		query += " AND archived = 0"
@@ -783,6 +802,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
+			&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 			&session.CreatedAt, &session.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ListSessions scan: %w", err)
 		}
@@ -819,7 +839,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 		task, status, agent_id,
 		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
-		created_at, updated_at
+		archive_summary, archive_summary_status, created_at, updated_at
 		FROM sessions`
 	if !includeArchived {
 		query += " WHERE archived = 0"
@@ -844,6 +864,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
 			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
+			&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 			&session.CreatedAt, &session.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("ListAllSessions scan: %w", err)
 		}
@@ -930,7 +951,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 				task = ?, status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
 				pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
 				stats_additions = ?, stats_deletions = ?, pinned = ?, archived = ?,
-				priority = ?, task_status = ?, updated_at = ?
+				priority = ?, task_status = ?, archive_summary = ?, archive_summary_status = ?, updated_at = ?
 			WHERE id = ?`,
 			session.Name, session.Branch, session.WorktreePath, session.BaseCommitSHA,
 			nullString(session.TargetBranch),
@@ -939,6 +960,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 			boolToInt(session.HasCheckFailures),
 			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
 			session.Priority, session.TaskStatus,
+			session.ArchiveSummary, session.ArchiveSummaryStatus,
 			session.UpdatedAt, id)
 		return err
 	})
@@ -954,7 +976,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 			task, status, agent_id,
 			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
-			created_at, updated_at
+			archive_summary, archive_summary_status, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
 		&session.ID, &session.WorkspaceID, &session.Name, &session.Branch,
 		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
@@ -962,6 +984,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
+		&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 		&session.CreatedAt, &session.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil

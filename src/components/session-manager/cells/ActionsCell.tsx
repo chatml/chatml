@@ -1,6 +1,6 @@
 'use client';
 
-import { Archive, ArchiveRestore } from 'lucide-react';
+import { Archive, ArchiveRestore, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -13,12 +13,14 @@ interface ActionsCellProps {
   session: WorktreeSession;
   onArchive: () => void;
   onUnarchive: () => void;
+  onPreview?: () => void;
 }
 
 export function ActionsCell({
   session,
   onArchive,
   onUnarchive,
+  onPreview,
 }: ActionsCellProps) {
   return (
     <div className="flex items-center justify-between w-full">
@@ -44,24 +46,44 @@ export function ActionsCell({
         <div className="w-7" />
       )}
 
-      {/* Unarchive button - right side, shown for archived sessions */}
+      {/* Preview + Unarchive buttons for archived sessions */}
       {session.archived ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-text-success/70 hover:text-text-success hover:bg-text-success/10"
-              onClick={(e) => {
-                e.stopPropagation();
-                onUnarchive();
-              }}
-            >
-              <ArchiveRestore className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">Restore session</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          {onPreview && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPreview();
+                  }}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Preview</TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-text-success/70 hover:text-text-success hover:bg-text-success/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUnarchive();
+                }}
+              >
+                <ArchiveRestore className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">Restore session</TooltipContent>
+          </Tooltip>
+        </div>
       ) : (
         <div className="w-7" />
       )}

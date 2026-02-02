@@ -665,6 +665,24 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle archive summary updates (generated asynchronously after archiving)
+        if (data.type === 'archive_summary_updated' && data.sessionId) {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload) {
+            const updates: Record<string, unknown> = {};
+            if (typeof payload.archiveSummary === 'string') {
+              updates.archiveSummary = payload.archiveSummary;
+            }
+            if (typeof payload.archiveSummaryStatus === 'string') {
+              updates.archiveSummaryStatus = payload.archiveSummaryStatus;
+            }
+            if (Object.keys(updates).length > 0) {
+              getStore().updateSession(data.sessionId, updates);
+            }
+          }
+          return;
+        }
+
         // Handle review comment events
         if (data.type === 'comment_added' && data.sessionId) {
           const payload = data.payload as ReviewComment | undefined;

@@ -31,8 +31,10 @@ type Session struct {
 	Priority         int           `json:"priority"`             // 0=None, 1=Urgent, 2=High, 3=Medium, 4=Low
 	TaskStatus       string        `json:"taskStatus"`           // backlog, todo, in_progress, done, cancelled
 	Pinned           bool          `json:"pinned,omitempty"`
-	Archived         bool          `json:"archived,omitempty"`
-	AutoNamed        bool          `json:"autoNamed,omitempty"` // True if session was auto-renamed based on context
+	Archived             bool   `json:"archived,omitempty"`
+	ArchiveSummary       string `json:"archiveSummary,omitempty"`
+	ArchiveSummaryStatus string `json:"archiveSummaryStatus,omitempty"` // "", "generating", "completed", "failed"
+	AutoNamed            bool   `json:"autoNamed,omitempty"`            // True if session was auto-renamed based on context
 	CreatedAt        time.Time     `json:"createdAt"`
 	UpdatedAt        time.Time     `json:"updatedAt"`
 }

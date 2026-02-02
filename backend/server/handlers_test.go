@@ -439,6 +439,116 @@ func TestListSessions_IncludesArchivedWhenRequested(t *testing.T) {
 }
 
 // ============================================================================
+// Archive Summary Handler Tests
+// ============================================================================
+
+func TestUpdateSession_Archive_SetsSummaryGenerating(t *testing.T) {
+	// Mock AI server that blocks forever to prevent the async goroutine from completing
+	aiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		}
+	}))
+	defer aiServer.Close()
+
+	h, s := setupTestHandlersWithAIClient(t, aiServer.URL)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Archive the session
+	archived := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify DB has generating status (set synchronously before goroutine)
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.True(t, sess.Archived)
+	assert.Equal(t, models.SummaryStatusGenerating, sess.ArchiveSummaryStatus)
+}
+
+func TestUpdateSession_Archive_NoAIClient_SkipsSummary(t *testing.T) {
+	h, s := setupTestHandlers(t) // No AI client
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Archive the session
+	archived := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify summary status is empty (no AI client = no summary generation)
+	var gotSession models.Session
+	err := json.Unmarshal(w.Body.Bytes(), &gotSession)
+	require.NoError(t, err)
+	assert.True(t, gotSession.Archived)
+	assert.Empty(t, gotSession.ArchiveSummaryStatus)
+
+	// Verify in DB too
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Empty(t, sess.ArchiveSummaryStatus)
+}
+
+func TestUpdateSession_Unarchive_DoesNotTriggerSummary(t *testing.T) {
+	// Mock AI server that blocks forever
+	aiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		}
+	}))
+	defer aiServer.Close()
+
+	h, s := setupTestHandlersWithAIClient(t, aiServer.URL)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// First archive the session and set a completed summary
+	require.NoError(t, s.UpdateSession(context.Background(), "sess-1", func(sess *models.Session) {
+		sess.Archived = true
+		sess.ArchiveSummary = "Existing summary"
+		sess.ArchiveSummaryStatus = models.SummaryStatusCompleted
+	}))
+
+	// Now unarchive
+	archived := false
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify session is unarchived and summary status was NOT reset to "generating"
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.False(t, sess.Archived)
+	assert.NotEqual(t, models.SummaryStatusGenerating, sess.ArchiveSummaryStatus)
+}
+
+// ============================================================================
 // Conversation Handler Tests
 // ============================================================================
 
