@@ -15,14 +15,15 @@ type APIError struct {
 
 // Error codes for categorization
 const (
-	ErrCodeValidation      = "VALIDATION_ERROR"
-	ErrCodeNotFound        = "NOT_FOUND"
-	ErrCodeConflict        = "CONFLICT"
-	ErrCodeInternal        = "INTERNAL_ERROR"
-	ErrCodeUnauthorized    = "UNAUTHORIZED"
-	ErrCodeBadGateway      = "BAD_GATEWAY"
-	ErrCodePayloadTooLarge  = "PAYLOAD_TOO_LARGE"
+	ErrCodeValidation         = "VALIDATION_ERROR"
+	ErrCodeNotFound           = "NOT_FOUND"
+	ErrCodeConflict           = "CONFLICT"
+	ErrCodeInternal           = "INTERNAL_ERROR"
+	ErrCodeUnauthorized       = "UNAUTHORIZED"
+	ErrCodeBadGateway         = "BAD_GATEWAY"
+	ErrCodePayloadTooLarge    = "PAYLOAD_TOO_LARGE"
 	ErrCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
+	ErrCodeWorktreeNotFound   = "WORKTREE_NOT_FOUND"
 )
 
 // writeError writes a JSON error response and logs the internal error server-side
@@ -84,4 +85,22 @@ func writeServiceUnavailable(w http.ResponseWriter, msg string) {
 // writePayloadTooLarge writes a 413 payload too large error response
 func writePayloadTooLarge(w http.ResponseWriter, msg string) {
 	writeError(w, http.StatusRequestEntityTooLarge, ErrCodePayloadTooLarge, msg, nil)
+}
+
+// writeWorktreeNotFound writes a 410 Gone response for worktree paths that no longer exist on disk.
+// The frontend uses the WORKTREE_NOT_FOUND code to stop polling and show a specific message.
+func writeWorktreeNotFound(w http.ResponseWriter, path string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusGone)
+	if err := json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+		Path  string `json:"path"`
+	}{
+		Error: "worktree path no longer exists",
+		Code:  ErrCodeWorktreeNotFound,
+		Path:  path,
+	}); err != nil {
+		logger.Error.Errorf("Failed to encode worktree-not-found response: %v", err)
+	}
 }

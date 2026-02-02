@@ -621,6 +621,20 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 	return session, workingPath, baseRef, nil
 }
 
+// checkWorktreePath verifies that the given worktree path exists on disk.
+// Returns true if the path is missing and a 410 response was written.
+// Handlers should return early when this returns true.
+func checkWorktreePath(w http.ResponseWriter, path string) bool {
+	if path == "" {
+		return false
+	}
+	if _, err := os.Stat(path); err != nil && os.IsNotExist(err) {
+		writeWorktreeNotFound(w, path)
+		return true
+	}
+	return false
+}
+
 // computeSessionStats calculates total additions/deletions for a session's worktree.
 // Returns nil if the session has no worktree path or no changes.
 func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Session, workspaceBranch string) *models.SessionStats {
@@ -1831,6 +1845,9 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w, "session")
 		return
 	}
+	if checkWorktreePath(w, workingPath) {
+		return
+	}
 
 	// Get comprehensive git status
 	status, err := h.repoManager.GetStatus(ctx, workingPath, baseRef)
@@ -1914,6 +1931,9 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	if session == nil {
 		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, workingPath) {
 		return
 	}
 
@@ -2559,6 +2579,9 @@ func (h *Handlers) GetSessionFileContent(w http.ResponseWriter, r *http.Request)
 		writeNotFound(w, "session")
 		return
 	}
+	if checkWorktreePath(w, session.WorktreePath) {
+		return
+	}
 
 	// Get file path from query parameter
 	filePath := r.URL.Query().Get("path")
@@ -2619,6 +2642,9 @@ func (h *Handlers) ListSessionFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	if session == nil {
 		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, session.WorktreePath) {
 		return
 	}
 
@@ -2705,6 +2731,9 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if session.WorktreePath != "" {
+			if checkWorktreePath(w, session.WorktreePath) {
+				return
+			}
 			basePath = session.WorktreePath
 		}
 	}
@@ -3802,6 +3831,9 @@ func (h *Handlers) GeneratePRDescription(w http.ResponseWriter, r *http.Request)
 		writeNotFound(w, "session")
 		return
 	}
+	if checkWorktreePath(w, workingPath) {
+		return
+	}
 
 	// Get commits ahead of base
 	commits, err := h.repoManager.GetCommitsAheadOfBase(ctx, workingPath, baseRef)
@@ -3890,6 +3922,9 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 	}
 	if session == nil {
 		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, workingPath) {
 		return
 	}
 
@@ -4152,6 +4187,9 @@ func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Req
 		writeNotFound(w, "session")
 		return
 	}
+	if checkWorktreePath(w, session.WorktreePath) {
+		return
+	}
 
 	// Get sync status using effective target branch
 	targetBranch := session.EffectiveTargetBranch()
@@ -4204,6 +4242,9 @@ func (h *Handlers) SyncSessionBranch(w http.ResponseWriter, r *http.Request) {
 	}
 	if session == nil {
 		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, session.WorktreePath) {
 		return
 	}
 
@@ -4261,6 +4302,9 @@ func (h *Handlers) AbortSessionSync(w http.ResponseWriter, r *http.Request) {
 	}
 	if session == nil {
 		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, session.WorktreePath) {
 		return
 	}
 

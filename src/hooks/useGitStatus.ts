@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getGitStatus, GitStatusDTO } from '@/lib/api';
+import { getGitStatus, GitStatusDTO, ApiError, ErrorCode } from '@/lib/api';
 import { GIT_STATUS_POLL_INTERVAL_MS } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
 
@@ -9,6 +9,7 @@ interface UseGitStatusResult {
   status: GitStatusDTO | null;
   loading: boolean;
   error: string | null;
+  errorCode: string | null;
   refetch: () => Promise<void>;
 }
 
@@ -20,6 +21,7 @@ interface UseGitStatusResult {
  * - Polls periodically (every 30 seconds)
  * - Refetches on file change events via the centralized lastFileChange store
  * - Debounces rapid file changes
+ * - Stops polling on permanent errors (e.g. WORKTREE_NOT_FOUND)
  */
 export function useGitStatus(
   workspaceId: string | null,
@@ -28,6 +30,7 @@ export function useGitStatus(
   const [status, setStatus] = useState<GitStatusDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   // Subscribe to centralized file change events from the store
   const lastFileChange = useAppStore((s) => s.lastFileChange);
@@ -35,6 +38,8 @@ export function useGitStatus(
   // Refs for debouncing and cleanup
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(false);
+  // Track permanent errors so polling stops
+  const permanentErrorRef = useRef(false);
 
   // Fetch git status
   const fetchStatus = useCallback(async () => {
@@ -44,17 +49,31 @@ export function useGitStatus(
       return;
     }
 
+    // Skip fetch if we already hit a permanent error
+    if (permanentErrorRef.current) return;
+
     try {
       const data = await getGitStatus(workspaceId, sessionId);
       if (isMountedRef.current) {
         setStatus(data);
         setError(null);
+        setErrorCode(null);
         setLoading(false);
       }
     } catch (err) {
       if (isMountedRef.current) {
-        console.error('Failed to fetch git status:', err);
+        const isPermanent =
+          err instanceof ApiError && err.code === ErrorCode.WORKTREE_NOT_FOUND;
+
+        if (isPermanent) {
+          permanentErrorRef.current = true;
+        }
+
+        if (!isPermanent) {
+          console.error('Failed to fetch git status:', err);
+        }
         setError(err instanceof Error ? err.message : 'Failed to fetch git status');
+        setErrorCode(err instanceof ApiError ? (err.code ?? null) : null);
         setLoading(false);
       }
     }
@@ -62,6 +81,7 @@ export function useGitStatus(
 
   // Debounced refetch for file change events
   const debouncedRefetch = useCallback(() => {
+    if (permanentErrorRef.current) return;
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
@@ -75,6 +95,11 @@ export function useGitStatus(
     setLoading(true);
     await fetchStatus();
   }, [fetchStatus]);
+
+  // Reset permanent error flag when session changes
+  useEffect(() => {
+    permanentErrorRef.current = false;
+  }, [workspaceId, sessionId]);
 
   // Initial fetch and fetch on session change
   useEffect(() => {
@@ -97,7 +122,9 @@ export function useGitStatus(
     if (!workspaceId || !sessionId) return;
 
     const interval = setInterval(() => {
-      fetchStatus();
+      if (!permanentErrorRef.current) {
+        fetchStatus();
+      }
     }, GIT_STATUS_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
@@ -111,5 +138,5 @@ export function useGitStatus(
     }
   }, [lastFileChange, workspaceId, debouncedRefetch]);
 
-  return { status, loading, error, refetch };
+  return { status, loading, error, errorCode, refetch };
 }
