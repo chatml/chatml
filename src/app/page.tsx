@@ -11,7 +11,7 @@ import {
   usePageActions,
   useMessages,
 } from '@/stores/selectors';
-import { useSettingsStore, getBranchPrefix } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
@@ -153,10 +153,18 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showCreateFromPR, setShowCreateFromPR] = useState(false);
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Listen for open-settings events from other components (e.g. auth error display)
+  useEffect(() => {
+    const handler = () => setShowSettings(true);
+    window.addEventListener('open-settings', handler);
+    return () => window.removeEventListener('open-settings', handler);
+  }, []);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const sidebarWidthRef = useRef(250); // Tracked via ref — no re-renders on resize
@@ -446,6 +454,9 @@ export default function Home() {
     name: repo.name,
     path: repo.path,
     defaultBranch: repo.branch,
+    remote: repo.remote || 'origin',
+    branchPrefix: repo.branchPrefix || '',
+    customPrefix: repo.customPrefix || '',
     createdAt: repo.createdAt,
   }), []);
 
@@ -615,7 +626,10 @@ export default function Home() {
 
     try {
       // Backend generates city-based session name, branch, and worktree path
-      const branchPrefix = getBranchPrefix();
+      const workspace = workspaces.find(w => w.id === selectedWorkspaceId);
+      const branchPrefix = workspace?.branchPrefix
+        ? getWorkspaceBranchPrefix(workspace)
+        : getBranchPrefix();
       const newSession = await createSession(selectedWorkspaceId, {
         ...(branchPrefix !== undefined && { branchPrefix }),
       });
@@ -640,7 +654,7 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to create session:', error);
     }
-  }, [selectedWorkspaceId, addSession]);
+  }, [selectedWorkspaceId, workspaces, addSession]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -745,6 +759,9 @@ export default function Home() {
         name: repo.name,
         path: repo.path,
         defaultBranch: repo.branch,
+        remote: repo.remote || 'origin',
+        branchPrefix: repo.branchPrefix || '',
+        customPrefix: repo.customPrefix || '',
         createdAt: repo.createdAt,
       };
       useAppStore.getState().addWorkspace(workspace);

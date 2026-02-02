@@ -10,6 +10,9 @@ export interface Workspace {
   name: string;
   path: string;
   defaultBranch: string;
+  remote: string;
+  branchPrefix: string;   // "github" | "custom" | "none" | ""
+  customPrefix: string;
   createdAt: string;
 }
 

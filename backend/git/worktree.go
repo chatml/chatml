@@ -118,7 +118,15 @@ func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, wo
 	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
 	defer cancel()
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", string(out), err)
+		errMsg := string(out)
+		if strings.Contains(errMsg, "already checked out") ||
+			strings.Contains(errMsg, "is already used by worktree") {
+			return "", "", "", fmt.Errorf("%w: %s", ErrBranchAlreadyCheckedOut, errMsg)
+		}
+		if strings.Contains(errMsg, "already exists") {
+			return "", "", "", fmt.Errorf("%w: %s", ErrLocalBranchExists, errMsg)
+		}
+		return "", "", "", fmt.Errorf("failed to create worktree: %s: %w", errMsg, err)
 	}
 
 	return worktreePath, branchName, baseCommit, nil

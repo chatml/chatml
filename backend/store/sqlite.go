@@ -602,6 +602,27 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Converted %d sessions from 'todo' to 'backlog' task_status", count)
 	}
 
+	// Migration: Add remote, branch_prefix, custom_prefix columns to repos
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name = 'remote'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE repos ADD COLUMN remote TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		_, err = s.db.Exec(`ALTER TABLE repos ADD COLUMN branch_prefix TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		_, err = s.db.Exec(`ALTER TABLE repos ADD COLUMN custom_prefix TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added remote, branch_prefix, custom_prefix columns to repos")
+	}
+
 	return nil
 }
 
@@ -633,10 +654,11 @@ func intToBool(i int) bool {
 
 func (s *SQLiteStore) AddRepo(ctx context.Context, repo *models.Repo) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO repos (id, name, path, branch, created_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET name=excluded.name, path=excluded.path, branch=excluded.branch`,
-		repo.ID, repo.Name, repo.Path, repo.Branch, repo.CreatedAt)
+		INSERT INTO repos (id, name, path, branch, remote, branch_prefix, custom_prefix, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET name=excluded.name, path=excluded.path, branch=excluded.branch,
+			remote=excluded.remote, branch_prefix=excluded.branch_prefix, custom_prefix=excluded.custom_prefix`,
+		repo.ID, repo.Name, repo.Path, repo.Branch, repo.Remote, repo.BranchPrefix, repo.CustomPrefix, repo.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("AddRepo: %w", err)
 	}
@@ -646,9 +668,9 @@ func (s *SQLiteStore) AddRepo(ctx context.Context, repo *models.Repo) error {
 func (s *SQLiteStore) GetRepo(ctx context.Context, id string) (*models.Repo, error) {
 	var repo models.Repo
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, path, branch, created_at
+		SELECT id, name, path, branch, remote, branch_prefix, custom_prefix, created_at
 		FROM repos WHERE id = ?`, id).Scan(
-		&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.CreatedAt)
+		&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.Remote, &repo.BranchPrefix, &repo.CustomPrefix, &repo.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -659,7 +681,7 @@ func (s *SQLiteStore) GetRepo(ctx context.Context, id string) (*models.Repo, err
 }
 
 func (s *SQLiteStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, path, branch, created_at FROM repos`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, path, branch, remote, branch_prefix, custom_prefix, created_at FROM repos`)
 	if err != nil {
 		return nil, fmt.Errorf("ListRepos: %w", err)
 	}
@@ -668,7 +690,7 @@ func (s *SQLiteStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
 	repos := []*models.Repo{}
 	for rows.Next() {
 		var repo models.Repo
-		if err := rows.Scan(&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.CreatedAt); err != nil {
+		if err := rows.Scan(&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.Remote, &repo.BranchPrefix, &repo.CustomPrefix, &repo.CreatedAt); err != nil {
 			return nil, fmt.Errorf("ListRepos scan: %w", err)
 		}
 		repos = append(repos, &repo)
@@ -682,9 +704,9 @@ func (s *SQLiteStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
 func (s *SQLiteStore) GetRepoByPath(ctx context.Context, path string) (*models.Repo, error) {
 	var repo models.Repo
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, path, branch, created_at
+		SELECT id, name, path, branch, remote, branch_prefix, custom_prefix, created_at
 		FROM repos WHERE path = ?`, path).Scan(
-		&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.CreatedAt)
+		&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.Remote, &repo.BranchPrefix, &repo.CustomPrefix, &repo.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -698,6 +720,17 @@ func (s *SQLiteStore) DeleteRepo(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM repos WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("DeleteRepo: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) UpdateRepo(ctx context.Context, repo *models.Repo) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE repos SET branch = ?, remote = ?, branch_prefix = ?, custom_prefix = ?
+		WHERE id = ?`,
+		repo.Branch, repo.Remote, repo.BranchPrefix, repo.CustomPrefix, repo.ID)
+	if err != nil {
+		return fmt.Errorf("UpdateRepo: %w", err)
 	}
 	return nil
 }
@@ -792,7 +825,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 			s.target_branch, s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number,
 			s.has_merge_conflict, s.has_check_failures, s.stats_additions, s.stats_deletions,
 			s.pinned, s.archived, s.priority, s.task_status, s.archive_summary, s.archive_summary_status, s.created_at, s.updated_at,
-			r.path, r.branch
+			r.path, r.branch, r.remote
 		FROM sessions s
 		JOIN repos r ON s.workspace_id = r.id
 		WHERE s.id = ?`, id).Scan(
@@ -802,7 +835,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 		&result.PRStatus, &result.PRUrl, &result.PRNumber,
 		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &result.Priority, &result.TaskStatus, &result.ArchiveSummary, &result.ArchiveSummaryStatus, &result.CreatedAt, &result.UpdatedAt,
-		&result.WorkspacePath, &result.WorkspaceBranch)
+		&result.WorkspacePath, &result.WorkspaceBranch, &result.WorkspaceRemote)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
