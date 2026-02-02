@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, ApiError, ErrorCode, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
@@ -54,6 +54,7 @@ import {
 import {
   MoreVertical,
   FileText,
+  FolderX,
   Search,
   SplitSquareHorizontal,
   Loader2,
@@ -110,6 +111,7 @@ export function ChangesPanel() {
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
   const [branchCommits, setBranchCommits] = useState<BranchCommitDTO[]>([]);
@@ -359,11 +361,21 @@ export function ChangesPanel() {
       const schedule = () => {
         if (cancelled) return;
         setFilesLoading(true);
+        setFilesError(null);
         listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
           .then((data) => {
             if (!cancelled) setFiles(data as FileNode[]);
           })
-          .catch(console.error)
+          .catch((err) => {
+            if (!cancelled) {
+              if (err instanceof ApiError && err.code === ErrorCode.WORKTREE_NOT_FOUND) {
+                setFilesError('worktree_missing');
+              } else {
+                setFilesError('error');
+              }
+            }
+            console.error(err);
+          })
           .finally(() => { if (!cancelled) setFilesLoading(false); });
       };
       if (typeof requestIdleCallback === 'function') {
@@ -449,6 +461,14 @@ export function ChangesPanel() {
             filesLoading ? (
               <div className="h-full flex items-center justify-center">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : filesError === 'worktree_missing' ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center text-muted-foreground">
+                  <FolderX className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Worktree directory not found</p>
+                  <p className="text-xs mt-1 opacity-70">The session&apos;s worktree may have been deleted</p>
+                </div>
               </div>
             ) : files.length === 0 ? (
               <div className="h-full flex items-center justify-center">
