@@ -29,7 +29,7 @@ type Session struct {
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
 	Priority         int           `json:"priority"`             // 0=None, 1=Urgent, 2=High, 3=Medium, 4=Low
-	TaskStatus       string        `json:"taskStatus"`           // backlog, todo, in_progress, done, cancelled
+	TaskStatus       string        `json:"taskStatus"`           // backlog, in_progress, in_review, done, cancelled
 	Pinned           bool          `json:"pinned,omitempty"`
 	Archived             bool   `json:"archived,omitempty"`
 	ArchiveSummary       string `json:"archiveSummary,omitempty"`
@@ -228,8 +228,8 @@ var ValidPriorities = map[int]bool{
 // TaskStatus constants (user-managed workflow state, distinct from agent execution Status)
 const (
 	TaskStatusBacklog    = "backlog"
-	TaskStatusTodo       = "todo"
 	TaskStatusInProgress = "in_progress"
+	TaskStatusInReview   = "in_review"
 	TaskStatusDone       = "done"
 	TaskStatusCancelled  = "cancelled"
 )
@@ -237,8 +237,8 @@ const (
 // ValidTaskStatuses is the set of valid task status values
 var ValidTaskStatuses = map[string]bool{
 	TaskStatusBacklog:    true,
-	TaskStatusTodo:       true,
 	TaskStatusInProgress: true,
+	TaskStatusInReview:   true,
 	TaskStatusDone:       true,
 	TaskStatusCancelled:  true,
 }
