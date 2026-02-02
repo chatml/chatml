@@ -114,6 +114,9 @@ type AgentEvent struct {
 	RawInput     string `json:"rawInput,omitempty"`
 	ErrorDetails string `json:"errorDetails,omitempty"`
 
+	// Command error fields
+	Command string `json:"command,omitempty"`
+
 	// User question fields (AskUserQuestion tool)
 	RequestID string         `json:"requestId,omitempty"`
 	Questions []UserQuestion `json:"questions,omitempty"`
@@ -221,6 +224,9 @@ const (
 	// User question events (AskUserQuestion tool)
 	EventTypeUserQuestionRequest = "user_question_request"
 	EventTypeUserQuestionTimeout = "user_question_timeout"
+
+	// Command error (SDK runtime command failed)
+	EventTypeCommandError = "command_error"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
@@ -242,6 +248,23 @@ type UserQuestion struct {
 type UserQuestionOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
+}
+
+// StreamingSnapshot captures the current streaming state for reconnection recovery.
+// Periodically flushed to DB so the frontend can restore its view on WebSocket reconnect.
+type StreamingSnapshot struct {
+	Text           string            `json:"text"`
+	ActiveTools    []ActiveToolEntry `json:"activeTools"`
+	Thinking       string            `json:"thinking,omitempty"`
+	IsThinking     bool              `json:"isThinking"`
+	PlanModeActive bool              `json:"planModeActive"`
+}
+
+// ActiveToolEntry represents a tool currently in-flight during streaming.
+type ActiveToolEntry struct {
+	ID        string `json:"id"`
+	Tool      string `json:"tool"`
+	StartTime int64  `json:"startTime"`
 }
 
 // ParseAgentLine parses a line of JSON output from the agent-runner

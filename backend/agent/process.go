@@ -70,6 +70,7 @@ type Process struct {
 	planModeActive  bool // Tracks whether the process is in plan mode
 	droppedMessages    atomic.Uint64 // Count of messages dropped due to full output buffer
 	instructionsFile   string        // Temp file for instructions, cleaned up on stop
+	opts               ProcessOptions // Original options for restart
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -181,11 +182,18 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	if opts.Instructions != "" {
 		// Write to temp file to avoid shell arg length limits
 		tmpFile, err := os.CreateTemp("", "chatml-instructions-*.txt")
-		if err == nil {
-			_, _ = tmpFile.WriteString(opts.Instructions)
-			tmpFile.Close()
-			instructionsFile = tmpFile.Name()
-			args = append(args, "--instructions-file", instructionsFile)
+		if err != nil {
+			logger.Process.Errorf("[%s] Failed to create instructions temp file: %v", opts.ID, err)
+		} else {
+			if _, writeErr := tmpFile.WriteString(opts.Instructions); writeErr != nil {
+				logger.Process.Errorf("[%s] Failed to write instructions to temp file: %v", opts.ID, writeErr)
+				tmpFile.Close()
+				_ = os.Remove(tmpFile.Name())
+			} else {
+				tmpFile.Close()
+				instructionsFile = tmpFile.Name()
+				args = append(args, "--instructions-file", instructionsFile)
+			}
 		}
 	}
 
@@ -234,6 +242,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		done:             make(chan struct{}),
 		planModeActive:   opts.PlanMode,
 		instructionsFile: instructionsFile,
+		opts:             opts,
 	}
 }
 
@@ -279,15 +288,24 @@ func (p *Process) Start() error {
 		// Increase buffer for large JSON events
 		buf := make([]byte, 0, 1024*1024)
 		scanner.Buffer(buf, 10*1024*1024)
+		timer := time.NewTimer(processOutputTimeout)
+		defer timer.Stop()
 		for scanner.Scan() {
+			timer.Reset(processOutputTimeout)
 			select {
 			case p.output <- scanner.Text():
-				// Successfully queued
-			case <-time.After(processOutputTimeout):
+				// Successfully queued — stop the timer to avoid leak
+				if !timer.Stop() {
+					<-timer.C
+				}
+			case <-timer.C:
 				// Buffer full after timeout - downstream reader is persistently slow
 				dropped := p.droppedMessages.Add(1)
 				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stdout message (total dropped: %d)", p.ID, processOutputTimeout, dropped)
 			}
+		}
+		if err := scanner.Err(); err != nil {
+			logger.Process.Errorf("[%s] stdout scanner error (possible line exceeding 10MB buffer): %v", p.ID, err)
 		}
 	}()
 
@@ -300,15 +318,24 @@ func (p *Process) Start() error {
 			outputWg.Done()
 		}()
 		scanner := bufio.NewScanner(stderr)
+		timer := time.NewTimer(processOutputTimeout)
+		defer timer.Stop()
 		for scanner.Scan() {
+			timer.Reset(processOutputTimeout)
 			select {
 			case p.output <- "[stderr] " + scanner.Text():
-				// Successfully queued
-			case <-time.After(processOutputTimeout):
+				// Successfully queued — stop the timer to avoid leak
+				if !timer.Stop() {
+					<-timer.C
+				}
+			case <-timer.C:
 				// Buffer full after timeout - downstream reader is persistently slow
 				dropped := p.droppedMessages.Add(1)
 				logger.Process.Warnf("[%s] Output buffer full after %v timeout, dropping stderr message (total dropped: %d)", p.ID, processOutputTimeout, dropped)
 			}
+		}
+		if err := scanner.Err(); err != nil {
+			logger.Process.Errorf("[%s] stderr scanner error: %v", p.ID, err)
 		}
 	}()
 
@@ -585,4 +612,17 @@ func (p *Process) GetSessionID() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.SessionID
+}
+
+// Options returns the ProcessOptions used to create this process.
+// Useful for re-creating a process with the same configuration on restart.
+func (p *Process) Options() ProcessOptions {
+	return p.opts
+}
+
+// SetPlanModeFromEvent updates the planModeActive state from an output event.
+func (p *Process) SetPlanModeFromEvent(active bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.planModeActive = active
 }

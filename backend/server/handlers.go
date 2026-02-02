@@ -3034,6 +3034,25 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, conv)
 }
 
+// GetStreamingSnapshot returns the current streaming snapshot for a conversation.
+// Used by the frontend to restore its view after WebSocket reconnection.
+func (h *Handlers) GetStreamingSnapshot(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	data, err := h.store.GetStreamingSnapshot(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if data == nil {
+		writeJSON(w, nil)
+		return
+	}
+	// data is already JSON — write it directly
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
+}
+
 func (h *Handlers) GetConversationMessages(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")

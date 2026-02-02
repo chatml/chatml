@@ -1006,6 +1006,19 @@ export async function getActiveStreamingConversations(): Promise<{ conversationI
   return handleResponse(res);
 }
 
+export interface StreamingSnapshotDTO {
+  text: string;
+  activeTools: { id: string; tool: string; startTime: number }[];
+  thinking?: string;
+  isThinking: boolean;
+  planModeActive: boolean;
+}
+
+export async function getStreamingSnapshot(convId: string): Promise<StreamingSnapshotDTO | null> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/streaming-snapshot`);
+  return handleResponse(res);
+}
+
 export async function deleteConversation(convId: string): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete conversation');

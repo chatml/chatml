@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -15,6 +16,8 @@ import (
 	"github.com/chatml/chatml-backend/store"
 	"github.com/google/uuid"
 )
+
+const snapshotDebounceInterval = 500 * time.Millisecond
 
 // Legacy handlers (for backwards compatibility)
 type OutputHandler func(agentID string, line string)
@@ -242,6 +245,63 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	var currentAssistantMessage string
 	var lastReportedDrops uint64
 
+	// Streaming snapshot state for reconnection recovery
+	activeToolsMap := make(map[string]ActiveToolEntry)
+	var currentThinking string
+	var isThinking bool
+	var snapshotDirty bool
+
+	// Debounced snapshot flush: 500ms after last state change
+	snapshotTimer := time.NewTimer(snapshotDebounceInterval)
+	snapshotTimer.Stop() // Don't start until first state change
+	defer snapshotTimer.Stop()
+
+	// flushSnapshot writes the current streaming state to the DB
+	flushSnapshot := func() {
+		if !snapshotDirty {
+			return
+		}
+		// Build active tools slice from map
+		tools := make([]ActiveToolEntry, 0, len(activeToolsMap))
+		for _, t := range activeToolsMap {
+			tools = append(tools, t)
+		}
+		snapshot := StreamingSnapshot{
+			Text:           currentAssistantMessage,
+			ActiveTools:    tools,
+			Thinking:       currentThinking,
+			IsThinking:     isThinking,
+			PlanModeActive: proc.IsPlanModeActive(),
+		}
+		data, err := json.Marshal(snapshot)
+		if err != nil {
+			logger.Manager.Errorf("Failed to marshal streaming snapshot for conv %s: %v", convID, err)
+			return
+		}
+		if err := m.store.SetStreamingSnapshot(ctx, convID, data); err != nil {
+			logger.Manager.Errorf("Failed to store streaming snapshot for conv %s: %v", convID, err)
+			return
+		}
+		snapshotDirty = false
+	}
+
+	// markSnapshotDirty sets the dirty flag and resets the debounce timer.
+	// We drain before reset to avoid the documented timer.Reset footgun: if the
+	// timer already fired, the channel has a pending value that could cause a
+	// spurious flush on the next select iteration. In practice flushSnapshot()
+	// is a no-op when !snapshotDirty so a double-flush is harmless, but draining
+	// keeps the behavior predictable.
+	markSnapshotDirty := func() {
+		snapshotDirty = true
+		if !snapshotTimer.Stop() {
+			select {
+			case <-snapshotTimer.C:
+			default:
+			}
+		}
+		snapshotTimer.Reset(snapshotDebounceInterval)
+	}
+
 	// Periodically check for dropped messages and emit warnings out-of-band.
 	// This bypasses the process output channel, so warnings are delivered even
 	// when the output channel is congested (which is exactly when drops occur).
@@ -267,11 +327,36 @@ outer:
 			switch event.Type {
 			case EventTypeAssistantText:
 				currentAssistantMessage += event.Content
+				markSnapshotDirty()
 
 			case EventTypeToolStart:
-				// Record tool start (will be updated on tool_end)
+				activeToolsMap[event.ID] = ActiveToolEntry{
+					ID:        event.ID,
+					Tool:      event.Tool,
+					StartTime: time.Now().Unix(),
+				}
+				markSnapshotDirty()
+
+			case EventTypeSessionIdUpdate:
+				// Track the session ID so restarts can resume the correct session
+				if event.SessionID != "" {
+					proc.SetSessionID(event.SessionID)
+				}
+
+			case EventTypePermModeChanged:
+				// Keep plan mode state in sync with agent-runner
+				proc.SetPlanModeFromEvent(event.Mode == "plan")
+				markSnapshotDirty()
+
+			case EventTypeThinking, EventTypeThinkingDelta:
+				currentThinking += event.Content
+				isThinking = true
+				markSnapshotDirty()
 
 			case EventTypeToolEnd:
+				delete(activeToolsMap, event.ID)
+				markSnapshotDirty()
+
 				// Store tool action in summary
 				if err := m.store.AddToolActionToConversation(ctx, convID, models.ToolAction{
 					ID:      event.ID,
@@ -311,6 +396,17 @@ outer:
 					}
 					currentAssistantMessage = ""
 				}
+				// Clear thinking on completion
+				currentThinking = ""
+				isThinking = false
+				activeToolsMap = make(map[string]ActiveToolEntry)
+				snapshotDirty = false // No need to flush — we're about to clear
+
+				// Clear snapshot directly (skipping flush: the snapshot is about to be
+				// removed anyway, so writing an intermediate state is wasted I/O).
+				if err := m.store.ClearStreamingSnapshot(ctx, convID); err != nil {
+					logger.Manager.Errorf("Failed to clear streaming snapshot for conv %s: %v", convID, err)
+				}
 			}
 
 			// Forward event to handler
@@ -326,6 +422,10 @@ outer:
 					m.onOutput(convID, formatted)
 				}
 			}
+
+		case <-snapshotTimer.C:
+			// Debounce timer fired — flush snapshot to DB
+			flushSnapshot()
 
 		case <-dropCheckTicker.C:
 			// Check for new drops and emit warning out-of-band
@@ -358,6 +458,19 @@ outer:
 		}
 	}
 
+	// Clear snapshot on process exit — but only if this process is still the current
+	// one in the map. If a new process has already been started (via SendConversationMessage),
+	// clearing now would wipe the new process's snapshot.
+	m.mu.RLock()
+	currentProc, exists := m.convProcesses[convID]
+	isStaleHandler := exists && currentProc != proc
+	m.mu.RUnlock()
+	if !isStaleHandler {
+		if err := m.store.ClearStreamingSnapshot(ctx, convID); err != nil {
+			logger.Manager.Errorf("Failed to clear streaming snapshot on exit for conv %s: %v", convID, err)
+		}
+	}
+
 	// Emit final drop stats if any drops occurred
 	finalDrops := proc.DroppedMessages()
 	if finalDrops > 0 {
@@ -385,12 +498,23 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 		return
 	}
 
-	var newStatus string
-	if proc.ExitError() != nil {
-		newStatus = models.ConversationStatusIdle // Error, but can retry
+	exitErr := proc.ExitError()
+	if exitErr != nil {
+		logger.Manager.Warnf("Conversation %s process exited with error: %v", convID, exitErr)
 	} else {
-		newStatus = models.ConversationStatusIdle // Completed turn, waiting for next message
+		logger.Manager.Infof("Conversation %s process exited cleanly", convID)
 	}
+
+	// Remove completed process from map to prevent unbounded growth.
+	// The process is kept accessible via the local variable for status updates.
+	m.mu.Lock()
+	// Only remove if this is still the same process (another restart may have replaced it)
+	if current, ok := m.convProcesses[convID]; ok && current == proc {
+		delete(m.convProcesses, convID)
+	}
+	m.mu.Unlock()
+
+	newStatus := models.ConversationStatusIdle
 
 	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
 		c.Status = newStatus
@@ -406,14 +530,31 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 
 // SendConversationMessage sends a follow-up message to an existing conversation
 func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment) error {
-	m.mu.RLock()
+	// Use full Lock for the check-and-restart sequence to prevent two concurrent
+	// callers from both seeing a dead process and each creating a new one (race condition).
+	m.mu.Lock()
 	proc, ok := m.convProcesses[convID]
-	m.mu.RUnlock()
+	needsRestart := !ok || proc.IsStopped() || !proc.IsRunning()
 
-	// Check if process exists, hasn't been stopped, and is running.
-	// IsStopped() catches explicit stops; IsRunning() catches natural exits.
-	if !ok || proc.IsStopped() || !proc.IsRunning() {
-		// Process not running, need to restart it
+	if needsRestart {
+		// Capture previous exit error for logging before we replace the process
+		var prevExitErr error
+		if ok && proc != nil {
+			prevExitErr = proc.ExitError()
+		}
+
+		// Retrieve original options from the old process (if any) so we preserve
+		// configuration like model, target branch, tool preset, budget limits, etc.
+		var restartOpts ProcessOptions
+		if ok && proc != nil {
+			restartOpts = proc.Options()
+		}
+
+		// Release lock for DB calls. Note: two concurrent callers can both reach
+		// this point. The double-check after re-acquiring the lock (below) ensures
+		// only one actually starts a new process.
+		m.mu.Unlock()
+
 		conv, err := m.store.GetConversation(ctx, convID)
 		if err != nil {
 			return fmt.Errorf("failed to get conversation: %w", err)
@@ -430,31 +571,73 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			return fmt.Errorf("session not found: %s", conv.SessionID)
 		}
 
-		// Create new process
-		proc = NewProcess(convID, session.WorktreePath, convID)
+		// Build restart options: reuse original config but update workdir and
+		// set up session resume using the last known session ID.
+		if restartOpts.ID == "" {
+			// No previous process options (first start via this path) — use minimal config
+			restartOpts.ID = convID
+			restartOpts.ConversationID = convID
+		}
+		restartOpts.Workdir = session.WorktreePath
+		// Clear instructions: the temp file has been cleaned up and the content is not
+		// preserved. This is acceptable because --resume carries the SDK's full context
+		// (including original instructions). If the session ID is also unavailable
+		// (e.g., process crashed before emitting session_id_update), the restart will
+		// lack original instructions — an acceptable degradation for a crash scenario.
+		restartOpts.Instructions = ""
+		// Resume the previous session if we have a session ID
+		if ok && proc != nil {
+			if sid := proc.GetSessionID(); sid != "" {
+				restartOpts.ResumeSession = sid
+			}
+		}
+
+		logger.Manager.Infof("Auto-restarting process for conversation %s (previous exit error: %v)", convID, prevExitErr)
+
+		// Cancel any pending user questions from the old process so the frontend
+		// doesn't show a stale question UI pointing at the dead process.
+		if m.onConversationEvent != nil {
+			m.onConversationEvent(convID, &AgentEvent{
+				Type:   "user_question_cancelled",
+				Reason: "process_restart",
+			})
+		}
+
+		newProc := NewProcessWithOptions(restartOpts)
 
 		m.mu.Lock()
-		m.convProcesses[convID] = proc
+		// Check again — another goroutine may have restarted while we were doing DB calls
+		if existingProc, exists := m.convProcesses[convID]; exists && existingProc.IsRunning() {
+			m.mu.Unlock()
+			// Another goroutine already restarted — use that process instead
+			proc = existingProc
+		} else {
+			m.convProcesses[convID] = newProc
+			m.mu.Unlock()
+
+			if err := newProc.Start(); err != nil {
+				return fmt.Errorf("failed to restart agent process: %w", err)
+			}
+
+			// Set up handlers for the new process
+			go m.handleConversationOutput(convID, newProc)
+			go m.handleConversationCompletion(convID, newProc)
+
+			// Update status
+			if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+				c.Status = models.ConversationStatusActive
+				c.UpdatedAt = time.Now()
+			}); err != nil {
+				logger.Manager.Errorf("Failed to update conversation status to active: %v", err)
+			}
+			if m.onConversationStatus != nil {
+				m.onConversationStatus(convID, models.ConversationStatusActive)
+			}
+
+			proc = newProc
+		}
+	} else {
 		m.mu.Unlock()
-
-		if err := proc.Start(); err != nil {
-			return fmt.Errorf("failed to restart agent process: %w", err)
-		}
-
-		// Set up handlers for the new process
-		go m.handleConversationOutput(convID, proc)
-		go m.handleConversationCompletion(convID, proc)
-
-		// Update status
-		if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
-			c.Status = models.ConversationStatusActive
-			c.UpdatedAt = time.Now()
-		}); err != nil {
-			logger.Manager.Errorf("Failed to update conversation status to active: %v", err)
-		}
-		if m.onConversationStatus != nil {
-			m.onConversationStatus(convID, models.ConversationStatusActive)
-		}
 	}
 
 	// Store user message with attachments

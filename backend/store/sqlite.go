@@ -559,6 +559,21 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added model column to conversations")
 	}
 
+	// Migration: Add streaming_snapshot column to conversations if it doesn't exist
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('conversations') WHERE name = 'streaming_snapshot'
+	`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE conversations ADD COLUMN streaming_snapshot TEXT NOT NULL DEFAULT ''`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added streaming_snapshot column to conversations")
+	}
+
 	// Migration: Convert 'todo' task_status to 'backlog' (todo status was removed)
 	err = s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE task_status = 'todo'`).Scan(&count)
 	if err != nil {
@@ -1927,6 +1942,50 @@ func (s *SQLiteStore) AddToolActionToConversation(ctx context.Context, convID st
 		}
 
 		return tx.Commit()
+	})
+}
+
+// ============================================================================
+// Streaming Snapshot methods
+// ============================================================================
+
+// SetStreamingSnapshot stores a JSON snapshot of the current streaming state for a conversation.
+// Used for reconnection recovery — the frontend can fetch this to restore its view.
+func (s *SQLiteStore) SetStreamingSnapshot(ctx context.Context, convID string, snapshot []byte) error {
+	return RetryDBExec(ctx, "SetStreamingSnapshot", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE conversations SET streaming_snapshot = ? WHERE id = ?`,
+			string(snapshot), convID)
+		return err
+	})
+}
+
+// GetStreamingSnapshot retrieves the stored streaming snapshot for a conversation.
+// Returns nil if no snapshot exists (empty string in DB).
+func (s *SQLiteStore) GetStreamingSnapshot(ctx context.Context, convID string) ([]byte, error) {
+	var snapshot string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT streaming_snapshot FROM conversations WHERE id = ?`,
+		convID).Scan(&snapshot)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if snapshot == "" {
+		return nil, nil
+	}
+	return []byte(snapshot), nil
+}
+
+// ClearStreamingSnapshot removes the streaming snapshot for a conversation.
+func (s *SQLiteStore) ClearStreamingSnapshot(ctx context.Context, convID string) error {
+	return RetryDBExec(ctx, "ClearStreamingSnapshot", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE conversations SET streaming_snapshot = '' WHERE id = ?`,
+			convID)
+		return err
 	})
 }
 
