@@ -73,7 +73,7 @@ export const MessageBlock = memo(function MessageBlock({
     // Fallback for system messages without setup info
     return (
       <div className={cn('py-2', !isFirst && 'pt-3')}>
-        <div className="text-xs text-muted-foreground italic">
+        <div className="text-base text-muted-foreground">
           {highlightedContent || message.content}
         </div>
       </div>
@@ -121,77 +121,77 @@ export const MessageBlock = memo(function MessageBlock({
           </div>
         )}
 
-          {/* Tool Usage History */}
-          {message.toolUsage && message.toolUsage.length > 0 && (
-            <ErrorBoundary
-              section="ToolUsage"
-              fallback={<InlineErrorFallback message="Unable to display tool usage" />}
-            >
-              <ToolUsageHistory tools={message.toolUsage} />
-            </ErrorBoundary>
-          )}
+        {/* Tool Usage History */}
+        {message.toolUsage && message.toolUsage.length > 0 && (
+          <ErrorBoundary
+            section="ToolUsage"
+            fallback={<InlineErrorFallback message="Unable to display tool usage" />}
+          >
+            <ToolUsageHistory tools={message.toolUsage} />
+          </ErrorBoundary>
+        )}
 
-          {/* Verification Results */}
-          {message.verificationResults && message.verificationResults.length > 0 && (
-            <VerificationBlock results={message.verificationResults} />
-          )}
+        {/* Verification Results */}
+        {message.verificationResults && message.verificationResults.length > 0 && (
+          <VerificationBlock results={message.verificationResults} />
+        )}
 
-          {/* Main Content */}
-          {message.content && (
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <div className="group relative">
-                  <div className="prose prose-base dark:prose-invert max-w-none text-md leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
-                    <ErrorBoundary
-                      section="MessageContent"
-                      fallback={
-                        <div className="text-sm text-muted-foreground italic">
-                          Unable to render message content
-                        </div>
-                      }
-                    >
-                      <CachedMarkdown
-                        cacheKey={`msg:${message.id}`}
-                        content={message.content}
-                      />
-                    </ErrorBoundary>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={copyContent}
+        {/* Main Content */}
+        {message.content && (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div className="group relative">
+                <div className="prose prose-base dark:prose-invert max-w-none text-md leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+                  <ErrorBoundary
+                    section="MessageContent"
+                    fallback={
+                      <div className="text-sm text-muted-foreground italic">
+                        Unable to render message content
+                      </div>
+                    }
                   >
-                    {copied ? (
-                      <Check className="h-2.5 w-2.5 text-text-success" />
-                    ) : (
-                      <Copy className="h-2.5 w-2.5" />
-                    )}
-                  </Button>
+                    <CachedMarkdown
+                      cacheKey={`msg:${message.id}`}
+                      content={message.content}
+                    />
+                  </ErrorBoundary>
                 </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem onClick={copyContent}>
-                  <Copy className="size-4" />
-                  Copy
-                </ContextMenuItem>
-                <ContextMenuItem onClick={copyContent}>
-                  <FileText className="size-4" />
-                  Copy as Markdown
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={copyContent}
+                >
+                  {copied ? (
+                    <Check className="h-2.5 w-2.5 text-text-success" />
+                  ) : (
+                    <Copy className="h-2.5 w-2.5" />
+                  )}
+                </Button>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onClick={copyContent}>
+                <Copy className="size-4" />
+                Copy
+              </ContextMenuItem>
+              <ContextMenuItem onClick={copyContent}>
+                <FileText className="size-4" />
+                Copy as Markdown
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        )}
 
-          {/* File Changes */}
-          {message.fileChanges && message.fileChanges.length > 0 && (
-            <FileChangesBlock changes={message.fileChanges} />
-          )}
+        {/* File Changes */}
+        {message.fileChanges && message.fileChanges.length > 0 && (
+          <FileChangesBlock changes={message.fileChanges} />
+        )}
 
-          {/* Run Summary */}
-          {message.runSummary && (
-            <RunSummaryBlock summary={message.runSummary} />
-          )}
+        {/* Run Summary */}
+        {message.runSummary && (
+          <RunSummaryBlock summary={message.runSummary} />
+        )}
       </div>
     </div>
   );
@@ -201,29 +201,29 @@ export const MessageBlock = memo(function MessageBlock({
 
   // Core fields
   if (prev.id !== next.id ||
-      prev.content !== next.content ||
-      prev.timestamp !== next.timestamp ||
-      prev.role !== next.role ||
-      prev.thinkingContent !== next.thinkingContent ||
-      prevProps.isFirst !== nextProps.isFirst ||
-      prevProps.searchQuery !== nextProps.searchQuery) {
+    prev.content !== next.content ||
+    prev.timestamp !== next.timestamp ||
+    prev.role !== next.role ||
+    prev.thinkingContent !== next.thinkingContent ||
+    prevProps.isFirst !== nextProps.isFirst ||
+    prevProps.searchQuery !== nextProps.searchQuery) {
     return false;
   }
 
   // Structured fields — reference equality (updateMessage spreads new objects/arrays)
   if (prev.toolUsage !== next.toolUsage ||
-      prev.fileChanges !== next.fileChanges ||
-      prev.verificationResults !== next.verificationResults ||
-      prev.attachments !== next.attachments ||
-      prev.runSummary !== next.runSummary ||
-      prev.setupInfo !== next.setupInfo) {
+    prev.fileChanges !== next.fileChanges ||
+    prev.verificationResults !== next.verificationResults ||
+    prev.attachments !== next.attachments ||
+    prev.runSummary !== next.runSummary ||
+    prev.setupInfo !== next.setupInfo) {
     return false;
   }
 
   // Search navigation — only compare when relevant
   if (nextProps.hasMatches || prevProps.hasMatches) {
     if (prevProps.currentMatchIndex !== nextProps.currentMatchIndex ||
-        prevProps.matchOffset !== nextProps.matchOffset) {
+      prevProps.matchOffset !== nextProps.matchOffset) {
       return false;
     }
   }
