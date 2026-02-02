@@ -158,6 +158,13 @@ pub fn start_global_watcher(
                                     }
                                 };
 
+                            // Skip events for directories that no longer exist on disk.
+                            // macOS FSEvents can deliver stale historical events for
+                            // deleted directories when a new watcher subscribes.
+                            if !watcher_base_path.join(&session_dir).exists() {
+                                continue;
+                            }
+
                             // Look up the workspace_id for this session (read lock only)
                             let workspace_id = match thread_sessions.read() {
                                 Ok(s) => s.get(&session_dir).cloned(),
