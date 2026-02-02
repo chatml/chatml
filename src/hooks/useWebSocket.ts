@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, CheckpointInfo, BudgetStatus, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus } from '@/lib/types';
 
 import {
   WEBSOCKET_RECONNECT_BASE_DELAY_MS,
@@ -201,18 +201,31 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'tool_start':
-        // Add active tool
+        // Add active tool — route to sub-agent if agentId is present
         if (event?.id && event?.tool) {
-          store.addActiveTool(conversationId, {
-            id: event.id,
-            tool: event.tool,
-            params: event.params,
-            startTime: Date.now(),
-          });
+          const agentId = event.agentId as string | undefined;
+          if (agentId) {
+            // Sub-agent tool — add to sub-agent's tool list
+            store.addSubAgentTool(conversationId, agentId, {
+              id: event.id,
+              tool: event.tool,
+              params: event.params,
+              startTime: Date.now(),
+              agentId,
+            });
+          } else {
+            // Parent agent tool
+            store.addActiveTool(conversationId, {
+              id: event.id,
+              tool: event.tool,
+              params: event.params,
+              startTime: Date.now(),
+            });
 
-          // Detect ExitPlanMode tool - this means Claude wants plan approval
-          if (event.tool === 'ExitPlanMode') {
-            store.setAwaitingPlanApproval(conversationId, true);
+            // Detect ExitPlanMode tool - this means Claude wants plan approval
+            if (event.tool === 'ExitPlanMode') {
+              store.setAwaitingPlanApproval(conversationId, true);
+            }
           }
         }
         break;
@@ -221,31 +234,39 @@ export function useWebSocket(enabled: boolean = true) {
         // Complete active tool with success/summary info
         // For Bash tools, also capture stdout/stderr
         if (event?.id) {
-          const activeTool = store.activeTools[conversationId]?.find(t => t.id === event.id);
+          const toolAgentId = event.agentId as string | undefined;
           const stdout = event.stdout as string | undefined;
           const stderr = event.stderr as string | undefined;
 
-          if (activeTool) {
-            // Normal path: tool exists in state
-            const isExitPlanMode = activeTool.tool === 'ExitPlanMode';
-            store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+          if (toolAgentId) {
+            // Sub-agent tool completion
+            store.completeSubAgentTool(conversationId, toolAgentId, event.id, event.success, event.summary, stdout, stderr);
+          } else {
+            // Parent agent tool
+            const activeTool = store.activeTools[conversationId]?.find(t => t.id === event.id);
 
-            if (isExitPlanMode) {
-              store.setAwaitingPlanApproval(conversationId, false);
+            if (activeTool) {
+              // Normal path: tool exists in state
+              const isExitPlanMode = activeTool.tool === 'ExitPlanMode';
+              store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+
+              if (isExitPlanMode) {
+                store.setAwaitingPlanApproval(conversationId, false);
+              }
+            } else if (event.tool) {
+              // Race condition recovery: tool_end arrived but tool wasn't in state.
+              // Create a synthetic completed entry so the timeline shows it as finished.
+              console.warn(`[WebSocket] tool_end for untracked tool: ${event.id} (${event.tool})`);
+              store.addActiveTool(conversationId, {
+                id: event.id,
+                tool: event.tool as string,
+                startTime: Date.now(),
+                untracked: true,
+              }, { skipTimeout: true });
+              store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
             }
-          } else if (event.tool) {
-            // Race condition recovery: tool_end arrived but tool wasn't in state.
-            // Create a synthetic completed entry so the timeline shows it as finished.
-            console.warn(`[WebSocket] tool_end for untracked tool: ${event.id} (${event.tool})`);
-            store.addActiveTool(conversationId, {
-              id: event.id,
-              tool: event.tool as string,
-              startTime: Date.now(),
-              untracked: true,
-            }, { skipTimeout: true });
-            store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+            // If no tool name and not in state, silently skip - tool was never shown to user
           }
-          // If no tool name and not in state, silently skip - tool was never shown to user
         }
         break;
 
@@ -336,6 +357,7 @@ export function useWebSocket(enabled: boolean = true) {
         store.setStreaming(conversationId, false);
         store.clearThinking(conversationId);
         store.clearActiveTools(conversationId);
+        store.clearSubAgents(conversationId);
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
         break;
@@ -447,6 +469,184 @@ export function useWebSocket(enabled: boolean = true) {
         });
         break;
 
+      // ====================================================================
+      // Group B: Tool Progress — elapsed time on long-running tools
+      // The agent SDK emits tool_progress with `parentToolUseId` as the
+      // canonical tool identifier. Some backend paths also set `id`.
+      // We prefer `id` when present for consistency with tool_start/tool_end.
+      // ====================================================================
+      case 'tool_progress':
+        if (event?.parentToolUseId || event?.id) {
+          const toolId = (event.id ?? event.parentToolUseId) as string;
+          store.updateToolProgress(conversationId, toolId, {
+            elapsedTimeSeconds: event.elapsedTimeSeconds as number | undefined,
+            toolName: event.toolName as string | undefined,
+          });
+        }
+        break;
+
+      // ====================================================================
+      // Group C: Agent Notifications — toast + desktop for important ones
+      // ====================================================================
+      case 'agent_notification':
+        if (event?.title || event?.message) {
+          window.dispatchEvent(new CustomEvent('agent-notification', {
+            detail: {
+              title: event.title,
+              message: event.message,
+              type: event.notificationType || 'info',
+              conversationId,
+            }
+          }));
+          if (event.notificationType === 'error' || event.notificationType === 'warning') {
+            notifyDesktop(conversationId, (event.title as string) || 'Agent notification', (event.message as string) || '');
+          }
+        }
+        break;
+
+      // ====================================================================
+      // Group D: Checkpoints & File Rewind
+      // ====================================================================
+      case 'checkpoint_created':
+        if (event?.checkpointUuid) {
+          store.addCheckpoint({
+            uuid: event.checkpointUuid as string,
+            timestamp: new Date().toISOString(),
+            messageIndex: event.messageIndex ?? 0,
+          });
+        }
+        break;
+
+      case 'files_rewound':
+        window.dispatchEvent(new CustomEvent('agent-notification', {
+          detail: {
+            title: 'Files rewound',
+            message: 'Files restored to checkpoint',
+            type: 'info',
+            conversationId,
+          }
+        }));
+        break;
+
+      // ====================================================================
+      // Group E: Model Changed
+      // ====================================================================
+      case 'model_changed':
+        if (event?.model) {
+          store.updateConversation(conversationId, { model: event.model as string });
+        }
+        break;
+
+      // ====================================================================
+      // Group F: Interrupted + User Question Timeout
+      // ====================================================================
+      case 'interrupted':
+        store.clearStreamingText(conversationId);
+        store.setStreaming(conversationId, false);
+        store.clearActiveTools(conversationId);
+        store.clearThinking(conversationId);
+        store.clearSubAgents(conversationId);
+        store.updateConversation(conversationId, { status: 'idle' });
+        break;
+
+      case 'user_question_timeout':
+        store.clearPendingUserQuestion(conversationId);
+        break;
+
+      // ====================================================================
+      // Group G: Hook Events — surface failures, log the rest
+      // ====================================================================
+      case 'hook_tool_failure':
+        console.warn(`[Hook] Tool failure: ${event?.tool} — ${event?.error}`);
+        break;
+
+      case 'hook_pre_tool':
+      case 'hook_post_tool':
+      case 'hook_response':
+        // Diagnostic — no UI action needed
+        break;
+
+      // ====================================================================
+      // Group H: Session Lifecycle — managed by backend
+      // ====================================================================
+      case 'session_started':
+      case 'session_ended':
+      case 'session_id_update':
+        // Session lifecycle managed by backend. No frontend action needed.
+        break;
+
+      // ====================================================================
+      // Group I: Diagnostic Events
+      // ====================================================================
+      case 'agent_stop':
+        store.updateConversation(conversationId, { status: 'idle' });
+        break;
+
+      case 'command_error':
+        if (event?.message) {
+          store.setStreamingError(conversationId, event.message as string);
+        }
+        break;
+
+      case 'auth_status':
+      case 'status_update':
+        // Diagnostic — no UI action needed
+        break;
+
+      case 'agent_stderr':
+      case 'json_parse_error':
+        console.warn(`[Agent] ${data.type}:`, event?.message || event?.data);
+        break;
+
+      // ====================================================================
+      // Group J: Query Responses
+      // ====================================================================
+      case 'supported_models':
+        if (event?.models) {
+          store.setSupportedModels(event.models as Array<{ value: string; displayName: string; description: string }>);
+        }
+        break;
+
+      case 'supported_commands':
+        if (event?.commands) {
+          store.setSupportedCommands(event.commands as Array<{ name: string; description: string; argumentHint: string }>);
+        }
+        break;
+
+      case 'mcp_status':
+        if (event?.servers) {
+          store.setMcpServers(event.servers as McpServerStatus[]);
+        }
+        break;
+
+      case 'account_info':
+        if (event?.info) {
+          store.setAccountInfo(event.info as Record<string, unknown>);
+        }
+        break;
+
+      // ====================================================================
+      // Sub-agent lifecycle events (Group A)
+      // ====================================================================
+      case 'subagent_started':
+        if (event?.agentId && event?.agentType) {
+          store.addSubAgent(conversationId, {
+            agentId: event.agentId as string,
+            agentType: event.agentType as string,
+            parentToolUseId: event.parentToolUseId as string | undefined,
+            startTime: Date.now(),
+            completed: false,
+            tools: [],
+          });
+        }
+        break;
+
+      case 'subagent_stopped':
+        if (event?.agentId) {
+          store.completeSubAgent(conversationId, event.agentId as string);
+        }
+        break;
+
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -474,6 +674,7 @@ export function useWebSocket(enabled: boolean = true) {
           store.clearStreamingText(convId);
           store.clearActiveTools(convId);
           store.clearThinking(convId);
+          store.clearSubAgents(convId);
           store.updateConversation(convId, { status: 'completed' });
 
           // Reload messages to pick up any assistant responses we missed

@@ -136,6 +136,19 @@ export interface ActiveTool {
   stdout?: string;
   stderr?: string;
   untracked?: boolean; // Tool result arrived without matching tool_start (race condition recovery)
+  elapsedSeconds?: number; // Updated from tool_progress events for long-running tools
+  agentId?: string; // Sub-agent that owns this tool (undefined = parent agent)
+}
+
+// Sub-agent spawned by the Task tool during parallel execution
+export interface SubAgent {
+  agentId: string;
+  agentType: string; // e.g., "Explore", "Bash", "general-purpose"
+  parentToolUseId?: string; // The Task tool_use_id that spawned this sub-agent
+  startTime: number;
+  endTime?: number;
+  completed: boolean;
+  tools: ActiveTool[];
 }
 
 // Setup info for system messages

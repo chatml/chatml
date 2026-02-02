@@ -20,7 +20,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
 import { useNavigationStore } from './navigationStore';
 import { useTabStore } from './tabStore';
-import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool } from '@/lib/types';
+import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool, SubAgent } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -31,6 +31,7 @@ const EMPTY_CUSTOM_TODOS: readonly CustomTodoItem[] = [];
 const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
 const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
 const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
+const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -150,6 +151,13 @@ export const useStreamingState = (conversationId: string | null) =>
  */
 export const useActiveTools = (conversationId: string | null) =>
   useAppStore((s) => (conversationId ? s.activeTools[conversationId] ?? EMPTY_TOOLS : EMPTY_TOOLS));
+
+/**
+ * Sub-agents scoped to a conversation.
+ * Use in: StreamingMessage, SubAgentGroup
+ */
+export const useSubAgents = (conversationId: string | null) =>
+  useAppStore((s) => (conversationId ? s.subAgents[conversationId] ?? EMPTY_SUB_AGENTS : EMPTY_SUB_AGENTS));
 
 // ============================================================================
 // File Tab State

@@ -22,6 +22,7 @@ import type {
   BranchSyncStatus,
   PendingUserQuestion,
   ActiveTool,
+  SubAgent,
   Summary,
   ScriptRun,
   SetupProgress,
@@ -159,6 +160,7 @@ interface AppState {
   // Conversation streaming state
   streamingState: { [conversationId: string]: StreamingState };
   activeTools: { [conversationId: string]: ActiveTool[] };
+  subAgents: { [conversationId: string]: SubAgent[] };
 
   // Todo state
   agentTodos: { [conversationId: string]: AgentTodoItem[] };
@@ -196,6 +198,11 @@ interface AppState {
 
   // File watcher: last file change event (for reactive subscriptions)
   lastFileChange: { workspaceId: string; path: string; fullPath: string; timestamp: number } | null;
+
+  // Query responses from agent
+  supportedModels: Array<{ value: string; displayName: string; description: string }>;
+  supportedCommands: Array<{ name: string; description: string; argumentHint: string }>;
+  accountInfo: Record<string, unknown> | null;
 
   // Script runs state (keyed by sessionId)
   scriptRuns: Record<string, ScriptRun[]>;
@@ -294,13 +301,23 @@ interface AppState {
   setAwaitingPlanApproval: (conversationId: string, awaiting: boolean) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
+  updateToolProgress: (conversationId: string, toolId: string, progress: { elapsedTimeSeconds?: number; toolName?: string }) => void;
   clearActiveTools: (conversationId: string) => void;
+
+  // Sub-agent actions
+  addSubAgent: (conversationId: string, agent: SubAgent) => void;
+  completeSubAgent: (conversationId: string, agentId: string) => void;
+  addSubAgentTool: (conversationId: string, agentId: string, tool: ActiveTool) => void;
+  completeSubAgentTool: (conversationId: string, agentId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
+  clearSubAgents: (conversationId: string) => void;
+
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
     text: string;
-    activeTools: { id: string; tool: string; startTime: number }[];
+    activeTools: { id: string; tool: string; startTime: number; agentId?: string }[];
     thinking?: string;
     isThinking: boolean;
     planModeActive: boolean;
+    subAgents?: { agentId: string; agentType: string; parentToolUseId?: string; startTime: number; activeTools: { id: string; tool: string; startTime: number }[]; completed: boolean }[];
   }) => void;
 
   // Atomic streaming finalization - creates message and clears streaming in one update
@@ -328,6 +345,11 @@ interface AppState {
 
   // MCP servers actions
   setMcpServers: (servers: McpServerStatus[]) => void;
+
+  // Query response actions
+  setSupportedModels: (models: Array<{ value: string; displayName: string; description: string }>) => void;
+  setSupportedCommands: (commands: Array<{ name: string; description: string; argumentHint: string }>) => void;
+  setAccountInfo: (info: Record<string, unknown>) => void;
 
   // Checkpoint actions
   setCheckpoints: (checkpoints: CheckpointInfo[]) => void;
@@ -395,6 +417,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalCost: 0,
   streamingState: {},
   activeTools: {},
+  subAgents: {},
   agentTodos: {},
   customTodos: {},
   terminalInstances: {},
@@ -412,6 +435,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   summaries: {},
   lastFileChange: null,
   messagePagination: {},
+
+  // Query responses
+  supportedModels: [],
+  supportedCommands: [],
+  accountInfo: null,
 
   // Script state
   scriptRuns: {},
@@ -1145,6 +1173,21 @@ updateFileTabContent: (id, content) => set((state) => ({
       };
     });
   },
+  updateToolProgress: (conversationId, toolId, progress) => set((state) => {
+    const tools = state.activeTools[conversationId] || [];
+    const tool = tools.find(t => t.id === toolId && !t.endTime);
+    if (!tool) return state; // Tool not found or already completed — no state change
+    return {
+      activeTools: {
+        ...state.activeTools,
+        [conversationId]: tools.map((t) =>
+          t.id === toolId
+            ? { ...t, elapsedSeconds: progress.elapsedTimeSeconds }
+            : t
+        ),
+      },
+    };
+  }),
   clearActiveTools: (conversationId) => {
     // Clear all timeouts for this conversation's tools
     const tools = useAppStore.getState().activeTools[conversationId] || [];
@@ -1157,10 +1200,81 @@ updateFileTabContent: (id, content) => set((state) => ({
       },
     }));
   },
+
+  // Sub-agent actions
+  addSubAgent: (conversationId, agent) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: [...(state.subAgents[conversationId] || []), agent],
+    },
+  })),
+  completeSubAgent: (conversationId, agentId) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
+        a.agentId === agentId ? { ...a, completed: true, endTime: Date.now() } : a
+      ),
+    },
+  })),
+  addSubAgentTool: (conversationId, agentId, tool) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
+        a.agentId === agentId ? { ...a, tools: [...a.tools, tool] } : a
+      ),
+    },
+  })),
+  completeSubAgentTool: (conversationId, agentId, toolId, success, summary, stdout, stderr) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
+        a.agentId === agentId
+          ? {
+              ...a,
+              tools: a.tools.map((t) =>
+                t.id === toolId ? { ...t, endTime: Date.now(), success, summary, stdout, stderr } : t
+              ),
+            }
+          : a
+      ),
+    },
+  })),
+  clearSubAgents: (conversationId) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: [],
+    },
+  })),
+
   restoreStreamingFromSnapshot: (conversationId, snapshot) => {
     // Restore streaming state from a backend snapshot after WebSocket reconnection.
     // Creates a single segment from the recovered text so existing rendering works.
     const segmentId = `recovered-${conversationId}-${crypto.randomUUID()}`;
+
+    // Filter parent-agent tools (no agentId) for flat activeTools
+    const parentTools = snapshot.activeTools
+      .filter((t) => !t.agentId)
+      .map((t) => ({
+        id: t.id,
+        tool: t.tool,
+        startTime: t.startTime * 1000, // Convert seconds to ms
+      }));
+
+    // Restore sub-agents with their active tools
+    const restoredSubAgents = (snapshot.subAgents || []).map((sa) => ({
+      agentId: sa.agentId,
+      agentType: sa.agentType,
+      parentToolUseId: sa.parentToolUseId,
+      startTime: sa.startTime * 1000, // Convert seconds to ms
+      completed: sa.completed,
+      tools: sa.activeTools.map((t) => ({
+        id: t.id,
+        tool: t.tool,
+        startTime: t.startTime * 1000,
+        agentId: sa.agentId,
+      })),
+    }));
+
     set((state) => ({
       streamingState: updateStreamingConv(state.streamingState, conversationId, {
         text: snapshot.text,
@@ -1173,11 +1287,11 @@ updateFileTabContent: (id, content) => set((state) => ({
       }),
       activeTools: {
         ...state.activeTools,
-        [conversationId]: snapshot.activeTools.map((t) => ({
-          id: t.id,
-          tool: t.tool,
-          startTime: t.startTime * 1000, // Convert seconds to ms
-        })),
+        [conversationId]: parentTools,
+      },
+      subAgents: {
+        ...state.subAgents,
+        [conversationId]: restoredSubAgents,
       },
     }));
   },
@@ -1216,6 +1330,10 @@ updateFileTabContent: (id, content) => set((state) => ({
             ...state.activeTools,
             [conversationId]: [],
           },
+          subAgents: {
+            ...state.subAgents,
+            [conversationId]: [],
+          },
         };
       }
 
@@ -1241,6 +1359,10 @@ updateFileTabContent: (id, content) => set((state) => ({
         },
         activeTools: {
           ...state.activeTools,
+          [conversationId]: [],
+        },
+        subAgents: {
+          ...state.subAgents,
           [conversationId]: [],
         },
       };
@@ -1373,6 +1495,11 @@ updateFileTabContent: (id, content) => set((state) => ({
 
   // MCP servers actions
   setMcpServers: (servers) => set({ mcpServers: servers }),
+
+  // Query response actions
+  setSupportedModels: (models) => set({ supportedModels: models }),
+  setSupportedCommands: (commands) => set({ supportedCommands: commands }),
+  setAccountInfo: (info) => set({ accountInfo: info }),
 
   // Checkpoint actions
   setCheckpoints: (checkpoints) => set({ checkpoints }),
