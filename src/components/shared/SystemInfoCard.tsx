@@ -21,7 +21,7 @@ export function SystemInfoCard({ setupInfo, className }: SystemInfoCardProps) {
   return (
     <div
       className={cn(
-        'rounded-lg border border-purple-400/20 bg-purple-500/10 dark:border-purple-400/20 dark:bg-purple-500/10 px-3 py-2 text-sm',
+        'rounded-lg border border-purple-400/20 bg-purple-500/10 dark:border-purple-400/20 dark:bg-purple-500/10 px-3 py-2 text-base',
         className
       )}
     >
@@ -29,7 +29,7 @@ export function SystemInfoCard({ setupInfo, className }: SystemInfoCardProps) {
         You are in a new copy of your codebase called{' '}
         <span className="font-medium text-foreground">{sessionName}</span>
       </p>
-      <div className="space-y-1.5 text-xs text-muted-foreground">
+      <div className="space-y-1.5 text-base text-muted-foreground">
         <div className="flex items-center gap-2">
           <GitBranch className="w-3.5 h-3.5 shrink-0" />
           <span>

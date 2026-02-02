@@ -257,7 +257,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
               return (
                 <div
                   key={item.id}
-                  className="prose prose-base dark:prose-invert max-w-none text-md leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary"
+                  className="prose prose-base dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary"
                 >
                   <CachedMarkdown
                     cacheKey={`seg:${item.id}`}
