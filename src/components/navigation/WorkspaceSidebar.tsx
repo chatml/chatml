@@ -81,7 +81,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
-import { getPriorityOption, getTaskStatusOption } from '@/lib/session-fields';
+import { getPriorityOption } from '@/lib/session-fields';
+import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
   Dialog,
@@ -1060,13 +1061,9 @@ function SessionRow({
               </div>
             )}
           </div>
-          {/* Git icon column */}
+          {/* Task status icon column */}
           <div className="w-4 shrink-0 flex items-start justify-center pt-0.5">
-            {hasPR ? (
-              <GitPullRequest className="w-3.5 h-3.5 text-purple-500" />
-            ) : (
-              <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-            )}
+            <TaskStatusIcon status={session.taskStatus} className="w-3.5 h-3.5" />
           </div>
           <div className="flex-1 min-w-0">
             {/* First line: branch name + stats/actions */}
@@ -1121,10 +1118,10 @@ function SessionRow({
             </div>
             {/* Second line: task status · priority · session name · PR info · status */}
             <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
-              {session.taskStatus && session.taskStatus !== 'backlog' && (() => {
-                const opt = getTaskStatusOption(session.taskStatus);
-                return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
-              })()}
+              {/* PR icon if applicable */}
+              {hasPR && (
+                <GitPullRequest className="h-3 w-3 shrink-0 text-purple-500" />
+              )}
               {session.priority > 0 && (() => {
                 const opt = getPriorityOption(session.priority);
                 return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;

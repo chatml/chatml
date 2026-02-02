@@ -5,11 +5,6 @@ import {
   ArrowUp,
   Equal,
   ArrowDown,
-  CircleDashed,
-  Circle,
-  CircleDot,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react';
 import type { SessionPriority, SessionTaskStatus } from './types';
 
@@ -31,16 +26,14 @@ export const PRIORITY_OPTIONS: PriorityOption[] = [
 export interface TaskStatusOption {
   value: SessionTaskStatus;
   label: string;
-  icon: LucideIcon;
-  color: string;
 }
 
 export const TASK_STATUS_OPTIONS: TaskStatusOption[] = [
-  { value: 'backlog', label: 'Backlog', icon: CircleDashed, color: 'text-muted-foreground' },
-  { value: 'todo', label: 'Todo', icon: Circle, color: 'text-foreground/70' },
-  { value: 'in_progress', label: 'In Progress', icon: CircleDot, color: 'text-yellow-500' },
-  { value: 'done', label: 'Done', icon: CheckCircle2, color: 'text-text-success' },
-  { value: 'cancelled', label: 'Cancelled', icon: XCircle, color: 'text-muted-foreground/50' },
+  { value: 'backlog', label: 'Backlog' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'in_review', label: 'In Review' },
+  { value: 'done', label: 'Done' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
 
 export function getPriorityOption(value: number): PriorityOption {

@@ -10,12 +10,11 @@ import {
 import {
   ChevronDown,
   Folder,
-  GitBranch,
-  GitPullRequest,
   CheckCircle2,
   XCircle,
   AlertTriangle,
 } from 'lucide-react';
+import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 
 interface WorkspaceTreeItemProps {
   workspace: Workspace;
@@ -107,13 +106,9 @@ export function WorkspaceTreeItem({
                     onClick={() => onSelectSession(session.id)}
                   >
                     <div className="flex-1 min-w-0">
-                      {/* Branch name */}
+                      {/* Branch name with status icon */}
                       <div className="flex items-center gap-1.5">
-                        {hasPR ? (
-                          <GitPullRequest className="w-3 h-3 text-purple-500 shrink-0" />
-                        ) : (
-                          <GitBranch className="w-3 h-3 text-muted-foreground shrink-0" />
-                        )}
+                        <TaskStatusIcon status={session.taskStatus} className="w-3 h-3 shrink-0" />
                         <span className="text-xs font-medium truncate">
                           {session.branch || session.name}
                         </span>

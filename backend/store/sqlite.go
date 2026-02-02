@@ -559,6 +559,19 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added model column to conversations")
 	}
 
+	// Migration: Convert 'todo' task_status to 'backlog' (todo status was removed)
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE task_status = 'todo'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		_, err = s.db.Exec(`UPDATE sessions SET task_status = 'backlog' WHERE task_status = 'todo'`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Converted %d sessions from 'todo' to 'backlog' task_status", count)
+	}
+
 	return nil
 }
 
