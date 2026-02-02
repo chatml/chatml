@@ -485,6 +485,11 @@ function flushBlockBuffer(): void {
 // Track active tool uses
 const activeTools = new Map<string, { tool: string; startTime: number }>();
 
+// Track sub-agent session → agentId mapping for correlating hook events
+const sessionToAgentId = new Map<string, string>();
+// Track sub-agent active tools (keyed by toolUseId)
+const subagentActiveTools = new Map<string, { agentId: string; tool: string; startTime: number }>();
+
 // Track statistics for the run
 interface RunStats {
   toolCalls: number;
@@ -536,6 +541,8 @@ function trackToolEnd(durationMs: number): void {
 
 const preToolUseHook: HookCallback = async (input, toolUseId) => {
   const hookInput = input as PreToolUseHookInput;
+  const agentId = sessionToAgentId.get(hookInput.session_id);
+
   emit({
     type: "hook_pre_tool",
     toolUseId,
@@ -543,6 +550,23 @@ const preToolUseHook: HookCallback = async (input, toolUseId) => {
     input: hookInput.tool_input,
     sessionId: hookInput.session_id,
   });
+
+  // If this is a sub-agent tool, emit a tool_start event with agentId
+  if (agentId && toolUseId) {
+    subagentActiveTools.set(toolUseId, {
+      agentId,
+      tool: hookInput.tool_name,
+      startTime: Date.now(),
+    });
+    emit({
+      type: "tool_start",
+      id: toolUseId,
+      tool: hookInput.tool_name,
+      params: hookInput.tool_input,
+      agentId,
+    });
+  }
+
   return {}; // Allow all tools (no blocking)
 };
 
@@ -560,6 +584,26 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     response: responseSummary,
     sessionId: hookInput.session_id,
   });
+
+  // If this is a sub-agent tool, emit a tool_end event with agentId
+  if (toolUseId) {
+    const subTool = subagentActiveTools.get(toolUseId);
+    if (subTool) {
+      const duration = Date.now() - subTool.startTime;
+      const summary = typeof responseSummary === "string" ? responseSummary.slice(0, 100) : "";
+      emit({
+        type: "tool_end",
+        id: toolUseId,
+        tool: subTool.tool,
+        success: true,
+        summary,
+        duration,
+        agentId: subTool.agentId,
+      });
+      subagentActiveTools.delete(toolUseId);
+    }
+  }
+
   return {};
 };
 
@@ -573,6 +617,26 @@ const postToolUseFailureHook: HookCallback = async (input, toolUseId) => {
     isInterrupt: hookInput.is_interrupt,
     sessionId: hookInput.session_id,
   });
+
+  // If this is a sub-agent tool, emit a tool_end event with success: false
+  if (toolUseId) {
+    const subTool = subagentActiveTools.get(toolUseId);
+    if (subTool) {
+      const duration = Date.now() - subTool.startTime;
+      const errorMsg = typeof hookInput.error === "string" ? hookInput.error.slice(0, 100) : "Tool failed";
+      emit({
+        type: "tool_end",
+        id: toolUseId,
+        tool: subTool.tool,
+        success: false,
+        summary: errorMsg,
+        duration,
+        agentId: subTool.agentId,
+      });
+      subagentActiveTools.delete(toolUseId);
+    }
+  }
+
   return {};
 };
 
@@ -622,17 +686,39 @@ const stopHook: HookCallback = async (input) => {
 
 const subagentStartHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStartHookInput;
+  // Register session → agentId mapping for correlating sub-agent tool events
+  sessionToAgentId.set(hookInput.session_id, hookInput.agent_id);
+
+  // Find the parent "Task" tool_use that spawned this sub-agent.
+  // Map iteration is in insertion order, so we keep overwriting to get the
+  // most recently inserted (i.e. most recent) active Task tool.
+  let parentToolUseId: string | undefined;
+  for (const [toolId, info] of activeTools) {
+    if (info.tool === "Task") {
+      parentToolUseId = toolId;
+    }
+  }
+
   emit({
     type: "subagent_started",
     agentId: hookInput.agent_id,
     agentType: hookInput.agent_type,
     sessionId: hookInput.session_id,
+    parentToolUseId,
   });
   return {};
 };
 
 const subagentStopHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStopHookInput;
+  // Clean up session → agentId mapping
+  sessionToAgentId.delete(hookInput.session_id);
+  // Clean up any lingering sub-agent tools
+  for (const [toolId, info] of subagentActiveTools) {
+    if (info.agentId === hookInput.agent_id) {
+      subagentActiveTools.delete(toolId);
+    }
+  }
   emit({
     type: "subagent_stopped",
     agentId: hookInput.agent_id,

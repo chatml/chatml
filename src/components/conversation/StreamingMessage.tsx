@@ -3,16 +3,17 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useStreamingState, useActiveTools } from '@/stores/selectors';
+import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
+import { SubAgentGroup } from '@/components/conversation/SubAgentGroup';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { cn } from '@/lib/utils';
 
 // Timeline item types for interleaved display
 type TimelineItem =
   | { type: 'text'; id: string; text: string; timestamp: number }
-  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string };
+  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number };
 
 interface StreamingMessageProps {
   conversationId: string;
@@ -84,6 +85,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   // Use scoped selectors for this conversation only - prevents re-renders from other conversations
   const streaming = useStreamingState(conversationId);
   const tools = useActiveTools(conversationId);
+  const subAgents = useSubAgents(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   const budgetStatus = useAppStore((s) => s.budgetStatus);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -162,6 +164,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
         summary: tool.summary,
         stdout: tool.stdout,
         stderr: tool.stderr,
+        elapsedSeconds: tool.elapsedSeconds,
       });
     }
 
@@ -175,8 +178,8 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
     return items;
   }, [streaming?.segments, tools]);
 
-  // Don't render if no streaming content, no active tools, no thinking, and no error
-  if (timeline.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
+  // Don't render if no streaming content, no active tools, no sub-agents, no thinking, and no error
+  if (timeline.length === 0 && subAgents.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
     return null;
   }
 
@@ -276,11 +279,17 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
                   duration={item.endTime ? item.endTime - item.startTime : undefined}
                   stdout={item.stdout}
                   stderr={item.stderr}
+                  elapsedSeconds={item.elapsedSeconds}
                 />
               );
             }
           });
           })()}
+
+          {/* Sub-agent group display */}
+          {subAgents.length > 0 && (
+            <SubAgentGroup subAgents={subAgents} />
+          )}
 
           {/* Enhanced error display */}
           {streaming?.error && (

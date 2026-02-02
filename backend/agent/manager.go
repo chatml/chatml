@@ -247,6 +247,9 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 
 	// Streaming snapshot state for reconnection recovery
 	activeToolsMap := make(map[string]ActiveToolEntry)
+	activeSubAgents := make(map[string]*SubAgentEntry)
+	// Buffer tools that arrive before their sub-agent registers (race recovery)
+	pendingSubAgentTools := make(map[string][]ActiveToolEntry)
 	var currentThinking string
 	var isThinking bool
 	var snapshotDirty bool
@@ -266,12 +269,21 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 		for _, t := range activeToolsMap {
 			tools = append(tools, t)
 		}
+		// Build sub-agents slice from map
+		var subAgents []SubAgentEntry
+		if len(activeSubAgents) > 0 {
+			subAgents = make([]SubAgentEntry, 0, len(activeSubAgents))
+			for _, sa := range activeSubAgents {
+				subAgents = append(subAgents, *sa)
+			}
+		}
 		snapshot := StreamingSnapshot{
 			Text:           currentAssistantMessage,
 			ActiveTools:    tools,
 			Thinking:       currentThinking,
 			IsThinking:     isThinking,
 			PlanModeActive: proc.IsPlanModeActive(),
+			SubAgents:      subAgents,
 		}
 		data, err := json.Marshal(snapshot)
 		if err != nil {
@@ -330,10 +342,22 @@ outer:
 				markSnapshotDirty()
 
 			case EventTypeToolStart:
-				activeToolsMap[event.ID] = ActiveToolEntry{
+				entry := ActiveToolEntry{
 					ID:        event.ID,
 					Tool:      event.Tool,
 					StartTime: time.Now().Unix(),
+					AgentId:   event.AgentId,
+				}
+				if event.AgentId != "" {
+					// Route to sub-agent's active tools
+					if sa, ok := activeSubAgents[event.AgentId]; ok {
+						sa.ActiveTools = append(sa.ActiveTools, entry)
+					} else {
+						// Sub-agent not registered yet — buffer until subagent_started arrives
+						pendingSubAgentTools[event.AgentId] = append(pendingSubAgentTools[event.AgentId], entry)
+					}
+				} else {
+					activeToolsMap[event.ID] = entry
 				}
 				markSnapshotDirty()
 
@@ -354,7 +378,20 @@ outer:
 				markSnapshotDirty()
 
 			case EventTypeToolEnd:
-				delete(activeToolsMap, event.ID)
+				if event.AgentId != "" {
+					// Remove from sub-agent's active tools
+					if sa, ok := activeSubAgents[event.AgentId]; ok {
+						filtered := sa.ActiveTools[:0]
+						for _, t := range sa.ActiveTools {
+							if t.ID != event.ID {
+								filtered = append(filtered, t)
+							}
+						}
+						sa.ActiveTools = filtered
+					}
+				} else {
+					delete(activeToolsMap, event.ID)
+				}
 				markSnapshotDirty()
 
 				// Store tool action in summary
@@ -383,6 +420,29 @@ outer:
 					m.tryAutoNameSession(ctx, sessionID, event.Name)
 				}
 
+			case EventTypeSubagentStarted:
+				if event.AgentId != "" {
+					sa := &SubAgentEntry{
+						AgentId:         event.AgentId,
+						AgentType:       event.AgentType,
+						ParentToolUseId: event.ParentToolUseId,
+						StartTime:       time.Now().Unix(),
+					}
+					// Drain any tools that arrived before this sub-agent registered
+					if pending, ok := pendingSubAgentTools[event.AgentId]; ok {
+						sa.ActiveTools = append(sa.ActiveTools, pending...)
+						delete(pendingSubAgentTools, event.AgentId)
+					}
+					activeSubAgents[event.AgentId] = sa
+					markSnapshotDirty()
+				}
+
+			case EventTypeSubagentStopped:
+				if sa, ok := activeSubAgents[event.AgentId]; ok {
+					sa.Completed = true
+					markSnapshotDirty()
+				}
+
 			case EventTypeComplete, EventTypeResult:
 				// Store accumulated assistant message
 				if currentAssistantMessage != "" {
@@ -400,6 +460,8 @@ outer:
 				currentThinking = ""
 				isThinking = false
 				activeToolsMap = make(map[string]ActiveToolEntry)
+				activeSubAgents = make(map[string]*SubAgentEntry)
+				pendingSubAgentTools = make(map[string][]ActiveToolEntry)
 				snapshotDirty = false // No need to flush — we're about to clear
 
 				// Clear snapshot directly (skipping flush: the snapshot is about to be

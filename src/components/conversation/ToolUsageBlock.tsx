@@ -39,6 +39,8 @@ interface ToolUsageBlockProps {
   stdout?: string;
   /** stderr from Bash command execution */
   stderr?: string;
+  /** Elapsed seconds from tool_progress events (live update for active tools) */
+  elapsedSeconds?: number;
 }
 
 // Truncation limits
@@ -80,6 +82,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   duration,
   stdout,
   stderr,
+  elapsedSeconds,
 }: ToolUsageBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -315,12 +318,16 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         {/* Spacer */}
         <span className="flex-1" />
 
-        {/* Duration */}
-        {duration && !isActive && (
+        {/* Duration / Elapsed time */}
+        {isActive && elapsedSeconds !== undefined && elapsedSeconds > 0 ? (
+          <span className="text-[10px] text-muted-foreground/70 shrink-0 font-mono tabular-nums">
+            {elapsedSeconds}s
+          </span>
+        ) : duration && !isActive ? (
           <span className="text-[10px] text-muted-foreground/70 shrink-0">
             {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
           </span>
-        )}
+        ) : null}
 
         {/* Expand indicator */}
         {showExpandable && (
@@ -418,6 +425,7 @@ interface ActiveToolType {
   summary?: string;
   stdout?: string;
   stderr?: string;
+  elapsedSeconds?: number;
 }
 
 export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) {
@@ -440,6 +448,7 @@ export function ActiveToolsDisplay({ conversationId }: ActiveToolsDisplayProps) 
           duration={tool.endTime ? tool.endTime - tool.startTime : undefined}
           stdout={tool.stdout}
           stderr={tool.stderr}
+          elapsedSeconds={tool.elapsedSeconds}
         />
       ))}
     </div>

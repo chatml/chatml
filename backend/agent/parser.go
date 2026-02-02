@@ -258,6 +258,7 @@ type StreamingSnapshot struct {
 	Thinking       string            `json:"thinking,omitempty"`
 	IsThinking     bool              `json:"isThinking"`
 	PlanModeActive bool              `json:"planModeActive"`
+	SubAgents      []SubAgentEntry   `json:"subAgents,omitempty"`
 }
 
 // ActiveToolEntry represents a tool currently in-flight during streaming.
@@ -265,6 +266,17 @@ type ActiveToolEntry struct {
 	ID        string `json:"id"`
 	Tool      string `json:"tool"`
 	StartTime int64  `json:"startTime"`
+	AgentId   string `json:"agentId,omitempty"`
+}
+
+// SubAgentEntry represents a sub-agent spawned during streaming.
+type SubAgentEntry struct {
+	AgentId         string            `json:"agentId"`
+	AgentType       string            `json:"agentType"`
+	ParentToolUseId string            `json:"parentToolUseId,omitempty"`
+	StartTime       int64             `json:"startTime"`
+	ActiveTools     []ActiveToolEntry `json:"activeTools"`
+	Completed       bool              `json:"completed"`
 }
 
 // ParseAgentLine parses a line of JSON output from the agent-runner
