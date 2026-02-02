@@ -508,4 +508,65 @@ describe('useWebSocket — missing event handling', () => {
       expect(useAppStore.getState().accountInfo).toEqual(info);
     });
   });
+
+  // ==========================================================================
+  // turn_complete event (multi-turn agent loop)
+  // ==========================================================================
+
+  describe('turn_complete event', () => {
+    it('finalizes streaming message and keeps status active', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.appendStreamingText(CONV_ID, 'Hello from turn 1');
+
+      // Simulate turn_complete handler: finalize + keep active
+      store.finalizeStreamingMessage(CONV_ID, {});
+      store.updateConversation(CONV_ID, { status: 'active' });
+
+      const state = useAppStore.getState();
+      // Streaming should be cleared
+      expect(state.streamingState[CONV_ID]?.isStreaming).toBeFalsy();
+      // Conversation should remain active (process still alive)
+      const conv = state.conversations.find((c) => c.id === CONV_ID);
+      expect(conv?.status).toBe('active');
+    });
+
+    it('clears active tools on turn_complete', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.addActiveTool(CONV_ID, {
+        id: 'tool-1',
+        tool: 'Bash',
+        startTime: Date.now(),
+      });
+
+      // Simulate turn_complete
+      const tools = store.activeTools[CONV_ID] || [];
+      store.finalizeStreamingMessage(CONV_ID, {
+        toolUsage: tools.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          params: t.params,
+        })),
+      });
+      store.updateConversation(CONV_ID, { status: 'active' });
+
+      const state = useAppStore.getState();
+      // Active tools should be cleared after finalization
+      expect(state.activeTools[CONV_ID]?.length ?? 0).toBe(0);
+    });
+
+    it('creates a message from streaming text on finalization', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.appendStreamingText(CONV_ID, 'Turn 1 response text');
+
+      store.finalizeStreamingMessage(CONV_ID, { durationMs: 1500 });
+
+      const state = useAppStore.getState();
+      const msgs = state.messages.filter((m) => m.conversationId === CONV_ID && m.role === 'assistant');
+      expect(msgs.length).toBe(1);
+      expect(msgs[0].content).toContain('Turn 1 response text');
+    });
+  });
 });
