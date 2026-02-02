@@ -355,6 +355,22 @@ export default function Home() {
     }
   }, [zenMode, leftSidebarCollapsed, rightSidebarCollapsed]);
 
+  // Sync bottom terminal panel collapse state with showBottomTerminal.
+  // Re-runs on session change so a fresh session starts with the correct panel state.
+  // When selectedSession is null the panel is unmounted, so the ref is null and we bail out.
+  useLayoutEffect(() => {
+    const panel = bottomTerminalPanelRef.current;
+    if (!panel) return;
+
+    // Only act if the panel state doesn't match the desired state
+    const isCollapsed = panel.isCollapsed();
+    if (showBottomTerminal && isCollapsed) {
+      panel.expand();
+    } else if (!showBottomTerminal && !isCollapsed) {
+      panel.collapse();
+    }
+  }, [showBottomTerminal, selectedSession?.id]);
+
   // Track left sidebar width for overlay positioning
   useEffect(() => {
     const el = leftSidebarDomRef.current;
@@ -386,22 +402,6 @@ export default function Home() {
   const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
 
   const { expandWorkspace } = useSettingsStore();
-
-  // Sync bottom terminal panel collapse state with showBottomTerminal.
-  // Re-runs on session change so a fresh session starts with the correct panel state.
-  // When selectedSession is null the panel is unmounted, so the ref is null and we bail out.
-  useLayoutEffect(() => {
-    const panel = bottomTerminalPanelRef.current;
-    if (!panel) return;
-
-    // Only act if the panel state doesn't match the desired state
-    const isCollapsed = panel.isCollapsed();
-    if (showBottomTerminal && isCollapsed) {
-      panel.expand();
-    } else if (!showBottomTerminal && !isCollapsed) {
-      panel.collapse();
-    }
-  }, [showBottomTerminal, selectedSessionId]);
 
   // Computed: selected session for terminal and other uses
   const selectedSession = selectedSessionId
