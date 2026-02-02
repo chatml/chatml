@@ -94,7 +94,7 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
     <div>
       <div
         className={cn(
-          'flex items-center gap-1.5 py-0.5 px-1 hover:bg-surface-2 cursor-pointer text-sm rounded-sm transition-colors',
+          'flex items-center gap-1.5 py-0.5 px-1 hover:bg-surface-2 cursor-pointer text-base rounded-sm transition-colors',
           isHidden && 'text-muted-foreground/75'
         )}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
@@ -128,7 +128,7 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
               section="FileTreeNode"
               fallback={
                 <div
-                  className="flex items-center gap-1.5 py-0.5 px-1 text-sm text-destructive/70"
+                  className="flex items-center gap-1.5 py-0.5 px-1 text-base text-destructive/70"
                   style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
                 >
                   <AlertTriangle className="w-3 h-3" />
