@@ -2036,6 +2036,154 @@ func TestCreateConversation_RequestParsing_WithPlanMode(t *testing.T) {
 }
 
 // ============================================================================
+// CreateConversation Model Parsing Tests
+// ============================================================================
+
+func TestCreateConversation_RequestParsing_WithModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected string
+	}{
+		{
+			name:     "model specified",
+			body:     `{"type": "task", "message": "hello", "model": "sonnet-4"}`,
+			expected: "sonnet-4",
+		},
+		{
+			name:     "model omitted defaults to empty",
+			body:     `{"type": "task", "message": "hello"}`,
+			expected: "",
+		},
+		{
+			name:     "model with plan mode and thinking",
+			body:     `{"type": "task", "message": "hello", "model": "haiku-3.5", "planMode": true, "maxThinkingTokens": 5000}`,
+			expected: "haiku-3.5",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req CreateConversationRequest
+			err := json.Unmarshal([]byte(tt.body), &req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, req.Model)
+		})
+	}
+}
+
+func TestSendConversationMessage_RequestParsing_WithModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected string
+	}{
+		{
+			name:     "model specified",
+			body:     `{"content": "hello", "model": "opus-4.5"}`,
+			expected: "opus-4.5",
+		},
+		{
+			name:     "model omitted defaults to empty",
+			body:     `{"content": "hello"}`,
+			expected: "",
+		},
+		{
+			name:     "model with attachments",
+			body:     `{"content": "check this", "model": "sonnet-4", "attachments": []}`,
+			expected: "sonnet-4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req SendConversationMessageRequest
+			err := json.Unmarshal([]byte(tt.body), &req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, req.Model)
+		})
+	}
+}
+
+// ============================================================================
+// Conversation Model Persistence Tests
+// ============================================================================
+
+func TestGetConversation_IncludesModel(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "ws-1", repoPath)
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	// Create conversation with model set
+	ctx := context.Background()
+	conv := &models.Conversation{
+		ID:        "conv-1",
+		SessionID: "sess-1",
+		Type:      "task",
+		Name:      "Model Test",
+		Status:    "active",
+		Model:     "haiku-3.5",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, s.AddConversation(ctx, conv))
+
+	req := httptest.NewRequest("GET", "/api/conversations/conv-1", nil)
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.GetConversation(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var gotConv models.Conversation
+	err := json.Unmarshal(w.Body.Bytes(), &gotConv)
+	require.NoError(t, err)
+	assert.Equal(t, "haiku-3.5", gotConv.Model)
+}
+
+func TestListConversations_IncludesModel(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	repoPath := createTestGitRepo(t)
+	createTestRepo(t, s, "ws-1", repoPath)
+	createTestSession(t, s, "sess-1", "ws-1")
+
+	ctx := context.Background()
+	for _, tc := range []struct{ id, model string }{
+		{"c1", "opus-4.5"},
+		{"c2", "sonnet-4"},
+	} {
+		conv := &models.Conversation{
+			ID: tc.id, SessionID: "sess-1", Type: "task",
+			Name: "Conv " + tc.id, Status: "active", Model: tc.model,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		require.NoError(t, s.AddConversation(ctx, conv))
+	}
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/conversations", nil)
+	req = withChiContext(req, map[string]string{"workspaceId": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.ListConversations(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var convs []models.Conversation
+	err := json.Unmarshal(w.Body.Bytes(), &convs)
+	require.NoError(t, err)
+	require.Len(t, convs, 2)
+
+	modelsByID := map[string]string{}
+	for _, c := range convs {
+		modelsByID[c.ID] = c.Model
+	}
+	assert.Equal(t, "opus-4.5", modelsByID["c1"])
+	assert.Equal(t, "sonnet-4", modelsByID["c2"])
+}
+
+// ============================================================================
 // ApprovePlan Handler Tests
 // ============================================================================
 

@@ -48,6 +48,7 @@ export interface Conversation {
   type: 'task' | 'review' | 'chat';
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
+  model?: string; // Last-used model (e.g., "opus-4.5", "sonnet-4", "haiku-3.5")
   messages: Message[];
   messageCount?: number; // Total messages (set when messages are loaded lazily)
   toolSummary: ToolAction[];
