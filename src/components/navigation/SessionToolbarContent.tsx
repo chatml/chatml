@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
@@ -95,12 +95,21 @@ function SessionTitle({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const storeUpdateSession = useAppStore((s) => s.updateSession);
 
   const startEditing = useCallback(() => {
     setDraft(session.task ?? '');
     setEditing(true);
   }, [session.task]);
+
+  // Focus and select only once when editing starts
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
 
   const save = useCallback(() => {
     setEditing(false);
@@ -120,12 +129,7 @@ function SessionTitle({
   if (editing) {
     return (
       <input
-        ref={(el) => {
-          if (el) {
-            el.focus();
-            el.select();
-          }
-        }}
+        ref={inputRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={save}
