@@ -614,13 +614,10 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 		workingPath = session.WorkspacePath
 	}
 
-	// Determine base ref: prefer BaseCommitSHA, fall back to workspace default branch.
-	// Note: WorkspaceBranch is the repo's default branch (e.g., "main", "master") stored
-	// at workspace creation time - it's not a remote tracking ref like "origin/main".
-	baseRef = session.BaseCommitSHA
-	if baseRef == "" {
-		baseRef = session.DefaultBranch()
-	}
+	// Use the session's effective target branch for diff calculations.
+	// This respects the user's target branch selection (e.g., "origin/develop")
+	// and falls back to "<remote>/<default-branch>" when not set.
+	baseRef = session.EffectiveTargetBranch()
 
 	return session, workingPath, baseRef, nil
 }
