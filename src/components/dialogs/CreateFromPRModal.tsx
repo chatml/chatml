@@ -173,9 +173,17 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
           sortBy: 'date',
           limit: 50,
         });
-        // Combine session and other branches, filter out session/* branches
+        // Combine session and other branches, filter out session/* branches and protected branches
+        // Note: Keep this list in sync with backend/git/protected.go
+        const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
         const allBranches = [...result.sessionBranches, ...result.otherBranches]
-          .filter((b) => b.isRemote && !b.name.startsWith('session/'))
+          .filter((b) => {
+            if (!b.isRemote) return false;
+            if (b.name.startsWith('session/')) return false;
+            // Filter out protected branches (main, master, develop)
+            const branchName = b.name.replace(/^origin\//, '');
+            return !PROTECTED_BRANCHES.includes(branchName);
+          })
           .map((b) => ({
             name: b.name,
             lastCommitDate: b.lastCommitDate,
