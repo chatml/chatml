@@ -430,7 +430,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         >
           <LayoutDashboard className={cn(
             "w-4 h-4",
-            contentView.type === 'global-dashboard' ? "text-blue-400" : "text-blue-400/70"
+            contentView.type === 'global-dashboard' ? "text-nav-icon-dashboard" : "text-nav-icon-dashboard/70"
           )} />
           <span className={cn(
             "text-base font-medium",
@@ -452,7 +452,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         >
           <Layers className={cn(
             "w-4 h-4",
-            contentView.type === 'session-manager' ? "text-orange-400" : "text-orange-400/70"
+            contentView.type === 'session-manager' ? "text-nav-icon-sessions" : "text-nav-icon-sessions/70"
           )} />
           <span className={cn(
             "text-base font-medium",
@@ -823,7 +823,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                 {[
                   { value: 'none' as const, label: 'No PR', icon: Circle, color: 'text-muted-foreground' },
                   { value: 'open' as const, label: 'Open', icon: GitPullRequest, color: 'text-text-success' },
-                  { value: 'merged' as const, label: 'Merged', icon: GitPullRequest, color: 'text-purple-500' },
+                  { value: 'merged' as const, label: 'Merged', icon: GitPullRequest, color: 'text-nav-icon-prs' },
                   { value: 'closed' as const, label: 'Closed', icon: GitPullRequest, color: 'text-text-error' },
                 ].map((option) => (
                   <DropdownMenuCheckboxItem
@@ -1011,7 +1011,7 @@ function SortableWorkspaceItem({
               )}
             />
             {isUnread && (
-              <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+              <div className="w-2 h-2 rounded-full bg-nav-icon-dashboard shrink-0" />
             )}
             <div className="flex-1" />
             <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1092,7 +1092,7 @@ function SortableWorkspaceItem({
                     >
                       <GitBranch className={cn(
                         "w-3.5 h-3.5",
-                        isBranchesSelected ? "text-green-400" : "text-green-400/70"
+                        isBranchesSelected ? "text-nav-icon-branches" : "text-nav-icon-branches/70"
                       )} />
                       <span className={cn(
                         "text-base font-medium",
@@ -1114,7 +1114,7 @@ function SortableWorkspaceItem({
                     >
                       <GitPullRequest className={cn(
                         "w-3.5 h-3.5",
-                        isPRsSelected ? "text-violet-400" : "text-violet-400/70"
+                        isPRsSelected ? "text-nav-icon-prs" : "text-nav-icon-prs/70"
                       )} />
                       <span className={cn(
                         "text-base font-medium",
@@ -1311,7 +1311,7 @@ function SessionRow({
             <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
               {/* PR icon if applicable */}
               {hasPR && (
-                <GitPullRequest className="h-3 w-3 shrink-0 text-purple-500" />
+                <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
               )}
               {session.priority > 0 && (() => {
                 const opt = getPriorityOption(session.priority);

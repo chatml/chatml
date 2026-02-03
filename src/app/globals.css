@@ -106,26 +106,32 @@
   --ai-success: oklch(0.72 0.15 165);
   --ai-error: oklch(0.65 0.2 25);
 
-  /* Surface Hierarchy (light mode) */
-  --surface-0: oklch(0.97 0.002 280);
-  --surface-1: oklch(0.98 0.001 280);
-  --surface-2: oklch(0.99 0.001 280);
-  --surface-3: oklch(1 0 0);
-  --surface-4: oklch(1 0 0);
+  /* Surface Hierarchy (light mode) — darker = more elevation */
+  --surface-0: oklch(0.97 0.003 280);
+  --surface-1: oklch(0.94 0.01 280);
+  --surface-2: oklch(0.91 0.015 280);
+  --surface-3: oklch(0.88 0.02 280);
+  --surface-4: oklch(0.85 0.025 280);
 
   --chart-1: oklch(0.58 0.22 280);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.97 0.01 280);
+  --sidebar: oklch(0.98 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
   --sidebar-primary: oklch(0.58 0.22 280);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.95 0.03 280);
+  --sidebar-accent: oklch(0.94 0.01 280);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.58 0.22 280);
+
+  /* Navigation Icon Colors (light mode) */
+  --nav-icon-dashboard: oklch(0.55 0.15 250);
+  --nav-icon-sessions: oklch(0.60 0.15 55);
+  --nav-icon-branches: oklch(0.55 0.15 155);
+  --nav-icon-prs: oklch(0.55 0.15 300);
 }
 
 .dark {
@@ -197,6 +203,12 @@
   --sidebar-accent-foreground: oklch(0.9 0 0);
   --sidebar-border: #2a2a2a;
   --sidebar-ring: oklch(0.50 0.10 280);
+
+  /* Navigation Icon Colors (dark mode) */
+  --nav-icon-dashboard: #60a5fa;
+  --nav-icon-sessions: #fb923c;
+  --nav-icon-branches: #4ade80;
+  --nav-icon-prs: #a78bfa;
 }
 
 @theme inline {
@@ -234,6 +246,12 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
+  /* Navigation Icon Colors */
+  --color-nav-icon-dashboard: var(--nav-icon-dashboard);
+  --color-nav-icon-sessions: var(--nav-icon-sessions);
+  --color-nav-icon-branches: var(--nav-icon-branches);
+  --color-nav-icon-prs: var(--nav-icon-prs);
 
   /* AI Semantic Colors */
   --color-ai-thinking: var(--ai-thinking);
