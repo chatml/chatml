@@ -17,12 +17,9 @@ const (
 	CategorySafe     CleanupCategory = "safe"
 )
 
-// protectedBranchNames are branches that should never be deleted
-var protectedBranchNames = map[string]bool{
-	"main":    true,
-	"master":  true,
-	"develop": true,
-}
+// protectedBranchNames references the shared protected branch names.
+// These branches should never be deleted or used for sessions.
+var protectedBranchNames = ProtectedBranchNames
 
 // CleanupCandidate represents a branch that has been analyzed for cleanup
 type CleanupCandidate struct {

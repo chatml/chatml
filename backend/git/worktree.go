@@ -138,6 +138,11 @@ func (wm *WorktreeManager) CreateInExistingDir(ctx context.Context, repoPath, wo
 // The directory must already exist (created atomically by caller).
 // Returns the worktree path, local branch name, and the base commit SHA.
 func (wm *WorktreeManager) CheckoutExistingBranchInDir(ctx context.Context, repoPath, worktreePath, remoteBranch string) (string, string, string, error) {
+	// Reject protected branches (main, master, develop) to prevent sessions from using them
+	if IsProtectedBranch(remoteBranch) {
+		return "", "", "", fmt.Errorf("cannot create session on protected branch '%s'", remoteBranch)
+	}
+
 	// Fetch the specific branch from origin (targeted fetch is faster than fetching all refs)
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "fetch", "origin", remoteBranch)
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -1521,6 +1521,17 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate branch is not protected when checking out an existing branch.
+	// Defense-in-depth: CheckoutExistingBranchInDir also validates this, but we
+	// check early here to return a clear validation error before any git operations.
+	if req.CheckoutExisting {
+		branchName := strings.TrimPrefix(req.Branch, "origin/")
+		if git.IsProtectedBranch(branchName) {
+			writeValidationError(w, fmt.Sprintf("cannot create session on protected branch '%s'", branchName))
+			return
+		}
+	}
+
 	// Generate session ID
 	sessionID := uuid.New().String()
 

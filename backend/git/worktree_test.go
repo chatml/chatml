@@ -593,6 +593,25 @@ func TestCheckoutExistingBranchInDir_LocalBranchExists(t *testing.T) {
 	assert.ErrorIs(t, err, ErrLocalBranchExists)
 }
 
+func TestCheckoutExistingBranchInDir_ProtectedBranch(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	wm := NewWorktreeManager()
+
+	// Test that protected branches are rejected
+	testCases := []string{"main", "master", "develop"}
+	for _, branchName := range testCases {
+		t.Run(branchName, func(t *testing.T) {
+			sessionDir := filepath.Join(t.TempDir(), "session-"+branchName)
+			require.NoError(t, os.Mkdir(sessionDir, 0755))
+
+			_, _, _, err := wm.CheckoutExistingBranchInDir(context.Background(), repoPath, sessionDir, branchName)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "protected branch")
+			assert.Contains(t, err.Error(), branchName)
+		})
+	}
+}
+
 // ============================================================================
 // WorkspacesBaseDirWithOverride Tests
 // ============================================================================
