@@ -83,7 +83,7 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
     <div className="flex items-center gap-2 min-w-0">
       <span
         className={cn(
-          'font-medium truncate min-w-0 text-md',
+          'font-medium truncate min-w-0 text-lg',
           isRemote && 'text-muted-foreground'
         )}
         title={displayName}
@@ -92,14 +92,14 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
       </span>
 
       {isCurrentBranch && (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-green-500/10 text-green-500 border border-green-500/20 shrink-0 whitespace-nowrap">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 text-2xs rounded bg-green-500/10 text-green-500 border border-green-500/20 shrink-0 whitespace-nowrap">
           <Check className="h-2.5 w-2.5" />
           HEAD
         </span>
       )}
 
       {isRemote && (
-        <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 whitespace-nowrap">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 text-2xs rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0 whitespace-nowrap">
           <Cloud className="h-2.5 w-2.5" />
           REMOTE
         </span>

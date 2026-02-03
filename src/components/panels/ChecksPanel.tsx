@@ -219,7 +219,7 @@ export function ChecksPanel({ onSendMessage }: ChecksPanelProps) {
         {/* Git Status */}
         <div className="border-b">
           <div className="px-3 py-2">
-            <span className="text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+            <span className="text-2xs font-medium text-foreground/60 uppercase tracking-wider">
               Git Status
             </span>
           </div>
@@ -434,10 +434,10 @@ function CIChecksSection({
             checksExpanded && 'rotate-90'
           )}
         />
-        <span className="text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+        <span className="text-2xs font-medium text-foreground/60 uppercase tracking-wider">
           CI Checks
         </span>
-        <span className={cn('text-[10px] ml-auto tabular-nums', summaryColor)}>
+        <span className={cn('text-2xs ml-auto tabular-nums', summaryColor)}>
           {summaryLabel}
         </span>
       </button>
@@ -463,11 +463,11 @@ function CIChecksSection({
                     <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
                     <span className="text-xs truncate flex-1">{check.name}</span>
                     {check.durationSeconds !== undefined && (
-                      <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                      <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
                         {formatDuration(check.durationSeconds)}
                       </span>
                     )}
-                    <span className={cn('text-[10px] shrink-0', statusInfo.color)}>
+                    <span className={cn('text-2xs shrink-0', statusInfo.color)}>
                       {statusInfo.label}
                     </span>
                   </div>
@@ -489,10 +489,10 @@ function CIChecksSection({
                     runsExpanded && 'rotate-90'
                   )}
                 />
-                <span className="text-[10px] font-medium text-muted-foreground">
+                <span className="text-2xs font-medium text-muted-foreground">
                   Workflow Runs
                 </span>
-                <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
+                <span className="text-2xs text-muted-foreground ml-auto tabular-nums">
                   {runs.length}
                 </span>
               </button>
@@ -597,7 +597,7 @@ function WorkflowRunCard({
         </button>
         <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
         <span className="text-xs truncate flex-1">{run.name}</span>
-        <span className={cn('text-[10px] shrink-0', statusInfo.color)}>
+        <span className={cn('text-2xs shrink-0', statusInfo.color)}>
           {statusInfo.label}
         </span>
 
@@ -650,7 +650,7 @@ function WorkflowRunCard({
                   <div key={job.id} className="flex items-center gap-2 py-0.5">
                     <JobIcon className={cn('h-2.5 w-2.5 shrink-0', jobStatus.color)} />
                     <span className="text-xs truncate flex-1">{job.name}</span>
-                    <span className={cn('text-[10px] shrink-0', jobStatus.color)}>
+                    <span className={cn('text-2xs shrink-0', jobStatus.color)}>
                       {jobStatus.label}
                     </span>
                     {isFailed && (

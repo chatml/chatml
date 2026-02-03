@@ -98,7 +98,7 @@ export function TopBar({
             <PanelLeft className="h-3.5 w-3.5" />
           </Button>
         )}
-        <span className={cn("text-[12px] text-muted-foreground", !showLeftSidebar ? 'ml-1' : 'ml-2')}>
+        <span className={cn("text-xs text-muted-foreground", !showLeftSidebar ? 'ml-1' : 'ml-2')}>
           Select a session to get started
         </span>
       </div>
@@ -221,7 +221,7 @@ export function TopBar({
       <div className="flex-1" />
 
       {/* Session Status */}
-      <div className="text-[11px] text-muted-foreground px-2">
+      <div className="text-xs text-muted-foreground px-2">
         {selectedSession?.status === 'active' ? 'Working...' :
          selectedSession?.status === 'done' ? 'Completed' :
          selectedSession?.status === 'error' ? 'Error' : 'Ready'}
@@ -241,7 +241,7 @@ export function TopBar({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            Toggle Terminal <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ J</span>
+            Toggle Terminal <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘ J</span>
           </TooltipContent>
         </Tooltip>
         <Tooltip>
@@ -256,7 +256,7 @@ export function TopBar({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘⇧ B</span>
+            Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘⇧ B</span>
           </TooltipContent>
         </Tooltip>
 

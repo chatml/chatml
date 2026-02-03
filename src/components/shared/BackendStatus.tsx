@@ -152,7 +152,7 @@ export function BackendStatus({
                 </div>
                 <div className="bg-muted/50 rounded-md p-2 max-h-32 overflow-y-auto">
                   {sidecarLogs.map((log, i) => (
-                    <div key={i} className="text-[10px] font-mono text-muted-foreground">
+                    <div key={i} className="text-2xs font-mono text-muted-foreground">
                       {log}
                     </div>
                   ))}

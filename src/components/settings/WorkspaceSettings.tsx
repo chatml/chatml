@@ -100,14 +100,14 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
         <ScrollArea className="flex-1">
           <div className="py-2 px-2">
             <div className="space-y-0.5">
-              <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              <div className="px-2 py-1.5 text-2xs font-medium text-muted-foreground uppercase tracking-wider">
                 {workspace.name}
               </div>
               <Button
                 variant={section === 'repository' ? 'secondary' : 'ghost'}
                 size="sm"
                 className={cn(
-                  'w-full justify-start gap-2 h-7 text-[12px]',
+                  'w-full justify-start gap-2 h-7 text-xs',
                   section === 'repository' && 'bg-sidebar-accent',
                 )}
                 onClick={() => setSection('repository')}
@@ -119,7 +119,7 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
                 variant={section === 'review' ? 'secondary' : 'ghost'}
                 size="sm"
                 className={cn(
-                  'w-full justify-start gap-2 h-7 text-[12px]',
+                  'w-full justify-start gap-2 h-7 text-xs',
                   section === 'review' && 'bg-sidebar-accent',
                 )}
                 onClick={() => setSection('review')}
@@ -214,8 +214,8 @@ function RepositorySection({
         <div className="flex items-start gap-3 py-3 border-b border-border/50">
           <FolderOpen className="w-4 h-4 mt-0.5 text-muted-foreground" />
           <div className="flex-1">
-            <h4 className="text-[13px] font-medium">Path</h4>
-            <p className="text-[12px] text-muted-foreground mt-0.5 font-mono">
+            <h4 className="text-sm font-medium">Path</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 font-mono">
               {workspace.path}
             </p>
           </div>
@@ -226,8 +226,8 @@ function RepositorySection({
           <div className="flex items-start gap-3 py-3 border-b border-border/50">
             <FolderOpen className="w-4 h-4 mt-0.5 text-muted-foreground" />
             <div className="flex-1">
-              <h4 className="text-[13px] font-medium">Workspaces Path</h4>
-              <p className="text-[12px] text-muted-foreground mt-0.5 font-mono">
+              <h4 className="text-sm font-medium">Workspaces Path</h4>
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono">
                 {repoDetails.workspacesPath}
               </p>
             </div>
@@ -238,18 +238,18 @@ function RepositorySection({
         <div className="flex items-start gap-3 py-3 border-b border-border/50">
           <GitBranch className="w-4 h-4 mt-0.5 text-muted-foreground" />
           <div className="flex-1">
-            <h4 className="text-[13px] font-medium">Branch new workspaces from</h4>
-            <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+            <h4 className="text-sm font-medium">Branch new workspaces from</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-2">
               Each workspace is an isolated copy of your codebase branched from this ref.
             </p>
             {loadingRemotes ? (
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Loading branches...
               </div>
             ) : (
               <select
-                className="w-full max-w-xs text-[13px] h-8 px-2 rounded-md border bg-background text-foreground"
+                className="w-full max-w-xs text-sm h-8 px-2 rounded-md border bg-background text-foreground"
                 value={currentRemote + '/' + (workspace.defaultBranch || 'main')}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -278,19 +278,19 @@ function RepositorySection({
         <div className="flex items-start gap-3 py-3 border-b border-border/50">
           <Globe className="w-4 h-4 mt-0.5 text-muted-foreground" />
           <div className="flex-1">
-            <h4 className="text-[13px] font-medium">Remote</h4>
-            <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+            <h4 className="text-sm font-medium">Remote</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-2">
               Where should we push, pull, and create PRs?
             </p>
             {loadingRemotes ? (
-              <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Loading remotes...
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <select
-                  className="max-w-xs text-[13px] h-8 px-2 rounded-md border bg-background text-foreground"
+                  className="max-w-xs text-sm h-8 px-2 rounded-md border bg-background text-foreground"
                   value={currentRemote}
                   onChange={async (e) => {
                     const newRemote = e.target.value;
@@ -328,8 +328,8 @@ function RepositorySection({
         <div className="flex items-start gap-3 py-3 border-b border-border/50">
           <Tag className="w-4 h-4 mt-0.5 text-muted-foreground" />
           <div className="flex-1">
-            <h4 className="text-[13px] font-medium">Branch name prefix</h4>
-            <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
+            <h4 className="text-sm font-medium">Branch name prefix</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">
               Prefix for new workspace branch names. Leave as &ldquo;Use global default&rdquo; to follow the global Git setting.
             </p>
             <BranchPrefixSelector
@@ -373,7 +373,7 @@ function BranchPrefixSelector({
         <label
           key={opt.key}
           className={cn(
-            'flex items-center gap-2 cursor-pointer text-[13px] py-1',
+            'flex items-center gap-2 cursor-pointer text-sm py-1',
             saving && 'opacity-50 pointer-events-none',
           )}
         >
@@ -396,7 +396,7 @@ function BranchPrefixSelector({
       {value === 'custom' && (
         <div className="ml-6 flex items-center gap-2">
           <Input
-            className="max-w-[200px] h-7 text-[13px]"
+            className="max-w-[200px] h-7 text-sm"
             placeholder="e.g., yourname"
             value={customInput}
             onChange={(e) => setCustomInput(e.target.value)}
@@ -492,12 +492,12 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
 
           return (
             <div key={key}>
-              <label className="text-[13px] font-medium block mb-1.5">{label}</label>
-              <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-1">
+              <label className="text-sm font-medium block mb-1.5">{label}</label>
+              <p className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
                 Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
               </p>
               <Textarea
-                className="text-[13px] min-h-[60px]"
+                className="text-sm min-h-[60px]"
                 placeholder={effectivePlaceholder}
                 value={prompts[key] || ''}
                 onChange={(e) => setPrompts((prev) => ({ ...prev, [key]: e.target.value }))}
@@ -514,12 +514,12 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
           Leave empty to use the global default.
         </p>
 
-        <label className="text-[13px] font-medium block mb-1.5">PR Description Prompt</label>
-        <p className="text-[11px] text-muted-foreground mb-1.5">
+        <label className="text-sm font-medium block mb-1.5">PR Description Prompt</label>
+        <p className="text-xs text-muted-foreground mb-1.5">
           These instructions will be prepended to the default PR generation prompt
         </p>
         <Textarea
-          className="text-[13px] min-h-[80px]"
+          className="text-sm min-h-[80px]"
           placeholder={prPlaceholder}
           value={prTemplate}
           onChange={(e) => setPrTemplate(e.target.value)}

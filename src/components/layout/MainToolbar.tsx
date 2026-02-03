@@ -153,7 +153,7 @@ export function MainToolbar({
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
-                        New Tab <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ T</span>
+                        New Tab <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘ T</span>
                       </TooltipContent>
                     </Tooltip>
 
@@ -174,7 +174,7 @@ export function MainToolbar({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ B</span>
+                    Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘ B</span>
                   </TooltipContent>
                 </Tooltip>
 
@@ -195,7 +195,7 @@ export function MainToolbar({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    Toggle Terminal <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ J</span>
+                    Toggle Terminal <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘ J</span>
                   </TooltipContent>
                 </Tooltip>
 
@@ -216,7 +216,7 @@ export function MainToolbar({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘⌥ B</span>
+                    Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘⌥ B</span>
                   </TooltipContent>
                 </Tooltip>
               </div>

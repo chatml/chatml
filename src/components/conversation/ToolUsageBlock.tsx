@@ -218,7 +218,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger
         className={cn(
-          'flex items-center gap-1.5 text-[11px] w-full rounded px-1.5 py-1 transition-colors',
+          'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-1 transition-colors',
           'hover:bg-surface-2',
           isActive && 'bg-primary/5'
         )}
@@ -242,7 +242,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
             <ToolIcon className="w-3 h-3 text-text-error shrink-0" />
             <span className="font-medium text-text-error">Error</span>
             {summary && (
-              <span className="text-text-error/80 text-[10px] truncate max-w-[350px]">
+              <span className="text-text-error/80 text-2xs truncate max-w-[350px]">
                 {summary}
               </span>
             )}
@@ -266,19 +266,19 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <code className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px] cursor-help">
+                <code className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px] cursor-help">
                   {truncatedTarget}
                 </code>
               </TooltipTrigger>
               <TooltipContent
                 side="top"
-                className="max-w-[500px] break-all font-mono text-[11px]"
+                className="max-w-[500px] break-all font-mono text-xs"
               >
                 {fullTarget}
               </TooltipContent>
             </Tooltip>
           ) : (
-            <code className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]">
+            <code className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]">
               {truncatedTarget}
             </code>
           )
@@ -289,19 +289,19 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <code className="text-[9px] px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px] cursor-help">
+                <code className="text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px] cursor-help">
                   {truncatedTarget}
                 </code>
               </TooltipTrigger>
               <TooltipContent
                 side="top"
-                className="max-w-[500px] break-all font-mono text-[11px]"
+                className="max-w-[500px] break-all font-mono text-xs"
               >
                 {fullTarget}
               </TooltipContent>
             </Tooltip>
           ) : (
-            <code className="text-[9px] px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]">
+            <code className="text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]">
               {truncatedTarget}
             </code>
           )
@@ -309,7 +309,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
         {/* Git line stats for Edit tools - hide when error or no net change */}
         {success !== false && isEditTool && editStats && !isActive && (editStats.additions > 0 || editStats.deletions > 0) && (
-          <span className="flex items-center gap-0.5 text-[10px] font-mono shrink-0">
+          <span className="flex items-center gap-0.5 text-2xs font-mono shrink-0">
             <span className="text-text-success">+{editStats.additions}</span>
             <span className="text-text-error">-{editStats.deletions}</span>
           </span>
@@ -320,11 +320,11 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
         {/* Duration / Elapsed time */}
         {isActive && elapsedSeconds !== undefined && elapsedSeconds > 0 ? (
-          <span className="text-[10px] text-muted-foreground/70 shrink-0 font-mono tabular-nums">
+          <span className="text-2xs text-muted-foreground/70 shrink-0 font-mono tabular-nums">
             {elapsedSeconds}s
           </span>
         ) : duration && !isActive ? (
-          <span className="text-[10px] text-muted-foreground/70 shrink-0">
+          <span className="text-2xs text-muted-foreground/70 shrink-0">
             {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
           </span>
         ) : null}
@@ -346,7 +346,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           <ErrorBoundary
             section="ToolDetails"
             fallback={
-              <div className="mt-0.5 ml-4 px-2 py-1 text-[10px] text-muted-foreground">
+              <div className="mt-0.5 ml-4 px-2 py-1 text-2xs text-muted-foreground">
                 Unable to display tool details
               </div>
             }
@@ -354,7 +354,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
             <div className="mt-0.5 ml-4 space-y-1.5">
               {/* Summary */}
               {summary && (
-                <div className="text-[10px] text-muted-foreground px-2 py-1 rounded bg-muted/30">
+                <div className="text-2xs text-muted-foreground px-2 py-1 rounded bg-muted/30">
                   {summary}
                 </div>
               )}
@@ -362,8 +362,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               {/* Full command for Bash tools */}
               {isBashTool && fullTarget && (
                 <div className="rounded border bg-muted p-2">
-                  <div className="text-[9px] text-muted-foreground/60 mb-1">Command</div>
-                  <pre className="font-mono text-[10px] text-text-success whitespace-pre-wrap break-all">
+                  <div className="text-2xs text-muted-foreground/60 mb-1">Command</div>
+                  <pre className="font-mono text-2xs text-text-success whitespace-pre-wrap break-all">
                     $ {fullTarget}
                   </pre>
                 </div>
@@ -372,8 +372,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               {/* stdout output */}
               {stdout && (
                 <div className="rounded border bg-muted p-2">
-                  <div className="text-[9px] text-muted-foreground/60 mb-1">Output</div>
-                  <pre className="font-mono text-[10px] text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                  <div className="text-2xs text-muted-foreground/60 mb-1">Output</div>
+                  <pre className="font-mono text-2xs text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
                     {stdout}
                   </pre>
                 </div>
@@ -382,8 +382,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               {/* stderr output */}
               {stderr && (
                 <div className="rounded border border-text-error/30 bg-text-error/10 p-2">
-                  <div className="text-[9px] text-text-error/60 mb-1">Error Output</div>
-                  <pre className="font-mono text-[10px] text-text-error whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                  <div className="text-2xs text-text-error/60 mb-1">Error Output</div>
+                  <pre className="font-mono text-2xs text-text-error whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
                     {stderr}
                   </pre>
                 </div>
@@ -392,10 +392,10 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               {/* Additional parameters (structured display) */}
               {additionalParams.length > 0 && (
                 <div className="rounded border bg-muted/30 p-2">
-                  <div className="text-[9px] text-muted-foreground/60 mb-1">Parameters</div>
+                  <div className="text-2xs text-muted-foreground/60 mb-1">Parameters</div>
                   <div className="space-y-0.5">
                     {additionalParams.map(({ key, value }) => (
-                      <div key={key} className="flex gap-2 text-[10px]">
+                      <div key={key} className="flex gap-2 text-2xs">
                         <span className="text-muted-foreground font-medium shrink-0">{key}:</span>
                         <span className="text-foreground/80 font-mono break-all">{value}</span>
                       </div>

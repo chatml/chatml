@@ -115,7 +115,7 @@ export function WorkspaceTreeItem({
                       </div>
 
                       {/* PR info and stats */}
-                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-2 mt-0.5 text-2xs text-muted-foreground">
                         {hasPR && session.prNumber && (
                           <span>PR #{session.prNumber}</span>
                         )}

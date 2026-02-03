@@ -98,7 +98,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
             >
               <span>Terminal {terminal.slotNumber}</span>
               {terminal.status === 'exited' && (
-                <span className="text-[10px] text-text-warning">(exited)</span>
+                <span className="text-2xs text-text-warning">(exited)</span>
               )}
               <span
                 role="button"

@@ -100,16 +100,16 @@ export function AppSettingsMenu({
                 />
               ) : (
                 <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                  <span className="text-[12px] font-medium">
+                  <span className="text-xs font-medium">
                     {(user.name || user.login || '?')[0].toUpperCase()}
                   </span>
                 </div>
               )}
               <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-medium truncate">
+                <span className="text-sm font-medium truncate">
                   {user.name || user.login}
                 </span>
-                <span className="text-[11px] text-muted-foreground truncate">
+                <span className="text-xs text-muted-foreground truncate">
                   @{user.login}
                 </span>
               </div>
@@ -119,7 +119,7 @@ export function AppSettingsMenu({
         )}
 
         {/* Quick Toggles */}
-        <DropdownMenuLabel className="text-[10px] font-normal text-muted-foreground uppercase tracking-wider">
+        <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground uppercase tracking-wider">
           Quick Settings
         </DropdownMenuLabel>
 
@@ -127,7 +127,7 @@ export function AppSettingsMenu({
         <div className="flex items-center justify-between px-2 py-1.5">
           <div className="flex items-center gap-2">
             {getThemeIcon()}
-            <span className="text-[13px]">Theme</span>
+            <span className="text-sm">Theme</span>
           </div>
           <Select value={theme || 'system'} onValueChange={setTheme}>
             <SelectTrigger className="h-7 w-24 text-xs">
@@ -145,7 +145,7 @@ export function AppSettingsMenu({
         <div className="flex items-center justify-between px-2 py-1.5">
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5" />
-            <span className="text-[13px]">Zen Mode</span>
+            <span className="text-sm">Zen Mode</span>
           </div>
           <Switch
             checked={zenMode}

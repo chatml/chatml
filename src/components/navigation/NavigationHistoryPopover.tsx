@@ -69,7 +69,7 @@ function HistoryEntryRow({ entry, onClick, isCurrent }: HistoryEntryRowProps) {
       <EntryIcon contentViewType={entry.contentView.type} className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
       <span className="truncate flex-1">{entry.label}</span>
       {!isCurrent && (
-        <span className="text-[10px] text-muted-foreground shrink-0">
+        <span className="text-2xs text-muted-foreground shrink-0">
           {formatRelativeTime(entry.timestamp)}
         </span>
       )}

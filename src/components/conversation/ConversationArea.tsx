@@ -1065,7 +1065,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-6 gap-1 pl-1 pr-2 text-[11px] rounded-full border border-border/50 bg-background/30 backdrop-blur-sm text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/50 transition-colors"
+                className="h-6 gap-1 pl-1 pr-2 text-xs rounded-full border border-border/50 bg-background/30 backdrop-blur-sm text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/50 transition-colors"
                 onClick={forceScrollToBottom}
               >
                 <ChevronDown className="h-3 w-3" />
@@ -1137,7 +1137,7 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
             {sessionName}
           </div>
         )}
-        <h2 className="font-display text-display-sm tracking-display mb-2">New Session</h2>
+        <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display mb-2">New Session</h2>
         <p className="text-sm text-muted-foreground mb-6">
           Describe your task below. An AI agent will work on it in an isolated git branch.
         </p>

@@ -205,7 +205,7 @@ function FilterPill({
     : `${values.length} selected`;
 
   return (
-    <div className="flex items-center h-7 rounded-md border border-border/50 bg-surface-1 text-[13px] overflow-hidden">
+    <div className="flex items-center h-7 rounded-md border border-border/50 bg-surface-1 text-sm overflow-hidden">
       {/* Field label - static */}
       <span className="px-2 py-1 text-muted-foreground border-r border-border/50">
         {label}
@@ -225,7 +225,7 @@ function FilterPill({
           {operators.map((op) => (
             <DropdownMenuItem
               key={op.value}
-              className="text-[13px]"
+              className="text-sm"
               onSelect={() => {
                 onOperatorChange(op.value);
                 setOperatorOpen(false);
@@ -261,7 +261,7 @@ function FilterPill({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[180px] max-h-[300px] overflow-y-auto">
           {/* Header */}
-          <div className="px-3 py-2 text-[13px] text-muted-foreground border-b border-border/50">
+          <div className="px-3 py-2 text-sm text-muted-foreground border-b border-border/50">
             {label}
           </div>
 
@@ -273,7 +273,7 @@ function FilterPill({
                 return (
                   <DropdownMenuItem
                     key={opt.value}
-                    className="px-3 py-2 text-[13px]"
+                    className="px-3 py-2 text-sm"
                     onSelect={(e) => {
                       e.preventDefault();
                       onToggleValue(opt.value);
@@ -303,7 +303,7 @@ function FilterPill({
                 type="text"
                 defaultValue={values[0] ?? ''}
                 placeholder={`Filter by ${label.toLowerCase()}...`}
-                className="w-full h-8 px-2 text-[13px] bg-surface-2 border border-border/50 rounded outline-none placeholder:text-muted-foreground text-foreground focus:border-border"
+                className="w-full h-8 px-2 text-sm bg-surface-2 border border-border/50 rounded outline-none placeholder:text-muted-foreground text-foreground focus:border-border"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const newValue = (e.target as HTMLInputElement).value.trim();

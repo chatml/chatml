@@ -486,7 +486,7 @@ function ShortcutHint({ shortcutId }: { shortcutId: string }) {
   return (
     <span className="ml-auto flex gap-0.5 text-xs text-muted-foreground">
       {keys.map((k, i) => (
-        <kbd key={i} className="min-w-[20px] px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-center">
+        <kbd key={i} className="min-w-[20px] px-1.5 py-0.5 text-2xs font-medium rounded bg-muted text-center">
           {k}
         </kbd>
       ))}

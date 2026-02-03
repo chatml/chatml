@@ -48,7 +48,7 @@ function AgentElapsedTime({ startTime }: { startTime: number }) {
 
   if (elapsed < 1) return null;
   return (
-    <span className="text-[10px] text-muted-foreground/70 font-mono tabular-nums shrink-0">
+    <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
       {elapsed}s
     </span>
   );
@@ -73,7 +73,7 @@ const SubAgentRow = memo(function SubAgentRow({ agent }: SubAgentRowProps) {
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <CollapsibleTrigger
         className={cn(
-          'flex items-center gap-1.5 text-[11px] w-full rounded px-1.5 py-0.5 transition-colors',
+          'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-0.5 transition-colors',
           'hover:bg-surface-2',
         )}
       >
@@ -98,7 +98,7 @@ const SubAgentRow = memo(function SubAgentRow({ agent }: SubAgentRowProps) {
 
         {/* Tool count badge */}
         {agent.tools.length > 0 && (
-          <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
             {agent.tools.filter(t => t.endTime).length}/{agent.tools.length}
           </span>
         )}
@@ -163,7 +163,7 @@ export const SubAgentGroup = memo(function SubAgentGroup({ subAgents }: SubAgent
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <CollapsibleTrigger
         className={cn(
-          'flex items-center gap-1.5 text-[11px] w-full rounded px-1.5 py-1 transition-colors',
+          'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-1 transition-colors',
           'hover:bg-surface-2',
           runningCount > 0 && 'bg-primary/5',
         )}
@@ -172,7 +172,7 @@ export const SubAgentGroup = memo(function SubAgentGroup({ subAgents }: SubAgent
         <span className="font-medium text-foreground">
           Agents
         </span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono">
+        <span className="text-2xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono">
           {runningCount > 0 ? `${runningCount} running` : `${totalCount} done`}
         </span>
 

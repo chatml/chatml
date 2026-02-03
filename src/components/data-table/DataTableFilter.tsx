@@ -124,7 +124,7 @@ export function DataTableFilter({
           <Filter className="h-3.5 w-3.5" />
           Filter
           {activeFilterCount > 0 && (
-            <span className="rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+            <span className="rounded-full bg-primary px-1.5 text-2xs font-medium text-primary-foreground">
               {activeFilterCount}
             </span>
           )}
@@ -140,9 +140,9 @@ export function DataTableFilter({
               placeholder="Add Filter..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-8 pl-8 pr-8 text-[13px] bg-transparent border-none outline-none placeholder:text-muted-foreground text-foreground"
+              className="w-full h-8 pl-8 pr-8 text-sm bg-transparent border-none outline-none placeholder:text-muted-foreground text-foreground"
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground bg-surface-2 px-1.5 py-0.5 rounded">
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground bg-surface-2 px-1.5 py-0.5 rounded">
               F
             </span>
           </div>
@@ -161,14 +161,14 @@ export function DataTableFilter({
                 <DropdownMenuSub key={option.column}>
                   <DropdownMenuSubTrigger
                     className={cn(
-                      'px-3 py-2 text-[13px]',
+                      'px-3 py-2 text-sm',
                       hasSelections && 'text-primary'
                     )}
                   >
                     <span className="text-muted-foreground">{icon}</span>
                     <span className="flex-1">{option.label}</span>
                     {hasSelections && (
-                      <span className="text-[11px] text-primary mr-1">
+                      <span className="text-xs text-primary mr-1">
                         {selectedValues.length}
                       </span>
                     )}
@@ -180,7 +180,7 @@ export function DataTableFilter({
                         return (
                           <DropdownMenuItem
                             key={opt.value}
-                            className="px-3 py-2 text-[13px]"
+                            className="px-3 py-2 text-sm"
                             onSelect={(e) => {
                               e.preventDefault();
                               toggleFilterValue(option.column, opt.value);
@@ -207,7 +207,7 @@ export function DataTableFilter({
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          className="px-3 py-2 text-[13px] text-muted-foreground"
+                          className="px-3 py-2 text-sm text-muted-foreground"
                           onSelect={() => clearColumnFilters(option.column)}
                         >
                           Clear filter
@@ -224,14 +224,14 @@ export function DataTableFilter({
               <DropdownMenuSub key={option.column}>
                 <DropdownMenuSubTrigger
                   className={cn(
-                    'px-3 py-2 text-[13px]',
+                    'px-3 py-2 text-sm',
                     hasSelections && 'text-primary'
                   )}
                 >
                   <span className="text-muted-foreground">{icon}</span>
                   <span className="flex-1">{option.label}</span>
                   {hasSelections && (
-                    <span className="text-[11px] text-primary mr-1">
+                    <span className="text-xs text-primary mr-1">
                       {selectedValues.length}
                     </span>
                   )}
@@ -246,7 +246,7 @@ export function DataTableFilter({
                   {hasSelections && (
                     <button
                       type="button"
-                      className="w-full mt-2 px-2 py-1.5 text-[12px] text-muted-foreground hover:text-foreground text-left"
+                      className="w-full mt-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground text-left"
                       onClick={() => clearColumnFilters(option.column)}
                     >
                       Clear filter
@@ -264,7 +264,7 @@ export function DataTableFilter({
             <DropdownMenuSeparator />
             <div className="p-1">
               <DropdownMenuItem
-                className="px-3 py-2 text-[13px] text-muted-foreground"
+                className="px-3 py-2 text-sm text-muted-foreground"
                 onSelect={() => onFilterChange([])}
               >
                 Clear all filters
@@ -320,7 +320,7 @@ function TextFilterInput({
         value={inputValue || currentValue}
         onChange={(e) => setInputValue(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-8 px-2 text-[13px] bg-surface-2 border border-border/50 rounded outline-none placeholder:text-muted-foreground text-foreground focus:border-border"
+        className="w-full h-8 px-2 text-sm bg-surface-2 border border-border/50 rounded outline-none placeholder:text-muted-foreground text-foreground focus:border-border"
         autoFocus
       />
     </form>
@@ -345,7 +345,7 @@ export function DataTableFilterButton({
       <Filter className="h-3.5 w-3.5" />
       Filter
       {filterCount > 0 && (
-        <span className="rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+        <span className="rounded-full bg-primary px-1.5 text-2xs font-medium text-primary-foreground">
           {filterCount}
         </span>
       )}

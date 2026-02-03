@@ -118,7 +118,7 @@ export function CodeViewer({
       <div className="h-full flex flex-col">
         {/* Toolbar */}
         <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+          <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
             <span className="font-mono shrink-0">{language}</span>
             <span className="shrink-0">|</span>
             <span className="font-mono truncate" title={filename}>{filename}</span>
@@ -190,7 +190,7 @@ export function CodeViewer({
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
           <span className="font-mono shrink-0">{content.split('\n').length} lines</span>
           <span className="shrink-0">|</span>
           <span className="font-mono shrink-0">{language}</span>

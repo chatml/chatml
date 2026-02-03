@@ -160,7 +160,7 @@ export function BranchCard({
         {(branch.aheadMain > 0 || branch.behindMain > 0) && (
           <>
             <span className="text-muted-foreground/50">·</span>
-            <span className="flex items-center gap-1 font-mono text-[11px]">
+            <span className="flex items-center gap-1 font-mono text-xs">
               {branch.aheadMain > 0 && (
                 <span className="text-green-500">+{branch.aheadMain}</span>
               )}

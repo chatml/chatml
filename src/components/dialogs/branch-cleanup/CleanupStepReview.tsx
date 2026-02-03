@@ -35,7 +35,7 @@ const categoryConfig: Record<string, { label: string; color: string; bgColor: st
 function CategoryBadge({ category }: { category: string }) {
   const config = categoryConfig[category] || categoryConfig.safe;
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${config.bgColor} ${config.color}`}>
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium border ${config.bgColor} ${config.color}`}>
       {config.label}
     </span>
   );
@@ -76,7 +76,7 @@ function BranchRow({
           <Cloud className="h-3 w-3 text-blue-400 shrink-0" />
         )}
         {candidate.hasLocalAndRemote && !candidate.isRemote && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-0.5 text-2xs text-muted-foreground">
             <Monitor className="h-2.5 w-2.5" />+<Cloud className="h-2.5 w-2.5" />
           </span>
         )}
@@ -119,7 +119,7 @@ function CategorySection({
         {deletable.length > 0 && (
           <button
             type="button"
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => {
               if (allSelected) {
                 dispatch({ type: 'DESELECT_ALL_CATEGORY', category });

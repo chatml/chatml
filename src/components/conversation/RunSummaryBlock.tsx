@@ -99,7 +99,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <CollapsibleTrigger
         className={cn(
-          'mt-3 flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap w-full',
+          'mt-3 flex items-center gap-3 text-xs text-muted-foreground flex-wrap w-full',
           'hover:text-foreground/80 transition-colors cursor-pointer',
           !summary.success && 'text-destructive/70'
         )}
@@ -175,7 +175,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
             {/* Tool breakdown by type */}
             {stats?.toolsByType && Object.keys(stats.toolsByType).length > 0 && (
               <div>
-                <div className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium">
+                <div className="text-2xs text-muted-foreground/60 mb-1.5 font-medium">
                   Tool Breakdown
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -184,7 +184,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
                     return (
                       <div
                         key={tool}
-                        className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                        className="flex items-center gap-1.5 text-2xs text-muted-foreground"
                       >
                         <Icon className="w-3 h-3 shrink-0" />
                         <span className="font-medium">{tool}</span>
@@ -198,7 +198,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
 
             {/* File operations summary */}
             {stats && (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
                 {stats.filesRead > 0 && (
                   <span className="flex items-center gap-1">
                     <FileText className="w-3 h-3" />
@@ -234,7 +234,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
 
             {/* Tool execution time */}
             {toolDuration && (
-              <div className="text-[10px] text-muted-foreground/60">
+              <div className="text-2xs text-muted-foreground/60">
                 Total tool execution time: {toolDuration}
               </div>
             )}
@@ -242,12 +242,12 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
             {/* Token usage breakdown */}
             {showTokenUsage && hasModelUsage && (
               <div className="pt-2 border-t border-border/50">
-                <div className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium">
+                <div className="text-2xs text-muted-foreground/60 mb-1.5 font-medium">
                   Token Usage
                 </div>
                 {/* Aggregate usage */}
                 {summary.usage && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground mb-2">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground mb-2">
                     <span>Input: {totalInputTokens.toLocaleString()}</span>
                     <span>Output: {totalOutputTokens.toLocaleString()}</span>
                     {summary.usage.cacheReadInputTokens ? (
@@ -261,7 +261,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
                 {/* Per-model breakdown */}
                 <div className="space-y-1.5">
                   {Object.entries(summary.modelUsage ?? {}).map(([model, usage]) => (
-                    <div key={model} className="text-[10px] text-muted-foreground">
+                    <div key={model} className="text-2xs text-muted-foreground">
                       <span className="font-medium">{model}</span>
                       <div className="ml-2 flex flex-wrap gap-x-3 gap-y-0.5">
                         <span>In: {usage.inputTokens.toLocaleString()}</span>
@@ -277,20 +277,20 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
             {/* Errors if any */}
             {summary.errors && summary.errors.length > 0 && (
               <div className="mt-2 pt-2 border-t border-border/50">
-                <div className="text-[10px] text-destructive/80 font-medium mb-1">
+                <div className="text-2xs text-destructive/80 font-medium mb-1">
                   {summary.errors.length} error{summary.errors.length !== 1 ? 's' : ''}
                 </div>
                 <div className="space-y-1">
                   {summary.errors.slice(0, 3).map((error, idx) => (
                     <div
                       key={idx}
-                      className="text-[10px] text-destructive/70 font-mono bg-destructive/5 p-1 rounded"
+                      className="text-2xs text-destructive/70 font-mono bg-destructive/5 p-1 rounded"
                     >
                       {typeof error === 'string' ? error : JSON.stringify(error)}
                     </div>
                   ))}
                   {summary.errors.length > 3 && (
-                    <div className="text-[10px] text-destructive/60">
+                    <div className="text-2xs text-destructive/60">
                       ... and {summary.errors.length - 3} more
                     </div>
                   )}
