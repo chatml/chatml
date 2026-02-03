@@ -57,7 +57,7 @@
 
 :root {
   /* Menu Colors */
-  --menu-hover: oklch(0.94 0.02 280); /* Light mode menu hover */
+  --menu-hover: oklch(0.90 0.025 280); /* Light mode menu hover - visible against surface-1 */
 
   /* Status Text Colors */
   --text-success: #22c55e;   /* green-500 */
