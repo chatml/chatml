@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
@@ -60,7 +60,7 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
-import type { WorktreeSession, SessionTaskStatus } from '@/lib/types';
+import type { SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 
@@ -79,79 +79,6 @@ const REVIEW_TYPES = [
 
 function dispatchReview(type: string) {
   window.dispatchEvent(new CustomEvent('start-review', { detail: { type } }));
-}
-
-// ---------------------------------------------------------------------------
-// SessionTitle — inline editable title using session.task
-// ---------------------------------------------------------------------------
-
-function SessionTitle({
-  session,
-  workspaceId,
-}: {
-  session: WorktreeSession;
-  workspaceId: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const storeUpdateSession = useAppStore((s) => s.updateSession);
-
-  const startEditing = useCallback(() => {
-    setDraft(session.task ?? '');
-    setEditing(true);
-  }, [session.task]);
-
-  // Focus and select only once when editing starts
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const save = useCallback(() => {
-    setEditing(false);
-    const trimmed = draft.trim();
-    if (trimmed !== (session.task ?? '')) {
-      storeUpdateSession(session.id, { task: trimmed });
-      apiUpdateSession(workspaceId, session.id, { task: trimmed }).catch(
-        console.error,
-      );
-    }
-  }, [draft, session.task, session.id, workspaceId, storeUpdateSession]);
-
-  const cancel = useCallback(() => {
-    setEditing(false);
-  }, []);
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') save();
-          if (e.key === 'Escape') cancel();
-        }}
-        className="text-sm bg-transparent border-b border-border outline-none px-0 py-0 min-w-[120px] max-w-[300px]"
-        placeholder="Untitled session"
-      />
-    );
-  }
-
-  return (
-    <span
-      onClick={startEditing}
-      className={`text-sm cursor-text hover:border-b hover:border-border/50 ${
-        session.task ? '' : 'text-muted-foreground'
-      }`}
-    >
-      {session.task || 'Untitled session'}
-    </span>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -293,13 +220,6 @@ export function SessionToolbarContent() {
           <span className="flex items-center gap-1.5 shrink-0">
             <GitBranch className="h-4 w-4 text-purple-400" />
             <span className="text-base font-semibold truncate">{selectedSession.branch || selectedSession.name}</span>
-            <TargetBranchSelector
-              sessionId={selectedSession.id}
-              workspaceId={selectedWorkspace!.id}
-              currentTargetBranch={selectedSession.targetBranch}
-              workspaceDefaultBranch={selectedWorkspace!.defaultBranch || 'main'}
-              variant="toolbar"
-            />
           </span>
         </span>
       ),
@@ -312,9 +232,17 @@ export function SessionToolbarContent() {
               onChange={handleTaskStatusChange}
               size="sm"
             />
-            <SessionTitle
-              session={selectedSession}
-              workspaceId={selectedWorkspaceId!}
+            <GitBranch className="h-3.5 w-3.5 text-purple-400" />
+            <span className="text-sm font-medium">
+              {selectedSession.branch || selectedSession.name}
+            </span>
+            <TargetBranchSelector
+              sessionId={selectedSession.id}
+              workspaceId={selectedWorkspace!.id}
+              currentTargetBranch={selectedSession.targetBranch}
+              workspaceDefaultBranch={selectedWorkspace!.defaultBranch || 'main'}
+              workspaceRemote={selectedWorkspace!.remote || 'origin'}
+              variant="toolbar"
             />
           </div>
         ),
