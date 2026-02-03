@@ -322,6 +322,8 @@ export function ChangesPanel() {
 
   // Track branch for refetching changes when branch is renamed
   const currentBranch = currentSession?.branch;
+  // Track target branch for refetching changes when target branch changes
+  const currentTargetBranch = currentSession?.targetBranch;
 
   // Calculate todo counts for badge
   const totalPendingTodos = agentTodos.filter((t) => t.status !== 'completed').length;
@@ -417,7 +419,7 @@ export function ChangesPanel() {
         return () => { cancelled = true; clearTimeout(id); };
       }
     }
-  }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch]);
+  }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch, currentTargetBranch]);
 
   // Refetch changes when branch sync completes (rebase/merge)
   useEffect(() => {
