@@ -60,9 +60,8 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
-import type { WorktreeSession, SessionPriority, SessionTaskStatus } from '@/lib/types';
+import type { WorktreeSession, SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
-import { PrioritySelector } from '@/components/shared/PrioritySelector';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 
 // ---------------------------------------------------------------------------
@@ -262,16 +261,6 @@ export function SessionToolbarContent() {
 
   const storeUpdateSession = useAppStore((s) => s.updateSession);
 
-  const handlePriorityChange = useCallback((value: SessionPriority) => {
-    if (!selectedSession || !selectedWorkspaceId) return;
-    const prev = selectedSession.priority;
-    storeUpdateSession(selectedSession.id, { priority: value });
-    apiUpdateSession(selectedWorkspaceId, selectedSession.id, { priority: value }).catch(() => {
-      storeUpdateSession(selectedSession.id, { priority: prev });
-      showError('Failed to update priority');
-    });
-  }, [selectedSession, selectedWorkspaceId, storeUpdateSession, showError]);
-
   const handleTaskStatusChange = useCallback((value: SessionTaskStatus) => {
     if (!selectedSession || !selectedWorkspaceId) return;
     const prev = selectedSession.taskStatus;
@@ -317,11 +306,6 @@ export function SessionToolbarContent() {
             <TaskStatusSelector
               value={selectedSession.taskStatus}
               onChange={handleTaskStatusChange}
-              size="sm"
-            />
-            <PrioritySelector
-              value={selectedSession.priority}
-              onChange={handlePriorityChange}
               size="sm"
             />
             <SessionTitle
@@ -465,7 +449,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, handlePriorityChange, reviewPopoverOpen]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen]);
 
   useMainToolbarContent(toolbarConfig);
 

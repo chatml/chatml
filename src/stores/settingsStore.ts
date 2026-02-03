@@ -109,6 +109,9 @@ interface SettingsState {
   // Recently removed workspaces (last 5, for quick re-add)
   recentlyRemovedWorkspaces: { name: string; path: string }[];
 
+  // Custom workspace colors (workspaceId -> hex color)
+  workspaceColors: Record<string, string>;
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -157,6 +160,8 @@ interface SettingsState {
   addRecentCommand: (commandId: string) => void;
   addRecentlyRemovedWorkspace: (workspace: { name: string; path: string }) => void;
   removeRecentlyRemovedWorkspace: (path: string) => void;
+  setWorkspaceColor: (workspaceId: string, color: string) => void;
+  clearWorkspaceColor: (workspaceId: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -205,6 +210,7 @@ export const useSettingsStore = create<SettingsState>()(
       layoutChanges: undefined,
       recentCommands: [], // Last 5 used command IDs
       recentlyRemovedWorkspaces: [], // Last 5 removed workspaces for quick re-add
+      workspaceColors: {}, // Custom workspace colors
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -304,6 +310,15 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           recentlyRemovedWorkspaces: state.recentlyRemovedWorkspaces.filter((w) => w.path !== path),
         })),
+      setWorkspaceColor: (workspaceId, color) =>
+        set((state) => ({
+          workspaceColors: { ...state.workspaceColors, [workspaceId]: color },
+        })),
+      clearWorkspaceColor: (workspaceId) =>
+        set((state) => {
+          const { [workspaceId]: _, ...rest } = state.workspaceColors;
+          return { workspaceColors: rest };
+        }),
     }),
     {
       name: 'chatml-settings',

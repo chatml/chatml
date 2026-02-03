@@ -62,7 +62,6 @@ import {
   Trash2,
   Copy,
   Archive,
-  Settings,
   Settings2,
   CheckCircle2,
   XCircle,
@@ -73,15 +72,18 @@ import {
   SquarePlus,
   Search,
   X,
+  Filter,
   LayoutDashboard,
   Layers,
   Bot,
   Circle,
   Clock,
 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { getWorkspaceColor } from '@/lib/workspace-colors';
-import { getPriorityOption } from '@/lib/session-fields';
+import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
+import { getPriorityOption, TASK_STATUS_OPTIONS } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -97,7 +99,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Workspace, WorktreeSession, SetupInfo } from '@/lib/types';
+import type { Workspace, WorktreeSession, SetupInfo, SessionTaskStatus } from '@/lib/types';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -108,7 +110,6 @@ interface WorkspaceSidebarProps {
   onCloneFromUrl: () => void;
   onQuickStart: () => void;
   onSessionSelected?: () => void;
-  onOpenSettings?: () => void;
   onOpenWorkspaceSettings?: (workspaceId: string) => void;
 }
 
@@ -119,9 +120,14 @@ const PROJECT_MENU_ITEMS = [
   { icon: SquarePlus, label: 'Quick Start', key: 'quickstart' },
 ] as const;
 
-export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenSettings, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [taskStatusFilters, setTaskStatusFilters] = useState<Set<SessionTaskStatus>>(new Set());
+  const [agentStatusFilters, setAgentStatusFilters] = useState<Set<'active' | 'idle' | 'done' | 'error'>>(new Set());
+  const [prStatusFilters, setPrStatusFilters] = useState<Set<'none' | 'open' | 'merged' | 'closed'>>(new Set());
+  const [hasChangesFilter, setHasChangesFilter] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [addTooltipOpen, setAddTooltipOpen] = useState(false);
   const addMenuClosedRef = useRef(false);
@@ -169,7 +175,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -179,6 +185,21 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     return sessions
       .filter((s) => {
         if (s.workspaceId !== workspaceId || s.archived) return false;
+        // Task status filter
+        if (taskStatusFilters.size > 0 && !taskStatusFilters.has(s.taskStatus)) return false;
+        // Agent status filter
+        if (agentStatusFilters.size > 0 && !agentStatusFilters.has(s.status)) return false;
+        // PR status filter
+        if (prStatusFilters.size > 0) {
+          const sessionPrStatus = s.prStatus || 'none';
+          if (!prStatusFilters.has(sessionPrStatus)) return false;
+        }
+        // Has changes filter
+        if (hasChangesFilter) {
+          const hasChanges = (s.stats?.additions ?? 0) > 0 || (s.stats?.deletions ?? 0) > 0;
+          if (!hasChanges) return false;
+        }
+        // Text search filter
         if (!searchTerm) return true;
         const term = searchTerm.toLowerCase();
         return (
@@ -196,6 +217,51 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   const getInitial = (name: string) => {
     return name.charAt(0).toUpperCase();
+  };
+
+  const activeFilterCount = taskStatusFilters.size + agentStatusFilters.size + prStatusFilters.size + (hasChangesFilter ? 1 : 0);
+
+  const toggleTaskStatusFilter = (status: SessionTaskStatus) => {
+    setTaskStatusFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
+  const toggleAgentStatusFilter = (status: 'active' | 'idle' | 'done' | 'error') => {
+    setAgentStatusFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
+  const togglePrStatusFilter = (status: 'none' | 'open' | 'merged' | 'closed') => {
+    setPrStatusFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
+  const clearAllFilters = () => {
+    setTaskStatusFilters(new Set());
+    setAgentStatusFilters(new Set());
+    setPrStatusFilters(new Set());
+    setHasChangesFilter(false);
   };
 
   const formatTimeAgo = (date: string) => {
@@ -631,7 +697,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                       <DropdownMenuSubContent className="w-48">
                         {workspaces.map((w) => (
                           <DropdownMenuItem key={w.id} onClick={() => handleCreateSession(w.id)}>
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getWorkspaceColor(w.id) }} />
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
                             <span className="truncate">{w.name}</span>
                           </DropdownMenuItem>
                         ))}
@@ -691,19 +757,129 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
             </button>
           )}
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-              onClick={onOpenSettings}
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Settings <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ ,</span></TooltipContent>
-        </Tooltip>
+        <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    'h-8 w-8 shrink-0 relative',
+                    activeFilterCount > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  aria-label="Filter sessions"
+                >
+                  <Filter className="w-4 h-4" />
+                  {activeFilterCount > 0 && (
+                    <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 text-[9px] font-medium bg-primary text-primary-foreground rounded-full flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">Filter sessions</TooltipContent>
+          </Tooltip>
+          <PopoverContent align="end" className="w-52 p-2">
+            <div className="space-y-3">
+              {/* Task Status */}
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                  Task Status
+                </div>
+                {TASK_STATUS_OPTIONS.map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                  >
+                    <Checkbox
+                      checked={taskStatusFilters.has(option.value)}
+                      onCheckedChange={() => toggleTaskStatusFilter(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+
+              {/* Agent Status */}
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                  Agent Status
+                </div>
+                {[
+                  { value: 'active' as const, label: 'Running' },
+                  { value: 'idle' as const, label: 'Idle' },
+                  { value: 'done' as const, label: 'Done' },
+                  { value: 'error' as const, label: 'Error' },
+                ].map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                  >
+                    <Checkbox
+                      checked={agentStatusFilters.has(option.value)}
+                      onCheckedChange={() => toggleAgentStatusFilter(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+
+              {/* PR Status */}
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                  PR Status
+                </div>
+                {[
+                  { value: 'none' as const, label: 'No PR' },
+                  { value: 'open' as const, label: 'Open' },
+                  { value: 'merged' as const, label: 'Merged' },
+                  { value: 'closed' as const, label: 'Closed' },
+                ].map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                  >
+                    <Checkbox
+                      checked={prStatusFilters.has(option.value)}
+                      onCheckedChange={() => togglePrStatusFilter(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+
+              {/* Has Changes */}
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
+                  Changes
+                </div>
+                <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                  <Checkbox
+                    checked={hasChangesFilter}
+                    onCheckedChange={() => setHasChangesFilter(!hasChangesFilter)}
+                  />
+                  Has uncommitted changes
+                </label>
+              </div>
+
+              <div className="border-t" />
+              <button
+                onClick={clearAllFilters}
+                disabled={activeFilterCount === 0}
+                className={cn(
+                  'w-full text-left px-2 py-1.5 text-sm rounded',
+                  activeFilterCount > 0
+                    ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    : 'text-muted-foreground/50 cursor-not-allowed'
+                )}
+              >
+                Clear all filters
+              </button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Remove workspace confirmation dialog */}
@@ -773,6 +949,11 @@ function SortableWorkspaceItem({
   formatTimeAgo,
   getInitial,
 }: SortableWorkspaceItemProps) {
+  const { workspaceColors, setWorkspaceColor, clearWorkspaceColor } = useSettingsStore();
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const customColor = workspaceColors[workspace.id];
+  const currentColor = customColor || getWorkspaceColor(workspace.id);
+
   const {
     attributes,
     listeners,
@@ -802,17 +983,53 @@ function SortableWorkspaceItem({
               isDragging && 'bg-surface-2'
             )}
           >
-            <div
-              className="shrink-0 cursor-grab active:cursor-grabbing"
-              {...attributes}
-              {...listeners}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: getWorkspaceColor(workspace.id) }}
-              />
-            </div>
+            <Popover open={colorPickerOpen} onOpenChange={setColorPickerOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  className="shrink-0 p-0.5 -m-0.5 rounded hover:bg-muted/50 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setColorPickerOpen(true);
+                  }}
+                  aria-label="Change workspace color"
+                >
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: currentColor }}
+                  />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-2" onClick={(e) => e.stopPropagation()}>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {WORKSPACE_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={cn(
+                        'w-6 h-6 rounded-full transition-transform hover:scale-110',
+                        currentColor === color && 'ring-2 ring-offset-2 ring-offset-background ring-primary'
+                      )}
+                      style={{ backgroundColor: color }}
+                      onClick={() => {
+                        setWorkspaceColor(workspace.id, color);
+                        setColorPickerOpen(false);
+                      }}
+                      aria-label={`Set color to ${color}`}
+                    />
+                  ))}
+                </div>
+                {customColor && (
+                  <button
+                    className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground text-center py-1"
+                    onClick={() => {
+                      clearWorkspaceColor(workspace.id);
+                      setColorPickerOpen(false);
+                    }}
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </PopoverContent>
+            </Popover>
             <span className={cn("text-base truncate", isUnread ? "font-bold" : "font-semibold")}>
               {workspace.name}
             </span>
