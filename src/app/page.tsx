@@ -61,6 +61,7 @@ import { RepositoriesDashboard } from '@/components/dashboards/RepositoriesDashb
 import { GlobalDashboard } from '@/components/dashboards/GlobalDashboard';
 import { WorkspaceDashboard } from '@/components/dashboards/workspace-dashboard';
 import { SessionManager } from '@/components/session-manager';
+import { SkillsStore } from '@/components/skills/SkillsStore';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider, useToast } from '@/components/ui/toast';
 import { StreamingWarningHandler } from '@/components/shared/StreamingWarningHandler';
@@ -1292,6 +1293,9 @@ export default function Home() {
                 )}
                 {contentView.type === 'session-manager' && (
                   <SessionManager />
+                )}
+                {contentView.type === 'skills-store' && (
+                  <SkillsStore />
                 )}
                 {contentView.type === 'workspace-dashboard' && (
                   <WorkspaceDashboard

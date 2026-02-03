@@ -218,6 +218,15 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		})
 	}
 
+	// Skills catalog endpoints
+	r.Route("/api/skills", func(r chi.Router) {
+		r.Get("/", h.ListSkills)
+		r.Get("/installed", h.ListInstalledSkills)
+		r.Post("/{id}/install", h.InstallSkill)
+		r.Delete("/{id}/uninstall", h.UninstallSkill)
+		r.Get("/{id}/content", h.GetSkillContent)
+	})
+
 	// Wire up agent manager callbacks (legacy)
 	agentMgr.SetOutputHandler(func(agentID, line string) {
 		hub.Broadcast(Event{

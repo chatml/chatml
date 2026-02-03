@@ -623,6 +623,23 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added remote, branch_prefix, custom_prefix columns to repos")
 	}
 
+	// Migration: Create user_skill_preferences table if it doesn't exist
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS user_skill_preferences (
+			id TEXT PRIMARY KEY,
+			skill_id TEXT NOT NULL UNIQUE,
+			installed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_skill_preferences_skill_id ON user_skill_preferences(skill_id)`)
+	if err != nil {
+		return err
+	}
+	logger.SQLite.Infof("Migration: user_skill_preferences table ready")
+
 	return nil
 }
 
