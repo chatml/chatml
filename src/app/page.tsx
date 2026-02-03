@@ -1216,12 +1216,10 @@ export default function Home() {
                   onOpenProject={handleOpenProject}
                   onCloneFromUrl={() => setShowCloneFromUrl(true)}
                   onQuickStart={() => setShowQuickStart(true)}
-                  onOpenSettings={() => setShowSettings(true)}
                   onOpenWorkspaceSettings={(workspaceId) => {
                     expandWorkspace(workspaceId);
                     setShowWorkspaceSettings(workspaceId);
                   }}
-
                 />
               </ErrorBoundary>
               </div>
