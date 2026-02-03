@@ -15,7 +15,6 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
-	"github.com/chatml/chatml-backend/cleanup"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/logger"
@@ -94,15 +93,6 @@ func main() {
 
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
-
-	// Clean up orphaned worktrees from previous crashes or failed session creations
-	// Use a timeout to prevent startup from hanging indefinitely on git lock issues
-	cleanupCtx, cleanupCancel := context.WithTimeout(ctx, 30*time.Second)
-	if err := cleanup.CleanOrphanedWorktrees(cleanupCtx, s, wm); err != nil {
-		logger.Cleanup.Warnf("Orphan cleanup failed: %v", err)
-		// Non-fatal - continue startup
-	}
-	cleanupCancel()
 
 	agentMgr := agent.NewManager(ctx, s, wm)
 
