@@ -272,7 +272,7 @@ export function ContentActionBar() {
   if (!bottom) return null;
 
   return (
-    <div className="shrink-0 bg-content-background border-b px-3 py-1.5">
+    <div className="shrink-0 bg-content-background border-b pr-3 py-1.5">
       <ToolbarRow slots={bottom} />
     </div>
   );

@@ -306,7 +306,7 @@ export function SessionToolbarContent() {
       bottom: {
         titlePosition: 'left' as const,
         title: (
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1.5">
             <TaskStatusSelector
               value={selectedSession.taskStatus}
               onChange={handleTaskStatusChange}

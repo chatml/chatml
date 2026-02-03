@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -35,6 +35,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -80,7 +82,6 @@ import {
   Clock,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
 import { getPriorityOption, TASK_STATUS_OPTIONS } from '@/lib/session-fields';
@@ -126,11 +127,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const [taskStatusFilters, setTaskStatusFilters] = useState<Set<SessionTaskStatus>>(new Set());
   const [agentStatusFilters, setAgentStatusFilters] = useState<Set<'active' | 'idle' | 'done' | 'error'>>(new Set());
   const [prStatusFilters, setPrStatusFilters] = useState<Set<'none' | 'open' | 'merged' | 'closed'>>(new Set());
-  const [hasChangesFilter, setHasChangesFilter] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [addTooltipOpen, setAddTooltipOpen] = useState(false);
-  const addMenuClosedRef = useRef(false);
   const { error: showError } = useToast();
 
   const menuHandlers = {
@@ -194,11 +192,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
           const sessionPrStatus = s.prStatus || 'none';
           if (!prStatusFilters.has(sessionPrStatus)) return false;
         }
-        // Has changes filter
-        if (hasChangesFilter) {
-          const hasChanges = (s.stats?.additions ?? 0) > 0 || (s.stats?.deletions ?? 0) > 0;
-          if (!hasChanges) return false;
-        }
         // Text search filter
         if (!searchTerm) return true;
         const term = searchTerm.toLowerCase();
@@ -219,7 +212,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     return name.charAt(0).toUpperCase();
   };
 
-  const activeFilterCount = taskStatusFilters.size + agentStatusFilters.size + prStatusFilters.size + (hasChangesFilter ? 1 : 0);
+  const activeFilterCount = taskStatusFilters.size + agentStatusFilters.size + prStatusFilters.size;
 
   const toggleTaskStatusFilter = (status: SessionTaskStatus) => {
     setTaskStatusFilters((prev) => {
@@ -261,7 +254,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     setTaskStatusFilters(new Set());
     setAgentStatusFilters(new Set());
     setPrStatusFilters(new Set());
-    setHasChangesFilter(false);
   };
 
   const formatTimeAgo = (date: string) => {
@@ -647,24 +639,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border flex items-center gap-1 shrink-0">
-        <Tooltip
-          open={addTooltipOpen}
-          onOpenChange={(open) => {
-            if (open && (addMenuOpen || addMenuClosedRef.current)) {
-              return;
-            }
-            setAddTooltipOpen(open);
-          }}
-        >
-          <DropdownMenu open={addMenuOpen} onOpenChange={(open) => {
-            setAddMenuOpen(open);
-            if (open) {
-              setAddTooltipOpen(false);
-            } else {
-              addMenuClosedRef.current = true;
-              setTimeout(() => { addMenuClosedRef.current = false; }, 200);
-            }
-          }}>
+        <Tooltip open={addMenuOpen ? false : undefined}>
+          <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -757,10 +733,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
             </button>
           )}
         </div>
-        <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-          <Tooltip>
+        <DropdownMenu open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <Tooltip open={isFilterOpen ? false : undefined}>
             <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -777,109 +753,104 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     </span>
                   )}
                 </Button>
-              </PopoverTrigger>
+              </DropdownMenuTrigger>
             </TooltipTrigger>
             <TooltipContent side="top">Filter sessions</TooltipContent>
           </Tooltip>
-          <PopoverContent align="end" className="w-52 p-2">
-            <div className="space-y-3">
-              {/* Task Status */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
-                  Task Status
-                </div>
-                {TASK_STATUS_OPTIONS.map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                  >
-                    <Checkbox
-                      checked={taskStatusFilters.has(option.value)}
-                      onCheckedChange={() => toggleTaskStatusFilter(option.value)}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-
-              {/* Agent Status */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
-                  Agent Status
-                </div>
-                {[
-                  { value: 'active' as const, label: 'Running' },
-                  { value: 'idle' as const, label: 'Idle' },
-                  { value: 'done' as const, label: 'Done' },
-                  { value: 'error' as const, label: 'Error' },
-                ].map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                  >
-                    <Checkbox
-                      checked={agentStatusFilters.has(option.value)}
-                      onCheckedChange={() => toggleAgentStatusFilter(option.value)}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-
-              {/* PR Status */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
-                  PR Status
-                </div>
-                {[
-                  { value: 'none' as const, label: 'No PR' },
-                  { value: 'open' as const, label: 'Open' },
-                  { value: 'merged' as const, label: 'Merged' },
-                  { value: 'closed' as const, label: 'Closed' },
-                ].map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                  >
-                    <Checkbox
-                      checked={prStatusFilters.has(option.value)}
-                      onCheckedChange={() => togglePrStatusFilter(option.value)}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-
-              {/* Has Changes */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-muted-foreground px-2 py-1">
-                  Changes
-                </div>
-                <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
-                  <Checkbox
-                    checked={hasChangesFilter}
-                    onCheckedChange={() => setHasChangesFilter(!hasChangesFilter)}
-                  />
-                  Has uncommitted changes
-                </label>
-              </div>
-
-              <div className="border-t" />
-              <button
-                onClick={clearAllFilters}
-                disabled={activeFilterCount === 0}
-                className={cn(
-                  'w-full text-left px-2 py-1.5 text-sm rounded',
-                  activeFilterCount > 0
-                    ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    : 'text-muted-foreground/50 cursor-not-allowed'
+          <DropdownMenuContent align="end" side="top" className="w-48">
+            <DropdownMenuLabel>Filter Sessions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {/* Task Status Sub-Menu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                Task
+                {taskStatusFilters.size > 0 && (
+                  <span className="ml-auto text-xs text-primary">{taskStatusFilters.size}</span>
                 )}
-              >
-                Clear all filters
-              </button>
-            </div>
-          </PopoverContent>
-        </Popover>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-44">
+                {TASK_STATUS_OPTIONS.map((option) => (
+                  <DropdownMenuCheckboxItem
+                    key={option.value}
+                    checked={taskStatusFilters.has(option.value)}
+                    onCheckedChange={() => toggleTaskStatusFilter(option.value)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <TaskStatusIcon status={option.value} className="w-3.5 h-3.5" />
+                    {option.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            {/* Agent Status Sub-Menu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                Agent
+                {agentStatusFilters.size > 0 && (
+                  <span className="ml-auto text-xs text-primary">{agentStatusFilters.size}</span>
+                )}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-44">
+                {[
+                  { value: 'active' as const, label: 'Running', color: 'text-text-success fill-text-success' },
+                  { value: 'idle' as const, label: 'Idle', color: 'text-text-warning fill-text-warning' },
+                  { value: 'done' as const, label: 'Done', color: 'text-muted-foreground fill-muted-foreground' },
+                  { value: 'error' as const, label: 'Error', color: 'text-text-error fill-text-error' },
+                ].map((option) => (
+                  <DropdownMenuCheckboxItem
+                    key={option.value}
+                    checked={agentStatusFilters.has(option.value)}
+                    onCheckedChange={() => toggleAgentStatusFilter(option.value)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <Circle className={cn('w-3 h-3', option.color)} />
+                    {option.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            {/* PR Status Sub-Menu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                Pull Request
+                {prStatusFilters.size > 0 && (
+                  <span className="ml-auto text-xs text-primary">{prStatusFilters.size}</span>
+                )}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-44">
+                {[
+                  { value: 'none' as const, label: 'No PR', icon: Circle, color: 'text-muted-foreground' },
+                  { value: 'open' as const, label: 'Open', icon: GitPullRequest, color: 'text-text-success' },
+                  { value: 'merged' as const, label: 'Merged', icon: GitPullRequest, color: 'text-purple-500' },
+                  { value: 'closed' as const, label: 'Closed', icon: GitPullRequest, color: 'text-text-error' },
+                ].map((option) => (
+                  <DropdownMenuCheckboxItem
+                    key={option.value}
+                    checked={prStatusFilters.has(option.value)}
+                    onCheckedChange={() => togglePrStatusFilter(option.value)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <option.icon className={cn('w-3.5 h-3.5', option.color)} />
+                    {option.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            {/* Clear all */}
+            {activeFilterCount > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={clearAllFilters}>
+                  <X className="size-4" />
+                  Clear All
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Remove workspace confirmation dialog */}
