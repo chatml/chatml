@@ -1141,6 +1141,12 @@ function handleMessage(message: SDKMessage): void {
     }
   }
 
+  // Skip messages from sub-agent sessions — their tools are already tracked via hooks
+  // (preToolUseHook / postToolUseHook emit tool_start/tool_end with agentId).
+  // Processing them here would duplicate tool events at the parent level without agentId.
+  const msgSessionId = "session_id" in message ? (message as { session_id?: string }).session_id : undefined;
+  const isSubAgentMessage = msgSessionId ? sessionToAgentId.has(msgSessionId) : false;
+
   switch (message.type) {
     case "assistant": {
       // Full assistant message - extract content blocks
@@ -1156,7 +1162,8 @@ function handleMessage(message: SDKMessage): void {
               type: "thinking",
               content: (block as { type: "thinking"; thinking: string }).thinking,
             });
-          } else if (block.type === "tool_use") {
+          } else if (block.type === "tool_use" && !isSubAgentMessage) {
+            // Skip sub-agent tool_use blocks — hooks handle those with agentId.
             // Flush any buffered text before tool starts
             flushBlockBuffer();
 
@@ -1203,7 +1210,10 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "stream_event": {
-      // Partial streaming message
+      // Partial streaming message — skip sub-agent stream events to avoid
+      // duplicating their text/thinking into the parent's output.
+      if (isSubAgentMessage) break;
+
       const event = message.event;
       if (event.type === "content_block_delta") {
         const delta = event.delta as Record<string, unknown>;
@@ -1231,7 +1241,8 @@ function handleMessage(message: SDKMessage): void {
       const content = message.message.content;
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (block.type === "tool_result") {
+          if (block.type === "tool_result" && !isSubAgentMessage) {
+            // Skip sub-agent tool_result blocks — hooks handle those with agentId.
             const toolInfo = activeTools.get(block.tool_use_id);
 
             // Flush any buffered text before tool ends
