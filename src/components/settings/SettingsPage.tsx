@@ -118,7 +118,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   variant={selectedCategory === item.id ? 'secondary' : 'ghost'}
                   size="sm"
                   className={cn(
-                    'w-full justify-start gap-2 h-7 text-[12px]',
+                    'w-full justify-start gap-2 h-7 text-xs',
                     selectedCategory === item.id && 'bg-sidebar-accent'
                   )}
                   onClick={() => setSelectedCategory(item.id)}
@@ -131,7 +131,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
 
             {/* More section */}
             <div className="mt-6">
-              <span className="text-[10px] font-medium text-muted-foreground px-2 uppercase tracking-wider">More</span>
+              <span className="text-2xs font-medium text-muted-foreground px-2 uppercase tracking-wider">More</span>
               <div className="mt-2 space-y-0.5">
                 {moreNavItems.map((item) => (
                   <Button
@@ -139,7 +139,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     variant={selectedCategory === item.id ? 'secondary' : 'ghost'}
                     size="sm"
                     className={cn(
-                      'w-full justify-start gap-2 h-7 text-[12px]',
+                      'w-full justify-start gap-2 h-7 text-xs',
                       selectedCategory === item.id && 'bg-sidebar-accent'
                     )}
                     onClick={() => setSelectedCategory(item.id)}
@@ -153,7 +153,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     key={link.label}
                     variant="ghost"
                     size="sm"
-                    className="w-full justify-start gap-2 h-7 text-[12px]"
+                    className="w-full justify-start gap-2 h-7 text-xs"
                     onClick={() => window.open(link.url, '_blank')}
                   >
                     {link.icon}
@@ -205,9 +205,9 @@ function SettingsRow({
   return (
     <div className="flex items-center justify-between py-3 border-b border-border/50">
       <div className="flex-1 pr-4">
-        <h4 className="text-[13px] font-medium">{title}</h4>
+        <h4 className="text-sm font-medium">{title}</h4>
         {description && (
-          <p className="text-[12px] text-muted-foreground mt-0.5">{description}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         )}
       </div>
       <div className="shrink-0">{children}</div>
@@ -762,8 +762,8 @@ function ClaudeCodeSettings() {
 
       {/* Anthropic API Key */}
       <div className="py-4 border-b border-border/50">
-        <h4 className="text-[13px] font-medium">Anthropic API Key</h4>
-        <p className="text-[12px] text-muted-foreground mt-0.5">
+        <h4 className="text-sm font-medium">Anthropic API Key</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">
           Set an API key to bypass OAuth authentication. Get one from{' '}
           <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
             console.anthropic.com
@@ -771,8 +771,8 @@ function ClaudeCodeSettings() {
         </p>
 
         {apiKeyConfigured && (
-          <p className="text-[12px] text-muted-foreground mt-2">
-            Current key: <code className="text-[11px] bg-muted px-1 py-0.5 rounded">{apiKeyMasked}</code>
+          <p className="text-xs text-muted-foreground mt-2">
+            Current key: <code className="text-xs bg-muted px-1 py-0.5 rounded">{apiKeyMasked}</code>
           </p>
         )}
 
@@ -1038,12 +1038,12 @@ function ReviewSettings() {
       <div className="space-y-5">
         {REVIEW_TYPE_META.map(({ key, label, placeholder }) => (
           <div key={key}>
-            <label className="text-[13px] font-medium block mb-1.5">{label}</label>
-            <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-1">
+            <label className="text-sm font-medium block mb-1.5">{label}</label>
+            <p className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
               Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
             </p>
             <Textarea
-              className="text-[13px] min-h-[60px]"
+              className="text-sm min-h-[60px]"
               placeholder={placeholder}
               value={prompts[key] || ''}
               onChange={(e) => setPrompts((prev) => ({ ...prev, [key]: e.target.value }))}
@@ -1059,12 +1059,12 @@ function ReviewSettings() {
           Per-workspace overrides can be set in workspace settings.
         </p>
 
-        <label className="text-[13px] font-medium block mb-1.5">PR Description Prompt</label>
-        <p className="text-[11px] text-muted-foreground mb-1.5">
+        <label className="text-sm font-medium block mb-1.5">PR Description Prompt</label>
+        <p className="text-xs text-muted-foreground mb-1.5">
           These instructions will be prepended to the default PR generation prompt
         </p>
         <Textarea
-          className="text-[13px] min-h-[80px]"
+          className="text-sm min-h-[80px]"
           placeholder="e.g., Include a testing checklist, link to related issues, use conventional commit format for title"
           value={prTemplate}
           onChange={(e) => setPRTemplate(e.target.value)}

@@ -322,11 +322,11 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {prDetails.isDraft && (
-                        <Badge variant="outline" className="text-[10px]">Draft</Badge>
+                        <Badge variant="outline" className="text-2xs">Draft</Badge>
                       )}
                       <Badge
                         variant={prDetails.state === 'open' ? 'default' : 'secondary'}
-                        className="text-[10px]"
+                        className="text-2xs"
                       >
                         {prDetails.state}
                       </Badge>
@@ -359,7 +359,7 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
                   {prDetails.labels.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {prDetails.labels.map((label) => (
-                        <Badge key={label} variant="outline" className="text-[10px]">
+                        <Badge key={label} variant="outline" className="text-2xs">
                           {label}
                         </Badge>
                       ))}
@@ -443,11 +443,11 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-mono truncate">{branch.name}</span>
-                              <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                              <span className="text-2xs text-muted-foreground shrink-0 ml-2">
                                 {branch.lastAuthor}
                               </span>
                             </div>
-                            <div className="text-[10px] text-muted-foreground truncate mt-0.5">
+                            <div className="text-2xs text-muted-foreground truncate mt-0.5">
                               {branch.lastCommitSubject}
                             </div>
                           </button>

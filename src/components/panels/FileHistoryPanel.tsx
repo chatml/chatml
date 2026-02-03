@@ -298,13 +298,13 @@ function CommitRow({ commit, onClick, isLast }: { commit: FileCommitDTO; onClick
         <div className="text-xs font-medium truncate" title={commit.message}>
           {commit.message}
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="font-mono">{commit.shortSha}</span>
           <span className="truncate">{commit.author}</span>
           <span>{timeAgo}</span>
         </div>
         {/* Always render stats line to maintain consistent ITEM_HEIGHT for virtual scroll */}
-        <div className="text-[11px] tabular-nums h-[14px]">
+        <div className="text-xs tabular-nums h-[14px]">
           {commit.additions > 0 && <span className="text-text-success">+{commit.additions}</span>}
           {commit.deletions > 0 && (
             <span className="text-text-error ml-1">-{commit.deletions}</span>

@@ -162,7 +162,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
           <div className="flex items-center px-2 py-1.5 border-b border-border/50 bg-muted/50">
             <ZoomControls />
             <div className="flex-1" />
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+            <span className="text-2xs text-muted-foreground font-medium uppercase tracking-wider">
               Mermaid
             </span>
           </div>

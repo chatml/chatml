@@ -126,10 +126,10 @@ export function AgentsPanel() {
                       {agent.task}
                     </p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-muted-foreground/70">
+                      <span className="text-2xs text-muted-foreground/70">
                         {agent.workspaceName}
                       </span>
-                      <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+                      <span className="text-2xs text-muted-foreground/70 flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" />
                         {formatTimeAgo(agent.startedAt)}
                       </span>

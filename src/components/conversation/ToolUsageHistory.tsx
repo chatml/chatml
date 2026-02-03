@@ -145,7 +145,7 @@ export const ToolUsageHistory = memo(function ToolUsageHistory({ tools }: ToolUs
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+      <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
         {isOpen ? (
           <ChevronDown className="w-3 h-3" />
         ) : (
@@ -169,7 +169,7 @@ export const ToolUsageHistory = memo(function ToolUsageHistory({ tools }: ToolUs
             return (
               <div
                 key={tool.id}
-                className="flex items-center gap-2 text-[11px] py-0.5 text-muted-foreground"
+                className="flex items-center gap-2 text-xs py-0.5 text-muted-foreground"
               >
                 {tool.success === false ? (
                   <XCircle className="w-3 h-3 text-destructive shrink-0" />
@@ -182,19 +182,19 @@ export const ToolUsageHistory = memo(function ToolUsageHistory({ tools }: ToolUs
                   targetInfo.isTruncated ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <code className="text-[10px] px-1 py-0.5 bg-muted rounded truncate max-w-[250px] cursor-help">
+                        <code className="text-2xs px-1 py-0.5 bg-muted rounded truncate max-w-[250px] cursor-help">
                           {targetInfo.display}
                         </code>
                       </TooltipTrigger>
                       <TooltipContent
                         side="top"
-                        className="max-w-[500px] break-all font-mono text-[11px]"
+                        className="max-w-[500px] break-all font-mono text-xs"
                       >
                         {targetInfo.full}
                       </TooltipContent>
                     </Tooltip>
                   ) : (
-                    <code className="text-[10px] px-1 py-0.5 bg-muted rounded truncate max-w-[250px]">
+                    <code className="text-2xs px-1 py-0.5 bg-muted rounded truncate max-w-[250px]">
                       {targetInfo.display}
                     </code>
                   )

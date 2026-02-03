@@ -62,7 +62,7 @@ export function AttachmentCard({ attachment, onRemove, readOnly = false }: Attac
         <span className="text-xs font-medium text-foreground truncate" title={attachment.name}>
           {displayName}
         </span>
-        <span className="text-[10px] text-muted-foreground truncate">
+        <span className="text-2xs text-muted-foreground truncate">
           {subtitle}
         </span>
       </div>

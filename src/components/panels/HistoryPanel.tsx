@@ -116,7 +116,7 @@ export function HistoryPanel() {
           <div className="py-1">
             {Object.entries(groupedItems).map(([date, items]) => (
               <div key={date}>
-                <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <div className="px-3 py-1.5 text-2xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-3 h-3" />
                   {date}
                 </div>
@@ -129,13 +129,13 @@ export function HistoryPanel() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{item.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-2xs text-muted-foreground">
                           {item.workspace}
                         </span>
                         {item.branch && (
                           <>
                             <span className="text-muted-foreground/50">·</span>
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <span className="text-2xs text-muted-foreground flex items-center gap-1">
                               <GitBranch className="w-2.5 h-2.5" />
                               {item.branch}
                             </span>

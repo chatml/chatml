@@ -40,24 +40,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.125rem;
+  --text-xl--line-height: 1.5rem;
+}
+
 :root {
-  /* Typography Scale (Cursor-inspired compact sizing) */
-  --font-size-display-lg: 32px;
-  --font-size-display: 26px;
-  --font-size-display-sm: 22px;
-  --font-size-xl: 18px;
-  --font-size-lg: 16px;
-  --font-size-md: 14px;
-  --font-size-base: 13px;
-  --font-size-sm: 12px;
-  --font-size-xs: 11px;
-  --font-size-2xs: 10px;
-  --font-size-3xs: 9px;
-
-  /* Semantic Typography */
-  --font-size-menu: var(--font-size-sm);        /* Menu items, dropdowns, context menus */
-  --font-size-menu-label: var(--font-size-xs);  /* Menu section labels */
-
   /* Menu Colors */
   --menu-hover: oklch(0.94 0.02 280); /* Light mode menu hover */
 
@@ -256,24 +254,6 @@
   --color-text-warning: var(--text-warning);
   --color-text-info: var(--text-info);
 
-  /* Typography — font sizes mapped to design tokens */
-  /* Display sizes include line-height */
-  --text-display-lg: var(--font-size-display-lg) / 1.1;
-  --text-display: var(--font-size-display) / 1.2;
-  --text-display-sm: var(--font-size-display-sm) / 1.25;
-  /* Standard sizes */
-  --text-xl: var(--font-size-xl);
-  --text-lg: var(--font-size-lg);
-  --text-md: var(--font-size-md);
-  --text-base: var(--font-size-base);
-  --text-sm: var(--font-size-sm);
-  --text-xs: var(--font-size-xs);
-  --text-2xs: var(--font-size-2xs);
-  --text-3xs: var(--font-size-3xs);
-  /* Semantic aliases */
-  --text-menu: var(--font-size-menu);
-  --text-menu-label: var(--font-size-menu-label);
-
   /* Typography — font families */
   --font-family-display: var(--font-display);
   --font-family-sans: var(--font-sans);
@@ -340,7 +320,7 @@
 /* Terminal output styling */
 .terminal {
   font-family: var(--font-terminal);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
 }
 
@@ -377,7 +357,7 @@
 }
 
 .prose pre code {
-  @apply text-[11px] leading-relaxed p-0;
+  @apply text-xs leading-relaxed p-0;
 }
 
 .prose pre code.hljs {
@@ -385,13 +365,13 @@
 }
 
 .prose code:not(pre code) {
-  @apply bg-purple-500/20 px-1 py-0.5 rounded text-[11px] font-medium text-purple-700 dark:text-purple-300;
+  @apply bg-purple-500/20 px-1 py-0.5 rounded text-xs font-medium text-purple-700 dark:text-purple-300;
 }
 
 /* Heading styles — double class for specificity over prose-base defaults */
 .prose.prose h1 {
   @apply font-semibold mt-5 mb-2;
-  font-size: 30px;
+  font-size: var(--text-3xl);
   color: oklch(0.25 0.12 280);
 }
 .dark .prose.prose h1 {
@@ -400,7 +380,7 @@
 
 .prose.prose h2 {
   @apply font-semibold mt-8 mb-2;
-  font-size: 20px;
+  font-size: var(--text-xl);
   color: oklch(0.25 0.12 280);
 }
 .dark .prose.prose h2 {
@@ -409,12 +389,12 @@
 
 .prose.prose h3 {
   @apply font-semibold mt-3 mb-1.5 text-foreground;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .prose.prose h4, .prose.prose h5, .prose.prose h6 {
   @apply font-semibold mt-2 mb-1 text-foreground;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 /* First heading shouldn't have top margin */
@@ -467,6 +447,11 @@
 
 .prose li > p:first-child {
   @apply mt-0;
+}
+
+/* Horizontal rule - tighter than prose default */
+.prose hr {
+  @apply my-3;
 }
 
 /* Better blockquote styling */
@@ -864,7 +849,7 @@
   border-radius: 50%;
   background-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 1;
 }

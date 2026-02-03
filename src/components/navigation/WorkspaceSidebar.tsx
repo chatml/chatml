@@ -412,12 +412,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
             <div className="py-2 pl-1 pr-2 flex flex-col">
               {/* Section Header */}
               <div className="group/header px-2 pt-1 pb-2 flex items-center justify-between">
-                <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                <span className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                   Repositories
                 </span>
                 <button
                   onClick={(e) => navigateOrOpenTab({ contentView: { type: 'repositories' } }, e)}
-                  className="text-[10px] font-medium text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100"
+                  className="text-xs font-medium text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100"
                 >
                   Manage
                 </button>
@@ -427,8 +427,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
                     <FolderPlus className="w-6 h-6 text-muted-foreground/50" />
                   </div>
-                  <p className="text-sm font-medium text-muted-foreground">No workspaces</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1 mb-4">
+                  <p className="text-lg font-medium text-muted-foreground">No workspaces</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1 mb-4">
                     Add a repository to get started
                   </p>
                   <DropdownMenu>
@@ -436,7 +436,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs"
+                        className="text-base"
                       >
                         <Plus className="size-4" />
                         Add project
@@ -680,7 +680,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
             placeholder="Search sessions..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-8 pl-7 pr-7 text-sm bg-sidebar-accent/50 border border-sidebar-border rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+            className="w-full h-8 pl-7 pr-7 text-base bg-sidebar-accent/50 border border-sidebar-border rounded-md placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
           />
           {searchTerm && (
             <button
@@ -702,7 +702,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               <Settings className="w-4 h-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top">Settings <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">⌘ ,</span></TooltipContent>
+          <TooltipContent side="top">Settings <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘ ,</span></TooltipContent>
         </Tooltip>
       </div>
 
@@ -943,13 +943,13 @@ function SortableWorkspaceItem({
             </div>
 
             {/* Sessions Header */}
-            <div className="px-2 pt-1 pb-1.5 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+            <div className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
               Sessions
             </div>
 
             {/* Sessions */}
             {sessions.length === 0 ? (
-              <div className="py-2 px-2 text-2xs text-muted-foreground/70">
+              <div className="py-2 px-2 text-sm text-muted-foreground/70">
                 No active sessions
               </div>
             ) : (
@@ -1088,7 +1088,7 @@ function SessionRow({
               <div className="relative shrink-0 flex items-center">
                 {/* Stats - fade out on hover */}
                 {hasStats && (
-                  <span className="text-2xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                  <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
                     <span className="text-text-success">+{session.stats!.additions}</span>
                     <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                   </span>

@@ -158,13 +158,13 @@ export function BudgetStatusPanel() {
             <span className="font-mono">{formatTokens(cumulativeTokens.output)}</span>
           </div>
           {cumulativeTokens.cacheRead > 0 && (
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+            <div className="flex items-center justify-between text-xs text-muted-foreground/70">
               <span className="ml-4">Cache read</span>
               <span className="font-mono">{formatTokens(cumulativeTokens.cacheRead)}</span>
             </div>
           )}
           {cumulativeTokens.cacheWrite > 0 && (
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+            <div className="flex items-center justify-between text-xs text-muted-foreground/70">
               <span className="ml-4">Cache write</span>
               <span className="font-mono">{formatTokens(cumulativeTokens.cacheWrite)}</span>
             </div>
@@ -188,7 +188,7 @@ export function BudgetStatusPanel() {
             <span className="text-xs font-medium">Extended Thinking</span>
           </div>
           <span className={cn(
-            'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider',
+            'inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider',
             thinkingEnabled
               ? 'bg-amber-500/15 text-amber-500'
               : 'bg-muted text-muted-foreground'
@@ -198,7 +198,7 @@ export function BudgetStatusPanel() {
         </div>
         {thinkingEnabled && (
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Usage</span>
               <span className={cn('font-mono', thinkingPercent >= 90 && 'text-destructive')}>
                 {currentThinkingTokens.toLocaleString()} / {maxThinkingTokens.toLocaleString()}

@@ -126,7 +126,7 @@ export function DataTableDisplay({
           {/* Grouping */}
           {config.groupingOptions.length > 0 && (
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+              <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
                 <Layers className="h-4 w-4" />
                 <span>Grouping</span>
               </div>
@@ -134,7 +134,7 @@ export function DataTableDisplay({
                 value={options.groupBy === '__none__' ? 'none' : (options.groupBy ?? 'default')}
                 onValueChange={setGroupBy}
               >
-                <SelectTrigger className="w-[160px] h-8 text-[13px] bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
+                <SelectTrigger className="w-[160px] h-8 text-sm bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
                   <SelectValue placeholder="No grouping" />
                 </SelectTrigger>
                 <SelectContent>
@@ -153,7 +153,7 @@ export function DataTableDisplay({
           {/* Ordering */}
           {config.sortingOptions.length > 0 && (
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
+              <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
                 <ArrowUpDown className="h-4 w-4" />
                 <span>Ordering</span>
               </div>
@@ -162,7 +162,7 @@ export function DataTableDisplay({
                   value={options.sortBy?.column ?? 'none'}
                   onValueChange={setSortColumn}
                 >
-                  <SelectTrigger className="w-[120px] h-8 text-[13px] bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
+                  <SelectTrigger className="w-[120px] h-8 text-sm bg-surface-2 border-border/50 rounded-md hover:bg-surface-2/80">
                     <SelectValue placeholder="Default" />
                   </SelectTrigger>
                   <SelectContent>
@@ -203,11 +203,11 @@ export function DataTableDisplay({
 
         {/* List options section */}
         <div className="px-4 py-3 space-y-3">
-          <div className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+          <div className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
             List options
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[13px] text-foreground">Show separators</span>
+            <span className="text-sm text-foreground">Show separators</span>
             <Switch
               checked={options.showSeparators}
               onCheckedChange={() => onChange({ ...options, showSeparators: !options.showSeparators })}
@@ -215,7 +215,7 @@ export function DataTableDisplay({
             />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[13px] text-foreground">Show empty groups</span>
+            <span className="text-sm text-foreground">Show empty groups</span>
             <Switch
               checked={options.showEmptyGroups}
               onCheckedChange={toggleShowEmptyGroups}
@@ -225,7 +225,7 @@ export function DataTableDisplay({
           </div>
           {config.listOptions?.map((opt) => (
             <div key={opt.id} className="flex items-center justify-between">
-              <span className="text-[13px] text-foreground">{opt.label}</span>
+              <span className="text-sm text-foreground">{opt.label}</span>
               <Switch
                 checked={options.customToggles[opt.id] ?? opt.defaultValue}
                 onCheckedChange={() => toggleCustomOption(opt.id)}
@@ -242,7 +242,7 @@ export function DataTableDisplay({
             <div className="h-px bg-border/50" />
 
             <div className="px-4 py-3 space-y-3">
-              <div className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+              <div className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
                 Display properties
               </div>
               <div className="flex flex-wrap gap-2">
@@ -254,7 +254,7 @@ export function DataTableDisplay({
                       type="button"
                       onClick={() => toggleColumn(col.id)}
                       className={cn(
-                        'px-2.5 py-1 text-[13px] rounded-md border transition-all',
+                        'px-2.5 py-1 text-sm rounded-md border transition-all',
                         isActive
                           ? 'bg-surface-2 border-border/70 text-foreground'
                           : 'bg-transparent border-border/50 text-muted-foreground hover:border-border/70 hover:text-foreground/80'

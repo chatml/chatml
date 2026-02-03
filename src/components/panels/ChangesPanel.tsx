@@ -527,7 +527,7 @@ export function ChangesPanel() {
                           <>
                             {untracked.length > 0 && (
                               <>
-                                <div className="px-2 py-1 text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+                                <div className="px-2 py-1 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
                                   UNTRACKED
                                 </div>
                                 {untracked.map((change) => (
@@ -544,7 +544,7 @@ export function ChangesPanel() {
                             {tracked.length > 0 && (
                               <>
                                 {untracked.length > 0 && (
-                                  <div className="px-2 py-1 mt-2 text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+                                  <div className="px-2 py-1 mt-2 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
                                     CHANGED
                                   </div>
                                 )}
@@ -732,7 +732,7 @@ const SortableTabButton = memo(function SortableTabButton({
       variant={isActive ? 'secondary' : 'ghost'}
       size="sm"
       className={cn(
-        "h-6 text-[11px] px-2 gap-1 rounded-sm shrink-0 transition-none active:!scale-100",
+        "h-6 text-xs px-2 gap-1 rounded-sm shrink-0 transition-none active:!scale-100",
         !isActive && "text-muted-foreground",
         isDragging && "bg-surface-2 shadow-md opacity-90"
       )}
@@ -740,7 +740,7 @@ const SortableTabButton = memo(function SortableTabButton({
     >
       {label}
       {badge !== undefined && badge > 0 && (
-        <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-[10px]">
+        <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-2xs">
           {badge}
         </span>
       )}
@@ -1028,11 +1028,11 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
             {smartTruncateDir(dirPath)}/
           </span>
         )}
-        <span className="text-sm font-medium truncate">{fileName}</span>
+        <span className="text-base font-medium truncate">{fileName}</span>
       </div>
       {/* Stats - always visible */}
       {hasStats && (
-        <span className="text-[11px] shrink-0 tabular-nums whitespace-nowrap">
+        <span className="text-xs shrink-0 tabular-nums whitespace-nowrap">
           {change.additions > 0 && (
             <span className="text-text-success">+{change.additions}</span>
           )}
@@ -1045,7 +1045,7 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
       {commentStats && commentStats.unresolved > 0 && (
         <span className="flex items-center gap-0.5 text-text-warning shrink-0" title={`${commentStats.unresolved} unresolved comment${commentStats.unresolved > 1 ? 's' : ''}`}>
           <MessageSquare className="h-3 w-3" />
-          <span className="text-[10px] font-medium">{commentStats.unresolved}</span>
+          <span className="text-2xs font-medium">{commentStats.unresolved}</span>
         </span>
       )}
           </div>
@@ -1066,10 +1066,10 @@ export function CollapsibleSection({ title, count, open, onToggle, children }: {
         className="flex items-center gap-1 px-2 py-1 w-full hover:bg-surface-2 rounded-sm transition-colors"
       >
         <ChevronRight className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
-        <span className="text-[10px] font-medium text-foreground/60 uppercase tracking-wider">
+        <span className="text-xs font-medium text-foreground/60 uppercase tracking-wider">
           {title}
         </span>
-        <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">{count}</span>
+        <span className="text-2xs text-muted-foreground ml-auto tabular-nums">{count}</span>
       </button>
       {open && children}
     </div>
@@ -1107,9 +1107,9 @@ export function CommitRow({ commit, expanded, onToggle, onFileSelect, containerW
       >
         <ChevronRight className={cn('size-3 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')} />
         <GitCommitHorizontal className="size-3 shrink-0 text-muted-foreground" />
-        <span className="text-[10px] font-mono text-muted-foreground shrink-0">{commit.shortSha}</span>
+        <span className="text-2xs font-mono text-muted-foreground shrink-0">{commit.shortSha}</span>
         <span className="text-xs truncate flex-1 min-w-0">{commit.message}</span>
-        <span className="text-[10px] text-muted-foreground shrink-0">{formatCommitTime(commit.timestamp)}</span>
+        <span className="text-2xs text-muted-foreground shrink-0">{formatCommitTime(commit.timestamp)}</span>
       </div>
       {expanded && commit.files.length > 0 && (
         <div className="pl-4">

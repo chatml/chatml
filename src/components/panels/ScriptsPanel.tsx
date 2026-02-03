@@ -352,7 +352,7 @@ function ScriptRunItem({
           {name}
         </span>
         {duration && (
-          <span className="text-[10px] text-muted-foreground tabular-nums">{duration}</span>
+          <span className="text-2xs text-muted-foreground tabular-nums">{duration}</span>
         )}
         {run?.status === 'running' && onStop && (
           <button
@@ -391,7 +391,7 @@ function ScriptRunItem({
 function SetupProgressBadge({ progress }: { progress: SetupProgress }) {
   if (progress.status === 'running') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-text-info">
+      <span className="inline-flex items-center gap-1 text-2xs text-text-info">
         <Loader2 className="h-2.5 w-2.5 animate-spin" />
         {progress.current}/{progress.total}
       </span>
@@ -399,7 +399,7 @@ function SetupProgressBadge({ progress }: { progress: SetupProgress }) {
   }
   if (progress.status === 'completed') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-text-success">
+      <span className="inline-flex items-center gap-1 text-2xs text-text-success">
         <CheckCircle2 className="h-2.5 w-2.5" />
         Done
       </span>
@@ -407,7 +407,7 @@ function SetupProgressBadge({ progress }: { progress: SetupProgress }) {
   }
   if (progress.status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-text-error">
+      <span className="inline-flex items-center gap-1 text-2xs text-text-error">
         <XCircle className="h-2.5 w-2.5" />
         Failed
       </span>
