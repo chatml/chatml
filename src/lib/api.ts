@@ -1841,3 +1841,78 @@ export async function getScriptRuns(workspaceId: string, sessionId: string): Pro
   );
   return handleResponse<ScriptRun[]>(res);
 }
+
+// ============================================================================
+// Skills API
+// ============================================================================
+
+export type SkillCategory = 'development' | 'documentation' | 'version-control';
+
+export interface SkillDTO {
+  id: string;
+  name: string;
+  description: string;
+  category: SkillCategory;
+  author: string;
+  version: string;
+  preview: string;
+  usageCount: number;
+  rating: number;
+  ratingCount: number;
+  skillPath: string;
+  createdAt: string;
+  updatedAt: string;
+  installed: boolean;
+  installedAt?: string;
+}
+
+export interface SkillListParams {
+  category?: string;
+  search?: string;
+}
+
+export interface SkillContentResponse {
+  id: string;
+  name: string;
+  skillPath: string;
+  content: string;
+}
+
+// List all skills with optional filtering
+export async function listSkills(params?: SkillListParams): Promise<SkillDTO[]> {
+  const queryParams = new URLSearchParams();
+  if (params?.category) queryParams.set('category', params.category);
+  if (params?.search) queryParams.set('search', params.search);
+  const qs = queryParams.toString();
+  const url = `${getApiBase()}/api/skills${qs ? `?${qs}` : ''}`;
+  const res = await fetchWithAuth(url);
+  return handleResponse<SkillDTO[]>(res);
+}
+
+// List only installed skills
+export async function listInstalledSkills(): Promise<SkillDTO[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/skills/installed`);
+  return handleResponse<SkillDTO[]>(res);
+}
+
+// Install a skill
+export async function installSkill(skillId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/skills/${skillId}/install`, {
+    method: 'POST',
+  });
+  await handleVoidResponse(res, 'Failed to install skill');
+}
+
+// Uninstall a skill
+export async function uninstallSkill(skillId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/skills/${skillId}/uninstall`, {
+    method: 'DELETE',
+  });
+  await handleVoidResponse(res, 'Failed to uninstall skill');
+}
+
+// Get skill content (for copying to worktree)
+export async function getSkillContent(skillId: string): Promise<SkillContentResponse> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/skills/${skillId}/content`);
+  return handleResponse<SkillContentResponse>(res);
+}

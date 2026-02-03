@@ -132,6 +132,7 @@
   --nav-icon-sessions: oklch(0.60 0.15 55);
   --nav-icon-branches: oklch(0.55 0.15 155);
   --nav-icon-prs: oklch(0.55 0.15 300);
+  --nav-icon-skills: oklch(0.65 0.18 85);
 }
 
 .dark {
@@ -209,6 +210,7 @@
   --nav-icon-sessions: #fb923c;
   --nav-icon-branches: #4ade80;
   --nav-icon-prs: #a78bfa;
+  --nav-icon-skills: #fbbf24;
 }
 
 @theme inline {
@@ -252,6 +254,7 @@
   --color-nav-icon-sessions: var(--nav-icon-sessions);
   --color-nav-icon-branches: var(--nav-icon-branches);
   --color-nav-icon-prs: var(--nav-icon-prs);
+  --color-nav-icon-skills: var(--nav-icon-skills);
 
   /* AI Semantic Colors */
   --color-ai-thinking: var(--ai-thinking);

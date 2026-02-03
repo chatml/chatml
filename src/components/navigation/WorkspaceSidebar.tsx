@@ -80,6 +80,7 @@ import {
   Bot,
   Circle,
   Clock,
+  Sparkles,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -461,6 +462,28 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               : "text-muted-foreground group-hover:text-foreground"
           )}>
             Sessions
+          </span>
+        </div>
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'skills-store'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={() => navigate({ contentView: { type: 'skills-store' } })}
+        >
+          <Sparkles className={cn(
+            "w-4 h-4",
+            contentView.type === 'skills-store' ? "text-nav-icon-skills" : "text-nav-icon-skills/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            contentView.type === 'skills-store'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Skills
           </span>
         </div>
       </div>
