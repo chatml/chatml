@@ -3,7 +3,6 @@
 import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { navigate } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -34,7 +33,6 @@ import {
   Moon,
   Monitor,
   Sparkles,
-  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/lib/auth';
@@ -167,11 +165,6 @@ export function AppSettingsMenu({
           <Settings className="size-4" />
           Settings
           <span className="ml-auto text-xs text-muted-foreground">⌘,</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'session-manager' } })}>
-          <Layers className="size-4" />
-          Session Manager
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

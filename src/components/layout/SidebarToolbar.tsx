@@ -87,7 +87,7 @@ export function SidebarToolbar() {
         </Tooltip>
         {/* History */}
         <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
-          <Tooltip>
+          <Tooltip open={historyOpen ? false : undefined}>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6">

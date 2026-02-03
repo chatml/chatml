@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { TASK_STATUS_OPTIONS, getTaskStatusOption } from '@/lib/session-fields';
 import type { SessionTaskStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -47,9 +48,11 @@ export function TaskStatusSelector({
     </Button>
   );
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <DropdownMenu>
-      <Tooltip>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <Tooltip open={menuOpen ? false : undefined}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             {trigger}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { PRIORITY_OPTIONS, getPriorityOption } from '@/lib/session-fields';
 import type { SessionPriority } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -47,9 +48,11 @@ export function PrioritySelector({
     </Button>
   );
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <DropdownMenu>
-      <Tooltip>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <Tooltip open={menuOpen ? false : undefined}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             {trigger}
