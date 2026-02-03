@@ -118,6 +118,7 @@ export function SessionInfoPanel() {
               workspaceId={workspace.id}
               currentTargetBranch={session.targetBranch}
               workspaceDefaultBranch={workspace.defaultBranch || 'main'}
+              workspaceRemote={workspace.remote || 'origin'}
               variant="panel"
             />
           )}

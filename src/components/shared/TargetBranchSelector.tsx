@@ -24,12 +24,15 @@ interface TargetBranchSelectorProps {
   workspaceId: string;
   currentTargetBranch?: string; // e.g. "origin/develop"
   workspaceDefaultBranch: string; // e.g. "main"
+  workspaceRemote?: string; // e.g. "origin" or "upstream"
   variant?: 'toolbar' | 'panel';
   disabled?: boolean;
 }
 
-function stripOriginPrefix(branch: string): string {
-  return branch.replace(/^origin\//, '');
+function stripRemotePrefix(branch: string): string {
+  // Strip any remote prefix (e.g., "origin/main" -> "main", "upstream/develop" -> "develop")
+  const slashIndex = branch.indexOf('/');
+  return slashIndex >= 0 ? branch.slice(slashIndex + 1) : branch;
 }
 
 /** Shared popover content for branch selection — used by both toolbar and panel variants. */
@@ -40,6 +43,7 @@ function BranchPickerContent({
   onSearchChange,
   effectiveTarget,
   workspaceDefaultBranch,
+  workspaceRemote,
   isDefault,
   onSelect,
 }: {
@@ -49,6 +53,7 @@ function BranchPickerContent({
   onSearchChange: (value: string) => void;
   effectiveTarget: string;
   workspaceDefaultBranch: string;
+  workspaceRemote: string;
   isDefault: boolean;
   onSelect: (remoteRef: string) => void;
 }) {
@@ -74,9 +79,9 @@ function BranchPickerContent({
             {filteredBranches.map((branch) => {
               const remoteRef = branch.isRemote
                 ? branch.name
-                : `origin/${branch.name}`;
+                : `${workspaceRemote}/${branch.name}`;
               const isSelected = remoteRef === effectiveTarget;
-              const isWorkspaceDefault = stripOriginPrefix(remoteRef) === workspaceDefaultBranch;
+              const isWorkspaceDefault = stripRemotePrefix(remoteRef) === workspaceDefaultBranch;
               return (
                 <CommandItem
                   key={branch.name}
@@ -85,7 +90,7 @@ function BranchPickerContent({
                 >
                   <GitBranch className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
                   <span className="flex-1 truncate">
-                    {stripOriginPrefix(branch.name)}
+                    {stripRemotePrefix(branch.name)}
                   </span>
                   {isWorkspaceDefault && (
                     <span className="text-2xs text-muted-foreground mr-1">default</span>
@@ -105,7 +110,7 @@ function BranchPickerContent({
             variant="ghost"
             size="sm"
             className="w-full justify-start h-7 text-xs text-muted-foreground"
-            onClick={() => onSelect(`origin/${workspaceDefaultBranch}`)}
+            onClick={() => onSelect(`${workspaceRemote}/${workspaceDefaultBranch}`)}
           >
             <RotateCcw className="mr-2 h-3 w-3" />
             Reset to workspace default ({workspaceDefaultBranch})
@@ -121,6 +126,7 @@ export function TargetBranchSelector({
   workspaceId,
   currentTargetBranch,
   workspaceDefaultBranch,
+  workspaceRemote = 'origin',
   variant = 'toolbar',
   disabled = false,
 }: TargetBranchSelectorProps) {
@@ -131,8 +137,8 @@ export function TargetBranchSelector({
   const { error: showError } = useToast();
   const updateSession = useAppStore((s) => s.updateSession);
 
-  const effectiveTarget = currentTargetBranch || `origin/${workspaceDefaultBranch}`;
-  const displayTarget = stripOriginPrefix(effectiveTarget);
+  const effectiveTarget = currentTargetBranch || `${workspaceRemote}/${workspaceDefaultBranch}`;
+  const displayTarget = stripRemotePrefix(effectiveTarget);
   const isDefault = !currentTargetBranch;
 
   const loadBranches = useCallback(async () => {
@@ -164,8 +170,8 @@ export function TargetBranchSelector({
 
   const handleSelect = useCallback(
     async (branchName: string) => {
-      // branchName is the remote branch name like "origin/develop"
-      const newTarget = branchName === `origin/${workspaceDefaultBranch}` ? '' : branchName;
+      // branchName is the remote branch name like "origin/develop" or "upstream/main"
+      const newTarget = branchName === `${workspaceRemote}/${workspaceDefaultBranch}` ? '' : branchName;
       setOpen(false);
       try {
         const updated = await apiUpdateSession(workspaceId, sessionId, {
@@ -176,7 +182,7 @@ export function TargetBranchSelector({
         showError('Failed to update target branch');
       }
     },
-    [workspaceId, sessionId, workspaceDefaultBranch, updateSession, showError],
+    [workspaceId, sessionId, workspaceDefaultBranch, workspaceRemote, updateSession, showError],
   );
 
   const pickerProps = {
@@ -186,6 +192,7 @@ export function TargetBranchSelector({
     onSearchChange: setSearch,
     effectiveTarget,
     workspaceDefaultBranch,
+    workspaceRemote,
     isDefault,
     onSelect: handleSelect,
   };
