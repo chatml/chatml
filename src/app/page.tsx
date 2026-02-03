@@ -1253,7 +1253,7 @@ export default function Home() {
               {/* Main content area with border + rounded corner */}
               <div className={cn(
                 "flex flex-col flex-1 min-h-0 border-t border-border/75 overflow-hidden",
-                !leftSidebarCollapsed && !zenMode && "border-l rounded-tl-lg shadow-[-2px_0_8px_rgba(0,0,0,0.1)]"
+                !leftSidebarCollapsed && !zenMode && "border-l rounded-tl-lg"
               )}>
               {/* Action bar — context-aware bar at top of main content */}
               <ContentActionBar />
