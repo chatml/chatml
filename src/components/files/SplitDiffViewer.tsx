@@ -144,7 +144,7 @@ export function SplitDiffViewer({
     <div className="h-full flex">
       {/* Left panel (old) */}
       <div className="flex-1 flex flex-col border-r border-border/50 min-w-0">
-        <div className="px-2 py-1 text-[10px] text-muted-foreground bg-muted/30 border-b shrink-0">
+        <div className="px-2 py-1 text-2xs text-muted-foreground bg-muted/30 border-b shrink-0">
           Original
         </div>
         <div
@@ -154,7 +154,7 @@ export function SplitDiffViewer({
         >
           <div className="flex min-h-full">
             {/* Line numbers */}
-            <div className="shrink-0 py-2 pl-2 pr-2 text-[11px] font-mono text-muted-foreground/50 text-right select-none border-r border-border/30 sticky left-0 bg-background">
+            <div className="shrink-0 py-2 pl-2 pr-2 text-xs font-mono text-muted-foreground/50 text-right select-none border-r border-border/30 sticky left-0 bg-background">
               {diffLines.map((line, i) => (
                 <div key={i} className="leading-[18px] h-[18px]">
                   {line.type !== 'added' ? line.oldLineNum : ''}
@@ -162,7 +162,7 @@ export function SplitDiffViewer({
               ))}
             </div>
             {/* Code */}
-            <div className="flex-1 py-2 pl-2 pr-4 text-[11px] font-mono overflow-x-auto">
+            <div className="flex-1 py-2 pl-2 pr-4 text-xs font-mono overflow-x-auto">
               {diffLines.map((line, i) => {
                 const isRemoved = line.type === 'removed';
                 const isAdded = line.type === 'added';
@@ -191,7 +191,7 @@ export function SplitDiffViewer({
 
       {/* Right panel (new) */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="px-2 py-1 text-[10px] text-muted-foreground bg-muted/30 border-b shrink-0">
+        <div className="px-2 py-1 text-2xs text-muted-foreground bg-muted/30 border-b shrink-0">
           Modified
         </div>
         <div
@@ -201,7 +201,7 @@ export function SplitDiffViewer({
         >
           <div className="flex min-h-full">
             {/* Line numbers */}
-            <div className="shrink-0 py-2 pl-2 pr-2 text-[11px] font-mono text-muted-foreground/50 text-right select-none border-r border-border/30 sticky left-0 bg-background">
+            <div className="shrink-0 py-2 pl-2 pr-2 text-xs font-mono text-muted-foreground/50 text-right select-none border-r border-border/30 sticky left-0 bg-background">
               {diffLines.map((line, i) => (
                 <div key={i} className="leading-[18px] h-[18px]">
                   {line.type !== 'removed' ? line.newLineNum : ''}
@@ -209,7 +209,7 @@ export function SplitDiffViewer({
               ))}
             </div>
             {/* Code */}
-            <div className="flex-1 py-2 pl-2 pr-4 text-[11px] font-mono overflow-x-auto">
+            <div className="flex-1 py-2 pl-2 pr-4 text-xs font-mono overflow-x-auto">
               {diffLines.map((line, i) => {
                 const isRemoved = line.type === 'removed';
                 const isAdded = line.type === 'added';

@@ -137,7 +137,7 @@ export function OnboardingScreen() {
               <Button
                 size="lg"
                 onClick={handleRetry}
-                className="h-12 w-full text-md bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+                className="h-12 w-full text-lg bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Try Again
@@ -151,7 +151,7 @@ export function OnboardingScreen() {
               <Button
                 size="lg"
                 disabled
-                className="h-12 w-full text-md bg-white/10 text-foreground border border-white/10 font-medium rounded-xl"
+                className="h-12 w-full text-lg bg-white/10 text-foreground border border-white/10 font-medium rounded-xl"
               >
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Waiting for GitHub...
@@ -215,7 +215,7 @@ export function OnboardingScreen() {
                           Cancel
                         </Button>
                       </div>
-                      <p className="text-[10px] text-muted-foreground/50">
+                      <p className="text-2xs text-muted-foreground/50">
                         Deep links don&apos;t work in dev mode. Copy the redirect URL from your browser.
                       </p>
                     </div>
@@ -230,7 +230,7 @@ export function OnboardingScreen() {
             <Button
               size="lg"
               onClick={handleSignIn}
-              className="h-12 w-full text-md bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+              className="h-12 w-full text-lg bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
             >
               <Github className="mr-2 h-5 w-5" />
               Sign in with GitHub

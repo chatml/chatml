@@ -163,8 +163,9 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
       }
     }
 
-    // Add tools
+    // Add tools (exclude any sub-agent tools that may have leaked into activeTools)
     for (const tool of tools) {
+      if (tool.agentId) continue;
       items.push({
         type: 'tool',
         id: tool.id,

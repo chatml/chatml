@@ -299,8 +299,11 @@ export class CommentZoneManager {
       this.inputZoneId = null;
     }
     if (this.inputRoot) {
-      this.inputRoot.unmount();
+      // Defer unmount to avoid "synchronously unmount a root while React was
+      // already rendering" warning in React 19 when called from useEffect.
+      const root = this.inputRoot;
       this.inputRoot = null;
+      setTimeout(() => root.unmount(), 0);
     }
     if (this.inputObserver) {
       this.inputObserver.disconnect();

@@ -187,7 +187,7 @@ const SortableBrowserTab = memo(function SortableBrowserTab({
           onMouseDown={handleMouseDown}
           className={cn(
             'group relative flex items-center justify-center px-3 cursor-pointer select-none',
-            'text-[13px] font-medium min-w-0 overflow-hidden h-7 my-auto rounded',
+            'text-sm font-medium min-w-0 overflow-hidden h-7 my-auto rounded',
             'transition-colors duration-100',
             isDragging && 'opacity-50 z-50',
             isActive

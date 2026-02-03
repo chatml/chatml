@@ -58,7 +58,7 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {activity.label} <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-[13px]">{activity.shortcut}</span>
+                {activity.label} <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">{activity.shortcut}</span>
               </TooltipContent>
             </Tooltip>
           );

@@ -21,7 +21,7 @@ export function formatRelativeTime(isoDate: string): string {
 
 export function SectionHeader({ label }: { label: string }) {
   return (
-    <div className="text-[10px] font-medium text-foreground/60 uppercase tracking-wider pt-1">
+    <div className="text-2xs font-medium text-foreground/60 uppercase tracking-wider pt-1">
       {label}
     </div>
   );
@@ -77,7 +77,7 @@ export function InfoRow({
       <div
         className={cn(
           'flex items-center text-right truncate min-w-0',
-          mono && 'font-mono text-[11px]',
+          mono && 'font-mono text-xs',
           className,
         )}
       >

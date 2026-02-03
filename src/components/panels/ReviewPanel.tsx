@@ -142,7 +142,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
         >
           All
           {counts.all > 0 && (
-            <span className="ml-1 text-2xs opacity-70">{counts.all}</span>
+            <span className="ml-1 text-xs opacity-70">{counts.all}</span>
           )}
         </Button>
         <Button
@@ -321,7 +321,7 @@ function ReviewCommentCard({
       </div>
 
       {/* Footer row */}
-      <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
         <div className="flex items-center gap-1 min-w-0">
           <FileCode className="h-3 w-3 shrink-0" />
           <span className="truncate" title={comment.filePath}>

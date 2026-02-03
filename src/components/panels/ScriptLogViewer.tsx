@@ -43,7 +43,7 @@ export function ScriptLogViewer({ lines, streaming = false, maxHeight = '200px' 
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="bg-background-subtle rounded-sm overflow-auto font-mono text-[11px] leading-relaxed p-2"
+        className="bg-background-subtle rounded-sm overflow-auto font-mono text-xs leading-relaxed p-2"
         style={{ maxHeight }}
       >
         {lines.map((line, i) => (

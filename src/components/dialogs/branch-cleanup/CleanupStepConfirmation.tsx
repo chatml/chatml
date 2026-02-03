@@ -93,12 +93,12 @@ export function CleanupStepConfirmation({
               <span className="font-mono truncate">{branch.name}</span>
               <div className="flex items-center gap-1 ml-auto shrink-0">
                 {branch.deleteLocal && (
-                  <span className="text-[10px] text-muted-foreground px-1 py-0.5 rounded bg-muted">
+                  <span className="text-2xs text-muted-foreground px-1 py-0.5 rounded bg-muted">
                     local
                   </span>
                 )}
                 {branch.deleteRemote && (
-                  <span className="text-[10px] text-red-400 px-1 py-0.5 rounded bg-red-500/10">
+                  <span className="text-2xs text-red-400 px-1 py-0.5 rounded bg-red-500/10">
                     remote
                   </span>
                 )}

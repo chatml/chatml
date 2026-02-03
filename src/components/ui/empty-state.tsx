@@ -84,7 +84,7 @@ export function EmptyState({
         {description && (
           <p className={cn(
             'text-muted-foreground mt-1',
-            size === 'sm' && 'text-[11px]',
+            size === 'sm' && 'text-xs',
             size === 'default' && 'text-xs',
             size === 'lg' && 'text-sm'
           )}>

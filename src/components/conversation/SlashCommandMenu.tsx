@@ -106,14 +106,14 @@ export function SlashCommandMenu({
         }}
       >
         {/* Header */}
-        <div className="px-2 py-1.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
           Commands
         </div>
 
         {groups.map(({ category, items }) => (
           <div key={category}>
             {/* Category heading */}
-            <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground/60">
+            <div className="px-2 py-1 text-xs font-medium text-muted-foreground/60">
               {category}
             </div>
 

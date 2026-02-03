@@ -88,7 +88,7 @@ function BranchPickerContent({
                     {stripOriginPrefix(branch.name)}
                   </span>
                   {isWorkspaceDefault && (
-                    <span className="text-[10px] text-muted-foreground mr-1">default</span>
+                    <span className="text-2xs text-muted-foreground mr-1">default</span>
                   )}
                   {isSelected && (
                     <Check className="h-3.5 w-3.5 text-muted-foreground" />
@@ -205,7 +205,7 @@ export function TargetBranchSelector({
                 <ArrowRight className="h-3 w-3" />
                 <span className="text-xs font-medium">{displayTarget}</span>
                 {isDefault && (
-                  <span className="text-[10px] text-muted-foreground/60">(default)</span>
+                  <span className="text-2xs text-muted-foreground/60">(default)</span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -237,7 +237,7 @@ export function TargetBranchSelector({
           <span className="text-muted-foreground text-xs shrink-0">Target</span>
           <span className="font-mono text-xs truncate">{displayTarget}</span>
           {isDefault && (
-            <span className="text-[10px] text-muted-foreground/60 shrink-0">(default)</span>
+            <span className="text-2xs text-muted-foreground/60 shrink-0">(default)</span>
           )}
         </button>
       </PopoverTrigger>

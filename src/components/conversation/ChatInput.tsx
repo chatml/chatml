@@ -1222,7 +1222,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 ) : (
                   <>
                     Approve
-                    <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">⌘⇧↵</kbd>
+                    <kbd className="px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘⇧↵</kbd>
                   </>
                 )}
               </Button>
@@ -1379,13 +1379,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           />
           {/* Cmd+L hint - hidden when focused */}
           {!isFocused && (
-            <div className="absolute top-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
+            <div className="absolute top-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">
               ⌘L to focus
             </div>
           )}
           {/* Tab hint when suggestion is visible */}
           {suggestion && (
-            <div className="absolute bottom-3 right-3 text-[11px] text-muted-foreground/50 pointer-events-none z-20">
+            <div className="absolute bottom-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">
               Tab to accept
             </div>
           )}
