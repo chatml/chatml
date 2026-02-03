@@ -1264,9 +1264,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         {isStreaming && !awaitingPlanApproval && (
           <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
         )}
-      {/* Intentional: hardcoded border color for specific visual weight */}
       <div className={cn(
-        'relative rounded-lg border border-[#434343] bg-input',
+        'relative rounded-lg border border-border bg-card dark:bg-input',
         isStreaming && !awaitingPlanApproval && 'border-transparent',
         awaitingPlanApproval && 'border-transparent',
         planModeEnabled && !isStreaming && 'border-transparent',
