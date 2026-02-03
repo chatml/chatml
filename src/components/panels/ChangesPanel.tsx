@@ -729,11 +729,13 @@ const SortableTabButton = memo(function SortableTabButton({
       style={style}
       {...attributes}
       {...listeners}
-      variant={isActive ? 'secondary' : 'ghost'}
+      variant="ghost"
       size="sm"
       className={cn(
         "h-6 text-xs px-2 gap-1 rounded-sm shrink-0 transition-none active:!scale-100",
-        !isActive && "text-muted-foreground",
+        isActive
+          ? "bg-surface-2 dark:bg-surface-2 text-foreground font-medium"
+          : "text-muted-foreground",
         isDragging && "bg-surface-2 shadow-md opacity-90"
       )}
       onClick={handleClick}
