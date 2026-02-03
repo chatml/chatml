@@ -370,7 +370,7 @@
 
 /* Heading styles — double class for specificity over prose-base defaults */
 .prose.prose h1 {
-  @apply font-semibold mt-5 mb-2;
+  @apply font-semibold mt-8 mb-2;
   font-size: var(--text-3xl);
   color: oklch(0.25 0.12 280);
 }
@@ -451,7 +451,7 @@
 
 /* Horizontal rule - tighter than prose default */
 .prose hr {
-  @apply my-3;
+  @apply my-5;
 }
 
 /* Better blockquote styling */
