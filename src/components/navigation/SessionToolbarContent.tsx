@@ -26,8 +26,6 @@ import {
   Eye,
   GitBranch,
   MoreVertical,
-  Play,
-  Square,
   Archive,
   Copy,
   Code,
@@ -323,15 +321,6 @@ export function SessionToolbarContent() {
             })()}
 
             <div className="w-1.5" />
-
-            <div className="w-px h-4 bg-border mx-1" />
-
-            <Button variant="ghost" size="icon" className="h-6 w-6" title="Resume Session">
-              <Play className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" title="Stop Agent">
-              <Square className="h-3.5 w-3.5" />
-            </Button>
 
             <div className="w-px h-4 bg-border mx-1" />
 
