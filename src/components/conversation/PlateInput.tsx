@@ -164,13 +164,13 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       <MentionItemsContext.Provider value={mentionContextValue}>
         <Plate editor={editor} onChange={handleChange}>
           <div ref={containerRef} onKeyDown={handleKeyDown}>
-            <EditorContainer variant="default" className="p-0">
+            <EditorContainer variant="default" className="p-0 rounded-none">
               <Editor
                 variant="none"
                 placeholder={placeholder}
                 disabled={disabled}
                 className={cn(
-                  'min-h-[100px] max-h-[200px] text-base',
+                  'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
                   disabled && 'opacity-50 cursor-not-allowed',
                   className
                 )}
