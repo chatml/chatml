@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+// import { Textarea } from '@/components/ui/textarea'; // Replaced by RichTextInput
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +41,9 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useSlashCommands } from '@/hooks/useSlashCommands';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { SummaryPicker } from './SummaryPicker';
+import { RichTextInput, type RichTextInputHandle } from './RichTextInput';
+import { FileMentionMenu } from './FileMentionMenu';
+import { useFileMentions, type FlatFile } from '@/hooks/useFileMentions';
 
 const MODELS = [
   { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
@@ -53,7 +56,8 @@ const THINKING_SUPPORTED_MODELS = new Set(
   MODELS.filter((m) => m.supportsThinking).map((m) => m.id)
 );
 
-// Common prompt patterns for suggestions
+// Common prompt patterns for suggestions - disabled with ghost text feature
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const COMMON_PATTERNS = [
   // Bug fixing & Debugging
   'Fix the bug in',
@@ -514,68 +518,50 @@ const COMMON_PATTERNS = [
   'Generate unique',
 ];
 
-// Get suggestion based on current input
-function getSuggestion(input: string, previousPrompts: string[]): string | null {
-  if (!input || input.length < 2) return null;
-
-  const lowerInput = input.toLowerCase();
-
-  // 1. Check if full input matches previous prompts (highest priority)
-  for (const prompt of previousPrompts) {
-    if (prompt.toLowerCase().startsWith(lowerInput) && prompt.length > input.length) {
-      return prompt.slice(input.length);
-    }
-  }
-
-  // 2. Check if full input matches common patterns
-  for (const pattern of COMMON_PATTERNS) {
-    if (pattern.toLowerCase().startsWith(lowerInput) && pattern.length > input.length) {
-      return pattern.slice(input.length);
-    }
-  }
-
-  // 3. Smart mid-sentence matching: check last N words against pattern starts
-  // Split by whitespace and get trailing portion
-  const words = input.split(/\s+/);
-  if (words.length >= 1) {
-    // Try matching from the last 1, 2, 3, 4, 5 words
-    for (let wordsToMatch = Math.min(5, words.length); wordsToMatch >= 1; wordsToMatch--) {
-      const lastWords = words.slice(-wordsToMatch).join(' ');
-      const lowerLastWords = lastWords.toLowerCase();
-
-      // Skip very short matches (less than 2 chars)
-      if (lowerLastWords.length < 2) continue;
-
-      // Check patterns that start with these last words
-      for (const pattern of COMMON_PATTERNS) {
-        const lowerPattern = pattern.toLowerCase();
-        if (lowerPattern.startsWith(lowerLastWords) && pattern.length > lastWords.length) {
-          // Return only the completion part
-          return pattern.slice(lastWords.length);
-        }
-      }
-    }
-  }
-
-  // 4. Check if input ends with a trigger word that commonly precedes patterns
-  const triggerEndings = [
-    { trigger: ' to ', patterns: ['add', 'fix', 'update', 'remove', 'create', 'implement', 'refactor'] },
-    { trigger: ' the ', patterns: ['bug', 'code', 'function', 'component', 'error', 'issue', 'test'] },
-    { trigger: ' a ', patterns: ['function', 'component', 'test', 'method', 'class', 'hook', 'button', 'form'] },
-    { trigger: ' for ', patterns: ['the', 'this', 'user', 'error', 'authentication', 'validation'] },
-    { trigger: ' with ', patterns: ['the', 'a', 'error', 'async', 'proper'] },
-    { trigger: ' in ', patterns: ['the', 'this', 'my'] },
-  ];
-
-  for (const { trigger, patterns } of triggerEndings) {
-    if (lowerInput.endsWith(trigger)) {
-      // Suggest the first common word that follows this trigger
-      return patterns[0];
-    }
-  }
-
-  return null;
-}
+// Ghost text suggestion feature disabled - not compatible with RichTextInput
+// Keeping the function and COMMON_PATTERNS for potential future re-implementation
+// function getSuggestion(input: string, previousPrompts: string[]): string | null {
+//   if (!input || input.length < 2) return null;
+//   const lowerInput = input.toLowerCase();
+//   for (const prompt of previousPrompts) {
+//     if (prompt.toLowerCase().startsWith(lowerInput) && prompt.length > input.length) {
+//       return prompt.slice(input.length);
+//     }
+//   }
+//   for (const pattern of COMMON_PATTERNS) {
+//     if (pattern.toLowerCase().startsWith(lowerInput) && pattern.length > input.length) {
+//       return pattern.slice(input.length);
+//     }
+//   }
+//   const words = input.split(/\s+/);
+//   if (words.length >= 1) {
+//     for (let wordsToMatch = Math.min(5, words.length); wordsToMatch >= 1; wordsToMatch--) {
+//       const lastWords = words.slice(-wordsToMatch).join(' ');
+//       const lowerLastWords = lastWords.toLowerCase();
+//       if (lowerLastWords.length < 2) continue;
+//       for (const pattern of COMMON_PATTERNS) {
+//         const lowerPattern = pattern.toLowerCase();
+//         if (lowerPattern.startsWith(lowerLastWords) && pattern.length > lastWords.length) {
+//           return pattern.slice(lastWords.length);
+//         }
+//       }
+//     }
+//   }
+//   const triggerEndings = [
+//     { trigger: ' to ', patterns: ['add', 'fix', 'update', 'remove', 'create', 'implement', 'refactor'] },
+//     { trigger: ' the ', patterns: ['bug', 'code', 'function', 'component', 'error', 'issue', 'test'] },
+//     { trigger: ' a ', patterns: ['function', 'component', 'test', 'method', 'class', 'hook', 'button', 'form'] },
+//     { trigger: ' for ', patterns: ['the', 'this', 'user', 'error', 'authentication', 'validation'] },
+//     { trigger: ' with ', patterns: ['the', 'a', 'error', 'async', 'proper'] },
+//     { trigger: ' in ', patterns: ['the', 'this', 'my'] },
+//   ];
+//   for (const { trigger, patterns } of triggerEndings) {
+//     if (lowerInput.endsWith(trigger)) {
+//       return patterns[0];
+//     }
+//   }
+//   return null;
+// }
 
 interface ChatInputProps {
   onMessageSubmit?: () => void;
@@ -598,13 +584,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [suggestion, setSuggestion] = useState<string | null>(null);
+  // Ghost text suggestion feature disabled - not compatible with RichTextInput
+  // const [suggestion, setSuggestion] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const ghostTextRef = useRef<HTMLSpanElement>(null);
+  // const textareaRef = useRef<HTMLTextAreaElement>(null); // Removed - replaced by RichTextInput
+  // const ghostTextRef = useRef<HTMLSpanElement>(null); // Removed - ghost text disabled
+  const richInputRef = useRef<RichTextInputHandle>(null);
 
   const {
     selectedConversationId,
@@ -623,6 +611,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   } = useAppStore();
   const { error: showError } = useToast();
 
+  // File mentions hook setup
+  const handleFileSelect = useCallback((file: FlatFile, triggerPos: number) => {
+    richInputRef.current?.insertFilePill(file, triggerPos);
+  }, []);
+
+  const fileMentions = useFileMentions({
+    workspaceId: selectedWorkspaceId,
+    sessionId: selectedSessionId,
+    onSelectFile: handleFileSelect,
+  });
+
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
 
@@ -638,21 +637,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId, currentConversationModel, defaultModel]);
 
-  // Get all messages for the current session to extract previous user prompts
-  const allMessages = useAppStore((s) => s.messages);
-  const sessionConversationIds = useMemo(
-    () => new Set(conversations.filter((c) => c.sessionId === selectedSessionId).map((c) => c.id)),
-    [conversations, selectedSessionId]
-  );
-  const previousPrompts = useMemo(() => {
-    // Get unique user messages from this session, most recent first
-    const userMessages = allMessages
-      .filter((m) => m.role === 'user' && sessionConversationIds.has(m.conversationId))
-      .map((m) => m.content)
-      .reverse();
-    // Deduplicate while preserving order
-    return [...new Set(userMessages)].slice(0, 50); // Keep last 50 unique prompts
-  }, [allMessages, sessionConversationIds]);
+  // Previous prompts calculation disabled - was used for ghost text suggestions
+  // const allMessages = useAppStore((s) => s.messages);
+  // const sessionConversationIds = useMemo(
+  //   () => new Set(conversations.filter((c) => c.sessionId === selectedSessionId).map((c) => c.id)),
+  //   [conversations, selectedSessionId]
+  // );
+  // const previousPrompts = useMemo(() => {
+  //   const userMessages = allMessages
+  //     .filter((m) => m.role === 'user' && sessionConversationIds.has(m.conversationId))
+  //     .map((m) => m.content)
+  //     .reverse();
+  //   return [...new Set(userMessages)].slice(0, 50);
+  // }, [allMessages, sessionConversationIds]);
 
   // Slash commands hook
   // Note: context object identity changes on conversation/session switch. This is fine
@@ -668,15 +665,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }), [selectedSessionId]),
   });
 
-  // Calculate suggestion when message changes (suppressed when slash menu is open)
-  useEffect(() => {
-    if (slashMenu.isOpen) {
-      setSuggestion(null);
-      return;
-    }
-    const newSuggestion = getSuggestion(message, previousPrompts);
-    setSuggestion(newSuggestion);
-  }, [message, previousPrompts, slashMenu.isOpen]);
+  // Ghost text suggestion calculation disabled - not compatible with RichTextInput
+  // useEffect(() => {
+  //   if (slashMenu.isOpen) {
+  //     setSuggestion(null);
+  //     return;
+  //   }
+  //   const newSuggestion = getSuggestion(message, previousPrompts);
+  //   setSuggestion(newSuggestion);
+  // }, [message, previousPrompts, slashMenu.isOpen]);
 
   // Check if currently streaming
   const isStreaming = selectedConversationId
@@ -691,27 +688,23 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
 
-  // Textarea auto-grow configuration
-  const TEXTAREA_LIMITS = {
-    minHeight: 80,                    // Normal min height
-    minHeightWithAttachments: 60,     // Smaller when attachments take space
-    maxHeight: 200,                   // Max before scrolling
-  };
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      const hasAttachments = attachments.length > 0;
-      const minH = hasAttachments ? TEXTAREA_LIMITS.minHeightWithAttachments : TEXTAREA_LIMITS.minHeight;
-
-      textareaRef.current.style.height = 'auto';
-      const newHeight = Math.max(minH, Math.min(textareaRef.current.scrollHeight, TEXTAREA_LIMITS.maxHeight));
-      textareaRef.current.style.height = `${newHeight}px`;
-
-      // Enable scrolling once at max height
-      textareaRef.current.style.overflowY =
-        textareaRef.current.scrollHeight > TEXTAREA_LIMITS.maxHeight ? 'auto' : 'hidden';
-    }
-  }, [message, attachments.length]);
+  // Textarea auto-grow disabled - RichTextInput handles its own sizing
+  // const TEXTAREA_LIMITS = {
+  //   minHeight: 80,
+  //   minHeightWithAttachments: 60,
+  //   maxHeight: 200,
+  // };
+  // useEffect(() => {
+  //   if (textareaRef.current) {
+  //     const hasAttachments = attachments.length > 0;
+  //     const minH = hasAttachments ? TEXTAREA_LIMITS.minHeightWithAttachments : TEXTAREA_LIMITS.minHeight;
+  //     textareaRef.current.style.height = 'auto';
+  //     const newHeight = Math.max(minH, Math.min(textareaRef.current.scrollHeight, TEXTAREA_LIMITS.maxHeight));
+  //     textareaRef.current.style.height = `${newHeight}px`;
+  //     textareaRef.current.style.overflowY =
+  //       textareaRef.current.scrollHeight > TEXTAREA_LIMITS.maxHeight ? 'auto' : 'hidden';
+  //   }
+  // }, [message, attachments.length]);
 
   // Handle file drop processing
   const handleFileDrop = useCallback(async (paths: string[]) => {
@@ -741,7 +734,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [showError]);
 
   // Handle clipboard paste (images)
-  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
@@ -966,7 +959,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       // Cmd+L to focus input
       if (e.code === 'KeyL' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        textareaRef.current?.focus();
+        richInputRef.current?.focus();
       }
       // Alt+T to toggle thinking mode (only if model supports it)
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
@@ -989,7 +982,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     };
 
     // Handle menu events from native Tauri menu
-    const handleFocusInput = () => textareaRef.current?.focus();
+    const handleFocusInput = () => richInputRef.current?.focus();
     const handleToggleThinking = () => {
       if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
         setThinkingEnabled(prev => !prev);
@@ -1010,11 +1003,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel.id]);
 
   const handleSubmit = async () => {
-    if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
+    const { text: content, mentionedFiles } = richInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
+    if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
-    const content = message.trim();
+    const trimmedContent = content.trim();
     const currentAttachments = [...attachments];
-    setMessage('');
+    richInputRef.current?.clear();
+    setMessage(''); // Keep for suggestion state sync
     // Don't clear attachments yet - wait until API call succeeds
     setIsSending(true);
 
@@ -1047,7 +1042,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const convType = currentConversation?.type || 'task';
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
-          message: content,
+          message: trimmedContent,
           // Pass selected model so agent uses the correct model
           model: selectedModel.id,
           // Pass plan mode so agent starts in plan mode if toggled on before first message
@@ -1084,7 +1079,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           id: crypto.randomUUID(),
           conversationId: conv.id,
           role: 'user',
-          content,
+          content: trimmedContent,
           attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
           timestamp: new Date().toISOString(),
         });
@@ -1100,7 +1095,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           id: crypto.randomUUID(),
           conversationId: selectedConversationId,
           role: 'user',
-          content,
+          content: trimmedContent,
           attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
           timestamp: new Date().toISOString(),
         });
@@ -1113,9 +1108,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const modelChanged = selectedModel.id !== currentConversation?.model;
         await sendConversationMessage(
           selectedConversationId,
-          content,
+          trimmedContent,
           loadedAttachments.length > 0 ? loadedAttachments : undefined,
-          modelChanged ? selectedModel.id : undefined
+          modelChanged ? selectedModel.id : undefined,
+          mentionedFiles.length > 0 ? mentionedFiles : undefined
         );
       }
 
@@ -1160,13 +1156,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       if (consumed) return;
     }
 
-    // Tab to accept suggestion
-    if (e.key === 'Tab' && suggestion && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      setMessage(message + suggestion);
-      setSuggestion(null);
-      return;
-    }
     // ⌘⇧↵ to approve plan
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && awaitingPlanApproval) {
       e.preventDefault();
@@ -1178,12 +1167,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       e.preventDefault();
       handleSubmit();
     }
-    // Escape to dismiss suggestion
-    if (e.key === 'Escape' && suggestion) {
-      e.preventDefault();
-      setSuggestion(null);
-    }
-  };
+    };
 
   // If there's a pending question, show the question UI instead of the normal input
   if (pendingQuestion && selectedConversationId) {
@@ -1319,73 +1303,43 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onHover={slashMenu.setSelectedIndex}
             onDismiss={slashMenu.dismiss}
           />
+          <FileMentionMenu
+            isOpen={fileMentions.isOpen}
+            files={fileMentions.files}
+            selectedIndex={fileMentions.selectedIndex}
+            query={fileMentions.query}
+            isLoading={fileMentions.isLoading}
+            onSelect={fileMentions.selectFile}
+            onHover={fileMentions.setSelectedIndex}
+            onDismiss={fileMentions.dismiss}
+          />
         </div>
 
-        {/* Text Input with Cmd+L hint and ghost text */}
-        <div className="relative">
-          {/* Ghost text overlay - must match textarea styling exactly for proper wrapping */}
-          <div
-            className="absolute inset-0 px-3 py-2 pointer-events-none overflow-hidden text-base md:text-sm"
-            aria-hidden="true"
-            style={{
-              // Match textarea's default line-height and font
-              lineHeight: '1.5',
-              fontFamily: 'inherit',
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
+        {/* Text Input with Cmd+L hint */}
+        <div className="relative px-3 py-2">
+          <RichTextInput
+            ref={richInputRef}
+            placeholder={isStreaming ? "Agent is working..." : "Describe your task, @ to reference files, / for skills and commands"}
+            disabled={!selectedSessionId || isSending || isStreaming}
+            className="bg-transparent dark:bg-transparent relative z-10"
+            onInput={(text, cursorPos) => {
+              setMessage(text); // Keep message state for suggestion logic
+              fileMentions.handleTextChange(text, cursorPos);
+              slashMenu.handleInputChange(text, cursorPos);
             }}
-          >
-            <span className="whitespace-pre-wrap">
-              {/* Invisible text matching user input to position the suggestion */}
-              <span className="invisible">{message}</span>
-              {/* Ghost suggestion text */}
-              {suggestion && (
-                <span
-                  ref={ghostTextRef}
-                  className="text-muted-foreground/40"
-                >
-                  {suggestion}
-                </span>
-              )}
-            </span>
-          </div>
-          <Textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => {
-              const value = e.target.value;
-              const pos = e.target.selectionStart ?? value.length;
-              setMessage(value);
-              slashMenu.handleInputChange(value, pos);
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onClick={() => {
-              const pos = textareaRef.current?.selectionStart ?? 0;
-              slashMenu.handleInputChange(message, pos);
+            onKeyDown={(e) => {
+              if (fileMentions.handleKeyDown(e)) return;
+              if (slashMenu.handleKeyDown(e as unknown as React.KeyboardEvent<HTMLTextAreaElement>)) return;
+              handleKeyDown(e as unknown as React.KeyboardEvent<HTMLTextAreaElement>);
             }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder={isStreaming ? "Agent is working..." : "Describe your task, @ to reference files, / for skills and commands"}
-            className={cn(
-              'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
-              'bg-transparent dark:bg-transparent',
-              'placeholder:text-muted-foreground/60',
-              // Make textarea background transparent to show ghost text
-              'relative z-10'
-            )}
-            disabled={!selectedSessionId || isSending || isStreaming}
+            onPaste={handlePaste}
           />
           {/* Cmd+L hint - hidden when focused */}
           {!isFocused && (
             <div className="absolute top-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">
               ⌘L to focus
-            </div>
-          )}
-          {/* Tab hint when suggestion is visible */}
-          {suggestion && (
-            <div className="absolute bottom-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">
-              Tab to accept
             </div>
           )}
         </div>
