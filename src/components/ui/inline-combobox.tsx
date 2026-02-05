@@ -257,6 +257,9 @@ const InlineComboboxInput = ({
           )}
           value={value}
           autoSelect
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           {...inputProps}
           {...props}
         />
