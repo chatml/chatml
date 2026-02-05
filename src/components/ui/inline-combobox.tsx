@@ -285,6 +285,11 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
 
     if (!items.length) return;
 
+    // Stop Enter from propagating to parent (prevents form submit)
+    if (event.key === 'Enter') {
+      event.stopPropagation();
+    }
+
     const currentIndex = items.findIndex((item) => item.id === activeId);
 
     if (event.key === 'ArrowUp' && currentIndex <= 0) {
