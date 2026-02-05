@@ -269,7 +269,7 @@ const InlineComboboxInput = ({
 
       <span className="relative min-h-[1lh]">
         <span
-          className="invisible overflow-hidden text-nowrap"
+          className="invisible text-nowrap"
           aria-hidden="true"
         >
           {value || '\u200B'}

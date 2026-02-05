@@ -112,10 +112,9 @@ export function MentionInputElement(
         value={search}
         element={element}
         setValue={setSearch}
-        showTrigger={false}
+        showTrigger={true}
         trigger="@"
       >
-        <span className="text-primary">@</span>
         <InlineComboboxInput />
 
         <InlineComboboxContent className="my-1.5">
