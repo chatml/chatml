@@ -52,10 +52,13 @@ interface FlatFile {
   directory: string;
 }
 
-// Helper to flatten file tree for mentions
+// Helper to flatten file tree for mentions (excludes hidden directories)
 function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFile[] {
   const result: FlatFile[] = [];
   for (const node of nodes) {
+    // Skip hidden files and directories (starting with .)
+    if (node.name.startsWith('.')) continue;
+
     if (node.isDir) {
       if (node.children) {
         result.push(...flattenFileTree(node.children, node.path));
