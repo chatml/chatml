@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { forwardRef, useImperativeHandle, useCallback, useRef, useEffect } from 'react';
+import { forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
 
 import type { Value } from 'platejs';
 
@@ -26,7 +26,6 @@ export interface PlateInputHandle {
 
 interface PlateInputProps {
   placeholder?: string;
-  disabled?: boolean;
   className?: string;
   mentionItems?: MentionItem[];
   mentionItemsLoading?: boolean;
@@ -85,7 +84,6 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
   function PlateInput(
     {
       placeholder,
-      disabled,
       className,
       mentionItems = [],
       mentionItemsLoading = false,
@@ -112,18 +110,6 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       value: emptyValue,
     });
 
-    // Track previous disabled state to detect when editor becomes enabled
-    const prevDisabledRef = useRef(disabled);
-    useEffect(() => {
-      // When editor becomes enabled (disabled: true -> false), refocus it
-      if (prevDisabledRef.current && !disabled) {
-        setTimeout(() => {
-          editor.tf.focus();
-        }, 0);
-      }
-      prevDisabledRef.current = disabled;
-    }, [disabled, editor]);
-
     // Track changes and notify parent
     const handleChange = useCallback(
       ({ value }: { value: Value }) => {
@@ -136,18 +122,11 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
     // Expose imperative handle
     useImperativeHandle(ref, () => ({
       focus: () => {
-        // Focus the editor
-        if (containerRef.current) {
-          const editorEl = containerRef.current.querySelector('[data-slate-editor]') as HTMLElement;
-          editorEl?.focus();
-        }
+        editor.tf.focus();
       },
       clear: () => {
         editor.tf.reset();
-        // Re-focus after reset to keep editor usable
-        setTimeout(() => {
-          editor.tf.focus();
-        }, 0);
+        editor.tf.focus();
       },
       getText: () => {
         return extractText(editor.children);
@@ -184,10 +163,9 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
               <Editor
                 variant="none"
                 placeholder={placeholder}
-                disabled={disabled}
                 className={cn(
                   'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
-                  disabled && 'opacity-50 cursor-not-allowed',
+                  'caret-foreground [&_[data-slate-editor]]:min-h-[1lh]',
                   className
                 )}
                 onFocus={onFocus}

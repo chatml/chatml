@@ -1199,6 +1199,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Check if event originated from a combobox input (mention selection in progress)
+    // If so, don't handle Enter as submit - let the combobox handle item selection
+    const target = e.target as HTMLElement;
+    if (target.closest('[role="combobox"]')) {
+      return;
+    }
+
     // Slash command menu takes priority when open
     if (slashMenu.isOpen) {
       const consumed = slashMenu.handleKeyDown(e);
@@ -1216,7 +1223,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       e.preventDefault();
       handleSubmit();
     }
-    };
+  };
 
   // If there's a pending question, show the question UI instead of the normal input
   if (pendingQuestion && selectedConversationId) {
@@ -1358,8 +1365,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         <div className="relative px-3 py-2">
           <PlateInput
             ref={plateInputRef}
-            placeholder={isStreaming ? "Agent is working..." : "Describe your task, @ to reference files, / for skills and commands"}
-            disabled={!selectedSessionId || isSending || isStreaming}
+            placeholder="Describe your task, @ to reference files, / for skills and commands"
             className="bg-transparent dark:bg-transparent relative z-10"
             mentionItems={mentionItems}
             mentionItemsLoading={mentionItemsLoading}
