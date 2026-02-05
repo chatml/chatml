@@ -164,9 +164,9 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       <MentionItemsContext.Provider value={mentionContextValue}>
         <Plate editor={editor} onChange={handleChange}>
           <div ref={containerRef} onKeyDown={handleKeyDown}>
-            <EditorContainer variant="comment">
+            <EditorContainer variant="default" className="p-0">
               <Editor
-                variant="aiChat"
+                variant="none"
                 placeholder={placeholder}
                 disabled={disabled}
                 className={cn(
