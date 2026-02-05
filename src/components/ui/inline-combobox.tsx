@@ -91,6 +91,7 @@ const InlineCombobox = ({
 
   // Check if current user is the creator of this element (for Yjs collaboration)
   const isCreator = React.useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- userId is dynamically added by Yjs
     const elementUserId = (element as any).userId;
     const currentUserId = editor.meta.userId;
 
