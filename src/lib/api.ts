@@ -1005,12 +1005,13 @@ export async function sendConversationMessage(
   convId: string,
   content: string,
   attachments?: AttachmentDTO[],
-  model?: string
+  model?: string,
+  mentionedFiles?: string[]
 ): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, attachments, model }),
+    body: JSON.stringify({ content, attachments, model, mentionedFiles }),
   });
   if (!res.ok) {
     const text = await res.text();
