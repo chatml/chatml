@@ -278,7 +278,7 @@ const InlineComboboxInput = ({
         <Combobox
           ref={ref}
           className={cn(
-            'absolute top-0 left-0 size-full bg-transparent outline-none',
+            'absolute top-0 left-0 size-full bg-transparent outline-none caret-foreground',
             className
           )}
           value={value}
