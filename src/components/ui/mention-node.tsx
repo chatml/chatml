@@ -115,9 +115,8 @@ export function MentionInputElement(
         showTrigger={false}
         trigger="@"
       >
-        <span className="inline-flex items-center rounded-md bg-muted mx-0.5 px-1.5 -my-px align-middle leading-none text-sm">
-          <InlineComboboxInput />
-        </span>
+        <span className="text-primary">@</span>
+        <InlineComboboxInput />
 
         <InlineComboboxContent className="my-1.5">
           <InlineComboboxEmpty>
