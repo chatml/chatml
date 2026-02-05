@@ -214,6 +214,7 @@ const InlineCombobox = ({
 const InlineComboboxInput = ({
   className,
   ref: propRef,
+  onKeyDown: onKeyDownProp,
   ...props
 }: React.HTMLAttributes<HTMLInputElement> & {
   ref?: React.RefObject<HTMLInputElement | null>;
@@ -229,6 +230,20 @@ const InlineComboboxInput = ({
   const value = store.useState('value');
 
   const ref = useComposedRef(propRef, contextRef);
+
+  // Handle keyboard events - stop Enter/Tab from propagating to prevent form submit
+  const handleKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.stopPropagation();
+      }
+      // Call the inputProps onKeyDown if it exists (uses native event type)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (inputProps as any).onKeyDown?.(event.nativeEvent);
+      onKeyDownProp?.(event);
+    },
+    [inputProps, onKeyDownProp]
+  );
 
   /**
    * To create an auto-resizing input, we render a visually hidden span
@@ -262,6 +277,7 @@ const InlineComboboxInput = ({
           spellCheck={false}
           {...inputProps}
           {...props}
+          onKeyDown={handleKeyDown}
         />
       </span>
     </>
@@ -284,11 +300,6 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
     const { items, activeId } = state;
 
     if (!items.length) return;
-
-    // Stop Enter from propagating to parent (prevents form submit)
-    if (event.key === 'Enter') {
-      event.stopPropagation();
-    }
 
     const currentIndex = items.findIndex((item) => item.id === activeId);
 
