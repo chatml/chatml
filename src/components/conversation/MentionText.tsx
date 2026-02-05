@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@/lib/utils';
 import { FileIcon } from '@/components/files/FileTree';
 
 interface MentionTextProps {
@@ -9,8 +8,8 @@ interface MentionTextProps {
   className?: string;
 }
 
-// Regex to match @filepath mentions (supports paths with slashes, dots, hyphens, underscores)
-const MENTION_REGEX = /@([\w./-]+)/g;
+// Regex pattern to match @filepath mentions (supports paths with slashes, dots, hyphens, underscores)
+const MENTION_PATTERN = /@([\w./-]+)/g;
 
 /**
  * Renders text content with @mentions styled as pills.
@@ -22,10 +21,10 @@ export function MentionText({ content, className }: MentionTextProps) {
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 
-    // Reset regex state
-    MENTION_REGEX.lastIndex = 0;
+    // Create new regex instance to avoid shared state issues
+    const regex = new RegExp(MENTION_PATTERN.source, MENTION_PATTERN.flags);
 
-    while ((match = MENTION_REGEX.exec(content)) !== null) {
+    while ((match = regex.exec(content)) !== null) {
       // Add text before the mention
       if (match.index > lastIndex) {
         result.push(content.slice(lastIndex, match.index));

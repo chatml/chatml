@@ -40,6 +40,7 @@ interface PlateInputProps {
 function extractText(value: Value): string {
   let text = '';
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
   const processNode = (node: any) => {
     if (node.text !== undefined) {
       text += node.text;
@@ -66,6 +67,7 @@ function extractText(value: Value): string {
 function extractMentionedFiles(value: Value): string[] {
   const files: string[] = [];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Plate nodes have dynamic structure
   const processNode = (node: any) => {
     if (node.type === 'mention' && node.value) {
       files.push(node.value);
