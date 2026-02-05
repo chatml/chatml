@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 
+const MAX_FILE_RESULTS = 50;
+
 // Flat file for search results
 export interface FlatFile {
   path: string;
@@ -70,7 +72,7 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 
 // Filter files by query
 function filterFiles(files: FlatFile[], query: string): FlatFile[] {
-  if (!query) return files.slice(0, 50); // Limit initial display
+  if (!query) return files.slice(0, MAX_FILE_RESULTS); // Limit initial display
 
   const lowerQuery = query.toLowerCase();
 
@@ -80,7 +82,7 @@ function filterFiles(files: FlatFile[], query: string): FlatFile[] {
       const lowerName = f.name.toLowerCase();
       return lowerName.includes(lowerQuery) || lowerPath.includes(lowerQuery);
     })
-    .slice(0, 50);
+    .slice(0, MAX_FILE_RESULTS);
 }
 
 export interface UseFileMentionsReturn {
@@ -116,6 +118,7 @@ export function useFileMentions({
   const [isLoading, setIsLoading] = useState(false);
   const triggerPosRef = useRef(-1);
   const cachedSessionRef = useRef<string | null>(null);
+  const hasLoadedFilesRef = useRef(false);
 
   const filteredFiles = useMemo(
     () => filterFiles(allFiles, query),
@@ -124,7 +127,7 @@ export function useFileMentions({
 
   const loadFiles = useCallback(async () => {
     if (!workspaceId || !sessionId) return;
-    if (cachedSessionRef.current === sessionId && allFiles.length > 0) return;
+    if (cachedSessionRef.current === sessionId && hasLoadedFilesRef.current) return;
 
     setIsLoading(true);
     try {
@@ -132,13 +135,15 @@ export function useFileMentions({
       const flat = flattenFileTree(data);
       setAllFiles(flat);
       cachedSessionRef.current = sessionId;
+      hasLoadedFilesRef.current = true;
     } catch (err) {
       console.error('Failed to load files for mentions:', err);
       setAllFiles([]);
+      hasLoadedFilesRef.current = false;
     } finally {
       setIsLoading(false);
     }
-  }, [workspaceId, sessionId, allFiles.length]);
+  }, [workspaceId, sessionId]);
 
   const dismiss = useCallback(() => {
     setIsOpen(false);
@@ -167,14 +172,12 @@ export function useFileMentions({
         triggerPosRef.current = trigger.triggerPos;
         setQuery(trigger.query);
         setIsOpen(true);
-        setSelectedIndex((prev) =>
-          prev >= filterFiles(allFiles, trigger.query).length ? 0 : prev
-        );
+        setSelectedIndex(0);
       } else {
         if (isOpen) dismiss();
       }
     },
-    [isOpen, dismiss, loadFiles, allFiles]
+    [isOpen, dismiss, loadFiles]
   );
 
   const handleKeyDown = useCallback(
