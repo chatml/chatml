@@ -177,12 +177,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Slash commands hook
   // Note: context object identity changes on conversation/session switch. This is fine
   // because context is only consumed inside executeCommand callbacks, not in effects/memos.
+  const setInputText = useCallback((text: string) => {
+    setMessage(text); // Update React state for submit button
+    plateInputRef.current?.setText(text); // Update Plate editor content
+  }, []);
+
   const slashMenu = useSlashCommands({
     context: useMemo(() => ({
-      setMessage,
+      setMessage: setInputText,
       conversationId: selectedConversationId,
       sessionId: selectedSessionId,
-    }), [selectedConversationId, selectedSessionId]),
+    }), [setInputText, selectedConversationId, selectedSessionId]),
     availability: useMemo(() => ({
       hasSession: selectedSessionId !== null,
     }), [selectedSessionId]),

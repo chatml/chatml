@@ -22,6 +22,7 @@ export interface PlateInputHandle {
   clear: () => void;
   getText: () => string;
   getContent: () => { text: string; mentionedFiles: string[] };
+  setText: (text: string) => void;
 }
 
 interface PlateInputProps {
@@ -134,6 +135,12 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
           text: extractText(editor.children),
           mentionedFiles: extractMentionedFiles(editor.children),
         };
+      },
+      setText: (text: string) => {
+        // Set editor content to a paragraph with the given text
+        editor.tf.setValue([{ type: 'p', children: [{ text }] }]);
+        // Move cursor to end
+        editor.tf.focus({ edge: 'end' });
       },
     }));
 
