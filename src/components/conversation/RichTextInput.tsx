@@ -6,6 +6,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useState,
+  useEffect,
 } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -46,17 +47,63 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
     const isComposingRef = useRef(false);
     const [isEmpty, setIsEmpty] = useState(true);
 
-    // Get current cursor position
+    // Initialize with <br> so caret has somewhere to position when empty
+    useEffect(() => {
+      if (editorRef.current && editorRef.current.innerHTML === '') {
+        editorRef.current.innerHTML = '<br>';
+      }
+    }, []);
+
+    // Get current cursor position (accounting for pill text representation)
     const getCursorPosition = useCallback((): number => {
       const selection = window.getSelection();
       if (!selection || !selection.rangeCount || !editorRef.current) return 0;
 
       const range = selection.getRangeAt(0);
-      const preCaretRange = range.cloneRange();
-      preCaretRange.selectNodeContents(editorRef.current);
-      preCaretRange.setEnd(range.startContainer, range.startOffset);
+      const editor = editorRef.current;
 
-      return preCaretRange.toString().length;
+      let position = 0;
+
+      // Walk through all nodes before the cursor
+      const walker = document.createTreeWalker(
+        editor,
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+        null
+      );
+
+      let node: Node | null = walker.nextNode();
+      while (node) {
+        // Check if we've reached or passed the cursor position
+        if (node === range.startContainer) {
+          // For text nodes, add the offset within the node
+          if (node.nodeType === Node.TEXT_NODE) {
+            position += range.startOffset;
+          }
+          break;
+        }
+
+        // Check if cursor is inside this element (for pills)
+        if (node.nodeType === Node.ELEMENT_NODE && node.contains(range.startContainer)) {
+          // Cursor is inside this element, count its full text representation
+          const el = node as HTMLElement;
+          if (el.dataset.mentionPath) {
+            position += `@${el.dataset.mentionPath}`.length;
+          }
+          break;
+        }
+
+        // Count this node's contribution to text length
+        if (node.nodeType === Node.TEXT_NODE) {
+          position += node.textContent?.length || 0;
+        } else if (node instanceof HTMLElement && node.dataset.mentionPath) {
+          // Pills contribute their @path text length
+          position += `@${node.dataset.mentionPath}`.length;
+        }
+
+        node = walker.nextNode();
+      }
+
+      return position;
     }, []);
 
     // Extract content from DOM
@@ -95,10 +142,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
       return getContent().text;
     }, [getContent]);
 
-    // Clear the editor
+    // Clear the editor - leave a <br> so caret has somewhere to position
     const clear = useCallback(() => {
       if (editorRef.current) {
-        editorRef.current.innerHTML = '';
+        editorRef.current.innerHTML = '<br>';
         setIsEmpty(true);
       }
     }, []);
@@ -277,6 +324,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
           className={cn(
             'outline-none min-h-[100px] max-h-[200px] overflow-y-auto',
             'whitespace-pre-wrap break-words',
+            'caret-foreground',
             disabled && 'opacity-50 cursor-not-allowed',
             className
           )}
