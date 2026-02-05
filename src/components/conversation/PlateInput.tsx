@@ -131,7 +131,11 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
         }
       },
       clear: () => {
-        editor.tf.setValue(emptyValue);
+        editor.tf.reset();
+        // Re-focus after reset to keep editor usable
+        setTimeout(() => {
+          editor.tf.focus();
+        }, 0);
       },
       getText: () => {
         return extractText(editor.children);
