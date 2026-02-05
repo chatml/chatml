@@ -115,7 +115,7 @@ export function MentionInputElement(
         showTrigger={false}
         trigger="@"
       >
-        <span className="inline-block rounded-md bg-muted mx-0.5 px-1.5 py-0.5 align-baseline text-sm">
+        <span className="inline-flex items-center rounded-md bg-muted mx-0.5 px-1.5 -my-px align-middle leading-none text-sm">
           <InlineComboboxInput />
         </span>
 
