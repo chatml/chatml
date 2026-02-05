@@ -237,12 +237,23 @@ const InlineComboboxInput = ({
       if (event.key === 'Enter' || event.key === 'Tab') {
         event.stopPropagation();
       }
+      // Tab should also select the active item (like Enter)
+      if (event.key === 'Tab') {
+        const activeId = store.getState().activeId;
+        if (activeId) {
+          event.preventDefault();
+          // Find and click the active item to trigger selection
+          const activeItem = document.querySelector(`[data-active-item="true"]`) as HTMLElement;
+          activeItem?.click();
+          return;
+        }
+      }
       // Call the inputProps onKeyDown if it exists (uses native event type)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (inputProps as any).onKeyDown?.(event.nativeEvent);
       onKeyDownProp?.(event);
     },
-    [inputProps, onKeyDownProp]
+    [inputProps, onKeyDownProp, store]
   );
 
   /**
