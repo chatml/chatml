@@ -220,6 +220,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 
 	// Spawn the Node agent runner
+	fmt.Printf("[agent/process] Starting agent with args: %v\n", args)
 	cmd := exec.CommandContext(ctx, "node", args...)
 	cmd.Dir = opts.Workdir
 

@@ -126,6 +126,10 @@ const betas = betasArg ? betasArg.split(',').map(s => s.trim()) as ("context-1m-
 const model = getArg("--model");
 const fallbackModel = getArg("--fallback-model");
 
+// Task 9: Debug Options (SDK v0.2.30+)
+const sdkDebug = hasFlag("--sdk-debug");
+const sdkDebugFile = getArg("--sdk-debug-file");
+
 // Instructions (e.g., from conversation summaries)
 import { readFileSync } from "fs";
 let instructions: string | undefined;
@@ -958,6 +962,7 @@ async function main(): Promise<void> {
     cwd,
     resuming: !!resumeSessionId,
     forking: forkSession,
+    model: model || "(default)",
   });
 
   // Set up the event-driven input queue
@@ -1056,8 +1061,9 @@ async function main(): Promise<void> {
         // Resume a previous session if requested (first turn loads its state)
         resume: resumeSessionId,
         forkSession,
-        // Pass through DEBUG_CLAUDE_AGENT_SDK if set in environment
-        ...(process.env.DEBUG_CLAUDE_AGENT_SDK ? { env: { ...process.env, DEBUG_CLAUDE_AGENT_SDK: process.env.DEBUG_CLAUDE_AGENT_SDK } } : {}),
+        // Debug options (SDK v0.2.30+)
+        debug: sdkDebug || !!process.env.DEBUG_CLAUDE_AGENT_SDK,
+        debugFile: sdkDebugFile,
         stderr: (data: string) => {
           console.error(`[CLI stderr] ${data.trimEnd()}`);
           emit({ type: "agent_stderr", data });
@@ -1332,6 +1338,7 @@ function handleMessage(message: SDKMessage): void {
           success: true,
           subtype: "success",
           summary: resultMsg.result,
+          stopReason: resultMsg.stop_reason,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,
           durationMs: resultMsg.duration_ms,
@@ -1359,6 +1366,7 @@ function handleMessage(message: SDKMessage): void {
           type: "result",
           success: false,
           subtype: resultMsg.subtype,
+          stopReason: resultMsg.stop_reason,
           errors: resultErrors,
           cost: resultMsg.total_cost_usd,
           turns: resultMsg.num_turns,

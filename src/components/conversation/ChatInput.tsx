@@ -71,9 +71,9 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 const MODELS = [
-  { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
-  { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', icon: Snowflake, supportsThinking: true },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', icon: Snowflake, supportsThinking: false },
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', icon: Snowflake, supportsThinking: true, badge: 'NEW' as const },
+  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', icon: Snowflake, supportsThinking: true },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', icon: Snowflake, supportsThinking: true },
 ];
 
 // Models that support extended thinking mode (derived from MODELS)
@@ -766,6 +766,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 >
                   <model.icon className="size-3.5" />
                   {model.name}
+                  {'badge' in model && model.badge && (
+                    <span className="ml-1.5 rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
+                      {model.badge}
+                    </span>
+                  )}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
