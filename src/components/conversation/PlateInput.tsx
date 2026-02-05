@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
+import { forwardRef, useImperativeHandle, useCallback } from 'react';
 
 import type { Value } from 'platejs';
 
@@ -94,8 +94,6 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
     },
     ref
   ) {
-    const containerRef = useRef<HTMLDivElement>(null);
-
     const editor = usePlateEditor({
       plugins: [
         MentionPlugin.configure({
@@ -158,7 +156,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
     return (
       <MentionItemsContext.Provider value={mentionContextValue}>
         <Plate editor={editor} onChange={handleChange}>
-          <div ref={containerRef} onKeyDown={handleKeyDown}>
+          <div onKeyDown={handleKeyDown}>
             <EditorContainer variant="default" className="p-0 rounded-none">
               <Editor
                 variant="none"
