@@ -13,9 +13,8 @@ import {
   useReadOnly,
   useSelected,
 } from 'platejs/react';
-import { FileText } from 'lucide-react';
-
 import { cn } from '@/lib/utils';
+import { FileIcon } from '@/components/files/FileTree';
 import { useMounted } from '@/hooks/use-mounted';
 
 import {
@@ -128,7 +127,7 @@ export function MentionInputElement(
                 onClick={() => onSelectItem(editor, item, search)}
                 className="gap-2"
               >
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <FileIcon filename={item.text} />
                 <span className="truncate">{item.text}</span>
               </InlineComboboxItem>
             ))}
