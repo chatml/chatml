@@ -549,10 +549,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Check if event originated from a combobox input (mention selection in progress)
-    // If so, don't handle Enter as submit - let the combobox handle item selection
-    const target = e.target as HTMLElement;
-    if (target.closest('[role="combobox"]')) {
+    // Check if a combobox is active (mention selection in progress)
+    // Check both: focused combobox input OR visible combobox popover (listbox)
+    const activeElement = document.activeElement as HTMLElement | null;
+    const isInCombobox = activeElement?.closest('[role="combobox"]');
+    const hasOpenPopover = document.querySelector('[role="listbox"]');
+    if ((isInCombobox || hasOpenPopover) && (e.key === 'Enter' || e.key === 'Tab')) {
+      // Let the combobox handle item selection
       return;
     }
 
