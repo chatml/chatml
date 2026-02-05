@@ -94,6 +94,13 @@ type StartConversationOptions struct {
 
 // StartConversation creates and starts a new conversation within a session
 func (m *Manager) StartConversation(ctx context.Context, sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
+	// Debug: log model being requested
+	if opts != nil && opts.Model != "" {
+		fmt.Printf("[agent/manager] StartConversation: model=%s\n", opts.Model)
+	} else {
+		fmt.Printf("[agent/manager] StartConversation: no model specified\n")
+	}
+
 	sessionWithWs, err := m.store.GetSessionWithWorkspace(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
@@ -666,6 +673,10 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			restartOpts.ConversationID = convID
 		}
 		restartOpts.Workdir = session.WorktreePath
+		// Restore model from conversation record if not already set
+		if restartOpts.Model == "" && conv.Model != "" {
+			restartOpts.Model = conv.Model
+		}
 		// Clear instructions: the temp file has been cleaned up and the content is not
 		// preserved. This is acceptable because --resume carries the SDK's full context
 		// (including original instructions). If the session ID is also unavailable

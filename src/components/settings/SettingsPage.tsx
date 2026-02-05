@@ -255,13 +255,13 @@ function ChatSettings() {
       <SettingsRow title="Default model" description="Model for new chats">
         <div className="flex gap-2">
           <Select value={defaultModel} onValueChange={setDefaultModel}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="claude-opus-4-5-20251101">Opus 4.5</SelectItem>
-              <SelectItem value="claude-sonnet-4-20250514">Sonnet 4</SelectItem>
-              <SelectItem value="claude-haiku-4-5-20251001">Haiku 4.5</SelectItem>
+              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
+              <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
+              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
             </SelectContent>
           </Select>
           <Select
@@ -282,13 +282,13 @@ function ChatSettings() {
       <SettingsRow title="Review model" description="Model for code reviews">
         <div className="flex gap-2">
           <Select value={reviewModel} onValueChange={setReviewModel}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="claude-opus-4-5-20251101">Opus 4.5</SelectItem>
-              <SelectItem value="claude-sonnet-4-20250514">Sonnet 4</SelectItem>
-              <SelectItem value="claude-haiku-4-5-20251001">Haiku 4.5</SelectItem>
+              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
+              <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
+              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
             </SelectContent>
           </Select>
         </div>

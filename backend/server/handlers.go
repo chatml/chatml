@@ -3113,17 +3113,6 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, convs)
 }
 
-// validModels is the allowlist of accepted model identifiers.
-var validModels = map[string]bool{
-	"claude-opus-4-5-20251101":  true,
-	"claude-sonnet-4-20250514":  true,
-	"claude-haiku-4-5-20251001": true,
-}
-
-func isValidModel(model string) bool {
-	return model == "" || validModels[model]
-}
-
 type CreateConversationRequest struct {
 	Type              string              `json:"type"`              // "task", "review", "chat"
 	Message           string              `json:"message"`           // Initial message (optional)
@@ -3156,11 +3145,6 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	// Default to "task" type if not specified
 	if req.Type == "" {
 		req.Type = "task"
-	}
-
-	if !isValidModel(req.Model) {
-		writeValidationError(w, fmt.Sprintf("invalid model: %s", req.Model))
-		return
 	}
 
 	// Build instructions from attached summaries
@@ -3323,23 +3307,18 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !isValidModel(req.Model) {
-		writeValidationError(w, fmt.Sprintf("invalid model: %s", req.Model))
-		return
-	}
-
 	// Switch model if specified
 	if req.Model != "" {
+		// Always persist model to DB first - this ensures auto-restart will use the correct model
+		if err := h.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+			c.Model = req.Model
+		}); err != nil {
+			logger.Handlers.Warnf("Failed to persist model for conv %s: %v", convID, err)
+		}
+		// Also try to update running process if there is one
 		if err := h.agentManager.SetConversationModel(convID, req.Model); err != nil {
-			logger.Handlers.Warnf("Failed to set model for conv %s: %v", convID, err)
-			// Don't persist to DB if the process switch failed — keeps DB and process in sync
-		} else {
-			// Persist model to conversation record only on successful process switch
-			if err := h.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
-				c.Model = req.Model
-			}); err != nil {
-				logger.Handlers.Warnf("Failed to persist model for conv %s: %v", convID, err)
-			}
+			// Not an error - process may not be running yet, auto-restart will use DB value
+			logger.Handlers.Debugf("Model change won't apply to running process for conv %s: %v", convID, err)
 		}
 	}
 
