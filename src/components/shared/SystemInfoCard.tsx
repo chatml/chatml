@@ -26,7 +26,7 @@ export function SystemInfoCard({ setupInfo, className }: SystemInfoCardProps) {
       )}
     >
       <p className="text-muted-foreground mb-3">
-        You are in a new copy of your codebase called{' '}
+        You are in a new git worktree of your codebase called{' '}
         <span className="font-medium text-foreground">{sessionName}</span>
       </p>
       <div className="space-y-1.5 text-base text-muted-foreground">

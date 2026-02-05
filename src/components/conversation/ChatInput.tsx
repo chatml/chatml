@@ -1366,7 +1366,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
+            placeholder={isStreaming ? "Agent is working..." : "Describe your task, @ to reference files, / for skills and commands"}
             className={cn(
               'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
               'bg-transparent dark:bg-transparent',
