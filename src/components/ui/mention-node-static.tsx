@@ -21,7 +21,7 @@ export function MentionElementStatic(
       {...props}
       as="span"
       className={cn(
-        'inline rounded-md bg-muted px-1.5 align-middle leading-none font-medium text-sm',
+        'inline rounded-md bg-muted px-1.5 -my-px align-middle leading-none font-medium text-sm',
         element.children[0][KEYS.bold] === true && 'font-bold',
         element.children[0][KEYS.italic] === true && 'italic',
         element.children[0][KEYS.underline] === true && 'underline'
