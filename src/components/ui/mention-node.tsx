@@ -55,11 +55,14 @@ export function MentionElement(
   const mounted = useMounted();
   const readOnly = useReadOnly();
 
+  // Extract filename from path for icon
+  const filename = String(element.value).split('/').pop() || String(element.value);
+
   return (
     <PlateElement
       {...props}
       className={cn(
-        'inline-block rounded-md bg-muted px-1.5 py-0.5 align-baseline font-medium text-sm',
+        'inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 align-baseline font-medium text-sm',
         !readOnly && 'cursor-pointer',
         selected && focused && 'ring-2 ring-ring',
         element.children[0][KEYS.bold] === true && 'font-bold',
@@ -78,13 +81,15 @@ export function MentionElement(
         <>
           {props.children}
           {props.prefix}
-          {element.value}
+          <FileIcon filename={filename} className="h-3.5 w-3.5" />
+          <span>{filename}</span>
         </>
       ) : (
         // Others like Android https://github.com/ianstormtaylor/slate/pull/5360
         <>
           {props.prefix}
-          {element.value}
+          <FileIcon filename={filename} className="h-3.5 w-3.5" />
+          <span>{filename}</span>
           {props.children}
         </>
       )}
