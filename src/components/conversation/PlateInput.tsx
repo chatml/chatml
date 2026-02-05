@@ -112,6 +112,18 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       value: emptyValue,
     });
 
+    // Track previous disabled state to detect when editor becomes enabled
+    const prevDisabledRef = useRef(disabled);
+    useEffect(() => {
+      // When editor becomes enabled (disabled: true -> false), refocus it
+      if (prevDisabledRef.current && !disabled) {
+        setTimeout(() => {
+          editor.tf.focus();
+        }, 0);
+      }
+      prevDisabledRef.current = disabled;
+    }, [disabled, editor]);
+
     // Track changes and notify parent
     const handleChange = useCallback(
       ({ value }: { value: Value }) => {
