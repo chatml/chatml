@@ -41,9 +41,32 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useSlashCommands } from '@/hooks/useSlashCommands';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { SummaryPicker } from './SummaryPicker';
-import { RichTextInput, type RichTextInputHandle } from './RichTextInput';
-import { FileMentionMenu } from './FileMentionMenu';
-import { useFileMentions, type FlatFile } from '@/hooks/useFileMentions';
+import { PlateInput, type PlateInputHandle } from './PlateInput';
+import type { MentionItem } from '@/components/ui/mention-node';
+import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
+
+// Flat file type for mention items
+interface FlatFile {
+  path: string;
+  name: string;
+  directory: string;
+}
+
+// Helper to flatten file tree for mentions
+function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFile[] {
+  const result: FlatFile[] = [];
+  for (const node of nodes) {
+    if (node.isDir) {
+      if (node.children) {
+        result.push(...flattenFileTree(node.children, node.path));
+      }
+    } else {
+      const directory = parentPath || node.path.split('/').slice(0, -1).join('/');
+      result.push({ path: node.path, name: node.name, directory });
+    }
+  }
+  return result;
+}
 
 const MODELS = [
   { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
@@ -590,9 +613,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
-  // const textareaRef = useRef<HTMLTextAreaElement>(null); // Removed - replaced by RichTextInput
+  // const textareaRef = useRef<HTMLTextAreaElement>(null); // Removed - replaced by PlateInput
   // const ghostTextRef = useRef<HTMLSpanElement>(null); // Removed - ghost text disabled
-  const richInputRef = useRef<RichTextInputHandle>(null);
+  const plateInputRef = useRef<PlateInputHandle>(null);
 
   const {
     selectedConversationId,
@@ -611,16 +634,39 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   } = useAppStore();
   const { error: showError } = useToast();
 
-  // File mentions hook setup
-  const handleFileSelect = useCallback((file: FlatFile, triggerPos: number) => {
-    richInputRef.current?.insertFilePill(file, triggerPos);
-  }, []);
+  // File mentions for Plate editor
+  const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
+  const [mentionItemsLoading, setMentionItemsLoading] = useState(false);
+  const mentionSessionRef = useRef<string | null>(null);
 
-  const fileMentions = useFileMentions({
-    workspaceId: selectedWorkspaceId,
-    sessionId: selectedSessionId,
-    onSelectFile: handleFileSelect,
-  });
+  // Load files when session changes
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedSessionId) {
+      setMentionItems([]);
+      return;
+    }
+    if (mentionSessionRef.current === selectedSessionId) return;
+
+    const loadFiles = async () => {
+      setMentionItemsLoading(true);
+      try {
+        const files = await listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all');
+        const flatFiles = flattenFileTree(files);
+        setMentionItems(flatFiles.map(f => ({
+          key: f.path,
+          text: f.name,
+          data: { path: f.path, directory: f.directory },
+        })));
+        mentionSessionRef.current = selectedSessionId;
+      } catch (err) {
+        console.error('Failed to load files for mentions:', err);
+        setMentionItems([]);
+      } finally {
+        setMentionItemsLoading(false);
+      }
+    };
+    loadFiles();
+  }, [selectedWorkspaceId, selectedSessionId]);
 
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
@@ -959,7 +1005,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       // Cmd+L to focus input
       if (e.code === 'KeyL' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        richInputRef.current?.focus();
+        plateInputRef.current?.focus();
       }
       // Alt+T to toggle thinking mode (only if model supports it)
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
@@ -982,7 +1028,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     };
 
     // Handle menu events from native Tauri menu
-    const handleFocusInput = () => richInputRef.current?.focus();
+    const handleFocusInput = () => plateInputRef.current?.focus();
     const handleToggleThinking = () => {
       if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
         setThinkingEnabled(prev => !prev);
@@ -1003,12 +1049,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel.id]);
 
   const handleSubmit = async () => {
-    const { text: content, mentionedFiles } = richInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
+    const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
     if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
     const trimmedContent = content.trim();
     const currentAttachments = [...attachments];
-    richInputRef.current?.clear();
+    plateInputRef.current?.clear();
     setMessage(''); // Keep for suggestion state sync
     // Don't clear attachments yet - wait until API call succeeds
     setIsSending(true);
@@ -1303,38 +1349,28 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onHover={slashMenu.setSelectedIndex}
             onDismiss={slashMenu.dismiss}
           />
-          <FileMentionMenu
-            isOpen={fileMentions.isOpen}
-            files={fileMentions.files}
-            selectedIndex={fileMentions.selectedIndex}
-            query={fileMentions.query}
-            isLoading={fileMentions.isLoading}
-            onSelect={fileMentions.selectFile}
-            onHover={fileMentions.setSelectedIndex}
-            onDismiss={fileMentions.dismiss}
-          />
-        </div>
+          </div>
 
         {/* Text Input with Cmd+L hint */}
         <div className="relative px-3 py-2">
-          <RichTextInput
-            ref={richInputRef}
+          <PlateInput
+            ref={plateInputRef}
             placeholder={isStreaming ? "Agent is working..." : "Describe your task, @ to reference files, / for skills and commands"}
             disabled={!selectedSessionId || isSending || isStreaming}
             className="bg-transparent dark:bg-transparent relative z-10"
-            onInput={(text, cursorPos) => {
+            mentionItems={mentionItems}
+            mentionItemsLoading={mentionItemsLoading}
+            onInput={(text) => {
               setMessage(text); // Keep message state for suggestion logic
-              fileMentions.handleTextChange(text, cursorPos);
-              slashMenu.handleInputChange(text, cursorPos);
+              // Note: Slash commands need cursorPos, so we pass text length as approximation
+              slashMenu.handleInputChange(text, text.length);
             }}
             onKeyDown={(e) => {
-              if (fileMentions.handleKeyDown(e)) return;
               if (slashMenu.handleKeyDown(e as unknown as React.KeyboardEvent<HTMLTextAreaElement>)) return;
               handleKeyDown(e as unknown as React.KeyboardEvent<HTMLTextAreaElement>);
             }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            onPaste={handlePaste}
           />
           {/* Cmd+L hint - hidden when focused */}
           {!isFocused && (

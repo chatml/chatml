@@ -4,7 +4,6 @@
 
 @plugin "@tailwindcss/typography";
 
-
 /* MesloLGS NF - Nerd Font for terminal (SIL Open Font License) */
 @font-face {
   font-family: 'MesloLGS NF';
@@ -133,6 +132,7 @@
   --nav-icon-branches: oklch(0.55 0.15 155);
   --nav-icon-prs: oklch(0.55 0.15 300);
   --nav-icon-skills: oklch(0.65 0.18 85);
+  --brand: oklch(0.623 0.214 259.815);
 }
 
 .dark {
@@ -211,6 +211,7 @@
   --nav-icon-branches: #4ade80;
   --nav-icon-prs: #a78bfa;
   --nav-icon-skills: #fbbf24;
+  --brand: oklch(0.707 0.165 254.624);
 }
 
 @theme inline {
@@ -285,6 +286,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
+  --color-brand: var(--brand);
 }
 
 @layer base {
@@ -778,7 +780,6 @@
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
-
 
 .hover-scale {
   transition: transform 0.15s ease;
