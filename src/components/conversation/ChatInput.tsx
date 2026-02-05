@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,13 +33,42 @@ import { useToast } from '@/components/ui/toast';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
-import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId, formatFileSize, ATTACHMENT_LIMITS } from '@/lib/attachments';
+import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSlashCommands } from '@/hooks/useSlashCommands';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { SummaryPicker } from './SummaryPicker';
+import { PlateInput, type PlateInputHandle } from './PlateInput';
+import type { MentionItem } from '@/components/ui/mention-node';
+import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
+
+// Flat file type for mention items
+interface FlatFile {
+  path: string;
+  name: string;
+  directory: string;
+}
+
+// Helper to flatten file tree for mentions (excludes hidden directories)
+function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFile[] {
+  const result: FlatFile[] = [];
+  for (const node of nodes) {
+    // Skip hidden files and directories (starting with .)
+    if (node.name.startsWith('.')) continue;
+
+    if (node.isDir) {
+      if (node.children) {
+        result.push(...flattenFileTree(node.children, node.path));
+      }
+    } else {
+      const directory = parentPath || node.path.split('/').slice(0, -1).join('/');
+      result.push({ path: node.path, name: node.name, directory });
+    }
+  }
+  return result;
+}
 
 const MODELS = [
   { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', icon: Snowflake, supportsThinking: true },
@@ -52,530 +80,6 @@ const MODELS = [
 const THINKING_SUPPORTED_MODELS = new Set(
   MODELS.filter((m) => m.supportsThinking).map((m) => m.id)
 );
-
-// Common prompt patterns for suggestions
-const COMMON_PATTERNS = [
-  // Bug fixing & Debugging
-  'Fix the bug in',
-  'Fix the issue with',
-  'Fix the error in',
-  'Debug the',
-  'Debug why',
-  'Find the bug in',
-  'Find out why',
-  'Investigate why',
-  'Troubleshoot the',
-  'Figure out why',
-  'The tests are failing because',
-  'This is broken because',
-  'Why is this not working',
-  'Why does this fail',
-  'Why am I getting this error',
-
-  // Testing
-  'Add tests for',
-  'Add unit tests for',
-  'Add integration tests for',
-  'Add e2e tests for',
-  'Write tests for',
-  'Write unit tests for',
-  'Write a test that',
-  'Create tests for',
-  'Test the',
-  'Add test coverage for',
-  'Mock the',
-  'Add a snapshot test for',
-  'Add edge case tests for',
-
-  // Refactoring
-  'Refactor the',
-  'Refactor this to',
-  'Clean up the',
-  'Simplify the',
-  'Simplify this code',
-  'Extract a function for',
-  'Extract a component for',
-  'Extract this into',
-  'Split this into',
-  'Consolidate the',
-  'Merge these',
-  'Deduplicate the',
-  'Remove duplication in',
-  'Make this more readable',
-  'Improve the readability of',
-  'Reduce complexity in',
-
-  // Implementation
-  'Implement',
-  'Implement a function that',
-  'Implement a method that',
-  'Implement the logic for',
-  'Implement support for',
-  'Add a function that',
-  'Add a method that',
-  'Add a feature to',
-  'Add support for',
-  'Add the ability to',
-  'Add functionality to',
-  'Build a',
-  'Create a',
-  'Create a function that',
-  'Create a method that',
-  'Create a helper for',
-  'Create a utility for',
-  'Create a hook for',
-  'Create a service for',
-  'Create a class for',
-  'Write a function that',
-  'Write a script that',
-  'Write code to',
-  'Make it so that',
-  'I need to',
-  'I want to',
-  'Can you',
-  'Please',
-
-  // Components & UI
-  'Create a component for',
-  'Create a new component that',
-  'Add a component for',
-  'Build a component that',
-  'Add a button that',
-  'Add a form for',
-  'Add a modal for',
-  'Add a dialog for',
-  'Add a dropdown for',
-  'Add a tooltip for',
-  'Add a sidebar',
-  'Add a header',
-  'Add a footer',
-  'Add a navigation',
-  'Add a loading state',
-  'Add a loading spinner',
-  'Add an empty state',
-  'Add an error state',
-  'Add pagination to',
-  'Add infinite scroll to',
-  'Add drag and drop to',
-  'Add a search bar',
-  'Add filtering to',
-  'Add sorting to',
-
-  // Styling & CSS
-  'Style the',
-  'Add styles for',
-  'Update the styles for',
-  'Fix the styling of',
-  'Add responsive styles for',
-  'Make this responsive',
-  'Add dark mode support',
-  'Add animation to',
-  'Add a transition to',
-  'Center the',
-  'Align the',
-  'Add spacing to',
-  'Add padding to',
-  'Add margin to',
-
-  // Updates & Changes
-  'Update the',
-  'Update this to',
-  'Change the',
-  'Change this to',
-  'Modify the',
-  'Modify this to',
-  'Edit the',
-  'Adjust the',
-  'Tweak the',
-  'Rename',
-  'Move the',
-  'Move this to',
-  'Replace',
-  'Convert this to',
-  'Convert the',
-  'Transform the',
-  'Migrate the',
-  'Migrate this to',
-  'Upgrade the',
-  'Upgrade to',
-
-  // Removal & Cleanup
-  'Remove the',
-  'Remove this',
-  'Delete the',
-  'Delete this',
-  'Get rid of',
-  'Clean up',
-  'Remove unused',
-  'Remove dead code',
-  'Remove deprecated',
-
-  // Error Handling
-  'Add error handling to',
-  'Add error handling for',
-  'Handle the error',
-  'Handle errors in',
-  'Handle the case when',
-  'Handle edge cases in',
-  'Add try catch to',
-  'Add validation for',
-  'Add input validation to',
-  'Validate the',
-  'Add null checks to',
-  'Add boundary checks',
-  'Add fallback for',
-  'Add a default value for',
-
-  // Performance
-  'Optimize the',
-  'Optimize the performance of',
-  'Improve the performance of',
-  'Speed up the',
-  'Make this faster',
-  'Reduce the bundle size',
-  'Add memoization to',
-  'Add caching to',
-  'Cache the',
-  'Lazy load the',
-  'Add debouncing to',
-  'Add throttling to',
-  'Reduce re-renders in',
-  'Fix the memory leak in',
-
-  // Documentation
-  'Add documentation for',
-  'Add docs for',
-  'Document the',
-  'Add comments to',
-  'Add JSDoc to',
-  'Add a README for',
-  'Update the README',
-  'Explain the',
-  'Add inline comments to',
-  'Add type documentation for',
-
-  // Types & TypeScript
-  'Add types for',
-  'Add type annotations to',
-  'Fix the types for',
-  'Fix the type error in',
-  'Create a type for',
-  'Create an interface for',
-  'Define a type for',
-  'Add generics to',
-  'Make this type-safe',
-  'Add strict types to',
-
-  // API & Backend
-  'Add an API endpoint for',
-  'Create an API for',
-  'Create an endpoint for',
-  'Add a route for',
-  'Fetch data from',
-  'Send data to',
-  'Call the API',
-  'Make an API call to',
-  'Add a GET endpoint for',
-  'Add a POST endpoint for',
-  'Add a PUT endpoint for',
-  'Add a DELETE endpoint for',
-  'Handle the API response',
-  'Parse the response from',
-
-  // Database
-  'Add a database query for',
-  'Create a query that',
-  'Write a query to',
-  'Add a migration for',
-  'Create a migration that',
-  'Add an index on',
-  'Add a foreign key to',
-  'Create a table for',
-  'Update the schema to',
-  'Add a column for',
-  'Query the database for',
-
-  // Authentication & Security
-  'Add authentication to',
-  'Add authorization for',
-  'Add login functionality',
-  'Add logout functionality',
-  'Add password reset',
-  'Add session management',
-  'Add JWT support',
-  'Add OAuth support',
-  'Secure the',
-  'Add CSRF protection',
-  'Add rate limiting to',
-  'Sanitize the input',
-  'Escape the output',
-  'Add encryption for',
-
-  // State Management
-  'Add state for',
-  'Create a store for',
-  'Add a reducer for',
-  'Add an action for',
-  'Update the state when',
-  'Manage the state of',
-  'Add a context for',
-  'Add a provider for',
-  'Persist the state',
-  'Reset the state',
-  'Sync the state with',
-
-  // Events & Handlers
-  'Add a handler for',
-  'Add an event listener for',
-  'Handle the click event',
-  'Handle the submit event',
-  'Handle the change event',
-  'Handle keyboard events',
-  'Add keyboard shortcuts',
-  'Add hotkeys for',
-  'Listen for',
-  'Subscribe to',
-  'Emit an event when',
-
-  // Git & Version Control
-  'Commit these changes',
-  'Create a commit for',
-  'Create a branch for',
-  'Merge the',
-  'Rebase onto',
-  'Cherry-pick the',
-  'Resolve the merge conflict',
-  'Squash the commits',
-  'Revert the',
-  'Undo the last commit',
-
-  // Configuration
-  'Configure the',
-  'Add configuration for',
-  'Set up the',
-  'Initialize the',
-  'Add environment variables for',
-  'Add settings for',
-  'Create a config file for',
-  'Update the config to',
-
-  // Dependencies
-  'Add the dependency',
-  'Install the',
-  'Update the dependency',
-  'Remove the dependency',
-  'Upgrade the package',
-  'Fix the dependency conflict',
-  'Add a peer dependency',
-
-  // Logging & Monitoring
-  'Add logging to',
-  'Add logs for',
-  'Log the',
-  'Add debug logs to',
-  'Add error logging to',
-  'Add metrics for',
-  'Add monitoring for',
-  'Track the',
-  'Add analytics for',
-
-  // Questions - Explanation
-  'Explain how',
-  'Explain the',
-  'Explain this code',
-  'Explain what',
-  'Explain why',
-  'What does',
-  'What is',
-  'What are',
-  'What happens when',
-  'What would happen if',
-  'What is the difference between',
-  'What is the purpose of',
-  'What is the best way to',
-  'What are the options for',
-
-  // Questions - Why
-  'Why is',
-  'Why does',
-  'Why do',
-  'Why are',
-  'Why would',
-  'Why should',
-  'Why not',
-  'Why did',
-
-  // Questions - How
-  'How do I',
-  'How does',
-  'How can I',
-  'How would I',
-  'How should I',
-  'How to',
-  'How is',
-  'How are',
-
-  // Questions - Other
-  'Where is',
-  'Where does',
-  'Where should',
-  'When should I',
-  'When to',
-  'Which is better',
-  'Should I',
-  'Can I',
-  'Is it possible to',
-  'Is there a way to',
-  'Is this the right way to',
-
-  // Code Review
-  'Review the code in',
-  'Review this code',
-  'Check the code for',
-  'Find issues in',
-  'Look for bugs in',
-  'Audit the',
-  'Analyze the',
-  'Evaluate the',
-  'Suggest improvements for',
-  'What can be improved in',
-
-  // File Operations
-  'Read the file',
-  'Write to the file',
-  'Create a file for',
-  'Delete the file',
-  'Move the file to',
-  'Rename the file to',
-  'Copy the file to',
-  'Parse the file',
-  'Generate a file for',
-
-  // Async & Promises
-  'Add async/await to',
-  'Convert to async/await',
-  'Handle the promise',
-  'Add a promise for',
-  'Wait for',
-  'Run in parallel',
-  'Run sequentially',
-  'Add concurrency to',
-
-  // Architecture
-  'Design a',
-  'Architect the',
-  'Plan the',
-  'Structure the',
-  'Organize the',
-  'Set up the folder structure for',
-  'Add a layer for',
-  'Separate concerns in',
-  'Add dependency injection',
-
-  // Integration
-  'Integrate with',
-  'Connect to',
-  'Hook up the',
-  'Wire up the',
-  'Link the',
-  'Add webhook support for',
-  'Add SSO with',
-  'Add OAuth with',
-
-  // Deployment
-  'Deploy the',
-  'Add deployment scripts for',
-  'Set up CI/CD for',
-  'Add Docker support',
-  'Create a Dockerfile for',
-  'Add Kubernetes config for',
-  'Configure the build for',
-  'Add a build script for',
-
-  // Misc
-  'Show me',
-  'List all',
-  'Find all',
-  'Search for',
-  'Count the',
-  'Calculate the',
-  'Compare the',
-  'Sort the',
-  'Filter the',
-  'Group the',
-  'Format the',
-  'Serialize the',
-  'Deserialize the',
-  'Encode the',
-  'Decode the',
-  'Compress the',
-  'Generate a',
-  'Generate random',
-  'Generate unique',
-];
-
-// Get suggestion based on current input
-function getSuggestion(input: string, previousPrompts: string[]): string | null {
-  if (!input || input.length < 2) return null;
-
-  const lowerInput = input.toLowerCase();
-
-  // 1. Check if full input matches previous prompts (highest priority)
-  for (const prompt of previousPrompts) {
-    if (prompt.toLowerCase().startsWith(lowerInput) && prompt.length > input.length) {
-      return prompt.slice(input.length);
-    }
-  }
-
-  // 2. Check if full input matches common patterns
-  for (const pattern of COMMON_PATTERNS) {
-    if (pattern.toLowerCase().startsWith(lowerInput) && pattern.length > input.length) {
-      return pattern.slice(input.length);
-    }
-  }
-
-  // 3. Smart mid-sentence matching: check last N words against pattern starts
-  // Split by whitespace and get trailing portion
-  const words = input.split(/\s+/);
-  if (words.length >= 1) {
-    // Try matching from the last 1, 2, 3, 4, 5 words
-    for (let wordsToMatch = Math.min(5, words.length); wordsToMatch >= 1; wordsToMatch--) {
-      const lastWords = words.slice(-wordsToMatch).join(' ');
-      const lowerLastWords = lastWords.toLowerCase();
-
-      // Skip very short matches (less than 2 chars)
-      if (lowerLastWords.length < 2) continue;
-
-      // Check patterns that start with these last words
-      for (const pattern of COMMON_PATTERNS) {
-        const lowerPattern = pattern.toLowerCase();
-        if (lowerPattern.startsWith(lowerLastWords) && pattern.length > lastWords.length) {
-          // Return only the completion part
-          return pattern.slice(lastWords.length);
-        }
-      }
-    }
-  }
-
-  // 4. Check if input ends with a trigger word that commonly precedes patterns
-  const triggerEndings = [
-    { trigger: ' to ', patterns: ['add', 'fix', 'update', 'remove', 'create', 'implement', 'refactor'] },
-    { trigger: ' the ', patterns: ['bug', 'code', 'function', 'component', 'error', 'issue', 'test'] },
-    { trigger: ' a ', patterns: ['function', 'component', 'test', 'method', 'class', 'hook', 'button', 'form'] },
-    { trigger: ' for ', patterns: ['the', 'this', 'user', 'error', 'authentication', 'validation'] },
-    { trigger: ' with ', patterns: ['the', 'a', 'error', 'async', 'proper'] },
-    { trigger: ' in ', patterns: ['the', 'this', 'my'] },
-  ];
-
-  for (const { trigger, patterns } of triggerEndings) {
-    if (lowerInput.endsWith(trigger)) {
-      // Suggest the first common word that follows this trigger
-      return patterns[0];
-    }
-  }
-
-  return null;
-}
 
 interface ChatInputProps {
   onMessageSubmit?: () => void;
@@ -598,13 +102,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const ghostTextRef = useRef<HTMLSpanElement>(null);
+  const plateInputRef = useRef<PlateInputHandle>(null);
 
   const {
     selectedConversationId,
@@ -623,6 +125,40 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   } = useAppStore();
   const { error: showError } = useToast();
 
+  // File mentions for Plate editor
+  const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
+  const [mentionItemsLoading, setMentionItemsLoading] = useState(false);
+  const mentionSessionRef = useRef<string | null>(null);
+
+  // Load files when session changes
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedSessionId) {
+      setMentionItems([]);
+      return;
+    }
+    if (mentionSessionRef.current === selectedSessionId) return;
+
+    const loadFiles = async () => {
+      setMentionItemsLoading(true);
+      try {
+        const files = await listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all');
+        const flatFiles = flattenFileTree(files);
+        setMentionItems(flatFiles.map(f => ({
+          key: f.path,
+          text: f.name,
+          data: { path: f.path, directory: f.directory },
+        })));
+        mentionSessionRef.current = selectedSessionId;
+      } catch (err) {
+        console.error('Failed to load files for mentions:', err);
+        setMentionItems([]);
+      } finally {
+        setMentionItemsLoading(false);
+      }
+    };
+    loadFiles();
+  }, [selectedWorkspaceId, selectedSessionId]);
+
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
 
@@ -638,45 +174,24 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId, currentConversationModel, defaultModel]);
 
-  // Get all messages for the current session to extract previous user prompts
-  const allMessages = useAppStore((s) => s.messages);
-  const sessionConversationIds = useMemo(
-    () => new Set(conversations.filter((c) => c.sessionId === selectedSessionId).map((c) => c.id)),
-    [conversations, selectedSessionId]
-  );
-  const previousPrompts = useMemo(() => {
-    // Get unique user messages from this session, most recent first
-    const userMessages = allMessages
-      .filter((m) => m.role === 'user' && sessionConversationIds.has(m.conversationId))
-      .map((m) => m.content)
-      .reverse();
-    // Deduplicate while preserving order
-    return [...new Set(userMessages)].slice(0, 50); // Keep last 50 unique prompts
-  }, [allMessages, sessionConversationIds]);
-
   // Slash commands hook
   // Note: context object identity changes on conversation/session switch. This is fine
   // because context is only consumed inside executeCommand callbacks, not in effects/memos.
+  const setInputText = useCallback((text: string) => {
+    setMessage(text); // Update React state for submit button
+    plateInputRef.current?.setText(text); // Update Plate editor content
+  }, []);
+
   const slashMenu = useSlashCommands({
     context: useMemo(() => ({
-      setMessage,
+      setMessage: setInputText,
       conversationId: selectedConversationId,
       sessionId: selectedSessionId,
-    }), [selectedConversationId, selectedSessionId]),
+    }), [setInputText, selectedConversationId, selectedSessionId]),
     availability: useMemo(() => ({
       hasSession: selectedSessionId !== null,
     }), [selectedSessionId]),
   });
-
-  // Calculate suggestion when message changes (suppressed when slash menu is open)
-  useEffect(() => {
-    if (slashMenu.isOpen) {
-      setSuggestion(null);
-      return;
-    }
-    const newSuggestion = getSuggestion(message, previousPrompts);
-    setSuggestion(newSuggestion);
-  }, [message, previousPrompts, slashMenu.isOpen]);
 
   // Check if currently streaming
   const isStreaming = selectedConversationId
@@ -690,28 +205,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
-
-  // Textarea auto-grow configuration
-  const TEXTAREA_LIMITS = {
-    minHeight: 80,                    // Normal min height
-    minHeightWithAttachments: 60,     // Smaller when attachments take space
-    maxHeight: 200,                   // Max before scrolling
-  };
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      const hasAttachments = attachments.length > 0;
-      const minH = hasAttachments ? TEXTAREA_LIMITS.minHeightWithAttachments : TEXTAREA_LIMITS.minHeight;
-
-      textareaRef.current.style.height = 'auto';
-      const newHeight = Math.max(minH, Math.min(textareaRef.current.scrollHeight, TEXTAREA_LIMITS.maxHeight));
-      textareaRef.current.style.height = `${newHeight}px`;
-
-      // Enable scrolling once at max height
-      textareaRef.current.style.overflowY =
-        textareaRef.current.scrollHeight > TEXTAREA_LIMITS.maxHeight ? 'auto' : 'hidden';
-    }
-  }, [message, attachments.length]);
 
   // Handle file drop processing
   const handleFileDrop = useCallback(async (paths: string[]) => {
@@ -730,102 +223,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     let validationError: string | null = null;
     setAttachments(prev => {
       const newAttachments = [...prev, ...result.attachments];
-      const validation = validateAttachments(newAttachments);
-      if (!validation.valid) {
-        validationError = validation.error || 'Invalid attachments';
-        return prev;
-      }
-      return newAttachments;
-    });
-    if (validationError) showError(validationError);
-  }, [showError]);
-
-  // Handle clipboard paste (images)
-  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    // Check if any clipboard items are images
-    const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'));
-    if (imageItems.length === 0) return;
-
-    // Prevent default paste behavior for images
-    e.preventDefault();
-
-    const pastedAttachments: Attachment[] = [];
-    const errors: string[] = [];
-
-    for (const item of imageItems) {
-      const blob = item.getAsFile();
-      if (!blob) continue;
-
-      if (blob.size > ATTACHMENT_LIMITS.MAX_FILE_SIZE) {
-        errors.push(`Image too large (max ${formatFileSize(ATTACHMENT_LIMITS.MAX_FILE_SIZE)})`);
-        continue;
-      }
-
-      try {
-        const base64Data = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-
-        const mimeExtensionMap: Record<string, string> = { 'svg+xml': 'svg', 'jpeg': 'jpg' };
-        const rawExt = blob.type.split('/')[1] || 'png';
-        const extension = mimeExtensionMap[rawExt] || rawExt;
-        const filename = `clipboard-image-${Date.now()}-${imageItems.indexOf(item)}.${extension}`;
-
-        const attachment: Attachment = {
-          id: generateAttachmentId(),
-          type: 'image',
-          name: filename,
-          mimeType: blob.type,
-          size: blob.size,
-          base64Data,
-        };
-
-        // Try to get image dimensions
-        try {
-          const objectUrl = URL.createObjectURL(blob);
-          try {
-            const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
-              const img = new Image();
-              img.onload = () => resolve({ width: img.width, height: img.height });
-              img.onerror = () => resolve({ width: 0, height: 0 });
-              img.src = objectUrl;
-            });
-            if (dimensions.width > 0 && dimensions.height > 0) {
-              attachment.width = dimensions.width;
-              attachment.height = dimensions.height;
-            }
-          } finally {
-            URL.revokeObjectURL(objectUrl);
-          }
-        } catch {
-          // Dimensions are optional
-        }
-
-        pastedAttachments.push(attachment);
-      } catch (err) {
-        errors.push(`Failed to process clipboard image: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
-    }
-
-    if (errors.length > 0) {
-      errors.forEach(err => showError(err));
-    }
-
-    if (pastedAttachments.length === 0) return;
-
-    let validationError: string | null = null;
-    setAttachments(prev => {
-      const newAttachments = [...prev, ...pastedAttachments];
       const validation = validateAttachments(newAttachments);
       if (!validation.valid) {
         validationError = validation.error || 'Invalid attachments';
@@ -966,7 +363,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       // Cmd+L to focus input
       if (e.code === 'KeyL' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        textareaRef.current?.focus();
+        plateInputRef.current?.focus();
       }
       // Alt+T to toggle thinking mode (only if model supports it)
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
@@ -989,7 +386,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     };
 
     // Handle menu events from native Tauri menu
-    const handleFocusInput = () => textareaRef.current?.focus();
+    const handleFocusInput = () => plateInputRef.current?.focus();
     const handleToggleThinking = () => {
       if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
         setThinkingEnabled(prev => !prev);
@@ -1010,11 +407,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel.id]);
 
   const handleSubmit = async () => {
-    if (!message.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
+    const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
+    if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
 
-    const content = message.trim();
+    const trimmedContent = content.trim();
     const currentAttachments = [...attachments];
-    setMessage('');
+    plateInputRef.current?.clear();
+    setMessage(''); // Keep for suggestion state sync
     // Don't clear attachments yet - wait until API call succeeds
     setIsSending(true);
 
@@ -1047,7 +446,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const convType = currentConversation?.type || 'task';
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
-          message: content,
+          message: trimmedContent,
           // Pass selected model so agent uses the correct model
           model: selectedModel.id,
           // Pass plan mode so agent starts in plan mode if toggled on before first message
@@ -1084,7 +483,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           id: crypto.randomUUID(),
           conversationId: conv.id,
           role: 'user',
-          content,
+          content: trimmedContent,
           attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
           timestamp: new Date().toISOString(),
         });
@@ -1100,7 +499,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           id: crypto.randomUUID(),
           conversationId: selectedConversationId,
           role: 'user',
-          content,
+          content: trimmedContent,
           attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
           timestamp: new Date().toISOString(),
         });
@@ -1113,9 +512,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const modelChanged = selectedModel.id !== currentConversation?.model;
         await sendConversationMessage(
           selectedConversationId,
-          content,
+          trimmedContent,
           loadedAttachments.length > 0 ? loadedAttachments : undefined,
-          modelChanged ? selectedModel.id : undefined
+          modelChanged ? selectedModel.id : undefined,
+          mentionedFiles.length > 0 ? mentionedFiles : undefined
         );
       }
 
@@ -1153,20 +553,23 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Check if a combobox is active (mention selection in progress)
+    // Check both: focused combobox input OR visible combobox popover (listbox)
+    const activeElement = document.activeElement as HTMLElement | null;
+    const isInCombobox = activeElement?.closest('[role="combobox"]');
+    const hasOpenPopover = document.querySelector('[role="listbox"]');
+    if ((isInCombobox || hasOpenPopover) && (e.key === 'Enter' || e.key === 'Tab')) {
+      // Let the combobox handle item selection
+      return;
+    }
+
     // Slash command menu takes priority when open
     if (slashMenu.isOpen) {
       const consumed = slashMenu.handleKeyDown(e);
       if (consumed) return;
     }
 
-    // Tab to accept suggestion
-    if (e.key === 'Tab' && suggestion && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      setMessage(message + suggestion);
-      setSuggestion(null);
-      return;
-    }
     // ⌘⇧↵ to approve plan
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && awaitingPlanApproval) {
       e.preventDefault();
@@ -1177,11 +580,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
-    }
-    // Escape to dismiss suggestion
-    if (e.key === 'Escape' && suggestion) {
-      e.preventDefault();
-      setSuggestion(null);
     }
   };
 
@@ -1319,73 +717,32 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onHover={slashMenu.setSelectedIndex}
             onDismiss={slashMenu.dismiss}
           />
-        </div>
-
-        {/* Text Input with Cmd+L hint and ghost text */}
-        <div className="relative">
-          {/* Ghost text overlay - must match textarea styling exactly for proper wrapping */}
-          <div
-            className="absolute inset-0 px-3 py-2 pointer-events-none overflow-hidden text-base md:text-sm"
-            aria-hidden="true"
-            style={{
-              // Match textarea's default line-height and font
-              lineHeight: '1.5',
-              fontFamily: 'inherit',
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
-            }}
-          >
-            <span className="whitespace-pre-wrap">
-              {/* Invisible text matching user input to position the suggestion */}
-              <span className="invisible">{message}</span>
-              {/* Ghost suggestion text */}
-              {suggestion && (
-                <span
-                  ref={ghostTextRef}
-                  className="text-muted-foreground/40"
-                >
-                  {suggestion}
-                </span>
-              )}
-            </span>
           </div>
-          <Textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => {
-              const value = e.target.value;
-              const pos = e.target.selectionStart ?? value.length;
-              setMessage(value);
-              slashMenu.handleInputChange(value, pos);
+
+        {/* Text Input with Cmd+L hint */}
+        <div className="relative px-3 py-2">
+          <PlateInput
+            ref={plateInputRef}
+            placeholder="Describe your task, @ to reference files, / for skills and commands"
+            className="bg-transparent dark:bg-transparent relative z-10"
+            mentionItems={mentionItems}
+            mentionItemsLoading={mentionItemsLoading}
+            onInput={(text) => {
+              setMessage(text); // Keep message state for suggestion logic
+              // Note: Slash commands need cursorPos, so we pass text length as approximation
+              slashMenu.handleInputChange(text, text.length);
             }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onClick={() => {
-              const pos = textareaRef.current?.selectionStart ?? 0;
-              slashMenu.handleInputChange(message, pos);
+            onKeyDown={(e) => {
+              if (slashMenu.handleKeyDown(e, message)) return;
+              handleKeyDown(e);
             }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder={isStreaming ? "Agent is working..." : "Ask to make changes, @mention files, run /commands"}
-            className={cn(
-              'min-h-[100px] max-h-[200px] resize-none border-0 focus-visible:ring-0',
-              'bg-transparent dark:bg-transparent',
-              'placeholder:text-muted-foreground/60',
-              // Make textarea background transparent to show ghost text
-              'relative z-10'
-            )}
-            disabled={!selectedSessionId || isSending || isStreaming}
           />
           {/* Cmd+L hint - hidden when focused */}
           {!isFocused && (
             <div className="absolute top-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">
               ⌘L to focus
-            </div>
-          )}
-          {/* Tab hint when suggestion is visible */}
-          {suggestion && (
-            <div className="absolute bottom-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">
-              Tab to accept
             </div>
           )}
         </div>

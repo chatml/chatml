@@ -216,7 +216,7 @@ export function RepositoriesDashboard({
     },
     {
       id: 'name',
-      header: 'Repository',
+      header: 'Project',
       accessorKey: 'name',
       cell: (workspace) => <NameCell workspace={workspace} />,
       sortable: true,
@@ -270,9 +270,9 @@ export function RepositoriesDashboard({
     <FullContentLayout
       title={
         <span className="flex items-center gap-2">
-          Repositories
+          Projects
           <span className="text-sm font-normal text-muted-foreground">
-            {workspaces.length} {workspaces.length === 1 ? 'repository' : 'repositories'}
+            {workspaces.length} {workspaces.length === 1 ? 'project' : 'projects'}
           </span>
         </span>
       }
@@ -315,8 +315,8 @@ export function RepositoriesDashboard({
         {workspaces.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <FolderPlus className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium">No repositories</p>
-            <p className="text-sm mt-1">Add a repository to get started.</p>
+            <p className="text-lg font-medium">No projects</p>
+            <p className="text-sm mt-1">Add a project to get started.</p>
             <div className="flex items-center justify-center gap-2 mt-4">
               <Button variant="outline" size="sm" onClick={onOpenProject}>
                 <Folder className="h-4 w-4" />
@@ -338,12 +338,12 @@ export function RepositoriesDashboard({
             onRowContextMenu={getWorkspaceContextMenu}
             filterOptions={filterOptions}
             displayOptionsConfig={displayOptionsConfig}
-            searchPlaceholder="Search repositories..."
+            searchPlaceholder="Search projects..."
             selectable
             emptyState={
               <div className="text-center py-12 text-muted-foreground">
                 <FolderPlus className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">No repositories found</p>
+                <p className="text-lg font-medium">No projects found</p>
                 <p className="text-sm mt-1">Try adjusting your search or filters.</p>
               </div>
             }

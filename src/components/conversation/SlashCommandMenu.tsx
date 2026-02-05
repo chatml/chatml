@@ -97,7 +97,7 @@ export function SlashCommandMenu({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-80 p-1 max-h-[280px] overflow-y-auto"
+        className="w-[300px] p-0 max-h-[288px] overflow-y-auto rounded-md bg-popover shadow-md"
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={() => onDismiss()}
@@ -105,15 +105,13 @@ export function SlashCommandMenu({
           e.preventDefault(); // Let the hook handle Escape
         }}
       >
-        {/* Header */}
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
-          Commands
-        </div>
-
-        {groups.map(({ category, items }) => (
-          <div key={category}>
+        {groups.map(({ category, items }, groupIndex) => (
+          <div key={category} className={cn(
+            'py-1.5',
+            groupIndex < groups.length - 1 && 'border-b'
+          )}>
             {/* Category heading */}
-            <div className="px-2 py-1 text-xs font-medium text-muted-foreground/60">
+            <div className="px-3 mb-2 mt-1.5 text-xs font-medium text-muted-foreground">
               {category}
             </div>
 
@@ -127,9 +125,9 @@ export function SlashCommandMenu({
                   key={cmd.id}
                   ref={isSelected ? selectedRef : undefined}
                   className={cn(
-                    'flex items-center gap-2.5 px-2 py-1.5 rounded-sm cursor-default select-none',
+                    'relative mx-1 flex h-[28px] select-none items-center gap-2 rounded-sm px-2 text-sm outline-none cursor-pointer transition-colors',
                     isSelected && 'bg-accent text-accent-foreground',
-                    !isSelected && 'hover:bg-muted'
+                    !isSelected && 'text-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                   onMouseDown={(e) => {
                     e.preventDefault(); // Prevent textarea blur
@@ -137,28 +135,11 @@ export function SlashCommandMenu({
                   }}
                   onMouseEnter={() => onHover(idx)}
                 >
-                  <Icon
-                    className={cn(
-                      'size-4 shrink-0',
-                      isSelected ? 'text-accent-foreground/70' : 'text-muted-foreground'
-                    )}
-                  />
-                  <div className="flex flex-col min-w-0 gap-0">
-                    <span className="text-sm truncate">
-                      <span className={cn(
-                        isSelected ? 'text-accent-foreground/50' : 'text-muted-foreground/60'
-                      )}>
-                        /
-                      </span>
-                      <HighlightMatch text={cmd.trigger} query={query} isSelected={isSelected} />
-                    </span>
-                    <span className={cn(
-                      'text-xs truncate',
-                      isSelected ? 'text-accent-foreground/60' : 'text-muted-foreground/70'
-                    )}>
-                      {cmd.description}
-                    </span>
-                  </div>
+                  <Icon className="size-4 shrink-0" />
+                  <span className="truncate">
+                    <span className="text-muted-foreground">/</span>
+                    <HighlightMatch text={cmd.trigger} query={query} isSelected={isSelected} />
+                  </span>
                 </div>
               );
             })}

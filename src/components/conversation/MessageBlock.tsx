@@ -23,6 +23,7 @@ import { highlightSearchMatches } from '@/components/conversation/ChatSearchBar'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
+import { MentionText } from '@/components/conversation/MentionText';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export interface MessageBlockProps {
@@ -88,7 +89,7 @@ export const MessageBlock = memo(function MessageBlock({
             <AttachmentGrid attachments={message.attachments} readOnly />
           )}
           <p className="text-base leading-relaxed whitespace-pre-wrap">
-            {highlightedContent || message.content}
+            {highlightedContent || <MentionText content={message.content} />}
           </p>
         </div>
       </div>

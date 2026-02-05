@@ -494,7 +494,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               {/* Section Header */}
               <div className="group/header px-2 pt-1 pb-2 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
-                  Repositories
+                  Projects
                 </span>
                 <button
                   onClick={(e) => navigateOrOpenTab({ contentView: { type: 'repositories' } }, e)}
@@ -508,9 +508,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3">
                     <FolderPlus className="w-6 h-6 text-muted-foreground/50" />
                   </div>
-                  <p className="text-lg font-medium text-muted-foreground">No workspaces</p>
+                  <p className="text-lg font-medium text-muted-foreground">No projects</p>
                   <p className="text-sm text-muted-foreground/70 mt-1 mb-4">
-                    Add a repository to get started
+                    Add a project to get started
                   </p>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

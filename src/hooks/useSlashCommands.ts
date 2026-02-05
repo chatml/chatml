@@ -50,9 +50,9 @@ export interface UseSlashCommandsReturn {
   query: string;
   filteredCommands: SlashCommand[];
   selectedIndex: number;
-  /** Call in textarea onKeyDown. Returns true if the event was consumed. */
-  handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
-  /** Call when textarea value or cursor position changes. */
+  /** Call in input onKeyDown. Returns true if the event was consumed. */
+  handleKeyDown: (e: React.KeyboardEvent, currentMessage?: string) => boolean;
+  /** Call when input value or cursor position changes. */
   handleInputChange: (value: string, cursorPos: number) => void;
   /** Execute a specific command (e.g., on click). */
   executeCommand: (command: SlashCommand) => void;
@@ -137,7 +137,7 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
   );
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    (e: React.KeyboardEvent, currentMessage?: string): boolean => {
       if (!isOpen || filteredCommands.length === 0) return false;
 
       switch (e.key) {
@@ -156,8 +156,7 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
           e.preventDefault();
           const selected = filteredCommands[selectedIndex];
           if (selected) {
-            const textarea = e.currentTarget;
-            executeCommand(selected, textarea.value);
+            executeCommand(selected, currentMessage);
           }
           return true;
         }
