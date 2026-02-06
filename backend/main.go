@@ -15,6 +15,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
+	"github.com/chatml/chatml-backend/cleanup"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/logger"
@@ -93,6 +94,34 @@ func main() {
 
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
+
+	// Startup maintenance: clean orphaned worktrees before accepting connections.
+	// Runs synchronously to avoid race conditions with session creation.
+	if err := cleanup.CleanOrphanedWorktrees(ctx, s, wm); err != nil {
+		logger.Cleanup.Warnf("Failed to clean orphaned worktrees: %v", err)
+	}
+
+	// Validate that registered repos still exist on disk (diagnostic only).
+	// This logs warnings for operator awareness but does not remove stale entries,
+	// since the repo may be on a temporarily unmounted volume or network drive.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Main.Errorf("PANIC in repo validation: %v\n%s", r, debug.Stack())
+			}
+		}()
+
+		repos, err := s.ListRepos(ctx)
+		if err != nil {
+			logger.Main.Warnf("Failed to list repos for validation: %v", err)
+			return
+		}
+		for _, repo := range repos {
+			if _, err := os.Stat(repo.Path); os.IsNotExist(err) {
+				logger.Main.Warnf("Registered workspace %q (%s) no longer exists on disk at %s", repo.Name, repo.ID, repo.Path)
+			}
+		}
+	}()
 
 	agentMgr := agent.NewManager(ctx, s, wm)
 
