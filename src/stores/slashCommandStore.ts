@@ -1,23 +1,18 @@
 import { create } from 'zustand';
 import type { LucideIcon } from 'lucide-react';
 import {
-  GitCommit,
-  GitPullRequest,
   RefreshCw,
-  Search,
   FileCode,
   Shield,
   BookOpen,
   Brain,
   HelpCircle,
-  Wrench,
-  TestTube,
   Code,
   MessageSquareText,
   Sparkles,
   FileText,
 } from 'lucide-react';
-import type { SkillDTO, UserCommandDTO } from '@/lib/api';
+import type { SkillDTO } from '@/lib/api';
 
 // ============================================================================
 // Types
@@ -77,28 +72,6 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
     execute: (ctx) => ctx.setMessage('What can you help me with? Show me your capabilities.'),
   },
   {
-    id: 'builtin:fix',
-    trigger: 'fix',
-    label: 'Fix Issue',
-    description: 'Fix a bug or issue in the code',
-    keywords: ['bug', 'error', 'debug', 'broken'],
-    icon: Wrench,
-    source: 'builtin',
-    executionType: 'prompt',
-    execute: (ctx) => ctx.setMessage('Fix '),
-  },
-  {
-    id: 'builtin:test',
-    trigger: 'test',
-    label: 'Write Tests',
-    description: 'Generate tests for your code',
-    keywords: ['unit', 'integration', 'coverage', 'spec'],
-    icon: TestTube,
-    source: 'builtin',
-    executionType: 'prompt',
-    execute: (ctx) => ctx.setMessage('Write tests for '),
-  },
-  {
     id: 'builtin:refactor',
     trigger: 'refactor',
     label: 'Refactor Code',
@@ -123,30 +96,6 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
 
   // Git commands (fire actions)
   {
-    id: 'builtin:commit',
-    trigger: 'commit',
-    label: 'Commit Changes',
-    description: 'Stage and commit current changes',
-    keywords: ['save', 'stage', 'git'],
-    icon: GitCommit,
-    source: 'builtin',
-    executionType: 'action',
-    available: requiresSession,
-    execute: () => window.dispatchEvent(new CustomEvent('git-commit')),
-  },
-  {
-    id: 'builtin:pr',
-    trigger: 'pr',
-    label: 'Create Pull Request',
-    description: 'Create a PR from current branch',
-    keywords: ['pull request', 'merge', 'github'],
-    icon: GitPullRequest,
-    source: 'builtin',
-    executionType: 'action',
-    available: requiresSession,
-    execute: () => window.dispatchEvent(new CustomEvent('git-create-pr')),
-  },
-  {
     id: 'builtin:sync',
     trigger: 'sync',
     label: 'Sync with Main',
@@ -161,23 +110,11 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
 
   // Review commands (fire actions)
   {
-    id: 'builtin:review',
-    trigger: 'review',
-    label: 'Quick Review',
-    description: 'Run a quick code review on changes',
-    keywords: ['fast', 'basic', 'check'],
-    icon: Search,
-    source: 'builtin',
-    executionType: 'action',
-    available: requiresSession,
-    execute: () => window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'quick' } })),
-  },
-  {
     id: 'builtin:deep-review',
     trigger: 'deep-review',
     label: 'Deep Review',
     description: 'Run a thorough code review',
-    keywords: ['thorough', 'comprehensive', 'detailed'],
+    keywords: ['thorough', 'comprehensive', 'detailed', 'review'],
     icon: FileCode,
     source: 'builtin',
     executionType: 'action',
@@ -340,6 +277,7 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
       }
     }
 
+    commands.sort((a, b) => a.trigger.localeCompare(b.trigger));
     return commands;
   },
 }));

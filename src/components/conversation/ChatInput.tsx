@@ -37,9 +37,7 @@ import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAll
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useSlashCommands } from '@/hooks/useSlashCommands';
-import { SlashCommandMenu } from './SlashCommandMenu';
-import { useSlashCommandStore } from '@/stores/slashCommandStore';
+import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
 import type { MentionItem } from '@/components/ui/mention-node';
@@ -175,26 +173,25 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId, currentConversationModel, defaultModel]);
 
-  // Slash commands hook
-  // Note: context object identity changes on conversation/session switch. This is fine
-  // because context is only consumed inside executeCommand callbacks, not in effects/memos.
-  const setInputText = useCallback((text: string) => {
-    setMessage(text); // Update React state for submit button
-    plateInputRef.current?.setText(text); // Update Plate editor content
-  }, []);
+  // Derive available slash commands from store
+  const getAllCommands = useSlashCommandStore((s) => s.getAllCommands);
+  const installedSkills = useSlashCommandStore((s) => s.installedSkills);
+  const userCommands = useSlashCommandStore((s) => s.userCommands);
+  const slashCommands = useMemo(
+    () => getAllCommands({ hasSession: selectedSessionId !== null }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- need to recompute when skills/commands change
+    [getAllCommands, selectedSessionId, installedSkills, userCommands]
+  );
 
   // sendMessage: programmatically set text and trigger submit
   const pendingSubmitRef = useRef<string | null>(null);
   const sendMessage = useCallback((text: string) => {
     plateInputRef.current?.setText(text);
     setMessage(text);
-    // Schedule submit on next tick after Plate editor updates
     pendingSubmitRef.current = text;
   }, []);
 
-  // Process pending programmatic submit.
-  // No dependency array: runs every render to detect ref changes from sendMessage().
-  // The ref check ensures the body only executes once per sendMessage call.
+  // Process pending programmatic submit
   useEffect(() => {
     if (pendingSubmitRef.current !== null) {
       pendingSubmitRef.current = null;
@@ -206,41 +203,63 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   });
   const handleSubmitRef = useRef<(() => void) | null>(null);
 
+  // Handle slash command execution from InlineCombobox
+  const handleSlashCommandExecute = useCallback((cmd: UnifiedSlashCommand) => {
+    if (cmd.executionType === 'action') {
+      // Action commands: clear input and fire
+      plateInputRef.current?.clear();
+      setMessage('');
+      cmd.execute({
+        setMessage: (msg: string) => {
+          plateInputRef.current?.setText(msg);
+          setMessage(msg);
+        },
+        sendMessage,
+        conversationId: selectedConversationId,
+        sessionId: selectedSessionId,
+      });
+    } else if (cmd.executionType === 'skill') {
+      // Skill commands: insert the trigger text for user to submit
+      const text = `/${cmd.trigger}`;
+      plateInputRef.current?.setText(text);
+      setMessage(text);
+    } else {
+      // Prompt commands: set the prompt prefix
+      cmd.execute({
+        setMessage: (msg: string) => {
+          plateInputRef.current?.setText(msg);
+          setMessage(msg);
+        },
+        sendMessage,
+        conversationId: selectedConversationId,
+        sessionId: selectedSessionId,
+      });
+    }
+  }, [sendMessage, selectedConversationId, selectedSessionId]);
+
   // Fetch user commands when session changes
   const fetchUserCommands = useSlashCommandStore((s) => s.fetchUserCommands);
   const setInstalledSkills = useSlashCommandStore((s) => s.setInstalledSkills);
+  // Note: installedSkills and userCommands are subscribed above for slashCommands derivation
   useEffect(() => {
     if (selectedWorkspaceId && selectedSessionId) {
       fetchUserCommands(selectedWorkspaceId, selectedSessionId);
     }
   }, [selectedWorkspaceId, selectedSessionId, fetchUserCommands]);
 
-  // Sync installed skills into slash command store (re-fetch on session change)
+  // Sync catalog skills into slash command store (re-fetch on session change)
   useEffect(() => {
     const syncSkills = async () => {
       try {
         const { listSkills } = await import('@/lib/api');
         const skills = await listSkills();
-        const installed = skills.filter((s) => s.installed);
-        setInstalledSkills(installed);
+        setInstalledSkills(skills);
       } catch {
         // Skills are optional
       }
     };
     syncSkills();
   }, [setInstalledSkills, selectedSessionId]);
-
-  const slashMenu = useSlashCommands({
-    context: useMemo(() => ({
-      setMessage: setInputText,
-      sendMessage,
-      conversationId: selectedConversationId,
-      sessionId: selectedSessionId,
-    }), [setInputText, sendMessage, selectedConversationId, selectedSessionId]),
-    availability: useMemo(() => ({
-      hasSession: selectedSessionId !== null,
-    }), [selectedSessionId]),
-  });
 
   // Check if currently streaming
   const isStreaming = selectedConversationId
@@ -608,7 +627,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Check if a combobox is active (mention selection in progress)
+    // Check if a combobox is active (mention or slash command selection in progress)
     // Check both: focused combobox input OR visible combobox popover (listbox)
     const activeElement = document.activeElement as HTMLElement | null;
     const isInCombobox = activeElement?.closest('[role="combobox"]');
@@ -616,12 +635,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if ((isInCombobox || hasOpenPopover) && (e.key === 'Enter' || e.key === 'Tab')) {
       // Let the combobox handle item selection
       return;
-    }
-
-    // Slash command menu takes priority when open
-    if (slashMenu.isOpen) {
-      const consumed = slashMenu.handleKeyDown(e);
-      if (consumed) return;
     }
 
     // ⌘⇧↵ to approve plan
@@ -760,19 +773,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           </div>
         )}
 
-        {/* Slash Command Menu */}
-        <div className="relative">
-          <SlashCommandMenu
-            isOpen={slashMenu.isOpen}
-            commands={slashMenu.filteredCommands}
-            selectedIndex={slashMenu.selectedIndex}
-            query={slashMenu.query}
-            onSelect={slashMenu.executeCommand}
-            onHover={slashMenu.setSelectedIndex}
-            onDismiss={slashMenu.dismiss}
-          />
-          </div>
-
         {/* Text Input with Cmd+L hint */}
         <div className="relative px-3 py-2">
           <PlateInput
@@ -781,15 +781,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             className="bg-transparent dark:bg-transparent relative z-10"
             mentionItems={mentionItems}
             mentionItemsLoading={mentionItemsLoading}
+            slashCommands={slashCommands}
+            onSlashCommandExecute={handleSlashCommandExecute}
             onInput={(text) => {
-              setMessage(text); // Keep message state for suggestion logic
-              // Note: Slash commands need cursorPos, so we pass text length as approximation
-              slashMenu.handleInputChange(text, text.length);
+              setMessage(text);
             }}
-            onKeyDown={(e) => {
-              if (slashMenu.handleKeyDown(e, message)) return;
-              handleKeyDown(e);
-            }}
+            onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
