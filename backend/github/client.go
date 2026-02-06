@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // User represents a GitHub user
@@ -60,7 +62,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 	hasClientID := c.clientID != ""
 	hasClientSecret := c.clientSecret != ""
 	hasCodeVerifier := codeVerifier != ""
-	fmt.Printf("[OAuth] ExchangeCode: clientID=%v, clientSecret=%v, codeVerifier=%v, code_length=%d\n",
+	logger.GitHub.Debugf("ExchangeCode: clientID=%v, clientSecret=%v, codeVerifier=%v, code_length=%d",
 		hasClientID, hasClientSecret, hasCodeVerifier, len(code))
 
 	if !hasClientID {
@@ -100,7 +102,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 		return "", fmt.Errorf("reading response: %w", err)
 	}
 
-	fmt.Printf("[OAuth] GitHub response: status=%d, body=%s\n", resp.StatusCode, string(body))
+	logger.GitHub.Debugf("OAuth response: status=%d, body_length=%d", resp.StatusCode, len(body))
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
@@ -122,7 +124,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 		return "", fmt.Errorf("GitHub error: %s - %s", result.Error, result.ErrorDesc)
 	}
 
-	fmt.Printf("[OAuth] Token exchange successful, scope=%s\n", result.Scope)
+	logger.GitHub.Debugf("Token exchange successful, scope=%s", result.Scope)
 	return result.AccessToken, nil
 }
 

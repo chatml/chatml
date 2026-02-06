@@ -94,11 +94,8 @@ type StartConversationOptions struct {
 
 // StartConversation creates and starts a new conversation within a session
 func (m *Manager) StartConversation(ctx context.Context, sessionID, conversationType, initialMessage string, opts *StartConversationOptions) (*models.Conversation, error) {
-	// Debug: log model being requested
 	if opts != nil && opts.Model != "" {
-		fmt.Printf("[agent/manager] StartConversation: model=%s\n", opts.Model)
-	} else {
-		fmt.Printf("[agent/manager] StartConversation: no model specified\n")
+		logger.Manager.Debugf("StartConversation: model=%s", opts.Model)
 	}
 
 	sessionWithWs, err := m.store.GetSessionWithWorkspace(ctx, sessionID)

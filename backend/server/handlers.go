@@ -538,7 +538,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		// Log the error - response headers may already be sent
-		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+		logger.Handlers.Errorf("JSON encode error: %v", err)
 	}
 }
 
@@ -1720,7 +1720,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	rollback := true
 	defer func() {
 		if rollback {
-			fmt.Printf("[handlers] Rolling back worktree creation due to failure: %s\n", worktreePath)
+			logger.Handlers.Warnf("Rolling back worktree creation due to failure: %s", worktreePath)
 			h.sessionNameCache.Remove(sessionName)
 			session.DeleteMetadata(sessionID)
 			// Use background context for cleanup - the original request context may be cancelled
@@ -1744,7 +1744,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := session.WriteMetadata(meta); err != nil {
 		// Log but don't fail - metadata is supplementary
-		fmt.Printf("[handlers] Warning: failed to write session metadata: %v\n", err)
+		logger.Handlers.Warnf("Failed to write session metadata: %v", err)
 	}
 
 	sess := &models.Session{
@@ -3203,7 +3203,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(conv); err != nil {
-		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+		logger.Handlers.Errorf("JSON encode error: %v", err)
 	}
 }
 
