@@ -6,6 +6,7 @@ import { forwardRef, useImperativeHandle, useCallback } from 'react';
 import type { Value } from 'platejs';
 
 import { MentionPlugin, MentionInputPlugin } from '@platejs/mention/react';
+import { SlashPlugin, SlashInputPlugin } from '@platejs/slash-command/react';
 import { Plate, usePlateEditor } from 'platejs/react';
 
 import { cn } from '@/lib/utils';
@@ -16,6 +17,11 @@ import {
   MentionItemsContext,
   type MentionItem,
 } from '@/components/ui/mention-node';
+import {
+  SlashCommandInputElement,
+  SlashCommandItemsContext,
+} from '@/components/ui/slash-command-node';
+import type { UnifiedSlashCommand } from '@/stores/slashCommandStore';
 
 export interface PlateInputHandle {
   focus: () => void;
@@ -30,6 +36,8 @@ interface PlateInputProps {
   className?: string;
   mentionItems?: MentionItem[];
   mentionItemsLoading?: boolean;
+  slashCommands?: UnifiedSlashCommand[];
+  onSlashCommandExecute?: (command: UnifiedSlashCommand) => void;
   onInput?: (text: string) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   onFocus?: () => void;
@@ -90,6 +98,8 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       className,
       mentionItems = [],
       mentionItemsLoading = false,
+      slashCommands = [],
+      onSlashCommandExecute,
       onInput,
       onKeyDown,
       onFocus,
@@ -107,6 +117,13 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
           },
         }).withComponent(MentionElement),
         MentionInputPlugin.withComponent(MentionInputElement),
+        SlashPlugin.configure({
+          options: {
+            trigger: '/',
+            triggerPreviousCharPattern: /^$/,
+          },
+        }),
+        SlashInputPlugin.withComponent(SlashCommandInputElement),
       ],
       value: emptyValue,
     });
@@ -123,7 +140,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
     // Expose imperative handle
     useImperativeHandle(ref, () => ({
       focus: () => {
-        editor.tf.focus();
+        editor.tf.focus({ edge: 'end' });
       },
       clear: () => {
         editor.tf.reset();
@@ -139,10 +156,9 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
         };
       },
       setText: (text: string) => {
-        // Set editor content to a paragraph with the given text
-        editor.tf.setValue([{ type: 'p', children: [{ text }] }]);
-        // Move cursor to end
-        editor.tf.focus({ edge: 'end' });
+        editor.tf.reset();
+        editor.tf.focus();
+        editor.tf.insertText(text);
       },
     }));
 
@@ -162,26 +178,36 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       [mentionItems, mentionItemsLoading]
     );
 
+    const slashCommandContextValue = React.useMemo(
+      () => ({
+        commands: slashCommands,
+        onExecute: onSlashCommandExecute ?? (() => {}),
+      }),
+      [slashCommands, onSlashCommandExecute]
+    );
+
     return (
-      <MentionItemsContext.Provider value={mentionContextValue}>
-        <Plate editor={editor} onChange={handleChange}>
-          <div onKeyDown={handleKeyDown}>
-            <EditorContainer variant="default" className="p-0 rounded-none">
-              <Editor
-                variant="none"
-                placeholder={placeholder}
-                className={cn(
-                  'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
-                  'caret-foreground [&_[data-slate-editor]]:min-h-[1lh]',
-                  className
-                )}
-                onFocus={onFocus}
-                onBlur={onBlur}
-              />
-            </EditorContainer>
-          </div>
-        </Plate>
-      </MentionItemsContext.Provider>
+      <SlashCommandItemsContext.Provider value={slashCommandContextValue}>
+        <MentionItemsContext.Provider value={mentionContextValue}>
+          <Plate editor={editor} onChange={handleChange}>
+            <div onKeyDown={handleKeyDown}>
+              <EditorContainer variant="default" className="p-0 rounded-none">
+                <Editor
+                  variant="none"
+                  placeholder={placeholder}
+                  className={cn(
+                    'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
+                    'caret-foreground [&_[data-slate-editor]]:min-h-[1lh]',
+                    className
+                  )}
+                  onFocus={onFocus}
+                  onBlur={onBlur}
+                />
+              </EditorContainer>
+            </div>
+          </Plate>
+        </MentionItemsContext.Provider>
+      </SlashCommandItemsContext.Provider>
     );
   }
 );
