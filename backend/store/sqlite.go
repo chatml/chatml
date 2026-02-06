@@ -1122,11 +1122,10 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 }
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
-	if err != nil {
-		return fmt.Errorf("DeleteSession: %w", err)
-	}
-	return nil
+	return RetryDBExec(ctx, "DeleteSession", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
+		return err
+	})
 }
 
 // SessionExistsByName checks whether a session with the given name exists
