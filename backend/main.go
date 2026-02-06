@@ -15,6 +15,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
+	"github.com/chatml/chatml-backend/cleanup"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/logger"
@@ -93,6 +94,11 @@ func main() {
 
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
+
+	// Clean up orphaned worktrees from previous crashes or failed deletions
+	if err := cleanup.CleanOrphanedWorktrees(ctx, s, wm); err != nil {
+		logger.Main.Warnf("Failed to clean orphaned worktrees: %v", err)
+	}
 
 	agentMgr := agent.NewManager(ctx, s, wm)
 
