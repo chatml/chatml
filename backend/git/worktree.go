@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // ErrDirectoryExists indicates a name collision during atomic directory creation
@@ -198,6 +200,8 @@ func (wm *WorktreeManager) RemoveByPath(ctx context.Context, repoPath, worktreeI
 // RemoveAtPath removes a worktree at an absolute path and deletes its branch.
 // If branchName is empty, only the worktree is removed (branch deletion is skipped).
 func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreePath, branchName string) error {
+	logger.Cleanup.Infof("Removing worktree: path=%s branch=%s repo=%s", worktreePath, branchName, repoPath)
+
 	// Remove the worktree
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "remove", worktreePath, "--force")
 	out, err := cmd.CombinedOutput()
