@@ -39,6 +39,7 @@ import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSlashCommands } from '@/hooks/useSlashCommands';
 import { SlashCommandMenu } from './SlashCommandMenu';
+import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
 import type { MentionItem } from '@/components/ui/mention-node';
@@ -182,12 +183,60 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     plateInputRef.current?.setText(text); // Update Plate editor content
   }, []);
 
+  // sendMessage: programmatically set text and trigger submit
+  const pendingSubmitRef = useRef<string | null>(null);
+  const sendMessage = useCallback((text: string) => {
+    plateInputRef.current?.setText(text);
+    setMessage(text);
+    // Schedule submit on next tick after Plate editor updates
+    pendingSubmitRef.current = text;
+  }, []);
+
+  // Process pending programmatic submit.
+  // No dependency array: runs every render to detect ref changes from sendMessage().
+  // The ref check ensures the body only executes once per sendMessage call.
+  useEffect(() => {
+    if (pendingSubmitRef.current !== null) {
+      pendingSubmitRef.current = null;
+      const timer = setTimeout(() => {
+        handleSubmitRef.current?.();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  });
+  const handleSubmitRef = useRef<(() => void) | null>(null);
+
+  // Fetch user commands when session changes
+  const fetchUserCommands = useSlashCommandStore((s) => s.fetchUserCommands);
+  const setInstalledSkills = useSlashCommandStore((s) => s.setInstalledSkills);
+  useEffect(() => {
+    if (selectedWorkspaceId && selectedSessionId) {
+      fetchUserCommands(selectedWorkspaceId, selectedSessionId);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, fetchUserCommands]);
+
+  // Sync installed skills into slash command store (re-fetch on session change)
+  useEffect(() => {
+    const syncSkills = async () => {
+      try {
+        const { listSkills } = await import('@/lib/api');
+        const skills = await listSkills();
+        const installed = skills.filter((s) => s.installed);
+        setInstalledSkills(installed);
+      } catch {
+        // Skills are optional
+      }
+    };
+    syncSkills();
+  }, [setInstalledSkills, selectedSessionId]);
+
   const slashMenu = useSlashCommands({
     context: useMemo(() => ({
       setMessage: setInputText,
+      sendMessage,
       conversationId: selectedConversationId,
       sessionId: selectedSessionId,
-    }), [setInputText, selectedConversationId, selectedSessionId]),
+    }), [setInputText, sendMessage, selectedConversationId, selectedSessionId]),
     availability: useMemo(() => ({
       hasSession: selectedSessionId !== null,
     }), [selectedSessionId]),
@@ -409,6 +458,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
     if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
+    // Clear any pending programmatic submit now that we're executing
+    pendingSubmitRef.current = null;
 
     const trimmedContent = content.trim();
     const currentAttachments = [...attachments];
@@ -538,6 +589,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       setIsSending(false);
     }
   };
+
+  // Keep ref in sync for programmatic submit from sendMessage
+  handleSubmitRef.current = handleSubmit;
 
   const handleStop = async () => {
     if (!selectedConversationId || !isStreaming) return;
