@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/skills"
 	"github.com/go-chi/chi/v5"
@@ -16,15 +15,11 @@ func (h *Handlers) ListSkills(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	search := r.URL.Query().Get("search")
 
-	// Get installed skill IDs
-	installedIDs, err := h.store.ListInstalledSkillIDs(ctx)
+	// Get all installed skills with timestamps in a single query
+	installedSkills, err := h.store.ListInstalledSkillsWithTimestamps(ctx)
 	if err != nil {
 		writeDBError(w, err)
 		return
-	}
-	installedSet := make(map[string]bool)
-	for _, id := range installedIDs {
-		installedSet[id] = true
 	}
 
 	// Filter skills based on query params
@@ -35,14 +30,11 @@ func (h *Handlers) ListSkills(w http.ResponseWriter, r *http.Request) {
 	for _, skill := range filteredSkills {
 		swis := models.SkillWithInstallStatus{
 			Skill:     skill,
-			Installed: installedSet[skill.ID],
+			Installed: false,
 		}
-		if swis.Installed {
-			installedAt, err := h.store.GetSkillInstalledAt(ctx, skill.ID)
-			if err != nil {
-				logger.Handlers.Warnf("Failed to get skill install time for %s: %v", skill.ID, err)
-			}
-			swis.InstalledAt = installedAt
+		if installedAt, ok := installedSkills[skill.ID]; ok {
+			swis.Installed = true
+			swis.InstalledAt = &installedAt
 		}
 		result = append(result, swis)
 	}
@@ -55,30 +47,23 @@ func (h *Handlers) ListSkills(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListInstalledSkills(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	installedIDs, err := h.store.ListInstalledSkillIDs(ctx)
+	// Get all installed skills with timestamps in a single query
+	installedSkills, err := h.store.ListInstalledSkillsWithTimestamps(ctx)
 	if err != nil {
 		writeDBError(w, err)
 		return
 	}
 
-	idSet := make(map[string]bool)
-	for _, id := range installedIDs {
-		idSet[id] = true
-	}
-
-	result := make([]models.SkillWithInstallStatus, 0)
+	result := make([]models.SkillWithInstallStatus, 0, len(installedSkills))
 	for _, skill := range skills.BuiltInSkills {
-		if !idSet[skill.ID] {
+		installedAt, ok := installedSkills[skill.ID]
+		if !ok {
 			continue
-		}
-		installedAt, err := h.store.GetSkillInstalledAt(ctx, skill.ID)
-		if err != nil {
-			logger.Handlers.Warnf("Failed to get skill install time for %s: %v", skill.ID, err)
 		}
 		result = append(result, models.SkillWithInstallStatus{
 			Skill:       skill,
 			Installed:   true,
-			InstalledAt: installedAt,
+			InstalledAt: &installedAt,
 		})
 	}
 
