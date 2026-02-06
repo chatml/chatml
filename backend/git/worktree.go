@@ -210,10 +210,20 @@ func (wm *WorktreeManager) RemoveAtPath(ctx context.Context, repoPath, worktreeP
 		return fmt.Errorf("failed to remove worktree: %s: %w", string(out), err)
 	}
 
+	// Prune stale worktree entries from git's internal tracking (.git/worktrees/)
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "prune")
+	pruneOut, pruneErr := cmd.CombinedOutput()
+	cancel()
+	if pruneErr != nil {
+		logger.Cleanup.Warnf("Failed to prune worktrees for %s: %s: %v", repoPath, string(pruneOut), pruneErr)
+	}
+
 	// Delete the branch if specified
 	if branchName != "" {
 		cmd, cancel = gitCmdWithContext(ctx, repoPath, "branch", "-D", branchName)
-		cmd.CombinedOutput() // Ignore error, branch might not exist
+		if branchOut, branchErr := cmd.CombinedOutput(); branchErr != nil {
+			logger.Cleanup.Warnf("Failed to delete branch %q in %s: %s: %v", branchName, repoPath, string(branchOut), branchErr)
+		}
 		cancel()
 	}
 
