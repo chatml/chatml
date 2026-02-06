@@ -957,6 +957,56 @@ func TestValidatePath(t *testing.T) {
 	}
 }
 
+func TestValidatePath_SymlinkProtection(t *testing.T) {
+	// Use real directories so EvalSymlinks can resolve paths
+	baseDir := t.TempDir()
+
+	// Create a file inside the base
+	require.NoError(t, os.MkdirAll(filepath.Join(baseDir, "subdir"), 0755))
+	writeFile(t, filepath.Join(baseDir, "subdir"), "real.txt", "safe content")
+
+	t.Run("allows normal file within base", func(t *testing.T) {
+		result, err := validatePath(baseDir, "subdir/real.txt")
+		require.NoError(t, err)
+		assert.Equal(t, "subdir/real.txt", result)
+	})
+
+	t.Run("rejects symlink pointing outside base", func(t *testing.T) {
+		// Create a file outside the base directory
+		outsideDir := t.TempDir()
+		writeFile(t, outsideDir, "secret.txt", "secret data")
+
+		// Create a symlink inside the base that points outside
+		require.NoError(t, os.Symlink(
+			filepath.Join(outsideDir, "secret.txt"),
+			filepath.Join(baseDir, "evil-link.txt"),
+		))
+
+		_, err := validatePath(baseDir, "evil-link.txt")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path escapes base directory")
+	})
+
+	t.Run("rejects symlinked directory pointing outside base", func(t *testing.T) {
+		outsideDir := t.TempDir()
+		writeFile(t, outsideDir, "secret.txt", "secret data")
+
+		// Create a symlinked directory inside the base that points outside
+		require.NoError(t, os.Symlink(outsideDir, filepath.Join(baseDir, "evil-dir")))
+
+		_, err := validatePath(baseDir, "evil-dir/secret.txt")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "path escapes base directory")
+	})
+
+	t.Run("allows non-existent path with fallback validation", func(t *testing.T) {
+		// Non-existent file can't be a symlink, falls back to Abs check
+		result, err := validatePath(baseDir, "does-not-exist.txt")
+		require.NoError(t, err)
+		assert.Equal(t, "does-not-exist.txt", result)
+	})
+}
+
 func TestListSessionFiles_Success(t *testing.T) {
 	h, s := setupTestHandlers(t)
 

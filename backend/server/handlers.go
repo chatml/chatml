@@ -692,19 +692,38 @@ func validatePath(basePath, requestedPath string) (string, error) {
 
 	fullPath := filepath.Join(basePath, cleanPath)
 
-	// Resolve to absolute and verify it's under basePath
-	absBase, err := filepath.Abs(basePath)
-	if err != nil {
-		return "", err
-	}
-	absPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return "", err
+	// Resolve symlinks to prevent symlink-based path traversal.
+	// If the path doesn't exist yet, fall back to Abs-based check
+	// (can't follow a symlink that doesn't exist).
+	resolvedBase, errBase := filepath.EvalSymlinks(basePath)
+	resolvedPath, errPath := filepath.EvalSymlinks(fullPath)
+
+	if errBase != nil && !os.IsNotExist(errBase) {
+		// Base directory exists but can't be resolved (e.g. permission error)
+		return "", fmt.Errorf("failed to resolve base directory: %w", errBase)
 	}
 
-	// Ensure path is under base (add trailing slash to prevent prefix attacks)
-	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
-		return "", fmt.Errorf("path escapes base directory")
+	if errBase == nil && errPath == nil {
+		// Both paths exist — verify resolved path is under resolved base
+		if !strings.HasPrefix(resolvedPath, resolvedBase+string(filepath.Separator)) && resolvedPath != resolvedBase {
+			return "", fmt.Errorf("path escapes base directory")
+		}
+	} else if errBase == nil && errPath != nil && !os.IsNotExist(errPath) {
+		// Path resolution failed for a reason other than "not found"
+		return "", fmt.Errorf("failed to resolve path: %w", errPath)
+	} else {
+		// Fallback: use Abs-based check (path or base doesn't exist yet)
+		absBase, err := filepath.Abs(basePath)
+		if err != nil {
+			return "", err
+		}
+		absPath, err := filepath.Abs(fullPath)
+		if err != nil {
+			return "", err
+		}
+		if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+			return "", fmt.Errorf("path escapes base directory")
+		}
 	}
 
 	return cleanPath, nil

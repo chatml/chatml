@@ -69,6 +69,12 @@ func (h *Handlers) ListUserCommands(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimSuffix(entry.Name(), ".md")
 		fullPath := filepath.Join(commandsDir, entry.Name())
 
+		// Skip symlinks to prevent reading files outside the worktree
+		if entry.Type()&os.ModeSymlink != 0 {
+			logger.Handlers.Warnf("Skipping symlink command file %s", fullPath)
+			continue
+		}
+
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			logger.Handlers.Warnf("Failed to read command file %s: %v", fullPath, err)
