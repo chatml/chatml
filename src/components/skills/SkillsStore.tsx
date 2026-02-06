@@ -126,16 +126,31 @@ export function SkillsStore() {
     uninstallSkill,
     setSelectedCategory,
     setSearchQuery,
-    getFilteredSkills,
-    getInstalledSkills,
   } = useSkillsStore();
 
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
 
-  const filteredSkills = getFilteredSkills();
-  const installedCount = getInstalledSkills().length;
+  const filteredSkills = useMemo(() => {
+    return skills.filter((skill) => {
+      if (selectedCategory && skill.category !== selectedCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return (
+          skill.name.toLowerCase().includes(q) ||
+          skill.description.toLowerCase().includes(q) ||
+          skill.author.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [skills, selectedCategory, searchQuery]);
+
+  const installedCount = useMemo(
+    () => skills.filter((s) => s.installed).length,
+    [skills]
+  );
   const { error: showError } = useToast();
 
   // Toolbar configuration
