@@ -226,6 +226,15 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
 // Store
 // ============================================================================
 
+interface CommandCache {
+  skills: SkillDTO[];
+  userCmds: UserCommandFile[];
+  hasSession: boolean;
+  result: UnifiedSlashCommand[];
+}
+
+let _commandCache: CommandCache | null = null;
+
 interface SlashCommandStoreState {
   // Sources
   installedSkills: SkillDTO[];
@@ -289,13 +298,14 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
   installedSkills: [],
   userCommands: [],
 
-  setInstalledSkills: (skills) => set({ installedSkills: skills }),
-  setUserCommands: (commands) => set({ userCommands: commands }),
+  setInstalledSkills: (skills) => { _commandCache = null; set({ installedSkills: skills }); },
+  setUserCommands: (commands) => { _commandCache = null; set({ userCommands: commands }); },
 
   fetchUserCommands: async (workspaceId, sessionId) => {
     try {
       const { listUserCommands } = await import('@/lib/api');
       const commands = await listUserCommands(workspaceId, sessionId);
+      _commandCache = null;
       set({
         userCommands: commands.map((c) => ({
           name: c.name,
@@ -311,6 +321,16 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
 
   getAllCommands: (availability) => {
     const { installedSkills, userCommands } = get();
+
+    // Return cached result if sources haven't changed (reference equality)
+    if (
+      _commandCache &&
+      _commandCache.skills === installedSkills &&
+      _commandCache.userCmds === userCommands &&
+      _commandCache.hasSession === availability.hasSession
+    ) {
+      return _commandCache.result;
+    }
 
     // Start with built-in commands
     const commands: UnifiedSlashCommand[] = BUILTIN_COMMANDS.filter(
@@ -339,6 +359,14 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
         }
       }
     }
+
+    // Cache the result for subsequent calls with the same inputs
+    _commandCache = {
+      skills: installedSkills,
+      userCmds: userCommands,
+      hasSession: availability.hasSession,
+      result: commands,
+    };
 
     return commands;
   },
