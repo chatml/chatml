@@ -8,8 +8,6 @@ import (
 )
 
 // BuiltInSkills is the hardcoded catalog of available skills.
-// Note: UsageCount, Rating, and RatingCount are placeholder values for UI display.
-// These are not dynamically tracked and serve as mock data for the skills store UI.
 var BuiltInSkills = []models.Skill{
 	// Development Workflows
 	{
@@ -20,9 +18,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Red-Green-Refactor cycle with automated test generation",
-		UsageCount:  1250,
-		Rating:      4.7,
-		RatingCount: 89,
 		SkillPath:   "tdd-workflow.md",
 		Content:     tddWorkflowContent,
 		CreatedAt:   time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
@@ -36,9 +31,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Structured debugging with hypothesis testing",
-		UsageCount:  980,
-		Rating:      4.5,
-		RatingCount: 67,
 		SkillPath:   "systematic-debugging.md",
 		Content:     systematicDebuggingContent,
 		CreatedAt:   time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
@@ -52,9 +44,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Comprehensive code review with security and performance checks",
-		UsageCount:  856,
-		Rating:      4.6,
-		RatingCount: 54,
 		SkillPath:   "code-review.md",
 		Content:     codeReviewContent,
 		CreatedAt:   time.Date(2025, 1, 16, 0, 0, 0, 0, time.UTC),
@@ -70,9 +59,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Explore requirements and design before coding",
-		UsageCount:  723,
-		Rating:      4.4,
-		RatingCount: 41,
 		SkillPath:   "brainstorming.md",
 		Content:     brainstormingContent,
 		CreatedAt:   time.Date(2025, 1, 17, 0, 0, 0, 0, time.UTC),
@@ -86,9 +72,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Detailed implementation plans with clear steps",
-		UsageCount:  612,
-		Rating:      4.3,
-		RatingCount: 38,
 		SkillPath:   "writing-plans.md",
 		Content:     writingPlansContent,
 		CreatedAt:   time.Date(2025, 1, 18, 0, 0, 0, 0, time.UTC),
@@ -104,9 +87,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Conventional commits with meaningful messages",
-		UsageCount:  1456,
-		Rating:      4.8,
-		RatingCount: 112,
 		SkillPath:   "git-commit-helper.md",
 		Content:     gitCommitHelperContent,
 		CreatedAt:   time.Date(2025, 1, 14, 0, 0, 0, 0, time.UTC),
@@ -120,9 +100,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Well-documented PRs with clear descriptions",
-		UsageCount:  934,
-		Rating:      4.5,
-		RatingCount: 73,
 		SkillPath:   "pr-creation.md",
 		Content:     prCreationContent,
 		CreatedAt:   time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC),
@@ -136,9 +113,6 @@ var BuiltInSkills = []models.Skill{
 		Author:      "ChatML Team",
 		Version:     "1.0.0",
 		Preview:     "Branch naming, merging, and cleanup best practices",
-		UsageCount:  567,
-		Rating:      4.2,
-		RatingCount: 29,
 		SkillPath:   "branch-management.md",
 		Content:     branchManagementContent,
 		CreatedAt:   time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC),

@@ -16,13 +16,9 @@ interface SkillsState {
   uninstallSkill: (skillId: string) => Promise<void>;
   setSelectedCategory: (category: SkillCategory | null) => void;
   setSearchQuery: (query: string) => void;
-
-  // Selectors
-  getFilteredSkills: () => SkillDTO[];
-  getInstalledSkills: () => SkillDTO[];
 }
 
-export const useSkillsStore = create<SkillsState>((set, get) => ({
+export const useSkillsStore = create<SkillsState>((set) => ({
   skills: [],
   isLoading: false,
   error: null,
@@ -74,24 +70,4 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
   setSelectedCategory: (category) => set({ selectedCategory: category }),
   setSearchQuery: (query) => set({ searchQuery: query }),
-
-  getFilteredSkills: () => {
-    const { skills, selectedCategory, searchQuery } = get();
-    return skills.filter((skill) => {
-      if (selectedCategory && skill.category !== selectedCategory) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        return (
-          skill.name.toLowerCase().includes(q) ||
-          skill.description.toLowerCase().includes(q) ||
-          skill.author.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-  },
-
-  getInstalledSkills: () => {
-    return get().skills.filter((s) => s.installed);
-  },
 }));

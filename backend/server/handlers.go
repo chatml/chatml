@@ -538,7 +538,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		// Log the error - response headers may already be sent
-		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+		logger.Handlers.Errorf("JSON encode error: %v", err)
 	}
 }
 
@@ -692,19 +692,38 @@ func validatePath(basePath, requestedPath string) (string, error) {
 
 	fullPath := filepath.Join(basePath, cleanPath)
 
-	// Resolve to absolute and verify it's under basePath
-	absBase, err := filepath.Abs(basePath)
-	if err != nil {
-		return "", err
-	}
-	absPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return "", err
+	// Resolve symlinks to prevent symlink-based path traversal.
+	// If the path doesn't exist yet, fall back to Abs-based check
+	// (can't follow a symlink that doesn't exist).
+	resolvedBase, errBase := filepath.EvalSymlinks(basePath)
+	resolvedPath, errPath := filepath.EvalSymlinks(fullPath)
+
+	if errBase != nil && !os.IsNotExist(errBase) {
+		// Base directory exists but can't be resolved (e.g. permission error)
+		return "", fmt.Errorf("failed to resolve base directory: %w", errBase)
 	}
 
-	// Ensure path is under base (add trailing slash to prevent prefix attacks)
-	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
-		return "", fmt.Errorf("path escapes base directory")
+	if errBase == nil && errPath == nil {
+		// Both paths exist — verify resolved path is under resolved base
+		if !strings.HasPrefix(resolvedPath, resolvedBase+string(filepath.Separator)) && resolvedPath != resolvedBase {
+			return "", fmt.Errorf("path escapes base directory")
+		}
+	} else if errBase == nil && errPath != nil && !os.IsNotExist(errPath) {
+		// Path resolution failed for a reason other than "not found"
+		return "", fmt.Errorf("failed to resolve path: %w", errPath)
+	} else {
+		// Fallback: use Abs-based check (path or base doesn't exist yet)
+		absBase, err := filepath.Abs(basePath)
+		if err != nil {
+			return "", err
+		}
+		absPath, err := filepath.Abs(fullPath)
+		if err != nil {
+			return "", err
+		}
+		if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+			return "", fmt.Errorf("path escapes base directory")
+		}
 	}
 
 	return cleanPath, nil
@@ -968,6 +987,33 @@ func (h *Handlers) GetRepoDetails(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
+
+	// Clean up all session worktrees BEFORE cascade-deleting from DB.
+	// The sessions table has ON DELETE CASCADE from repos, so the DB delete
+	// removes all session records — but we must remove worktree directories first.
+	// This is the opposite order from DeleteSession (which does DB-first) because
+	// cascade deletion would destroy the session records we need for cleanup.
+	// If worktree removal partially fails here, the startup orphan cleanup will catch it.
+	sessions, err := h.store.ListSessions(ctx, id, true) // include archived
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	repo, err := h.store.GetRepo(ctx, id)
+	if err != nil {
+		logger.Cleanup.Warnf("Failed to get repo %s for worktree cleanup: %v", id, err)
+	}
+	if repo != nil {
+		for _, sess := range sessions {
+			if sess.WorktreePath != "" {
+				session.DeleteMetadata(sess.ID)
+				if rmErr := h.worktreeManager.RemoveAtPath(ctx, repo.Path, sess.WorktreePath, sess.Branch); rmErr != nil {
+					logger.Cleanup.Warnf("Failed to remove worktree %s during repo delete: %v", sess.WorktreePath, rmErr)
+				}
+			}
+		}
+	}
+
 	if err := h.store.DeleteRepo(ctx, id); err != nil {
 		writeDBError(w, err)
 		return
@@ -1266,9 +1312,10 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
-// getSessionBranchMap builds a mapping from branch name to session info for a workspace
+// getSessionBranchMap builds a mapping from branch name to session info for a workspace.
+// Includes archived sessions so their branches are protected during branch cleanup.
 func (h *Handlers) getSessionBranchMap(ctx context.Context, workspaceID string) (map[string]*git.SessionInfo, error) {
-	sessions, err := h.store.ListSessions(ctx, workspaceID, false)
+	sessions, err := h.store.ListSessions(ctx, workspaceID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1720,7 +1767,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	rollback := true
 	defer func() {
 		if rollback {
-			fmt.Printf("[handlers] Rolling back worktree creation due to failure: %s\n", worktreePath)
+			logger.Handlers.Warnf("Rolling back worktree creation due to failure: %s", worktreePath)
 			h.sessionNameCache.Remove(sessionName)
 			session.DeleteMetadata(sessionID)
 			// Use background context for cleanup - the original request context may be cancelled
@@ -1744,7 +1791,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := session.WriteMetadata(meta); err != nil {
 		// Log but don't fail - metadata is supplementary
-		fmt.Printf("[handlers] Warning: failed to write session metadata: %v\n", err)
+		logger.Handlers.Warnf("Failed to write session metadata: %v", err)
 	}
 
 	sess := &models.Session{
@@ -2112,7 +2159,8 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		defer h.sessionLocks.Unlock(worktreePath)
 	}
 
-	// Clean up worktree if session exists
+	// Capture cleanup info BEFORE deleting from DB
+	var repoPath, branch, sessionName string
 	if sess != nil {
 		// Stop watching for branch changes
 		if h.branchWatcher != nil {
@@ -2129,26 +2177,35 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 			writeDBError(w, err)
 			return
 		}
-		if repo != nil && sess.WorktreePath != "" {
-			// Delete session metadata file (if exists)
-			session.DeleteMetadata(sessionID)
-
-			// Remove the git worktree using absolute path
-			h.worktreeManager.RemoveAtPath(ctx, repo.Path, sess.WorktreePath, sess.Branch)
-
-			// Remove from session name cache
-			h.sessionNameCache.Remove(sess.Name)
-
-			// Invalidate branch cache after branch/worktree removal
-			h.branchCache.InvalidateRepo(repo.Path)
+		if repo != nil {
+			repoPath = repo.Path
+			branch = sess.Branch
+			sessionName = sess.Name
 		}
 	}
 
-	// Delete from DB while still holding the lock (if acquired)
+	// DELETE DB RECORD FIRST — this is the authoritative action.
+	// If this fails, no disk cleanup happens and the session remains intact.
+	// Previously, worktree was removed first and DB delete could fail (no retry),
+	// leaving a ghost session with no worktree on disk.
 	if err := h.store.DeleteSession(ctx, sessionID); err != nil {
 		writeDBError(w, err)
 		return
 	}
+
+	// THEN clean up disk resources (best-effort).
+	// If worktree removal fails, orphan cleanup at startup will catch it.
+	if worktreePath != "" && repoPath != "" {
+		session.DeleteMetadata(sessionID)
+
+		if err := h.worktreeManager.RemoveAtPath(ctx, repoPath, worktreePath, branch); err != nil {
+			logger.Cleanup.Warnf("Failed to remove worktree for deleted session %s at %s: %v", sessionID, worktreePath, err)
+		}
+
+		h.sessionNameCache.Remove(sessionName)
+		h.branchCache.InvalidateRepo(repoPath)
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -3203,7 +3260,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(conv); err != nil {
-		fmt.Printf("[handlers] JSON encode error: %v\n", err)
+		logger.Handlers.Errorf("JSON encode error: %v", err)
 	}
 }
 

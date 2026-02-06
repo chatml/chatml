@@ -14,7 +14,6 @@ import {
   Code,
   FileText,
   GitBranch,
-  Star,
   Download,
   Check,
   RefreshCw,
@@ -79,18 +78,6 @@ function SkillCard({ skill, onInstallToggle }: SkillCardProps) {
         {skill.description}
       </p>
 
-      {/* Stats */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
-        <span className="flex items-center gap-1">
-          <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
-          {skill.rating.toFixed(1)} ({skill.ratingCount})
-        </span>
-        <span className="flex items-center gap-1">
-          <Download className="h-3 w-3" />
-          {skill.usageCount.toLocaleString()}
-        </span>
-      </div>
-
       {/* Actions */}
       <Button
         variant={skill.installed ? 'outline' : 'default'}
@@ -126,16 +113,31 @@ export function SkillsStore() {
     uninstallSkill,
     setSelectedCategory,
     setSearchQuery,
-    getFilteredSkills,
-    getInstalledSkills,
   } = useSkillsStore();
 
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);
 
-  const filteredSkills = getFilteredSkills();
-  const installedCount = getInstalledSkills().length;
+  const filteredSkills = useMemo(() => {
+    return skills.filter((skill) => {
+      if (selectedCategory && skill.category !== selectedCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return (
+          skill.name.toLowerCase().includes(q) ||
+          skill.description.toLowerCase().includes(q) ||
+          skill.author.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [skills, selectedCategory, searchQuery]);
+
+  const installedCount = useMemo(
+    () => skills.filter((s) => s.installed).length,
+    [skills]
+  );
   const { error: showError } = useToast();
 
   // Toolbar configuration

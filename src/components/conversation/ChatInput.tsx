@@ -249,16 +249,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Sync catalog skills into slash command store (re-fetch on session change)
   useEffect(() => {
+    const abortController = new AbortController();
     const syncSkills = async () => {
       try {
         const { listSkills } = await import('@/lib/api');
-        const skills = await listSkills();
+        const skills = await listSkills(undefined, abortController.signal);
         setInstalledSkills(skills);
       } catch {
-        // Skills are optional
+        // Skills are optional (also catches AbortError on cleanup)
       }
     };
     syncSkills();
+    return () => { abortController.abort(); };
   }, [setInstalledSkills, selectedSessionId]);
 
   // Check if currently streaming

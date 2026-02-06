@@ -90,6 +90,7 @@ func writePayloadTooLarge(w http.ResponseWriter, msg string) {
 // writeWorktreeNotFound writes a 410 Gone response for worktree paths that no longer exist on disk.
 // The frontend uses the WORKTREE_NOT_FOUND code to stop polling and show a specific message.
 func writeWorktreeNotFound(w http.ResponseWriter, path string) {
+	logger.Cleanup.Warnf("Worktree not found on disk: path=%s", path)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusGone)
 	if err := json.NewEncoder(w).Encode(struct {

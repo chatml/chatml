@@ -32,7 +32,10 @@ type WorktreeManager interface {
 // An orphaned worktree is one that exists on disk (in ~/.chatml/workspaces/) but has
 // no corresponding session record in the database.
 func CleanOrphanedWorktrees(ctx context.Context, store Store, wm WorktreeManager) error {
-	configured, _, _ := store.GetSetting(ctx, "workspaces-base-dir")
+	configured, _, err := store.GetSetting(ctx, "workspaces-base-dir")
+	if err != nil {
+		logger.Cleanup.Debugf("Failed to read workspaces-base-dir setting, using default: %v", err)
+	}
 	workspacesDir, err := git.WorkspacesBaseDirWithOverride(configured)
 	if err != nil {
 		return fmt.Errorf("failed to get workspaces directory: %w", err)
@@ -136,11 +139,14 @@ func findOrphansForRepo(ctx context.Context, store Store, wm WorktreeManager, re
 		}
 
 		if !trackedPaths[worktreePath] {
-			// Orphaned worktree - we don't know the session ID since it's not in the DB.
+			// Orphaned worktree — no DB record exists, so we don't know the branch name.
+			// RemoveAtPath will remove the worktree directory but the associated branch
+			// will remain in the repo. This is a known limitation: stale branches are
+			// harmless and can be pruned manually with `git branch -D`.
 			// Stale metadata cleanup happens separately via CleanupStaleMetadata.
 			orphans = append(orphans, orphanInfo{
 				path:      worktreePath,
-				branch:    "", // git worktree remove handles branch deletion
+				branch:    "", // Unknown — branch won't be deleted (see comment above)
 				sessionID: "", // Unknown for orphaned worktrees
 			})
 		}
