@@ -1898,13 +1898,13 @@ export interface SkillContentResponse {
 }
 
 // List all skills with optional filtering
-export async function listSkills(params?: SkillListParams): Promise<SkillDTO[]> {
+export async function listSkills(params?: SkillListParams, signal?: AbortSignal): Promise<SkillDTO[]> {
   const queryParams = new URLSearchParams();
   if (params?.category) queryParams.set('category', params.category);
   if (params?.search) queryParams.set('search', params.search);
   const qs = queryParams.toString();
   const url = `${getApiBase()}/api/skills${qs ? `?${qs}` : ''}`;
-  const res = await fetchWithAuth(url);
+  const res = await fetchWithAuth(url, { signal });
   return handleResponse<SkillDTO[]>(res);
 }
 
