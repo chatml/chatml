@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 
 const MAX_FILE_RESULTS = 50;
@@ -119,6 +119,13 @@ export function useFileMentions({
   const triggerPosRef = useRef(-1);
   const cachedSessionRef = useRef<string | null>(null);
   const hasLoadedFilesRef = useRef(false);
+
+  // Clear cache when session/workspace changes to prevent stale data
+  useEffect(() => {
+    cachedSessionRef.current = null;
+    hasLoadedFilesRef.current = false;
+    setAllFiles([]);
+  }, [workspaceId, sessionId]);
 
   const filteredFiles = useMemo(
     () => filterFiles(allFiles, query),
