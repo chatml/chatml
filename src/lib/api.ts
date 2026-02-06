@@ -1875,9 +1875,6 @@ export interface SkillDTO {
   author: string;
   version: string;
   preview: string;
-  usageCount: number;
-  rating: number;
-  ratingCount: number;
   skillPath: string;
   createdAt: string;
   updatedAt: string;

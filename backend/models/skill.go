@@ -26,11 +26,8 @@ type Skill struct {
 	Category    SkillCategory `json:"category"`
 	Author      string        `json:"author"`
 	Version     string        `json:"version"`
-	Preview     string        `json:"preview"`     // Short preview of what the skill does
-	UsageCount  int           `json:"usageCount"`  // Global usage counter
-	Rating      float32       `json:"rating"`      // 0-5 star rating
-	RatingCount int           `json:"ratingCount"` // Number of ratings
-	SkillPath   string        `json:"skillPath"`   // Relative path within .claude/skills/
+	Preview     string        `json:"preview"`   // Short preview of what the skill does
+	SkillPath   string        `json:"skillPath"` // Relative path within .claude/skills/
 	Content     string        `json:"-"`           // The actual skill file content (not sent in API)
 	CreatedAt   time.Time     `json:"createdAt"`
 	UpdatedAt   time.Time     `json:"updatedAt"`

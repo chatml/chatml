@@ -14,7 +14,6 @@ import {
   Code,
   FileText,
   GitBranch,
-  Star,
   Download,
   Check,
   RefreshCw,
@@ -78,18 +77,6 @@ function SkillCard({ skill, onInstallToggle }: SkillCardProps) {
       <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
         {skill.description}
       </p>
-
-      {/* Stats */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-3">
-        <span className="flex items-center gap-1">
-          <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
-          {skill.rating.toFixed(1)} ({skill.ratingCount})
-        </span>
-        <span className="flex items-center gap-1">
-          <Download className="h-3 w-3" />
-          {skill.usageCount.toLocaleString()}
-        </span>
-      </div>
 
       {/* Actions */}
       <Button
