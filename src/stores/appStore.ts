@@ -147,6 +147,7 @@ interface AppState {
   selectedWorkspaceId: string | null;
   selectedSessionId: string | null;
   selectedConversationId: string | null;
+  lastActiveConversationPerSession: Record<string, string>; // sessionId → conversationId
 
   // File tabs
   fileTabs: FileTab[];
@@ -410,6 +411,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedWorkspaceId: null,
   selectedSessionId: null,
   selectedConversationId: null,
+  lastActiveConversationPerSession: {},
   fileTabs: [],
   selectedFileTabId: null,
   pendingCloseFileTabId: null,
@@ -521,18 +523,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedAgentTodos[convId];
     }
 
-    // Clean up custom todos, session outputs, terminal instances, and terminal sessions for all sessions
+    // Clean up custom todos, session outputs, terminal instances, terminal sessions, and last active conversation for all sessions
     const cleanedCustomTodos = { ...state.customTodos };
     const cleanedSessionOutputs = { ...state.sessionOutputs };
     const cleanedTerminalInstances = { ...state.terminalInstances };
     const cleanedActiveTerminalId = { ...state.activeTerminalId };
     const cleanedTerminalSessions = { ...state.terminalSessions };
+    const cleanedLastActive = { ...state.lastActiveConversationPerSession };
     for (const sessionId of workspaceSessionIds) {
       delete cleanedCustomTodos[sessionId];
       delete cleanedSessionOutputs[sessionId];
       delete cleanedTerminalInstances[sessionId];
       delete cleanedActiveTerminalId[sessionId];
       delete cleanedTerminalSessions[sessionId];
+      delete cleanedLastActive[sessionId];
     }
 
     return {
@@ -555,6 +559,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       terminalInstances: cleanedTerminalInstances,
       activeTerminalId: cleanedActiveTerminalId,
       terminalSessions: cleanedTerminalSessions,
+      lastActiveConversationPerSession: cleanedLastActive,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -598,10 +603,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedContextUsage[convId];
     }
 
-    // Clean up custom todos, session outputs, and review comments
+    // Clean up custom todos, session outputs, review comments, and last active conversation
     const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
     const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
     const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
+    const { [id]: _lastActive, ...remainingLastActive } = state.lastActiveConversationPerSession;
 
     return {
       sessions: state.sessions.filter((s) => s.id !== id),
@@ -618,6 +624,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       customTodos: remainingCustomTodos,
       sessionOutputs: remainingSessionOutputs,
       reviewComments: remainingReviewComments,
+      lastActiveConversationPerSession: remainingLastActive,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -628,7 +635,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     // when called immediately after other store updates like addConversation.
     const state = get();
     const sessionConversations = state.conversations.filter(c => c.sessionId === id);
-    const firstConversation = sessionConversations[0];
+
+    // Restore last active conversation for this session, or fall back to first
+    const lastActiveId = id ? state.lastActiveConversationPerSession[id] : undefined;
+    const lastActive = lastActiveId
+      ? sessionConversations.find(c => c.id === lastActiveId)
+      : null;
+    const targetConversation = lastActive || sessionConversations[0];
 
     // Only show tabs belonging to this session (strict isolation)
     const visibleTabs = state.fileTabs.filter(t => t.sessionId === id);
@@ -639,7 +652,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set({
       selectedSessionId: id,
-      selectedConversationId: firstConversation?.id || null,
+      selectedConversationId: targetConversation?.id || null,
       selectedFileTabId: newSelectedTabId,
     });
   },
@@ -662,10 +675,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       newSelectedSessionId = otherSessions[0]?.id || null;
 
-      // Find first conversation for new session
+      // Restore last active conversation for the new session, or fall back to first
       if (newSelectedSessionId) {
         const sessionConvs = state.conversations.filter(c => c.sessionId === newSelectedSessionId);
-        newSelectedConversationId = sessionConvs[0]?.id || null;
+        const lastActiveId = state.lastActiveConversationPerSession[newSelectedSessionId];
+        const lastActive = lastActiveId ? sessionConvs.find(c => c.id === lastActiveId) : null;
+        newSelectedConversationId = lastActive?.id || sessionConvs[0]?.id || null;
       } else {
         newSelectedConversationId = null;
       }
@@ -729,10 +744,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         ?? null;
     }
 
+    // Clean up lastActiveConversationPerSession if this was the remembered conversation
+    let updatedLastActive = state.lastActiveConversationPerSession;
+    if (removedConv && state.lastActiveConversationPerSession[removedConv.sessionId] === id) {
+      const { [removedConv.sessionId]: _, ...rest } = state.lastActiveConversationPerSession;
+      updatedLastActive = rest;
+    }
+
     return {
       conversations: newConversations,
       messages: state.messages.filter((m) => m.conversationId !== id),
       selectedConversationId: newSelectedConversationId,
+      lastActiveConversationPerSession: updatedLastActive,
       streamingState: remainingStreamingState,
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
@@ -740,7 +763,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       contextUsage: remainingContextUsage,
     };
   }),
-  selectConversation: (id) => set({ selectedConversationId: id }),
+  selectConversation: (id) => {
+    const state = get();
+    const conversation = id ? state.conversations.find(c => c.id === id) : undefined;
+    const sessionId = conversation?.sessionId || state.selectedSessionId;
+    set({
+      selectedConversationId: id,
+      ...(sessionId && id ? {
+        lastActiveConversationPerSession: {
+          ...state.lastActiveConversationPerSession,
+          [sessionId]: id,
+        },
+      } : {}),
+    });
+  },
 
   // Summary actions
   setSummary: (conversationId, summary) => set((state) => ({
