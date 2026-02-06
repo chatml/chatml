@@ -1,11 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
-import {
-  type SlashCommand,
-  type SlashCommandContext,
-  type SlashCommandAvailability,
-  getAvailableSlashCommands,
-  filterSlashCommands,
-} from '@/lib/slashCommands';
+import { filterSlashCommands } from '@/lib/slashCommands';
+import type { SlashCommandContext, SlashCommandAvailability } from '@/stores/slashCommandStore';
+import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 
 // ============================================================================
 // Trigger Detection
@@ -29,13 +25,9 @@ function detectSlashTrigger(message: string, cursorPosition: number): TriggerRes
 
   if (!currentLine.startsWith('/')) return inactive;
 
-  // Don't trigger if there's text before the "/" on this line (non-whitespace)
-  // The "/" must be the first character on the line
   const query = currentLine.slice(1);
 
-  // Don't activate if query contains a space followed by more text
-  // (user is typing a path like /foo/bar or a full sentence)
-  // But allow empty query (just typed "/")
+  // Don't activate if query contains a space (user is typing a path or sentence)
   if (query.includes(' ')) return inactive;
 
   return { active: true, query, triggerPos: lineStart };
@@ -48,14 +40,14 @@ function detectSlashTrigger(message: string, cursorPosition: number): TriggerRes
 export interface UseSlashCommandsReturn {
   isOpen: boolean;
   query: string;
-  filteredCommands: SlashCommand[];
+  filteredCommands: UnifiedSlashCommand[];
   selectedIndex: number;
   /** Call in input onKeyDown. Returns true if the event was consumed. */
   handleKeyDown: (e: React.KeyboardEvent, currentMessage?: string) => boolean;
   /** Call when input value or cursor position changes. */
   handleInputChange: (value: string, cursorPos: number) => void;
   /** Execute a specific command (e.g., on click). */
-  executeCommand: (command: SlashCommand) => void;
+  executeCommand: (command: UnifiedSlashCommand) => void;
   /** Dismiss the menu. */
   dismiss: () => void;
   /** Set the selected index (e.g., on mouse hover). */
@@ -71,8 +63,10 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [availableCommands, setAvailableCommands] = useState<SlashCommand[]>([]);
+  const [availableCommands, setAvailableCommands] = useState<UnifiedSlashCommand[]>([]);
   const triggerPosRef = useRef(-1);
+
+  const getAllCommands = useSlashCommandStore((s) => s.getAllCommands);
 
   const filteredCommands = useMemo(
     () => filterSlashCommands(availableCommands, query),
@@ -87,7 +81,7 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
   }, []);
 
   const executeCommand = useCallback(
-    (command: SlashCommand, currentMessage?: string) => {
+    (command: UnifiedSlashCommand, currentMessage?: string) => {
       const triggerPos = triggerPosRef.current;
       dismiss();
 
@@ -95,7 +89,6 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
         // Preserve text outside the /command trigger range
         if (currentMessage !== undefined && triggerPos >= 0) {
           const before = currentMessage.slice(0, triggerPos);
-          // Find the end of the slash command (next newline or end of string)
           const afterTrigger = currentMessage.slice(triggerPos);
           const newlineIdx = afterTrigger.indexOf('\n');
           const after = newlineIdx >= 0 ? afterTrigger.slice(newlineIdx + 1) : '';
@@ -105,8 +98,12 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
           context.setMessage('');
         }
         command.execute(context);
+      } else if (command.executionType === 'skill') {
+        // Clear input and send as a message for the SDK's Skill tool
+        context.setMessage('');
+        command.execute(context);
       } else {
-        // Insert type: execute sets the message to the prompt prefix
+        // Prompt type: execute sets the message to the prompt prefix
         command.execute(context);
       }
     },
@@ -119,7 +116,7 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
 
       if (trigger.active) {
         // Snapshot available commands when first opening
-        const cmds = isOpen ? availableCommands : getAvailableSlashCommands(availability);
+        const cmds = isOpen ? availableCommands : getAllCommands(availability);
         if (!isOpen) {
           setAvailableCommands(cmds);
         }
@@ -133,7 +130,7 @@ export function useSlashCommands({ context, availability }: UseSlashCommandsOpti
         if (isOpen) dismiss();
       }
     },
-    [isOpen, dismiss, availability, availableCommands]
+    [isOpen, dismiss, availability, availableCommands, getAllCommands]
   );
 
   const handleKeyDown = useCallback(

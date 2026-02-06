@@ -251,6 +251,24 @@ export async function listSessionFiles(
   return handleResponse<FileNodeDTO[]>(res);
 }
 
+// User commands from .claude/commands/
+export interface UserCommandDTO {
+  name: string;
+  description: string;
+  filePath: string;
+  content: string;
+}
+
+export async function listUserCommands(
+  workspaceId: string,
+  sessionId: string
+): Promise<UserCommandDTO[]> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/commands`
+  );
+  return handleResponse<UserCommandDTO[]>(res);
+}
+
 // Session DTOs and functions
 export interface SessionDTO {
   id: string;

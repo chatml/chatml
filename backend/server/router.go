@@ -113,6 +113,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/sessions/{sessionId}/file-at-ref", h.GetSessionFileAtRef)
 		r.Get("/{id}/sessions/{sessionId}/file", h.GetSessionFileContent)
 		r.Get("/{id}/sessions/{sessionId}/files", h.ListSessionFiles)
+		r.Get("/{id}/sessions/{sessionId}/commands", h.ListUserCommands)
 		r.With(messageRateLimiter).Post("/{id}/sessions/{sessionId}/message", h.SendSessionMessage)
 		// Conversation endpoints nested under sessions
 		r.Get("/{id}/sessions/{sessionId}/conversations", h.ListConversations)
