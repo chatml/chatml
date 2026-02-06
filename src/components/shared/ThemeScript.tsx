@@ -28,6 +28,13 @@ export function ThemeScript() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
+  // Suppress benign ResizeObserver loop error before MCP bridge catches it
+  window.addEventListener('error', function(e) {
+    if (e.message && e.message.indexOf('ResizeObserver loop') !== -1) {
+      e.stopImmediatePropagation();
+    }
+  });
+
   var theme = getTheme();
   var html = document.documentElement;
   var bg = theme === 'dark' ? DARK_BG : LIGHT_BG;
