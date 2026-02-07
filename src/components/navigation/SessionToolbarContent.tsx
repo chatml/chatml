@@ -14,7 +14,7 @@ import {
 } from '@/lib/api';
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
-import { copyToClipboard, openInVSCode, openInTerminal, showInFinder, unregisterSession, getSessionDirName } from '@/lib/tauri';
+import { copyToClipboard, openInApp, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { CreatePRDialog } from '@/components/dialogs/CreatePRDialog';
@@ -28,9 +28,6 @@ import {
   MoreVertical,
   Archive,
   Copy,
-  Code,
-  FolderOpen,
-  Terminal,
   Trash2,
   GitMerge,
   MessageSquare,
@@ -41,6 +38,7 @@ import {
   Shield,
   Gauge,
   Boxes,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
@@ -61,6 +59,12 @@ import {
 import type { SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
+import { useInstalledApps } from '@/hooks/useInstalledApps';
+import type { InstalledApp } from '@/hooks/useInstalledApps';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { getAppById, CATEGORY_LABELS } from '@/lib/openApps';
+import type { AppCategory } from '@/lib/openApps';
+import { getAppIcon } from '@/components/icons/AppIcons';
 
 // ---------------------------------------------------------------------------
 // Review type options for the split button popover
@@ -97,6 +101,9 @@ export function SessionToolbarContent() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const [reviewPopoverOpen, setReviewPopoverOpen] = useState(false);
+  const [openAppPopoverOpen, setOpenAppPopoverOpen] = useState(false);
+  const { installedApps } = useInstalledApps();
+  const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
     onError: () => showError('Failed to archive session'),
@@ -322,6 +329,97 @@ export function SessionToolbarContent() {
 
             <div className="w-1.5" />
 
+            {(() => {
+              const defaultApp = getAppById(defaultOpenApp);
+              const defaultInstalled = installedApps.find((a) => a.id === defaultOpenApp);
+              const DefaultIcon = defaultApp ? getAppIcon(defaultApp.id, defaultApp.category) : ExternalLink;
+              const hasWorktree = !!selectedSession?.worktreePath;
+
+              // Group installed apps by category
+              const grouped = installedApps.reduce<Record<AppCategory, InstalledApp[]>>((acc, app) => {
+                (acc[app.category] ??= []).push(app);
+                return acc;
+              }, {} as Record<AppCategory, InstalledApp[]>);
+              const categories = (['editor', 'terminal', 'file-manager'] as AppCategory[]).filter(
+                (cat) => grouped[cat]?.length > 0
+              );
+
+              return (
+            <div className="inline-flex rounded-sm shadow-sm">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none"
+                disabled={!hasWorktree}
+                onClick={() => {
+                  if (!selectedSession?.worktreePath || !defaultApp) return;
+                  openInApp(defaultApp.id, selectedSession.worktreePath, defaultApp.platforms.darwin?.appName);
+                }}
+              >
+                {defaultInstalled?.iconBase64 ? (
+                  <img src={`data:image/png;base64,${defaultInstalled.iconBase64}`} className="h-4.5 w-4.5 shrink-0" alt="" />
+                ) : (
+                  <DefaultIcon className="h-3.5 w-3.5" />
+                )}
+                Open
+              </Button>
+              <Popover
+                open={openAppPopoverOpen}
+                onOpenChange={setOpenAppPopoverOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l border-l-secondary-foreground/10"
+                    disabled={!hasWorktree}
+                  >
+                    <ChevronDown className="size-2.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-56 p-1.5">
+                  {categories.map((cat, catIdx) => (
+                    <div key={cat}>
+                      {catIdx > 0 && <div className="h-px bg-border my-1" />}
+                      <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        {CATEGORY_LABELS[cat]}
+                      </div>
+                      {grouped[cat].map((app) => {
+                        const FallbackIcon = getAppIcon(app.id, app.category);
+                        return (
+                          <button
+                            key={app.id}
+                            className="w-full text-left rounded-md px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2"
+                            onClick={() => {
+                              if (!selectedSession?.worktreePath) return;
+                              openInApp(app.id, selectedSession.worktreePath, app.platforms.darwin?.appName);
+                              setOpenAppPopoverOpen(false);
+                            }}
+                          >
+                            {app.iconBase64 ? (
+                              <img src={`data:image/png;base64,${app.iconBase64}`} className="h-5 w-5 shrink-0" alt="" />
+                            ) : (
+                              <FallbackIcon className="h-4 w-4 shrink-0" />
+                            )}
+                            <span className="text-sm">{app.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  {categories.length === 0 && (
+                    <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                      No apps detected
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+              );
+            })()}
+
+            <div className="w-1.5" />
+
             <div className="w-px h-4 bg-border mx-1" />
 
             <DropdownMenu>
@@ -341,16 +439,6 @@ export function SessionToolbarContent() {
                 <DropdownMenuItem onSelect={handleCopyBranch}>
                   <Copy /> Copy Branch Name
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled={!selectedSession?.worktreePath} onSelect={() => openInVSCode(selectedSession!.worktreePath!)}>
-                  <Code /> Open in VS Code
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!selectedSession?.worktreePath} onSelect={() => openInTerminal(selectedSession!.worktreePath!)}>
-                  <Terminal /> Open in Terminal
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!selectedSession?.worktreePath} onSelect={() => showInFinder(selectedSession!.worktreePath!)}>
-                  <FolderOpen /> Show in Finder
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => setShowCreatePRDialog(true)}>
                   <GitMerge /> Create Pull Request
                 </DropdownMenuItem>
@@ -370,7 +458,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps]);
 
   useMainToolbarContent(toolbarConfig);
 

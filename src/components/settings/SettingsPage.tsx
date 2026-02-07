@@ -41,6 +41,8 @@ import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/toast';
 import { useTheme } from 'next-themes';
+import { useInstalledApps } from '@/hooks/useInstalledApps';
+import { APP_REGISTRY } from '@/lib/openApps';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -239,6 +241,9 @@ function ChatSettings() {
   const setSendWithEnter = useSettingsStore((s) => s.setSendWithEnter);
   const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
   const setAutoConvertLongText = useSettingsStore((s) => s.setAutoConvertLongText);
+  const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
+  const setDefaultOpenApp = useSettingsStore((s) => s.setDefaultOpenApp);
+  const { installedApps } = useInstalledApps();
 
   const handleNotificationToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
@@ -292,6 +297,21 @@ function ChatSettings() {
             </SelectContent>
           </Select>
         </div>
+      </SettingsRow>
+
+      <SettingsRow title="Default Open in App" description="App used by the toolbar Open button">
+        <Select value={defaultOpenApp} onValueChange={setDefaultOpenApp}>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(installedApps.length > 0 ? installedApps : APP_REGISTRY).map((app) => (
+              <SelectItem key={app.id} value={app.id}>
+                {app.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </SettingsRow>
 
       <SettingsRow
