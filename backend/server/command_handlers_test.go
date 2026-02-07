@@ -151,6 +151,10 @@ func TestExtractFirstLine(t *testing.T) {
 		{"heading", "# Deploy\nDetails here", "Deploy"},
 		{"plain text", "Run the deploy script", "Run the deploy script"},
 		{"with frontmatter", "---\nname: test\n---\n# Command\nBody", "Command"},
+		{"horizontal rule after frontmatter", "---\nname: test\n---\nDescription\n\n---\nThis should not be swallowed", "Description"},
+		{"horizontal rule without frontmatter", "Description\n\n---\nMore content", "Description"},
+		{"frontmatter not at start", "Some text\n---\nname: x\n---\nBody", "Some text"},
+		{"leading blank lines before frontmatter", "\n\n---\nname: test\n---\nBody", "Body"},
 		{"empty content", "", "Custom command"},
 		{"only whitespace", "   \n  \n  ", "Custom command"},
 	}

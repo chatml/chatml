@@ -99,15 +99,29 @@ func (h *Handlers) ListUserCommands(w http.ResponseWriter, r *http.Request) {
 func extractFirstLine(content string) string {
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	inFrontmatter := false
+	frontmatterDone := false
+	beforeContent := true
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// Handle YAML frontmatter (content between two --- delimiters)
-		if line == "---" {
-			inFrontmatter = !inFrontmatter
+		if beforeContent && line == "" {
 			continue
 		}
+
+		// Only allow frontmatter at the very start of the file
+		if line == "---" && !frontmatterDone {
+			if beforeContent || inFrontmatter {
+				inFrontmatter = !inFrontmatter
+				if !inFrontmatter {
+					frontmatterDone = true
+				}
+				beforeContent = false
+				continue
+			}
+		}
+		beforeContent = false
+
 		if inFrontmatter {
 			continue
 		}
