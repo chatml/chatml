@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/chatml/chatml-backend/models"
@@ -39,8 +38,7 @@ func (h *Handlers) ListSkills(w http.ResponseWriter, r *http.Request) {
 		result = append(result, swis)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, result)
 }
 
 // ListInstalledSkills returns only installed skills
@@ -67,8 +65,7 @@ func (h *Handlers) ListInstalledSkills(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, result)
 }
 
 // InstallSkill installs a skill (records preference)
@@ -89,8 +86,7 @@ func (h *Handlers) InstallSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	writeJSON(w, map[string]bool{"success": true})
 }
 
 // UninstallSkill removes a skill installation
@@ -103,8 +99,7 @@ func (h *Handlers) UninstallSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	writeJSON(w, map[string]bool{"success": true})
 }
 
 // GetSkillContent returns the content of a specific skill (for copying to worktree)
@@ -117,8 +112,7 @@ func (h *Handlers) GetSkillContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"id":        skill.ID,
 		"name":      skill.Name,
 		"skillPath": skill.SkillPath,

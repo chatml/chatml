@@ -48,8 +48,7 @@ func (h *OrchestratorHandlers) ListAgents(w http.ResponseWriter, r *http.Request
 		response = append(response, item)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // ReloadAgents reloads agent definitions from YAML files
@@ -95,8 +94,7 @@ func (h *OrchestratorHandlers) GetAgent(w http.ResponseWriter, r *http.Request) 
 		response["definition"] = agent.Definition
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // UpdateAgentState updates an agent's runtime state (enable/disable, interval)
@@ -158,9 +156,7 @@ func (h *OrchestratorHandlers) TriggerAgentRun(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(run)
+	writeJSONStatus(w, http.StatusCreated, run)
 }
 
 // ListAgentRuns returns run history for an agent

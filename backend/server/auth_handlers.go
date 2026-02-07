@@ -73,8 +73,7 @@ func (h *AuthHandlers) GitHubCallback(w http.ResponseWriter, r *http.Request) {
 	h.ghClient.SetToken(token)
 	h.ghClient.SetUser(user)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(GitHubCallbackResponse{
+	writeJSON(w, GitHubCallbackResponse{
 		Token: token,
 		User:  user,
 	})
@@ -104,8 +103,7 @@ func (h *AuthHandlers) SetToken(w http.ResponseWriter, r *http.Request) {
 	h.ghClient.SetToken(req.Token)
 	h.ghClient.SetUser(user)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"ok":   true,
 		"user": user,
 	})
@@ -113,8 +111,7 @@ func (h *AuthHandlers) SetToken(w http.ResponseWriter, r *http.Request) {
 
 // GetStatus handles GET /api/auth/status
 func (h *AuthHandlers) GetStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(AuthStatusResponse{
+	writeJSON(w, AuthStatusResponse{
 		Authenticated: h.ghClient.IsAuthenticated(),
 		User:          h.ghClient.GetStoredUser(),
 	})
@@ -123,6 +120,5 @@ func (h *AuthHandlers) GetStatus(w http.ResponseWriter, r *http.Request) {
 // Logout handles POST /api/auth/logout
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	h.ghClient.ClearAuth()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, map[string]bool{"ok": true})
 }
