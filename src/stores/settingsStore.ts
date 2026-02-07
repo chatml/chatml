@@ -29,6 +29,9 @@ export type FontSize = 'small' | 'medium' | 'large';
 // Branch prefix options
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
+// Sidebar filter categories for streamlined mode
+export type SidebarFilter = 'all' | 'active' | 'needs-review' | 'done' | 'archived';
+
 // Content view types for Full Content Area pattern
 export type ContentView =
   | { type: 'conversation' }
@@ -87,6 +90,8 @@ interface SettingsState {
   parallelAgents: boolean;
   // Advanced settings
   developerMode: boolean;
+  sessionListGrouped: boolean;
+  sidebarFilter: SidebarFilter;
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   unreadWorkspaces: string[]; // Workspace IDs marked as unread
@@ -142,6 +147,8 @@ interface SettingsState {
   setStrictPrivacy: (value: boolean) => void;
   setParallelAgents: (value: boolean) => void;
   setDeveloperMode: (value: boolean) => void;
+  setSessionListGrouped: (value: boolean) => void;
+  setSidebarFilter: (value: SidebarFilter) => void;
   setShowBottomTerminal: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
@@ -196,6 +203,8 @@ export const useSettingsStore = create<SettingsState>()(
       strictPrivacy: false,
       parallelAgents: false,
       developerMode: false,
+      sessionListGrouped: false,
+      sidebarFilter: 'all' as SidebarFilter,
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       unreadWorkspaces: [], // Workspace IDs marked as unread
       showBottomTerminal: false,
@@ -242,6 +251,8 @@ export const useSettingsStore = create<SettingsState>()(
       setStrictPrivacy: (value) => set({ strictPrivacy: value }),
       setParallelAgents: (value) => set({ parallelAgents: value }),
       setDeveloperMode: (value) => set({ developerMode: value }),
+      setSessionListGrouped: (value) => set({ sessionListGrouped: value }),
+      setSidebarFilter: (value) => set({ sidebarFilter: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
@@ -323,10 +334,10 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'chatml-settings',
-      // Exclude contentView from persistence - always start in conversation view
+      // Exclude transient state from persistence
       partialize: (state) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { contentView, ...rest } = state;
+        const { contentView, sidebarFilter, ...rest } = state;
         return rest;
       },
       // Merge persisted state with defaults to handle new tabs added after initial save

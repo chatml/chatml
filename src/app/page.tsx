@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -12,6 +12,7 @@ import {
   useMessages,
 } from '@/stores/selectors';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
+import { useDisclosureStore } from '@/stores/disclosureStore';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
@@ -32,10 +33,11 @@ import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
 import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
+import { useAutoExpandPanels } from '@/hooks/useAutoExpandPanels';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
-import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
+import { StreamlinedSidebar } from '@/components/navigation/StreamlinedSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
 import { SettingsPage } from '@/components/settings/SettingsPage';
 import { SessionToolbarContent } from '@/components/navigation/SessionToolbarContent';
@@ -167,7 +169,8 @@ export default function Home() {
     return () => window.removeEventListener('open-settings', handler);
   }, []);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const fullModeEnabled = useDisclosureStore((s) => s.fullModeEnabled);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(!fullModeEnabled);
   const sidebarWidthRef = useRef(250); // Tracked via ref — no re-renders on resize
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
@@ -183,6 +186,16 @@ export default function Home() {
   const rightSidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const bottomTerminalPanelRef = useRef<PanelImperativeHandle>(null);
   const leftSidebarDomRef = useRef<HTMLDivElement>(null);
+
+  // Callback ref for right sidebar: explicitly collapse() on mount so the
+  // library's internal state matches the 0% size from effectiveLayoutInner.
+  // Without this, isCollapsed() returns false and expand() has no target size.
+  const setRightSidebarPanel = useCallback((handle: PanelImperativeHandle | null) => {
+    rightSidebarPanelRef.current = handle;
+    if (handle && !useDisclosureStore.getState().fullModeEnabled) {
+      queueMicrotask(() => handle.collapse());
+    }
+  }, []);
 
   // Pre-zen mode state for restoration
   const preZenStateRef = useRef({ left: false, right: false });
@@ -225,6 +238,49 @@ export default function Home() {
   // Determine if we're in a Full Content view (not conversation)
   // Also treat as full content view when no session is selected (to show welcome screen)
   const isFullContentView = contentView.type !== 'conversation';
+
+  // Effective vertical layout: when bottom terminal is hidden, ensure it starts at 0%
+  // to prevent a flash of the uncollapsed terminal panel on first mount.
+  // The persisted layoutVertical may have a stale non-zero terminal size if the
+  // panel group unmounted before onLayoutChange could persist the collapsed state.
+  const effectiveLayoutVertical = useMemo(() => {
+    if (!showBottomTerminal && layoutVertical) {
+      const termSize = layoutVertical['bottom-terminal'];
+      if (termSize && termSize > 0) {
+        const convSize = layoutVertical['conversation'] ?? 70;
+        return {
+          ...layoutVertical,
+          'conversation': convSize + termSize,
+          'bottom-terminal': 0,
+        };
+      }
+    }
+    return layoutVertical;
+  }, [showBottomTerminal, layoutVertical]);
+
+  // Effective inner layout: when right sidebar should start collapsed, ensure it's at 0%
+  // to prevent a flash of the expanded panel on first mount.
+  // Handles fresh install (layoutInner undefined) by creating an explicit collapsed layout.
+  const effectiveLayoutInner = useMemo(() => {
+    if (!rightSidebarCollapsed) return layoutInner;
+
+    // Sidebar should be collapsed — ensure layout reflects that
+    const base = layoutInner || {};
+    const sidebarSize = base['right-sidebar'] ?? 0;
+    if (sidebarSize > 0) {
+      // Transfer sidebar space to content
+      return {
+        ...base,
+        'inner-content': (base['inner-content'] ?? 72) + sidebarSize,
+        'right-sidebar': 0,
+      };
+    }
+    // Already at 0 or no layout — return explicit collapsed layout
+    return {
+      'inner-content': base['inner-content'] ?? 100,
+      'right-sidebar': 0,
+    };
+  }, [rightSidebarCollapsed, layoutInner]);
 
   const {
     isLoading: authLoading,
@@ -420,6 +476,16 @@ export default function Home() {
 
   // Listen for /review, /deep-review, /security slash commands
   useReviewTrigger();
+
+  // Auto-expand panels based on session activity and disclosure mode.
+  // panelReady gates the effect so it doesn't fire while the skeleton is shown
+  // (inner panel group not yet mounted → ref is null → expand() would silently fail).
+  const panelReady = !isLoadingData && !isFullContentView && !!selectedSessionId;
+  useAutoExpandPanels({
+    rightSidebarPanelRef,
+    bottomTerminalPanelRef,
+    panelReady,
+  });
 
   // Persist file tabs to backend
   useTabPersistence();
@@ -1213,7 +1279,7 @@ export default function Home() {
               <SidebarToolbar />
               <div className="flex-1 min-h-0">
               <ErrorBoundary section="Sidebar">
-                <WorkspaceSidebar
+                <StreamlinedSidebar
                   onOpenProject={handleOpenProject}
                   onCloneFromUrl={() => setShowCloneFromUrl(true)}
                   onQuickStart={() => setShowQuickStart(true)}
@@ -1322,7 +1388,7 @@ export default function Home() {
               <ResizablePanelGroup
                 direction="horizontal"
                 className="h-full"
-                defaultLayout={layoutInner}
+                defaultLayout={effectiveLayoutInner}
                 onLayoutChange={setLayoutInner}
               >
                 {/* Inner Content - Contains vertical split */}
@@ -1331,7 +1397,7 @@ export default function Home() {
                   <ResizablePanelGroup
                     direction="vertical"
                     className="h-full"
-                    defaultLayout={layoutVertical}
+                    defaultLayout={effectiveLayoutVertical}
                     onLayoutChange={setLayoutVertical}
                   >
                     {/* Conversation Area */}
@@ -1348,7 +1414,7 @@ export default function Home() {
                       ) : null}
                     </ResizablePanel>
 
-                    {/* Bottom Terminal - always mounted to preserve PTY session */}
+                    {/* Bottom Terminal - always mounted to preserve PTY session, hidden in streamlined mode */}
                     {selectedSession && (
                       <>
                         <ResizableHandle
@@ -1358,7 +1424,7 @@ export default function Home() {
                         <ResizablePanel
                           ref={bottomTerminalPanelRef}
                           id="bottom-terminal"
-                          defaultSize="180px"
+                          defaultSize={showBottomTerminal ? "180px" : 0}
                           minSize="100px"
                           maxSize="400px"
                           collapsible={true}
@@ -1379,6 +1445,7 @@ export default function Home() {
                   </ResizablePanelGroup>
                 </ResizablePanel>
 
+                {/* Right sidebar handle + panel — always mounted, starts collapsed */}
                 <ResizableHandle
                   direction="horizontal"
                   className={cn(
@@ -1388,7 +1455,7 @@ export default function Home() {
 
                 {/* Right Sidebar - Nested inside main content, collapsible */}
                 <ResizablePanel
-                  ref={rightSidebarPanelRef}
+                  ref={setRightSidebarPanel}
                   id="right-sidebar"
                   defaultSize="280px"
                   minSize="250px"
@@ -1396,9 +1463,9 @@ export default function Home() {
                   collapsible={true}
                   collapsedSize={0}
                   onResize={(size) => {
-              const collapsed = size.asPercentage === 0;
-              setRightSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
-            }}
+                    const collapsed = size.asPercentage === 0;
+                    setRightSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
+                  }}
                   className={cn(
                     "overflow-hidden",
                     (zenMode || !selectedSessionId) && "hidden"

@@ -6,12 +6,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { PanelLeft, PanelRight, PanelBottom, Plus } from 'lucide-react';
+import { PanelLeft, PanelRight, PanelBottom, Plus, Layers } from 'lucide-react';
 import { type ReactNode, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useUIStore, type ToolbarSlots } from '@/stores/uiStore';
 import { useTabStore } from '@/stores/tabStore';
 import { useConnectionStore } from '@/stores/connectionStore';
+import { useDisclosureStore } from '@/stores/disclosureStore';
 import { BrowserTabStrip, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
@@ -107,6 +108,8 @@ export function MainToolbar({
   const activeTabId = useTabStore((s) => s.activeTabId);
   const tabCount = useTabStore((s) => s.tabOrder.length);
   const hasMultipleTabs = ENABLE_BROWSER_TABS && tabCount > 1;
+  const fullModeEnabled = useDisclosureStore((s) => s.fullModeEnabled);
+  const setFullModeEnabled = useDisclosureStore((s) => s.setFullModeEnabled);
 
   // Cache the active tab's rich toolbar title whenever it changes
   const toolbarTitle = toolbarConfig?.title;
@@ -219,6 +222,23 @@ export function MainToolbar({
                     Toggle Sidebar <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">⌘⌥ B</span>
                   </TooltipContent>
                 </Tooltip>
+
+                {/* Show All Panels Toggle */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn('h-6 w-6', fullModeEnabled && 'bg-surface-2')}
+                      onClick={() => setFullModeEnabled(!fullModeEnabled)}
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {fullModeEnabled ? 'Progressive mode' : 'Show all panels'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               {/* Spacer between toggles and settings */}
@@ -269,6 +289,7 @@ export function ConnectionIndicator() {
 /** Context-aware action bar rendered at the top of the main content area */
 export function ContentActionBar() {
   const bottom = useUIStore((s) => s.toolbarConfig?.bottom);
+
   if (!bottom) return null;
 
   return (
