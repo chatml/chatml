@@ -135,12 +135,20 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	}
 
 	now := time.Now()
+
+	// Set status based on whether there's an initial message.
+	// Without a message the agent has nothing to do, so start idle.
+	status := models.ConversationStatusIdle
+	if initialMessage != "" {
+		status = models.ConversationStatusActive
+	}
+
 	conv := &models.Conversation{
 		ID:          convID,
 		SessionID:   sessionID,
 		Type:        conversationType,
 		Name:        name,
-		Status:      models.ConversationStatusActive,
+		Status:      status,
 		Messages:    []models.Message{},
 		ToolSummary: []models.ToolAction{},
 		CreatedAt:   now,
@@ -152,6 +160,32 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 
 	if err := m.store.AddConversation(ctx, conv); err != nil {
 		return nil, fmt.Errorf("failed to add conversation: %w", err)
+	}
+
+	// When there's no initial message, add a setupInfo system message so the
+	// frontend can render the session card, then return without spawning an
+	// agent process. SendConversationMessage will auto-start the process when
+	// the user sends their first message.
+	if initialMessage == "" {
+		originBranch := sessionWithWs.WorkspaceBranch
+		if originBranch == "" {
+			originBranch = "main"
+		}
+		setupMsg := models.Message{
+			ID:   uuid.New().String()[:8],
+			Role: "system",
+			SetupInfo: &models.SetupInfo{
+				SessionName:  session.Name,
+				BranchName:   session.Branch,
+				OriginBranch: originBranch,
+			},
+			Timestamp: now,
+		}
+		if err := m.store.AddMessageToConversation(ctx, convID, setupMsg); err != nil {
+			return nil, fmt.Errorf("failed to add setup message to conversation %s: %w", convID, err)
+		}
+		conv.Messages = append(conv.Messages, setupMsg)
+		return conv, nil
 	}
 
 	// Build process options
@@ -691,7 +725,11 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			restartOpts.ResumeSession = conv.AgentSessionID
 		}
 
-		logger.Manager.Warnf("Unexpected: auto-restarting process for conversation %s (previous exit error: %v). Multi-turn processes should stay alive between turns.", convID, prevExitErr)
+		if ok && proc != nil {
+			logger.Manager.Warnf("Unexpected: auto-restarting process for conversation %s (previous exit error: %v). Multi-turn processes should stay alive between turns.", convID, prevExitErr)
+		} else {
+			logger.Manager.Infof("Starting process for idle conversation %s", convID)
+		}
 
 		// Cancel any pending user questions from the old process so the frontend
 		// doesn't show a stale question UI pointing at the dead process.
