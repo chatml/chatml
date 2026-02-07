@@ -11,6 +11,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// maxCommandFileSize is the maximum allowed size for command files (50MB).
+// Exposed as a var for testing.
+var maxCommandFileSize int64 = 50 * 1024 * 1024
+
 // UserCommand represents a user-defined command from .claude/commands/*.md
 type UserCommand struct {
 	Name        string `json:"name"`
@@ -72,6 +76,17 @@ func (h *Handlers) ListUserCommands(w http.ResponseWriter, r *http.Request) {
 		// Skip symlinks to prevent reading files outside the worktree
 		if entry.Type()&os.ModeSymlink != 0 {
 			logger.Handlers.Warnf("Skipping symlink command file %s", fullPath)
+			continue
+		}
+
+		// Skip files that exceed the size limit
+		info, err := entry.Info()
+		if err != nil {
+			logger.Handlers.Warnf("Failed to stat command file %s: %v", fullPath, err)
+			continue
+		}
+		if info.Size() > maxCommandFileSize {
+			logger.Handlers.Warnf("Skipping oversized command file %s (%d bytes, limit %d)", fullPath, info.Size(), maxCommandFileSize)
 			continue
 		}
 

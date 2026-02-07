@@ -121,6 +121,39 @@ func TestListUserCommands(t *testing.T) {
 		assert.Empty(t, commands)
 	})
 
+	t.Run("skips oversized command files", func(t *testing.T) {
+		h, s := setupTestHandlers(t)
+
+		createTestRepo(t, s, "ws-1", "/path/to/repo")
+		_, worktreePath := createTestSessionWithWorktree(t, s, "sess-1", "ws-1")
+
+		commandsDir := filepath.Join(worktreePath, ".claude", "commands")
+		require.NoError(t, os.MkdirAll(commandsDir, 0755))
+
+		// Temporarily lower the size limit for testing
+		origLimit := maxCommandFileSize
+		maxCommandFileSize = 100
+		t.Cleanup(func() { maxCommandFileSize = origLimit })
+
+		// Create a small file (under limit) and a large file (over limit)
+		writeFile(t, commandsDir, "small.md", "# Small command")
+		writeFile(t, commandsDir, "large.md", strings.Repeat("x", 200))
+
+		req := httptest.NewRequest("GET", "/api/sessions/sess-1/commands", nil)
+		req = withChiContext(req, map[string]string{"sessionId": "sess-1"})
+		w := httptest.NewRecorder()
+
+		h.ListUserCommands(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var commands []UserCommand
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &commands))
+		// Only the small command should be returned
+		assert.Len(t, commands, 1)
+		assert.Equal(t, "small", commands[0].Name)
+	})
+
 	t.Run("returns empty list for empty commands directory", func(t *testing.T) {
 		h, s := setupTestHandlers(t)
 
