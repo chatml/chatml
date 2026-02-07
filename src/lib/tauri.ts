@@ -516,17 +516,23 @@ export async function showInFinder(path: string): Promise<void> {
   }
 }
 
+export interface DetectedApp {
+  id: string;
+  iconBase64: string;
+}
+
 /**
  * Detect which apps are installed by checking bundle paths via Rust.
- * Returns an array of app IDs that were found on disk.
+ * Returns an array of { id, iconBase64 } for each found app.
  */
 export async function detectInstalledApps(
   appPaths: [string, string[]][]
-): Promise<string[]> {
+): Promise<DetectedApp[]> {
   if (!isTauri()) return [];
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<string[]>('detect_installed_apps', { appPaths });
+    const result = await invoke<[string, string][]>('detect_installed_apps', { appPaths });
+    return result.map(([id, iconBase64]) => ({ id, iconBase64 }));
   } catch (e) {
     console.error('Failed to detect installed apps', e);
     return [];

@@ -60,6 +60,7 @@ import type { SessionTaskStatus } from '@/lib/types';
 import { TaskStatusSelector } from '@/components/shared/TaskStatusSelector';
 import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
+import type { InstalledApp } from '@/hooks/useInstalledApps';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getAppById, CATEGORY_LABELS } from '@/lib/openApps';
 import type { AppCategory } from '@/lib/openApps';
@@ -101,7 +102,7 @@ export function SessionToolbarContent() {
   const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const [reviewPopoverOpen, setReviewPopoverOpen] = useState(false);
   const [openAppPopoverOpen, setOpenAppPopoverOpen] = useState(false);
-  const { installedApps, refresh: refreshInstalledApps } = useInstalledApps();
+  const { installedApps } = useInstalledApps();
   const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
@@ -330,14 +331,15 @@ export function SessionToolbarContent() {
 
             {(() => {
               const defaultApp = getAppById(defaultOpenApp);
+              const defaultInstalled = installedApps.find((a) => a.id === defaultOpenApp);
               const DefaultIcon = defaultApp ? getAppIcon(defaultApp.id, defaultApp.category) : ExternalLink;
               const hasWorktree = !!selectedSession?.worktreePath;
 
               // Group installed apps by category
-              const grouped = installedApps.reduce<Record<AppCategory, typeof installedApps>>((acc, app) => {
+              const grouped = installedApps.reduce<Record<AppCategory, InstalledApp[]>>((acc, app) => {
                 (acc[app.category] ??= []).push(app);
                 return acc;
-              }, {} as Record<AppCategory, typeof installedApps>);
+              }, {} as Record<AppCategory, InstalledApp[]>);
               const categories = (['editor', 'terminal', 'file-manager'] as AppCategory[]).filter(
                 (cat) => grouped[cat]?.length > 0
               );
@@ -354,15 +356,16 @@ export function SessionToolbarContent() {
                   openInApp(defaultApp.id, selectedSession.worktreePath, defaultApp.platforms.darwin?.appName);
                 }}
               >
-                <DefaultIcon className="h-3.5 w-3.5" />
+                {defaultInstalled?.iconBase64 ? (
+                  <img src={`data:image/png;base64,${defaultInstalled.iconBase64}`} className="h-4.5 w-4.5 shrink-0" alt="" />
+                ) : (
+                  <DefaultIcon className="h-3.5 w-3.5" />
+                )}
                 Open
               </Button>
               <Popover
                 open={openAppPopoverOpen}
-                onOpenChange={(open) => {
-                  setOpenAppPopoverOpen(open);
-                  if (open) refreshInstalledApps();
-                }}
+                onOpenChange={setOpenAppPopoverOpen}
               >
                 <PopoverTrigger asChild>
                   <Button
@@ -382,7 +385,7 @@ export function SessionToolbarContent() {
                         {CATEGORY_LABELS[cat]}
                       </div>
                       {grouped[cat].map((app) => {
-                        const Icon = getAppIcon(app.id, app.category);
+                        const FallbackIcon = getAppIcon(app.id, app.category);
                         return (
                           <button
                             key={app.id}
@@ -393,7 +396,11 @@ export function SessionToolbarContent() {
                               setOpenAppPopoverOpen(false);
                             }}
                           >
-                            <Icon className="h-4 w-4 shrink-0" />
+                            {app.iconBase64 ? (
+                              <img src={`data:image/png;base64,${app.iconBase64}`} className="h-5 w-5 shrink-0" alt="" />
+                            ) : (
+                              <FallbackIcon className="h-4 w-4 shrink-0" />
+                            )}
                             <span className="text-sm">{app.name}</span>
                           </button>
                         );
@@ -451,7 +458,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, refreshInstalledApps]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps]);
 
   useMainToolbarContent(toolbarConfig);
 

@@ -3,19 +3,21 @@ import { APP_REGISTRY, getDetectionPairs } from '@/lib/openApps';
 import { detectInstalledApps } from '@/lib/tauri';
 import type { AppDefinition } from '@/lib/openApps';
 
+export type InstalledApp = AppDefinition & { iconBase64?: string };
+
 // Module-level cache
-let cachedIds: string[] | null = null;
+let cachedApps: InstalledApp[] | null = null;
 let cacheTimestamp = 0;
-const CACHE_TTL = 60_000; // 60 seconds
+const CACHE_TTL = Infinity; // detect once per session
 
 function isCacheValid(): boolean {
-  return cachedIds !== null && Date.now() - cacheTimestamp < CACHE_TTL;
+  return cachedApps !== null && Date.now() - cacheTimestamp < CACHE_TTL;
 }
 
 export function useInstalledApps() {
-  const [installedApps, setInstalledApps] = useState<AppDefinition[]>(() => {
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>(() => {
     if (isCacheValid()) {
-      return APP_REGISTRY.filter((app) => cachedIds!.includes(app.id));
+      return cachedApps!;
     }
     return [];
   });
@@ -25,10 +27,14 @@ export function useInstalledApps() {
     setLoading(true);
     try {
       const pairs = getDetectionPairs();
-      const ids = await detectInstalledApps(pairs);
-      cachedIds = ids;
+      const detected = await detectInstalledApps(pairs);
+      const iconMap = new Map(detected.map((d) => [d.id, d.iconBase64]));
+      const apps: InstalledApp[] = APP_REGISTRY
+        .filter((app) => iconMap.has(app.id))
+        .map((app) => ({ ...app, iconBase64: iconMap.get(app.id) || undefined }));
+      cachedApps = apps;
       cacheTimestamp = Date.now();
-      setInstalledApps(APP_REGISTRY.filter((app) => ids.includes(app.id)));
+      setInstalledApps(apps);
     } finally {
       setLoading(false);
     }
@@ -42,7 +48,7 @@ export function useInstalledApps() {
 
   const refresh = useCallback(() => {
     // Invalidate cache and re-detect
-    cachedIds = null;
+    cachedApps = null;
     cacheTimestamp = 0;
     detect();
   }, [detect]);

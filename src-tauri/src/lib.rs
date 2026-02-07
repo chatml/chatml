@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod icons;
 mod menu;
 mod sidecar;
 mod state;

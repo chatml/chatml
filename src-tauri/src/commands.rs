@@ -247,13 +247,16 @@ pub fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
 }
 
 /// Detect which apps are installed by checking if their bundle paths exist.
-/// Receives a list of (app_id, [paths]) pairs and returns the IDs whose paths exist.
+/// Receives a list of (app_id, [paths]) pairs and returns (id, icon_base64) for installed apps.
 #[tauri::command]
-pub fn detect_installed_apps(app_paths: Vec<(String, Vec<String>)>) -> Vec<String> {
+pub fn detect_installed_apps(app_paths: Vec<(String, Vec<String>)>) -> Vec<(String, String)> {
     app_paths
         .into_iter()
-        .filter(|(_id, paths)| paths.iter().any(|p| Path::new(p).exists()))
-        .map(|(id, _)| id)
+        .filter_map(|(id, paths)| {
+            let found_path = paths.iter().find(|p| Path::new(p).exists())?;
+            let icon = crate::icons::get_icon_base64(found_path);
+            Some((id, icon))
+        })
         .collect()
 }
 
