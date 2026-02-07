@@ -113,6 +113,9 @@ interface SettingsState {
   // Custom workspace colors (workspaceId -> hex color)
   workspaceColors: Record<string, string>;
 
+  // Default "Open in" app ID (persisted user preference)
+  defaultOpenApp: string;
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -163,6 +166,7 @@ interface SettingsState {
   removeRecentlyRemovedWorkspace: (path: string) => void;
   setWorkspaceColor: (workspaceId: string, color: string) => void;
   clearWorkspaceColor: (workspaceId: string) => void;
+  setDefaultOpenApp: (appId: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -212,6 +216,7 @@ export const useSettingsStore = create<SettingsState>()(
       recentCommands: [], // Last 5 used command IDs
       recentlyRemovedWorkspaces: [], // Last 5 removed workspaces for quick re-add
       workspaceColors: {}, // Custom workspace colors
+      defaultOpenApp: 'vscode', // Default to VS Code
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -320,6 +325,7 @@ export const useSettingsStore = create<SettingsState>()(
           const { [workspaceId]: _, ...rest } = state.workspaceColors;
           return { workspaceColors: rest };
         }),
+      setDefaultOpenApp: (appId) => set({ defaultOpenApp: appId }),
     }),
     {
       name: 'chatml-settings',

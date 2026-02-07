@@ -246,6 +246,17 @@ pub fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
     Err("Unsupported image format".to_string())
 }
 
+/// Detect which apps are installed by checking if their bundle paths exist.
+/// Receives a list of (app_id, [paths]) pairs and returns the IDs whose paths exist.
+#[tauri::command]
+pub fn detect_installed_apps(app_paths: Vec<(String, Vec<String>)>) -> Vec<String> {
+    app_paths
+        .into_iter()
+        .filter(|(_id, paths)| paths.iter().any(|p| Path::new(p).exists()))
+        .map(|(id, _)| id)
+        .collect()
+}
+
 /// Get the user's preferred shell from environment variables.
 /// Returns $SHELL on Unix or %COMSPEC% on Windows, if set.
 #[tauri::command]

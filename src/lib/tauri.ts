@@ -480,6 +480,7 @@ export async function openInVSCode(path: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const { Command } = await import('@tauri-apps/plugin-shell');
+    // Scope: [Var(path)] — caller provides [path] at index 0
     Command.create('code', [path]).spawn().catch(console.error);
   } catch (e) {
     console.error('Failed to open in VS Code', e);
@@ -493,7 +494,9 @@ export async function openInTerminal(path: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const { Command } = await import('@tauri-apps/plugin-shell');
-    Command.create('open-terminal', [path]).spawn().catch(console.error);
+    // Scope: [Fixed("-a"), Fixed("Terminal"), Var(path)]
+    // Caller must provide args at all indices; Fixed positions are ignored
+    Command.create('open-terminal', ['-a', 'Terminal', path]).spawn().catch(console.error);
   } catch (e) {
     console.error('Failed to open in Terminal', e);
   }
@@ -506,9 +509,82 @@ export async function showInFinder(path: string): Promise<void> {
   if (!isTauri()) return;
   try {
     const { Command } = await import('@tauri-apps/plugin-shell');
-    Command.create('open-finder', [path]).spawn().catch(console.error);
+    // Scope: [Fixed("-R"), Var(path)]
+    Command.create('open-finder', ['-R', path]).spawn().catch(console.error);
   } catch (e) {
     console.error('Failed to show in Finder', e);
+  }
+}
+
+/**
+ * Detect which apps are installed by checking bundle paths via Rust.
+ * Returns an array of app IDs that were found on disk.
+ */
+export async function detectInstalledApps(
+  appPaths: [string, string[]][]
+): Promise<string[]> {
+  if (!isTauri()) return [];
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<string[]>('detect_installed_apps', { appPaths });
+  } catch (e) {
+    console.error('Failed to detect installed apps', e);
+    return [];
+  }
+}
+
+// Map of app IDs to their CLI allowlist names
+const CLI_COMMAND_MAP: Record<string, string> = {
+  vscode: 'code',
+  cursor: 'cursor-cli',
+  zed: 'zed-cli',
+  sublime: 'subl-cli',
+  windsurf: 'windsurf-cli',
+};
+
+/**
+ * Open a path in a detected app.
+ * Uses CLI for editors (better workspace handling), falls back to `open -a`.
+ * Finder uses `open -R` to reveal in Finder.
+ *
+ * Caller args must be index-aligned with the scope definition in capabilities.
+ * Fixed args consume indices but their values are overridden by the scope.
+ */
+export async function openInApp(
+  appId: string,
+  path: string,
+  appName?: string
+): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { Command } = await import('@tauri-apps/plugin-shell');
+
+    // Finder special case: use open -R
+    // Scope: [Fixed("-R"), Var(path)]
+    if (appId === 'finder') {
+      Command.create('open-finder', ['-R', path]).spawn().catch(console.error);
+      return;
+    }
+
+    // Try CLI first for editors (better workspace/extension handling)
+    // Scope: [Var(path)] — caller provides [path] at index 0
+    const cliCommand = CLI_COMMAND_MAP[appId];
+    if (cliCommand) {
+      try {
+        await Command.create(cliCommand, [path]).spawn();
+        return;
+      } catch {
+        // CLI not in PATH — fall through to open -a
+      }
+    }
+
+    // Fall back to open -a (works for all macOS apps)
+    // Scope: [Fixed("-a"), Var(appName), Var(path)]
+    if (appName) {
+      Command.create('open-app', ['-a', appName, path]).spawn().catch(console.error);
+    }
+  } catch (e) {
+    console.error(`Failed to open in ${appId}`, e);
   }
 }
 

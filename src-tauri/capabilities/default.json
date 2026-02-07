@@ -17,8 +17,7 @@
           "cmd": "code",
           "args": [
             {
-              "validator": "regex",
-              "value": "^[/~.][-\\w\\s./~]+$"
+              "validator": "[/~.][-\\w\\s./~]+"
             }
           ]
         },
@@ -29,8 +28,7 @@
             "-a",
             "Terminal",
             {
-              "validator": "regex",
-              "value": "^[/~.][-\\w\\s./~]+$"
+              "validator": "[/~.][-\\w\\s./~]+"
             }
           ]
         },
@@ -40,8 +38,56 @@
           "args": [
             "-R",
             {
-              "validator": "regex",
-              "value": "^[/~.][-\\w\\s./~]+$"
+              "validator": "[/~.][-\\w\\s./~]+"
+            }
+          ]
+        },
+        {
+          "name": "open-app",
+          "cmd": "open",
+          "args": [
+            "-a",
+            {
+              "validator": "[A-Za-z][\\w\\s.-]+"
+            },
+            {
+              "validator": "[/~.][-\\w\\s./~]+"
+            }
+          ]
+        },
+        {
+          "name": "cursor-cli",
+          "cmd": "cursor",
+          "args": [
+            {
+              "validator": "[/~.][-\\w\\s./~]+"
+            }
+          ]
+        },
+        {
+          "name": "zed-cli",
+          "cmd": "zed",
+          "args": [
+            {
+              "validator": "[/~.][-\\w\\s./~]+"
+            }
+          ]
+        },
+        {
+          "name": "subl-cli",
+          "cmd": "subl",
+          "args": [
+            {
+              "validator": "[/~.][-\\w\\s./~]+"
+            }
+          ]
+        },
+        {
+          "name": "windsurf-cli",
+          "cmd": "windsurf",
+          "args": [
+            {
+              "validator": "[/~.][-\\w\\s./~]+"
             }
           ]
         }

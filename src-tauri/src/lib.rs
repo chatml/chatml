@@ -148,7 +148,9 @@ pub fn run() {
             commands::get_image_dimensions,
             commands::count_file_lines,
             // Shell detection
-            commands::get_user_shell
+            commands::get_user_shell,
+            // App detection
+            commands::detect_installed_apps
         ])
         .setup(move |app| {
             // Create and set the menu
