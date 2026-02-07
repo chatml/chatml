@@ -1045,7 +1045,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               firstItemIndex={firstItemIndex}
               isLoadingOlder={pagination?.isLoadingMore}
               emptyState={
-                !selectedConversationId ? (
+                (!selectedConversationId || conversationMessages.length === 0) ? (
                   <ConversationEmptyState sessionName={currentSession?.name} />
                 ) : undefined
               }
