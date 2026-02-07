@@ -64,6 +64,17 @@ export const APP_REGISTRY: AppDefinition[] = [
     },
   },
   {
+    id: 'antigravity',
+    name: 'Antigravity',
+    category: 'editor',
+    platforms: {
+      darwin: {
+        bundlePaths: ['/Applications/Antigravity.app'],
+        appName: 'Antigravity',
+      },
+    },
+  },
+  {
     id: 'sublime',
     name: 'Sublime Text',
     category: 'editor',
