@@ -123,9 +123,10 @@ func extractFirstLine(content string) string {
 		line = strings.TrimSpace(line)
 
 		if line != "" {
-			// Truncate long descriptions
-			if len(line) > 120 {
-				return line[:117] + "..."
+			// Truncate long descriptions (rune-based to avoid splitting multi-byte UTF-8)
+			runes := []rune(line)
+			if len(runes) > 120 {
+				return string(runes[:117]) + "..."
 			}
 			return line
 		}

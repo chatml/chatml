@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -161,4 +163,17 @@ func TestExtractFirstLine(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+
+	t.Run("truncates multi-byte UTF-8 at rune boundary", func(t *testing.T) {
+		// 125 CJK characters (each 3 bytes in UTF-8) — exceeds 120 rune limit
+		input := strings.Repeat("漢", 125)
+		result := extractFirstLine(input)
+
+		assert.True(t, utf8.ValidString(result), "result must be valid UTF-8")
+
+		runes := []rune(result)
+		// 117 runes + "..." (3 runes) = 120 runes total
+		assert.Equal(t, 120, len(runes))
+		assert.Equal(t, strings.Repeat("漢", 117)+"...", result)
+	})
 }
