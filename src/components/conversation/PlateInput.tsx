@@ -157,8 +157,11 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       },
       setText: (text: string) => {
         editor.tf.reset();
-        editor.tf.focus();
-        editor.tf.insertText(text);
+        // Defer until React reconciles the DOM after reset
+        setTimeout(() => {
+          editor.tf.focus();
+          editor.tf.insertText(text);
+        }, 0);
       },
     }));
 
