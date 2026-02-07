@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -30,7 +29,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Use(TokenAuthMiddleware)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	// Auth endpoints (no rate limiting - they're naturally rate limited by OAuth)
@@ -47,8 +46,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// WebSocket stats endpoint (local desktop app only - no auth needed)
 	// NOTE: If this app is ever exposed to a network, consider adding authentication
 	r.Get("/ws/stats", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(hub.GetStats())
+		writeJSON(w, hub.GetStats())
 	})
 
 	// Rate limiting middleware for sensitive operations

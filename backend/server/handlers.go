@@ -542,6 +542,17 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
+// writeJSONStatus writes data as JSON with a specific HTTP status code.
+// Must be used instead of writeJSON when the status is not 200, because
+// headers set after WriteHeader are silently ignored.
+func writeJSONStatus(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		logger.Handlers.Errorf("JSON encode error: %v", err)
+	}
+}
+
 // settingKeyWorkspacesBaseDir is the settings key for the workspaces base directory
 const settingKeyWorkspacesBaseDir = "workspaces-base-dir"
 
@@ -3153,8 +3164,7 @@ func (h *Handlers) SaveFile(w http.ResponseWriter, r *http.Request) {
 	// Invalidate directory listing cache for this path
 	h.dirCache.InvalidatePath(basePath)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	writeJSON(w, map[string]bool{"success": true})
 }
 
 // Conversation handlers
@@ -3257,11 +3267,7 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(conv); err != nil {
-		logger.Handlers.Errorf("JSON encode error: %v", err)
-	}
+	writeJSONStatus(w, http.StatusCreated, conv)
 }
 
 func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
