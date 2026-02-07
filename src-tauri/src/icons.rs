@@ -2,8 +2,7 @@
 /// Returns empty string if extraction fails or platform unsupported.
 #[cfg(target_os = "macos")]
 pub fn get_icon_base64(app_path: &str) -> String {
-    std::panic::catch_unwind(|| get_icon_base64_inner(app_path))
-        .unwrap_or_default()
+    std::panic::catch_unwind(|| get_icon_base64_inner(app_path)).unwrap_or_default()
 }
 
 #[cfg(target_os = "macos")]
