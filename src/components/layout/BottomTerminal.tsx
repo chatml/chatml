@@ -44,10 +44,14 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
   const createdRef = useRef<string | null>(null);
 
   // Auto-create first terminal when panel is shown and no terminals exist
+  // Deferred so it doesn't block session navigation render
   useEffect(() => {
     if (instances.length === 0 && createdRef.current !== sessionId) {
-      createdRef.current = sessionId;
-      createTerminal(sessionId);
+      const id = setTimeout(() => {
+        createdRef.current = sessionId;
+        createTerminal(sessionId);
+      }, 500);
+      return () => clearTimeout(id);
     }
   }, [sessionId, instances.length, createTerminal]);
 

@@ -244,6 +244,10 @@ export interface FileChangedEvent {
   workspaceId: string;
   path: string;
   fullPath: string;
+  /** All files changed in this batch (present when multiple files change at once) */
+  files?: { path: string; fullPath: string }[];
+  /** Total number of files changed in this batch */
+  fileCount?: number;
 }
 
 /**

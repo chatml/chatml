@@ -19,8 +19,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
-import { useSettingsStore, getBranchPrefix, type ContentView } from '@/stores/settingsStore';
-import { createSession as createSessionApi, listConversations as listConversationsApi, deleteSession as deleteSessionApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
+import { useSettingsStore, getBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
+import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
+import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -68,7 +69,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Pin,
   Folder,
   Globe,
   SquarePlus,
@@ -81,11 +81,12 @@ import {
   Circle,
   Clock,
   Sparkles,
+  Check,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
-import { getPriorityOption, TASK_STATUS_OPTIONS } from '@/lib/session-fields';
+import { TASK_STATUS_OPTIONS } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -101,7 +102,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Workspace, WorktreeSession, SetupInfo, SessionTaskStatus } from '@/lib/types';
+import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -146,8 +147,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     addSession,
     addConversation,
     reorderWorkspaces,
-    updateSession,
     removeWorkspace,
+    updateSession,
   } = useAppStore();
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onError: () => showError('Failed to archive session'),
@@ -174,44 +175,27 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, sidebarSortBy, setSidebarGroupBy, setSidebarSortBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
   };
 
-  const getWorkspaceSessions = (workspaceId: string) => {
-    return sessions
-      .filter((s) => {
-        if (s.workspaceId !== workspaceId || s.archived) return false;
-        // Task status filter
-        if (taskStatusFilters.size > 0 && !taskStatusFilters.has(s.taskStatus)) return false;
-        // Agent status filter
-        if (agentStatusFilters.size > 0 && !agentStatusFilters.has(s.status)) return false;
-        // PR status filter
-        if (prStatusFilters.size > 0) {
-          const sessionPrStatus = s.prStatus || 'none';
-          if (!prStatusFilters.has(sessionPrStatus)) return false;
-        }
-        // Text search filter
-        if (!searchTerm) return true;
-        const term = searchTerm.toLowerCase();
-        return (
-          s.name.toLowerCase().includes(term) ||
-          s.branch?.toLowerCase().includes(term) ||
-          s.task?.toLowerCase().includes(term)
-        );
-      })
-      .sort((a, b) => {
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      });
-  };
-
-  const getInitial = (name: string) => {
-    return name.charAt(0).toUpperCase();
-  };
+  // Sidebar grouping/sorting
+  const { groups: sidebarGroups, flatSessions } = useSidebarSessions({
+    sessions,
+    workspaces,
+    groupBy: sidebarGroupBy,
+    sortBy: sidebarSortBy,
+    filters: {
+      searchTerm,
+      taskStatusFilters,
+      agentStatusFilters,
+      prStatusFilters,
+    },
+    workspaceColors,
+    getWorkspaceColor,
+  });
 
   const activeFilterCount = taskStatusFilters.size + agentStatusFilters.size + prStatusFilters.size;
 
@@ -270,72 +254,99 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     return `${diffDays}d`;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'text-text-success';
-      case 'idle':
-        return 'text-text-warning';
-      case 'error':
-        return 'text-text-error';
-      default:
-        return 'text-muted-foreground';
-    }
-  };
-
   const handleCreateSession = async (workspaceId: string) => {
+    // Generate a temporary ID for the optimistic placeholder
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+    const t0 = performance.now();
+
+    // Add placeholder session and navigate immediately — no waiting
+    addSession({
+      id: tempId,
+      workspaceId,
+      name: 'Creating session...',
+      branch: '',
+      worktreePath: '',
+      status: 'idle',
+      priority: 0,
+      taskStatus: 'backlog',
+      createdAt: now,
+      updatedAt: now,
+    });
+    expandWorkspace(workspaceId);
+    navigate({
+      workspaceId,
+      sessionId: tempId,
+      contentView: { type: 'conversation' },
+    });
+
     try {
       // Create session via backend API (generates city-based name, branch, and worktree path)
       const branchPrefix = getBranchPrefix();
       const session = await createSessionApi(workspaceId, {
         ...(branchPrefix !== undefined && { branchPrefix }),
       });
+      console.debug(`[CreateSession] API returned in ${(performance.now() - t0).toFixed(0)}ms`);
 
-      // Register with global file watcher for event routing
+      // Atomically swap the temp placeholder with the real session in a single
+      // setState call. This avoids any intermediate state where selectedSessionId
+      // is null (removeSession nullifies it when the removed session is selected,
+      // and navigate uses startTransition which defers the re-select).
+      const t1 = performance.now();
+      const realSession = mapSessionDTO(session);
+      useAppStore.setState((state) => ({
+        sessions: [realSession, ...state.sessions.filter((s) => s.id !== tempId)],
+        selectedSessionId: realSession.id,
+        selectedConversationId: null,
+      }));
+
+      // Register file watcher (non-blocking)
       if (session.worktreePath) {
         const dirName = getSessionDirName(session.worktreePath);
-        if (dirName) {
-          registerSession(dirName, session.id);
-        }
+        if (dirName) registerSession(dirName, session.id);
       }
 
-      // Add to local store
-      addSession(mapSessionDTO(session));
-
-      // Fetch conversations created by backend (includes "Untitled" with setup info)
-      const conversations = await listConversationsApi(workspaceId, session.id);
-      conversations.forEach((conv) => {
-        addConversation({
-          id: conv.id,
-          sessionId: conv.sessionId,
-          type: conv.type,
-          name: conv.name,
-          status: conv.status,
-          messages: conv.messages.map((m) => ({
-            id: m.id,
-            conversationId: conv.id,
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: m.content,
-            setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
-            timestamp: m.timestamp,
-          })),
-          toolSummary: conv.toolSummary,
-          createdAt: conv.createdAt,
-          updatedAt: conv.updatedAt,
+      // Fetch conversations and add to store so ConversationArea can auto-select.
+      // The dashboard data fetch only loads conversations at boot — newly created
+      // sessions need an explicit fetch. We do NOT call setMessagePage here because
+      // listConversations returns conversations with empty messages arrays (only
+      // counts). ConversationArea's message loading effect will fetch the actual
+      // messages once a conversation is selected.
+      let firstConvId: string | null = null;
+      try {
+        const conversations = await listConversationsApi(workspaceId, session.id);
+        conversations.forEach((conv) => {
+          if (!firstConvId) firstConvId = conv.id;
+          addConversation({
+            id: conv.id,
+            sessionId: conv.sessionId,
+            type: conv.type,
+            name: conv.name,
+            status: conv.status,
+            messages: [],
+            toolSummary: conv.toolSummary,
+            createdAt: conv.createdAt,
+            updatedAt: conv.updatedAt,
+          });
         });
-      });
+      } catch (error) {
+        console.error('Failed to load conversations for new session:', error);
+      }
 
-      // Expand the workspace if not already
-      expandWorkspace(workspaceId);
-
-      // Select the new session (navigate records history)
+      // Navigate for history tracking + explicit conversation selection
       navigate({
         workspaceId,
         sessionId: session.id,
+        conversationId: firstConvId ?? undefined,
         contentView: { type: 'conversation' },
       });
+      console.debug(`[CreateSession] Store update + navigate in ${(performance.now() - t1).toFixed(0)}ms`);
     } catch (error) {
       console.error('Failed to create session:', error);
+      // Remove the placeholder on failure
+      const { removeSession: removeFromStore } = useAppStore.getState();
+      removeFromStore(tempId);
+      showError('Failed to create session');
     }
   };
 
@@ -343,20 +354,15 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     requestArchive(sessionId);
   };
 
-  const handlePinSession = async (sessionId: string) => {
+  const handleTaskStatusChange = (sessionId: string, status: SessionTaskStatus) => {
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) return;
-
-    const newPinned = !session.pinned;
-
-    try {
-      // Update backend
-      await updateSessionApi(session.workspaceId, sessionId, { pinned: newPinned });
-      // Update local store
-      updateSession(sessionId, { pinned: newPinned });
-    } catch (error) {
-      console.error('Failed to pin session:', error);
-    }
+    const prev = session.taskStatus;
+    updateSession(sessionId, { taskStatus: status });
+    updateSessionApi(session.workspaceId, sessionId, { taskStatus: status }).catch(() => {
+      updateSession(sessionId, { taskStatus: prev });
+      showError('Failed to update task status');
+    });
   };
 
   const handleRemoveWorkspace = async (workspaceId: string) => {
@@ -411,15 +417,75 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     }
   };
 
+  // Navigation helpers for branches/PRs
+  const navigateToBranches = (workspaceId: string, event?: React.MouseEvent) => {
+    navigateOrOpenTab({
+      workspaceId,
+      sessionId: null,
+      contentView: { type: 'branches', workspaceId },
+    }, event);
+  };
+
+  const navigateToPRs = (workspaceId: string, event?: React.MouseEvent) => {
+    navigateOrOpenTab({
+      workspaceId,
+      sessionId: null,
+      contentView: { type: 'pr-dashboard', workspaceId },
+    }, event);
+  };
+
+  const handleSelectSession = (workspaceId: string, sessionId: string, event?: React.MouseEvent) => {
+    navigateOrOpenTab({
+      workspaceId,
+      sessionId,
+      contentView: { type: 'conversation' },
+    }, event);
+    onSessionSelected?.();
+  };
+
+  // Check if sidebar group is expanded
+  const isGroupExpanded = (key: string, defaultCollapsed: boolean) => {
+    return isSidebarGroupExpanded(key, defaultCollapsed, collapsedSidebarGroups);
+  };
+
+  // Section header label
+  const sectionHeaderLabel = (sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status') ? 'Projects' : 'Sessions';
+
+  // Group by toggle helpers — two independent booleans compose into the 4 groupBy states
+  const isGroupByProject = sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status';
+  const isGroupByStatus = sidebarGroupBy === 'status' || sidebarGroupBy === 'project-status';
+
+  const toggleGroupByProject = () => {
+    const newProject = !isGroupByProject;
+    if (newProject && isGroupByStatus) setSidebarGroupBy('project-status');
+    else if (newProject) setSidebarGroupBy('project');
+    else if (isGroupByStatus) setSidebarGroupBy('status');
+    else setSidebarGroupBy('none');
+  };
+
+  const toggleGroupByStatus = () => {
+    const newStatus = !isGroupByStatus;
+    if (isGroupByProject && newStatus) setSidebarGroupBy('project-status');
+    else if (isGroupByProject) setSidebarGroupBy('project');
+    else if (newStatus) setSidebarGroupBy('status');
+    else setSidebarGroupBy('none');
+  };
+
+  const SORT_BY_OPTIONS: { value: SidebarSortBy; label: string }[] = [
+    { value: 'recent', label: 'Recent' },
+    { value: 'status', label: 'Status' },
+    { value: 'name', label: 'Name' },
+  ];
+
   // Detect macOS for traffic light styling
   const isMacOS = typeof window !== 'undefined' && navigator.platform.includes('Mac');
 
   return (
-    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
+    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden">
 
 
       {/* Global Navigation */}
-      <div className="px-3 py-2">
+      <div className="px-1 py-2 shrink-0">
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
@@ -488,20 +554,67 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         </div>
       </div>
 
-      {/* Workspace List */}
+      {/* Session List */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
       <ScrollArea className="flex-1 min-h-0 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
-            <div className="py-2 pl-1 pr-2 flex flex-col">
+            <div className="py-2 px-1 flex flex-col">
               {/* Section Header */}
               <div className="group/header px-2 pt-1 pb-2 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
-                  Projects
+                  {sectionHeaderLabel}
                 </span>
+                <div className="flex items-center gap-0.5">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100 p-0.5 rounded hover:bg-surface-1">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => navigate({ contentView: { type: 'session-manager' } })}>
+                      <Layers className="size-4" />
+                      Session History
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Group by</DropdownMenuLabel>
+                    <DropdownMenuCheckboxItem
+                      checked={isGroupByProject}
+                      onCheckedChange={toggleGroupByProject}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      Project
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                      checked={isGroupByStatus}
+                      onCheckedChange={toggleGroupByStatus}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      Status
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                    {SORT_BY_OPTIONS.map((option) => (
+                      <DropdownMenuCheckboxItem
+                        key={option.value}
+                        checked={sidebarSortBy === option.value}
+                        onCheckedChange={() => setSidebarSortBy(option.value)}
+                      >
+                        {option.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <button
-                  onClick={(e) => navigateOrOpenTab({ contentView: { type: 'repositories' } }, e)}
-                  className="text-xs font-medium text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100"
+                  className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1"
+                  onClick={() => {
+                    const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                    if (targetId) handleCreateSession(targetId);
+                  }}
                 >
-                  Manage
+                  <Plus className="h-4 w-4" />
                 </button>
+                </div>
               </div>
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
@@ -553,79 +666,180 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   </DropdownMenu>
                 </div>
               ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={workspaces.map((w) => w.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {workspaces
-                      .filter((workspace) => !searchTerm || getWorkspaceSessions(workspace.id).length > 0)
-                      .map((workspace) => {
-                        const isUnread = unreadWorkspaces.includes(workspace.id);
-                        return (
-                      <SortableWorkspaceItem
-                        key={workspace.id}
-                        workspace={workspace}
-                        sessions={getWorkspaceSessions(workspace.id)}
-                        isExpanded={isWorkspaceExpanded(workspace.id)}
-                        selectedSessionId={selectedSessionId}
-                        onToggle={() => toggleWorkspaceCollapsed(workspace.id)}
-                        onCreateSession={() => handleCreateSession(workspace.id)}
-                        onSelectSession={(sessionId, event) => {
-                          navigateOrOpenTab({
-                            workspaceId: workspace.id,
-                            sessionId,
-                            contentView: { type: 'conversation' },
-                          }, event);
-                          onSessionSelected?.();
-                        }}
-                        onArchiveSession={handleArchiveSession}
-                        onPinSession={handlePinSession}
-                        onRemoveWorkspace={() => setWorkspaceToRemove({ id: workspace.id, name: workspace.name })}
-                        onOpenBranches={(event) => {
-                          navigateOrOpenTab({
-                            workspaceId: workspace.id,
-                            sessionId: null,
-                            contentView: { type: 'branches', workspaceId: workspace.id },
-                          }, event);
-                        }}
-                        onOpenPRs={(event) => {
-                          navigateOrOpenTab({
-                            workspaceId: workspace.id,
-                            sessionId: null,
-                            contentView: { type: 'pr-dashboard', workspaceId: workspace.id },
-                          }, event);
-                        }}
-                        onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(workspace.id)}
-                        isUnread={isUnread}
-                        onToggleUnread={() => {
-                          if (isUnread) {
-                            markWorkspaceRead(workspace.id);
-                          } else {
-                            markWorkspaceUnread(workspace.id);
-                          }
-                        }}
-                        contentView={contentView}
-                        getStatusColor={getStatusColor}
-                        formatTimeAgo={formatTimeAgo}
-                        getInitial={getInitial}
-                      />
-                    );
-                      })}
-                  </SortableContext>
-                </DndContext>
+                <>
+                  {/* Mode: None — flat session list */}
+                  {sidebarGroupBy === 'none' && (
+                    <>
+                      {flatSessions.length === 0 ? (
+                        <div className="py-2 px-2 text-sm text-muted-foreground/70">
+                          No sessions found
+                        </div>
+                      ) : (
+                        flatSessions.map((session) => {
+                          const ws = workspaces.find((w) => w.id === session.workspaceId);
+                          return (
+                            <ErrorBoundary
+                              key={session.id}
+                              section="SessionRow"
+                              fallback={<CardErrorFallback message="Error loading session" />}
+                            >
+                              <SessionRow
+                                session={session}
+                                contentView={contentView}
+                                selectedSessionId={selectedSessionId}
+                                onSelectSession={(id, e) => handleSelectSession(session.workspaceId, id, e)}
+                                onArchiveSession={handleArchiveSession}
+                                onTaskStatusChange={handleTaskStatusChange}
+                                onOpenBranches={(e) => navigateToBranches(session.workspaceId, e)}
+                                onOpenPRs={(e) => navigateToPRs(session.workspaceId, e)}
+                                formatTimeAgo={formatTimeAgo}
+                                showProjectIndicator
+                                workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
+                                workspaceName={ws?.name}
+                              />
+                            </ErrorBoundary>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+
+                  {/* Mode: Status — status group headers with sessions */}
+                  {sidebarGroupBy === 'status' && (
+                    <>
+                      {sidebarGroups.length === 0 ? (
+                        <div className="py-2 px-2 text-sm text-muted-foreground/70">
+                          No sessions found
+                        </div>
+                      ) : (
+                        sidebarGroups.map((group) => (
+                          <StatusGroupSection
+                            key={group.key}
+                            group={group}
+                            isExpanded={isGroupExpanded(group.key, group.defaultCollapsed)}
+                            onToggle={() => toggleSidebarGroupCollapsed(group.key)}
+                            contentView={contentView}
+                            selectedSessionId={selectedSessionId}
+                            workspaces={workspaces}
+                            workspaceColors={workspaceColors}
+                            onSelectSession={handleSelectSession}
+                            onArchiveSession={handleArchiveSession}
+                            onTaskStatusChange={handleTaskStatusChange}
+                            onOpenBranches={navigateToBranches}
+                            onOpenPRs={navigateToPRs}
+                            formatTimeAgo={formatTimeAgo}
+                            showProjectIndicator
+                          />
+                        ))
+                      )}
+                    </>
+                  )}
+
+                  {/* Mode: Project — workspace headers with sessions (with DnD) */}
+                  {sidebarGroupBy === 'project' && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={workspaces.map((w) => w.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {sidebarGroups.map((group) => {
+                          const ws = workspaces.find((w) => w.id === group.workspaceId);
+                          if (!ws) return null;
+                          const isUnread = unreadWorkspaces.includes(ws.id);
+                          return (
+                            <SortableWorkspaceItem
+                              key={ws.id}
+                              workspace={ws}
+                              sessions={group.sessions}
+                              isExpanded={isWorkspaceExpanded(ws.id)}
+                              selectedSessionId={selectedSessionId}
+                              onToggle={() => toggleWorkspaceCollapsed(ws.id)}
+                              onCreateSession={() => handleCreateSession(ws.id)}
+                              onSelectSession={(sessionId, event) => handleSelectSession(ws.id, sessionId, event)}
+                              onArchiveSession={handleArchiveSession}
+                              onTaskStatusChange={handleTaskStatusChange}
+                              onRemoveWorkspace={() => setWorkspaceToRemove({ id: ws.id, name: ws.name })}
+                              onOpenBranches={(event) => navigateToBranches(ws.id, event)}
+                              onOpenPRs={(event) => navigateToPRs(ws.id, event)}
+                              onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(ws.id)}
+                              isUnread={isUnread}
+                              onToggleUnread={() => {
+                                if (isUnread) {
+                                  markWorkspaceRead(ws.id);
+                                } else {
+                                  markWorkspaceUnread(ws.id);
+                                }
+                              }}
+                              contentView={contentView}
+                              formatTimeAgo={formatTimeAgo}
+                            />
+                          );
+                        })}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+
+                  {/* Mode: Project > Status — workspace headers with status sub-groups */}
+                  {sidebarGroupBy === 'project-status' && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={workspaces.map((w) => w.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {sidebarGroups.map((group) => {
+                          const ws = workspaces.find((w) => w.id === group.workspaceId);
+                          if (!ws) return null;
+                          const isUnread = unreadWorkspaces.includes(ws.id);
+                          return (
+                            <SortableProjectStatusItem
+                              key={ws.id}
+                              workspace={ws}
+                              group={group}
+                              isExpanded={isWorkspaceExpanded(ws.id)}
+                              selectedSessionId={selectedSessionId}
+                              onToggle={() => toggleWorkspaceCollapsed(ws.id)}
+                              onCreateSession={() => handleCreateSession(ws.id)}
+                              onSelectSession={(sessionId, event) => handleSelectSession(ws.id, sessionId, event)}
+                              onArchiveSession={handleArchiveSession}
+                              onTaskStatusChange={handleTaskStatusChange}
+                              onRemoveWorkspace={() => setWorkspaceToRemove({ id: ws.id, name: ws.name })}
+                              onOpenBranches={(event) => navigateToBranches(ws.id, event)}
+                              onOpenPRs={(event) => navigateToPRs(ws.id, event)}
+                              onOpenWorkspaceSettings={() => onOpenWorkspaceSettings?.(ws.id)}
+                              isUnread={isUnread}
+                              onToggleUnread={() => {
+                                if (isUnread) {
+                                  markWorkspaceRead(ws.id);
+                                } else {
+                                  markWorkspaceUnread(ws.id);
+                                }
+                              }}
+                              contentView={contentView}
+                              formatTimeAgo={formatTimeAgo}
+                              isSubGroupExpanded={isGroupExpanded}
+                              onToggleSubGroup={toggleSidebarGroupCollapsed}
+                            />
+                          );
+                        })}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </>
               )}
-              {/* Fill remaining space with context menu for adding sessions */}
-              {workspaces.length > 0 && (
-                <ContextMenu>
-                  <ContextMenuTrigger asChild>
-                    <div className="flex-1 min-h-4" />
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
+            </div>
+      </ScrollArea>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+                {workspaces.length > 0 && (
+                  <>
                     <ContextMenuItem onClick={() => {
                       const targetId = selectedWorkspaceId || workspaces[0]?.id;
                       if (targetId) handleCreateSession(targetId);
@@ -654,11 +868,35 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         </ContextMenuItem>
                       </ContextMenuSubContent>
                     </ContextMenuSub>
-                  </ContextMenuContent>
-                </ContextMenu>
-              )}
-            </div>
-      </ScrollArea>
+                    <ContextMenuSeparator />
+                  </>
+                )}
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>Group by</ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    <ContextMenuItem onClick={(e) => { e.preventDefault(); toggleGroupByProject(); }}>
+                      <Check className={cn("h-3.5 w-3.5", !isGroupByProject && "opacity-0")} />
+                      Project
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={(e) => { e.preventDefault(); toggleGroupByStatus(); }}>
+                      <Check className={cn("h-3.5 w-3.5", !isGroupByStatus && "opacity-0")} />
+                      Status
+                    </ContextMenuItem>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>Sort by</ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    {SORT_BY_OPTIONS.map((option) => (
+                      <ContextMenuItem key={option.value} onClick={() => setSidebarSortBy(option.value)}>
+                        <Check className={cn("h-3.5 w-3.5", sidebarSortBy !== option.value && "opacity-0")} />
+                        {option.label}
+                      </ContextMenuItem>
+                    ))}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border flex items-center gap-1 shrink-0">
@@ -910,16 +1148,14 @@ interface SortableWorkspaceItemProps {
   onCreateSession: () => void;
   onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
   onArchiveSession: (sessionId: string) => void;
-  onPinSession: (sessionId: string) => void;
+  onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
   onRemoveWorkspace: () => void;
   onOpenBranches: (event?: React.MouseEvent) => void;
   onOpenPRs: (event?: React.MouseEvent) => void;
   onOpenWorkspaceSettings: () => void;
   isUnread: boolean;
   onToggleUnread: () => void;
-  getStatusColor: (status: string) => string;
   formatTimeAgo: (date: string) => string;
-  getInitial: (name: string) => string;
 }
 
 function SortableWorkspaceItem({
@@ -932,16 +1168,14 @@ function SortableWorkspaceItem({
   onCreateSession,
   onSelectSession,
   onArchiveSession,
-  onPinSession,
+  onTaskStatusChange,
   onRemoveWorkspace,
   onOpenBranches,
   onOpenPRs,
   onOpenWorkspaceSettings,
   isUnread,
   onToggleUnread,
-  getStatusColor,
   formatTimeAgo,
-  getInitial,
 }: SortableWorkspaceItemProps) {
   const { workspaceColors, setWorkspaceColor, clearWorkspaceColor } = useSettingsStore();
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
@@ -1066,6 +1300,15 @@ function SortableWorkspaceItem({
                     {isUnread ? 'Mark as read' : 'Mark as unread'}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => onOpenBranches()}>
+                    <GitBranch className="size-4" />
+                    Branches
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onOpenPRs()}>
+                    <GitPullRequest className="size-4" />
+                    Pull Requests
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onOpenWorkspaceSettings}>
                     <Settings2 className="size-4" />
                     Workspace Settings
@@ -1094,70 +1337,9 @@ function SortableWorkspaceItem({
           </div>
         </CollapsibleTrigger>
 
-        {/* Workspace Navigation + Sessions */}
+        {/* Sessions */}
         <CollapsibleContent>
           <div className="ml-3 overflow-hidden">
-            {/* Fixed Navigation Items - less indented than sessions */}
-            <div className="pb-1">
-              {(() => {
-                const isBranchesSelected = contentView.type === 'branches' && contentView.workspaceId === workspace.id;
-                const isPRsSelected = contentView.type === 'pr-dashboard' && contentView.workspaceId === workspace.id;
-                return (
-                  <>
-                    <div
-                      className={cn(
-                        "group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer",
-                        isBranchesSelected
-                          ? "bg-surface-2 text-foreground"
-                          : "hover:bg-surface-1"
-                      )}
-                      onClick={(e) => onOpenBranches(e)}
-                    >
-                      <GitBranch className={cn(
-                        "w-3.5 h-3.5",
-                        isBranchesSelected ? "text-nav-icon-branches" : "text-nav-icon-branches/70"
-                      )} />
-                      <span className={cn(
-                        "text-base font-medium",
-                        isBranchesSelected
-                          ? "text-foreground"
-                          : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        Branches
-                      </span>
-                    </div>
-                    <div
-                      className={cn(
-                        "group flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer",
-                        isPRsSelected
-                          ? "bg-surface-2 text-foreground"
-                          : "hover:bg-surface-1"
-                      )}
-                      onClick={(e) => onOpenPRs(e)}
-                    >
-                      <GitPullRequest className={cn(
-                        "w-3.5 h-3.5",
-                        isPRsSelected ? "text-nav-icon-prs" : "text-nav-icon-prs/70"
-                      )} />
-                      <span className={cn(
-                        "text-base font-medium",
-                        isPRsSelected
-                          ? "text-foreground"
-                          : "text-muted-foreground group-hover:text-foreground"
-                      )}>
-                        Pull Requests
-                      </span>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* Sessions Header */}
-            <div className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
-              Sessions
-            </div>
-
             {/* Sessions */}
             {sessions.length === 0 ? (
               <div className="py-2 px-2 text-sm text-muted-foreground/70">
@@ -1175,8 +1357,10 @@ function SortableWorkspaceItem({
                     contentView={contentView}
                     selectedSessionId={selectedSessionId}
                     onSelectSession={onSelectSession}
-                    onPinSession={onPinSession}
                     onArchiveSession={onArchiveSession}
+                    onTaskStatusChange={onTaskStatusChange}
+                    onOpenBranches={onOpenBranches}
+                    onOpenPRs={onOpenPRs}
                     formatTimeAgo={formatTimeAgo}
                   />
                 </ErrorBoundary>
@@ -1198,6 +1382,15 @@ function SortableWorkspaceItem({
           New Session
         </ContextMenuItem>
         <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onOpenBranches()}>
+          <GitBranch className="size-4" />
+          Branches
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onOpenPRs()}>
+          <GitPullRequest className="size-4" />
+          Pull Requests
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem onClick={onOpenWorkspaceSettings}>
           <Settings2 className="size-4" />
           Workspace Settings
@@ -1217,17 +1410,27 @@ function SessionRow({
   contentView,
   selectedSessionId,
   onSelectSession,
-  onPinSession,
   onArchiveSession,
+  onTaskStatusChange,
+  onOpenBranches,
+  onOpenPRs,
   formatTimeAgo,
+  showProjectIndicator,
+  workspaceColor,
+  workspaceName,
 }: {
   session: WorktreeSession;
   contentView: ContentView;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
-  onPinSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
+  onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
+  onOpenBranches?: (event?: React.MouseEvent) => void;
+  onOpenPRs?: (event?: React.MouseEvent) => void;
   formatTimeAgo: (date: string) => string;
+  showProjectIndicator?: boolean;
+  workspaceColor?: string;
+  workspaceName?: string;
 }) {
   const isSessionSelected = contentView.type === 'conversation' && selectedSessionId === session.id;
   const hasPR = session.prStatus && session.prStatus !== 'none';
@@ -1258,94 +1461,100 @@ function SessionRow({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            'group flex items-start gap-1 pl-0 pr-2 py-2 rounded-md cursor-pointer my-0.5',
+            'group flex flex-col px-2 py-2 rounded-md cursor-pointer my-0.5',
             isSessionSelected
               ? 'bg-surface-2 hover:bg-surface-3'
               : 'hover:bg-surface-1'
           )}
           onClick={(e) => onSelectSession(session.id, e)}
         >
-          {/* Status indicator column */}
-          <div className="w-3.5 shrink-0 flex items-center justify-center pt-0.5">
-            {session.status === 'active' && (
-              <div className="session-active-indicator">
-                <div className="bar" />
-                <div className="bar" />
-                <div className="bar" />
-              </div>
-            )}
-          </div>
-          {/* Task status icon column */}
-          <div className="w-4 shrink-0 flex items-start justify-center pt-0.5">
-            <TaskStatusIcon status={session.taskStatus} className="w-3.5 h-3.5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            {/* First line: branch name + stats/actions */}
-            <div className="flex items-center gap-1.5">
-              {/* Branch name container - grows and truncates */}
-              <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-                <span className={cn(
-                  "text-base font-normal truncate flex-1 w-0",
-                  isSessionSelected ? "text-foreground" : "text-foreground/60"
-                )}>
-                  {session.branch || session.name}
-                </span>
-                {/* Pinned indicator - fade out on hover */}
-                {session.pinned && (
-                  <Pin className="h-2.5 w-2.5 text-primary shrink-0 group-hover:opacity-0 transition-opacity" />
-                )}
-              </div>
-              {/* Git line stats badge and actions container */}
-              <div className="relative shrink-0 flex items-center">
-                {/* Stats - fade out on hover */}
-                {hasStats && (
-                  <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
-                    <span className="text-text-success">+{session.stats!.additions}</span>
-                    <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
-                  </span>
-                )}
-                {/* Actions - positioned absolutely to avoid layout shift */}
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    className={cn(
-                      "p-0.5 rounded hover:bg-surface-1 hover:text-foreground",
-                      session.pinned ? "text-primary" : "text-muted-foreground"
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onPinSession(session.id);
-                    }}
-                  >
-                    <Pin className="h-2.5 w-2.5" />
-                  </button>
-                  <button
-                    className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onArchiveSession(session.id);
-                    }}
-                  >
-                    <Archive className="h-2.5 w-2.5" />
-                  </button>
+          {/* First line: status icon + branch name + stats/actions */}
+          <div className="flex items-center gap-1">
+            {/* Task status / active indicator */}
+            {session.status === 'active' ? (
+              <div className="w-4 shrink-0 flex items-center justify-center">
+                <div className="session-active-indicator">
+                  <div className="bar" />
+                  <div className="bar" />
+                  <div className="bar" />
                 </div>
               </div>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="w-4 shrink-0 flex items-center justify-center rounded hover:bg-surface-1 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <TaskStatusIcon status={session.taskStatus} className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  {TASK_STATUS_OPTIONS.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onSelect={() => onTaskStatusChange(session.id, option.value)}
+                    >
+                      <TaskStatusIcon status={option.value} className="h-4 w-4" />
+                      <span className="flex-1">{option.label}</span>
+                      {option.value === session.taskStatus && (
+                        <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {/* Branch name container - grows and truncates */}
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+              <span className={cn(
+                "text-base font-normal truncate flex-1 w-0",
+                isSessionSelected ? "text-foreground" : "text-foreground/60"
+              )}>
+                {session.branch || session.name}
+              </span>
             </div>
-            {/* Second line: task status · priority · session name · PR info · status */}
-            <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
+            {/* Git line stats badge and actions container */}
+            <div className="relative shrink-0 flex items-center">
+              {/* Stats - fade out on hover */}
+              {hasStats && (
+                <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                  <span className="text-text-success">+{session.stats!.additions}</span>
+                  <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
+                </span>
+              )}
+              {/* Actions - positioned absolutely to avoid layout shift */}
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onArchiveSession(session.id);
+                  }}
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          {/* Second line: project indicator · priority · session name · PR info · status */}
+          <div className="flex items-center gap-1 mt-0.5 pl-1 text-sm text-muted-foreground">
+              {/* Project indicator for non-project grouping modes */}
+              {showProjectIndicator && workspaceColor && (
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
+              )}
+              {showProjectIndicator && workspaceName && (
+                <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
+              )}
               {/* PR icon if applicable */}
               {hasPR && (
-                <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
-              )}
-              {session.priority > 0 && (() => {
-                const opt = getPriorityOption(session.priority);
-                return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
-              })()}
-              <span className="truncate">{session.name}</span>
-              {hasPR && session.prNumber && (
                 <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="shrink-0">PR #{session.prNumber}</span>
+                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                  <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
                 </>
+              )}
+              {hasPR && session.prNumber && (
+                <span className="shrink-0">PR #{session.prNumber}</span>
               )}
               {prStatusInfo && (
                 <>
@@ -1357,23 +1566,414 @@ function SessionRow({
               )}
               {!hasPR && (
                 <>
-                  <span className="text-muted-foreground/50">·</span>
+                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
                   <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
                 </>
               )}
-            </div>
           </div>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onClick={() => onPinSession(session.id)}>
-          <Pin className="h-4 w-4" />
-          {session.pinned ? 'Unpin' : 'Pin'}
-        </ContextMenuItem>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <TaskStatusIcon status={session.taskStatus} className="h-4 w-4" />
+            Status
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent className="w-44">
+            {TASK_STATUS_OPTIONS.map((option) => (
+              <ContextMenuItem
+                key={option.value}
+                onClick={() => onTaskStatusChange(session.id, option.value)}
+              >
+                <TaskStatusIcon status={option.value} className="h-4 w-4" />
+                <span className="flex-1">{option.label}</span>
+                {option.value === session.taskStatus && (
+                  <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
         <ContextMenuSeparator />
+        {onOpenBranches && (
+          <ContextMenuItem onClick={() => onOpenBranches()}>
+            <GitBranch className="h-4 w-4" />
+            Branches
+          </ContextMenuItem>
+        )}
+        {onOpenPRs && (
+          <ContextMenuItem onClick={() => onOpenPRs()}>
+            <GitPullRequest className="h-4 w-4" />
+            Pull Requests
+          </ContextMenuItem>
+        )}
+        {(onOpenBranches || onOpenPRs) && <ContextMenuSeparator />}
         <ContextMenuItem onClick={() => onArchiveSession(session.id)} variant="destructive">
           <Archive className="h-4 w-4" />
           Archive
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+// --- Status group section (for 'status' and 'project-status' modes) ---
+
+function StatusGroupSection({
+  group,
+  isExpanded,
+  onToggle,
+  contentView,
+  selectedSessionId,
+  workspaces,
+  workspaceColors,
+  onSelectSession,
+  onArchiveSession,
+  onTaskStatusChange,
+  onOpenBranches,
+  onOpenPRs,
+  formatTimeAgo,
+  showProjectIndicator,
+}: {
+  group: SidebarGroup;
+  isExpanded: boolean;
+  onToggle: () => void;
+  contentView: ContentView;
+  selectedSessionId: string | null;
+  workspaces: Workspace[];
+  workspaceColors: Record<string, string>;
+  onSelectSession: (workspaceId: string, sessionId: string, event?: React.MouseEvent) => void;
+  onArchiveSession: (sessionId: string) => void;
+  onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
+  onOpenBranches: (workspaceId: string, event?: React.MouseEvent) => void;
+  onOpenPRs: (workspaceId: string, event?: React.MouseEvent) => void;
+  formatTimeAgo: (date: string) => string;
+  showProjectIndicator?: boolean;
+}) {
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <div className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-surface-1 transition-colors">
+          {group.statusValue && (
+            <TaskStatusIcon status={group.statusValue} className="w-3.5 h-3.5 shrink-0" />
+          )}
+          <span className="text-sm font-medium text-muted-foreground">{group.label}</span>
+          <ChevronDown className={cn(
+            'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 shrink-0',
+            !isExpanded && '-rotate-90'
+          )} />
+          <span className="text-xs text-muted-foreground/50 ml-auto">{group.count}</span>
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="ml-2">
+          {group.sessions.map((session) => {
+            const ws = workspaces.find((w) => w.id === session.workspaceId);
+            return (
+              <ErrorBoundary
+                key={session.id}
+                section="SessionRow"
+                fallback={<CardErrorFallback message="Error loading session" />}
+              >
+                <SessionRow
+                  session={session}
+                  contentView={contentView}
+                  selectedSessionId={selectedSessionId}
+                  onSelectSession={(id, e) => onSelectSession(session.workspaceId, id, e)}
+                  onArchiveSession={onArchiveSession}
+                  onTaskStatusChange={onTaskStatusChange}
+                  onOpenBranches={(e) => onOpenBranches(session.workspaceId, e)}
+                  onOpenPRs={(e) => onOpenPRs(session.workspaceId, e)}
+                  formatTimeAgo={formatTimeAgo}
+                  showProjectIndicator={showProjectIndicator}
+                  workspaceColor={workspaceColors[session.workspaceId] || getWorkspaceColor(session.workspaceId)}
+                  workspaceName={ws?.name}
+                />
+              </ErrorBoundary>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+// --- Project > Status sortable item ---
+
+interface SortableProjectStatusItemProps {
+  workspace: Workspace;
+  group: SidebarGroup;
+  isExpanded: boolean;
+  selectedSessionId: string | null;
+  onToggle: () => void;
+  onCreateSession: () => void;
+  onSelectSession: (sessionId: string, event?: React.MouseEvent) => void;
+  onArchiveSession: (sessionId: string) => void;
+  onTaskStatusChange: (sessionId: string, status: SessionTaskStatus) => void;
+  onRemoveWorkspace: () => void;
+  onOpenBranches: (event?: React.MouseEvent) => void;
+  onOpenPRs: (event?: React.MouseEvent) => void;
+  onOpenWorkspaceSettings: () => void;
+  isUnread: boolean;
+  onToggleUnread: () => void;
+  contentView: ContentView;
+  formatTimeAgo: (date: string) => string;
+  isSubGroupExpanded: (key: string, defaultCollapsed: boolean) => boolean;
+  onToggleSubGroup: (key: string) => void;
+}
+
+function SortableProjectStatusItem({
+  workspace,
+  group,
+  isExpanded,
+  selectedSessionId,
+  onToggle,
+  onCreateSession,
+  onSelectSession,
+  onArchiveSession,
+  onTaskStatusChange,
+  onRemoveWorkspace,
+  onOpenBranches,
+  onOpenPRs,
+  onOpenWorkspaceSettings,
+  isUnread,
+  onToggleUnread,
+  contentView,
+  formatTimeAgo,
+  isSubGroupExpanded,
+  onToggleSubGroup,
+}: SortableProjectStatusItemProps) {
+  const { workspaceColors, setWorkspaceColor, clearWorkspaceColor } = useSettingsStore();
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const customColor = workspaceColors[workspace.id];
+  const currentColor = customColor || getWorkspaceColor(workspace.id);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: workspace.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div ref={setNodeRef} style={style} className="mb-1">
+          <Collapsible open={isExpanded} onOpenChange={onToggle}>
+            <CollapsibleTrigger asChild>
+              <div
+                className={cn(
+                  'group flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-md cursor-pointer',
+                  'hover:bg-surface-1 transition-colors',
+                  isDragging && 'bg-surface-2'
+                )}
+              >
+                <Popover open={colorPickerOpen} onOpenChange={setColorPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="shrink-0 p-0.5 -m-0.5 rounded hover:bg-muted/50 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setColorPickerOpen(true);
+                      }}
+                      aria-label="Change workspace color"
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: currentColor }}
+                      />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-auto p-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {WORKSPACE_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          className={cn(
+                            'w-6 h-6 rounded-full transition-transform hover:scale-110',
+                            currentColor === color && 'ring-2 ring-offset-2 ring-offset-background ring-primary'
+                          )}
+                          style={{ backgroundColor: color }}
+                          onClick={() => {
+                            setWorkspaceColor(workspace.id, color);
+                            setColorPickerOpen(false);
+                          }}
+                          aria-label={`Set color to ${color}`}
+                        />
+                      ))}
+                    </div>
+                    {customColor && (
+                      <button
+                        className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground text-center py-1"
+                        onClick={() => {
+                          clearWorkspaceColor(workspace.id);
+                          setColorPickerOpen(false);
+                        }}
+                      >
+                        Reset to default
+                      </button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <span className={cn("text-base truncate", isUnread ? "font-bold" : "font-semibold")}>
+                  {workspace.name}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 shrink-0',
+                    !isExpanded && '-rotate-90'
+                  )}
+                />
+                {isUnread && (
+                  <div className="w-2 h-2 rounded-full bg-nav-icon-dashboard shrink-0" />
+                )}
+                <div className="flex-1" />
+                <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 hover:bg-surface-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCreateSession();
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 hover:bg-surface-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuItem onClick={onToggleUnread}>
+                        {isUnread ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+                        {isUnread ? 'Mark as read' : 'Mark as unread'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onOpenBranches()}>
+                        <GitBranch className="size-4" />
+                        Branches
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onOpenPRs()}>
+                        <GitPullRequest className="size-4" />
+                        Pull Requests
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={onOpenWorkspaceSettings}>
+                        <Settings2 className="size-4" />
+                        Workspace Settings
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive" onClick={onRemoveWorkspace}>
+                        <Trash2 className="size-4" />
+                        Remove
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </CollapsibleTrigger>
+
+            <CollapsibleContent>
+              <div className="ml-3 overflow-hidden">
+                {(!group.subGroups || group.subGroups.length === 0) ? (
+                  <div className="py-2 px-2 text-sm text-muted-foreground/70">
+                    No active sessions
+                  </div>
+                ) : (
+                  group.subGroups.map((subGroup) => (
+                    <Collapsible
+                      key={subGroup.key}
+                      open={isSubGroupExpanded(subGroup.key, subGroup.defaultCollapsed)}
+                      onOpenChange={() => onToggleSubGroup(subGroup.key)}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <div className="group flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer hover:bg-surface-1 transition-colors">
+                          {subGroup.statusValue && (
+                            <TaskStatusIcon status={subGroup.statusValue} className="w-3 h-3 shrink-0" />
+                          )}
+                          <span className="text-xs font-medium text-muted-foreground">{subGroup.label}</span>
+                          <ChevronDown className={cn(
+                            'h-3 w-3 text-muted-foreground transition-transform duration-200 shrink-0',
+                            !isSubGroupExpanded(subGroup.key, subGroup.defaultCollapsed) && '-rotate-90'
+                          )} />
+                          <span className="text-xs text-muted-foreground/50 ml-auto">{subGroup.count}</span>
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="ml-1">
+                          {subGroup.sessions.map((session) => (
+                            <ErrorBoundary
+                              key={session.id}
+                              section="SessionRow"
+                              fallback={<CardErrorFallback message="Error loading session" />}
+                            >
+                              <SessionRow
+                                session={session}
+                                contentView={contentView}
+                                selectedSessionId={selectedSessionId}
+                                onSelectSession={onSelectSession}
+                                onArchiveSession={onArchiveSession}
+                                onTaskStatusChange={onTaskStatusChange}
+                                onOpenBranches={onOpenBranches}
+                                onOpenPRs={onOpenPRs}
+                                formatTimeAgo={formatTimeAgo}
+                              />
+                            </ErrorBoundary>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={onToggleUnread}>
+          {isUnread ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+          {isUnread ? 'Mark as read' : 'Mark as unread'}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={onCreateSession}>
+          <Plus className="size-4" />
+          New Session
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onOpenBranches()}>
+          <GitBranch className="size-4" />
+          Branches
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onOpenPRs()}>
+          <GitPullRequest className="size-4" />
+          Pull Requests
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={onOpenWorkspaceSettings}>
+          <Settings2 className="size-4" />
+          Workspace Settings
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" onClick={onRemoveWorkspace}>
+          <Trash2 className="size-4" />
+          Remove
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
