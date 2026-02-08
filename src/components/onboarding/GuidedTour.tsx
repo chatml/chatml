@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { GuidedTourTooltip } from './GuidedTourTooltip';
 import { useAppStore } from '@/stores/appStore';
 
@@ -11,10 +11,11 @@ interface GuidedTourProps {
 
 export function GuidedTour({ onComplete, onDismiss }: GuidedTourProps) {
   const workspaces = useAppStore((s) => s.workspaces);
+  const initialCount = useRef(workspaces.length);
 
-  // Auto-complete when user adds a workspace
+  // Auto-complete when user adds a workspace after the tour mounts
   useEffect(() => {
-    if (workspaces.length > 0) {
+    if (workspaces.length > initialCount.current) {
       onComplete();
     }
   }, [workspaces.length, onComplete]);
