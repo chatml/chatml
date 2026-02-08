@@ -946,6 +946,26 @@ function AccountSettings() {
         </div>
       </div>
 
+      {/* Replay Welcome Tour */}
+      <div className="flex items-start justify-between py-6 border-b border-border/50">
+        <div className="flex-1 pr-4">
+          <h4 className="text-sm font-medium">Welcome tour</h4>
+          <p className="text-sm text-muted-foreground mt-1">
+            Replay the onboarding wizard and guided tour.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            useSettingsStore.getState().resetOnboarding();
+            window.dispatchEvent(new CustomEvent('close-settings'));
+          }}
+        >
+          Replay Tour
+        </Button>
+      </div>
+
       {/* Sign out */}
       <div className="flex items-center justify-between py-6">
         <h4 className="text-sm font-medium">Sign out</h4>

@@ -67,6 +67,7 @@ export function EmptyView({
             key={key}
             onClick={() => handleCardClick(key)}
             className="group flex flex-col w-40 h-28 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border transition-all duration-200"
+            {...(key === 'open' ? { 'data-tour-target': 'add-workspace' } : {})}
           >
             <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
             <span className="mt-auto text-sm text-muted-foreground group-hover:text-foreground transition-colors">
