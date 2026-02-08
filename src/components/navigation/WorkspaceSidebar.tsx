@@ -522,10 +522,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                 <span className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                   {sectionHeaderLabel}
                 </span>
+                <div className="flex items-center gap-0.5">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="text-muted-foreground/60 hover:text-foreground transition-colors opacity-0 group-hover/header:opacity-100 p-0.5 rounded hover:bg-surface-1">
-                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      <MoreHorizontal className="h-4 w-4" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
@@ -562,6 +563,16 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <button
+                  className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1"
+                  onClick={() => {
+                    const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                    if (targetId) handleCreateSession(targetId);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                </div>
               </div>
               {workspaces.length === 0 ? (
                 <div className="px-3 py-12 text-center">
