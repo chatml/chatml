@@ -75,6 +75,17 @@ export const APP_REGISTRY: AppDefinition[] = [
     },
   },
   {
+    id: 'xcode',
+    name: 'Xcode',
+    category: 'editor',
+    platforms: {
+      darwin: {
+        bundlePaths: ['/Applications/Xcode.app'],
+        appName: 'Xcode',
+      },
+    },
+  },
+  {
     id: 'sublime',
     name: 'Sublime Text',
     category: 'editor',
