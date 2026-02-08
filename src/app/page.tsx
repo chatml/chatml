@@ -19,6 +19,9 @@ import { switchToTab, createAndSwitchToNewTab } from '@/components/navigation/Br
 import { useNavigationStore } from '@/stores/navigationStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { GuidedTour } from '@/components/onboarding/GuidedTour';
+import { useOnboarding } from '@/hooks/useOnboarding';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, registerSession, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
@@ -387,6 +390,7 @@ export default function Home() {
   const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
 
   const { expandWorkspace } = useSettingsStore();
+  const { showWizard, showGuidedTour, completeWizard, completeTour, skipAll } = useOnboarding();
 
   // Sync bottom terminal panel collapse state with showBottomTerminal.
   // Re-runs on session change so a fresh session starts with the correct panel state.
@@ -1358,7 +1362,7 @@ export default function Home() {
                         <ResizablePanel
                           ref={bottomTerminalPanelRef}
                           id="bottom-terminal"
-                          defaultSize="180px"
+                          defaultSize={showBottomTerminal ? "180px" : 0}
                           minSize="100px"
                           maxSize="400px"
                           collapsible={true}
@@ -1416,6 +1420,16 @@ export default function Home() {
           </ResizablePanel>
         </ResizablePanelGroup>
 
+
+        {/* Onboarding Wizard Overlay */}
+        {showWizard && (
+          <OnboardingWizard onComplete={completeWizard} onSkip={skipAll} />
+        )}
+
+        {/* Guided Tour Overlay */}
+        {showGuidedTour && !isLoadingData && (
+          <GuidedTour onComplete={completeTour} onDismiss={completeTour} />
+        )}
 
         {/* Settings Overlay - full screen */}
         {showSettings && (

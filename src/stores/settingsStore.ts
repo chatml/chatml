@@ -116,6 +116,10 @@ interface SettingsState {
   // Default "Open in" app ID (persisted user preference)
   defaultOpenApp: string;
 
+  // Onboarding state
+  hasCompletedOnboarding: boolean;
+  hasCompletedGuidedTour: boolean;
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -167,6 +171,9 @@ interface SettingsState {
   setWorkspaceColor: (workspaceId: string, color: string) => void;
   clearWorkspaceColor: (workspaceId: string) => void;
   setDefaultOpenApp: (appId: string) => void;
+  setHasCompletedOnboarding: (value: boolean) => void;
+  setHasCompletedGuidedTour: (value: boolean) => void;
+  resetOnboarding: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -217,6 +224,8 @@ export const useSettingsStore = create<SettingsState>()(
       recentlyRemovedWorkspaces: [], // Last 5 removed workspaces for quick re-add
       workspaceColors: {}, // Custom workspace colors
       defaultOpenApp: 'vscode', // Default to VS Code
+      hasCompletedOnboarding: false,
+      hasCompletedGuidedTour: false,
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -326,6 +335,9 @@ export const useSettingsStore = create<SettingsState>()(
           return { workspaceColors: rest };
         }),
       setDefaultOpenApp: (appId) => set({ defaultOpenApp: appId }),
+      setHasCompletedOnboarding: (value) => set({ hasCompletedOnboarding: value }),
+      setHasCompletedGuidedTour: (value) => set({ hasCompletedGuidedTour: value }),
+      resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),
     }),
     {
       name: 'chatml-settings',
