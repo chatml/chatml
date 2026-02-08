@@ -25,6 +25,9 @@ struct GlobalFileWatcher {
 /// Global state: single watcher instance instead of per-workspace watchers
 static GLOBAL_WATCHER: Mutex<Option<GlobalFileWatcher>> = Mutex::new(None);
 
+/// Per-workspace accumulated file changes: (last_relative_path, last_full_path, count, all_files)
+type WorkspaceChanges = (String, String, usize, Vec<(String, String)>);
+
 /// Directories to ignore when watching for file changes
 const IGNORED_DIRECTORIES: &[&str] = &[
     ".git",
@@ -136,8 +139,9 @@ pub fn start_global_watcher(
         loop {
             match rx.recv() {
                 Ok(Ok(events)) => {
-                    // Track per-session file counts for summary logging
-                    let mut session_counts: HashMap<String, usize> = HashMap::new();
+                    // Collect changed files per workspace, emitting ONE event per workspace
+                    // instead of per-file to avoid flooding the WebView event loop.
+                    let mut workspace_changes: HashMap<String, WorkspaceChanges> = HashMap::new();
 
                     for event in events {
                         if event.kind == DebouncedEventKind::Any {
@@ -191,29 +195,43 @@ pub fn start_global_watcher(
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_else(|_| event_path_str.clone());
 
-                            *session_counts.entry(session_dir.clone()).or_insert(0) += 1;
-
-                            // Emit event to frontend with same payload format
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let payload = serde_json::json!({
-                                    "workspaceId": workspace_id,
-                                    "path": relative_path,
-                                    "fullPath": event_path_str,
-                                });
-                                if let Err(e) = window.emit("file-changed", payload) {
-                                    log::error!("Failed to emit file-changed event: {}", e);
-                                }
-                            }
+                            let entry = workspace_changes
+                                .entry(workspace_id.clone())
+                                .or_insert_with(|| (String::new(), String::new(), 0, Vec::new()));
+                            entry.0 = relative_path.clone();
+                            entry.1 = event_path_str.clone();
+                            entry.2 += 1;
+                            entry.3.push((relative_path, event_path_str));
                         }
                     }
 
-                    // Log a single summary line per session instead of per-file
-                    for (session, count) in &session_counts {
-                        log::debug!(
-                            "File changes detected in session {}: {} files",
-                            session,
-                            count
-                        );
+                    // Emit one event per workspace with all changed file paths
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        for (workspace_id, (last_path, last_full, count, files)) in
+                            &workspace_changes
+                        {
+                            let file_list: Vec<serde_json::Value> = files
+                                .iter()
+                                .map(|(path, full)| {
+                                    serde_json::json!({ "path": path, "fullPath": full })
+                                })
+                                .collect();
+                            let payload = serde_json::json!({
+                                "workspaceId": workspace_id,
+                                "path": last_path,
+                                "fullPath": last_full,
+                                "files": file_list,
+                                "fileCount": count,
+                            });
+                            if let Err(e) = window.emit("file-changed", payload) {
+                                log::error!("Failed to emit file-changed event: {}", e);
+                            }
+                            log::debug!(
+                                "File changes detected in workspace {}: {} files",
+                                workspace_id,
+                                count
+                            );
+                        }
                     }
                 }
                 Ok(Err(error)) => {

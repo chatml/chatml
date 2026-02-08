@@ -213,10 +213,10 @@ export function useBranchSync(
     // Use requestIdleCallback to defer the network call until the browser is idle,
     // preventing it from blocking the session navigation render.
     if (typeof requestIdleCallback === 'function') {
-      const id = requestIdleCallback(scheduleCheck, { timeout: 3000 });
+      const id = requestIdleCallback(scheduleCheck, { timeout: 8000 });
       return () => cancelIdleCallback(id);
     } else {
-      const id = setTimeout(scheduleCheck, 150);
+      const id = setTimeout(scheduleCheck, 2000);
       return () => clearTimeout(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

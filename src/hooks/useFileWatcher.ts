@@ -21,6 +21,9 @@ import { useToast } from '@/components/ui/toast';
  * 3. React to file change events for dirty-tab / reload logic
  * 4. Stop the watcher on unmount
  *
+ * The Rust watcher batches file change events per workspace (one IPC call per workspace
+ * per debounce window) to avoid flooding the WebView event loop.
+ *
  * Other hooks (useGitStatus, ChangesPanel) subscribe to `lastFileChange` in the
  * store instead of registering their own Tauri listeners.
  */
@@ -37,34 +40,39 @@ export function useFileWatcher() {
   const handleFileChange = useCallback(async (event: FileChangedEvent) => {
     const { fileTabs, updateFileTab } = useAppStore.getState();
 
-    // Find if this file is open in a tab
-    const openTab = fileTabs.find(
-      (tab) => tab.workspaceId === event.workspaceId && tab.path === event.path
-    );
+    // Determine which file paths to check for tab conflicts
+    const filesToCheck = event.files ?? [{ path: event.path, fullPath: event.fullPath }];
 
-    if (!openTab) return;
-
-    if (openTab.isDirty) {
-      // Show conflict warning — don't reload
-      sendNotification(
-        `${openTab.name} changed on disk`,
-        'The file has been modified externally. Your unsaved changes may conflict.'
+    for (const file of filesToCheck) {
+      // Find if this file is open in a tab
+      const openTab = fileTabs.find(
+        (tab) => tab.workspaceId === event.workspaceId && tab.path === file.path
       );
-      console.warn(`File conflict: ${openTab.name} was modified externally but has unsaved changes`);
-      return;
-    }
 
-    // File is open and not dirty — reload content
-    try {
-      const response = await getRepoFileContent(event.workspaceId, event.path);
-      updateFileTab(openTab.id, {
-        content: response.content,
-        originalContent: response.content,
-        isLoading: false,
-      });
-      console.log(`File reloaded: ${openTab.name} was modified externally`);
-    } catch (error) {
-      console.error('Failed to reload file:', error);
+      if (!openTab) continue;
+
+      if (openTab.isDirty) {
+        // Show conflict warning — don't reload
+        sendNotification(
+          `${openTab.name} changed on disk`,
+          'The file has been modified externally. Your unsaved changes may conflict.'
+        );
+        console.warn(`File conflict: ${openTab.name} was modified externally but has unsaved changes`);
+        continue;
+      }
+
+      // File is open and not dirty — reload content
+      try {
+        const response = await getRepoFileContent(event.workspaceId, file.path);
+        updateFileTab(openTab.id, {
+          content: response.content,
+          originalContent: response.content,
+          isLoading: false,
+        });
+        console.log(`File reloaded: ${openTab.name} was modified externally`);
+      } catch (error) {
+        console.error('Failed to reload file:', error);
+      }
     }
   }, []);
 
@@ -109,19 +117,17 @@ export function useFileWatcher() {
     let isMounted = true;
 
     const onFileChange = (event: FileChangedEvent) => {
-      // Write to store so other hooks can react
+      // Write to store so other hooks (useGitStatus, ChangesPanel) can react.
+      // The Rust watcher already batches events per workspace, so this fires
+      // at most once per workspace per debounce window (~2 seconds).
       setLastFileChange(event);
-      // Handle tab conflicts/reloads
+      // Handle tab conflicts/reloads for all files in the batch
       handleFileChange(event);
     };
 
     listenForFileChanges(onFileChange)
       .then((unlisten) => {
-        if (isMounted) {
-          cleanupRef.current = unlisten;
-        } else {
-          cleanupRef.current = unlisten;
-        }
+        cleanupRef.current = unlisten;
       })
       .catch((err) => {
         console.error('Failed to initialize file watcher listener:', err);

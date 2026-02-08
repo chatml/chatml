@@ -99,12 +99,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const { addReviewComment: addReviewCommentToStore, updateReviewComment: updateReviewCommentInStore, deleteReviewComment: deleteReviewCommentFromStore, setReviewComments } = useReviewCommentActions();
 
   // Fetch review comments when session changes.
-  // If cached, show cached data immediately but still refetch in the background
-  // to pick up any deletions/updates that happened outside this client.
+  // Always deferred so it doesn't block navigation render or session creation.
+  // If cached, show cached data immediately; refetch picks up external changes.
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
-
-    const hasCached = !!useAppStore.getState().reviewComments[selectedSessionId];
 
     const fetchComments = async () => {
       try {
@@ -115,17 +113,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     };
 
-    if (hasCached) {
-      // Defer background refresh so it doesn't block navigation render
-      if (typeof requestIdleCallback === 'function') {
-        const id = requestIdleCallback(() => fetchComments(), { timeout: 5000 });
-        return () => cancelIdleCallback(id);
-      } else {
-        const id = setTimeout(fetchComments, 200);
-        return () => clearTimeout(id);
-      }
+    // Always defer — never block the render path
+    if (typeof requestIdleCallback === 'function') {
+      const id = requestIdleCallback(() => fetchComments(), { timeout: 8000 });
+      return () => cancelIdleCallback(id);
     } else {
-      fetchComments();
+      const id = setTimeout(fetchComments, 1000);
+      return () => clearTimeout(id);
     }
   }, [selectedWorkspaceId, selectedSessionId, setReviewComments]);
 
@@ -137,8 +131,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // so this effect only fires when the conversation selection changes, not on every
     // pagination state update. If messages were already loaded (e.g., eagerly at boot),
     // skip the fetch.
-    const existingPagination = useAppStore.getState().messagePagination[selectedConversationId];
+    const state = useAppStore.getState();
+    const existingPagination = state.messagePagination[selectedConversationId];
     if (existingPagination) return;
+
+    // Also skip if messages were already added inline (e.g., via addConversation with messages)
+    const hasInlineMessages = state.messages.some((m) => m.conversationId === selectedConversationId);
+    if (hasInlineMessages) return;
 
     let cancelled = false;
     async function loadMessages() {
@@ -394,6 +393,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     () => conversations.filter((c) => c.sessionId === selectedSessionId),
     [conversations, selectedSessionId]
   );
+
+  // Auto-select first conversation when it arrives for a session that has none selected
+  useEffect(() => {
+    if (!selectedSessionId) return;
+    if (selectedConversationId) return;
+    if (sessionConversations.length === 0) return;
+    selectConversation(sessionConversations[0].id);
+  }, [selectedSessionId, selectedConversationId, sessionConversations, selectConversation]);
 
   // Check if a conversation is fresh (no user messages yet)
   const isFreshConversation = useCallback(
@@ -1046,7 +1053,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               isLoadingOlder={pagination?.isLoadingMore}
               emptyState={
                 (!selectedConversationId || conversationMessages.length === 0) ? (
-                  <ConversationEmptyState sessionName={currentSession?.name} />
+                  sessionConversations.length === 0
+                    ? <SessionPreparingState sessionName={currentSession?.branch || currentSession?.name} />
+                    : <ConversationEmptyState sessionName={currentSession?.name} />
                 ) : undefined
               }
               footer={messageListFooter}
@@ -1123,6 +1132,28 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function SessionPreparingState({ sessionName }: { sessionName?: string }) {
+  return (
+    <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
+      <div className="max-w-lg mx-auto text-center">
+        {sessionName && (
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
+            <GitBranch className="w-4 h-4" />
+            {sessionName}
+          </div>
+        )}
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display">Preparing session</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Setting up your workspace and git branch...
+        </p>
+      </div>
     </div>
   );
 }

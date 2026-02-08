@@ -86,7 +86,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor, WORKSPACE_COLORS } from '@/lib/workspace-colors';
-import { getPriorityOption, TASK_STATUS_OPTIONS } from '@/lib/session-fields';
+import { TASK_STATUS_OPTIONS } from '@/lib/session-fields';
 import { TaskStatusIcon } from '@/components/icons/TaskStatusIcon';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -102,7 +102,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Workspace, WorktreeSession, SetupInfo, SessionTaskStatus } from '@/lib/types';
+import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -255,58 +255,98 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const handleCreateSession = async (workspaceId: string) => {
+    // Generate a temporary ID for the optimistic placeholder
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+    const t0 = performance.now();
+
+    // Add placeholder session and navigate immediately — no waiting
+    addSession({
+      id: tempId,
+      workspaceId,
+      name: 'Creating session...',
+      branch: '',
+      worktreePath: '',
+      status: 'idle',
+      priority: 0,
+      taskStatus: 'backlog',
+      createdAt: now,
+      updatedAt: now,
+    });
+    expandWorkspace(workspaceId);
+    navigate({
+      workspaceId,
+      sessionId: tempId,
+      contentView: { type: 'conversation' },
+    });
+
     try {
       // Create session via backend API (generates city-based name, branch, and worktree path)
       const branchPrefix = getBranchPrefix();
       const session = await createSessionApi(workspaceId, {
         ...(branchPrefix !== undefined && { branchPrefix }),
       });
+      console.debug(`[CreateSession] API returned in ${(performance.now() - t0).toFixed(0)}ms`);
 
-      // Register with global file watcher for event routing
+      // Atomically swap the temp placeholder with the real session in a single
+      // setState call. This avoids any intermediate state where selectedSessionId
+      // is null (removeSession nullifies it when the removed session is selected,
+      // and navigate uses startTransition which defers the re-select).
+      const t1 = performance.now();
+      const realSession = mapSessionDTO(session);
+      useAppStore.setState((state) => ({
+        sessions: [realSession, ...state.sessions.filter((s) => s.id !== tempId)],
+        selectedSessionId: realSession.id,
+        selectedConversationId: null,
+      }));
+
+      // Register file watcher (non-blocking)
       if (session.worktreePath) {
         const dirName = getSessionDirName(session.worktreePath);
-        if (dirName) {
-          registerSession(dirName, session.id);
-        }
+        if (dirName) registerSession(dirName, session.id);
       }
 
-      // Add to local store
-      addSession(mapSessionDTO(session));
-
-      // Fetch conversations created by backend (includes "Untitled" with setup info)
-      const conversations = await listConversationsApi(workspaceId, session.id);
-      conversations.forEach((conv) => {
-        addConversation({
-          id: conv.id,
-          sessionId: conv.sessionId,
-          type: conv.type,
-          name: conv.name,
-          status: conv.status,
-          messages: conv.messages.map((m) => ({
-            id: m.id,
-            conversationId: conv.id,
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: m.content,
-            setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
-            timestamp: m.timestamp,
-          })),
-          toolSummary: conv.toolSummary,
-          createdAt: conv.createdAt,
-          updatedAt: conv.updatedAt,
+      // Fetch conversations and add to store so ConversationArea can auto-select.
+      // The dashboard data fetch only loads conversations at boot — newly created
+      // sessions need an explicit fetch. We do NOT call setMessagePage here because
+      // listConversations returns conversations with empty messages arrays (only
+      // counts). ConversationArea's message loading effect will fetch the actual
+      // messages once a conversation is selected.
+      let firstConvId: string | null = null;
+      try {
+        const conversations = await listConversationsApi(workspaceId, session.id);
+        conversations.forEach((conv) => {
+          if (!firstConvId) firstConvId = conv.id;
+          addConversation({
+            id: conv.id,
+            sessionId: conv.sessionId,
+            type: conv.type,
+            name: conv.name,
+            status: conv.status,
+            messages: [],
+            toolSummary: conv.toolSummary,
+            createdAt: conv.createdAt,
+            updatedAt: conv.updatedAt,
+          });
         });
-      });
+      } catch (error) {
+        console.error('Failed to load conversations for new session:', error);
+      }
 
-      // Expand the workspace if not already
-      expandWorkspace(workspaceId);
-
-      // Select the new session (navigate records history)
+      // Navigate for history tracking + explicit conversation selection
       navigate({
         workspaceId,
         sessionId: session.id,
+        conversationId: firstConvId ?? undefined,
         contentView: { type: 'conversation' },
       });
+      console.debug(`[CreateSession] Store update + navigate in ${(performance.now() - t1).toFixed(0)}ms`);
     } catch (error) {
       console.error('Failed to create session:', error);
+      // Remove the placeholder on failure
+      const { removeSession: removeFromStore } = useAppStore.getState();
+      removeFromStore(tempId);
+      showError('Failed to create session');
     }
   };
 
@@ -441,11 +481,11 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const isMacOS = typeof window !== 'undefined' && navigator.platform.includes('Mac');
 
   return (
-    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden" onContextMenu={(e) => e.preventDefault()}>
+    <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden">
 
 
       {/* Global Navigation */}
-      <div className="px-1 py-2">
+      <div className="px-1 py-2 shrink-0">
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
@@ -515,6 +555,8 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       </div>
 
       {/* Session List */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
       <ScrollArea className="flex-1 min-h-0 [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
             <div className="py-2 px-1 flex flex-col">
               {/* Section Header */}
@@ -792,13 +834,12 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                   )}
                 </>
               )}
-              {/* Fill remaining space with context menu for adding sessions */}
-              {workspaces.length > 0 && (
-                <ContextMenu>
-                  <ContextMenuTrigger asChild>
-                    <div className="flex-1 min-h-4" />
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
+            </div>
+      </ScrollArea>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+                {workspaces.length > 0 && (
+                  <>
                     <ContextMenuItem onClick={() => {
                       const targetId = selectedWorkspaceId || workspaces[0]?.id;
                       if (targetId) handleCreateSession(targetId);
@@ -827,11 +868,35 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                         </ContextMenuItem>
                       </ContextMenuSubContent>
                     </ContextMenuSub>
-                  </ContextMenuContent>
-                </ContextMenu>
-              )}
-            </div>
-      </ScrollArea>
+                    <ContextMenuSeparator />
+                  </>
+                )}
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>Group by</ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    <ContextMenuItem onClick={(e) => { e.preventDefault(); toggleGroupByProject(); }}>
+                      <Check className={cn("h-3.5 w-3.5", !isGroupByProject && "opacity-0")} />
+                      Project
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={(e) => { e.preventDefault(); toggleGroupByStatus(); }}>
+                      <Check className={cn("h-3.5 w-3.5", !isGroupByStatus && "opacity-0")} />
+                      Status
+                    </ContextMenuItem>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>Sort by</ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    {SORT_BY_OPTIONS.map((option) => (
+                      <ContextMenuItem key={option.value} onClick={() => setSidebarSortBy(option.value)}>
+                        <Check className={cn("h-3.5 w-3.5", sidebarSortBy !== option.value && "opacity-0")} />
+                        {option.label}
+                      </ContextMenuItem>
+                    ))}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border flex items-center gap-1 shrink-0">
@@ -1479,25 +1544,17 @@ function SessionRow({
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColor }} />
               )}
               {showProjectIndicator && workspaceName && (
-                <>
-                  <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
-                  <span className="text-muted-foreground/50">·</span>
-                </>
+                <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
               )}
               {/* PR icon if applicable */}
               {hasPR && (
-                <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
-              )}
-              {session.priority > 0 && (() => {
-                const opt = getPriorityOption(session.priority);
-                return <opt.icon className={cn('h-3 w-3 shrink-0', opt.color)} />;
-              })()}
-              <span className="truncate">{session.name}</span>
-              {hasPR && session.prNumber && (
                 <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="shrink-0">PR #{session.prNumber}</span>
+                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                  <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
                 </>
+              )}
+              {hasPR && session.prNumber && (
+                <span className="shrink-0">PR #{session.prNumber}</span>
               )}
               {prStatusInfo && (
                 <>
@@ -1509,7 +1566,7 @@ function SessionRow({
               )}
               {!hasPR && (
                 <>
-                  <span className="text-muted-foreground/50">·</span>
+                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
                   <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
                 </>
               )}
