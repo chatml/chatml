@@ -103,14 +103,9 @@ export function useDashboardData(workspaceId: string): DashboardData {
       (s) => s.workspaceId === workspaceId && !s.archived
     );
 
-    // Sort: pinned first, then by status (active > idle > done > error), then by updatedAt
+    // Sort by status (active > idle > done > error), then by updatedAt
     const sortedSessions = [...sessions].sort((a, b) => {
-      // Pinned sessions first
-      if (a.pinned !== b.pinned) {
-        return a.pinned ? -1 : 1;
-      }
-
-      // Then by status priority
+      // By status priority
       const statusOrder: Record<string, number> = { active: 0, idle: 1, done: 2, error: 3 };
       const aOrder = statusOrder[a.status];
       const bOrder = statusOrder[b.status];

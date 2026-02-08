@@ -29,6 +29,12 @@ export type FontSize = 'small' | 'medium' | 'large';
 // Branch prefix options
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
+// Sidebar grouping options
+export type SidebarGroupBy = 'none' | 'project' | 'status' | 'project-status';
+
+// Sidebar sorting options
+export type SidebarSortBy = 'recent' | 'status' | 'priority' | 'name';
+
 // Content view types for Full Content Area pattern
 export type ContentView =
   | { type: 'conversation' }
@@ -116,6 +122,11 @@ interface SettingsState {
   // Default "Open in" app ID (persisted user preference)
   defaultOpenApp: string;
 
+  // Sidebar grouping/sorting
+  sidebarGroupBy: SidebarGroupBy;
+  sidebarSortBy: SidebarSortBy;
+  collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -167,6 +178,9 @@ interface SettingsState {
   setWorkspaceColor: (workspaceId: string, color: string) => void;
   clearWorkspaceColor: (workspaceId: string) => void;
   setDefaultOpenApp: (appId: string) => void;
+  setSidebarGroupBy: (value: SidebarGroupBy) => void;
+  setSidebarSortBy: (value: SidebarSortBy) => void;
+  toggleSidebarGroupCollapsed: (key: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -217,6 +231,9 @@ export const useSettingsStore = create<SettingsState>()(
       recentlyRemovedWorkspaces: [], // Last 5 removed workspaces for quick re-add
       workspaceColors: {}, // Custom workspace colors
       defaultOpenApp: 'vscode', // Default to VS Code
+      sidebarGroupBy: 'project', // Default: group by project
+      sidebarSortBy: 'recent', // Default: sort by recency
+      collapsedSidebarGroups: [], // Keys toggled from default state
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -326,6 +343,17 @@ export const useSettingsStore = create<SettingsState>()(
           return { workspaceColors: rest };
         }),
       setDefaultOpenApp: (appId) => set({ defaultOpenApp: appId }),
+      setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
+      setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
+      toggleSidebarGroupCollapsed: (key) =>
+        set((state) => {
+          const has = state.collapsedSidebarGroups.includes(key);
+          return {
+            collapsedSidebarGroups: has
+              ? state.collapsedSidebarGroups.filter((k) => k !== key)
+              : [...state.collapsedSidebarGroups, key],
+          };
+        }),
     }),
     {
       name: 'chatml-settings',
