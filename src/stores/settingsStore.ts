@@ -29,6 +29,12 @@ export type FontSize = 'small' | 'medium' | 'large';
 // Branch prefix options
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
+// Sidebar grouping options
+export type SidebarGroupBy = 'none' | 'project' | 'status' | 'project-status';
+
+// Sidebar sorting options
+export type SidebarSortBy = 'recent' | 'status' | 'priority' | 'name';
+
 // Content view types for Full Content Area pattern
 export type ContentView =
   | { type: 'conversation' }
@@ -120,6 +126,11 @@ interface SettingsState {
   hasCompletedOnboarding: boolean;
   hasCompletedGuidedTour: boolean;
 
+  // Sidebar grouping/sorting
+  sidebarGroupBy: SidebarGroupBy;
+  sidebarSortBy: SidebarSortBy;
+  collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -174,6 +185,9 @@ interface SettingsState {
   setHasCompletedOnboarding: (value: boolean) => void;
   setHasCompletedGuidedTour: (value: boolean) => void;
   resetOnboarding: () => void;
+  setSidebarGroupBy: (value: SidebarGroupBy) => void;
+  setSidebarSortBy: (value: SidebarSortBy) => void;
+  toggleSidebarGroupCollapsed: (key: string) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -226,6 +240,9 @@ export const useSettingsStore = create<SettingsState>()(
       defaultOpenApp: 'vscode', // Default to VS Code
       hasCompletedOnboarding: false,
       hasCompletedGuidedTour: false,
+      sidebarGroupBy: 'project', // Default: group by project
+      sidebarSortBy: 'recent', // Default: sort by recency
+      collapsedSidebarGroups: [], // Keys toggled from default state
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -338,6 +355,17 @@ export const useSettingsStore = create<SettingsState>()(
       setHasCompletedOnboarding: (value) => set({ hasCompletedOnboarding: value }),
       setHasCompletedGuidedTour: (value) => set({ hasCompletedGuidedTour: value }),
       resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),
+      setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
+      setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
+      toggleSidebarGroupCollapsed: (key) =>
+        set((state) => {
+          const has = state.collapsedSidebarGroups.includes(key);
+          return {
+            collapsedSidebarGroups: has
+              ? state.collapsedSidebarGroups.filter((k) => k !== key)
+              : [...state.collapsedSidebarGroups, key],
+          };
+        }),
     }),
     {
       name: 'chatml-settings',

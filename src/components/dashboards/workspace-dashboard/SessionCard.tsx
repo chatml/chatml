@@ -9,7 +9,6 @@ import {
   X,
   Clock,
   AlertTriangle,
-  Pin,
   Plus,
   Minus,
 } from 'lucide-react';
@@ -111,9 +110,6 @@ export function SessionCard({ session, onJumpToSession }: SessionCardProps) {
                 <PriorityIcon className={cn('h-3.5 w-3.5 shrink-0', priorityOpt.color)} />
               )}
               <span className="font-medium text-sm truncate">{session.branch}</span>
-              {session.pinned && (
-                <Pin className="h-3 w-3 text-muted-foreground shrink-0" />
-              )}
               {hasChanges && (
                 <span className="flex items-center gap-1 text-xs shrink-0">
                   <span className="text-green-500 flex items-center">
