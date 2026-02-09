@@ -20,6 +20,7 @@ import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog'
 import { CreatePRDialog } from '@/components/dialogs/CreatePRDialog';
 import { openUrlInBrowser } from '@/lib/tauri';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
+import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import {
   ChevronRight,
   ChevronDown,
@@ -237,6 +238,14 @@ export function SessionToolbarContent() {
               onChange={handleTaskStatusChange}
               size="sm"
             />
+            {selectedSession.prStatus && selectedSession.prStatus !== 'none' && selectedSession.prNumber && (
+              <PRNumberBadge
+                prNumber={selectedSession.prNumber}
+                prStatus={selectedSession.prStatus as 'open' | 'merged' | 'closed'}
+                prUrl={selectedSession.prUrl}
+                size="sm"
+              />
+            )}
             <GitBranch className="h-3.5 w-3.5 text-purple-400" />
             <span className="text-sm font-medium">
               {selectedSession.branch || selectedSession.name}
