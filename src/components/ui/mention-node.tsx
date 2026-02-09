@@ -131,7 +131,14 @@ export function MentionInputElement(
                 className="gap-2"
               >
                 <FileIcon filename={item.text} />
-                <span className="truncate">{item.text}</span>
+                <span className="truncate">
+                  {item.text}
+                  {(item.data as { directory?: string } | undefined)?.directory ? (
+                    <span className="ml-1.5 text-muted-foreground font-normal">
+                      {(item.data as { directory: string }).directory}
+                    </span>
+                  ) : null}
+                </span>
               </InlineComboboxItem>
             ))}
           </InlineComboboxGroup>
