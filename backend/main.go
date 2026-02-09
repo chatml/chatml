@@ -22,7 +22,6 @@ import (
 	"github.com/chatml/chatml-backend/naming"
 	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/server"
-	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
 )
 
@@ -162,15 +161,6 @@ func main() {
 			}); updateErr != nil {
 				logger.BranchWatcher.Errorf("Failed to update session %s: %v", event.SessionID, updateErr)
 				return
-			}
-
-			// Update session metadata file
-			if meta, err := session.ReadMetadata(event.SessionID); err == nil {
-				meta.Name = newName
-				meta.Branch = event.NewBranch
-				if err := session.WriteMetadata(meta); err != nil {
-					logger.BranchWatcher.Errorf("Failed to update metadata for %s: %v", event.SessionID, err)
-				}
 			}
 
 			logger.BranchWatcher.Infof("Updated session %s: branch=%q name=%q", event.SessionID, event.NewBranch, newName)
