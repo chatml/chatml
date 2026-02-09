@@ -8,6 +8,7 @@ type SkillCategory string
 const (
 	SkillCategoryDevelopment    SkillCategory = "development"
 	SkillCategoryDocumentation  SkillCategory = "documentation"
+	SkillCategorySecurity       SkillCategory = "security"
 	SkillCategoryVersionControl SkillCategory = "version-control"
 )
 
@@ -15,6 +16,7 @@ const (
 var ValidSkillCategories = map[SkillCategory]bool{
 	SkillCategoryDevelopment:    true,
 	SkillCategoryDocumentation:  true,
+	SkillCategorySecurity:       true,
 	SkillCategoryVersionControl: true,
 }
 

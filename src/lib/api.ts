@@ -1865,7 +1865,7 @@ export async function getScriptRuns(workspaceId: string, sessionId: string): Pro
 // Skills API
 // ============================================================================
 
-export type SkillCategory = 'development' | 'documentation' | 'version-control';
+export type SkillCategory = 'development' | 'documentation' | 'security' | 'version-control';
 
 export interface SkillDTO {
   id: string;

@@ -254,7 +254,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       try {
         const { listSkills } = await import('@/lib/api');
         const skills = await listSkills(undefined, abortController.signal);
-        setInstalledSkills(skills);
+        setInstalledSkills(skills.filter((s) => s.installed));
       } catch {
         // Skills are optional (also catches AbortError on cleanup)
       }
