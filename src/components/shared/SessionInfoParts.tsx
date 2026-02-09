@@ -119,7 +119,7 @@ export function PrStatusBadge({
 }) {
   const colorMap: Record<string, string> = {
     open: 'text-text-success',
-    merged: 'text-purple-400',
+    merged: 'text-nav-icon-prs',
     closed: 'text-text-error',
     none: 'text-muted-foreground',
   };

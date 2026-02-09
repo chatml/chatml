@@ -106,6 +106,7 @@ import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types'
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 
 interface WorkspaceSidebarProps {
@@ -1603,15 +1604,23 @@ function SessionRow({
               {showProjectIndicator && workspaceName && (
                 <span className="shrink-0 text-muted-foreground/70">{workspaceName}</span>
               )}
-              {/* PR icon if applicable */}
-              {hasPR && (
+              {/* PR badge if applicable */}
+              {hasPR && session.prNumber && (
+                <>
+                  {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
+                  <PRNumberBadge
+                    prNumber={session.prNumber}
+                    prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
+                    prUrl={session.prUrl}
+                    size="sm"
+                  />
+                </>
+              )}
+              {hasPR && !session.prNumber && (
                 <>
                   {showProjectIndicator && workspaceName && <span className="text-muted-foreground/50">·</span>}
                   <GitPullRequest className="h-3 w-3 shrink-0 text-nav-icon-prs" />
                 </>
-              )}
-              {hasPR && session.prNumber && (
-                <span className="shrink-0">PR #{session.prNumber}</span>
               )}
               {prStatusInfo && (
                 <>
