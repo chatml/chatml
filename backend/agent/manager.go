@@ -13,7 +13,6 @@ import (
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/google/uuid"
 )
@@ -1078,15 +1077,6 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 	}); err != nil {
 		logger.Manager.Errorf("Failed to auto-name session %s: %v", sessionID, err)
 		return
-	}
-
-	// Update the session metadata file
-	if meta, err := session.ReadMetadata(sessionID); err == nil {
-		meta.Name = formattedName
-		meta.Branch = newBranchName
-		if err := session.WriteMetadata(meta); err != nil {
-			logger.Manager.Errorf("Failed to update session metadata for %s: %v", sessionID, err)
-		}
 	}
 
 	logger.Manager.Infof("Auto-named session %s: %q (from %q)", sessionID, formattedName, suggestedName)

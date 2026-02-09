@@ -25,7 +25,6 @@ import (
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
 	"github.com/chatml/chatml-backend/scripts"
-	"github.com/chatml/chatml-backend/session"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-chi/chi/v5"
@@ -999,20 +998,6 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 
-	// Clean up session metadata before cascade-deleting from DB.
-	// Worktree directories are intentionally preserved on disk —
-	// session worktrees are permanent artifacts.
-	sessions, err := h.store.ListSessions(ctx, id, true) // include archived
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	for _, sess := range sessions {
-		if sess.WorktreePath != "" {
-			session.DeleteMetadata(sess.ID)
-		}
-	}
-
 	if err := h.store.DeleteRepo(ctx, id); err != nil {
 		writeDBError(w, err)
 		return
@@ -1768,30 +1753,12 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		if rollback {
 			logger.Handlers.Warnf("Rolling back worktree creation due to failure: %s", worktreePath)
 			h.sessionNameCache.Remove(sessionName)
-			session.DeleteMetadata(sessionID)
 			// Use background context for cleanup - the original request context may be cancelled
 			h.worktreeManager.RemoveAtPath(context.Background(), repo.Path, worktreePath, branchName)
 		}
 	}()
 
 	now := time.Now()
-
-	// Write session metadata JSON file for portability
-	meta := &session.Metadata{
-		ID:            sessionID,
-		Name:          sessionName,
-		WorkspaceID:   workspaceID,
-		WorkspacePath: repo.Path,
-		WorktreePath:  worktreePath,
-		Branch:        branchName,
-		BaseCommitSHA: baseCommitSHA,
-		CreatedAt:     now,
-		Task:          req.Task,
-	}
-	if err := session.WriteMetadata(meta); err != nil {
-		// Log but don't fail - metadata is supplementary
-		logger.Handlers.Warnf("Failed to write session metadata: %v", err)
-	}
 
 	sess := &models.Session{
 		ID:            sessionID,
@@ -2191,11 +2158,9 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clean up metadata and caches. Worktree directory is intentionally
+	// Clean up caches. Worktree directory is intentionally
 	// preserved on disk — session worktrees are permanent artifacts.
 	if worktreePath != "" && repoPath != "" {
-		session.DeleteMetadata(sessionID)
-
 		h.sessionNameCache.Remove(sessionName)
 		h.branchCache.InvalidateRepo(repoPath)
 	}
