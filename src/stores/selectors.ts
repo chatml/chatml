@@ -120,7 +120,6 @@ export const useConversationsWithUserMessages = () =>
 
 /**
  * Conversations for a specific session.
- * Use in: SessionInfoPanel
  */
 export const useSessionConversations = (sessionId: string | null) =>
   useAppStore(

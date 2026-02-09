@@ -17,7 +17,6 @@ import { PlansPanel } from '@/components/panels/PlansPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
 import { ScriptsPanel } from '@/components/panels/ScriptsPanel';
-import { SessionInfoPanel } from '@/components/panels/SessionInfoPanel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -599,10 +598,6 @@ export function ChangesPanel() {
             <ErrorBoundary section="ChecksPanel" fallback={<InlineErrorFallback message="Unable to display checks" />}>
               <ChecksPanel onSendMessage={handleGitActionMessage} />
             </ErrorBoundary>
-          ) : selectedTab === 'info' ? (
-            <ErrorBoundary section="SessionInfo" fallback={<InlineErrorFallback message="Unable to display session info" />}>
-              <SessionInfoPanel />
-            </ErrorBoundary>
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-muted-foreground">
@@ -675,7 +670,6 @@ const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; alwaysVisible?: b
   review: { label: 'Review' },
   checks: { label: 'Checks' },
   files: { label: 'Files' },
-  info: { label: 'Info' },
 };
 
 // Bottom panel tabs configuration

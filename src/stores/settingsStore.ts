@@ -12,13 +12,13 @@ export type AllBottomPanelTab = 'todos' | BottomPanelTab;
 export const DEFAULT_BOTTOM_TAB_ORDER: AllBottomPanelTab[] = ['todos', 'plans', 'scripts', 'history', 'file-history', 'budget', 'mcp'];
 
 // Top panel (right sidebar) tab IDs - Changes is always visible
-export type TopPanelTab = 'review' | 'checks' | 'files' | 'info';
+export type TopPanelTab = 'review' | 'checks' | 'files';
 
 // All top panel tabs including the always-visible Changes
 export type AllTopPanelTab = 'changes' | TopPanelTab;
 
 // Default top tab order
-export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['changes', 'review', 'checks', 'files', 'info'];
+export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['changes', 'review', 'checks', 'files'];
 
 // Theme options
 export type ThemeOption = 'system' | 'light' | 'dark';
@@ -371,23 +371,37 @@ export const useSettingsStore = create<SettingsState>()(
         const merged = { ...currentState, ...persisted };
 
         // Ensure bottomTabOrder includes all tabs from DEFAULT_BOTTOM_TAB_ORDER
-        // This handles the case where new tabs are added after the user's settings were saved
+        // and remove any tabs that no longer exist in the defaults
         if (persisted.bottomTabOrder) {
-          const existingOrder = persisted.bottomTabOrder;
+          const existingOrder = persisted.bottomTabOrder.filter(
+            (tab) => DEFAULT_BOTTOM_TAB_ORDER.includes(tab)
+          );
           const missingTabs = DEFAULT_BOTTOM_TAB_ORDER.filter(
             (tab) => !existingOrder.includes(tab)
           );
-          // Append missing tabs to the end of the user's existing order
           merged.bottomTabOrder = [...existingOrder, ...missingTabs];
         }
 
         // Ensure topTabOrder includes all tabs from DEFAULT_TOP_TAB_ORDER
+        // and remove any tabs that no longer exist in the defaults
         if (persisted.topTabOrder) {
-          const existingOrder = persisted.topTabOrder;
+          const existingOrder = persisted.topTabOrder.filter(
+            (tab) => DEFAULT_TOP_TAB_ORDER.includes(tab)
+          );
           const missingTabs = DEFAULT_TOP_TAB_ORDER.filter(
             (tab) => !existingOrder.includes(tab)
           );
           merged.topTabOrder = [...existingOrder, ...missingTabs];
+        }
+
+        // Filter out stale hidden tab entries for removed tabs
+        if (persisted.hiddenTopTabs) {
+          const validTopTabs = DEFAULT_TOP_TAB_ORDER.filter((t) => t !== 'changes');
+          merged.hiddenTopTabs = persisted.hiddenTopTabs.filter((t) => validTopTabs.includes(t));
+        }
+        if (persisted.hiddenBottomTabs) {
+          const validBottomTabs = DEFAULT_BOTTOM_TAB_ORDER.filter((t) => t !== 'todos');
+          merged.hiddenBottomTabs = persisted.hiddenBottomTabs.filter((t) => validBottomTabs.includes(t));
         }
 
         // Clear poisoned vertical layout (terminal collapsed state shouldn't be persisted)
