@@ -217,6 +217,16 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.EnvVars = envVars
 	}
 
+	// Load workspace MCP server configs from settings
+	mcpJSON, err := m.loadMcpServers(ctx, session.WorkspaceID)
+	if err != nil {
+		logger.Manager.Errorf("Failed to load MCP servers for workspace %s: %v", session.WorkspaceID, err)
+		// Non-fatal: continue without user-configured MCP servers
+	}
+	if mcpJSON != "" {
+		procOpts.McpServersJSON = mcpJSON
+	}
+
 	// Create and start process
 	proc := NewProcessWithOptions(procOpts)
 
@@ -1276,4 +1286,16 @@ func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
 	}
 
 	return envMap, nil
+}
+
+// loadMcpServers reads workspace-specific MCP server configs from the settings store.
+func (m *Manager) loadMcpServers(ctx context.Context, workspaceID string) (string, error) {
+	raw, found, err := m.store.GetSetting(ctx, "mcp-servers:"+workspaceID)
+	if err != nil {
+		return "", err
+	}
+	if !found || raw == "" {
+		return "", nil
+	}
+	return raw, nil
 }

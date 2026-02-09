@@ -394,6 +394,18 @@ type BranchSyncRequest struct {
 	Operation string `json:"operation"` // "rebase" or "merge"
 }
 
+// McpServerConfig represents a user-configured MCP server
+type McpServerConfig struct {
+	Name    string            `json:"name"`
+	Type    string            `json:"type"`              // "stdio", "sse", "http"
+	Command string            `json:"command,omitempty"`  // stdio: executable path
+	Args    []string          `json:"args,omitempty"`     // stdio: command-line arguments
+	Env     map[string]string `json:"env,omitempty"`      // stdio: environment variables
+	URL     string            `json:"url,omitempty"`      // sse/http: server URL
+	Headers map[string]string `json:"headers,omitempty"`  // sse/http: request headers
+	Enabled bool              `json:"enabled"`
+}
+
 // BranchSyncResult represents the result of a branch sync operation
 type BranchSyncResult struct {
 	Success       bool     `json:"success"`

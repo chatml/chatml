@@ -1,6 +1,7 @@
 import { HEALTH_CHECK_REQUEST_TIMEOUT_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPortSync, getBackendPort, initBackendPort } from '@/lib/backend-port';
+import type { McpServerConfig } from '@/lib/types';
 
 // Re-export for convenience
 export { initBackendPort };
@@ -1932,4 +1933,25 @@ export async function uninstallSkill(skillId: string): Promise<void> {
 export async function getSkillContent(skillId: string): Promise<SkillContentResponse> {
   const res = await fetchWithAuth(`${getApiBase()}/api/skills/${skillId}/content`);
   return handleResponse<SkillContentResponse>(res);
+}
+
+// =========================================================================
+// MCP Server Configuration
+// =========================================================================
+
+export async function getMcpServers(workspaceId: string): Promise<McpServerConfig[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/mcp-servers`);
+  return handleResponse<McpServerConfig[]>(res);
+}
+
+export async function setMcpServers(workspaceId: string, servers: McpServerConfig[]): Promise<McpServerConfig[]> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/mcp-servers`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(servers),
+    }
+  );
+  return handleResponse<McpServerConfig[]>(res);
 }

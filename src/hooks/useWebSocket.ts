@@ -186,6 +186,21 @@ export function useWebSocket(enabled: boolean = true) {
             currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
           });
         }
+        // Extract MCP tools grouped by server from the tools list
+        if (event?.tools && Array.isArray(event.tools)) {
+          const toolsByServer: Record<string, string[]> = {};
+          for (const tool of event.tools as string[]) {
+            if (tool.startsWith('mcp__')) {
+              const parts = tool.split('__');
+              if (parts.length >= 3) {
+                const serverName = parts[1];
+                if (!toolsByServer[serverName]) toolsByServer[serverName] = [];
+                toolsByServer[serverName].push(parts.slice(2).join('__'));
+              }
+            }
+          }
+          store.setMcpToolsByServer(toolsByServer);
+        }
         break;
 
       case 'assistant_text':

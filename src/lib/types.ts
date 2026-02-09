@@ -336,7 +336,19 @@ export interface AgentEvent {
 // MCP server status
 export interface McpServerStatus {
   name: string;
-  status: 'connected' | 'failed' | 'needs-auth' | 'pending';
+  status: 'connected' | 'failed' | 'needs-auth' | 'pending' | 'idle';
+}
+
+// MCP server configuration (user-managed)
+export interface McpServerConfig {
+  name: string;
+  type: 'stdio' | 'sse' | 'http';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled: boolean;
 }
 
 // Plugin information

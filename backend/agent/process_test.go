@@ -736,3 +736,124 @@ func TestNewProcessWithOptions_EmptyEnvVars(t *testing.T) {
 	// When empty env vars map is provided, cmd.Env should be nil
 	assert.Nil(t, p.cmd.Env, "cmd.Env should be nil when empty env vars map provided")
 }
+
+// ============================================================================
+// MCP Servers File Tests
+// ============================================================================
+
+func TestNewProcessWithOptions_McpServersFile(t *testing.T) {
+	mcpJSON := `[{"name":"test","type":"stdio","command":"echo","enabled":true}]`
+	opts := ProcessOptions{
+		ID:             "test-mcp",
+		Workdir:        "/tmp",
+		ConversationID: "conv-mcp",
+		McpServersJSON: mcpJSON,
+	}
+
+	p := NewProcessWithOptions(opts)
+	require.NotNil(t, p, "process should be created")
+
+	// Ensure cleanup happens even if assertions fail
+	t.Cleanup(func() {
+		if p.mcpServersFile != "" {
+			os.Remove(p.mcpServersFile)
+		}
+	})
+
+	// The temp file should exist on disk
+	require.NotEmpty(t, p.mcpServersFile, "mcpServersFile should be set")
+	_, err := os.Stat(p.mcpServersFile)
+	require.NoError(t, err, "MCP servers temp file should exist on disk")
+
+	// The temp file should contain the JSON string
+	content, err := os.ReadFile(p.mcpServersFile)
+	require.NoError(t, err, "should be able to read MCP servers temp file")
+	assert.Equal(t, mcpJSON, string(content))
+
+	// cmd.Args should contain --mcp-servers-file
+	assert.Contains(t, p.cmd.Args, "--mcp-servers-file")
+
+	// After Stop(), the temp file should be cleaned up
+	tmpPath := p.mcpServersFile
+	p.Stop()
+	_, err = os.Stat(tmpPath)
+	assert.True(t, os.IsNotExist(err), "MCP servers temp file should be removed after Stop()")
+}
+
+func TestNewProcessWithOptions_NoMcpServers(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-no-mcp",
+		Workdir:        "/tmp",
+		ConversationID: "conv-no-mcp",
+		McpServersJSON: "",
+	}
+
+	p := NewProcessWithOptions(opts)
+	require.NotNil(t, p, "process should be created")
+
+	// cmd.Args should NOT contain --mcp-servers-file
+	assert.NotContains(t, p.cmd.Args, "--mcp-servers-file")
+
+	// mcpServersFile field should be empty
+	assert.Empty(t, p.mcpServersFile, "mcpServersFile should be empty when no MCP servers JSON provided")
+}
+
+func TestNewProcessWithOptions_McpServersCleanupOnStop(t *testing.T) {
+	mcpJSON := `[{"name":"cleanup-test","type":"stdio","command":"echo","enabled":true}]`
+	opts := ProcessOptions{
+		ID:             "test-mcp-cleanup",
+		Workdir:        "/tmp",
+		ConversationID: "conv-mcp-cleanup",
+		McpServersJSON: mcpJSON,
+	}
+
+	p := NewProcessWithOptions(opts)
+	require.NotNil(t, p)
+
+	tmpPath := p.mcpServersFile
+	require.NotEmpty(t, tmpPath, "mcpServersFile should be set")
+
+	t.Cleanup(func() {
+		os.Remove(tmpPath)
+	})
+
+	// Verify the file exists before stop
+	_, err := os.Stat(tmpPath)
+	require.NoError(t, err, "temp file should exist before Stop()")
+
+	// Stop the process
+	p.Stop()
+
+	// Verify the file no longer exists after stop
+	_, err = os.Stat(tmpPath)
+	assert.True(t, os.IsNotExist(err), "MCP servers temp file should be removed after Stop()")
+}
+
+func TestNewProcessWithOptions_McpServersAndInstructions(t *testing.T) {
+	mcpJSON := `[{"name":"combo-test","type":"stdio","command":"echo","enabled":true}]`
+	instructions := "These are test instructions for the agent."
+	opts := ProcessOptions{
+		ID:             "test-mcp-instructions",
+		Workdir:        "/tmp",
+		ConversationID: "conv-mcp-instructions",
+		Instructions:   instructions,
+		McpServersJSON: mcpJSON,
+	}
+
+	p := NewProcessWithOptions(opts)
+	require.NotNil(t, p)
+
+	t.Cleanup(func() {
+		if p.mcpServersFile != "" {
+			os.Remove(p.mcpServersFile)
+		}
+		if p.instructionsFile != "" {
+			os.Remove(p.instructionsFile)
+		}
+		p.Stop()
+	})
+
+	// cmd.Args should contain BOTH --instructions-file and --mcp-servers-file
+	assert.Contains(t, p.cmd.Args, "--instructions-file", "args should contain --instructions-file")
+	assert.Contains(t, p.cmd.Args, "--mcp-servers-file", "args should contain --mcp-servers-file")
+}
