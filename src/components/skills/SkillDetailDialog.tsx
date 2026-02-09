@@ -105,7 +105,12 @@ export function SkillDetailDialog({
               <CategoryIcon className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="min-w-0">
-              <DialogTitle>{skill.name}</DialogTitle>
+              <div className="flex items-center gap-2">
+                <DialogTitle>{skill.name}</DialogTitle>
+                <code className="shrink-0 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
+                  /{skill.id}
+                </code>
+              </div>
               <DialogDescription className="mt-0.5">
                 {skill.description}
               </DialogDescription>
