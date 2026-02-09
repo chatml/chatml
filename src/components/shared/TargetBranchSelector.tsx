@@ -234,7 +234,7 @@ export function TargetBranchSelector({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            'flex items-center gap-2 w-full text-left px-2 py-1 rounded-md',
+            'flex items-center gap-2 w-full text-left px-2 py-1 rounded-md min-w-0 overflow-hidden',
             'hover:bg-muted/50 transition-colors text-sm',
             disabled && 'opacity-50 pointer-events-none',
           )}
@@ -242,7 +242,7 @@ export function TargetBranchSelector({
         >
           <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-muted-foreground text-xs shrink-0">Target</span>
-          <span className="font-mono text-xs truncate">{displayTarget}</span>
+          <span className="font-mono text-xs truncate min-w-0">{displayTarget}</span>
           {isDefault && (
             <span className="text-2xs text-muted-foreground/60 shrink-0">(default)</span>
           )}

@@ -76,12 +76,12 @@ export function InfoRow({
       </div>
       <div
         className={cn(
-          'flex items-center text-right truncate min-w-0',
+          'flex items-center text-right min-w-0 overflow-hidden',
           mono && 'font-mono text-xs',
           className,
         )}
       >
-        <span className="truncate">{value}</span>
+        <span className="truncate min-w-0">{value}</span>
         {copyValue && <CopyButton text={copyValue} />}
       </div>
     </div>
