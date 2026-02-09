@@ -17,484 +17,451 @@ import (
 // GetMcpServers Tests
 // ============================================================================
 
-func TestGetMcpServers_Empty(t *testing.T) {
+func TestGetMcpServers(t *testing.T) {
 	h, st := setupTestHandlers(t)
 	defer st.Close()
 
-	req := httptest.NewRequest("GET", "/api/repos/ws-1/mcp-servers", nil)
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+	t.Run("empty", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/repos/ws-1/mcp-servers", nil)
+		req = withChiContext(req, map[string]string{"id": "ws-1"})
+		w := httptest.NewRecorder()
 
-	h.GetMcpServers(w, req)
+		h.GetMcpServers(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, http.StatusOK, w.Code)
 
-	var result []models.McpServerConfig
-	err := json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	assert.Empty(t, result)
-}
+		var result []models.McpServerConfig
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
 
-func TestGetMcpServers_AfterSet(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+	t.Run("after set", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "test-server", Type: "stdio", Command: "echo", Args: []string{"hello"}, Enabled: true},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	servers := []models.McpServerConfig{
-		{Name: "test-server", Type: "stdio", Command: "echo", Args: []string{"hello"}, Enabled: true},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		// Set servers
+		setReq := httptest.NewRequest("PUT", "/api/repos/ws-get/mcp-servers", bytes.NewReader(body))
+		setReq.Header.Set("Content-Type", "application/json")
+		setReq = withChiContext(setReq, map[string]string{"id": "ws-get"})
+		setW := httptest.NewRecorder()
+		h.SetMcpServers(setW, setReq)
+		assert.Equal(t, http.StatusOK, setW.Code)
 
-	// Set servers
-	setReq := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	setReq.Header.Set("Content-Type", "application/json")
-	setReq = withChiContext(setReq, map[string]string{"id": "ws-1"})
-	setW := httptest.NewRecorder()
-	h.SetMcpServers(setW, setReq)
-	assert.Equal(t, http.StatusOK, setW.Code)
+		// Get servers
+		getReq := httptest.NewRequest("GET", "/api/repos/ws-get/mcp-servers", nil)
+		getReq = withChiContext(getReq, map[string]string{"id": "ws-get"})
+		getW := httptest.NewRecorder()
+		h.GetMcpServers(getW, getReq)
 
-	// Get servers
-	getReq := httptest.NewRequest("GET", "/api/repos/ws-1/mcp-servers", nil)
-	getReq = withChiContext(getReq, map[string]string{"id": "ws-1"})
-	getW := httptest.NewRecorder()
-	h.GetMcpServers(getW, getReq)
+		assert.Equal(t, http.StatusOK, getW.Code)
 
-	assert.Equal(t, http.StatusOK, getW.Code)
+		var result []models.McpServerConfig
+		err = json.Unmarshal(getW.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "test-server", result[0].Name)
+		assert.Equal(t, "stdio", result[0].Type)
+		assert.Equal(t, "echo", result[0].Command)
+		assert.Equal(t, []string{"hello"}, result[0].Args)
+		assert.True(t, result[0].Enabled)
+	})
 
-	var result []models.McpServerConfig
-	err = json.Unmarshal(getW.Body.Bytes(), &result)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "test-server", result[0].Name)
-	assert.Equal(t, "stdio", result[0].Type)
-	assert.Equal(t, "echo", result[0].Command)
-	assert.Equal(t, []string{"hello"}, result[0].Args)
-	assert.True(t, result[0].Enabled)
+	t.Run("different workspaces", func(t *testing.T) {
+		// Save to workspace A
+		srvA := []models.McpServerConfig{
+			{Name: "server-a", Type: "stdio", Command: "a", Enabled: true},
+		}
+		bodyA, _ := json.Marshal(srvA)
+		reqA := httptest.NewRequest("PUT", "/api/repos/ws-a/mcp-servers", bytes.NewReader(bodyA))
+		reqA.Header.Set("Content-Type", "application/json")
+		reqA = withChiContext(reqA, map[string]string{"id": "ws-a"})
+		wA := httptest.NewRecorder()
+		h.SetMcpServers(wA, reqA)
+		assert.Equal(t, http.StatusOK, wA.Code)
+
+		// Save to workspace B
+		srvB := []models.McpServerConfig{
+			{Name: "server-b", Type: "sse", URL: "http://b", Enabled: true},
+		}
+		bodyB, _ := json.Marshal(srvB)
+		reqB := httptest.NewRequest("PUT", "/api/repos/ws-b/mcp-servers", bytes.NewReader(bodyB))
+		reqB.Header.Set("Content-Type", "application/json")
+		reqB = withChiContext(reqB, map[string]string{"id": "ws-b"})
+		wB := httptest.NewRecorder()
+		h.SetMcpServers(wB, reqB)
+		assert.Equal(t, http.StatusOK, wB.Code)
+
+		// GET workspace A should only have server-a
+		getA := httptest.NewRequest("GET", "/api/repos/ws-a/mcp-servers", nil)
+		getA = withChiContext(getA, map[string]string{"id": "ws-a"})
+		gWA := httptest.NewRecorder()
+		h.GetMcpServers(gWA, getA)
+
+		var resultA []models.McpServerConfig
+		err := json.Unmarshal(gWA.Body.Bytes(), &resultA)
+		require.NoError(t, err)
+		require.Len(t, resultA, 1)
+		assert.Equal(t, "server-a", resultA[0].Name)
+
+		// GET workspace B should only have server-b
+		getB := httptest.NewRequest("GET", "/api/repos/ws-b/mcp-servers", nil)
+		getB = withChiContext(getB, map[string]string{"id": "ws-b"})
+		gWB := httptest.NewRecorder()
+		h.GetMcpServers(gWB, getB)
+
+		var resultB []models.McpServerConfig
+		err = json.Unmarshal(gWB.Body.Bytes(), &resultB)
+		require.NoError(t, err)
+		require.Len(t, resultB, 1)
+		assert.Equal(t, "server-b", resultB[0].Name)
+	})
 }
 
 // ============================================================================
 // SetMcpServers Tests
 // ============================================================================
 
-func TestSetMcpServers_StdioServer(t *testing.T) {
+func TestSetMcpServers(t *testing.T) {
 	h, st := setupTestHandlers(t)
 	defer st.Close()
 
-	servers := []models.McpServerConfig{
-		{
-			Name:    "my-stdio",
-			Type:    "stdio",
-			Command: "npx",
-			Args:    []string{"-y", "@modelcontextprotocol/server-filesystem"},
-			Env:     map[string]string{"NODE_ENV": "production"},
-			Enabled: true,
-		},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+	t.Run("stdio server", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{
+				Name:    "my-stdio",
+				Type:    "stdio",
+				Command: "npx",
+				Args:    []string{"-y", "@modelcontextprotocol/server-filesystem"},
+				Env:     map[string]string{"NODE_ENV": "production"},
+				Enabled: true,
+			},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		req := httptest.NewRequest("PUT", "/api/repos/ws-stdio/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-stdio"})
+		w := httptest.NewRecorder()
 
-	h.SetMcpServers(w, req)
+		h.SetMcpServers(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, http.StatusOK, w.Code)
 
-	var result []models.McpServerConfig
-	err = json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "my-stdio", result[0].Name)
-	assert.Equal(t, "stdio", result[0].Type)
-	assert.Equal(t, "npx", result[0].Command)
-	assert.Equal(t, []string{"-y", "@modelcontextprotocol/server-filesystem"}, result[0].Args)
-	assert.Equal(t, map[string]string{"NODE_ENV": "production"}, result[0].Env)
-	assert.True(t, result[0].Enabled)
-}
+		var result []models.McpServerConfig
+		err = json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "my-stdio", result[0].Name)
+		assert.Equal(t, "stdio", result[0].Type)
+		assert.Equal(t, "npx", result[0].Command)
+		assert.Equal(t, []string{"-y", "@modelcontextprotocol/server-filesystem"}, result[0].Args)
+		assert.Equal(t, map[string]string{"NODE_ENV": "production"}, result[0].Env)
+		assert.True(t, result[0].Enabled)
+	})
 
-func TestSetMcpServers_SseServer(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+	t.Run("sse server", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{
+				Name:    "my-sse",
+				Type:    "sse",
+				URL:     "https://mcp.example.com/events",
+				Headers: map[string]string{"Authorization": "Bearer tok123"},
+				Enabled: true,
+			},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	servers := []models.McpServerConfig{
-		{
-			Name:    "my-sse",
-			Type:    "sse",
-			URL:     "https://mcp.example.com/events",
-			Headers: map[string]string{"Authorization": "Bearer tok123"},
-			Enabled: true,
-		},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		req := httptest.NewRequest("PUT", "/api/repos/ws-sse/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-sse"})
+		w := httptest.NewRecorder()
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		h.SetMcpServers(w, req)
 
-	h.SetMcpServers(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+		var result []models.McpServerConfig
+		err = json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "my-sse", result[0].Name)
+		assert.Equal(t, "sse", result[0].Type)
+		assert.Equal(t, "https://mcp.example.com/events", result[0].URL)
+		assert.Equal(t, map[string]string{"Authorization": "Bearer tok123"}, result[0].Headers)
+	})
 
-	var result []models.McpServerConfig
-	err = json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "my-sse", result[0].Name)
-	assert.Equal(t, "sse", result[0].Type)
-	assert.Equal(t, "https://mcp.example.com/events", result[0].URL)
-	assert.Equal(t, map[string]string{"Authorization": "Bearer tok123"}, result[0].Headers)
-}
+	t.Run("http server", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{
+				Name:    "my-http",
+				Type:    "http",
+				URL:     "https://mcp.example.com/api",
+				Headers: map[string]string{"X-Api-Key": "abc"},
+				Enabled: true,
+			},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-func TestSetMcpServers_HttpServer(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+		req := httptest.NewRequest("PUT", "/api/repos/ws-http/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-http"})
+		w := httptest.NewRecorder()
 
-	servers := []models.McpServerConfig{
-		{
-			Name:    "my-http",
-			Type:    "http",
-			URL:     "https://mcp.example.com/api",
-			Headers: map[string]string{"X-Api-Key": "abc"},
-			Enabled: true,
-		},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		h.SetMcpServers(w, req)
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		assert.Equal(t, http.StatusOK, w.Code)
 
-	h.SetMcpServers(w, req)
+		var result []models.McpServerConfig
+		err = json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "my-http", result[0].Name)
+		assert.Equal(t, "http", result[0].Type)
+		assert.Equal(t, "https://mcp.example.com/api", result[0].URL)
+	})
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	t.Run("multiple servers", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "stdio-srv", Type: "stdio", Command: "echo", Enabled: true},
+			{Name: "sse-srv", Type: "sse", URL: "http://localhost:3000", Enabled: true},
+			{Name: "http-srv", Type: "http", URL: "http://localhost:4000", Enabled: false},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	var result []models.McpServerConfig
-	err = json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "my-http", result[0].Name)
-	assert.Equal(t, "http", result[0].Type)
-	assert.Equal(t, "https://mcp.example.com/api", result[0].URL)
-}
+		req := httptest.NewRequest("PUT", "/api/repos/ws-multi/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-multi"})
+		w := httptest.NewRecorder()
 
-func TestSetMcpServers_MultipleServers(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+		h.SetMcpServers(w, req)
 
-	servers := []models.McpServerConfig{
-		{Name: "stdio-srv", Type: "stdio", Command: "echo", Enabled: true},
-		{Name: "sse-srv", Type: "sse", URL: "http://localhost:3000", Enabled: true},
-		{Name: "http-srv", Type: "http", URL: "http://localhost:4000", Enabled: false},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, w.Code)
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		var result []models.McpServerConfig
+		err = json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+		assert.Equal(t, "stdio-srv", result[0].Name)
+		assert.Equal(t, "sse-srv", result[1].Name)
+		assert.Equal(t, "http-srv", result[2].Name)
+		assert.False(t, result[2].Enabled)
+	})
 
-	h.SetMcpServers(w, req)
+	t.Run("empty array", func(t *testing.T) {
+		body, err := json.Marshal([]models.McpServerConfig{})
+		require.NoError(t, err)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+		req := httptest.NewRequest("PUT", "/api/repos/ws-empty/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-empty"})
+		w := httptest.NewRecorder()
 
-	var result []models.McpServerConfig
-	err = json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	assert.Len(t, result, 3)
-	assert.Equal(t, "stdio-srv", result[0].Name)
-	assert.Equal(t, "sse-srv", result[1].Name)
-	assert.Equal(t, "http-srv", result[2].Name)
-	assert.False(t, result[2].Enabled)
-}
+		h.SetMcpServers(w, req)
 
-func TestSetMcpServers_EmptyArray(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+		assert.Equal(t, http.StatusOK, w.Code)
 
-	body, err := json.Marshal([]models.McpServerConfig{})
-	require.NoError(t, err)
+		var result []models.McpServerConfig
+		err = json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+	t.Run("invalid JSON", func(t *testing.T) {
+		req := httptest.NewRequest("PUT", "/api/repos/ws-badjson/mcp-servers", strings.NewReader("{invalid json}"))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-badjson"})
+		w := httptest.NewRecorder()
 
-	h.SetMcpServers(w, req)
+		h.SetMcpServers(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
 
-	var result []models.McpServerConfig
-	err = json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	assert.Empty(t, result)
-}
+	t.Run("overwrite", func(t *testing.T) {
+		// First save
+		first := []models.McpServerConfig{
+			{Name: "original", Type: "stdio", Command: "echo", Enabled: true},
+		}
+		body1, _ := json.Marshal(first)
+		req1 := httptest.NewRequest("PUT", "/api/repos/ws-overwrite/mcp-servers", bytes.NewReader(body1))
+		req1.Header.Set("Content-Type", "application/json")
+		req1 = withChiContext(req1, map[string]string{"id": "ws-overwrite"})
+		w1 := httptest.NewRecorder()
+		h.SetMcpServers(w1, req1)
+		assert.Equal(t, http.StatusOK, w1.Code)
 
-func TestSetMcpServers_InvalidJSON(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+		// Overwrite with different servers
+		second := []models.McpServerConfig{
+			{Name: "replacement", Type: "sse", URL: "http://localhost", Enabled: true},
+		}
+		body2, _ := json.Marshal(second)
+		req2 := httptest.NewRequest("PUT", "/api/repos/ws-overwrite/mcp-servers", bytes.NewReader(body2))
+		req2.Header.Set("Content-Type", "application/json")
+		req2 = withChiContext(req2, map[string]string{"id": "ws-overwrite"})
+		w2 := httptest.NewRecorder()
+		h.SetMcpServers(w2, req2)
+		assert.Equal(t, http.StatusOK, w2.Code)
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", strings.NewReader("{invalid json}"))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		// GET should return only the new servers
+		getReq := httptest.NewRequest("GET", "/api/repos/ws-overwrite/mcp-servers", nil)
+		getReq = withChiContext(getReq, map[string]string{"id": "ws-overwrite"})
+		getW := httptest.NewRecorder()
+		h.GetMcpServers(getW, getReq)
 
-	h.SetMcpServers(w, req)
+		var result []models.McpServerConfig
+		err := json.Unmarshal(getW.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "replacement", result[0].Name)
+	})
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	t.Run("disabled server", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "disabled-srv", Type: "stdio", Command: "echo", Enabled: false},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("PUT", "/api/repos/ws-disabled/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-disabled"})
+		w := httptest.NewRecorder()
+
+		h.SetMcpServers(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var result []models.McpServerConfig
+		err = json.Unmarshal(w.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.False(t, result[0].Enabled)
+	})
 }
 
 // ============================================================================
 // Validation Tests
 // ============================================================================
 
-func TestSetMcpServers_MissingName(t *testing.T) {
+func TestSetMcpServers_Validation(t *testing.T) {
 	h, st := setupTestHandlers(t)
 	defer st.Close()
 
-	servers := []models.McpServerConfig{
-		{Name: "", Type: "stdio", Command: "echo", Enabled: true},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+	t.Run("missing name", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "", Type: "stdio", Command: "echo", Enabled: true},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		req := httptest.NewRequest("PUT", "/api/repos/ws-v1/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-v1"})
+		w := httptest.NewRecorder()
 
-	h.SetMcpServers(w, req)
+		h.SetMcpServers(w, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	var apiErr APIError
-	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
-	require.NoError(t, err)
-	assert.Equal(t, ErrCodeValidation, apiErr.Code)
-	assert.Contains(t, apiErr.Error, "missing a name")
-}
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var apiErr APIError
+		err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+		require.NoError(t, err)
+		assert.Equal(t, ErrCodeValidation, apiErr.Code)
+		assert.Contains(t, apiErr.Error, "missing a name")
+	})
 
-func TestSetMcpServers_StdioMissingCommand(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+	t.Run("stdio missing command", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "bad-stdio", Type: "stdio", Command: "", Enabled: true},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	servers := []models.McpServerConfig{
-		{Name: "bad-stdio", Type: "stdio", Command: "", Enabled: true},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		req := httptest.NewRequest("PUT", "/api/repos/ws-v2/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-v2"})
+		w := httptest.NewRecorder()
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		h.SetMcpServers(w, req)
 
-	h.SetMcpServers(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var apiErr APIError
+		err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+		require.NoError(t, err)
+		assert.Equal(t, ErrCodeValidation, apiErr.Code)
+		assert.Contains(t, apiErr.Error, "missing a command")
+	})
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	var apiErr APIError
-	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
-	require.NoError(t, err)
-	assert.Equal(t, ErrCodeValidation, apiErr.Code)
-	assert.Contains(t, apiErr.Error, "missing a command")
-}
+	t.Run("sse missing URL", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "bad-sse", Type: "sse", URL: "", Enabled: true},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-func TestSetMcpServers_SseMissingURL(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+		req := httptest.NewRequest("PUT", "/api/repos/ws-v3/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-v3"})
+		w := httptest.NewRecorder()
 
-	servers := []models.McpServerConfig{
-		{Name: "bad-sse", Type: "sse", URL: "", Enabled: true},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		h.SetMcpServers(w, req)
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var apiErr APIError
+		err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+		require.NoError(t, err)
+		assert.Equal(t, ErrCodeValidation, apiErr.Code)
+		assert.Contains(t, apiErr.Error, "missing a URL")
+	})
 
-	h.SetMcpServers(w, req)
+	t.Run("http missing URL", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "bad-http", Type: "http", URL: "", Enabled: true},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	var apiErr APIError
-	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
-	require.NoError(t, err)
-	assert.Equal(t, ErrCodeValidation, apiErr.Code)
-	assert.Contains(t, apiErr.Error, "missing a URL")
-}
+		req := httptest.NewRequest("PUT", "/api/repos/ws-v4/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-v4"})
+		w := httptest.NewRecorder()
 
-func TestSetMcpServers_HttpMissingURL(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
+		h.SetMcpServers(w, req)
 
-	servers := []models.McpServerConfig{
-		{Name: "bad-http", Type: "http", URL: "", Enabled: true},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var apiErr APIError
+		err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+		require.NoError(t, err)
+		assert.Equal(t, ErrCodeValidation, apiErr.Code)
+		assert.Contains(t, apiErr.Error, "missing a URL")
+	})
 
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
+	t.Run("invalid type", func(t *testing.T) {
+		servers := []models.McpServerConfig{
+			{Name: "bad-type", Type: "grpc", Enabled: true},
+		}
+		body, err := json.Marshal(servers)
+		require.NoError(t, err)
 
-	h.SetMcpServers(w, req)
+		req := httptest.NewRequest("PUT", "/api/repos/ws-v5/mcp-servers", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = withChiContext(req, map[string]string{"id": "ws-v5"})
+		w := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	var apiErr APIError
-	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
-	require.NoError(t, err)
-	assert.Equal(t, ErrCodeValidation, apiErr.Code)
-	assert.Contains(t, apiErr.Error, "missing a URL")
-}
+		h.SetMcpServers(w, req)
 
-func TestSetMcpServers_InvalidType(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
-
-	servers := []models.McpServerConfig{
-		{Name: "bad-type", Type: "grpc", Enabled: true},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
-
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
-
-	h.SetMcpServers(w, req)
-
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	var apiErr APIError
-	err = json.Unmarshal(w.Body.Bytes(), &apiErr)
-	require.NoError(t, err)
-	assert.Equal(t, ErrCodeValidation, apiErr.Code)
-	assert.Contains(t, apiErr.Error, "invalid type")
-}
-
-func TestSetMcpServers_Overwrite(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
-
-	// First save
-	first := []models.McpServerConfig{
-		{Name: "original", Type: "stdio", Command: "echo", Enabled: true},
-	}
-	body1, _ := json.Marshal(first)
-	req1 := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body1))
-	req1.Header.Set("Content-Type", "application/json")
-	req1 = withChiContext(req1, map[string]string{"id": "ws-1"})
-	w1 := httptest.NewRecorder()
-	h.SetMcpServers(w1, req1)
-	assert.Equal(t, http.StatusOK, w1.Code)
-
-	// Overwrite with different servers
-	second := []models.McpServerConfig{
-		{Name: "replacement", Type: "sse", URL: "http://localhost", Enabled: true},
-	}
-	body2, _ := json.Marshal(second)
-	req2 := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body2))
-	req2.Header.Set("Content-Type", "application/json")
-	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
-	w2 := httptest.NewRecorder()
-	h.SetMcpServers(w2, req2)
-	assert.Equal(t, http.StatusOK, w2.Code)
-
-	// GET should return only the new servers
-	getReq := httptest.NewRequest("GET", "/api/repos/ws-1/mcp-servers", nil)
-	getReq = withChiContext(getReq, map[string]string{"id": "ws-1"})
-	getW := httptest.NewRecorder()
-	h.GetMcpServers(getW, getReq)
-
-	var result []models.McpServerConfig
-	err := json.Unmarshal(getW.Body.Bytes(), &result)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, "replacement", result[0].Name)
-}
-
-func TestSetMcpServers_WithDisabledServer(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
-
-	servers := []models.McpServerConfig{
-		{Name: "disabled-srv", Type: "stdio", Command: "echo", Enabled: false},
-	}
-	body, err := json.Marshal(servers)
-	require.NoError(t, err)
-
-	req := httptest.NewRequest("PUT", "/api/repos/ws-1/mcp-servers", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"id": "ws-1"})
-	w := httptest.NewRecorder()
-
-	h.SetMcpServers(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var result []models.McpServerConfig
-	err = json.Unmarshal(w.Body.Bytes(), &result)
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.False(t, result[0].Enabled)
-}
-
-func TestGetMcpServers_DifferentWorkspaces(t *testing.T) {
-	h, st := setupTestHandlers(t)
-	defer st.Close()
-
-	// Save to workspace A
-	srvA := []models.McpServerConfig{
-		{Name: "server-a", Type: "stdio", Command: "a", Enabled: true},
-	}
-	bodyA, _ := json.Marshal(srvA)
-	reqA := httptest.NewRequest("PUT", "/api/repos/ws-a/mcp-servers", bytes.NewReader(bodyA))
-	reqA.Header.Set("Content-Type", "application/json")
-	reqA = withChiContext(reqA, map[string]string{"id": "ws-a"})
-	wA := httptest.NewRecorder()
-	h.SetMcpServers(wA, reqA)
-	assert.Equal(t, http.StatusOK, wA.Code)
-
-	// Save to workspace B
-	srvB := []models.McpServerConfig{
-		{Name: "server-b", Type: "sse", URL: "http://b", Enabled: true},
-	}
-	bodyB, _ := json.Marshal(srvB)
-	reqB := httptest.NewRequest("PUT", "/api/repos/ws-b/mcp-servers", bytes.NewReader(bodyB))
-	reqB.Header.Set("Content-Type", "application/json")
-	reqB = withChiContext(reqB, map[string]string{"id": "ws-b"})
-	wB := httptest.NewRecorder()
-	h.SetMcpServers(wB, reqB)
-	assert.Equal(t, http.StatusOK, wB.Code)
-
-	// GET workspace A should only have server-a
-	getA := httptest.NewRequest("GET", "/api/repos/ws-a/mcp-servers", nil)
-	getA = withChiContext(getA, map[string]string{"id": "ws-a"})
-	gWA := httptest.NewRecorder()
-	h.GetMcpServers(gWA, getA)
-
-	var resultA []models.McpServerConfig
-	err := json.Unmarshal(gWA.Body.Bytes(), &resultA)
-	require.NoError(t, err)
-	require.Len(t, resultA, 1)
-	assert.Equal(t, "server-a", resultA[0].Name)
-
-	// GET workspace B should only have server-b
-	getB := httptest.NewRequest("GET", "/api/repos/ws-b/mcp-servers", nil)
-	getB = withChiContext(getB, map[string]string{"id": "ws-b"})
-	gWB := httptest.NewRecorder()
-	h.GetMcpServers(gWB, getB)
-
-	var resultB []models.McpServerConfig
-	err = json.Unmarshal(gWB.Body.Bytes(), &resultB)
-	require.NoError(t, err)
-	require.Len(t, resultB, 1)
-	assert.Equal(t, "server-b", resultB[0].Name)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		var apiErr APIError
+		err = json.Unmarshal(w.Body.Bytes(), &apiErr)
+		require.NoError(t, err)
+		assert.Equal(t, ErrCodeValidation, apiErr.Code)
+		assert.Contains(t, apiErr.Error, "invalid type")
+	})
 }
