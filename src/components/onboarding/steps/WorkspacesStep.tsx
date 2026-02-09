@@ -10,10 +10,7 @@ export function WorkspacesStep() {
       title="Workspaces"
     >
       <p>
-        Workspaces are your git repositories. Each project you add becomes a workspace in the sidebar.
-      </p>
-      <p>
-        You can work across multiple repos simultaneously, each with its own set of sessions and agents.
+        Workspaces are your git repositories. Add a project and it appears in the sidebar, ready for agents.
       </p>
     </OnboardingWizardStep>
   );

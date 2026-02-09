@@ -16,10 +16,10 @@ export function OnboardingWizardStep({ icon, title, children }: OnboardingWizard
           {icon}
         </div>
       )}
-      <h2 className="text-2xl font-bold tracking-tight text-white mb-4">
+      <h2 className="text-3xl font-bold tracking-tight text-white mb-4">
         {title}
       </h2>
-      <div className="text-sm text-white/60 leading-relaxed space-y-3">
+      <div className="text-lg text-white/60 leading-relaxed space-y-3">
         {children}
       </div>
     </div>

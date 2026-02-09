@@ -26,10 +26,10 @@ export function WelcomeStep() {
       </h1>
 
       {/* Tagline */}
-      <p className="text-lg text-white/90 font-medium leading-relaxed">
-        ChatML lets you run multiple AI coding agents in parallel, each in its own isolated workspace.
+      <p className="text-xl text-white/90 font-medium leading-relaxed">
+        Run multiple AI coding agents in parallel, each in its own isolated workspace.
       </p>
-      <p className="text-sm text-white/50 mt-3">
+      <p className="text-base text-white/50 mt-3">
         Let&apos;s walk you through the key concepts.
       </p>
     </div>
