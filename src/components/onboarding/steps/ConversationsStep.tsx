@@ -15,10 +15,10 @@ export function ConversationsStep() {
       title="Conversations & Agents"
     >
       <p>
-        Agents can read files, write code, run commands, and create pull requests. Review changes in the right panel before merging.
+        Agents write code, run commands, and open pull requests. Review their changes before merging.
       </p>
       <p>
-        Each session can have multiple conversation threads for different subtasks.
+        Each session supports multiple conversation threads for different subtasks.
       </p>
     </OnboardingWizardStep>
   );

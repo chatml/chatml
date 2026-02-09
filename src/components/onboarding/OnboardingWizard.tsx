@@ -84,7 +84,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         <Button
           size="lg"
           onClick={handleNext}
-          className="h-11 px-8 text-base bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+          className="h-12 px-8 text-lg bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
         >
           {currentStep === 0 ? 'Get Started' : isLastStep ? 'Start Using ChatML' : 'Next'}
         </Button>
