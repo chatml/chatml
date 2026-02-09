@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -184,7 +184,7 @@ export default function Home() {
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const rightSidebarPanelRef = useRef<PanelImperativeHandle>(null);
-  const bottomTerminalPanelRef = useRef<PanelImperativeHandle>(null);
+
   const leftSidebarDomRef = useRef<HTMLDivElement>(null);
 
   // Pre-zen mode state for restoration
@@ -224,6 +224,14 @@ export default function Home() {
     layoutVertical, setLayoutVertical,
     resetLayouts,
   } = useSettingsStore();
+
+  const toggleBottomTerminal = useCallback(() => {
+    setShowBottomTerminal(!showBottomTerminal);
+  }, [showBottomTerminal, setShowBottomTerminal]);
+
+  const hideBottomTerminal = useCallback(() => {
+    setShowBottomTerminal(false);
+  }, [setShowBottomTerminal]);
 
   // Determine if we're in a Full Content view (not conversation)
   // Also treat as full content view when no session is selected (to show welcome screen)
@@ -312,12 +320,6 @@ export default function Home() {
     validate();
   }, [backendConnected, isAuthenticated, setAuthenticated]);
 
-  // Use refs to avoid changing useEffect dependency array sizes
-  const showBottomTerminalRef = useRef(showBottomTerminal);
-  useEffect(() => {
-    showBottomTerminalRef.current = showBottomTerminal;
-  }, [showBottomTerminal]);
-
   const zenModeRef = useRef(zenMode);
   useEffect(() => {
     zenModeRef.current = zenMode;
@@ -392,24 +394,6 @@ export default function Home() {
   const { expandWorkspace } = useSettingsStore();
   const { showWizard, showGuidedTour, completeWizard, completeTour, skipAll } = useOnboarding();
 
-  // Sync bottom terminal panel collapse state with showBottomTerminal.
-  // Re-runs on session change so a fresh session starts with the correct panel state.
-  // When selectedSession is null the panel is unmounted, so the ref is null and we bail out.
-  useLayoutEffect(() => {
-    const panel = bottomTerminalPanelRef.current;
-    if (!panel) return;
-
-    // Only act if the panel state doesn't match the desired state
-    const isCollapsed = panel.isCollapsed();
-    if (showBottomTerminal && isCollapsed) {
-      // Restore to last known open size, or default 30%
-      const savedSize = layoutVertical?.['bottom-terminal'];
-      const size = savedSize && savedSize > 0 ? savedSize : DEFAULT_LAYOUTS.vertical['bottom-terminal'];
-      panel.resize(`${size}%`);
-    } else if (!showBottomTerminal && !isCollapsed) {
-      panel.collapse();
-    }
-  }, [showBottomTerminal, selectedSessionId]);
 
   // Computed: selected session for terminal and other uses
   const selectedSession = selectedSessionId
@@ -914,7 +898,7 @@ export default function Home() {
       if ((e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) ||
           (e.key === 'j' && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey)) {
         e.preventDefault();
-        setShowBottomTerminal(!showBottomTerminalRef.current);
+        toggleBottomTerminal();
       }
       // Cmd+Shift+1-9 to switch sessions
       // Use e.code because Shift changes e.key to symbols on macOS (e.g. '1' → '!')
@@ -1032,7 +1016,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, setShowBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
+  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, toggleBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -1068,7 +1052,7 @@ export default function Home() {
           }
           break;
         case 'toggle_terminal':
-          setShowBottomTerminal(!showBottomTerminalRef.current);
+          toggleBottomTerminal();
           break;
         case 'toggle_thinking':
           // Emit event for ChatInput to handle
@@ -1092,7 +1076,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, setShowBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, toggleBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar]);
 
   // Handle window close confirmation
   useEffect(() => {
@@ -1124,6 +1108,10 @@ export default function Home() {
     };
     const handleToggleLeftPanel = () => toggleLeftSidebar();
     const handleToggleRightPanel = () => toggleRightSidebar();
+    const handleToggleBottomPanel = () => toggleBottomTerminal();
+    const handleShowBottomPanel = () => {
+      setShowBottomTerminal(true);
+    };
     const handleOpenInVSCode = () => {
       const { selectedSessionId, sessions } = useAppStore.getState();
       const session = sessions.find((s) => s.id === selectedSessionId);
@@ -1141,6 +1129,8 @@ export default function Home() {
     window.addEventListener('toggle-theme', handleToggleTheme);
     window.addEventListener('toggle-left-panel', handleToggleLeftPanel);
     window.addEventListener('toggle-right-panel', handleToggleRightPanel);
+    window.addEventListener('toggle-bottom-panel', handleToggleBottomPanel);
+    window.addEventListener('show-bottom-panel', handleShowBottomPanel);
     window.addEventListener('open-in-vscode', handleOpenInVSCode);
 
     return () => {
@@ -1153,9 +1143,11 @@ export default function Home() {
       window.removeEventListener('toggle-theme', handleToggleTheme);
       window.removeEventListener('toggle-left-panel', handleToggleLeftPanel);
       window.removeEventListener('toggle-right-panel', handleToggleRightPanel);
+      window.removeEventListener('toggle-bottom-panel', handleToggleBottomPanel);
+      window.removeEventListener('show-bottom-panel', handleShowBottomPanel);
       window.removeEventListener('open-in-vscode', handleOpenInVSCode);
     };
-  }, [handleNewSession, handleNewConversation, resolvedTheme, setTheme, toggleLeftSidebar, toggleRightSidebar]);
+  }, [handleNewSession, handleNewConversation, resolvedTheme, setTheme, toggleLeftSidebar, toggleRightSidebar, toggleBottomTerminal, setShowBottomTerminal]);
 
   // Don't render anything until client-side mounted - prevents hydration flash
   // Body background (set by ThemeScript) shows through
@@ -1253,7 +1245,7 @@ export default function Home() {
                 hasSecondaryPanels={!isFullContentView && !!selectedSessionId}
                 onToggleLeftSidebar={toggleLeftSidebar}
                 onToggleRightSidebar={toggleRightSidebar}
-                onToggleBottomPanel={() => setShowBottomTerminal(!showBottomTerminal)}
+                onToggleBottomPanel={toggleBottomTerminal}
                 onOpenSettings={() => setShowSettings(true)}
                 onOpenShortcuts={() => setShowShortcuts(true)}
               />
@@ -1360,28 +1352,22 @@ export default function Home() {
                       ) : null}
                     </ResizablePanel>
 
-                    {/* Bottom Terminal - always mounted to preserve PTY session */}
-                    {selectedSession && (
+                    {/* Bottom Terminal - conditionally rendered */}
+                    {selectedSession && showBottomTerminal && (
                       <>
-                        <ResizableHandle
-                          direction="vertical"
-                          className={cn(!showBottomTerminal && "hidden")}
-                        />
+                        <ResizableHandle direction="vertical" />
                         <ResizablePanel
-                          ref={bottomTerminalPanelRef}
                           id="bottom-terminal"
-                          defaultSize={showBottomTerminal ? "180px" : 0}
+                          defaultSize="250px"
                           minSize="100px"
                           maxSize="400px"
-                          collapsible={true}
-                          collapsedSize={0}
                         >
                           <div className="h-full">
                             <ErrorBoundary section="Terminal">
                               <BottomTerminal
                                 sessionId={selectedSession.id}
                                 workspacePath={selectedSession.worktreePath}
-                                onHide={() => setShowBottomTerminal(false)}
+                                onHide={hideBottomTerminal}
                               />
                             </ErrorBoundary>
                           </div>
