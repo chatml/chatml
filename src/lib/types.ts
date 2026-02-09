@@ -475,6 +475,7 @@ export interface CheckpointInfo {
   timestamp: string;
   messageIndex: number;
   isResult?: boolean;
+  conversationId?: string;
 }
 
 // Budget and limits status

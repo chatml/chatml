@@ -286,7 +286,11 @@ export const useBudgetStatus = () => useAppStore((s) => s.budgetStatus);
  * Checkpoints.
  * Use in: CheckpointTimeline
  */
-export const useCheckpoints = () => useAppStore((s) => s.checkpoints);
+export const useCheckpoints = () => useAppStore((s) => {
+  const convId = s.selectedConversationId;
+  if (!convId) return [];
+  return s.checkpoints.filter(c => !c.conversationId || c.conversationId === convId);
+});
 
 /**
  * MCP servers.
