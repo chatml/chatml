@@ -20,6 +20,7 @@ import {
   type SubagentStopHookInput,
   type PostToolUseFailureHookInput,
   type StopHookInput,
+  type McpServerConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
@@ -91,6 +92,9 @@ if (structuredOutputSchema) {
 
 // Target branch for PR base and sync operations
 const targetBranch = getArg("--target-branch");
+
+// MCP servers configuration file (JSON array of server configs from backend)
+const mcpServersFilePath = getArg("--mcp-servers-file");
 
 // Task 5: Budget Controls
 const maxBudgetUsd = getNumericArg("--max-budget-usd");
@@ -984,6 +988,66 @@ async function main(): Promise<void> {
     // Create ChatML MCP server
     const chatmlMcp = createChatMLMcpServer({ context: workspaceContext });
 
+    // Build merged MCP servers map: built-in + .mcp.json + user-configured
+    const mergedMcpServers: Record<string, McpServerConfig> = { chatml: chatmlMcp };
+
+    // Load .mcp.json from worktree root (project-level config)
+    try {
+      const dotMcpPath = `${cwd}/.mcp.json`;
+      const dotMcpContent = readFileSync(dotMcpPath, "utf-8");
+      const dotMcpConfig = JSON.parse(dotMcpContent) as { mcpServers?: Record<string, McpServerConfig> };
+      if (dotMcpConfig.mcpServers) {
+        for (const [name, config] of Object.entries(dotMcpConfig.mcpServers)) {
+          mergedMcpServers[name] = config;
+          debug(`Loaded MCP server from .mcp.json: ${name}`);
+        }
+      }
+    } catch {
+      // .mcp.json doesn't exist or is invalid — that's fine
+    }
+
+    // Load user-configured MCP servers from backend (via temp file)
+    if (mcpServersFilePath) {
+      try {
+        const mcpContent = readFileSync(mcpServersFilePath, "utf-8");
+        const userServers = JSON.parse(mcpContent) as Array<{
+          name: string;
+          type: string;
+          command?: string;
+          args?: string[];
+          env?: Record<string, string>;
+          url?: string;
+          headers?: Record<string, string>;
+          enabled: boolean;
+        }>;
+        for (const server of userServers) {
+          if (!server.enabled) continue;
+          if (server.type === "stdio" && server.command) {
+            mergedMcpServers[server.name] = {
+              command: server.command,
+              args: server.args || [],
+              env: server.env || {},
+            };
+          } else if (server.type === "sse" && server.url) {
+            mergedMcpServers[server.name] = {
+              type: "sse" as const,
+              url: server.url,
+              headers: server.headers || {},
+            };
+          } else if (server.type === "http" && server.url) {
+            mergedMcpServers[server.name] = {
+              type: "http" as const,
+              url: server.url,
+              headers: server.headers || {},
+            };
+          }
+          debug(`Loaded user MCP server: ${server.name} (${server.type})`);
+        }
+      } catch (e) {
+        console.error(`Failed to load MCP servers file: ${e}`);
+      }
+    }
+
     // Resolve tool preset to allowedTools/disallowedTools
     const presetConfig = resolveToolPreset(toolPreset);
 
@@ -1039,7 +1103,7 @@ async function main(): Promise<void> {
         permissionMode: initialPermissionMode,
         allowDangerouslySkipPermissions: true,
         canUseTool,
-        mcpServers: { chatml: chatmlMcp },
+        mcpServers: mergedMcpServers,
         includePartialMessages: true,
         tools: { type: "preset" as const, preset: "claude_code" as const },
         systemPrompt: instructions

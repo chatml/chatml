@@ -13,6 +13,7 @@ import type {
   AgentTodoItem,
   CustomTodoItem,
   McpServerStatus,
+  McpServerConfig,
   CheckpointInfo,
   BudgetStatus,
   ContextUsage,
@@ -173,6 +174,9 @@ interface AppState {
 
   // MCP servers state
   mcpServers: McpServerStatus[];
+  mcpServerConfigs: McpServerConfig[];
+  mcpConfigLoading: boolean;
+  mcpToolsByServer: Record<string, string[]>; // server name → tool names
 
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
@@ -347,6 +351,9 @@ interface AppState {
 
   // MCP servers actions
   setMcpServers: (servers: McpServerStatus[]) => void;
+  setMcpToolsByServer: (tools: Record<string, string[]>) => void;
+  fetchMcpServerConfigs: (workspaceId: string) => Promise<void>;
+  saveMcpServerConfigs: (workspaceId: string, configs: McpServerConfig[]) => Promise<void>;
 
   // Query response actions
   setSupportedModels: (models: Array<{ value: string; displayName: string; description: string }>) => void;
@@ -426,6 +433,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   terminalInstances: {},
   activeTerminalId: {},
   mcpServers: [],
+  mcpServerConfigs: [],
+  mcpConfigLoading: false,
+  mcpToolsByServer: {},
   checkpoints: [],
   budgetStatus: null,
   contextUsage: {},
@@ -1537,6 +1547,25 @@ updateFileTabContent: (id, content) => set((state) => ({
 
   // MCP servers actions
   setMcpServers: (servers) => set({ mcpServers: servers }),
+  setMcpToolsByServer: (tools) => set({ mcpToolsByServer: tools }),
+  fetchMcpServerConfigs: async (workspaceId) => {
+    set({ mcpConfigLoading: true });
+    try {
+      const configs = await import('@/lib/api').then(m => m.getMcpServers(workspaceId));
+      set({ mcpServerConfigs: configs, mcpConfigLoading: false });
+    } catch {
+      set({ mcpConfigLoading: false });
+    }
+  },
+  saveMcpServerConfigs: async (workspaceId, configs) => {
+    set({ mcpConfigLoading: true });
+    try {
+      const saved = await import('@/lib/api').then(m => m.setMcpServers(workspaceId, configs));
+      set({ mcpServerConfigs: saved, mcpConfigLoading: false });
+    } catch {
+      set({ mcpConfigLoading: false });
+    }
+  },
 
   // Query response actions
   setSupportedModels: (models) => set({ supportedModels: models }),

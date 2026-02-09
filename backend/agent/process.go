@@ -52,6 +52,7 @@ type ProcessOptions struct {
 	FallbackModel       string // Fallback model name
 	TargetBranch        string // Target branch for PR base and sync (e.g. "origin/develop")
 	EnvVars             map[string]string // Custom environment variables to inject
+	McpServersJSON      string            // JSON array of MCP server configs
 }
 
 type Process struct {
@@ -70,6 +71,7 @@ type Process struct {
 	planModeActive  bool // Tracks whether the process is in plan mode
 	droppedMessages    atomic.Uint64 // Count of messages dropped due to full output buffer
 	instructionsFile   string        // Temp file for instructions, cleaned up on stop
+	mcpServersFile     string        // Temp file for MCP server configs, cleaned up on stop
 	opts               ProcessOptions // Original options for restart
 	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
 	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
@@ -199,6 +201,25 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		}
 	}
 
+	// Add MCP servers config (write to temp file like instructions)
+	var mcpServersFile string
+	if opts.McpServersJSON != "" {
+		tmpFile, err := os.CreateTemp("", "chatml-mcp-servers-*.json")
+		if err != nil {
+			logger.Process.Errorf("[%s] Failed to create MCP servers temp file: %v", opts.ID, err)
+		} else {
+			if _, writeErr := tmpFile.WriteString(opts.McpServersJSON); writeErr != nil {
+				logger.Process.Errorf("[%s] Failed to write MCP servers to temp file: %v", opts.ID, writeErr)
+				tmpFile.Close()
+				_ = os.Remove(tmpFile.Name())
+			} else {
+				tmpFile.Close()
+				mcpServersFile = tmpFile.Name()
+				args = append(args, "--mcp-servers-file", mcpServersFile)
+			}
+		}
+	}
+
 	// Add structured output schema if provided
 	if opts.StructuredOutput != "" {
 		args = append(args, "--structured-output", opts.StructuredOutput)
@@ -245,6 +266,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		done:             make(chan struct{}),
 		planModeActive:   opts.PlanMode,
 		instructionsFile: instructionsFile,
+		mcpServersFile:   mcpServersFile,
 		opts:             opts,
 	}
 }
@@ -522,6 +544,12 @@ func (p *Process) doStopLocked() {
 	if p.instructionsFile != "" {
 		_ = os.Remove(p.instructionsFile)
 		p.instructionsFile = ""
+	}
+
+	// Clean up MCP servers temp file
+	if p.mcpServersFile != "" {
+		_ = os.Remove(p.mcpServersFile)
+		p.mcpServersFile = ""
 	}
 
 	// Try graceful shutdown with SIGTERM first

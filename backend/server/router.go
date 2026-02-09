@@ -145,6 +145,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/issues", h.ListIssues)
 		r.With(searchRateLimiter).Get("/{id}/issues/search", h.SearchIssues)
 		r.Get("/{id}/issues/{number}", h.GetIssueDetails)
+		// MCP server config endpoints
+		r.Get("/{id}/mcp-servers", h.GetMcpServers)
+		r.Put("/{id}/mcp-servers", h.SetMcpServers)
 		// Scripts config endpoints
 		r.Get("/{id}/config", h.GetWorkspaceConfig)
 		r.Put("/{id}/config", h.UpdateWorkspaceConfig)

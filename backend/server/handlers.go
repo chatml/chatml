@@ -5306,3 +5306,81 @@ func maskAPIKey(key string) string {
 	return key[:prefixEnd] + "..." + suffix
 }
 
+// settingKeyMcpServers returns the settings key for MCP servers in a workspace
+func settingKeyMcpServers(workspaceID string) string {
+	return "mcp-servers:" + workspaceID
+}
+
+// GetMcpServers returns the configured MCP servers for a workspace
+func (h *Handlers) GetMcpServers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	raw, found, err := h.store.GetSetting(ctx, settingKeyMcpServers(repoID))
+	if err != nil {
+		writeInternalError(w, "failed to get MCP servers", err)
+		return
+	}
+
+	if !found || raw == "" {
+		writeJSON(w, []models.McpServerConfig{})
+		return
+	}
+
+	var servers []models.McpServerConfig
+	if err := json.Unmarshal([]byte(raw), &servers); err != nil {
+		writeInternalError(w, "failed to parse MCP server config", err)
+		return
+	}
+
+	writeJSON(w, servers)
+}
+
+// SetMcpServers saves the MCP server configuration for a workspace
+func (h *Handlers) SetMcpServers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	var servers []models.McpServerConfig
+	if err := json.NewDecoder(r.Body).Decode(&servers); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Validate each server config
+	for i, s := range servers {
+		if s.Name == "" {
+			writeValidationError(w, fmt.Sprintf("server at index %d is missing a name", i))
+			return
+		}
+		switch s.Type {
+		case "stdio":
+			if s.Command == "" {
+				writeValidationError(w, fmt.Sprintf("stdio server %q is missing a command", s.Name))
+				return
+			}
+		case "sse", "http":
+			if s.URL == "" {
+				writeValidationError(w, fmt.Sprintf("%s server %q is missing a URL", s.Type, s.Name))
+				return
+			}
+		default:
+			writeValidationError(w, fmt.Sprintf("server %q has invalid type %q (must be stdio, sse, or http)", s.Name, s.Type))
+			return
+		}
+	}
+
+	data, err := json.Marshal(servers)
+	if err != nil {
+		writeInternalError(w, "failed to serialize MCP server config", err)
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyMcpServers(repoID), string(data)); err != nil {
+		writeInternalError(w, "failed to save MCP servers", err)
+		return
+	}
+
+	writeJSON(w, servers)
+}
+
