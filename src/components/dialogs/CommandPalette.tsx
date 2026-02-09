@@ -266,10 +266,7 @@ const COMMANDS: Command[] = [
     label: 'Toggle Bottom Panel',
     icon: PanelBottom,
     keywords: ['terminal', 'tasks', 'panel'],
-    action: () => {
-      const store = useSettingsStore.getState();
-      store.setShowBottomTerminal(!store.showBottomTerminal);
-    },
+    action: () => window.dispatchEvent(new CustomEvent('toggle-bottom-panel')),
   },
   {
     id: 'toggle-left-panel',
@@ -352,7 +349,7 @@ const COMMANDS: Command[] = [
     icon: Terminal,
     keywords: ['shell', 'console', 'cli'],
     available: () => useAppStore.getState().selectedSessionId !== null,
-    action: () => useSettingsStore.getState().setShowBottomTerminal(true),
+    action: () => window.dispatchEvent(new CustomEvent('show-bottom-panel')),
   },
 
   // Review
