@@ -193,7 +193,7 @@ export function ChecksPanel({ onSendMessage }: ChecksPanelProps) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex flex-col">
+      <div className="flex flex-col min-w-0">
         {/* Merge Readiness Banner */}
         <MergeReadinessBanner
           readiness={readiness}
@@ -287,9 +287,9 @@ function MergeReadinessBanner({
   }
 
   return (
-    <div className={cn('flex items-center gap-2 px-3 py-2 border-b', bgClass, borderClass)}>
+    <div className={cn('flex items-center gap-2 px-3 py-2 border-b min-w-0', bgClass, borderClass)}>
       {icon}
-      <span className="text-xs font-medium flex-1">{message}</span>
+      <span className="text-xs font-medium flex-1 truncate" title={message}>{message}</span>
       <Button
         variant="ghost"
         size="icon"
@@ -316,7 +316,7 @@ function PRHeaderSection({
 }) {
   if (!pr && prStatus !== 'open') {
     return (
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b min-w-0">
         <GitPullRequest className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs text-muted-foreground">No pull request yet</span>
       </div>
@@ -325,7 +325,7 @@ function PRHeaderSection({
 
   if (!pr) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b min-w-0">
         <Loader2 className="h-3.5 w-3.5 text-muted-foreground shrink-0 animate-spin" />
         <span className="text-xs text-muted-foreground">Loading PR...</span>
       </div>
@@ -335,12 +335,12 @@ function PRHeaderSection({
   const stateColor = pr.state === 'open' ? 'text-green-500' : 'text-muted-foreground';
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+    <div className="flex items-center gap-2 px-3 py-2.5 border-b min-w-0">
       <GitPullRequest className={cn('h-3.5 w-3.5 shrink-0', stateColor)} />
       <span className="text-xs font-medium text-muted-foreground shrink-0">
         #{pr.number}
       </span>
-      <span className="text-xs truncate flex-1">{pr.title}</span>
+      <span className="text-xs truncate flex-1" title={pr.title}>{pr.title}</span>
       <Button
         variant="ghost"
         size="icon"
@@ -459,9 +459,9 @@ function CIChecksSection({
                 const StatusIcon = statusInfo.icon;
 
                 return (
-                  <div key={check.name} className="flex items-center gap-2 py-0.5 px-1">
+                  <div key={check.name} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
                     <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
-                    <span className="text-xs truncate flex-1">{check.name}</span>
+                    <span className="text-xs truncate flex-1" title={check.name}>{check.name}</span>
                     {check.durationSeconds !== undefined && (
                       <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
                         {formatDuration(check.durationSeconds)}
@@ -584,7 +584,7 @@ function WorkflowRunCard({
 
   return (
     <div className="rounded-md border bg-surface-1/50">
-      <div className="flex items-center gap-2 px-2 py-1.5">
+      <div className="flex items-center gap-2 px-2 py-1.5 min-w-0">
         <button
           className="p-0.5 hover:bg-surface-2 rounded shrink-0"
           onClick={handleExpand}
@@ -596,7 +596,7 @@ function WorkflowRunCard({
           )}
         </button>
         <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
-        <span className="text-xs truncate flex-1">{run.name}</span>
+        <span className="text-xs truncate flex-1" title={run.name}>{run.name}</span>
         <span className={cn('text-2xs shrink-0', statusInfo.color)}>
           {statusInfo.label}
         </span>
@@ -647,9 +647,9 @@ function WorkflowRunCard({
                 const isFailed = job.conclusion === 'failure' || job.conclusion === 'timed_out';
 
                 return (
-                  <div key={job.id} className="flex items-center gap-2 py-0.5">
+                  <div key={job.id} className="flex items-center gap-2 py-0.5 min-w-0">
                     <JobIcon className={cn('h-2.5 w-2.5 shrink-0', jobStatus.color)} />
-                    <span className="text-xs truncate flex-1">{job.name}</span>
+                    <span className="text-xs truncate flex-1" title={job.name}>{job.name}</span>
                     <span className={cn('text-2xs shrink-0', jobStatus.color)}>
                       {jobStatus.label}
                     </span>

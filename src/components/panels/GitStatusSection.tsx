@@ -60,9 +60,9 @@ function GitStatusItem({ type, message, action, dropdownActions }: GitStatusItem
   }[type];
 
   return (
-    <div className="flex items-center gap-2 py-1 px-2 group">
+    <div className="flex items-center gap-2 py-1 px-2 group min-w-0">
       <Icon className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
-      <span className="text-xs flex-1 min-w-0 truncate">{message}</span>
+      <span className="text-xs flex-1 min-w-0 truncate" title={message}>{message}</span>
       {action && dropdownActions ? (
         <div className="inline-flex rounded-sm shadow-sm">
           <Button
