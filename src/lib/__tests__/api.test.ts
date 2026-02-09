@@ -320,14 +320,32 @@ describe('Plan Mode API', () => {
   });
 
   describe('approvePlan', () => {
-    it('approves a plan successfully', async () => {
+    it('approves a plan with requestId successfully', async () => {
+      let receivedBody: Record<string, unknown> = {};
       server.use(
-        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, () => {
+        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
           return HttpResponse.json({ approved: true });
         })
       );
 
-      await expect(approvePlan('conv-1')).resolves.toBeUndefined();
+      await expect(approvePlan('conv-1', 'plan-req-123', true)).resolves.toBeUndefined();
+      expect(receivedBody.requestId).toBe('plan-req-123');
+      expect(receivedBody.approved).toBe(true);
+    });
+
+    it('rejects a plan with approved=false', async () => {
+      let receivedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, async ({ request }) => {
+          receivedBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({ approved: false });
+        })
+      );
+
+      await expect(approvePlan('conv-1', 'plan-req-456', false)).resolves.toBeUndefined();
+      expect(receivedBody.requestId).toBe('plan-req-456');
+      expect(receivedBody.approved).toBe(false);
     });
 
     it('rejects when conversation not found', async () => {
@@ -337,7 +355,7 @@ describe('Plan Mode API', () => {
         })
       );
 
-      await expect(approvePlan('nonexistent')).rejects.toThrow();
+      await expect(approvePlan('nonexistent', 'plan-req-789', true)).rejects.toThrow();
     });
 
     it('rejects when process not running', async () => {
@@ -350,7 +368,20 @@ describe('Plan Mode API', () => {
         })
       );
 
-      await expect(approvePlan('conv-1')).rejects.toThrow();
+      await expect(approvePlan('conv-1', 'plan-req-000', true)).rejects.toThrow();
+    });
+
+    it('sends correct conversationId in URL', async () => {
+      let capturedConvId = '';
+      server.use(
+        http.post(`${API_BASE}/api/conversations/:convId/approve-plan`, ({ params }) => {
+          capturedConvId = params.convId as string;
+          return HttpResponse.json({ approved: true });
+        })
+      );
+
+      await approvePlan('my-special-conv', 'plan-req-1', true);
+      expect(capturedConvId).toBe('my-special-conv');
     });
   });
 });

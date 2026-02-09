@@ -671,6 +671,55 @@ func TestAgentEvent_ContextWindowRoundTrip(t *testing.T) {
 	assert.Equal(t, original.ContextWindow, parsed.ContextWindow)
 }
 
+// ============================================================================
+// Plan Approval Request Event Tests
+// ============================================================================
+
+func TestEventTypePlanApprovalRequestConstant(t *testing.T) {
+	assert.Equal(t, "plan_approval_request", EventTypePlanApprovalRequest)
+}
+
+func TestParseAgentLine_PlanApprovalRequest(t *testing.T) {
+	line := `{"type":"plan_approval_request","requestId":"plan-approval-1-1700000000000","sessionId":"session-abc"}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypePlanApprovalRequest, event.Type)
+	assert.Equal(t, "plan-approval-1-1700000000000", event.RequestID)
+	assert.Equal(t, "session-abc", event.SessionID)
+}
+
+func TestParseAgentLine_PlanApprovalRequest_MinimalFields(t *testing.T) {
+	line := `{"type":"plan_approval_request","requestId":"plan-approval-2-1700000000001"}`
+
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+
+	assert.Equal(t, EventTypePlanApprovalRequest, event.Type)
+	assert.Equal(t, "plan-approval-2-1700000000001", event.RequestID)
+	assert.Empty(t, event.SessionID)
+}
+
+func TestParseAgentLine_PlanApprovalRequest_RoundTrip(t *testing.T) {
+	original := &AgentEvent{
+		Type:      EventTypePlanApprovalRequest,
+		RequestID: "plan-approval-3-1700000000002",
+		SessionID: "session-xyz",
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var parsed AgentEvent
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+
+	assert.Equal(t, original.Type, parsed.Type)
+	assert.Equal(t, original.RequestID, parsed.RequestID)
+	assert.Equal(t, original.SessionID, parsed.SessionID)
+}
+
 func TestAgentEvent_ContextUsageOmitsZeroFields(t *testing.T) {
 	// Verify that zero-value fields are omitted in JSON (due to omitempty)
 	event := &AgentEvent{

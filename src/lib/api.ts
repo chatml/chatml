@@ -1082,10 +1082,11 @@ export async function setConversationPlanMode(convId: string, enabled: boolean):
   }
 }
 
-export async function approvePlan(convId: string): Promise<void> {
+export async function approvePlan(convId: string, requestId: string, approved: boolean): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/approve-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, approved }),
   });
   if (!res.ok) {
     const text = await res.text();

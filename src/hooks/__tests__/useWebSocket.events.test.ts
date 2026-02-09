@@ -510,6 +510,97 @@ describe('useWebSocket — missing event handling', () => {
   });
 
   // ==========================================================================
+  // Plan Approval Request event
+  // ==========================================================================
+
+  describe('plan_approval_request event', () => {
+    it('sets pendingPlanApproval with requestId', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+
+      // Simulates: case 'plan_approval_request'
+      const event = { requestId: 'plan-approval-1-1700000000000' };
+      if (event.requestId) {
+        store.setPendingPlanApproval(CONV_ID, event.requestId);
+      }
+
+      const state = useAppStore.getState().streamingState[CONV_ID];
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'plan-approval-1-1700000000000' });
+    });
+
+    it('ignores event when requestId is missing', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+
+      const event = { requestId: undefined as string | undefined };
+      if (event.requestId) {
+        store.setPendingPlanApproval(CONV_ID, event.requestId);
+      }
+
+      const state = useAppStore.getState().streamingState[CONV_ID];
+      expect(state?.pendingPlanApproval).toBeNull();
+    });
+
+    it('replaces previous pendingPlanApproval', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+
+      store.setPendingPlanApproval(CONV_ID, 'plan-approval-old');
+      store.setPendingPlanApproval(CONV_ID, 'plan-approval-new');
+
+      const state = useAppStore.getState().streamingState[CONV_ID];
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'plan-approval-new' });
+    });
+
+    it('does not affect other conversations', () => {
+      const OTHER_CONV = 'conv-other';
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.setStreaming(OTHER_CONV, true);
+
+      store.setPendingPlanApproval(CONV_ID, 'plan-approval-1');
+
+      expect(useAppStore.getState().streamingState[CONV_ID]?.pendingPlanApproval).toEqual({ requestId: 'plan-approval-1' });
+      expect(useAppStore.getState().streamingState[OTHER_CONV]?.pendingPlanApproval).toBeNull();
+    });
+
+    it('clearPendingPlanApproval clears the approval state', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.setPendingPlanApproval(CONV_ID, 'plan-approval-1');
+
+      store.clearPendingPlanApproval(CONV_ID);
+
+      const state = useAppStore.getState().streamingState[CONV_ID];
+      expect(state?.pendingPlanApproval).toBeNull();
+    });
+
+    it('preserves planModeActive when setting pendingPlanApproval', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.setPlanModeActive(CONV_ID, true);
+
+      store.setPendingPlanApproval(CONV_ID, 'plan-approval-1');
+
+      const state = useAppStore.getState().streamingState[CONV_ID];
+      expect(state?.planModeActive).toBe(true);
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'plan-approval-1' });
+    });
+
+    it('preserves pendingPlanApproval when changing planModeActive', () => {
+      const store = useAppStore.getState();
+      store.setStreaming(CONV_ID, true);
+      store.setPendingPlanApproval(CONV_ID, 'plan-approval-1');
+
+      store.setPlanModeActive(CONV_ID, false);
+
+      const state = useAppStore.getState().streamingState[CONV_ID];
+      expect(state?.planModeActive).toBe(false);
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'plan-approval-1' });
+    });
+  });
+
+  // ==========================================================================
   // turn_complete event (multi-turn agent loop)
   // ==========================================================================
 

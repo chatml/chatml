@@ -2347,37 +2347,81 @@ func TestListConversations_IncludesModel(t *testing.T) {
 // ApprovePlan Handler Tests
 // ============================================================================
 
-func TestApprovePlan_NotFound(t *testing.T) {
+func TestApprovePlan_MissingRequestId(t *testing.T) {
 	h, _, _ := setupTestHandlersWithAgentManager(t)
 
-	req := httptest.NewRequest("POST", "/api/conversations/nonexistent/approve-plan", nil)
-	req.Header.Set("Content-Type", "application/json")
-	req = withChiContext(req, map[string]string{"convId": "nonexistent"})
-	w := httptest.NewRecorder()
-
-	h.ApprovePlan(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Contains(t, w.Body.String(), "conversation not found")
-}
-
-func TestApprovePlan_NotInPlanMode(t *testing.T) {
-	h, s, _ := setupTestHandlersWithAgentManager(t)
-
-	createTestRepo(t, s, "ws-1", "/path/to/repo")
-	createTestSession(t, s, "sess-1", "ws-1")
-	createTestConversation(t, s, "conv-1", "sess-1")
-
-	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", nil)
+	body := strings.NewReader(`{"approved": true}`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = withChiContext(req, map[string]string{"convId": "conv-1"})
 	w := httptest.NewRecorder()
 
 	h.ApprovePlan(w, req)
 
-	// Should fail because no process is running (not in plan mode)
-	assert.Equal(t, http.StatusConflict, w.Code)
-	assert.Contains(t, w.Body.String(), "conversation is not in plan mode")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "requestId is required")
+}
+
+func TestApprovePlan_NoProcess(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := strings.NewReader(`{"requestId": "plan-1", "approved": true}`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.ApprovePlan(w, req)
+
+	// Should fail because no process is running
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "no active process")
+}
+
+func TestApprovePlan_InvalidBody(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := strings.NewReader(`not valid json`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.ApprovePlan(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid request body")
+}
+
+func TestApprovePlan_EmptyBody(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := strings.NewReader(`{}`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.ApprovePlan(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "requestId is required")
+}
+
+func TestApprovePlan_RejectionNoProcess(t *testing.T) {
+	h, _, _ := setupTestHandlersWithAgentManager(t)
+
+	body := strings.NewReader(`{"requestId": "plan-1", "approved": false}`)
+	req := httptest.NewRequest("POST", "/api/conversations/conv-1/approve-plan", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"convId": "conv-1"})
+	w := httptest.NewRecorder()
+
+	h.ApprovePlan(w, req)
+
+	// Should fail because no process is running (same as approval)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "no active process")
 }
 
 // ============================================================================
