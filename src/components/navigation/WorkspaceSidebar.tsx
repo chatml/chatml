@@ -256,6 +256,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const handleCreateSession = async (workspaceId: string) => {
+    /* eslint-disable react-hooks/purity -- only called from event handlers, not during render */
     // Generate a temporary ID for the optimistic placeholder
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
@@ -349,6 +350,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       removeFromStore(tempId);
       showError('Failed to create session');
     }
+    /* eslint-enable react-hooks/purity */
   };
 
   const handleArchiveSession = (sessionId: string) => {
