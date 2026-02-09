@@ -350,6 +350,80 @@ func TestInputMessage_Marshal(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// Plan Approval Response Tests
+// ============================================================================
+
+func TestProcess_SendPlanApprovalResponse_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SendPlanApprovalResponse("plan-1", true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_SendUserQuestionResponse_NotRunning(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	err := p.SendUserQuestionResponse("req-1", map[string]string{"q": "a"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestInputMessage_PlanApprovalResponse_Marshal(t *testing.T) {
+	approved := true
+	msg := InputMessage{
+		Type:                  "plan_approval_response",
+		PlanApprovalRequestID: "plan-approval-1-1700000000000",
+		PlanApproved:          &approved,
+	}
+
+	data, err := json.Marshal(msg)
+	require.NoError(t, err)
+
+	var result map[string]interface{}
+	err = json.Unmarshal(data, &result)
+	require.NoError(t, err)
+
+	assert.Equal(t, "plan_approval_response", result["type"])
+	assert.Equal(t, "plan-approval-1-1700000000000", result["planApprovalRequestId"])
+	assert.Equal(t, true, result["planApproved"])
+}
+
+func TestInputMessage_PlanApprovalResponse_Rejection(t *testing.T) {
+	rejected := false
+	msg := InputMessage{
+		Type:                  "plan_approval_response",
+		PlanApprovalRequestID: "plan-approval-2-1700000000001",
+		PlanApproved:          &rejected,
+	}
+
+	data, err := json.Marshal(msg)
+	require.NoError(t, err)
+
+	var result map[string]interface{}
+	err = json.Unmarshal(data, &result)
+	require.NoError(t, err)
+
+	assert.Equal(t, "plan_approval_response", result["type"])
+	assert.Equal(t, "plan-approval-2-1700000000001", result["planApprovalRequestId"])
+	assert.Equal(t, false, result["planApproved"])
+}
+
+func TestInputMessage_PlanApprovalOmitsEmptyFields(t *testing.T) {
+	// When PlanApproved is nil, it should be omitted
+	msg := InputMessage{
+		Type: "plan_approval_response",
+	}
+
+	data, err := json.Marshal(msg)
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	assert.NotContains(t, jsonStr, "planApprovalRequestId")
+	assert.NotContains(t, jsonStr, "planApproved")
+}
+
 func TestFindAgentRunner(t *testing.T) {
 	// Save original values
 	origEnv := os.Getenv("CHATML_AGENT_RUNNER")

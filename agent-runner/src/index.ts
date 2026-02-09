@@ -172,7 +172,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -181,6 +181,9 @@ interface InputMessage {
   // User question response fields
   questionRequestId?: string;
   answers?: Record<string, string>;
+  // Plan approval response fields
+  planApprovalRequestId?: string;
+  planApproved?: boolean;
 }
 
 // Escape a string for use in XML attribute values
@@ -210,6 +213,16 @@ interface PendingQuestionRequest {
 }
 const pendingQuestionRequests = new Map<string, PendingQuestionRequest>();
 let questionRequestCounter = 0;
+
+// Pending plan approval requests (for ExitPlanMode tool)
+const PLAN_APPROVAL_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as long as they need
+
+interface PendingPlanApprovalRequest {
+  resolve: (approved: boolean) => void;
+  reject: (error: Error) => void;
+}
+const pendingPlanApprovalRequests = new Map<string, PendingPlanApprovalRequest>();
+let planApprovalRequestCounter = 0;
 
 // Module-level references for cleanup
 let abortControllerRef: AbortController | null = null;
@@ -414,6 +427,21 @@ function setupInputQueue(): void {
           emit({
             type: "warning",
             message: `Received response for unknown question request: ${input.questionRequestId}`,
+          });
+        }
+        return;
+      }
+
+      // Handle plan approval responses from the Go backend
+      if (input.type === "plan_approval_response" && input.planApprovalRequestId) {
+        const pending = pendingPlanApprovalRequests.get(input.planApprovalRequestId);
+        if (pending) {
+          pendingPlanApprovalRequests.delete(input.planApprovalRequestId);
+          pending.resolve(input.planApproved === true);
+        } else {
+          emit({
+            type: "warning",
+            message: `Received response for unknown plan approval request: ${input.planApprovalRequestId}`,
           });
         }
         return;
@@ -910,6 +938,61 @@ const askUserQuestionHook: HookCallback = async (input) => {
   }
 };
 
+// PreToolUse hook that intercepts ExitPlanMode to route approval through our UI.
+// Uses the same pattern as AskUserQuestion: hook blocks execution until user responds.
+const exitPlanModeHook: HookCallback = async (_input) => {
+  const requestId = `plan-approval-${++planApprovalRequestCounter}-${Date.now()}`;
+
+  // Emit the plan approval request to the Go backend
+  emit({
+    type: "plan_approval_request",
+    requestId,
+    sessionId: currentSessionId,
+  });
+
+  // Wait for user response with a safety timeout matching the hook timeout
+  try {
+    const approved = await new Promise<boolean>((resolve, reject) => {
+      pendingPlanApprovalRequests.set(requestId, { resolve, reject });
+      // Safety timeout to prevent infinite hang if Go backend crashes/restarts
+      setTimeout(() => {
+        if (pendingPlanApprovalRequests.has(requestId)) {
+          pendingPlanApprovalRequests.delete(requestId);
+          reject(new Error("Plan approval timed out after 24 hours"));
+        }
+      }, PLAN_APPROVAL_HOOK_TIMEOUT_S * 1000);
+    });
+
+    if (approved) {
+      // Allow tool execution - SDK will exit plan mode naturally
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse" as const,
+          permissionDecision: "allow" as const,
+        },
+      };
+    } else {
+      // Deny tool execution - SDK stays in plan mode
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse" as const,
+          permissionDecision: "deny" as const,
+          permissionDecisionReason: "User requested changes to the plan",
+        },
+      };
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "deny" as const,
+        permissionDecisionReason: errorMessage,
+      },
+    };
+  }
+};
+
 // Required by SDK interface; AskUserQuestion is handled via PreToolUse hook above
 const canUseTool = async (
   _toolName: string,
@@ -923,6 +1006,7 @@ const canUseTool = async (
 const hooks = {
   PreToolUse: [
     { matcher: "AskUserQuestion", timeout: ASK_USER_QUESTION_HOOK_TIMEOUT_S, hooks: [askUserQuestionHook] },
+    { matcher: "ExitPlanMode", timeout: PLAN_APPROVAL_HOOK_TIMEOUT_S, hooks: [exitPlanModeHook] },
     { hooks: [preToolUseHook] },
   ],
   PostToolUse: [{ hooks: [postToolUseHook] }],
@@ -1519,6 +1603,12 @@ async function cleanup(reason: string): Promise<void> {
   for (const [requestId, pending] of pendingQuestionRequests) {
     pending.reject(new Error(`Cleanup: ${reason}`));
     pendingQuestionRequests.delete(requestId);
+  }
+
+  // 3b. Cancel all pending plan approval requests
+  for (const [requestId, pending] of pendingPlanApprovalRequests) {
+    pending.reject(new Error(`Cleanup: ${reason}`));
+    pendingPlanApprovalRequests.delete(requestId);
   }
 
   // 4. Emit tool_end for any in-flight tools to prevent infinite spinners on frontend

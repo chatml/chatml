@@ -237,10 +237,6 @@ export function useWebSocket(enabled: boolean = true) {
               startTime: Date.now(),
             });
 
-            // Detect ExitPlanMode tool - this means Claude wants plan approval
-            if (event.tool === 'ExitPlanMode') {
-              store.setAwaitingPlanApproval(conversationId, true);
-            }
           }
         }
         break;
@@ -262,12 +258,7 @@ export function useWebSocket(enabled: boolean = true) {
 
             if (activeTool) {
               // Normal path: tool exists in state
-              const isExitPlanMode = activeTool.tool === 'ExitPlanMode';
               store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
-
-              if (isExitPlanMode) {
-                store.setAwaitingPlanApproval(conversationId, false);
-              }
             } else if (event.tool) {
               // Race condition recovery: tool_end arrived but tool wasn't in state.
               // Create a synthetic completed entry so the timeline shows it as finished.
@@ -416,6 +407,14 @@ export function useWebSocket(enabled: boolean = true) {
           if (isPlanMode) {
             notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
           }
+        }
+        break;
+
+      case 'plan_approval_request':
+        // ExitPlanMode tool intercepted by PreToolUse hook - show approval UI
+        if (event?.requestId) {
+          store.setPendingPlanApproval(conversationId, event.requestId as string);
+          notifyDesktop(conversationId, 'Plan ready for approval', 'Review and approve the plan to continue');
         }
         break;
 

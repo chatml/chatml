@@ -3570,32 +3570,40 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, map[string]bool{"enabled": req.Enabled})
 }
 
+// PlanApprovalRequest represents user approval/rejection of an ExitPlanMode tool call
+type PlanApprovalRequest struct {
+	RequestID string `json:"requestId"`
+	Approved  bool   `json:"approved"`
+}
+
 func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	convID := chi.URLParam(r, "convId")
-	conv, err := h.store.GetConversationMeta(ctx, convID)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	if conv == nil {
-		writeNotFound(w, "conversation")
+
+	var req PlanApprovalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
 		return
 	}
 
-	// Verify the conversation is actually in plan mode before approving
-	if !h.agentManager.IsConversationInPlanMode(convID) {
-		writeConflict(w, "conversation is not in plan mode")
+	if req.RequestID == "" {
+		writeValidationError(w, "requestId is required")
 		return
 	}
 
-	// Approving a plan means exiting plan mode (switching back to bypassPermissions)
-	if err := h.agentManager.SetConversationPlanMode(convID, false); err != nil {
-		writeInternalError(w, "failed to approve plan", err)
+	// Get the process for this conversation
+	proc := h.agentManager.GetConversationProcess(convID)
+	if proc == nil {
+		writeNotFound(w, "no active process for conversation")
 		return
 	}
 
-	writeJSON(w, map[string]bool{"approved": true})
+	// Send the approval/rejection to the agent process
+	if err := proc.SendPlanApprovalResponse(req.RequestID, req.Approved); err != nil {
+		writeInternalError(w, "failed to send plan approval", err)
+		return
+	}
+
+	writeJSON(w, map[string]bool{"approved": req.Approved})
 }
 
 // Summary handlers

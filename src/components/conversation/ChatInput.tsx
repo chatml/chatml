@@ -22,7 +22,7 @@ import {
   Plus,
   Link,
   FolderSymlink,
-  EyeOff,
+  RotateCcw,
   Loader2,
   Upload,
   ScrollText,
@@ -119,7 +119,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     updateConversation,
     selectConversation,
     setStreaming,
-    setAwaitingPlanApproval,
+    clearPendingPlanApproval,
     clearActiveTools,
   } = useAppStore();
   const { error: showError } = useToast();
@@ -268,10 +268,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     ? streamingState[selectedConversationId]?.isStreaming
     : false;
 
-  // Check if awaiting plan approval
-  const awaitingPlanApproval = selectedConversationId
-    ? streamingState[selectedConversationId]?.awaitingPlanApproval
-    : false;
+  // Check if there's a pending plan approval request
+  const pendingPlanApproval = selectedConversationId
+    ? streamingState[selectedConversationId]?.pendingPlanApproval
+    : null;
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
@@ -381,43 +381,46 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     const newValue = !planModeEnabled;
     setPlanModeEnabled(newValue);
 
-    // If there's an active conversation, notify the backend
-    if (selectedConversationId && isStreaming) {
+    // If there's an active conversation with a running process, notify the backend
+    if (selectedConversationId) {
       try {
         await setConversationPlanMode(selectedConversationId, newValue);
-      } catch (error) {
-        console.error('Failed to set plan mode:', error);
-        // Revert UI state on failure so it stays in sync with backend
-        setPlanModeEnabled(!newValue);
+      } catch {
+        // Process may not be running (idle between turns) - that's fine,
+        // plan mode will be applied when the next message starts
       }
     }
-  }, [planModeEnabled, selectedConversationId, isStreaming]);
+  }, [planModeEnabled, selectedConversationId]);
 
   // Handle plan approval
   const handleApprovePlan = useCallback(async () => {
-    if (!selectedConversationId || !awaitingPlanApproval || isApproving) return;
+    if (!selectedConversationId || !pendingPlanApproval || isApproving) return;
 
     setIsApproving(true);
     setApprovalError(null);
     try {
-      await approvePlan(selectedConversationId);
-      // The WebSocket will clear awaitingPlanApproval when tool_end is received
+      await approvePlan(selectedConversationId, pendingPlanApproval.requestId, true);
+      clearPendingPlanApproval(selectedConversationId);
     } catch (error) {
       console.error('Failed to approve plan:', error);
       setApprovalError(error instanceof Error ? error.message : 'Failed to approve plan');
     } finally {
       setIsApproving(false);
     }
-  }, [selectedConversationId, awaitingPlanApproval, isApproving]);
+  }, [selectedConversationId, pendingPlanApproval, isApproving, clearPendingPlanApproval]);
 
-  // Handle hand off - dismisses the approval UI locally without approving.
-  // The agent continues waiting; user can still send feedback via the input.
-  // This allows the user to hide the approval bar while composing a longer response.
-  const handleHandOff = useCallback(() => {
-    if (!selectedConversationId) return;
-    setAwaitingPlanApproval(selectedConversationId, false);
+  // Handle reject - sends denial to the agent so it stays in plan mode
+  const handleRejectPlan = useCallback(async () => {
+    if (!selectedConversationId || !pendingPlanApproval) return;
+
+    try {
+      await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
+    } catch {
+      // Ignore errors - agent may have already timed out
+    }
+    clearPendingPlanApproval(selectedConversationId);
     setApprovalError(null);
-  }, [selectedConversationId, setAwaitingPlanApproval]);
+  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval]);
 
   // Auto-disable thinking when switching to an unsupported model
   useEffect(() => {
@@ -640,7 +643,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
 
     // ⌘⇧↵ to approve plan
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && awaitingPlanApproval) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && pendingPlanApproval) {
       e.preventDefault();
       handleApprovePlan();
       return;
@@ -660,7 +663,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   return (
     <div className="pt-1 px-3 pb-3">
       {/* Plan Approval Bar */}
-      {awaitingPlanApproval && (
+      {pendingPlanApproval && (
         <div className="space-y-1.5 mb-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
@@ -671,11 +674,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 text-xs text-muted-foreground"
-                onClick={handleHandOff}
+                onClick={handleRejectPlan}
                 disabled={isApproving}
               >
-                <EyeOff className="h-3.5 w-3.5" />
-                Hand off
+                <RotateCcw className="h-3.5 w-3.5" />
+                Request changes
               </Button>
               <Button
                 variant="secondary"
@@ -703,7 +706,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
       <div className={cn(
         'relative',
-        awaitingPlanApproval && 'plan-approval-border'
+        pendingPlanApproval && 'plan-approval-border'
       )}>
         {/* Animated marching ants border for plan mode */}
         {planModeEnabled && !isStreaming && (
@@ -728,13 +731,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           </svg>
         )}
         {/* Gradient border for streaming state (static for performance) */}
-        {isStreaming && !awaitingPlanApproval && (
+        {isStreaming && !pendingPlanApproval && (
           <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
         )}
       <div className={cn(
         'relative rounded-lg border border-border bg-card dark:bg-input',
-        isStreaming && !awaitingPlanApproval && 'border-transparent',
-        awaitingPlanApproval && 'border-transparent',
+        isStreaming && !pendingPlanApproval && 'border-transparent',
+        pendingPlanApproval && 'border-transparent',
         planModeEnabled && !isStreaming && 'border-transparent',
         isDragOver && 'ring-2 ring-primary ring-offset-2 border-primary'
       )}>

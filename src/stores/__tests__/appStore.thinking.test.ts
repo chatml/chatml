@@ -33,7 +33,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: 'Let me reason through this step by step...',
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -62,7 +62,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: null,
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -89,7 +89,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: '',
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -115,7 +115,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: 'Some deep thoughts here...',
           isThinking: true,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -146,7 +146,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: longThinking,
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -171,7 +171,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: 'Thinking without output',
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -197,7 +197,7 @@ describe('appStore - thinking content preservation', () => {
           thinking: 'Reasoning about the problem...',
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });
@@ -233,7 +233,7 @@ describe('appStore - appendThinkingText', () => {
           thinking: null,
           isThinking: false,
           planModeActive: false,
-          awaitingPlanApproval: false,
+          pendingPlanApproval: null,
         },
       },
     });

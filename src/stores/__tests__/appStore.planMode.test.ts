@@ -54,35 +54,35 @@ describe('appStore - Plan Mode State', () => {
     });
   });
 
-  describe('setAwaitingPlanApproval', () => {
-    it('sets awaitingPlanApproval to true', () => {
+  describe('setPendingPlanApproval / clearPendingPlanApproval', () => {
+    it('sets pendingPlanApproval with requestId', () => {
       initStreamingState(convId);
 
-      useAppStore.getState().setAwaitingPlanApproval(convId, true);
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-123');
 
       const state = useAppStore.getState().streamingState[convId];
-      expect(state?.awaitingPlanApproval).toBe(true);
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'req-123' });
     });
 
-    it('sets awaitingPlanApproval to false', () => {
+    it('clears pendingPlanApproval', () => {
       initStreamingState(convId);
 
-      useAppStore.getState().setAwaitingPlanApproval(convId, true);
-      useAppStore.getState().setAwaitingPlanApproval(convId, false);
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-123');
+      useAppStore.getState().clearPendingPlanApproval(convId);
 
       const state = useAppStore.getState().streamingState[convId];
-      expect(state?.awaitingPlanApproval).toBe(false);
+      expect(state?.pendingPlanApproval).toBeNull();
     });
 
     it('does not affect planModeActive', () => {
       initStreamingState(convId);
 
       useAppStore.getState().setPlanModeActive(convId, true);
-      useAppStore.getState().setAwaitingPlanApproval(convId, true);
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-456');
 
       const state = useAppStore.getState().streamingState[convId];
       expect(state?.planModeActive).toBe(true);
-      expect(state?.awaitingPlanApproval).toBe(true);
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'req-456' });
     });
 
     it('does not affect other conversations', () => {
@@ -90,10 +90,10 @@ describe('appStore - Plan Mode State', () => {
       initStreamingState(convId);
       initStreamingState(otherId);
 
-      useAppStore.getState().setAwaitingPlanApproval(convId, true);
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-789');
 
-      expect(useAppStore.getState().streamingState[convId]?.awaitingPlanApproval).toBe(true);
-      expect(useAppStore.getState().streamingState[otherId]?.awaitingPlanApproval).toBe(false);
+      expect(useAppStore.getState().streamingState[convId]?.pendingPlanApproval).toEqual({ requestId: 'req-789' });
+      expect(useAppStore.getState().streamingState[otherId]?.pendingPlanApproval).toBeNull();
     });
   });
 
@@ -105,11 +105,11 @@ describe('appStore - Plan Mode State', () => {
       expect(state?.planModeActive).toBe(false);
     });
 
-    it('defaults awaitingPlanApproval to false when streaming state initialized', () => {
+    it('defaults pendingPlanApproval to null when streaming state initialized', () => {
       initStreamingState(convId);
 
       const state = useAppStore.getState().streamingState[convId];
-      expect(state?.awaitingPlanApproval).toBe(false);
+      expect(state?.pendingPlanApproval).toBeNull();
     });
   });
 
@@ -124,16 +124,16 @@ describe('appStore - Plan Mode State', () => {
       initStreamingState(conv3);
 
       useAppStore.getState().setPlanModeActive(conv1, true);
-      useAppStore.getState().setAwaitingPlanApproval(conv2, true);
+      useAppStore.getState().setPendingPlanApproval(conv2, 'req-abc');
 
       expect(useAppStore.getState().streamingState[conv1]?.planModeActive).toBe(true);
-      expect(useAppStore.getState().streamingState[conv1]?.awaitingPlanApproval).toBe(false);
+      expect(useAppStore.getState().streamingState[conv1]?.pendingPlanApproval).toBeNull();
 
       expect(useAppStore.getState().streamingState[conv2]?.planModeActive).toBe(false);
-      expect(useAppStore.getState().streamingState[conv2]?.awaitingPlanApproval).toBe(true);
+      expect(useAppStore.getState().streamingState[conv2]?.pendingPlanApproval).toEqual({ requestId: 'req-abc' });
 
       expect(useAppStore.getState().streamingState[conv3]?.planModeActive).toBe(false);
-      expect(useAppStore.getState().streamingState[conv3]?.awaitingPlanApproval).toBe(false);
+      expect(useAppStore.getState().streamingState[conv3]?.pendingPlanApproval).toBeNull();
     });
   });
 
@@ -149,15 +149,15 @@ describe('appStore - Plan Mode State', () => {
       expect(state?.planModeActive).toBe(true);
     });
 
-    it('clears awaitingPlanApproval after message finalization', () => {
+    it('clears pendingPlanApproval after message finalization', () => {
       initStreamingState(convId);
-      useAppStore.getState().setAwaitingPlanApproval(convId, true);
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-fin');
       useAppStore.getState().appendStreamingText(convId, 'Some response text');
 
       useAppStore.getState().finalizeStreamingMessage(convId, {});
 
       const state = useAppStore.getState().streamingState[convId];
-      expect(state?.awaitingPlanApproval).toBe(false);
+      expect(state?.pendingPlanApproval).toBeNull();
     });
 
     it('preserves planModeActive=false after finalization', () => {

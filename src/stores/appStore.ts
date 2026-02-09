@@ -85,7 +85,7 @@ const DEFAULT_STREAMING: StreamingState = {
   thinking: null,
   isThinking: false,
   planModeActive: false,
-  awaitingPlanApproval: false,
+  pendingPlanApproval: null,
   startTime: undefined,
 };
 
@@ -131,7 +131,7 @@ interface StreamingState {
   isThinking: boolean;
   startTime?: number; // When streaming started (for elapsed time)
   planModeActive: boolean; // Whether plan mode is active for this conversation
-  awaitingPlanApproval: boolean; // Whether we're waiting for user to approve ExitPlanMode
+  pendingPlanApproval: { requestId: string } | null; // Pending ExitPlanMode approval request
 }
 
 // ActiveTool is imported from @/lib/types
@@ -300,7 +300,8 @@ interface AppState {
   setThinking: (conversationId: string, isThinking: boolean) => void;
   clearThinking: (conversationId: string) => void;
   setPlanModeActive: (conversationId: string, active: boolean) => void;
-  setAwaitingPlanApproval: (conversationId: string, awaiting: boolean) => void;
+  setPendingPlanApproval: (conversationId: string, requestId: string) => void;
+  clearPendingPlanApproval: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   updateToolProgress: (conversationId: string, toolId: string, progress: { elapsedTimeSeconds?: number; toolName?: string }) => void;
@@ -1116,7 +1117,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       error,
       thinking: null,
       isThinking: false,
-      awaitingPlanApproval: false,
+      pendingPlanApproval: null,
     }),
   })),
   clearStreamingText: (conversationId) => set((state) => ({
@@ -1128,7 +1129,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       error: null,
       thinking: null,
       isThinking: false,
-      awaitingPlanApproval: false,
+      pendingPlanApproval: null,
     }),
   })),
   appendThinkingText: (conversationId, text) => set((state) => ({
@@ -1153,9 +1154,14 @@ updateFileTabContent: (id, content) => set((state) => ({
       planModeActive: active,
     }),
   })),
-  setAwaitingPlanApproval: (conversationId, awaiting) => set((state) => ({
+  setPendingPlanApproval: (conversationId, requestId) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
-      awaitingPlanApproval: awaiting,
+      pendingPlanApproval: { requestId },
+    }),
+  })),
+  clearPendingPlanApproval: (conversationId) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      pendingPlanApproval: null,
     }),
   })),
   addActiveTool: (conversationId, tool, opts) => {
@@ -1359,7 +1365,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         thinking: null,
         isThinking: false,
         planModeActive: streaming?.planModeActive || false,
-        awaitingPlanApproval: false,
+        pendingPlanApproval: null,
       };
 
       // If no streaming text, just clear the state

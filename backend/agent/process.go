@@ -86,6 +86,9 @@ type InputMessage struct {
 	// User question response fields (for AskUserQuestion tool)
 	QuestionRequestID string            `json:"questionRequestId,omitempty"`
 	Answers           map[string]string `json:"answers,omitempty"`
+	// Plan approval response fields (for ExitPlanMode tool)
+	PlanApprovalRequestID string `json:"planApprovalRequestId,omitempty"`
+	PlanApproved          *bool  `json:"planApproved,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -480,6 +483,15 @@ func (p *Process) SendUserQuestionResponse(requestId string, answers map[string]
 		Type:              "user_question_response",
 		QuestionRequestID: requestId,
 		Answers:           answers,
+	})
+}
+
+// SendPlanApprovalResponse sends the user's approval/rejection to a pending ExitPlanMode
+func (p *Process) SendPlanApprovalResponse(requestId string, approved bool) error {
+	return p.sendInput(InputMessage{
+		Type:                  "plan_approval_response",
+		PlanApprovalRequestID: requestId,
+		PlanApproved:          &approved,
 	})
 }
 

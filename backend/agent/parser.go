@@ -226,6 +226,9 @@ const (
 	EventTypeUserQuestionRequest = "user_question_request"
 	EventTypeUserQuestionTimeout = "user_question_timeout"
 
+	// Plan approval events (ExitPlanMode tool)
+	EventTypePlanApprovalRequest = "plan_approval_request"
+
 	// Command error (SDK runtime command failed)
 	EventTypeCommandError = "command_error"
 )
