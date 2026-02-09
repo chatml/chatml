@@ -8,14 +8,12 @@ import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
 import {
   sendConversationMessage,
   createConversation,
-  deleteSession as apiDeleteSession,
   toStoreConversation,
   getCIFailureContext,
 } from '@/lib/api';
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
-import { copyToClipboard, openInApp, unregisterSession, getSessionDirName } from '@/lib/tauri';
-import { DeleteSessionDialog } from '@/components/dialogs/DeleteSessionDialog';
+import { copyToClipboard, openInApp } from '@/lib/tauri';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { CreatePRDialog } from '@/components/dialogs/CreatePRDialog';
 import { openUrlInBrowser } from '@/lib/tauri';
@@ -29,7 +27,6 @@ import {
   MoreVertical,
   Archive,
   Copy,
-  Trash2,
   GitMerge,
   MessageSquare,
   FileText,
@@ -95,11 +92,9 @@ function dispatchReview(type: string) {
 export function SessionToolbarContent() {
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const selectedConversationId = useAppStore((s) => s.selectedConversationId);
-  const removeSession = useAppStore((s) => s.removeSession);
   const addConversation = useAppStore((s) => s.addConversation);
   const selectConversation = useAppStore((s) => s.selectConversation);
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const [reviewPopoverOpen, setReviewPopoverOpen] = useState(false);
   const [openAppPopoverOpen, setOpenAppPopoverOpen] = useState(false);
@@ -176,25 +171,6 @@ export function SessionToolbarContent() {
     if (!selectedSession) return;
     requestArchive(selectedSession.id);
   }, [selectedSession, requestArchive]);
-
-  const handleDelete = useCallback(async () => {
-    if (!selectedSession || !selectedWorkspaceId) return;
-    try {
-      // Unregister from global file watcher before deleting
-      if (selectedSession.worktreePath) {
-        const dirName = getSessionDirName(selectedSession.worktreePath);
-        if (dirName) {
-          unregisterSession(dirName);
-        }
-      }
-      await apiDeleteSession(selectedWorkspaceId, selectedSession.id);
-      removeSession(selectedSession.id);
-      showSuccess('Session deleted');
-    } catch (error) {
-      console.error('Failed to delete session:', error);
-      showError('Failed to delete session');
-    }
-  }, [selectedSession, selectedWorkspaceId, removeSession, showSuccess, showError]);
 
   const storeUpdateSession = useAppStore((s) => s.updateSession);
 
@@ -458,9 +434,6 @@ export function SessionToolbarContent() {
                 <DropdownMenuItem onSelect={handleArchive}>
                   <Archive /> Archive Session
                 </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onSelect={() => setShowDeleteDialog(true)}>
-                  <Trash2 /> Delete Session
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -473,12 +446,6 @@ export function SessionToolbarContent() {
 
   return (
     <>
-      <DeleteSessionDialog
-        open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
-        onConfirm={handleDelete}
-        sessionName={selectedSession?.task || selectedSession?.branch || 'this session'}
-      />
       {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
       {selectedWorkspaceId && selectedSessionId && (
         <CreatePRDialog

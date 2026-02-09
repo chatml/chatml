@@ -36,7 +36,6 @@ const defaultProps = {
   session: baseSession,
   workspace: baseWorkspace,
   onRestore: vi.fn(),
-  onDelete: vi.fn(),
 };
 
 describe('ArchivedSessionPreviewDialog', () => {
@@ -173,24 +172,6 @@ describe('ArchivedSessionPreviewDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Restore' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onRestore).toHaveBeenCalledOnce();
-  });
-
-  it('calls onDelete and closes dialog when Delete permanently clicked', async () => {
-    const user = userEvent.setup();
-    const onDelete = vi.fn();
-    const onOpenChange = vi.fn();
-
-    render(
-      <ArchivedSessionPreviewDialog
-        {...defaultProps}
-        onDelete={onDelete}
-        onOpenChange={onOpenChange}
-      />
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Delete permanently' }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(onDelete).toHaveBeenCalledOnce();
   });
 
   it('shows worktree path as last 3 segments', () => {

@@ -359,11 +359,6 @@ export async function updateSession(
   return handleResponse<SessionDTO>(res);
 }
 
-export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}`, { method: 'DELETE' });
-  await handleVoidResponse(res, 'Failed to delete session');
-}
-
 // Branch types
 export interface BranchDTO {
   name: string;

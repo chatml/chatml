@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback } from 'react';
-import { Layers, Archive, ExternalLink, Copy, FolderOpen, Eye, Trash2 } from 'lucide-react';
+import { Layers, Archive, ExternalLink, Copy, FolderOpen, Eye } from 'lucide-react';
 import type { WorktreeSession, Workspace, SessionPriority, SessionTaskStatus } from '@/lib/types';
 import { DataTable, type Column, type ContextMenuItem, type DisplayOptionsConfig } from '@/components/data-table';
 import {
@@ -39,7 +39,6 @@ interface SessionsDataTableProps {
   onArchiveSession: (sessionId: string) => void;
   onUnarchiveSession: (sessionId: string) => void;
   onPreviewSession?: (sessionId: string) => void;
-  onDeleteSession?: (sessionId: string) => void;
 }
 
 // Helper to get date group label
@@ -65,7 +64,6 @@ export function SessionsDataTable({
   onArchiveSession,
   onUnarchiveSession,
   onPreviewSession,
-  onDeleteSession,
 }: SessionsDataTableProps) {
   // Transform sessions into table rows
   const tableData = sessions
@@ -247,19 +245,6 @@ export function SessionsDataTable({
           icon: <Archive className="h-4 w-4" />,
           onClick: () => onUnarchiveSession(row.session.id),
         });
-        if (onDeleteSession) {
-          items.push({
-            label: '',
-            separator: true,
-            onClick: () => {},
-          });
-          items.push({
-            label: 'Delete permanently',
-            icon: <Trash2 className="h-4 w-4" />,
-            onClick: () => onDeleteSession(row.session.id),
-            variant: 'destructive',
-          });
-        }
       } else {
         items.push({
           label: 'Archive',
@@ -279,7 +264,7 @@ export function SessionsDataTable({
 
       return items;
     },
-    [onSelectSession, onArchiveSession, onUnarchiveSession, onPreviewSession, onDeleteSession, toast]
+    [onSelectSession, onArchiveSession, onUnarchiveSession, onPreviewSession, toast]
   );
 
   // Display options configuration

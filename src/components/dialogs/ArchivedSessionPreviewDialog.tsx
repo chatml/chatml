@@ -40,7 +40,6 @@ interface ArchivedSessionPreviewDialogProps {
   session: WorktreeSession;
   workspace: Workspace;
   onRestore: () => void;
-  onDelete: () => void;
 }
 
 export function ArchivedSessionPreviewDialog({
@@ -49,7 +48,6 @@ export function ArchivedSessionPreviewDialog({
   session,
   workspace,
   onRestore,
-  onDelete,
 }: ArchivedSessionPreviewDialogProps) {
   const worktreeDisplay = session.worktreePath
     ? session.worktreePath.split('/').slice(-3).join('/')
@@ -202,18 +200,7 @@ export function ArchivedSessionPreviewDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="px-4 py-3 border-t flex-row justify-between sm:justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={() => {
-              onOpenChange(false);
-              onDelete();
-            }}
-          >
-            Delete permanently
-          </Button>
+        <DialogFooter className="px-4 py-3 border-t">
           <Button
             size="sm"
             onClick={() => {
