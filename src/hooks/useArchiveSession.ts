@@ -42,9 +42,11 @@ export function useArchiveSession(options?: {
       const session = findSession(sessionId);
       if (!session) return;
 
+      const { deleteBranchOnArchive } = useSettingsStore.getState();
       try {
         await updateSessionApi(session.workspaceId, sessionId, {
           archived: true,
+          ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
         });
         archiveSession(sessionId);
         onSuccessRef.current?.();

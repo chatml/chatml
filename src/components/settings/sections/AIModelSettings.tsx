@@ -29,6 +29,8 @@ export function AIModelSettings() {
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
   const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
   const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
+  const showChatCost = useSettingsStore((s) => s.showChatCost);
+  const setShowChatCost = useSettingsStore((s) => s.setShowChatCost);
   const autoApproveSafeCommands = useSettingsStore((s) => s.autoApproveSafeCommands);
   const setAutoApproveSafeCommands = useSettingsStore((s) => s.setAutoApproveSafeCommands);
 
@@ -114,10 +116,17 @@ export function AIModelSettings() {
       </SettingsRow>
 
       <SettingsRow
-        title="Auto-approve safe commands"
-        description="Automatically approve read-only commands"
+        title="Show cost"
+        description="Display cost in run summaries"
       >
-        <Switch checked={autoApproveSafeCommands} onCheckedChange={setAutoApproveSafeCommands} />
+        <Switch checked={showChatCost} onCheckedChange={setShowChatCost} />
+      </SettingsRow>
+
+      <SettingsRow
+        title="Auto-approve safe commands"
+        description="Automatically approve read-only commands (coming soon)"
+      >
+        <Switch checked={autoApproveSafeCommands} onCheckedChange={setAutoApproveSafeCommands} disabled />
       </SettingsRow>
 
       {/* Anthropic API Key */}

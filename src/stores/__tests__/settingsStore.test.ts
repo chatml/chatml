@@ -392,62 +392,6 @@ describe('settingsStore', () => {
     });
   });
 
-  describe('parallelAgents', () => {
-    beforeEach(() => {
-      useSettingsStore.setState({ parallelAgents: false });
-    });
-
-    it('should have a default value of false', () => {
-      const { parallelAgents } = useSettingsStore.getState();
-      expect(parallelAgents).toBe(false);
-    });
-
-    it('should update parallelAgents when setParallelAgents is called', () => {
-      const { setParallelAgents } = useSettingsStore.getState();
-      setParallelAgents(true);
-      expect(useSettingsStore.getState().parallelAgents).toBe(true);
-    });
-
-    it('should not affect other settings when setParallelAgents is called', () => {
-      const initialState = useSettingsStore.getState();
-      const { setParallelAgents } = useSettingsStore.getState();
-      setParallelAgents(true);
-      const newState = useSettingsStore.getState();
-      
-      expect(newState.showThinkingBlocks).toBe(initialState.showThinkingBlocks);
-      expect(newState.reviewModel).toBe(initialState.reviewModel);
-      expect(newState.strictPrivacy).toBe(initialState.strictPrivacy);
-    });
-  });
-
-  describe('developerMode', () => {
-    beforeEach(() => {
-      useSettingsStore.setState({ developerMode: false });
-    });
-
-    it('should have a default value of false', () => {
-      const { developerMode } = useSettingsStore.getState();
-      expect(developerMode).toBe(false);
-    });
-
-    it('should update developerMode when setDeveloperMode is called', () => {
-      const { setDeveloperMode } = useSettingsStore.getState();
-      setDeveloperMode(true);
-      expect(useSettingsStore.getState().developerMode).toBe(true);
-    });
-
-    it('should not affect other settings when setDeveloperMode is called', () => {
-      const initialState = useSettingsStore.getState();
-      const { setDeveloperMode } = useSettingsStore.getState();
-      setDeveloperMode(true);
-      const newState = useSettingsStore.getState();
-      
-      expect(newState.showThinkingBlocks).toBe(initialState.showThinkingBlocks);
-      expect(newState.reviewModel).toBe(initialState.reviewModel);
-      expect(newState.parallelAgents).toBe(initialState.parallelAgents);
-    });
-  });
-
   describe('getBranchPrefix', () => {
     beforeEach(() => {
       useSettingsStore.setState({ 

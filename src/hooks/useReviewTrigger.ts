@@ -6,6 +6,7 @@ import {
   getWorkspaceReviewPrompts,
 } from '@/lib/api';
 import { useSelectedIds } from '@/stores/selectors';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const REVIEW_PROMPTS: Record<string, string> = {
   quick:
@@ -91,9 +92,11 @@ export function useReviewTrigger() {
         : basePrompt;
 
       try {
+        const { reviewModel } = useSettingsStore.getState();
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: 'review',
           message,
+          model: reviewModel,
         });
 
         if (stale) return;

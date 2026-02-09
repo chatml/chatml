@@ -40,6 +40,7 @@ interface PlateInputProps {
   onSlashCommandExecute?: (command: UnifiedSlashCommand) => void;
   onInput?: (text: string) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
+  onPaste?: (e: React.ClipboardEvent) => void;
   onFocus?: () => void;
   onBlur?: () => void;
 }
@@ -102,6 +103,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       onSlashCommandExecute,
       onInput,
       onKeyDown,
+      onPaste,
       onFocus,
       onBlur,
     },
@@ -193,7 +195,7 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       <SlashCommandItemsContext.Provider value={slashCommandContextValue}>
         <MentionItemsContext.Provider value={mentionContextValue}>
           <Plate editor={editor} onChange={handleChange}>
-            <div onKeyDown={handleKeyDown}>
+            <div onKeyDown={handleKeyDown} onPasteCapture={onPaste}>
               <EditorContainer variant="default" className="p-0 rounded-none">
                 <Editor
                   variant="none"

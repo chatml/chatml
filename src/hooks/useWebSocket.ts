@@ -12,7 +12,8 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi } from '@/lib/api';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
@@ -299,8 +300,8 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'name_suggestion':
-        // Update conversation name
-        if (event?.name) {
+        // Update conversation name (unless strict privacy is enabled)
+        if (event?.name && !useSettingsStore.getState().strictPrivacy) {
           store.updateConversation(conversationId, { name: event.name });
         }
         break;
@@ -952,6 +953,25 @@ export function useWebSocket(enabled: boolean = true) {
             }
 
             getStore().updateSession(data.sessionId, updates);
+
+            // Auto-archive on merge if setting is enabled
+            if (updates.prStatus === 'merged') {
+              const { archiveOnMerge, deleteBranchOnArchive } = useSettingsStore.getState();
+              const sid = data.sessionId!;
+              if (archiveOnMerge) {
+                const session = getStore().sessions.find((s: { id: string }) => s.id === sid);
+                if (session && !session.archived) {
+                  updateSessionApi(session.workspaceId, sid, {
+                    archived: true,
+                    ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
+                  }).then(() => {
+                    getStore().archiveSession(sid);
+                  }).catch((err: unknown) => {
+                    console.error('Failed to auto-archive on merge:', err);
+                  });
+                }
+              }
+            }
           }
           return;
         }

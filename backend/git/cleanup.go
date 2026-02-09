@@ -453,6 +453,14 @@ func (rm *RepoManager) isNameProtected(name string, currentBranch string, sessio
 }
 
 // deleteLocalBranch deletes a local git branch
+// DeleteLocalBranch force-deletes a local git branch.
+func (rm *RepoManager) DeleteLocalBranch(ctx context.Context, repoPath string, name string) error {
+	if IsProtectedBranch(name) {
+		return fmt.Errorf("refusing to delete protected branch %q", name)
+	}
+	return rm.deleteLocalBranch(ctx, repoPath, name, false)
+}
+
 func (rm *RepoManager) deleteLocalBranch(ctx context.Context, repoPath string, name string, isMerged bool) error {
 	// Use -d (safe) for merged branches, -D (force) for unmerged
 	flag := "-d"
