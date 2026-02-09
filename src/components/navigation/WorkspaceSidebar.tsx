@@ -131,6 +131,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const [prStatusFilters, setPrStatusFilters] = useState<Set<'none' | 'open' | 'merged' | 'closed'>>(new Set());
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false);
   const { error: showError } = useToast();
 
   const menuHandlers = {
@@ -255,6 +256,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const handleCreateSession = async (workspaceId: string) => {
+    /* eslint-disable react-hooks/purity -- only called from event handlers, not during render */
     // Generate a temporary ID for the optimistic placeholder
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
@@ -348,6 +350,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       removeFromStore(tempId);
       showError('Failed to create session');
     }
+    /* eslint-enable react-hooks/purity */
   };
 
   const handleArchiveSession = (sessionId: string) => {
@@ -449,7 +452,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Section header label
-  const sectionHeaderLabel = (sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status') ? 'Projects' : 'Sessions';
+  const sectionHeaderLabel = 'Sessions';
 
   // Group by toggle helpers — two independent booleans compose into the 4 groupBy states
   const isGroupByProject = sidebarGroupBy === 'project' || sidebarGroupBy === 'project-status';
@@ -605,15 +608,46 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <button
-                  className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1"
-                  onClick={() => {
-                    const targetId = selectedWorkspaceId || workspaces[0]?.id;
-                    if (targetId) handleCreateSession(targetId);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
+                {workspaces.length <= 1 ? (
+                  <button
+                    className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1"
+                    onClick={() => {
+                      const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                      if (targetId) handleCreateSession(targetId);
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <DropdownMenu open={newSessionMenuOpen} onOpenChange={setNewSessionMenuOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <button className="text-foreground hover:text-foreground transition-colors p-0.5 rounded hover:bg-surface-1">
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-52"
+                      onKeyDown={(e) => {
+                        const num = parseInt(e.key, 10);
+                        if (num >= 1 && num <= workspaces.length) {
+                          e.preventDefault();
+                          setNewSessionMenuOpen(false);
+                          handleCreateSession(workspaces[num - 1].id);
+                        }
+                      }}
+                    >
+                      <DropdownMenuLabel>New session in...</DropdownMenuLabel>
+                      {workspaces.map((w, i) => (
+                        <DropdownMenuItem key={w.id} onClick={() => handleCreateSession(w.id)}>
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
+                          <span className="truncate">{w.name}</span>
+                          <DropdownMenuShortcut>{i + 1}</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 </div>
               </div>
               {workspaces.length === 0 ? (
@@ -840,13 +874,40 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
         <ContextMenuContent>
                 {workspaces.length > 0 && (
                   <>
-                    <ContextMenuItem onClick={() => {
-                      const targetId = selectedWorkspaceId || workspaces[0]?.id;
-                      if (targetId) handleCreateSession(targetId);
-                    }}>
-                      <Bot className="h-4 w-4" />
-                      New Session
-                    </ContextMenuItem>
+                    {workspaces.length <= 1 ? (
+                      <ContextMenuItem onClick={() => {
+                        const targetId = selectedWorkspaceId || workspaces[0]?.id;
+                        if (targetId) handleCreateSession(targetId);
+                      }}>
+                        <Bot className="h-4 w-4" />
+                        New Session
+                      </ContextMenuItem>
+                    ) : (
+                      <ContextMenuSub>
+                        <ContextMenuSubTrigger>
+                          <Bot className="h-4 w-4" />
+                          New Session
+                        </ContextMenuSubTrigger>
+                        <ContextMenuSubContent
+                          className="w-48"
+                          onKeyDown={(e) => {
+                            const num = parseInt(e.key, 10);
+                            if (num >= 1 && num <= workspaces.length) {
+                              e.preventDefault();
+                              handleCreateSession(workspaces[num - 1].id);
+                            }
+                          }}
+                        >
+                          {workspaces.map((w, i) => (
+                            <ContextMenuItem key={w.id} onClick={() => handleCreateSession(w.id)}>
+                              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: workspaceColors[w.id] || getWorkspaceColor(w.id) }} />
+                              <span className="truncate">{w.name}</span>
+                              <span className="text-muted-foreground ml-auto text-xs tracking-widest">{i + 1}</span>
+                            </ContextMenuItem>
+                          ))}
+                        </ContextMenuSubContent>
+                      </ContextMenuSub>
+                    )}
                     <ContextMenuSeparator />
                     <ContextMenuSub>
                       <ContextMenuSubTrigger>
@@ -1296,11 +1357,6 @@ function SortableWorkspaceItem({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={onToggleUnread}>
-                    {isUnread ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
-                    {isUnread ? 'Mark as read' : 'Mark as unread'}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => onOpenBranches()}>
                     <GitBranch className="size-4" />
                     Branches
@@ -1861,11 +1917,6 @@ function SortableProjectStatusItem({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenuItem onClick={onToggleUnread}>
-                        {isUnread ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
-                        {isUnread ? 'Mark as read' : 'Mark as unread'}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => onOpenBranches()}>
                         <GitBranch className="size-4" />
                         Branches
