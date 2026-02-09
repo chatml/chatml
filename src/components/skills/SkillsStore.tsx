@@ -13,6 +13,7 @@ import {
   Code,
   FileText,
   GitBranch,
+  Shield,
   Plus,
   Check,
   RefreshCw,
@@ -24,6 +25,7 @@ import type { SkillDTO, SkillCategory } from '@/lib/api';
 export const CATEGORY_ICON_MAP: Record<SkillCategory, ComponentType<{ className?: string }>> = {
   'development': Code,
   'documentation': FileText,
+  'security': Shield,
   'version-control': GitBranch,
 };
 
