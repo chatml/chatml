@@ -769,6 +769,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sessionId = conversation?.sessionId || state.selectedSessionId;
     set({
       selectedConversationId: id,
+      checkpoints: [],
       ...(sessionId && id ? {
         lastActiveConversationPerSession: {
           ...state.lastActiveConversationPerSession,

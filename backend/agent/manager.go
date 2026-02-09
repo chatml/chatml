@@ -190,9 +190,10 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 
 	// Build process options
 	procOpts := ProcessOptions{
-		ID:             convID,
-		Workdir:        session.WorktreePath,
-		ConversationID: convID,
+		ID:                  convID,
+		Workdir:             session.WorktreePath,
+		ConversationID:      convID,
+		EnableCheckpointing: true,
 	}
 
 	// Always pass the effective target branch to the agent-runner so it doesn't
@@ -702,6 +703,7 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			// No previous process options (first start via this path) — use minimal config
 			restartOpts.ID = convID
 			restartOpts.ConversationID = convID
+			restartOpts.EnableCheckpointing = true
 		}
 		restartOpts.Workdir = session.WorktreePath
 		// Restore model from conversation record if not already set
