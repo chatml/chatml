@@ -33,7 +33,7 @@ import { useToast } from '@/components/ui/toast';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
-import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents } from '@/lib/attachments';
+import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -99,7 +99,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
-  const [planModeEnabled, setPlanModeEnabled] = useState(false);
+  const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
+  const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
+  const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
+  const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -122,7 +125,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearPendingPlanApproval,
     clearActiveTools,
   } = useAppStore();
-  const { error: showError } = useToast();
+  const { error: showError, info: showInfo } = useToast();
 
   // File mentions for Plate editor
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
@@ -302,6 +305,31 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     });
     if (validationError) showError(validationError);
   }, [showError]);
+
+  // Auto-convert long pasted text to attachment
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (!autoConvertLongText) return;
+    const text = e.clipboardData.getData('text/plain');
+    if (text.length <= 5000) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const blob = new Blob([text], { type: 'text/plain' });
+    const attachment: Attachment = {
+      id: generateAttachmentId(),
+      type: 'file',
+      name: 'pasted-text.txt',
+      mimeType: 'text/plain',
+      size: blob.size,
+      lineCount: text.split('\n').length,
+      base64Data: btoa(unescape(encodeURIComponent(text))),
+      preview: text.slice(0, 200),
+    };
+
+    setAttachments(prev => [...prev, attachment]);
+    showInfo(`Long text (${Math.round(text.length / 1000)}k chars) converted to attachment`);
+  }, [autoConvertLongText, showInfo]);
 
   // Handle attachment removal
   const handleRemoveAttachment = useCallback((id: string) => {
@@ -648,10 +676,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       handleApprovePlan();
       return;
     }
-    // Regular Enter to submit (or send feedback when awaiting approval)
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
+    // Submit: Enter (default) or Cmd/Ctrl+Enter (if sendWithEnter is off)
+    if (e.key === 'Enter') {
+      const shouldSubmit = sendWithEnter
+        ? !e.shiftKey && !e.metaKey && !e.ctrlKey
+        : (e.metaKey || e.ctrlKey) && !e.shiftKey;
+      if (shouldSubmit) {
+        e.preventDefault();
+        handleSubmit();
+      }
     }
   };
 
@@ -792,6 +825,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               setMessage(text);
             }}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
@@ -935,7 +969,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               )}
               onClick={handleSubmit}
               disabled={!message.trim() || !selectedSessionId || isSending}
-              aria-label="Send message"
+              aria-label={sendWithEnter ? 'Send message (Enter)' : 'Send message (⌘Enter)'}
+              title={sendWithEnter ? 'Send (Enter)' : 'Send (⌘Enter)'}
             >
               <ArrowUp className="h-4 w-4" />
             </Button>

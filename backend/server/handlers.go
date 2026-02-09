@@ -1883,6 +1883,7 @@ type UpdateSessionRequest struct {
 	HasCheckFailures *bool   `json:"hasCheckFailures,omitempty"`
 	Pinned           *bool   `json:"pinned,omitempty"`
 	Archived         *bool   `json:"archived,omitempty"`
+	DeleteBranch     *bool   `json:"deleteBranch,omitempty"`
 	Priority         *int    `json:"priority,omitempty"`
 	TaskStatus       *string `json:"taskStatus,omitempty"`
 }
@@ -1992,6 +1993,16 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 		} else {
 			session.ArchiveSummaryStatus = models.SummaryStatusGenerating
 			go h.generateArchiveSummary(id)
+		}
+	}
+
+	// Delete local branch on archive if requested
+	if req.DeleteBranch != nil && *req.DeleteBranch && req.Archived != nil && *req.Archived && session.Branch != "" {
+		repo, repoErr := h.store.GetRepo(ctx, session.WorkspaceID)
+		if repoErr == nil && repo != nil {
+			if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
+				logger.Error.Errorf("Failed to delete branch %q on archive: %v", session.Branch, delErr)
+			}
 		}
 	}
 

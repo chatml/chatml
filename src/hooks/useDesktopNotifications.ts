@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { sendNotification } from '@/lib/tauri';
+import { playSound } from '@/lib/sounds';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAppStore } from '@/stores/appStore';
 
@@ -36,6 +37,12 @@ export function notifyDesktop(conversationId: string, title: string, body: strin
   debounceMap.set(conversationId, Date.now());
   lastNotification = { conversationId, time: Date.now() };
   sendNotification(title, body).catch(() => {});
+
+  // Play sound effect if enabled
+  const { soundEffects, soundEffectType } = useSettingsStore.getState();
+  if (soundEffects) {
+    playSound(soundEffectType);
+  }
 }
 
 /**

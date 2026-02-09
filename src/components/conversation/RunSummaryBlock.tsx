@@ -36,6 +36,7 @@ interface RunSummaryBlockProps {
 export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
+  const showChatCost = useSettingsStore((s) => s.showChatCost);
 
   const formatDuration = (ms?: number) => {
     if (!ms) return null;
@@ -120,7 +121,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
         )}
 
         {/* Cost */}
-        {cost && (
+        {showChatCost && cost && (
           <span className="flex items-center gap-1">
             <DollarSign className="w-3 h-3" />
             {cost}

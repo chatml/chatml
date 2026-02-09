@@ -14,10 +14,6 @@ import { SettingsRow } from '../shared/SettingsRow';
 export function AdvancedSettings() {
   const minimizeToTray = useSettingsStore((s) => s.minimizeToTray);
   const setMinimizeToTraySetting = useSettingsStore((s) => s.setMinimizeToTray);
-  const developerMode = useSettingsStore((s) => s.developerMode);
-  const setDeveloperMode = useSettingsStore((s) => s.setDeveloperMode);
-  const parallelAgents = useSettingsStore((s) => s.parallelAgents);
-  const setParallelAgents = useSettingsStore((s) => s.setParallelAgents);
   const toasts = useToast();
 
   const handleMinimizeToTrayChange = (enabled: boolean) => {
@@ -51,28 +47,6 @@ export function AdvancedSettings() {
           checked={minimizeToTray}
           onCheckedChange={handleMinimizeToTrayChange}
         />
-      </SettingsRow>
-
-      <SettingsRow
-        title="Developer mode"
-        description="Show additional debugging information"
-      >
-        <Switch
-          checked={developerMode}
-          onCheckedChange={setDeveloperMode}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        title="Parallel agents"
-        description="Enable multiple agents working in parallel"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-2xs text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">
-            Experimental
-          </span>
-          <Switch checked={parallelAgents} onCheckedChange={setParallelAgents} />
-        </div>
       </SettingsRow>
 
       {/* ChatML root directory */}

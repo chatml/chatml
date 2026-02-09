@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { requestNotificationPermission } from '@/lib/tauri';
+import { playSound } from '@/lib/sounds';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import { APP_REGISTRY } from '@/lib/openApps';
 import { SettingsRow } from '../shared/SettingsRow';
@@ -105,10 +106,7 @@ export function GeneralSettings() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              // TODO: Wire to actual sound playback
-              console.log('Test sound:', soundEffectType);
-            }}
+            onClick={() => playSound(soundEffectType)}
           >
             Test
           </Button>

@@ -89,10 +89,6 @@ interface SettingsState {
   autoApproveSafeCommands: boolean;
   // Account settings
   strictPrivacy: boolean;
-  // Experimental settings
-  parallelAgents: boolean;
-  // Advanced settings
-  developerMode: boolean;
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   unreadWorkspaces: string[]; // Workspace IDs marked as unread
@@ -158,8 +154,6 @@ interface SettingsState {
   setArchiveOnMerge: (value: boolean) => void;
   setAutoApproveSafeCommands: (value: boolean) => void;
   setStrictPrivacy: (value: boolean) => void;
-  setParallelAgents: (value: boolean) => void;
-  setDeveloperMode: (value: boolean) => void;
   setShowBottomTerminal: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
@@ -219,8 +213,6 @@ export const useSettingsStore = create<SettingsState>()(
       archiveOnMerge: false,
       autoApproveSafeCommands: true,
       strictPrivacy: false,
-      parallelAgents: false,
-      developerMode: false,
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       unreadWorkspaces: [], // Workspace IDs marked as unread
       showBottomTerminal: false,
@@ -271,8 +263,6 @@ export const useSettingsStore = create<SettingsState>()(
       setArchiveOnMerge: (value) => set({ archiveOnMerge: value }),
       setAutoApproveSafeCommands: (value) => set({ autoApproveSafeCommands: value }),
       setStrictPrivacy: (value) => set({ strictPrivacy: value }),
-      setParallelAgents: (value) => set({ parallelAgents: value }),
-      setDeveloperMode: (value) => set({ developerMode: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),
       toggleWorkspaceCollapsed: (workspaceId) =>
