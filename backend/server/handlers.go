@@ -999,29 +999,17 @@ func (h *Handlers) DeleteRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 
-	// Clean up all session worktrees BEFORE cascade-deleting from DB.
-	// The sessions table has ON DELETE CASCADE from repos, so the DB delete
-	// removes all session records — but we must remove worktree directories first.
-	// This is the opposite order from DeleteSession (which does DB-first) because
-	// cascade deletion would destroy the session records we need for cleanup.
-	// If worktree removal partially fails here, the startup orphan cleanup will catch it.
+	// Clean up session metadata before cascade-deleting from DB.
+	// Worktree directories are intentionally preserved on disk —
+	// session worktrees are permanent artifacts.
 	sessions, err := h.store.ListSessions(ctx, id, true) // include archived
 	if err != nil {
 		writeDBError(w, err)
 		return
 	}
-	repo, err := h.store.GetRepo(ctx, id)
-	if err != nil {
-		logger.Cleanup.Warnf("Failed to get repo %s for worktree cleanup: %v", id, err)
-	}
-	if repo != nil {
-		for _, sess := range sessions {
-			if sess.WorktreePath != "" {
-				session.DeleteMetadata(sess.ID)
-				if rmErr := h.worktreeManager.RemoveAtPath(ctx, repo.Path, sess.WorktreePath, sess.Branch); rmErr != nil {
-					logger.Cleanup.Warnf("Failed to remove worktree %s during repo delete: %v", sess.WorktreePath, rmErr)
-				}
-			}
+	for _, sess := range sessions {
+		if sess.WorktreePath != "" {
+			session.DeleteMetadata(sess.ID)
 		}
 	}
 
@@ -2171,7 +2159,7 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Capture cleanup info BEFORE deleting from DB
-	var repoPath, branch, sessionName string
+	var repoPath, sessionName string
 	if sess != nil {
 		// Stop watching for branch changes
 		if h.branchWatcher != nil {
@@ -2190,7 +2178,6 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		}
 		if repo != nil {
 			repoPath = repo.Path
-			branch = sess.Branch
 			sessionName = sess.Name
 		}
 	}
@@ -2204,14 +2191,10 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// THEN clean up disk resources (best-effort).
-	// If worktree removal fails, orphan cleanup at startup will catch it.
+	// Clean up metadata and caches. Worktree directory is intentionally
+	// preserved on disk — session worktrees are permanent artifacts.
 	if worktreePath != "" && repoPath != "" {
 		session.DeleteMetadata(sessionID)
-
-		if err := h.worktreeManager.RemoveAtPath(ctx, repoPath, worktreePath, branch); err != nil {
-			logger.Cleanup.Warnf("Failed to remove worktree for deleted session %s at %s: %v", sessionID, worktreePath, err)
-		}
 
 		h.sessionNameCache.Remove(sessionName)
 		h.branchCache.InvalidateRepo(repoPath)

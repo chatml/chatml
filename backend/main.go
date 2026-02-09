@@ -15,7 +15,6 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
-	// "github.com/chatml/chatml-backend/cleanup" // disabled: investigating worktree disappearance
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/logger"
@@ -94,13 +93,6 @@ func main() {
 
 	hub := server.NewHub()
 	wm := git.NewWorktreeManager()
-
-	// TODO: Orphan cleanup disabled while investigating worktree disappearance.
-	// Suspect: another app (Conductor) sharing the same git repo may be deleting
-	// ChatML's worktrees via its own cleanup logic.
-	// if err := cleanup.CleanOrphanedWorktrees(ctx, s, wm); err != nil {
-	// 	logger.Cleanup.Warnf("Failed to clean orphaned worktrees: %v", err)
-	// }
 
 	// Validate that registered repos still exist on disk (diagnostic only).
 	// This logs warnings for operator awareness but does not remove stale entries,
