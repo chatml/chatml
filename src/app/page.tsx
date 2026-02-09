@@ -11,7 +11,7 @@ import {
   usePageActions,
   useMessages,
 } from '@/stores/selectors';
-import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, DEFAULT_LAYOUTS } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
@@ -402,7 +402,10 @@ export default function Home() {
     // Only act if the panel state doesn't match the desired state
     const isCollapsed = panel.isCollapsed();
     if (showBottomTerminal && isCollapsed) {
-      panel.expand();
+      // Restore to last known open size, or default 30%
+      const savedSize = layoutVertical?.['bottom-terminal'];
+      const size = savedSize && savedSize > 0 ? savedSize : DEFAULT_LAYOUTS.vertical['bottom-terminal'];
+      panel.resize(`${size}%`);
     } else if (!showBottomTerminal && !isCollapsed) {
       panel.collapse();
     }
@@ -1336,7 +1339,12 @@ export default function Home() {
                     direction="vertical"
                     className="h-full"
                     defaultLayout={layoutVertical}
-                    onLayoutChange={setLayoutVertical}
+                    onLayoutChange={(layout) => {
+                      // Don't persist collapsed layouts — remember the last "open" split
+                      if (layout['bottom-terminal'] && layout['bottom-terminal'] > 0) {
+                        setLayoutVertical(layout);
+                      }
+                    }}
                   >
                     {/* Conversation Area */}
                     <ResizablePanel id="conversation" minSize={20}>
@@ -1368,7 +1376,7 @@ export default function Home() {
                           collapsible={true}
                           collapsedSize={0}
                         >
-                          <div className={showBottomTerminal ? 'h-full' : 'h-0 overflow-hidden'}>
+                          <div className="h-full">
                             <ErrorBoundary section="Terminal">
                               <BottomTerminal
                                 sessionId={selectedSession.id}

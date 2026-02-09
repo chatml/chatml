@@ -400,6 +400,11 @@ export const useSettingsStore = create<SettingsState>()(
           merged.topTabOrder = [...existingOrder, ...missingTabs];
         }
 
+        // Clear poisoned vertical layout (terminal collapsed state shouldn't be persisted)
+        if (persisted.layoutVertical && persisted.layoutVertical['bottom-terminal'] === 0) {
+          merged.layoutVertical = undefined;
+        }
+
         return merged;
       },
     }
