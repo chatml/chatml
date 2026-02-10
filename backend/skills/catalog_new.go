@@ -1225,3 +1225,517 @@ When a dialog opens, move focus to the dialog element. When a dialog closes, ret
 - Components that will be replaced before shipping
 - Third-party embeds you cannot control (document the limitation instead)
 `
+
+const unitTestingContent = `---
+name: unit-testing
+description: Write effective unit tests — structure, patterns, doubles, and polyglot guidance
+category: development
+version: 1.0.0
+---
+
+# Unit Testing Guide
+
+A comprehensive guide to writing unit tests that catch bugs, survive refactors, and serve as living documentation. This covers the mechanics of writing tests — for the Red-Green-Refactor workflow, see the TDD skill.
+
+All patterns apply across languages unless marked otherwise. Examples use TypeScript (Vitest), Go, Python (pytest), and Rust.
+
+## What to Test
+
+Focus testing effort where it delivers the most value.
+
+| Test This | Why |
+|---|---|
+| Public API behavior and return values | This is the contract other code depends on |
+| Edge cases (empty input, nil, zero, boundary values) | Most bugs hide at the edges |
+| Error paths and failure modes | Callers need to know what happens when things go wrong |
+| State transitions | Verify that operations move state from A to B correctly |
+| Business rules and validation logic | These encode domain requirements that must not silently break |
+| Conditional branches | Every branch is a decision that can go wrong |
+
+## What NOT to Test
+
+| Skip This | Why |
+|---|---|
+| Framework and library internals | The framework maintainers test these already |
+| Trivial getters and setters with no logic | No branching means no bugs; the test just duplicates the code |
+| Private methods directly | Test them through the public interface that calls them |
+| Implementation details (internal variable names, call order) | These tests break on every refactor without catching real bugs |
+| Third-party library behavior | Test at the boundary where your code meets the library, not the library itself |
+| Generated code | The generator is responsible for correctness; test your inputs to the generator |
+
+## Test Structure
+
+### Arrange-Act-Assert
+
+The fundamental pattern for every unit test. Separate setup, execution, and verification into three distinct blocks.
+
+**TypeScript (Vitest):**
+
+    describe('calculateTotal', () => {
+      it('should apply discount when total exceeds threshold', () => {
+        // Arrange
+        const items = [{ price: 100 }, { price: 200 }]
+        const discount = 0.1
+
+        // Act
+        const total = calculateTotal(items, discount)
+
+        // Assert
+        expect(total).toBe(270)
+      })
+    })
+
+**Go:**
+
+    func TestCalculateTotal_WithDiscount(t *testing.T) {
+        // Arrange
+        items := []Item{{Price: 100}, {Price: 200}}
+        discount := 0.1
+
+        // Act
+        total := CalculateTotal(items, discount)
+
+        // Assert
+        if total != 270 {
+            t.Errorf("got %f, want 270", total)
+        }
+    }
+
+**Python (pytest):**
+
+    def test_calculate_total_with_discount():
+        # Arrange
+        items = [{"price": 100}, {"price": 200}]
+        discount = 0.1
+
+        # Act
+        total = calculate_total(items, discount)
+
+        # Assert
+        assert total == 270
+
+### Given-When-Then
+
+An alternative naming frame that maps directly to AAA. Use it when test names benefit from a behavioral description:
+
+- **Given** (Arrange) — the initial state or preconditions
+- **When** (Act) — the action being tested
+- **Then** (Assert) — the expected outcome
+
+This is a naming convention, not a different structure. Use whichever reads more naturally for the test.
+
+## Test Naming
+
+A failing test name should explain what is broken without reading the test body.
+
+| Language | Convention | Example |
+|---|---|---|
+| TypeScript | ` + "`" + `describe("Module")` + "`" + ` + ` + "`" + `it("should behavior when condition")` + "`" + ` | ` + "`" + `it("should return error when email is empty")` + "`" + ` |
+| Go | ` + "`" + `TestFunction_Condition_Expected` + "`" + ` or table-driven ` + "`" + `name` + "`" + ` field | ` + "`" + `TestCreateUser_EmptyEmail_ReturnsError` + "`" + ` |
+| Python | ` + "`" + `test_function_condition_expected` + "`" + ` | ` + "`" + `test_create_user_empty_email_returns_error` + "`" + ` |
+| Rust | ` + "`" + `fn function_condition_expected` + "`" + ` inside ` + "`" + `#[cfg(test)] mod tests` + "`" + ` | ` + "`" + `fn create_user_empty_email_returns_error` + "`" + ` |
+
+**Rules:**
+
+- The test name should read like a specification
+- Group related tests: ` + "`" + `describe` + "`" + ` blocks in TypeScript, subtests in Go, test classes in Python
+- Avoid vague names like ` + "`" + `test_it_works` + "`" + ` or ` + "`" + `TestMain` + "`" + `
+
+## Test Organization
+
+| Language | Convention | Example |
+|---|---|---|
+| TypeScript | Co-located: ` + "`" + `foo.test.ts` + "`" + ` next to ` + "`" + `foo.ts` + "`" + ` | ` + "`" + `src/auth/login.test.ts` + "`" + ` |
+| Go | Same package: ` + "`" + `foo_test.go` + "`" + ` next to ` + "`" + `foo.go` + "`" + ` | ` + "`" + `auth/login_test.go` + "`" + ` |
+| Python | Co-located or separate ` + "`" + `tests/` + "`" + ` directory | ` + "`" + `tests/test_login.py` + "`" + ` or ` + "`" + `auth/test_login.py` + "`" + ` |
+| Rust | Inline ` + "`" + `#[cfg(test)] mod tests` + "`" + ` for unit; ` + "`" + `tests/` + "`" + ` dir for integration | inline in ` + "`" + `src/auth.rs` + "`" + ` |
+
+**Guidelines:**
+
+- One test file per source file, mirroring the source file name
+- Put shared test helpers and fixtures in a dedicated test utilities module
+- Keep integration tests in a separate directory from unit tests
+- In Go, use ` + "`" + `package foo_test` + "`" + ` (external test package) to test only the public API, or ` + "`" + `package foo` + "`" + ` for white-box tests when necessary
+
+## Test Doubles
+
+Confusion about mocks, stubs, and spies is one of the most common testing pitfalls. Use the right double for the job.
+
+### Taxonomy
+
+| Double | Purpose | Behavior | Example |
+|---|---|---|---|
+| **Stub** | Return canned data | Provides predetermined responses, no verification | Stub a DB query to return a fixed user |
+| **Mock** | Verify interactions | Records calls and asserts they happened correctly | Mock an email service, verify ` + "`" + `sendEmail` + "`" + ` was called with the right args |
+| **Spy** | Wrap real implementation | Calls the real code but records calls for verification | Spy on a logger to verify it was called without replacing it |
+| **Fake** | Simplified implementation | Works end-to-end but takes shortcuts | In-memory database instead of real PostgreSQL |
+| **Dummy** | Fill a parameter slot | Not actually used by the code under test | Placeholder object passed to satisfy a required parameter |
+
+### When to Use Each
+
+- **Prefer stubs over mocks** — stubs test output (what the code returns), mocks test implementation (what the code calls). Stubs survive refactors better
+- **Use fakes for expensive dependencies** — databases, filesystems, HTTP clients. Fakes provide realistic behavior without real infrastructure
+- **Use spies sparingly** — they couple tests to call sequences
+- **Use mocks only at system boundaries** — external APIs, message queues, email services
+- **Never mock the code under test** — only mock its dependencies
+
+### Framework Examples
+
+**TypeScript (Vitest):**
+
+    // Stub — returns canned data
+    const getUser = vi.fn().mockReturnValue({ id: '1', name: 'Alice' })
+
+    // Spy — wraps the real implementation
+    const spy = vi.spyOn(logger, 'warn')
+    doSomething()
+    expect(spy).toHaveBeenCalledWith('expected warning')
+
+    // Mock module — replace an entire module
+    vi.mock('./database', () => ({
+      getUser: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
+    }))
+
+**Go (interface-based — the idiomatic approach):**
+
+    type UserStore interface {
+        GetUser(ctx context.Context, id string) (*User, error)
+    }
+
+    // Stub implementation for tests
+    type stubUserStore struct {
+        user *User
+        err  error
+    }
+
+    func (s *stubUserStore) GetUser(ctx context.Context, id string) (*User, error) {
+        return s.user, s.err
+    }
+
+    func TestHandler_ReturnsUser(t *testing.T) {
+        store := &stubUserStore{user: &User{ID: "1", Name: "Alice"}}
+        handler := NewHandler(store)
+        // test handler...
+    }
+
+**Python (unittest.mock):**
+
+    from unittest.mock import Mock, patch
+
+    # Stub
+    user_store = Mock()
+    user_store.get_user.return_value = User(id="1", name="Alice")
+
+    # Patch a module-level function
+    @patch('myapp.db.get_user')
+    def test_handler(mock_get_user):
+        mock_get_user.return_value = User(id="1", name="Alice")
+        result = handle_request("1")
+        assert result.name == "Alice"
+
+## Designing for Testability
+
+Code that is hard to test is usually tightly coupled. Fix the design, not the test.
+
+| Untestable | Testable | Why |
+|---|---|---|
+| Function creates its own DB connection | Function accepts a DB interface as a parameter | Caller controls the dependency |
+| Handler calls ` + "`" + `http.Get()` + "`" + ` directly inside business logic | Handler accepts an HTTP client interface | Tests can substitute a fake client |
+| Constructor reads ` + "`" + `os.Getenv()` + "`" + ` at init time | Config struct passed as a parameter | Tests pass different configs without environment mutation |
+| Global singleton holds mutable state | Instance passed through dependency injection | Each test gets its own instance |
+
+**Principles:**
+
+- Accept dependencies as parameters — constructor injection, function parameters, or method injection
+- Depend on interfaces (Go, TypeScript) or protocols (Python), not concrete types
+- Push side effects (I/O, network, filesystem) to the edges — keep business logic pure
+- If a function is hard to test, the function is doing too much. Extract and inject.
+
+## Testing Async Code
+
+### TypeScript / JavaScript
+
+- Always ` + "`" + `await` + "`" + ` async functions in tests — a missing ` + "`" + `await` + "`" + ` causes the test to pass before the assertion runs
+- Use ` + "`" + `vi.useFakeTimers()` + "`" + ` for ` + "`" + `setTimeout` + "`" + `/` + "`" + `setInterval` + "`" + ` — advance time explicitly with ` + "`" + `vi.advanceTimersByTime()` + "`" + `
+- Test rejection paths with ` + "`" + `.rejects` + "`" + `
+
+Example:
+
+    it('should reject when user not found', async () => {
+      await expect(getUser('missing')).rejects.toThrow('not found')
+    })
+
+    it('should retry after delay', async () => {
+      vi.useFakeTimers()
+      const promise = retryOperation()
+      vi.advanceTimersByTime(1000)
+      await expect(promise).resolves.toBe('success')
+      vi.useRealTimers()
+    })
+
+### Go
+
+- Use ` + "`" + `context.WithTimeout` + "`" + ` to prevent hanging tests
+- Never use ` + "`" + `time.Sleep` + "`" + ` in tests — use channels, sync primitives, or ` + "`" + `t.Deadline()` + "`" + `
+- For goroutine-based code, use ` + "`" + `sync.WaitGroup` + "`" + ` or channel synchronization
+
+Example:
+
+    func TestAsyncOperation(t *testing.T) {
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+
+        result, err := DoAsync(ctx)
+        if err != nil {
+            t.Fatalf("unexpected error: %v", err)
+        }
+        if result != expected {
+            t.Errorf("got %v, want %v", result, expected)
+        }
+    }
+
+### Python
+
+- Use ` + "`" + `pytest-asyncio` + "`" + ` for async test functions
+- Mark tests with ` + "`" + `@pytest.mark.asyncio` + "`" + `
+
+Example:
+
+    @pytest.mark.asyncio
+    async def test_fetch_user():
+        result = await fetch_user("123")
+        assert result.name == "Alice"
+
+## Error Paths and Edge Cases
+
+Most tests only cover the happy path. Bugs live in the edges.
+
+**For every function, test these scenarios:**
+
+- [ ] Nil / null / undefined input
+- [ ] Empty string, empty array, empty map
+- [ ] Zero, negative numbers, integer overflow
+- [ ] Missing required fields or parameters
+- [ ] Invalid format (wrong type, malformed string, bad encoding)
+- [ ] Network and I/O failures (timeout, connection refused, permission denied)
+- [ ] Concurrent access (if the code is shared across goroutines or threads)
+- [ ] Boundary values (first element, last element, exactly at the limit)
+
+**Test strategies by error type:**
+
+| Error Type | Strategy |
+|---|---|
+| Invalid input | Pass bad data directly, assert error type and message |
+| External service failure | Stub the dependency to return an error |
+| Timeout | Use fake timers or short real timeouts |
+| Resource exhaustion | Stub to simulate resource-limit errors (disk full, memory) |
+| Permission denied | Stub auth layer to reject the request |
+
+## Table-Driven Tests
+
+Write one test function, run it with many inputs. Reduces duplication and makes it trivial to add new cases.
+
+**Go (native idiom):**
+
+    func TestParseSize(t *testing.T) {
+        tests := []struct {
+            name    string
+            input   string
+            want    int64
+            wantErr bool
+        }{
+            {"empty string", "", 0, true},
+            {"bytes", "100B", 100, false},
+            {"kilobytes", "2KB", 2048, false},
+            {"invalid unit", "5XB", 0, true},
+        }
+        for _, tt := range tests {
+            t.Run(tt.name, func(t *testing.T) {
+                got, err := ParseSize(tt.input)
+                if (err != nil) != tt.wantErr {
+                    t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+                }
+                if got != tt.want {
+                    t.Errorf("got %d, want %d", got, tt.want)
+                }
+            })
+        }
+    }
+
+**TypeScript (Vitest):**
+
+    it.each([
+      ['', 0, true],
+      ['100B', 100, false],
+      ['2KB', 2048, false],
+      ['5XB', 0, true],
+    ])('parseSize(%s) returns %d (error: %s)', (input, expected, shouldError) => {
+      if (shouldError) {
+        expect(() => parseSize(input)).toThrow()
+      } else {
+        expect(parseSize(input)).toBe(expected)
+      }
+    })
+
+**Python (pytest):**
+
+    @pytest.mark.parametrize("input_str,expected,should_error", [
+        ("", 0, True),
+        ("100B", 100, False),
+        ("2KB", 2048, False),
+        ("5XB", 0, True),
+    ])
+    def test_parse_size(input_str, expected, should_error):
+        if should_error:
+            with pytest.raises(ValueError):
+                parse_size(input_str)
+        else:
+            assert parse_size(input_str) == expected
+
+**Rust:**
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_size_valid() {
+            let cases = vec![
+                ("100B", 100i64),
+                ("2KB", 2048),
+            ];
+            for (input, expected) in cases {
+                assert_eq!(parse_size(input).unwrap(), expected, "input: {}", input);
+            }
+        }
+
+        #[test]
+        fn test_parse_size_invalid() {
+            assert!(parse_size("").is_err());
+            assert!(parse_size("5XB").is_err());
+        }
+    }
+
+## Test Behavior, Not Implementation
+
+| Do | Don't |
+|---|---|
+| Call the public function and assert its output | Export a private function just to test it |
+| Assert the observable result (return value, state change, side effect) | Assert internal variable values |
+| Test that an email was sent (via a spy on the email service) | Test that ` + "`" + `formatEmailBody()` + "`" + ` was called with specific arguments |
+| Assert the response status code and body | Assert which middleware functions ran |
+
+If you cannot test a private function through its public caller, the function belongs in its own module with its own public interface. Restructure the code rather than exposing internals for testing.
+
+## Snapshot Testing
+
+**When to use:**
+
+- Complex serializable output where field-by-field assertions are verbose (large JSON, HTML, CLI output)
+- UI component rendering (React component trees)
+- API response shapes during development
+
+**When NOT to use:**
+
+- Output containing volatile values (timestamps, random IDs, UUIDs)
+- Small, simple outputs where explicit assertions are clearer and more readable
+- Rapidly changing outputs during active development
+
+**Rules:**
+
+- Review snapshot diffs as carefully as code diffs — do not blindly update
+- Exclude volatile fields (timestamps, IDs) before snapshotting
+- Keep snapshots small — snapshot specific sections, not entire pages
+- Delete and regenerate stale snapshots; do not let them accumulate
+
+## Test Coverage
+
+**What coverage tells you:** Which lines and branches of code were executed during tests.
+
+**What coverage does NOT tell you:** Whether the tests actually assert correct behavior. A test with 100% coverage and zero assertions proves nothing.
+
+| Level | Meaning |
+|---|---|
+| < 50% | Major untested paths exist. Bugs are likely hiding in uncovered code. |
+| 50-80% | Reasonable for most projects. Focus effort on critical and complex paths. |
+| 80-90% | Good coverage. Diminishing returns above this for most codebases. |
+| 90-100% | Pursue only for critical libraries, safety-critical code, or shared infrastructure. |
+
+**Rules:**
+
+- Cover all error paths and edge cases before chasing line coverage numbers
+- Do not write tests solely to increase a coverage metric
+- Use coverage to **find untested code**, not as a quality scorecard
+- Enforce coverage in CI as a **floor** (block PRs that lower it), not a ceiling (do not require 100%)
+
+## Unit vs. Integration Tests
+
+| Dimension | Unit Test | Integration Test |
+|---|---|---|
+| Scope | Single function, method, or class | Multiple components working together |
+| Dependencies | All stubbed or faked | Real (database, filesystem, HTTP) |
+| Speed | Milliseconds | Seconds to minutes |
+| Flakiness risk | Near zero | Higher — external systems can fail |
+| When to write | All business logic, transformations, validations | API handlers with real DB, external service calls, end-to-end workflows |
+
+**Rules:**
+
+- If your "unit test" requires a running database, it is an integration test — label and run it accordingly
+- Unit tests run on every file save; integration tests run in CI or pre-push
+- When a function mixes logic and I/O, split it: test the logic as a unit, test the I/O as an integration
+- Both are valuable — unit tests for speed and precision, integration tests for confidence in the full stack
+
+## Preventing Flaky Tests
+
+Flaky tests erode trust in the test suite. Fix them immediately or quarantine them.
+
+| Cause | Symptom | Fix |
+|---|---|---|
+| Shared mutable state | Tests pass alone, fail together | Isolate state per test; reset in setup/teardown |
+| Test ordering dependency | Different results in different run order | Each test creates its own state from scratch |
+| Time dependency | Fails at midnight or near date boundaries | Use fake clocks; test with fixed timestamps |
+| Real network calls | Fails when offline or service is slow | Stub all network calls in unit tests |
+| Floating point comparison | Intermittent assertion failures | Use approximate comparison (` + "`" + `toBeCloseTo` + "`" + `, epsilon) |
+| Race conditions | Intermittent failures in concurrent code | Use synchronization primitives; never ` + "`" + `time.Sleep` + "`" + ` |
+| Random test data | Non-reproducible failures | Seed random generators; log the seed for reproduction |
+
+## Anti-Patterns
+
+| Anti-Pattern | Problem | Fix |
+|---|---|---|
+| **The Giant Test** | One test with 10 setup steps and 10 assertions | Split into focused tests — one behavior per test |
+| **The Mockery** | Every dependency is mocked; test proves nothing about real behavior | Mock only external boundaries; use real implementations for internal code |
+| **Test-per-Method** | Mechanically writing one test per method without thought | Test behaviors and scenarios, not method names |
+| **Copy-Paste Tests** | Duplicated setup across many tests | Use test helpers, fixtures, and table-driven tests |
+| **The Sleeper** | ` + "`" + `time.Sleep(2 * time.Second)` + "`" + ` waiting for async work | Use channels, fake timers, or polling with timeout |
+| **Assertion-Free Test** | Code runs but nothing is asserted | Every test must have at least one explicit assertion |
+| **Testing the Mock** | Asserting that stubs return the values you just configured | Assert on the behavior of the code under test, not on your test setup |
+| **Brittle Snapshot** | Snapshot includes timestamps, random IDs, or environment-specific paths | Exclude volatile fields before snapshotting |
+
+## Test Quality Checklist
+
+Before considering your tests complete, verify:
+
+- [ ] Each test has a descriptive name that reads as a specification
+- [ ] Each test follows Arrange-Act-Assert with clear separation
+- [ ] Each test is independent — can run alone, in any order, with the same result
+- [ ] Each unit test runs in under 100ms
+- [ ] No unit test depends on external services, filesystem, or network
+- [ ] Error paths are tested, not just the happy path
+- [ ] Assertions verify behavior and output, not implementation details
+- [ ] Test helpers reduce duplication without hiding important setup logic
+- [ ] Flaky tests are quarantined and fixed immediately, never skipped permanently
+- [ ] Coverage is used to find untested code, not treated as a success metric
+
+## When to Skip
+
+Not everything needs unit tests:
+
+- Throwaway scripts, spikes, and one-off exploratory code
+- Trivial data classes with no logic (structs, DTOs, config objects)
+- Generated code that is validated by its generator
+- Pure UI layout where visual regression testing is more appropriate
+- One-line wrapper functions with no branching logic
+
+In these cases, consider integration tests, end-to-end tests, or manual verification instead — but always make a conscious decision, not a lazy one.
+`
