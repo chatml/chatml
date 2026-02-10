@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "ChatML",
-        "width": 1200,
-        "height": 800,
+        "width": 980,
+        "height": 790,
         "resizable": true,
         "fullscreen": false,
         "titleBarStyle": "Overlay",
