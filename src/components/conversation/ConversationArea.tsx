@@ -413,7 +413,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     (conv: Conversation) => {
       const streaming = streamingState[conv.id];
       if (streaming?.isStreaming) {
-        return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
+        return (
+          <div className="flex items-end gap-[1.5px] h-2.5 w-2.5">
+            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-1" />
+            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-2" />
+            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-3" />
+          </div>
+        );
       }
       if (streaming?.error) {
         return <Circle className="w-2.5 h-2.5 text-destructive fill-destructive" />;

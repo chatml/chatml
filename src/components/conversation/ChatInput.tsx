@@ -545,6 +545,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       const isNewConversation = !selectedConversationId || conversationMessages.length === 0;
 
       if (isNewConversation) {
+        // Show immediate feedback on the placeholder conversation while API call is in-flight
+        if (selectedConversationId) {
+          setStreaming(selectedConversationId, true);
+        }
+
         // Create new conversation with initial message via API
         const convType = currentConversation?.type || 'task';
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
@@ -562,8 +567,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           summaryIds: selectedSummaryIds.length > 0 ? selectedSummaryIds : undefined,
         });
 
-        // Remove local placeholder conversation if it exists
+        // Clear streaming on placeholder before removing it
         if (selectedConversationId && selectedConversationId !== conv.id) {
+          setStreaming(selectedConversationId, false);
           removeConversation(selectedConversationId);
         }
 
@@ -594,7 +600,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         // Select the new conversation
         selectConversation(conv.id);
 
-        // Mark as streaming
+        // Mark as streaming on the real conversation
         setStreaming(conv.id, true);
       } else {
         // Add user message to store first (without base64 data to save memory)
