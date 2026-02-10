@@ -55,16 +55,6 @@ export function OnboardingScreen() {
     handleSignIn();
   };
 
-  const handleSkip = () => {
-    // Skip authentication for development - sets a placeholder user
-    cancelOAuthFlow(); // Clear any pending state
-    setAuthenticated(true, {
-      login: 'local-dev',
-      name: 'Local Developer',
-      avatar_url: '',
-    });
-  };
-
   // Dev mode: manually process OAuth callback URL
   const handleDevPaste = async () => {
     if (!devCallbackUrl.trim()) return;
@@ -84,18 +74,18 @@ export function OnboardingScreen() {
   };
 
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center bg-[#090909] overflow-hidden">
+    <div className="relative flex h-screen w-screen items-center justify-center bg-background overflow-hidden">
       {/* Draggable region for window management */}
       <div data-tauri-drag-region className="absolute top-0 left-0 right-0 h-11 z-50" />
 
       {/* Subtle ambient glow behind mascot — very muted */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[58%] w-[500px] h-[500px] rounded-full bg-purple-900/15 blur-[150px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[58%] w-[500px] h-[500px] rounded-full bg-primary/10 blur-[150px] pointer-events-none" />
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center w-full max-w-sm animate-scale-in">
         {/* Mascot — circular with purple ring, matching website brand */}
         <div className="mb-8">
-          <div className="w-32 h-32 rounded-full ring-[3px] ring-primary/50 ring-offset-4 ring-offset-[#090909] overflow-hidden shadow-2xl shadow-primary/20">
+          <div className="w-32 h-32 rounded-full ring-[3px] ring-primary/50 ring-offset-4 ring-offset-background overflow-hidden shadow-2xl shadow-primary/20">
             <Image
               src="/mascot.png"
               alt="ChatML mascot"
@@ -120,7 +110,7 @@ export function OnboardingScreen() {
           <span className="text-4xl font-extrabold tracking-[-0.03em] leading-none hero-gradient-text">
             Coding Agents
           </span>
-          <span className="text-2xl font-extrabold tracking-[-0.03em] leading-none text-foreground/50 mt-1">
+          <span className="text-2xl font-extrabold tracking-[-0.03em] leading-none text-muted-foreground mt-1">
             that do the work for you
           </span>
         </div>
@@ -137,7 +127,7 @@ export function OnboardingScreen() {
               <Button
                 size="lg"
                 onClick={handleRetry}
-                className="h-12 w-full text-lg bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+                className="h-12 w-full text-lg bg-foreground text-background hover:bg-foreground/90 font-medium rounded-xl transition-colors"
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Try Again
@@ -151,7 +141,7 @@ export function OnboardingScreen() {
               <Button
                 size="lg"
                 disabled
-                className="h-12 w-full text-lg bg-white/10 text-foreground border border-white/10 font-medium rounded-xl"
+                className="h-12 w-full text-lg bg-foreground/10 text-muted-foreground border border-foreground/10 font-medium rounded-xl"
               >
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Waiting for GitHub...
@@ -168,13 +158,13 @@ export function OnboardingScreen() {
 
               {/* Dev mode: manual callback URL paste */}
               {isDev && (
-                <div className="mt-4 w-full border-t border-white/5 pt-4">
+                <div className="mt-4 w-full border-t border-border pt-4">
                   {!showDevPaste ? (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setShowDevPaste(true)}
-                      className="w-full text-xs text-muted-foreground border-white/10 hover:bg-white/5"
+                      className="w-full text-xs text-muted-foreground border-border hover:bg-accent"
                     >
                       <ClipboardPaste className="mr-2 h-3 w-3" />
                       Dev: Paste callback URL manually
@@ -186,7 +176,7 @@ export function OnboardingScreen() {
                         value={devCallbackUrl}
                         onChange={(e) => setDevCallbackUrl(e.target.value)}
                         placeholder="chatml://oauth/callback?code=...&state=..."
-                        className="w-full px-3 py-2 text-xs bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-white/20 text-foreground placeholder:text-muted-foreground/50"
+                        className="w-full px-3 py-2 text-xs bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-ring/30 text-foreground placeholder:text-muted-foreground/50"
                         disabled={devProcessing}
                       />
                       <div className="flex gap-2">
@@ -194,7 +184,7 @@ export function OnboardingScreen() {
                           size="sm"
                           onClick={handleDevPaste}
                           disabled={!devCallbackUrl.trim() || devProcessing}
-                          className="flex-1 text-xs bg-white/10 hover:bg-white/15"
+                          className="flex-1 text-xs text-foreground bg-foreground/10 hover:bg-foreground/15"
                         >
                           {devProcessing ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -210,12 +200,12 @@ export function OnboardingScreen() {
                             setDevCallbackUrl('');
                           }}
                           disabled={devProcessing}
-                          className="text-xs"
+                          className="text-xs text-muted-foreground hover:text-foreground"
                         >
                           Cancel
                         </Button>
                       </div>
-                      <p className="text-2xs text-muted-foreground/50">
+                      <p className="text-2xs text-muted-foreground/70">
                         Deep links don&apos;t work in dev mode. Copy the redirect URL from your browser.
                       </p>
                     </div>
@@ -230,7 +220,7 @@ export function OnboardingScreen() {
             <Button
               size="lg"
               onClick={handleSignIn}
-              className="h-12 w-full text-lg bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+              className="h-12 w-full text-lg bg-foreground text-background hover:bg-foreground/90 font-medium rounded-xl transition-colors"
             >
               <Github className="mr-2 h-5 w-5" />
               Sign in with GitHub
@@ -238,18 +228,8 @@ export function OnboardingScreen() {
           )}
         </div>
 
-        {/* Skip button */}
-        {!isConnecting && (
-          <button
-            onClick={handleSkip}
-            className="mt-4 text-sm text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-          >
-            Skip for now
-          </button>
-        )}
-
         {/* Footer */}
-        <p className="mt-8 text-xs text-muted-foreground/40 text-center leading-relaxed">
+        <p className="mt-8 text-xs text-muted-foreground/50 text-center leading-relaxed">
           By signing in, you agree to grant ChatML<br />access to your repositories.
         </p>
       </div>

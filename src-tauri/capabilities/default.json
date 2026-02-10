@@ -8,6 +8,10 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-set-resizable",
+    "core:window:allow-set-maximizable",
+    "core:window:allow-center",
     "shell:default",
     {
       "identifier": "shell:allow-spawn",

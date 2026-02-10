@@ -237,6 +237,49 @@ export async function listenForDragLeave(
 }
 
 // ============================================
+// Window Size Management
+// ============================================
+
+const ONBOARDING_WIDTH = 980;
+const ONBOARDING_HEIGHT = 790;
+const DEFAULT_WIDTH = 1200;
+const DEFAULT_HEIGHT = 800;
+
+/**
+ * Set window to compact onboarding size: fixed, non-resizable, centered
+ */
+export async function setOnboardingWindowSize(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+    const win = getCurrentWindow();
+    await win.setResizable(false);
+    await win.setMaximizable(false);
+    await win.setSize(new LogicalSize(ONBOARDING_WIDTH, ONBOARDING_HEIGHT));
+    await win.center();
+  } catch (e) {
+    console.error('Failed to set onboarding window size', e);
+  }
+}
+
+/**
+ * Restore window to default app size: resizable, maximizable
+ */
+export async function restoreDefaultWindowSize(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+    const win = getCurrentWindow();
+    await win.setSize(new LogicalSize(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+    await win.setResizable(true);
+    await win.setMaximizable(true);
+    await win.center();
+  } catch (e) {
+    console.error('Failed to restore default window size', e);
+  }
+}
+
+// ============================================
 // File Watcher Functions
 // ============================================
 

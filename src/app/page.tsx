@@ -25,7 +25,7 @@ import { useOnboarding } from '@/hooks/useOnboarding';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { getLinearAuthStatus } from '@/lib/linearAuth';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
-import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, registerSession, unregisterSession, getSessionDirName } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, registerSession, unregisterSession, getSessionDirName, setOnboardingWindowSize, restoreDefaultWindowSize } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
@@ -429,6 +429,30 @@ export default function Home() {
   const { expandWorkspace } = useSettingsStore();
   const { showWizard, showGuidedTour, completeWizard, completeTour, skipAll } = useOnboarding();
 
+  // Centralized window size management for onboarding ↔ app transitions.
+  // On first launch the Tauri config starts at the compact onboarding size.
+  // For returning users, tauri_plugin_window_state restores their saved size.
+  const isInOnboarding = !isAuthenticated || showWizard;
+  const onboardingResolved = useRef(false);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!onboardingResolved.current) {
+      // First time auth resolved — set initial window state
+      onboardingResolved.current = true;
+      if (isInOnboarding) {
+        setOnboardingWindowSize();
+      }
+      // If not in onboarding (returning user), do nothing — let window state plugin handle it
+      return;
+    }
+
+    // Transition: was in onboarding, now past it → restore default window
+    if (!isInOnboarding) {
+      restoreDefaultWindowSize();
+    }
+  }, [isInOnboarding, authLoading]);
 
   // Computed: selected session for terminal and other uses
   const selectedSession = selectedSessionId

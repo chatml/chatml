@@ -197,11 +197,11 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
                         }
                     }
 
-                    log::debug!("[sidecar stdout] {}", line_str);
+                    log::debug!("[sidecar stdout] {}", line_str.trim_end());
                 }
                 CommandEvent::Stderr(line) => {
                     let line_str = String::from_utf8_lossy(&line);
-                    log::warn!("[sidecar stderr] {}", line_str);
+                    log::warn!("[sidecar stderr] {}", line_str.trim_end());
                     // Emit stderr to frontend for debugging
                     if let Some(window) = app_handle.get_webview_window("main") {
                         if let Err(e) = window.emit("sidecar-stderr", line_str.to_string()) {

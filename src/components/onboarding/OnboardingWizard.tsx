@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { WelcomeStep } from './steps/WelcomeStep';
@@ -19,6 +19,7 @@ const TOTAL_STEPS = STEPS.length;
 
 export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const keyboardReady = useRef(false);
 
   const isLastStep = currentStep === TOTAL_STEPS - 1;
 
@@ -36,9 +37,19 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     }
   }, [currentStep]);
 
+  // Delay keyboard activation to prevent stale keypresses from OAuth browser
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      keyboardReady.current = true;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!keyboardReady.current) return;
+
       if (e.key === 'ArrowRight' || e.key === 'Enter') {
         e.preventDefault();
         handleNext();
@@ -58,24 +69,23 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const StepComponent = STEPS[currentStep];
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#090909] overflow-hidden">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-background overflow-hidden">
       {/* Draggable region for window management */}
       <div data-tauri-drag-region className="absolute top-0 left-0 right-0 h-11 z-50" />
-
-      {/* Subtle ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[55%] w-[500px] h-[500px] rounded-full bg-purple-900/15 blur-[150px] pointer-events-none" />
 
       {/* Skip button */}
       <button
         onClick={onSkip}
-        className="absolute top-14 right-6 text-sm text-white/40 hover:text-white/70 transition-colors z-40"
+        className="absolute top-14 right-6 text-sm text-muted-foreground/70 hover:text-foreground transition-colors z-40"
       >
         Skip Onboarding
       </button>
 
-      {/* Step content */}
-      <div className="relative z-10 w-full max-w-lg px-8" key={currentStep}>
-        <StepComponent />
+      {/* Step content — full-size opaque layer prevents GPU cache artifacts from previous step */}
+      <div className="absolute inset-0 flex items-center justify-center bg-background z-10" key={currentStep}>
+        <div className="w-full max-w-lg px-8 animate-fade-in">
+          <StepComponent />
+        </div>
       </div>
 
       {/* Bottom navigation */}
@@ -84,7 +94,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         <Button
           size="lg"
           onClick={handleNext}
-          className="h-12 px-8 text-lg bg-white text-[#090909] hover:bg-white/90 font-medium rounded-xl transition-colors"
+          className="h-12 px-8 text-lg bg-foreground text-background hover:bg-foreground/90 font-medium rounded-xl transition-colors"
         >
           {currentStep === 0 ? 'Get Started' : isLastStep ? 'Start Using ChatML' : 'Next'}
         </Button>
@@ -99,7 +109,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                 'w-2 h-2 rounded-full transition-all duration-200',
                 index === currentStep
                   ? 'bg-primary w-6'
-                  : 'bg-white/20 hover:bg-white/40'
+                  : 'bg-foreground/20 hover:bg-foreground/40'
               )}
               aria-label={`Go to step ${index + 1}`}
             />
