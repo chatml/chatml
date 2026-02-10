@@ -11,6 +11,7 @@ import (
 	"github.com/chatml/chatml-backend/agent"
 	gitpkg "github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
+	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/stretchr/testify/require"
 )
@@ -35,8 +36,10 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
 	t.Cleanup(func() { prCache.Close() })
 
+	linearClient := linear.NewClient("")
+
 	// Create router without orchestrator, branch watcher, pr watcher, or stats cache
-	router := NewRouter(s, hub, agentMgr, ghClient, nil, nil, nil, prCache, nil, nil, nil, nil)
+	router := NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, nil, nil, prCache, nil, nil, nil, nil)
 
 	return router, s
 }

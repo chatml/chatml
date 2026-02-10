@@ -229,7 +229,7 @@ func (l *LinearAdapter) executeQuery(ctx context.Context, query string, filters 
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", l.apiKey)
+	req.Header.Set("Authorization", "Bearer "+l.apiKey)
 
 	// Execute request
 	resp, err := l.httpClient.Do(req)
@@ -389,7 +389,7 @@ func (l *LinearAdapter) GetViewer(ctx context.Context) (*LinearUser, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", l.apiKey)
+	req.Header.Set("Authorization", "Bearer "+l.apiKey)
 
 	resp, err := l.httpClient.Do(req)
 	if err != nil {

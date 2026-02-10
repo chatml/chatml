@@ -45,6 +45,24 @@ var (
 	githubClientSecret string
 )
 
+// LinearConfig holds Linear OAuth configuration
+type LinearConfig struct {
+	ClientID string
+}
+
+// Build-time variable for Linear OAuth (set via -ldflags)
+var linearClientID string
+
+// LoadLinearConfig loads Linear OAuth config.
+// Priority: environment variables > build-time embedded values
+func LoadLinearConfig() LinearConfig {
+	clientID := os.Getenv("LINEAR_CLIENT_ID")
+	if clientID == "" {
+		clientID = linearClientID
+	}
+	return LinearConfig{ClientID: clientID}
+}
+
 // LoadGitHubConfig loads GitHub OAuth config.
 // Priority: environment variables > build-time embedded values
 func LoadGitHubConfig() GitHubConfig {

@@ -2,10 +2,12 @@
 
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, LogOut, ExternalLink } from 'lucide-react';
+import { CheckCircle2, LogOut, Loader2 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useLinearAuthStore } from '@/stores/linearAuthStore';
 import { logout } from '@/lib/auth';
+import { startLinearOAuthFlow, linearLogout, cancelLinearOAuthFlow } from '@/lib/linearAuth';
 
 export function AccountSettings() {
   const user = useAuthStore((s) => s.user);
@@ -13,12 +15,40 @@ export function AccountSettings() {
   const strictPrivacy = useSettingsStore((s) => s.strictPrivacy);
   const setStrictPrivacy = useSettingsStore((s) => s.setStrictPrivacy);
 
+  const linearUser = useLinearAuthStore((s) => s.user);
+  const linearAuthenticated = useLinearAuthStore((s) => s.isAuthenticated);
+  const linearOAuthState = useLinearAuthStore((s) => s.oauthState);
+  const linearOAuthError = useLinearAuthStore((s) => s.oauthError);
+  const startLinearOAuth = useLinearAuthStore((s) => s.startOAuth);
+  const cancelLinearOAuth = useLinearAuthStore((s) => s.cancelOAuth);
+  const resetLinearAuth = useLinearAuthStore((s) => s.reset);
+
   const handleSignOut = async () => {
     try {
       await logout();
       reset();
     } catch (error) {
       console.error('Failed to sign out:', error);
+    }
+  };
+
+  const handleConnectLinear = async () => {
+    try {
+      startLinearOAuth();
+      await startLinearOAuthFlow();
+    } catch (error) {
+      console.error('Failed to start Linear OAuth:', error);
+      cancelLinearOAuth();
+      cancelLinearOAuthFlow();
+    }
+  };
+
+  const handleDisconnectLinear = async () => {
+    try {
+      await linearLogout();
+      resetLinearAuth();
+    } catch (error) {
+      console.error('Failed to disconnect Linear:', error);
     }
   };
 
@@ -64,14 +94,42 @@ export function AccountSettings() {
         <div>
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-medium">Linear Integration</h4>
-            <CheckCircle2 className="w-4 h-4 text-text-success" />
+            {linearAuthenticated && <CheckCircle2 className="w-4 h-4 text-text-success" />}
           </div>
-          <p className="text-sm text-muted-foreground mt-1">Linear is linked.</p>
+          {linearOAuthState === 'pending' ? (
+            <div className="flex items-center gap-2 mt-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Connecting...</p>
+            </div>
+          ) : linearAuthenticated && linearUser ? (
+            <p className="text-sm text-muted-foreground mt-1">
+              Connected as {linearUser.displayName || linearUser.name}
+              {linearUser.email && ` (${linearUser.email})`}
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground mt-1">
+                Connect Linear to import issues and track work.
+              </p>
+              {linearOAuthState === 'error' && linearOAuthError && (
+                <p className="text-sm text-destructive mt-1">{linearOAuthError}</p>
+              )}
+            </>
+          )}
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          Manage
-          <ExternalLink className="w-3 h-3" />
-        </Button>
+        {linearOAuthState === 'pending' ? (
+          <Button variant="outline" size="sm" onClick={() => { cancelLinearOAuth(); cancelLinearOAuthFlow(); }}>
+            Cancel
+          </Button>
+        ) : linearAuthenticated ? (
+          <Button variant="outline" size="sm" onClick={handleDisconnectLinear}>
+            Disconnect
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" onClick={handleConnectLinear}>
+            Connect
+          </Button>
+        )}
       </div>
 
       {/* GitHub CLI Integration */}

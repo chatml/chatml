@@ -23,6 +23,8 @@ import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { GuidedTour } from '@/components/onboarding/GuidedTour';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
+import { getLinearAuthStatus } from '@/lib/linearAuth';
+import { useLinearAuthStore } from '@/stores/linearAuthStore';
 import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, registerSession, unregisterSession, getSessionDirName } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
@@ -246,6 +248,12 @@ export default function Home() {
     failOAuth,
   } = useAuthStore();
 
+  const {
+    setAuthenticated: setLinearAuthenticated,
+    completeOAuth: completeLinearOAuth,
+    failOAuth: failLinearOAuth,
+  } = useLinearAuthStore();
+
   // Initialize auth on mount
   useEffect(() => {
     let unlistenOAuth: (() => void) | null = null;
@@ -255,15 +263,26 @@ export default function Home() {
       try {
         console.log('[OAuth] page.tsx: Setting up callback listener...');
         unlistenOAuth = await listenForOAuthCallback(
+          // GitHub callbacks
           (result) => {
-            console.log('[OAuth] page.tsx: Success callback received, user:', result.user?.login);
+            console.log('[OAuth] page.tsx: GitHub success, user:', result.user?.login);
             completeOAuth();
             setAuthenticated(true, result.user);
           },
           (error) => {
-            console.log('[OAuth] page.tsx: Error callback received:', error.message);
+            console.log('[OAuth] page.tsx: GitHub error:', error.message);
             failOAuth(error.message);
-          }
+          },
+          // Linear callbacks
+          (result) => {
+            console.log('[OAuth] page.tsx: Linear success, user:', result.user?.displayName);
+            completeLinearOAuth();
+            setLinearAuthenticated(true, result.user);
+          },
+          (error) => {
+            console.log('[OAuth] page.tsx: Linear error:', error.message);
+            failLinearOAuth(error.message);
+          },
         );
         console.log('[OAuth] page.tsx: Callback listener ready');
       } catch (e) {
@@ -289,7 +308,7 @@ export default function Home() {
     return () => {
       if (unlistenOAuth) unlistenOAuth();
     };
-  }, [setAuthenticated, completeOAuth, failOAuth]);
+  }, [setAuthenticated, completeOAuth, failOAuth, setLinearAuthenticated, completeLinearOAuth, failLinearOAuth]);
 
   // OAuth timeout - fail if pending for too long
   useEffect(() => {
@@ -319,6 +338,22 @@ export default function Home() {
 
     validate();
   }, [backendConnected, isAuthenticated, setAuthenticated]);
+
+  // Check Linear auth status after backend connects
+  useEffect(() => {
+    if (!backendConnected) return;
+
+    const checkLinear = async () => {
+      try {
+        const status = await getLinearAuthStatus();
+        setLinearAuthenticated(status.authenticated, status.user);
+      } catch {
+        // Non-fatal — Linear auth is optional
+      }
+    };
+
+    checkLinear();
+  }, [backendConnected, setLinearAuthenticated]);
 
   const zenModeRef = useRef(zenMode);
   useEffect(() => {
@@ -1398,7 +1433,7 @@ export default function Home() {
               setRightSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
             }}
                   className={cn(
-                    "overflow-hidden",
+                    "overflow-hidden bg-content-background dark:bg-transparent",
                     (zenMode || !selectedSessionId) && "hidden"
                   )}
                 >

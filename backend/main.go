@@ -17,6 +17,7 @@ import (
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
+	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/naming"
@@ -120,6 +121,21 @@ func main() {
 	// GitHub OAuth client
 	ghConfig := server.LoadGitHubConfig()
 	ghClient := github.NewClient(ghConfig.ClientID, ghConfig.ClientSecret)
+
+	// Linear OAuth client
+	linearConfig := server.LoadLinearConfig()
+	linearClient := linear.NewClient(linearConfig.ClientID)
+
+	// Set up token refresh persistence callback
+	linearAuth := server.NewLinearAuthHandlers(linearClient, s)
+	linearClient.SetOnTokenRefresh(func(tokens *linear.TokenSet) {
+		if err := server.PersistLinearTokens(ctx, s, tokens); err != nil {
+			logger.Linear.Errorf("Failed to persist refreshed Linear tokens: %v", err)
+		}
+	})
+
+	// Restore Linear auth from persisted settings
+	linearAuth.RestoreFromStore(ctx)
 
 	// Session stats cache with 30 second TTL
 	statsCache := server.NewSessionStatsCache(30 * time.Second)
@@ -395,7 +411,7 @@ func main() {
 		},
 	)
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, nil, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
