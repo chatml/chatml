@@ -1434,6 +1434,16 @@ export async function getAnthropicApiKey(): Promise<{ configured: boolean; maske
   return handleResponse<{ configured: boolean; maskedKey: string }>(res);
 }
 
+export async function getClaudeAuthStatus(): Promise<{
+  configured: boolean;
+  hasStoredKey: boolean;
+  hasEnvKey: boolean;
+  hasCliCredentials: boolean;
+}> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/claude-auth-status`);
+  return handleResponse(res);
+}
+
 export async function setAnthropicApiKey(apiKey: string): Promise<{ configured: boolean; maskedKey: string }> {
   const res = await fetchWithAuth(
     `${getApiBase()}/api/settings/anthropic-api-key`,

@@ -28,6 +28,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
@@ -85,6 +86,8 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onMessageSubmit }: ChatInputProps) {
+  const claudeAuthConfigured = useClaudeAuthStatus();
+  const authDisabled = claudeAuthConfigured === false;
   const [message, setMessage] = useState('');
   // Read store defaults once at mount time — these initialize per-conversation
   // state and intentionally don't sync if the user changes settings mid-session.
@@ -974,7 +977,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 (!message.trim() || isSending) && 'opacity-50'
               )}
               onClick={handleSubmit}
-              disabled={!message.trim() || !selectedSessionId || isSending}
+              disabled={!message.trim() || !selectedSessionId || isSending || authDisabled}
               aria-label={sendWithEnter ? 'Send message (Enter)' : 'Send message (⌘Enter)'}
               title={sendWithEnter ? 'Send (Enter)' : 'Send (⌘Enter)'}
             >

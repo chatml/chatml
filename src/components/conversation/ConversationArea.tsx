@@ -49,6 +49,8 @@ import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/Err
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
 import { BranchSyncConflictDialog } from '@/components/BranchSyncConflictDialog';
 import { useBranchSync } from '@/hooks/useBranchSync';
+import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
+import { KeyRound, Settings2 } from 'lucide-react';
 
 interface ConversationAreaProps {
   children?: React.ReactNode;
@@ -84,6 +86,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const streamingState = useAppStore((s) => s.streamingState);
   const addMessage = useAppStore((s) => s.addMessage);
+
+  const claudeAuthConfigured = useClaudeAuthStatus();
 
   // Use messages selector scoped to the selected conversation
   const conversationMessages = useMessages(selectedConversationId);
@@ -876,6 +880,25 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           onMerge={handleBranchMerge}
           onDismiss={handleBranchDismiss}
         />
+      )}
+
+      {/* Claude auth banner - shows when no API key / credentials configured */}
+      {claudeAuthConfigured === false && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-xs text-amber-200/90">
+              No Anthropic API key configured. Agents cannot run without credentials.
+            </span>
+            <button
+              className="ml-auto flex items-center gap-1 text-xs text-amber-300 hover:text-amber-100 transition-colors shrink-0"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-settings', { detail: { category: 'ai-models' } }))}
+            >
+              <Settings2 className="h-3 w-3" />
+              Open Settings
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Branch sync conflict dialog */}
