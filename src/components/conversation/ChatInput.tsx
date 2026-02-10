@@ -518,6 +518,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
     if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || hasQueuedMessage) return;
+
+    // Can't queue a message to a conversation that doesn't exist yet — check before clearing input
+    const conversationMessagesEarly = currentConversation
+      ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
+      : [];
+    const isNewConversation = !selectedConversationId || conversationMessagesEarly.length === 0;
+    if (isNewConversation && isStreaming) return;
+
     // Clear any pending programmatic submit now that we're executing
     pendingSubmitRef.current = null;
 
@@ -545,16 +553,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         }
       }
 
-      // Check if this is a new conversation (no messages yet) or no conversation selected
-      // In either case, we need to create via API since local conversations don't exist on backend
-      const conversationMessages = currentConversation
-        ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
-        : [];
-      const isNewConversation = !selectedConversationId || conversationMessages.length === 0;
-
       if (isNewConversation) {
-        // Can't queue a message to a conversation that doesn't exist yet
-        if (isStreaming) return;
         // Show immediate feedback on the placeholder conversation while API call is in-flight
         if (selectedConversationId) {
           setStreaming(selectedConversationId, true);
@@ -656,6 +655,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to send message:', error);
       const convId = selectedConversationId;
       if (convId) {
+        // Clear any queued message so the UI doesn't get stuck
+        setQueuedMessage(convId, null);
         addMessage({
           id: crypto.randomUUID(),
           conversationId: convId,
