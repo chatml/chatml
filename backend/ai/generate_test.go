@@ -96,8 +96,83 @@ func TestNewClient_EmptyKey(t *testing.T) {
 func TestNewClient_ValidKey(t *testing.T) {
 	client := NewClient("sk-test-key")
 	assert.NotNil(t, client)
-	assert.Equal(t, "sk-test-key", client.apiKey)
+	assert.Equal(t, "x-api-key", client.authHeader)
+	assert.Equal(t, "sk-test-key", client.authValue)
 	assert.Equal(t, defaultModel, client.model)
+}
+
+// ---------------------------------------------------------------------------
+// NewClientWithOAuth tests
+// ---------------------------------------------------------------------------
+
+func TestNewClientWithOAuth_EmptyToken(t *testing.T) {
+	client := NewClientWithOAuth("")
+	assert.Nil(t, client)
+}
+
+func TestNewClientWithOAuth_ValidToken(t *testing.T) {
+	client := NewClientWithOAuth("sk-ant-oat01-test-token")
+	assert.NotNil(t, client)
+	assert.Equal(t, "Authorization", client.authHeader)
+	assert.Equal(t, "Bearer sk-ant-oat01-test-token", client.authValue)
+	assert.Equal(t, defaultModel, client.model)
+	assert.Equal(t, anthropicURL, client.apiURL)
+}
+
+func TestNewClientWithOAuth_SendsBearerHeader(t *testing.T) {
+	var capturedAuthHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuthHeader = r.Header.Get("Authorization")
+		// x-api-key should NOT be set when using OAuth
+		assert.Empty(t, r.Header.Get("x-api-key"), "x-api-key should not be set for OAuth client")
+
+		resp := anthropicResponse{
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: "Fix login bug"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClientWithOAuth("sk-ant-oat01-test-token")
+	client.apiURL = server.URL
+
+	title, err := client.GenerateSessionTitle(context.Background(), "The login page is broken")
+	require.NoError(t, err)
+	assert.Equal(t, "Fix login bug", title)
+	assert.Equal(t, "Bearer sk-ant-oat01-test-token", capturedAuthHeader)
+}
+
+func TestNewClient_SendsApiKeyHeader(t *testing.T) {
+	var capturedApiKey string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedApiKey = r.Header.Get("x-api-key")
+		// Authorization should NOT be set when using API key
+		assert.Empty(t, r.Header.Get("Authorization"), "Authorization should not be set for API key client")
+
+		resp := anthropicResponse{
+			Content: []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{
+				{Type: "text", Text: "Fix login bug"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("sk-ant-api03-test-key")
+	client.apiURL = server.URL
+
+	title, err := client.GenerateSessionTitle(context.Background(), "The login page is broken")
+	require.NoError(t, err)
+	assert.Equal(t, "Fix login bug", title)
+	assert.Equal(t, "sk-ant-api03-test-key", capturedApiKey)
 }
 
 // ---------------------------------------------------------------------------

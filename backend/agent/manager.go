@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/logger"
@@ -48,6 +50,7 @@ type Manager struct {
 
 	// Session event handler
 	onSessionEvent SessionEventHandler
+
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
@@ -281,6 +284,11 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		if err := proc.SendMessageWithAttachments(initialMessage, attachments); err != nil {
 			return conv, fmt.Errorf("failed to send initial message: %w", err)
 		}
+
+		// Generate session title from the user's first message
+		if !session.AutoNamed {
+			go m.generateAndApplySessionTitle(sessionID, convID, initialMessage)
+		}
 	}
 
 	return conv, nil
@@ -465,20 +473,9 @@ outer:
 				}
 
 			case EventTypeNameSuggestion:
-				// Update conversation name
-				var sessionID string
-				if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
-					c.Name = event.Name
-					c.UpdatedAt = time.Now()
-					sessionID = c.SessionID
-				}); err != nil {
-					logger.Manager.Errorf("Failed to update conversation name for %s: %v", convID, err)
-				}
-
-				// Also update session name if it hasn't been auto-named yet
-				if sessionID != "" && event.Name != "" {
-					m.tryAutoNameSession(ctx, sessionID, event.Name)
-				}
+				// Legacy: agent-runner no longer emits this event. Title generation
+				// is now handled by generateAndApplySessionTitle using the Haiku API.
+				logger.Manager.Debugf("Received legacy name_suggestion event for conv %s: %q", convID, event.Name)
 
 			case EventTypeSubagentStarted:
 				if event.AgentId != "" {
@@ -665,6 +662,10 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 
 // SendConversationMessage sends a follow-up message to an existing conversation
 func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment) error {
+	// Track whether we should generate a title (set in the idle-start path)
+	var shouldGenerateTitle bool
+	var titleSessionID string
+
 	// Use full Lock for the check-and-restart sequence to prevent two concurrent
 	// callers from both seeing a dead process and each creating a new one (race condition).
 	m.mu.Lock()
@@ -734,6 +735,13 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		}
 		if restartOpts.ResumeSession == "" && conv.AgentSessionID != "" {
 			restartOpts.ResumeSession = conv.AgentSessionID
+		}
+
+		// Check if we should generate a title for this session
+		if !session.AutoNamed && message != "" {
+			shouldGenerateTitle = true
+			titleSessionID = conv.SessionID
+			logger.Manager.Infof("Will generate title for session %s (conv %s)", conv.SessionID, convID)
 		}
 
 		if ok && proc != nil {
@@ -808,7 +816,16 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	}
 
 	// Send to process with attachments
-	return proc.SendMessageWithAttachments(message, attachments)
+	if err := proc.SendMessageWithAttachments(message, attachments); err != nil {
+		return err
+	}
+
+	// Generate session title if this is the first message on an idle-started session
+	if shouldGenerateTitle {
+		go m.generateAndApplySessionTitle(titleSessionID, convID, message)
+	}
+
+	return nil
 }
 
 // RewindConversationFiles rewinds file changes in a conversation to a checkpoint
@@ -953,38 +970,19 @@ func (m *Manager) GetActiveStreamingConversations() []string {
 }
 
 // formatSessionName converts a human-readable name into a branch-friendly format.
-// Example: "Fix the login bug" -> "login-bug"
+// Example: "Fix the login bug" -> "fix-login-bug"
 // Returns empty string for generic/non-specific names that shouldn't be used.
 func formatSessionName(name string) string {
 	// Convert to lowercase
 	name = strings.ToLower(name)
 
-	// Remove generic phrases first (before word-level filtering)
-	genericPhrases := []string{
-		"explore session", "explore codebase", "explore the codebase",
-		"understand how", "understand the", "learn about", "look at",
-		"investigate the", "investigate how", "check out", "review the",
-		"examine the", "analyze the", "study the", "research the",
-		"get familiar", "familiarize with", "dive into",
-	}
-	for _, phrase := range genericPhrases {
-		name = strings.ReplaceAll(name, phrase, " ")
-	}
-
-	// Remove common filler words
+	// Remove only articles and prepositions — keep action verbs and nouns
+	// since LLM-generated titles are already concise (e.g., "Fix login bug")
 	fillerWords := []string{
 		"the", "a", "an", "to", "for", "with", "and", "or", "in", "on", "at",
-		"help", "implement", "create", "add", "update", "fix", "make", "build",
-		"i'll", "i will", "let me", "going to", "need to", "want to",
-		"you", "me", "your", "my", "this", "that", "some", "new",
-		"explore", "understand", "how", "works", "work", "does",
-		"codebase", "code", "base", "project", "repo", "repository",
-		"session", "task", "feature", "thing", "stuff",
 	}
 
-	// First pass: remove filler phrases
 	for _, word := range fillerWords {
-		// Remove as whole word with word boundaries
 		pattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(word) + `\b`)
 		name = pattern.ReplaceAllString(name, " ")
 	}
@@ -996,7 +994,7 @@ func formatSessionName(name string) string {
 	// Split into words and filter empty ones
 	words := strings.Fields(name)
 
-	// Limit to first 4-5 meaningful words
+	// Limit to first 5 meaningful words
 	maxWords := 5
 	if len(words) > maxWords {
 		words = words[:maxWords]
@@ -1017,17 +1015,89 @@ func formatSessionName(name string) string {
 		return ""
 	}
 
-	// Reject overly generic results
-	genericResults := map[string]bool{
-		"explore": true, "session": true, "codebase": true,
-		"understand": true, "how": true, "works": true,
-		"investigate": true, "analyze": true, "review": true,
+	return result
+}
+
+// newAIClient creates a fresh AI client by checking multiple credential sources in order:
+// 1. Encrypted API key stored in SQLite settings
+// 2. ANTHROPIC_API_KEY environment variable
+// 3. Claude Code OAuth token from macOS Keychain
+// Returns nil if no credentials are available.
+func (m *Manager) newAIClient() *ai.Client {
+	// Source 1: SQLite settings (explicit user-configured API key)
+	envVars, err := m.loadEnvVars(m.ctx)
+	if err != nil {
+		logger.Manager.Warnf("Failed to load env vars for AI client: %v", err)
 	}
-	if genericResults[result] {
-		return ""
+	if envVars != nil {
+		if apiKey := envVars["ANTHROPIC_API_KEY"]; apiKey != "" {
+			logger.Manager.Debugf("Using API key from settings")
+			return ai.NewClient(apiKey)
+		}
 	}
 
-	return result
+	// Source 2: Process environment variable
+	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
+		logger.Manager.Debugf("Using API key from environment")
+		return ai.NewClient(apiKey)
+	}
+
+	// Source 3: Claude Code OAuth token from macOS Keychain
+	token, err := ai.ReadClaudeCodeOAuthToken()
+	if err != nil {
+		logger.Manager.Debugf("No Claude Code OAuth token available: %v", err)
+		return nil
+	}
+	logger.Manager.Debugf("Using OAuth token from Claude Code keychain")
+	return ai.NewClientWithOAuth(token)
+}
+
+// generateAndApplySessionTitle uses the AI client to generate a session title
+// from the user's first message, then applies it to the conversation and session.
+func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage string) {
+	logger.Manager.Infof("Generating session title for session %s, conv %s", sessionID, convID)
+
+	client := m.newAIClient()
+	if client == nil {
+		logger.Manager.Warnf("Skipping session title generation for %s: no API key configured", sessionID)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(m.ctx, 15*time.Second)
+	defer cancel()
+
+	title, err := client.GenerateSessionTitle(ctx, userMessage)
+	if err != nil {
+		logger.Manager.Warnf("Failed to generate session title for session %s: %v", sessionID, err)
+		return
+	}
+
+	if title == "" {
+		logger.Manager.Warnf("Empty title returned for session %s", sessionID)
+		return
+	}
+
+	logger.Manager.Infof("Generated session title for %s: %q", sessionID, title)
+
+	// Update conversation name
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+		c.Name = title
+		c.UpdatedAt = time.Now()
+	}); err != nil {
+		logger.Manager.Errorf("Failed to update conversation name for %s: %v", convID, err)
+		return
+	}
+
+	// Forward to frontend
+	if m.onConversationEvent != nil {
+		m.onConversationEvent(convID, &AgentEvent{
+			Type: EventTypeNameSuggestion,
+			Name: title,
+		})
+	}
+
+	// Also try to auto-name the session
+	m.tryAutoNameSession(ctx, sessionID, title)
 }
 
 // tryAutoNameSession attempts to auto-name a session based on the first conversation's name suggestion.

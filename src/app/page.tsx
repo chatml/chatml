@@ -69,7 +69,7 @@ import { WorkspaceDashboard } from '@/components/dashboards/workspace-dashboard'
 import { SessionManager } from '@/components/session-manager';
 import { SkillsStore } from '@/components/skills/SkillsStore';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { ToastProvider, useToast } from '@/components/ui/toast';
+import { useToast } from '@/components/ui/toast';
 import { StreamingWarningHandler } from '@/components/shared/StreamingWarningHandler';
 import { ConnectionStatusHandler } from '@/components/shared/ConnectionStatusHandler';
 import { ConnectionBanner } from '@/components/shared/ConnectionBanner';
@@ -1246,7 +1246,7 @@ export default function Home() {
   }
 
   return (
-    <ToastProvider>
+    <>
       <StreamingWarningHandler />
       <ConnectionStatusHandler />
       <TooltipProvider>
@@ -1576,6 +1576,6 @@ export default function Home() {
         */}
         </div>
       </TooltipProvider>
-    </ToastProvider>
+    </>
   );
 }

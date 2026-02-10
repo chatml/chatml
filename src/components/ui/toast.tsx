@@ -105,9 +105,6 @@ export function useToast() {
   // Return no-op fallback during SSR or when outside provider
   // This prevents build errors while still logging messages
   if (!context) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('useToast called outside ToastProvider - using no-op fallback');
-    }
     return noopToast;
   }
   return context;

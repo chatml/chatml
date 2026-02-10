@@ -13,6 +13,7 @@ import (
 
 const (
 	defaultModel  = "claude-sonnet-4-20250514"
+	haikuModel    = "claude-haiku-4-5-20251001"
 	anthropicURL  = "https://api.anthropic.com/v1/messages"
 	apiVersion    = "2023-06-01"
 	maxTokens     = 1024
@@ -21,19 +22,43 @@ const (
 
 // Client is a lightweight Anthropic API client for generating PR descriptions.
 type Client struct {
-	apiKey     string
+	authHeader string // HTTP header name: "x-api-key" or "Authorization"
+	authValue  string // Header value: raw API key or "Bearer <token>"
 	httpClient *http.Client
 	model      string
 	apiURL     string // Override for testing; defaults to anthropicURL
 }
 
-// NewClient creates a new AI client. Returns nil if apiKey is empty.
+// AuthHeader returns the HTTP header name used for authentication (for testing).
+func (c *Client) AuthHeader() string { return c.authHeader }
+
+// AuthValue returns the HTTP header value used for authentication (for testing).
+func (c *Client) AuthValue() string { return c.authValue }
+
+// NewClient creates a new AI client using an API key (x-api-key header).
+// Returns nil if apiKey is empty.
 func NewClient(apiKey string) *Client {
 	if apiKey == "" {
 		return nil
 	}
 	return &Client{
-		apiKey:     apiKey,
+		authHeader: "x-api-key",
+		authValue:  apiKey,
+		httpClient: &http.Client{Timeout: clientTimeout},
+		model:      defaultModel,
+		apiURL:     anthropicURL,
+	}
+}
+
+// NewClientWithOAuth creates a new AI client using an OAuth access token (Authorization: Bearer header).
+// Returns nil if token is empty.
+func NewClientWithOAuth(accessToken string) *Client {
+	if accessToken == "" {
+		return nil
+	}
+	return &Client{
+		authHeader: "Authorization",
+		authValue:  "Bearer " + accessToken,
 		httpClient: &http.Client{Timeout: clientTimeout},
 		model:      defaultModel,
 		apiURL:     anthropicURL,
@@ -158,7 +183,7 @@ func (c *Client) GeneratePRDescription(ctx context.Context, req GeneratePRReques
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set(c.authHeader, c.authValue)
 	httpReq.Header.Set("anthropic-version", apiVersion)
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -280,7 +305,77 @@ func (c *Client) GenerateConversationSummary(ctx context.Context, req GenerateSu
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set(c.authHeader, c.authValue)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("calling Anthropic API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("Anthropic API returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var apiResp anthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return "", fmt.Errorf("decoding response: %w", err)
+	}
+
+	if len(apiResp.Content) == 0 {
+		return "", fmt.Errorf("empty response from Anthropic API")
+	}
+
+	return strings.TrimSpace(apiResp.Content[0].Text), nil
+}
+
+const sessionTitleSystemPrompt = `Generate a short title for an AI coding session based on the user's message.
+
+Rules:
+- Use imperative mood (e.g., "Fix login bug", "Add dark mode")
+- 3-7 words, max 50 characters
+- Output ONLY the title, nothing else
+- No quotes, no punctuation at the end
+- Be specific to the task described`
+
+const sessionTitleMaxTokens = 60
+const sessionTitleMaxInput = 500
+
+// GenerateSessionTitle calls the Anthropic API to generate a short session title from the user's first message.
+func (c *Client) GenerateSessionTitle(ctx context.Context, userMessage string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("AI client not configured (missing ANTHROPIC_API_KEY)")
+	}
+
+	// Truncate input to avoid wasting tokens
+	msg := userMessage
+	if len(msg) > sessionTitleMaxInput {
+		msg = msg[:sessionTitleMaxInput]
+	}
+
+	apiReq := anthropicRequest{
+		Model:     haikuModel,
+		MaxTokens: sessionTitleMaxTokens,
+		System:    sessionTitleSystemPrompt,
+		Messages: []anthropicMessage{
+			{Role: "user", Content: msg},
+		},
+	}
+
+	body, err := json.Marshal(apiReq)
+	if err != nil {
+		return "", fmt.Errorf("marshaling request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(c.authHeader, c.authValue)
 	httpReq.Header.Set("anthropic-version", apiVersion)
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -471,7 +566,7 @@ func (c *Client) GenerateSessionSummary(ctx context.Context, req GenerateSession
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set(c.authHeader, c.authValue)
 	httpReq.Header.Set("anthropic-version", apiVersion)
 
 	resp, err := c.httpClient.Do(httpReq)

@@ -1131,6 +1131,8 @@ updateFileTabContent: (id, content) => set((state) => ({
         isStreaming: true,
         error: null,
         isThinking: false,
+        // Ensure startTime is set when streaming begins (may have been cleared by init event)
+        startTime: current?.startTime ?? Date.now(),
       }),
     };
   }),
@@ -1164,14 +1166,18 @@ updateFileTabContent: (id, content) => set((state) => ({
       startTime: undefined,
     }),
   })),
-  appendThinkingText: (conversationId, text) => set((state) => ({
-    streamingState: updateStreamingConv(state.streamingState, conversationId, {
-      isStreaming: true,
-      error: null,
-      thinking: (state.streamingState[conversationId]?.thinking || '') + text,
-      isThinking: true,
-    }),
-  })),
+  appendThinkingText: (conversationId, text) => set((state) => {
+    const current = state.streamingState[conversationId];
+    return {
+      streamingState: updateStreamingConv(state.streamingState, conversationId, {
+        isStreaming: true,
+        error: null,
+        thinking: (current?.thinking || '') + text,
+        isThinking: true,
+        startTime: current?.startTime ?? Date.now(),
+      }),
+    };
+  }),
   setThinking: (conversationId, isThinking) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, { isThinking }),
   })),
