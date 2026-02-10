@@ -15,6 +15,7 @@ import { requestNotificationPermission } from '@/lib/tauri';
 import { playSound } from '@/lib/sounds';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import { APP_REGISTRY } from '@/lib/openApps';
+import { getAppIcon } from '@/components/icons/AppIcons';
 import { SettingsRow } from '../shared/SettingsRow';
 
 export function GeneralSettings() {
@@ -72,11 +73,24 @@ export function GeneralSettings() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {(installedApps.length > 0 ? installedApps : APP_REGISTRY).map((app) => (
-              <SelectItem key={app.id} value={app.id}>
-                {app.name}
-              </SelectItem>
-            ))}
+            {(installedApps.length > 0 ? installedApps : APP_REGISTRY)
+              .filter((app) => app.category === 'editor')
+              .map((app) => {
+                const FallbackIcon = getAppIcon(app.id, app.category);
+                const installedApp = installedApps.find((a) => a.id === app.id);
+                return (
+                  <SelectItem key={app.id} value={app.id}>
+                    <div className="flex items-center gap-2">
+                      {installedApp?.iconBase64 ? (
+                        <img src={`data:image/png;base64,${installedApp.iconBase64}`} className="h-4 w-4 shrink-0" alt="" />
+                      ) : (
+                        <FallbackIcon className="h-4 w-4 shrink-0" />
+                      )}
+                      {app.name}
+                    </div>
+                  </SelectItem>
+                );
+              })}
           </SelectContent>
         </Select>
       </SettingsRow>
