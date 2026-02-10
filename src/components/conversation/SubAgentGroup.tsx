@@ -10,7 +10,6 @@ import {
   ChevronRight,
   ChevronDown,
   Circle,
-  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
@@ -152,48 +151,13 @@ interface SubAgentGroupProps {
 }
 
 export const SubAgentGroup = memo(function SubAgentGroup({ subAgents }: SubAgentGroupProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
-
-  const runningCount = subAgents.filter(a => !a.completed).length;
-  const totalCount = subAgents.length;
-
-  if (totalCount === 0) return null;
+  if (subAgents.length === 0) return null;
 
   return (
-    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      <CollapsibleTrigger
-        className={cn(
-          'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-1 transition-colors',
-          'hover:bg-surface-2',
-          runningCount > 0 && 'bg-primary/5',
-        )}
-      >
-        <Users className="w-3 h-3 text-primary shrink-0" />
-        <span className="font-medium text-foreground">
-          Agents
-        </span>
-        <span className="text-2xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-mono">
-          {runningCount > 0 ? `${runningCount} running` : `${totalCount} done`}
-        </span>
-
-        <span className="flex-1" />
-
-        <span className="shrink-0 text-muted-foreground">
-          {isExpanded ? (
-            <ChevronDown className="w-2.5 h-2.5" />
-          ) : (
-            <ChevronRight className="w-2.5 h-2.5" />
-          )}
-        </span>
-      </CollapsibleTrigger>
-
-      <CollapsibleContent>
-        <div className="ml-2 space-y-0.5 mt-0.5">
-          {subAgents.map((agent) => (
-            <SubAgentRow key={agent.agentId} agent={agent} />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+    <div className="space-y-0.5">
+      {subAgents.map((agent) => (
+        <SubAgentRow key={agent.agentId} agent={agent} />
+      ))}
+    </div>
   );
 });

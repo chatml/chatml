@@ -195,10 +195,6 @@ function escapeXmlAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Track if we've suggested a name yet
-let hasEmittedNameSuggestion = false;
-let accumulatedText = "";
-
 // Module-level readline interface for proper cleanup
 let rl: readline.Interface | null = null;
 
@@ -554,41 +550,12 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
   } as SDKUserMessage;
 }
 
-// Extract a suggested name from the first meaningful response
-function extractNameSuggestion(text: string): string | null {
-  // Try to extract a concise task description from the text
-  // Look for patterns like "I'll [action]" or "Let me [action]"
-  const patterns = [
-    /I'll\s+(.{10,50}?)(?:\.|,|$)/i,
-    /I will\s+(.{10,50}?)(?:\.|,|$)/i,
-    /Let me\s+(.{10,50}?)(?:\.|,|$)/i,
-    /I'm going to\s+(.{10,50}?)(?:\.|,|$)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      // Capitalize first letter and clean up
-      let name = match[1].trim();
-      name = name.charAt(0).toUpperCase() + name.slice(1);
-      // Truncate if too long
-      if (name.length > 40) {
-        name = name.slice(0, 37) + "...";
-      }
-      return name;
-    }
-  }
-
-  return null;
-}
-
 // Buffer for block-level streaming (emit on paragraph breaks)
 let blockBuffer = "";
 const BLOCK_BUFFER_MAX_SIZE = 4096; // Flush even without paragraph break to ensure progressive rendering
 
 function processTextChunk(text: string): void {
   blockBuffer += text;
-  accumulatedText += text;
 
   // Emit complete blocks (separated by double newlines)
   const blocks = blockBuffer.split("\n\n");
@@ -607,15 +574,6 @@ function processTextChunk(text: string): void {
   if (blockBuffer.length > BLOCK_BUFFER_MAX_SIZE) {
     emit({ type: "assistant_text", content: blockBuffer });
     blockBuffer = "";
-  }
-
-  // Try to suggest a name after accumulating some text
-  if (!hasEmittedNameSuggestion && accumulatedText.length > 50) {
-    const suggestedName = extractNameSuggestion(accumulatedText);
-    if (suggestedName) {
-      emit({ type: "name_suggestion", name: suggestedName });
-      hasEmittedNameSuggestion = true;
-    }
   }
 }
 
@@ -1159,7 +1117,6 @@ async function main(): Promise<void> {
         debug(`Turn ${turnCount} starting: content="${msg.content.slice(0, 80)}"`);
 
         // Reset per-turn state
-        accumulatedText = "";
         blockBuffer = "";
 
         // Update workspace context with current session ID if it changed

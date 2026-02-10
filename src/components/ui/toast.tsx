@@ -100,12 +100,15 @@ const noopToast: ToastContextValue = {
   warning: (message: string, _title?: string) => console.warn('[Toast]', message),
 };
 
+let warnedOutsideProvider = false;
+
 export function useToast() {
   const context = useContext(ToastContext);
   // Return no-op fallback during SSR or when outside provider
   // This prevents build errors while still logging messages
   if (!context) {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && !warnedOutsideProvider) {
+      warnedOutsideProvider = true;
       console.warn('useToast called outside ToastProvider - using no-op fallback');
     }
     return noopToast;

@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import "@fontsource/instrument-serif/400.css";
 import { ThemeProvider } from "@/components/shared/ThemeProvider";
 import { ThemeScript } from "@/components/shared/ThemeScript";
+import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,7 +28,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

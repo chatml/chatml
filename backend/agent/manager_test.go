@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"os"
+
+	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/store"
@@ -489,47 +492,52 @@ func TestFormatSessionName(t *testing.T) {
 		{
 			name:     "simple phrase",
 			input:    "Fix the login bug",
-			expected: "login-bug",
+			expected: "fix-login-bug",
 		},
 		{
 			name:     "with implement",
 			input:    "Implement user authentication",
-			expected: "user-authentication",
+			expected: "implement-user-authentication",
 		},
 		{
-			name:     "with I'll help",
-			input:    "I'll help you add a dark mode toggle",
-			expected: "dark-mode-toggle",
+			name:     "LLM title preserved",
+			input:    "Add dark mode toggle",
+			expected: "add-dark-mode-toggle",
 		},
 		{
 			name:     "already lowercase",
 			input:    "add branch renaming logic",
-			expected: "branch-renaming-logic",
+			expected: "add-branch-renaming-logic",
 		},
 		{
 			name:     "with punctuation",
 			input:    "Fix bug: users can't log in!",
-			expected: "bug-users-can-t-log",
+			expected: "fix-bug-users-can-t",
 		},
 		{
-			name:     "long name gets truncated",
-			input:    "Implement a comprehensive user authentication system with OAuth and JWT tokens",
-			expected: "comprehensive-user-authentication-system",
+			name:     "long name gets truncated to 5 words",
+			input:    "Implement comprehensive user authentication system with OAuth",
+			expected: "implement-comprehensive-user-authenticat",
 		},
 		{
 			name:     "mixed case",
 			input:    "Add TypeScript Types For API Response",
-			expected: "typescript-types-api-response",
+			expected: "add-typescript-types-api-response",
+		},
+		{
+			name:     "articles removed",
+			input:    "Fix the a an issue",
+			expected: "fix-issue",
 		},
 		{
 			name:     "too short after filtering returns empty",
-			input:    "fix the a",
+			input:    "the a an",
 			expected: "",
 		},
 		{
 			name:     "numbers preserved",
 			input:    "Fix bug #123 in login",
-			expected: "bug-123-login",
+			expected: "fix-bug-123-login",
 		},
 	}
 
@@ -1077,4 +1085,190 @@ API_SECRET=topsecret
 	assert.Equal(t, "secret123", envMap["API_KEY"])
 	assert.Equal(t, "topsecret", envMap["API_SECRET"])
 	assert.Len(t, envMap, 4, "should only have 4 env vars, comments and blanks skipped")
+}
+
+// ============================================================================
+// newAIClient Multi-Source Credential Tests
+// ============================================================================
+
+func TestNewAIClient_Source1_SQLiteApiKey(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Store an encrypted API key in SQLite settings
+	encrypted, err := crypto.Encrypt("sk-ant-api03-sqlite-test-key")
+	require.NoError(t, err)
+	require.NoError(t, s.SetSetting(ctx, "anthropic-api-key", encrypted))
+
+	// Ensure env var is NOT set (don't pollute)
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		}
+	}()
+
+	client := m.newAIClient()
+	require.NotNil(t, client, "should create client from SQLite API key")
+	// Client should use x-api-key auth (not Bearer)
+	assert.Equal(t, "x-api-key", client.AuthHeader())
+}
+
+func TestNewAIClient_Source2_EnvVar(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	// No SQLite key configured, set env var instead
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Setenv("ANTHROPIC_API_KEY", "sk-ant-api03-env-test-key")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		} else {
+			os.Unsetenv("ANTHROPIC_API_KEY")
+		}
+	}()
+
+	client := m.newAIClient()
+	require.NotNil(t, client, "should create client from env var")
+	assert.Equal(t, "x-api-key", client.AuthHeader())
+}
+
+func TestNewAIClient_Source1_TakesPriorityOverSource2(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Set BOTH SQLite key and env var
+	encrypted, err := crypto.Encrypt("sk-sqlite-priority")
+	require.NoError(t, err)
+	require.NoError(t, s.SetSetting(ctx, "anthropic-api-key", encrypted))
+
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Setenv("ANTHROPIC_API_KEY", "sk-env-should-lose")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		} else {
+			os.Unsetenv("ANTHROPIC_API_KEY")
+		}
+	}()
+
+	client := m.newAIClient()
+	require.NotNil(t, client)
+	// Client should use SQLite key (source 1), not env var (source 2)
+	assert.Equal(t, "x-api-key", client.AuthHeader())
+	assert.Equal(t, "sk-sqlite-priority", client.AuthValue())
+}
+
+func TestNewAIClient_NoSources_ReturnsNil(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	// Ensure no env var
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		}
+	}()
+
+	// No SQLite key, no env var. Source 3 (keychain) may or may not work
+	// depending on the machine, but we can at least verify it doesn't panic.
+	client := m.newAIClient()
+	// On CI/machines without Claude Code credentials, this should be nil.
+	// On dev machines with Claude Code, this might return an OAuth client.
+	// Either way, it should not panic.
+	_ = client
+}
+
+func TestNewAIClient_EmptyEnvVar_SkipsToNextSource(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	// Set env var to empty string — should be treated as "not set"
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Setenv("ANTHROPIC_API_KEY", "")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		} else {
+			os.Unsetenv("ANTHROPIC_API_KEY")
+		}
+	}()
+
+	// No SQLite key, empty env var — should fall through to source 3 (keychain)
+	// On CI this returns nil, on dev machines it might return OAuth client
+	client := m.newAIClient()
+	_ = client // just verifying no panic
+}
+
+func TestNewAIClient_EnvVarsOnlyWithoutAnthropicKey(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Set env-vars setting with OTHER variables but no ANTHROPIC_API_KEY
+	require.NoError(t, s.SetSetting(ctx, "env-vars", "DB_HOST=localhost\nPORT=8080"))
+
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		}
+	}()
+
+	// loadEnvVars will return a map with DB_HOST and PORT but no ANTHROPIC_API_KEY
+	// Should fall through to source 2, then source 3
+	client := m.newAIClient()
+	// On CI: nil; on dev machine: might get OAuth client
+	_ = client
+}
+
+func TestNewAIClient_EnvVarsWithAnthropicKey(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Set ANTHROPIC_API_KEY in the env-vars setting (not the encrypted setting)
+	require.NoError(t, s.SetSetting(ctx, "env-vars", "ANTHROPIC_API_KEY=sk-from-env-vars-setting\nDB_HOST=localhost"))
+
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		} else {
+			os.Unsetenv("ANTHROPIC_API_KEY")
+		}
+	}()
+
+	client := m.newAIClient()
+	require.NotNil(t, client, "should create client from env-vars setting")
+	assert.Equal(t, "x-api-key", client.AuthHeader())
+	assert.Equal(t, "sk-from-env-vars-setting", client.AuthValue())
+}
+
+func TestNewAIClient_EncryptedKeyOverridesEnvVarsSetting(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Set ANTHROPIC_API_KEY in both env-vars setting AND encrypted setting
+	require.NoError(t, s.SetSetting(ctx, "env-vars", "ANTHROPIC_API_KEY=sk-from-env-vars"))
+	encrypted, err := crypto.Encrypt("sk-encrypted-wins")
+	require.NoError(t, err)
+	require.NoError(t, s.SetSetting(ctx, "anthropic-api-key", encrypted))
+
+	prevEnv := os.Getenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	defer func() {
+		if prevEnv != "" {
+			os.Setenv("ANTHROPIC_API_KEY", prevEnv)
+		} else {
+			os.Unsetenv("ANTHROPIC_API_KEY")
+		}
+	}()
+
+	client := m.newAIClient()
+	require.NotNil(t, client)
+	// The encrypted key should override the env-vars setting key
+	// because loadEnvVars() sets envMap["ANTHROPIC_API_KEY"] = decrypted at the end
+	assert.Equal(t, "sk-encrypted-wins", client.AuthValue())
 }
