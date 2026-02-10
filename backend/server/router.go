@@ -8,6 +8,7 @@ import (
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/github"
+	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/models"
 	"github.com/chatml/chatml-backend/orchestrator"
 	"github.com/chatml/chatml-backend/scripts"
@@ -18,11 +19,12 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient, scriptRunner)
 	auth := NewAuthHandlers(ghClient)
+	linearAuth := NewLinearAuthHandlers(linearClient, s)
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -38,6 +40,11 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/token", auth.SetToken)
 		r.Get("/status", auth.GetStatus)
 		r.Post("/logout", auth.Logout)
+
+		// Linear OAuth
+		r.Post("/linear/callback", linearAuth.Callback)
+		r.Get("/linear/status", linearAuth.GetStatus)
+		r.Post("/linear/logout", linearAuth.Logout)
 	})
 
 	// WebSocket

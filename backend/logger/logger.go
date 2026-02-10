@@ -48,6 +48,7 @@ var (
 	// Utilities
 	Cleanup *log.Logger
 	GitHub  *log.Logger
+	Linear  *log.Logger
 )
 
 // Define colors for different component categories
@@ -134,4 +135,5 @@ func init() {
 	// Utilities
 	Cleanup = base.WithPrefix(colorUtil.Render("cleanup"))
 	GitHub = base.WithPrefix(colorUtil.Render("github"))
+	Linear = base.WithPrefix(colorUtil.Render("linear"))
 }

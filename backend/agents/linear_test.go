@@ -40,7 +40,7 @@ func TestLinearAdapter_SetAPIKey(t *testing.T) {
 func TestLinearAdapter_Poll_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "POST", r.Method)
-		require.Equal(t, "lin_api_key", r.Header.Get("Authorization"))
+		require.Equal(t, "Bearer lin_api_key", r.Header.Get("Authorization"))
 		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 		response := map[string]interface{}{

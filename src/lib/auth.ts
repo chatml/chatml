@@ -13,6 +13,9 @@
 
 import { isTauri, safeListen, safeInvoke } from '@/lib/tauri';
 import { getBackendPortSync } from '@/lib/backend-port';
+import { generateRandomString, generateCodeChallenge } from '@/lib/pkce';
+import { LINEAR_STATE_PREFIX, handleLinearOAuthCallback } from '@/lib/linearAuth';
+import type { LinearUser } from '@/lib/linearAuth';
 
 // Get API base URL dynamically based on the backend port
 function getApiBase(): string {
@@ -43,26 +46,6 @@ export interface GitHubUser {
 export interface AuthStatus {
   authenticated: boolean;
   user?: GitHubUser;
-}
-
-// Generate random string for state/PKCE
-function generateRandomString(length: number): string {
-  const array = new Uint8Array(length);
-  crypto.getRandomValues(array);
-  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
-}
-
-
-// Generate PKCE code challenge from verifier (S256 method)
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  // Base64url encode (no padding)
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
 }
 
 // Store state and verifier temporarily for verification
@@ -415,41 +398,53 @@ async function checkPendingOAuthCallback(): Promise<string | null> {
 }
 
 /**
- * Listen for OAuth callback events from Tauri deep link handler
- * @param callback Called with token and user on successful auth
- * @param onError Called with error on auth failure
- * @returns Cleanup function to stop listening
+ * Listen for OAuth callback events from Tauri deep link handler.
+ * Routes to GitHub or Linear handler based on the state prefix.
  */
 export async function listenForOAuthCallback(
-  callback: (result: { token: string; user: GitHubUser }) => void,
-  onError: (error: Error) => void
+  githubCallback: (result: { token: string; user: GitHubUser }) => void,
+  githubOnError: (error: Error) => void,
+  linearCallback?: (result: { user: LinearUser }) => void,
+  linearOnError?: (error: Error) => void,
 ): Promise<() => void> {
   console.log('[OAuth] Setting up callback listener...');
 
   // Track if we've already processed a callback to avoid duplicates
   let processed = false;
 
-  // Handler function to process OAuth callback
+  // Handler function to process OAuth callback — routes by state prefix
   const processCallback = async (url: string) => {
     if (processed) {
       console.log('[OAuth] Already processed a callback, skipping');
       return;
     }
+
+    // Determine provider from state parameter
+    const parsed = new URL(url);
+    const state = parsed.searchParams.get('state') || '';
+    const isLinear = state.startsWith(LINEAR_STATE_PREFIX);
+
     processed = true;
-    console.log('[OAuth] Processing callback URL:', url);
+    console.log('[OAuth] Processing callback URL, provider:', isLinear ? 'linear' : 'github');
+
     try {
-      console.log('[OAuth] Calling handleOAuthCallback...');
-      const result = await handleOAuthCallback(url);
-      console.log('[OAuth] handleOAuthCallback returned, result:', !!result, 'user:', result?.user?.login);
-      console.log('[OAuth] Storing token...');
-      await storeToken(result.token);
-      console.log('[OAuth] Token stored, invoking success callback...');
-      callback(result);
-      console.log('[OAuth] Success callback invoked');
+      if (isLinear && linearCallback) {
+        const result = await handleLinearOAuthCallback(url);
+        linearCallback(result);
+      } else {
+        const result = await handleOAuthCallback(url);
+        await storeToken(result.token);
+        githubCallback(result);
+      }
     } catch (err) {
       console.error('[OAuth] Error in callback handler:', err);
       processed = false; // Allow retry on error
-      onError(err instanceof Error ? err : new Error(String(err)));
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (isLinear && linearOnError) {
+        linearOnError(error);
+      } else {
+        githubOnError(error);
+      }
     }
   };
 
