@@ -423,7 +423,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
       switch (conv.status) {
         case 'active':
-          return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
+          // Process alive but not streaming — show idle, not spinner.
+          // The spinner is driven by isStreaming (checked above).
+          return <Circle className="w-2.5 h-2.5 text-muted-foreground/50" />;
         case 'completed':
           return <CheckCircle2 className="w-2.5 h-2.5 text-text-success" />;
         case 'idle':
