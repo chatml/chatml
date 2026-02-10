@@ -1,27 +1,46 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getClaudeAuthStatus } from '@/lib/api';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { WorkspacesStep } from './steps/WorkspacesStep';
 import { SessionsStep } from './steps/SessionsStep';
 import { ConversationsStep } from './steps/ConversationsStep';
 import { ShortcutsStep } from './steps/ShortcutsStep';
+import { ApiKeyStep } from './steps/ApiKeyStep';
 
 interface OnboardingWizardProps {
   onComplete: () => void;
   onSkip: () => void;
+  onOpenSettings?: () => void;
 }
 
-const STEPS = [WelcomeStep, WorkspacesStep, SessionsStep, ConversationsStep, ShortcutsStep];
-const TOTAL_STEPS = STEPS.length;
+const CONCEPT_STEPS = [WelcomeStep, WorkspacesStep, SessionsStep, ConversationsStep, ShortcutsStep];
 
-export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) {
+export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const keyboardReady = useRef(false);
+  const [needsApiKey, setNeedsApiKey] = useState<boolean | null>(null);
 
-  const isLastStep = currentStep === TOTAL_STEPS - 1;
+  // Check auth status once when component mounts
+  useEffect(() => {
+    getClaudeAuthStatus()
+      .then((result) => setNeedsApiKey(!result.configured))
+      .catch(() => setNeedsApiKey(true));
+  }, []);
+
+  const steps = useMemo(() => {
+    if (needsApiKey) {
+      return [...CONCEPT_STEPS, ApiKeyStep];
+    }
+    return CONCEPT_STEPS;
+  }, [needsApiKey]);
+
+  const totalSteps = steps.length;
+  const isLastStep = currentStep === totalSteps - 1;
+  const isApiKeyStep = needsApiKey && currentStep === totalSteps - 1;
 
   const handleNext = useCallback(() => {
     if (isLastStep) {
@@ -66,7 +85,22 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleNext, handlePrev, onSkip]);
 
-  const StepComponent = STEPS[currentStep];
+  const StepComponent = steps[currentStep];
+
+  const getButtonLabel = () => {
+    if (currentStep === 0) return 'Get Started';
+    if (isApiKeyStep) return 'Open Settings';
+    if (isLastStep) return 'Start Using ChatML';
+    return 'Next';
+  };
+
+  const handleButtonClick = () => {
+    if (isApiKeyStep && onOpenSettings) {
+      onOpenSettings();
+    } else {
+      handleNext();
+    }
+  };
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-background overflow-hidden">
@@ -78,7 +112,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         onClick={onSkip}
         className="absolute top-14 right-6 text-sm text-muted-foreground/70 hover:text-foreground transition-colors z-40"
       >
-        Skip Onboarding
+        {isApiKeyStep ? 'Skip for now' : 'Skip Onboarding'}
       </button>
 
       {/* Step content — full-size opaque layer prevents GPU cache artifacts from previous step */}
@@ -93,15 +127,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         {/* Action button */}
         <Button
           size="lg"
-          onClick={handleNext}
+          onClick={handleButtonClick}
           className="h-12 px-8 text-lg bg-foreground text-background hover:bg-foreground/90 font-medium rounded-xl transition-colors"
         >
-          {currentStep === 0 ? 'Get Started' : isLastStep ? 'Start Using ChatML' : 'Next'}
+          {getButtonLabel()}
         </Button>
 
         {/* Dot indicators */}
         <div className="flex items-center gap-2">
-          {STEPS.map((_, index) => (
+          {steps.map((_, index) => (
             <button
               key={index}
               onClick={() => setCurrentStep(index)}

@@ -22,6 +22,7 @@ import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { GuidedTour } from '@/components/onboarding/GuidedTour';
 import { useOnboarding } from '@/hooks/useOnboarding';
+import { refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { getLinearAuthStatus } from '@/lib/linearAuth';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
@@ -164,6 +165,7 @@ export default function Home() {
   const [showCreateFromPR, setShowCreateFromPR] = useState(false);
   const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialCategory, setSettingsInitialCategory] = useState<string | undefined>(undefined);
 
   // Listen for open-settings events from other components (e.g. auth error display)
   useEffect(() => {
@@ -1156,8 +1158,12 @@ export default function Home() {
 
   // Handle CommandPalette custom events
   useEffect(() => {
-    const handleOpenSettings = () => setShowSettings(true);
-    const handleCloseSettings = () => setShowSettings(false);
+    const handleOpenSettings = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.category) setSettingsInitialCategory(detail.category);
+      setShowSettings(true);
+    };
+    const handleCloseSettings = () => { setShowSettings(false); setSettingsInitialCategory(undefined); refreshClaudeAuthStatus(); };
     const handleSpawnAgent = () => handleNewSession();
     const handleNewConv = () => handleNewConversation();
     const handleAddWorkspace = () => setShowAddWorkspace(true);
@@ -1476,7 +1482,11 @@ export default function Home() {
 
         {/* Onboarding Wizard Overlay */}
         {showWizard && (
-          <OnboardingWizard onComplete={completeWizard} onSkip={skipAll} />
+          <OnboardingWizard
+            onComplete={completeWizard}
+            onSkip={skipAll}
+            onOpenSettings={() => { skipAll(); setSettingsInitialCategory('ai-models'); setShowSettings(true); }}
+          />
         )}
 
         {/* Guided Tour Overlay */}
@@ -1487,7 +1497,7 @@ export default function Home() {
         {/* Settings Overlay - full screen */}
         {showSettings && (
           <div className="absolute inset-0 z-20 bg-content-background">
-            <SettingsPage onBack={() => setShowSettings(false)} />
+            <SettingsPage initialCategory={settingsInitialCategory as 'general' | 'ai-models' | undefined} onBack={() => { setShowSettings(false); setSettingsInitialCategory(undefined); refreshClaudeAuthStatus(); }} />
           </div>
         )}
 

@@ -26,6 +26,7 @@ import { AboutSettings } from './sections/AboutSettings';
 
 interface SettingsPageProps {
   onBack: () => void;
+  initialCategory?: SettingsCategory;
 }
 
 type SettingsCategory =
@@ -58,8 +59,8 @@ const moreNavItems: NavItem[] = [
   { id: 'about', label: 'About', icon: <Info className="w-3.5 h-3.5" /> },
 ];
 
-export function SettingsPage({ onBack }: SettingsPageProps) {
-  const [selectedCategory, setSelectedCategory] = useState<SettingsCategory>('general');
+export function SettingsPage({ onBack, initialCategory = 'general' }: SettingsPageProps) {
+  const [selectedCategory, setSelectedCategory] = useState<SettingsCategory>(initialCategory);
 
   return (
     <div className="flex h-full bg-content-background">

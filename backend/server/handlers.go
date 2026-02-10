@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -5271,6 +5273,59 @@ func maskAPIKey(key string) string {
 
 	suffix := key[len(key)-4:]
 	return key[:prefixEnd] + "..." + suffix
+}
+
+// GetClaudeAuthStatus checks all possible sources of Claude/Anthropic credentials
+// and returns which ones are available. Sources checked:
+//   - Settings-stored encrypted API key
+//   - ANTHROPIC_API_KEY environment variable
+//   - Claude Code CLI credentials (macOS Keychain or ~/.claude/.credentials.json)
+func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Check 1: Settings-stored API key
+	hasStoredKey := false
+	encrypted, found, err := h.store.GetSetting(ctx, settingKeyAnthropicAPIKey)
+	if err == nil && found && encrypted != "" {
+		if _, decErr := crypto.Decrypt(encrypted); decErr == nil {
+			hasStoredKey = true
+		}
+	}
+
+	// Check 2: ANTHROPIC_API_KEY environment variable
+	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
+
+	// Check 3: Claude Code CLI credentials
+	hasCliCredentials := checkClaudeCliCredentials()
+
+	configured := hasStoredKey || hasEnvKey || hasCliCredentials
+
+	writeJSON(w, map[string]interface{}{
+		"configured":       configured,
+		"hasStoredKey":     hasStoredKey,
+		"hasEnvKey":        hasEnvKey,
+		"hasCliCredentials": hasCliCredentials,
+	})
+}
+
+// checkClaudeCliCredentials checks if Claude Code CLI credentials are available.
+// On macOS, checks the Keychain. On other platforms, checks ~/.claude/.credentials.json.
+func checkClaudeCliCredentials() bool {
+	if runtime.GOOS == "darwin" {
+		cmd := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials")
+		if err := cmd.Run(); err == nil {
+			return true
+		}
+	}
+
+	// Fallback: check for credentials file (Linux/Windows)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	credFile := filepath.Join(home, ".claude", ".credentials.json")
+	info, err := os.Stat(credFile)
+	return err == nil && info.Size() > 0
 }
 
 // settingKeyMcpServers returns the settings key for MCP servers in a workspace
