@@ -20,7 +20,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
 import { useNavigationStore } from './navigationStore';
 import { useTabStore } from './tabStore';
-import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool, SubAgent } from '@/lib/types';
+import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool, SubAgent, CheckpointInfo } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -32,6 +32,7 @@ const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
 const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
 const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
 const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
+const EMPTY_CHECKPOINTS: readonly CheckpointInfo[] = [];
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -284,12 +285,19 @@ export const useBudgetStatus = () => useAppStore((s) => s.budgetStatus);
 /**
  * Checkpoints.
  * Use in: CheckpointTimeline
+ *
+ * Uses useShallow to prevent infinite re-render loops — .filter() creates a
+ * new array reference on every store update, which useSyncExternalStore treats
+ * as a new snapshot. useShallow compares elements by reference instead.
  */
-export const useCheckpoints = () => useAppStore((s) => {
-  const convId = s.selectedConversationId;
-  if (!convId) return [];
-  return s.checkpoints.filter(c => !c.conversationId || c.conversationId === convId);
-});
+export const useCheckpoints = () => useAppStore(
+  useShallow((s) => {
+    const convId = s.selectedConversationId;
+    if (!convId) return EMPTY_CHECKPOINTS;
+    const filtered = s.checkpoints.filter(c => !c.conversationId || c.conversationId === convId);
+    return filtered.length > 0 ? filtered : EMPTY_CHECKPOINTS;
+  })
+);
 
 /**
  * MCP servers.

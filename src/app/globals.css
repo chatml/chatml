@@ -80,7 +80,7 @@
   --radius: 0.625rem;
   --background: oklch(0.98 0 0);
   --content-background: oklch(1 0 0);
-  --chat-background: oklch(0.98 0 0);
+  --chat-background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
@@ -145,7 +145,7 @@
   /* Main backgrounds */
   --background: #090909;           /* RGB(9,9,9) - app shell background */
   --content-background: #101011;   /* RGB(16,16,17) - content area background */
-  --chat-background: #181818;      /* RGB(24,24,24) - chat area */
+  --chat-background: #101011;      /* RGB(16,16,17) - matches content area */
   --foreground: oklch(0.9 0 0);             /* ~#e5e5e5 - bright text */
   --card: #0f1111;                          /* Cards match content background */
   --card-foreground: oklch(0.9 0 0);
