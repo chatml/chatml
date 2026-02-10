@@ -100,7 +100,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   const subAgents = useSubAgents(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   const budgetStatus = useAppStore((s) => s.budgetStatus);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const startTimeRef = useRef<number | null>(null);
 
   const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
@@ -108,12 +108,11 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   // Check if extended thinking is enabled for this conversation
   const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
 
-  // Update elapsed time every second while streaming
-  // Uses a ref to capture startTime once, preventing resets when streaming state changes
+  // Update elapsed time every 50ms while streaming for smooth millisecond display
   useEffect(() => {
     if (!streaming?.isStreaming) {
       startTimeRef.current = null;
-      queueMicrotask(() => setElapsedTime(0));
+      queueMicrotask(() => setElapsedMs(0));
       return;
     }
 
@@ -123,18 +122,15 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
     }
 
     // Set initial elapsed time
-    const capturedStartTime = startTimeRef.current;
-    if (capturedStartTime) {
-      queueMicrotask(() => {
-        setElapsedTime(Math.floor((Date.now() - capturedStartTime) / 1000));
-      });
+    if (startTimeRef.current) {
+      setElapsedMs(Date.now() - startTimeRef.current);
     }
 
     const interval = setInterval(() => {
       if (startTimeRef.current) {
-        setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        setElapsedMs(Date.now() - startTimeRef.current);
       }
-    }, 1000);
+    }, 50);
 
     return () => clearInterval(interval);
   }, [streaming?.isStreaming, streaming?.startTime]);
@@ -144,11 +140,13 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
   // expansion UI only renders when there's thinking content to show
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
 
-  // Format elapsed time as mm:ss
-  const formatElapsedTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  // Format elapsed time as mm:ss.cc (centiseconds)
+  const formatElapsedTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    const centis = Math.floor((ms % 1000) / 10);
+    return `${mins}:${secs.toString().padStart(2, '0')}.${centis.toString().padStart(2, '0')}`;
   };
 
   // Build interleaved timeline from segments and tools
@@ -316,13 +314,17 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
           {streaming?.isStreaming && !streaming?.error && (
             <div
               className="flex items-center gap-2 pt-2 mt-2 border-t border-border/30 animate-fade-in"
-              aria-label={`Agent is working, elapsed time: ${formatElapsedTime(elapsedTime)}`}
+              aria-label={`Agent is working, elapsed time: ${formatElapsedTime(elapsedMs)}`}
             >
-              <Loader2 className="w-3 h-3 animate-spin text-ai-active" aria-hidden="true" />
+              <div className="flex items-end gap-[2px] h-3 w-3" aria-hidden="true">
+                <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-1" />
+                <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-2" />
+                <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-3" />
+              </div>
               <span className="text-xs text-muted-foreground">Agent is working</span>
               <div className="flex items-center gap-1 text-xs text-muted-foreground/70" aria-hidden="true">
                 <Clock className="w-3 h-3" />
-                <span className="font-mono tabular-nums">{formatElapsedTime(elapsedTime)}</span>
+                <span className="font-mono tabular-nums">{formatElapsedTime(elapsedMs)}</span>
               </div>
             </div>
           )}

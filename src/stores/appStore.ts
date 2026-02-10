@@ -1115,9 +1115,7 @@ updateFileTabContent: (id, content) => set((state) => ({
   setStreaming: (conversationId, isStreaming) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       isStreaming,
-      startTime: isStreaming
-        ? (state.streamingState[conversationId]?.startTime || Date.now())
-        : undefined,
+      startTime: isStreaming ? Date.now() : undefined,
     }),
   })),
   setStreamingError: (conversationId, error) => set((state) => ({
@@ -1128,6 +1126,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       thinking: null,
       isThinking: false,
       pendingPlanApproval: null,
+      startTime: undefined,
     }),
   })),
   clearStreamingText: (conversationId) => set((state) => ({
@@ -1140,6 +1139,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       thinking: null,
       isThinking: false,
       pendingPlanApproval: null,
+      startTime: undefined,
     }),
   })),
   appendThinkingText: (conversationId, text) => set((state) => ({

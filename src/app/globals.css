@@ -943,6 +943,45 @@
   }
 }
 
+/* Agent working indicator - equalizer bars */
+@keyframes agent-bar-1 {
+  0%, 100% { height: 25%; }
+  50% { height: 100%; }
+}
+
+@keyframes agent-bar-2 {
+  0%, 100% { height: 50%; }
+  50% { height: 25%; }
+  75% { height: 100%; }
+}
+
+@keyframes agent-bar-3 {
+  0%, 100% { height: 100%; }
+  25% { height: 25%; }
+  75% { height: 50%; }
+}
+
+.animate-agent-bar-1 {
+  animation: agent-bar-1 0.8s ease-in-out infinite;
+}
+
+.animate-agent-bar-2 {
+  animation: agent-bar-2 0.8s ease-in-out infinite 0.15s;
+}
+
+.animate-agent-bar-3 {
+  animation: agent-bar-3 0.8s ease-in-out infinite 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-agent-bar-1,
+  .animate-agent-bar-2,
+  .animate-agent-bar-3 {
+    animation: none;
+    height: 50%;
+  }
+}
+
 /* Custom shadow for popovers - even shadow all around */
 @utility shadow-popover {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.35);
