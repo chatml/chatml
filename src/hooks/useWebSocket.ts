@@ -133,6 +133,14 @@ export function useWebSocket(enabled: boolean = true) {
     if (data.type === 'conversation_status') {
       if (typeof data.payload === 'string' && isValidConversationStatus(data.payload)) {
         store.updateConversation(conversationId, { status: data.payload });
+        // Safety net: when backend says idle, clear any stale streaming state.
+        // This catches cases where result/complete events were dropped or missed.
+        if (data.payload === 'idle' && store.streamingState[conversationId]?.isStreaming) {
+          store.clearStreamingText(conversationId);
+          store.clearActiveTools(conversationId);
+          store.clearThinking(conversationId);
+          store.clearSubAgents(conversationId);
+        }
       } else {
         console.warn('Invalid conversation status payload:', data.payload);
       }
@@ -665,6 +673,10 @@ export function useWebSocket(enabled: boolean = true) {
       // Group I: Diagnostic Events
       // ====================================================================
       case 'agent_stop':
+        store.clearStreamingText(conversationId);
+        store.clearActiveTools(conversationId);
+        store.clearThinking(conversationId);
+        store.clearSubAgents(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });
         break;
 
