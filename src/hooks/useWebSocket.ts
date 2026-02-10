@@ -136,6 +136,7 @@ export function useWebSocket(enabled: boolean = true) {
         // Safety net: when backend says idle, clear any stale streaming state.
         // This catches cases where result/complete events were dropped or missed.
         if (data.payload === 'idle' && store.streamingState[conversationId]?.isStreaming) {
+          store.commitQueuedMessage(conversationId);
           store.clearStreamingText(conversationId);
           store.clearActiveTools(conversationId);
           store.clearThinking(conversationId);
@@ -404,6 +405,9 @@ export function useWebSocket(enabled: boolean = true) {
           durationMs: turnDurationMs,
           toolUsage: turnToolUsage.length > 0 ? turnToolUsage : undefined,
         });
+        // Commit queued message to messages array (if any).
+        // Must happen AFTER finalize (which checked for queued to keep isStreaming).
+        turnStore.commitQueuedMessage(conversationId);
         // Explicitly set status to active — finalizeStreamingMessage only clears
         // streaming/activeTools state but does NOT update conversation status.
         // The process is still alive and ready for the next message.
@@ -413,6 +417,8 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'complete':
         // Complete event signals the entire conversation ended (stdin closed)
+        // Commit any queued message so it appears in history
+        store.commitQueuedMessage(conversationId);
         // Clear any remaining state
         store.clearStreamingText(conversationId);
         store.setStreaming(conversationId, false);
@@ -463,6 +469,8 @@ export function useWebSocket(enabled: boolean = true) {
           break;
         }
 
+        // Commit any queued message so it appears in history
+        store.commitQueuedMessage(conversationId);
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
@@ -635,6 +643,8 @@ export function useWebSocket(enabled: boolean = true) {
       // Group F: Interrupted + User Question Timeout
       // ====================================================================
       case 'interrupted':
+        // Commit any queued message so it appears in history
+        store.commitQueuedMessage(conversationId);
         store.clearStreamingText(conversationId);
         store.setStreaming(conversationId, false);
         store.clearActiveTools(conversationId);
@@ -769,6 +779,7 @@ export function useWebSocket(enabled: boolean = true) {
       for (const convId of locallyStreaming) {
         if (!serverActiveSet.has(convId)) {
           // Agent finished while we were disconnected — clear orphaned state
+          store.commitQueuedMessage(convId);
           store.clearStreamingText(convId);
           store.clearActiveTools(convId);
           store.clearThinking(convId);

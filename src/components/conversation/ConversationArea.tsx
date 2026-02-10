@@ -40,6 +40,7 @@ import { CodeViewer } from '@/components/files/CodeViewer';
 import { FileTabIcon } from '@/components/files/FileTabIcon';
 import { TabBar, type TabItemData } from '@/components/tabs';
 import { StreamingMessage } from '@/components/conversation/StreamingMessage';
+import { QueuedMessageBubble } from '@/components/conversation/QueuedMessageBubble';
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
@@ -85,6 +86,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
   const streamingState = useAppStore((s) => s.streamingState);
+  const queuedMessage = useAppStore(
+    (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] : null
+  );
   const addMessage = useAppStore((s) => s.addMessage);
 
   const claudeAuthConfigured = useClaudeAuthStatus();
@@ -531,9 +535,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         >
           <StreamingMessage conversationId={selectedConversationId} />
         </ErrorBoundary>
+        {queuedMessage && (
+          <QueuedMessageBubble message={queuedMessage} />
+        )}
       </div>
     );
-  }, [selectedConversationId]);
+  }, [selectedConversationId, queuedMessage]);
 
   // Reset scroll on conversation change
   useEffect(() => {

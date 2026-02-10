@@ -125,9 +125,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     updateConversation,
     selectConversation,
     setStreaming,
+    setQueuedMessage,
+    commitQueuedMessage,
     clearPendingPlanApproval,
     clearActiveTools,
   } = useAppStore();
+  const hasQueuedMessage = useAppStore(
+    (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
+  );
   const { error: showError, info: showInfo } = useToast();
 
   // File mentions for Plate editor
@@ -512,7 +517,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
-    if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || isStreaming) return;
+    if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || hasQueuedMessage) return;
+
+    // Can't queue a message to a conversation that doesn't exist yet — check before clearing input
+    const conversationMessagesEarly = currentConversation
+      ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
+      : [];
+    const isNewConversation = !selectedConversationId || conversationMessagesEarly.length === 0;
+    if (isNewConversation && isStreaming) return;
+
     // Clear any pending programmatic submit now that we're executing
     pendingSubmitRef.current = null;
 
@@ -539,13 +552,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           return;
         }
       }
-
-      // Check if this is a new conversation (no messages yet) or no conversation selected
-      // In either case, we need to create via API since local conversations don't exist on backend
-      const conversationMessages = currentConversation
-        ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
-        : [];
-      const isNewConversation = !selectedConversationId || conversationMessages.length === 0;
 
       if (isNewConversation) {
         // Show immediate feedback on the placeholder conversation while API call is in-flight
@@ -606,21 +612,33 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         // Mark as streaming on the real conversation
         setStreaming(conv.id, true);
       } else {
-        // Add user message to store first (without base64 data to save memory)
-        addMessage({
-          id: crypto.randomUUID(),
-          conversationId: selectedConversationId,
-          role: 'user',
-          content: trimmedContent,
-          attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
-          timestamp: new Date().toISOString(),
-        });
+        const messageId = crypto.randomUUID();
+        const messageTimestamp = new Date().toISOString();
+        const messageAttachments = currentAttachments.length > 0 ? currentAttachments : undefined;
 
-        // Mark as streaming
-        setStreaming(selectedConversationId, true);
+        if (isStreaming) {
+          // Queue the message — don't add to messages[] yet (it renders in the footer)
+          setQueuedMessage(selectedConversationId, {
+            id: messageId,
+            content: trimmedContent,
+            attachments: messageAttachments,
+            timestamp: messageTimestamp,
+          });
+        } else {
+          // Normal path: add user message to store immediately
+          addMessage({
+            id: messageId,
+            conversationId: selectedConversationId,
+            role: 'user',
+            content: trimmedContent,
+            attachments: messageAttachments,
+            timestamp: messageTimestamp,
+          });
+          // Mark as streaming
+          setStreaming(selectedConversationId, true);
+        }
 
-        // Send message to existing conversation
-        // Only send model when it differs from the conversation's current model
+        // Always send to backend (it queues in agent-runner if busy)
         const modelChanged = selectedModel.id !== currentConversation?.model;
         await sendConversationMessage(
           selectedConversationId,
@@ -637,6 +655,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to send message:', error);
       const convId = selectedConversationId;
       if (convId) {
+        // Clear any queued message so the UI doesn't get stuck
+        setQueuedMessage(convId, null);
         addMessage({
           id: crypto.randomUUID(),
           conversationId: convId,
@@ -658,6 +678,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (!selectedConversationId || !isStreaming) return;
 
     try {
+      // Commit any queued message to history before stopping
+      commitQueuedMessage(selectedConversationId);
       await stopConversation(selectedConversationId);
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
@@ -958,7 +980,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           </DropdownMenu>
 
           {/* Stop Button (when streaming) */}
-          {isStreaming ? (
+          {isStreaming && (
             <Button
               size="icon"
               variant="destructive"
@@ -968,18 +990,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             >
               <Square className="h-4 w-4" />
             </Button>
-          ) : (
-            /* Send Button */
+          )}
+          {/* Send Button — also shown during streaming to queue a message (unless one is already queued) */}
+          {(!isStreaming || !hasQueuedMessage) && (
             <Button
               size="icon"
               className={cn(
                 'h-8 w-8 rounded-lg',
-                (!message.trim() || isSending) && 'opacity-50'
+                (!message.trim() || isSending || hasQueuedMessage) && 'opacity-50'
               )}
               onClick={handleSubmit}
-              disabled={!message.trim() || !selectedSessionId || isSending || authDisabled}
-              aria-label={sendWithEnter ? 'Send message (Enter)' : 'Send message (⌘Enter)'}
-              title={sendWithEnter ? 'Send (Enter)' : 'Send (⌘Enter)'}
+              disabled={!message.trim() || !selectedSessionId || isSending || hasQueuedMessage || authDisabled}
+              aria-label={isStreaming ? 'Queue message' : (sendWithEnter ? 'Send message (Enter)' : 'Send message (⌘Enter)')}
+              title={isStreaming ? 'Queue message' : (sendWithEnter ? 'Send (Enter)' : 'Send (⌘Enter)')}
             >
               <ArrowUp className="h-4 w-4" />
             </Button>

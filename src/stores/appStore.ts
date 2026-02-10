@@ -24,6 +24,7 @@ import type {
   PendingUserQuestion,
   ActiveTool,
   SubAgent,
+  Attachment,
   Summary,
   ScriptRun,
   SetupProgress,
@@ -121,6 +122,14 @@ interface TextSegment {
   timestamp: number; // When this segment started
 }
 
+// Queued user message (submitted while agent is streaming)
+export interface QueuedMessage {
+  id: string;
+  content: string;
+  attachments?: Attachment[];
+  timestamp: string;
+}
+
 // Streaming state for conversations
 interface StreamingState {
   text: string; // Legacy: full accumulated text for compatibility
@@ -163,6 +172,9 @@ interface AppState {
   streamingState: { [conversationId: string]: StreamingState };
   activeTools: { [conversationId: string]: ActiveTool[] };
   subAgents: { [conversationId: string]: SubAgent[] };
+
+  // Queued message per conversation (max one, submitted while agent is streaming)
+  queuedMessage: { [conversationId: string]: QueuedMessage | null };
 
   // Todo state
   agentTodos: { [conversationId: string]: AgentTodoItem[] };
@@ -337,6 +349,10 @@ interface AppState {
     }
   ) => void;
 
+  // Queued message actions
+  setQueuedMessage: (conversationId: string, message: QueuedMessage | null) => void;
+  commitQueuedMessage: (conversationId: string) => void;
+
   // Todo actions
   setAgentTodos: (conversationId: string, todos: AgentTodoItem[]) => void;
   clearAgentTodos: (conversationId: string) => void;
@@ -429,6 +445,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   streamingState: {},
   activeTools: {},
   subAgents: {},
+  queuedMessage: {},
   agentTodos: {},
   customTodos: {},
   terminalInstances: {},
@@ -607,11 +624,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cleanedActiveTools = { ...state.activeTools };
     const cleanedAgentTodos = { ...state.agentTodos };
     const cleanedContextUsage = { ...state.contextUsage };
+    const cleanedQueuedMessage = { ...state.queuedMessage };
     for (const convId of sessionConvIds) {
       delete cleanedStreamingState[convId];
       delete cleanedActiveTools[convId];
       delete cleanedAgentTodos[convId];
       delete cleanedContextUsage[convId];
+      delete cleanedQueuedMessage[convId];
     }
 
     // Clean up custom todos, session outputs, review comments, and last active conversation
@@ -632,6 +651,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTools: cleanedActiveTools,
       agentTodos: cleanedAgentTodos,
       contextUsage: cleanedContextUsage,
+      queuedMessage: cleanedQueuedMessage,
       customTodos: remainingCustomTodos,
       sessionOutputs: remainingSessionOutputs,
       reviewComments: remainingReviewComments,
@@ -736,6 +756,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
     const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
+    const { [id]: _queued, ...remainingQueuedMessage } = state.queuedMessage;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -772,6 +793,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       agentTodos: remainingAgentTodos,
       pendingUserQuestion: remainingPendingQuestions,
       contextUsage: remainingContextUsage,
+      queuedMessage: remainingQueuedMessage,
     };
   }),
   selectConversation: (id) => {
@@ -1364,16 +1386,19 @@ updateFileTabContent: (id, content) => set((state) => ({
 
     return set((state) => {
       const streaming = state.streamingState[conversationId];
+      const hasQueuedMessage = state.queuedMessage[conversationId] != null;
 
       // Build cleared streaming state (preserve planModeActive)
+      // If there's a queued message, keep isStreaming true to avoid flash
       const clearedStreaming = {
         text: '',
         segments: [],
         currentSegmentId: null,
-        isStreaming: false,
+        isStreaming: hasQueuedMessage,
         error: null,
         thinking: null,
         isThinking: false,
+        startTime: hasQueuedMessage ? Date.now() : undefined,
         planModeActive: streaming?.planModeActive || false,
         pendingPlanApproval: null,
       };
@@ -1427,6 +1452,38 @@ updateFileTabContent: (id, content) => set((state) => ({
       };
     });
   },
+
+  // Queued message actions
+  setQueuedMessage: (conversationId, message) => set((state) => ({
+    queuedMessage: { ...state.queuedMessage, [conversationId]: message },
+  })),
+  commitQueuedMessage: (conversationId) => set((state) => {
+    const queued = state.queuedMessage[conversationId];
+    if (!queued) return state;
+    const msg: Message = {
+      id: queued.id,
+      conversationId,
+      role: 'user',
+      content: queued.content,
+      attachments: queued.attachments,
+      timestamp: queued.timestamp,
+    };
+    const convPagination = state.messagePagination[conversationId];
+    return {
+      messages: [...state.messages, msg],
+      queuedMessage: { ...state.queuedMessage, [conversationId]: null },
+      // Keep totalCount in sync (same pattern as addMessage)
+      ...(convPagination ? {
+        messagePagination: {
+          ...state.messagePagination,
+          [conversationId]: {
+            ...convPagination,
+            totalCount: convPagination.totalCount + 1,
+          },
+        },
+      } : {}),
+    };
+  }),
 
   // Todo actions
   setAgentTodos: (conversationId, todos) => set((state) => ({
