@@ -593,6 +593,9 @@ function flushBlockBuffer(): void {
 
 // Track active tool uses
 const activeTools = new Map<string, { tool: string; startTime: number }>();
+// Retain tool names after completion so duplicate tool_end events during
+// session replay can still report the correct tool name instead of "Unknown".
+const completedToolNames = new Map<string, string>();
 
 // Track sub-agent session → agentId mapping for correlating hook events
 const sessionToAgentId = new Map<string, string>();
@@ -1401,6 +1404,7 @@ function handleMessage(message: SDKMessage): void {
             if (toolInfo) {
               const duration = Date.now() - toolInfo.startTime;
               trackToolEnd(duration);
+              completedToolNames.set(block.tool_use_id, toolInfo.tool);
               emit({
                 type: "tool_end",
                 id: block.tool_use_id,
@@ -1410,6 +1414,9 @@ function handleMessage(message: SDKMessage): void {
                 duration,
               });
               activeTools.delete(block.tool_use_id);
+            } else if (completedToolNames.has(block.tool_use_id)) {
+              // Duplicate tool_result during session replay — tool already completed.
+              // Skip to avoid duplicate tool_end events with wrong tool names.
             } else {
               // Race condition: tool_result arrived but tool_start was never tracked.
               // Emit tool_end anyway to prevent infinite spinner on frontend.

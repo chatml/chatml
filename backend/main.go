@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
@@ -84,6 +85,8 @@ func main() {
 	// Output port for Tauri to capture - MUST be first output line
 	// This protocol allows the Tauri wrapper to discover which port we bound to
 	fmt.Printf("CHATML_PORT=%d\n", actualPort)
+
+	appdir.Init()
 
 	s, err := store.NewSQLiteStore()
 	if err != nil {

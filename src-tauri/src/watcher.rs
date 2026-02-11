@@ -410,13 +410,13 @@ mod tests {
 
     #[test]
     fn test_extract_session_dir() {
-        let base = PathBuf::from("/Users/test/.chatml/workspaces");
+        let base = PathBuf::from("/Users/test/Library/Application Support/ChatML/workspaces");
 
         // Normal case
         assert_eq!(
             extract_session_dir(
                 &base,
-                &PathBuf::from("/Users/test/.chatml/workspaces/my-session/src/main.rs")
+                &PathBuf::from("/Users/test/Library/Application Support/ChatML/workspaces/my-session/src/main.rs")
             ),
             Some("my-session".to_string())
         );
@@ -425,7 +425,7 @@ mod tests {
         assert_eq!(
             extract_session_dir(
                 &base,
-                &PathBuf::from("/Users/test/.chatml/workspaces/my-session/README.md")
+                &PathBuf::from("/Users/test/Library/Application Support/ChatML/workspaces/my-session/README.md")
             ),
             Some("my-session".to_string())
         );
@@ -438,7 +438,10 @@ mod tests {
 
         // Path that is the base itself (no session component)
         assert_eq!(
-            extract_session_dir(&base, &PathBuf::from("/Users/test/.chatml/workspaces")),
+            extract_session_dir(
+                &base,
+                &PathBuf::from("/Users/test/Library/Application Support/ChatML/workspaces")
+            ),
             None
         );
     }

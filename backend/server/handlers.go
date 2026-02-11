@@ -562,7 +562,7 @@ const settingKeyEnvVars = "env-vars"
 const settingKeyAnthropicAPIKey = "anthropic-api-key"
 
 // getWorkspacesBaseDir returns the configured workspaces base directory,
-// falling back to the default (~/.chatml/workspaces) if not configured.
+// falling back to the default (~/Library/Application Support/ChatML/workspaces) if not configured.
 func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	configured, _, err := h.store.GetSetting(ctx, settingKeyWorkspacesBaseDir)
 	if err != nil {
@@ -1490,7 +1490,7 @@ type CreateSessionRequest struct {
 	Branch string `json:"branch,omitempty"`
 	// BranchPrefix is optional - prefix for auto-generated branch names (default: "session")
 	BranchPrefix string `json:"branchPrefix,omitempty"`
-	// WorktreePath is deprecated - worktrees are now created at ~/.chatml/workspaces/{name}
+	// WorktreePath is deprecated - worktrees are now created at ~/Library/Application Support/ChatML/workspaces/{name}
 	WorktreePath string `json:"worktreePath,omitempty"`
 	// Task is an optional description of what this session is for
 	Task string `json:"task,omitempty"`

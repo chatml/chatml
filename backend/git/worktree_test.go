@@ -9,9 +9,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	appdir.Init()
+	os.Exit(m.Run())
+}
 
 func TestNewWorktreeManager(t *testing.T) {
 	wm := NewWorktreeManager()
