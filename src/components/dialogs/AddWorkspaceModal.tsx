@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useShallow } from 'zustand/react/shallow';
-import { useSettingsStore, getBranchPrefix } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { addRepo, createSession as createSessionApi, listConversations as listConversationsApi, mapSessionDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
@@ -68,7 +68,9 @@ export function AddWorkspaceModal({ isOpen, onClose }: AddWorkspaceModalProps) {
       addWorkspace(workspace);
 
       // Auto-create first session for the new workspace (backend generates city-based name)
-      const branchPrefix = getBranchPrefix();
+      const branchPrefix = workspace.branchPrefix
+        ? getWorkspaceBranchPrefix(workspace)
+        : getBranchPrefix();
       const session = await createSessionApi(workspace.id, {
         ...(branchPrefix !== undefined && { branchPrefix }),
       });

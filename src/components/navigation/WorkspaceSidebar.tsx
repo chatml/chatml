@@ -19,7 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '@/stores/appStore';
 import { navigate, navigateOrOpenTab } from '@/lib/navigation';
-import { useSettingsStore, getBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, type ContentView, type SidebarSortBy } from '@/stores/settingsStore';
 import { useSidebarSessions, isSidebarGroupExpanded, type SidebarGroup } from '@/hooks/useSidebarSessions';
 import { createSession as createSessionApi, listConversations as listConversationsApi, updateSession as updateSessionApi, deleteRepo as deleteRepoApi, addRepo as addRepoApi, mapSessionDTO } from '@/lib/api';
 import { registerSession, getSessionDirName } from '@/lib/tauri';
@@ -285,7 +285,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
     try {
       // Create session via backend API (generates city-based name, branch, and worktree path)
-      const branchPrefix = getBranchPrefix();
+      const workspace = workspaces.find(w => w.id === workspaceId);
+      const branchPrefix = workspace?.branchPrefix
+        ? getWorkspaceBranchPrefix(workspace)
+        : getBranchPrefix();
       const session = await createSessionApi(workspaceId, {
         ...(branchPrefix !== undefined && { branchPrefix }),
       });

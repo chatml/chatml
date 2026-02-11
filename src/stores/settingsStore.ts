@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Workspace } from '@/lib/types';
+import { useAuthStore } from '@/stores/authStore';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
 export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history' | 'scripts';
@@ -427,10 +428,10 @@ export function getBranchPrefix(): string | undefined {
     case 'none':
       return '';
     case 'github':
-    default:
-      // 'github' uses the default backend behavior (session/ prefix)
-      // TODO: Pass GitHub username when available
-      return undefined;
+    default: {
+      const login = useAuthStore.getState().user?.login;
+      return login || undefined;
+    }
   }
 }
 
@@ -449,7 +450,9 @@ export function getWorkspaceBranchPrefix(workspace: Workspace): string | undefin
     case 'none':
       return '';
     case 'github':
-    default:
-      return undefined;
+    default: {
+      const login = useAuthStore.getState().user?.login;
+      return login || undefined;
+    }
   }
 }

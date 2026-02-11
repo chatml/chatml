@@ -1503,8 +1503,9 @@ type CreateSessionRequest struct {
 }
 
 // resolveRepoBranchPrefix returns the branch prefix based on repo-level settings.
+// For the "github" case, it resolves to the authenticated GitHub user's login.
 // Returns "session" as the default fallback.
-func resolveRepoBranchPrefix(repo *models.Repo) string {
+func (h *Handlers) resolveRepoBranchPrefix(repo *models.Repo) string {
 	switch repo.BranchPrefix {
 	case "custom":
 		if repo.CustomPrefix != "" {
@@ -1512,8 +1513,12 @@ func resolveRepoBranchPrefix(repo *models.Repo) string {
 		}
 	case "none":
 		return ""
+	case "github":
+		if user := h.ghClient.GetStoredUser(); user != nil && user.Login != "" {
+			return user.Login
+		}
 	}
-	// "github", "", or anything else → "session" (backend default)
+	// "", or anything else → "session" (backend default)
 	return "session"
 }
 
@@ -1602,7 +1607,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	// Resolve branch prefix once (used for auto-generated names)
 	branchPrefix := req.BranchPrefix
 	if branchPrefix == "" && req.Branch == "" {
-		branchPrefix = resolveRepoBranchPrefix(repo)
+		branchPrefix = h.resolveRepoBranchPrefix(repo)
 	}
 
 	// Generate or use provided session name with atomic directory + worktree creation
