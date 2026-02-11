@@ -100,7 +100,7 @@ export const MessageBlock = memo(function MessageBlock({
   }
 
   return (
-    <div className={cn('py-2', !isFirst && 'border-t border-border')}>
+    <div className="py-2">
       <div className="space-y-1.5">
         {/* Thinking/Reasoning Content */}
         {message.role === 'assistant' && showThinkingBlocks && message.thinkingContent && (

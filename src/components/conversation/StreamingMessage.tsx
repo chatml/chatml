@@ -205,7 +205,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const thinkingNeedsTruncation = streaming?.thinking && streaming.thinking.length > THINKING_TRUNCATE_LENGTH;
 
   return (
-    <div className="py-2 border-t border-border" role="status" aria-live="polite" aria-atomic="false">
+    <div className="py-2" role="status" aria-live="polite" aria-atomic="false">
       <div className="space-y-1.5">
           {/* Extended thinking mode indicator - shows when thinking is enabled but no content yet */}
           {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && (
@@ -315,7 +315,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
           {/* Persistent working indicator with elapsed time */}
           {streaming?.isStreaming && !streaming?.error && (
             <div
-              className="flex items-center gap-2 pt-2 mt-2 border-t border-border/30 animate-fade-in"
+              className="flex items-center gap-2 pt-2 mt-2 animate-fade-in"
               aria-label={`Agent is working, elapsed time: ${formatElapsedTime(elapsedMs)}`}
             >
               <div className="flex items-end gap-[2px] h-3 w-3" aria-hidden="true">
