@@ -126,36 +126,4 @@ export class WorkspaceContext {
       labels: [],
     };
   }
-
-  // Resolve Linear issue from multiple sources (priority order)
-  static resolveFromSources(options: WorkspaceContextOptions): string | null {
-    // 1. Explicit CLI arg (highest priority)
-    if (options.linearIssue) {
-      return options.linearIssue;
-    }
-
-    // 2. Branch name pattern (feat/LIN-123-description)
-    try {
-      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: options.cwd, encoding: "utf-8", timeout: 10000 }).trim();
-      const match = branch.match(/([A-Z]+-\d+)/);
-      if (match) {
-        return match[1];
-      }
-    } catch {
-      // Ignore git errors
-    }
-
-    // 3. Recent commit messages
-    try {
-      const logs = execSync("git log -5 --oneline", { cwd: options.cwd, encoding: "utf-8", timeout: 10000 });
-      const match = logs.match(/([A-Z]+-\d+)/);
-      if (match) {
-        return match[1];
-      }
-    } catch {
-      // Ignore git errors
-    }
-
-    return null;
-  }
 }

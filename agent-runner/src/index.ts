@@ -572,8 +572,15 @@ function processTextChunk(text: string): void {
 
   // Force flush if buffer exceeds max size (e.g., large code blocks without paragraph breaks)
   if (blockBuffer.length > BLOCK_BUFFER_MAX_SIZE) {
-    emit({ type: "assistant_text", content: blockBuffer });
-    blockBuffer = "";
+    // Try to split at the last newline to avoid breaking mid-word
+    const lastNewline = blockBuffer.lastIndexOf("\n");
+    if (lastNewline > 0) {
+      emit({ type: "assistant_text", content: blockBuffer.slice(0, lastNewline + 1) });
+      blockBuffer = blockBuffer.slice(lastNewline + 1);
+    } else {
+      emit({ type: "assistant_text", content: blockBuffer });
+      blockBuffer = "";
+    }
   }
 }
 
@@ -635,6 +642,17 @@ function trackToolStart(toolName: string): void {
 
 function trackToolEnd(durationMs: number): void {
   runStats.totalToolDurationMs += durationMs;
+}
+
+function resetRunStats(): void {
+  runStats.toolCalls = 0;
+  runStats.toolsByType = {};
+  runStats.subAgents = 0;
+  runStats.filesRead = 0;
+  runStats.filesWritten = 0;
+  runStats.bashCommands = 0;
+  runStats.webSearches = 0;
+  runStats.totalToolDurationMs = 0;
 }
 
 // ============================================================================
@@ -1118,6 +1136,7 @@ async function main(): Promise<void> {
 
         // Reset per-turn state
         blockBuffer = "";
+        resetRunStats();
 
         // Update workspace context with current session ID if it changed
         if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
@@ -1645,6 +1664,21 @@ async function cleanup(reason: string): Promise<void> {
     });
   }
   activeTools.clear();
+
+  // 4b. Emit tool_end for any in-flight sub-agent tools
+  for (const [toolId, toolInfo] of subagentActiveTools) {
+    const duration = Date.now() - toolInfo.startTime;
+    emit({
+      type: "tool_end",
+      id: toolId,
+      tool: toolInfo.tool,
+      success: false,
+      summary: `Interrupted: ${reason}`,
+      duration,
+      agentId: toolInfo.agentId,
+    });
+  }
+  subagentActiveTools.clear();
 
   // 5. Flush any remaining buffered text
   flushBlockBuffer();

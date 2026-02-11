@@ -108,7 +108,9 @@ func (r *Runner) executeRun(ctx context.Context, rc *RunContext) {
 
 	var resultStatus string
 	var resultSummary string
+	// TODO: Populate cost from polling results when cost tracking is available in the polling response.
 	var cost float64
+	// TODO: Populate sessionsCreated when agent execution mode supports session creation (creates-session mode).
 	var sessionsCreated []string
 
 	// Execute based on agent type
@@ -182,6 +184,13 @@ func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 	var summaryParts []string
 
 	for _, result := range results {
+		// Check for cancellation between processing results
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		if result.Error != nil {
 			logger.Runner.Warnf("Agent %s: %s polling error: %v", agent.ID, result.Source, result.Error)
 			continue

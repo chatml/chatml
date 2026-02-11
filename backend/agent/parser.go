@@ -231,6 +231,9 @@ const (
 
 	// Command error (SDK runtime command failed)
 	EventTypeCommandError = "command_error"
+
+	// Auth error (OAuth token expired or API key invalid)
+	EventTypeAuthError = "auth_error"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
