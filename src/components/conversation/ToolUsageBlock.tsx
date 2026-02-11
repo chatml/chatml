@@ -23,7 +23,7 @@ import {
   Circle,
   type LucideIcon,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, toRelativePath } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 
@@ -31,6 +31,7 @@ interface ToolUsageBlockProps {
   id: string;
   tool: string;
   params?: Record<string, unknown>;
+  worktreePath?: string;
   isActive?: boolean;
   success?: boolean;
   summary?: string;
@@ -76,6 +77,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   id,
   tool,
   params,
+  worktreePath,
   isActive = false,
   success,
   summary,
@@ -162,20 +164,27 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const getTarget = () => {
     if (!params) return null;
 
-    // Common param names for file paths/commands
-    const path =
-      params.path ||
+    // Check file-path params first (these get worktree-relative conversion)
+    const filePath =
       params.file_path ||
+      params.path ||
       params.filepath ||
       params.filename ||
-      params.file ||
+      params.file;
+
+    if (typeof filePath === 'string') {
+      return toRelativePath(filePath, worktreePath);
+    }
+
+    // Non-file params (commands, URLs, patterns, queries) — no path conversion
+    const other =
       params.command ||
       params.url ||
       params.pattern ||
       params.query;
 
-    if (typeof path === 'string') {
-      return path;
+    if (typeof other === 'string') {
+      return other;
     }
 
     return null;
