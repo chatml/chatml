@@ -393,7 +393,7 @@ outer:
 			}
 
 			// Track whether the agent emitted an error event (for crash fallback)
-			if event.Type == EventTypeError || event.Type == "auth_error" {
+			if event.Type == EventTypeError || event.Type == EventTypeAuthError {
 				proc.SetSawErrorEvent()
 			}
 
@@ -903,7 +903,9 @@ func (m *Manager) StopConversation(ctx context.Context, convID string) {
 	m.mu.Unlock()
 
 	// Send graceful stop signal first (best effort, may fail if process already exited)
-	proc.SendStop()
+	if err := proc.SendStop(); err != nil {
+		logger.Manager.Debugf("SendStop for conversation %s: %v (may be expected if process already exited)", convID, err)
+	}
 
 	// TryStop atomically claims ownership of the stop operation.
 	// Returns false if another goroutine already stopped this process.

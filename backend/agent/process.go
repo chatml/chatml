@@ -316,6 +316,11 @@ func (p *Process) Start() error {
 		// Increase buffer for large JSON events
 		buf := make([]byte, 0, 1024*1024)
 		scanner.Buffer(buf, 10*1024*1024)
+		// Timer for output backpressure: reused across iterations to detect when the
+		// output channel is persistently full. On each Scan(), we Reset it. If the
+		// channel send blocks until the timer fires, we drop the message. After a
+		// successful send, we Stop/drain the timer to prevent a stale firing on the
+		// next iteration (standard Go timer reuse pattern, see time.Timer docs).
 		timer := time.NewTimer(processOutputTimeout)
 		defer timer.Stop()
 		for scanner.Scan() {

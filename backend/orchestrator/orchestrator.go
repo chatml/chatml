@@ -55,7 +55,7 @@ func New(store OrchestratorStore, config Config) *Orchestrator {
 	pollingConfig := agents.LoadConfig()
 	pollingManager := agents.NewPollingManager(pollingConfig)
 
-	runner := NewRunner(store, eventBus, pollingManager)
+	runner := NewRunner(store, eventBus, pollingManager, nil)
 
 	o := &Orchestrator{
 		store:    store,
