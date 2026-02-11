@@ -415,7 +415,7 @@ outer:
 			}
 
 			// Track whether the agent emitted an error event (for crash fallback)
-			if event.Type == EventTypeError || event.Type == "auth_error" {
+			if event.Type == EventTypeError || event.Type == EventTypeAuthError {
 				proc.SetSawErrorEvent()
 			}
 
@@ -1055,7 +1055,9 @@ func (m *Manager) StopConversation(ctx context.Context, convID string) {
 	m.mu.Unlock()
 
 	// Send graceful stop signal first (best effort, may fail if process already exited)
-	proc.SendStop()
+	if err := proc.SendStop(); err != nil {
+		logger.Manager.Debugf("SendStop for conversation %s: %v (may be expected if process already exited)", convID, err)
+	}
 
 	// TryStop atomically claims ownership of the stop operation.
 	// Returns false if another goroutine already stopped this process.
@@ -1278,9 +1280,16 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		return
 	}
 
-	// Rename the git branch
+	// Rename the git branch, preserving the prefix from the original branch name.
+	// e.g. "mcastilho/tokyo" -> prefix "mcastilho", "session/tokyo" -> prefix "session"
 	oldBranchName := sess.Branch
-	newBranchName := fmt.Sprintf("session/%s", formattedName)
+	var newBranchName string
+	if idx := strings.LastIndex(oldBranchName, "/"); idx != -1 {
+		prefix := oldBranchName[:idx]
+		newBranchName = fmt.Sprintf("%s/%s", prefix, formattedName)
+	} else {
+		newBranchName = formattedName
+	}
 
 	if err := m.worktreeManager.RenameBranch(ctx, sess.WorktreePath, oldBranchName, newBranchName); err != nil {
 		logger.Manager.Errorf("Failed to rename branch for session %s: %v", sessionID, err)

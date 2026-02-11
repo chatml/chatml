@@ -60,17 +60,18 @@ export function createChatMLMcpServer(options: McpServerOptions) {
         },
         async ({ detailed }) => {
           const git = context.gitState;
-          const { execSync } = await import("child_process");
+          const { execFileSync } = await import("child_process");
 
           try {
+            const execOpts = { cwd: context.cwd, encoding: "utf-8" as const };
             if (detailed) {
-              const diff = execSync(`git diff ${git.baseBranch}...HEAD`, { cwd: context.cwd, encoding: "utf-8" });
+              const diff = execFileSync("git", ["diff", `${git.baseBranch}...HEAD`], execOpts);
               return {
                 content: [{ type: "text", text: diff || "No changes" }],
               };
             }
 
-            const stat = execSync(`git diff ${git.baseBranch}...HEAD --stat`, { cwd: context.cwd, encoding: "utf-8" });
+            const stat = execFileSync("git", ["diff", `${git.baseBranch}...HEAD`, "--stat"], execOpts);
             return {
               content: [{ type: "text", text: stat || "No changes" }],
             };
@@ -90,10 +91,10 @@ export function createChatMLMcpServer(options: McpServerOptions) {
           limit: z.number().optional().default(10).describe("Number of commits to show"),
         },
         async ({ limit }) => {
-          const { execSync } = await import("child_process");
+          const { execFileSync } = await import("child_process");
 
           try {
-            const logs = execSync(`git log -${limit} --oneline --decorate`, { cwd: context.cwd, encoding: "utf-8" });
+            const logs = execFileSync("git", ["log", `-${limit}`, "--oneline", "--decorate"], { cwd: context.cwd, encoding: "utf-8" as const });
             return {
               content: [{ type: "text", text: logs || "No commits" }],
             };

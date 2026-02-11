@@ -161,10 +161,31 @@ pub fn start_global_watcher(
                                     }
                                 };
 
-                            // Skip events for directories that no longer exist on disk.
+                            // Check if this session directory still exists on disk.
                             // macOS FSEvents can deliver stale historical events for
                             // deleted directories when a new watcher subscribes.
-                            if !watcher_base_path.join(&session_dir).exists() {
+                            let session_path = watcher_base_path.join(&session_dir);
+                            if !session_path.exists() {
+                                // Check if this was a registered session (vs stale FSEvents noise)
+                                let was_registered = match thread_sessions.read() {
+                                    Ok(sessions) => sessions.contains_key(&session_dir),
+                                    Err(_) => false,
+                                };
+                                if was_registered {
+                                    log::warn!(
+                                        "WORKTREE DELETED EXTERNALLY: {} (path: {})",
+                                        session_dir,
+                                        session_path.display()
+                                    );
+                                    // Emit event to frontend for visibility
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        let payload = serde_json::json!({
+                                            "sessionDir": session_dir,
+                                            "path": session_path.to_string_lossy(),
+                                        });
+                                        let _ = window.emit("session-deleted-externally", payload);
+                                    }
+                                }
                                 continue;
                             }
 

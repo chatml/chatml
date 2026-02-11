@@ -114,48 +114,17 @@ export class WorkspaceContext {
   }
 
   private resolveLinearIssue(identifier: string): LinearIssue | null {
-    // TODO: Implement actual Linear API resolution when MCP Linear server is integrated.
-    // This placeholder returns a minimal structure so the context can be populated.
-    // When implementing, consider using the Linear SDK or MCP Linear server's get_issue tool.
+    // Returns a minimal structure with the identifier only. Full issue data (title,
+    // description, state, labels) should be populated at runtime by the agent using
+    // MCP Linear tools (e.g. mcp__linear__get_issue). The agent-runner does not have
+    // direct access to the Linear API.
     return {
       id: identifier,
       identifier,
-      title: `Issue ${identifier}`,
+      title: identifier,
       description: "",
-      state: "unknown",
+      state: "unresolved",
       labels: [],
     };
-  }
-
-  // Resolve Linear issue from multiple sources (priority order)
-  static resolveFromSources(options: WorkspaceContextOptions): string | null {
-    // 1. Explicit CLI arg (highest priority)
-    if (options.linearIssue) {
-      return options.linearIssue;
-    }
-
-    // 2. Branch name pattern (feat/LIN-123-description)
-    try {
-      const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: options.cwd, encoding: "utf-8", timeout: 10000 }).trim();
-      const match = branch.match(/([A-Z]+-\d+)/);
-      if (match) {
-        return match[1];
-      }
-    } catch {
-      // Ignore git errors
-    }
-
-    // 3. Recent commit messages
-    try {
-      const logs = execSync("git log -5 --oneline", { cwd: options.cwd, encoding: "utf-8", timeout: 10000 });
-      const match = logs.match(/([A-Z]+-\d+)/);
-      if (match) {
-        return match[1];
-      }
-    } catch {
-      // Ignore git errors
-    }
-
-    return null;
   }
 }

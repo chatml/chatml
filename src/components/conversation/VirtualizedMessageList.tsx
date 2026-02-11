@@ -17,6 +17,7 @@ export interface VirtualizedMessageListHandle {
 
 interface VirtualizedMessageListProps {
   messages: readonly Message[];
+  worktreePath?: string;
   searchQuery: string;
   currentMatchIndex: number;
   searchMatches: { total: number; messageOffsets: number[] };
@@ -33,6 +34,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
   function VirtualizedMessageList(
     {
       messages,
+      worktreePath,
       searchQuery,
       currentMatchIndex,
       searchMatches,
@@ -75,6 +77,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
             <MessageBlock
               message={message}
               isFirst={index === 0}
+              worktreePath={worktreePath}
               searchQuery={searchQuery}
               currentMatchIndex={currentMatchIndex}
               matchOffset={searchMatches.messageOffsets[index] ?? 0}
@@ -83,7 +86,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
           </ErrorBoundary>
         </div>
       ),
-      [searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches]
+      [worktreePath, searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches]
     );
 
     // Determine follow output behavior: auto-scroll when at bottom

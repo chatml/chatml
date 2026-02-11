@@ -64,11 +64,12 @@ export function createLinearTools(context: WorkspaceContext) {
             execSync(`git checkout -b ${branchName}`, { cwd: context.cwd, encoding: "utf-8" });
           }
 
-          // Update context with issue (placeholder - real integration uses Linear MCP)
+          // Set minimal issue context. Full data (title, description, labels) should be
+          // populated by the agent using MCP Linear tools (e.g. mcp__linear__get_issue).
           context.setLinearIssue({
             id: issueId,
             identifier: issueId,
-            title: `Working on ${issueId}`,
+            title: issueId,
             description: "",
             state: "In Progress",
             labels: [],

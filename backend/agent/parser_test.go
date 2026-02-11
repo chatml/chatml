@@ -447,12 +447,12 @@ func TestFormatEvent_AllTypes(t *testing.T) {
 		{
 			name:     "tool_start event",
 			event:    StreamEvent{Type: "tool_start", Message: "read_file"},
-			expected: "🔧 Using: read_file",
+			expected: "[tool] read_file",
 		},
 		{
 			name:     "tool_result event",
 			event:    StreamEvent{Type: "tool_result", Message: "success"},
-			expected: "✓ success",
+			expected: "[ok] success",
 		},
 		{
 			name:     "name_suggestion event returns empty",
@@ -462,12 +462,12 @@ func TestFormatEvent_AllTypes(t *testing.T) {
 		{
 			name:     "done event",
 			event:    StreamEvent{Type: "done", Message: "Completed"},
-			expected: "✅ Completed",
+			expected: "[done] Completed",
 		},
 		{
 			name:     "error event",
 			event:    StreamEvent{Type: "error", Message: "Something failed"},
-			expected: "❌ Something failed",
+			expected: "[error] Something failed",
 		},
 		{
 			name:     "unknown type with message",

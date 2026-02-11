@@ -30,6 +30,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 export interface MessageBlockProps {
   message: Message;
   isFirst: boolean;
+  worktreePath?: string;
   searchQuery?: string;
   currentMatchIndex?: number;
   matchOffset?: number;
@@ -39,6 +40,7 @@ export interface MessageBlockProps {
 export const MessageBlock = memo(function MessageBlock({
   message,
   isFirst,
+  worktreePath,
   searchQuery = '',
   currentMatchIndex = 0,
   matchOffset = 0,
@@ -154,6 +156,7 @@ export const MessageBlock = memo(function MessageBlock({
                     duration={tool.durationMs}
                     stdout={tool.stdout}
                     stderr={tool.stderr}
+                    worktreePath={worktreePath}
                   />
                 );
               }
@@ -167,7 +170,7 @@ export const MessageBlock = memo(function MessageBlock({
                 section="ToolUsage"
                 fallback={<InlineErrorFallback message="Unable to display tool usage" />}
               >
-                <ToolUsageHistory tools={message.toolUsage} />
+                <ToolUsageHistory tools={message.toolUsage} worktreePath={worktreePath} />
               </ErrorBoundary>
             )}
 
@@ -227,7 +230,7 @@ export const MessageBlock = memo(function MessageBlock({
 
         {/* File Changes */}
         {message.fileChanges && message.fileChanges.length > 0 && (
-          <FileChangesBlock changes={message.fileChanges} />
+          <FileChangesBlock changes={message.fileChanges} worktreePath={worktreePath} />
         )}
 
         {/* Run Summary */}
@@ -248,6 +251,7 @@ export const MessageBlock = memo(function MessageBlock({
     prev.role !== next.role ||
     prev.thinkingContent !== next.thinkingContent ||
     prevProps.isFirst !== nextProps.isFirst ||
+    prevProps.worktreePath !== nextProps.worktreePath ||
     prevProps.searchQuery !== nextProps.searchQuery) {
     return false;
   }
