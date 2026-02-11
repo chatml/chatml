@@ -902,6 +902,23 @@ export interface AttachmentDTO {
   preview?: string;
 }
 
+export interface ToolUsageDTO {
+  id: string;
+  tool: string;
+  params?: Record<string, unknown>;
+  success?: boolean;
+  summary?: string;
+  durationMs?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+export interface TimelineEntryDTO {
+  type: 'text' | 'tool';
+  content?: string;
+  toolId?: string;
+}
+
 export interface MessageDTO {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -909,6 +926,10 @@ export interface MessageDTO {
   setupInfo?: SetupInfoDTO;
   runSummary?: RunSummaryDTO;
   attachments?: AttachmentDTO[];
+  toolUsage?: ToolUsageDTO[];
+  thinkingContent?: string;
+  durationMs?: number;
+  timeline?: TimelineEntryDTO[];
   timestamp: string;
 }
 
@@ -928,15 +949,7 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
     name: dto.name,
     status: dto.status,
     model: dto.model,
-    messages: (dto.messages || []).map((m) => ({
-      id: m.id,
-      conversationId: dto.id,
-      role: m.role,
-      content: m.content,
-      setupInfo: m.setupInfo,
-      runSummary: m.runSummary,
-      timestamp: m.timestamp,
-    })),
+    messages: (dto.messages || []).map((m) => toStoreMessage(m, dto.id)),
     messageCount: dto.messageCount,
     toolSummary: (dto.toolSummary || []).map((t) => ({
       id: t.id,
@@ -959,6 +972,10 @@ export function toStoreMessage(dto: MessageDTO, conversationId: string): import(
     setupInfo: dto.setupInfo,
     runSummary: dto.runSummary,
     attachments: dto.attachments,
+    toolUsage: dto.toolUsage,
+    thinkingContent: dto.thinkingContent,
+    durationMs: dto.durationMs,
+    timeline: dto.timeline as import('@/lib/types').TimelineEntry[] | undefined,
     timestamp: dto.timestamp,
   };
 }

@@ -173,13 +173,37 @@ type Attachment struct {
 
 // Message represents a single message in a conversation
 type Message struct {
-	ID          string       `json:"id"`
-	Role        string       `json:"role"` // "user", "assistant", "system"
-	Content     string       `json:"content"`
-	SetupInfo   *SetupInfo   `json:"setupInfo,omitempty"`   // For system messages with setup info
-	RunSummary  *RunSummary  `json:"runSummary,omitempty"`  // For assistant messages with run summary
-	Attachments []Attachment `json:"attachments,omitempty"` // File attachments
-	Timestamp   time.Time    `json:"timestamp"`
+	ID              string             `json:"id"`
+	Role            string             `json:"role"` // "user", "assistant", "system"
+	Content         string             `json:"content"`
+	SetupInfo       *SetupInfo         `json:"setupInfo,omitempty"`       // For system messages with setup info
+	RunSummary      *RunSummary        `json:"runSummary,omitempty"`      // For assistant messages with run summary
+	Attachments     []Attachment       `json:"attachments,omitempty"`     // File attachments
+	ToolUsage       []ToolUsageRecord  `json:"toolUsage,omitempty"`       // Per-message tool usage details
+	ThinkingContent string             `json:"thinkingContent,omitempty"` // Extended thinking/reasoning content
+	DurationMs      int                `json:"durationMs,omitempty"`      // Turn duration in milliseconds
+	Timeline        []TimelineEntry    `json:"timeline,omitempty"`        // Interleaved text/tool ordering
+	Timestamp       time.Time          `json:"timestamp"`
+}
+
+// ToolUsageRecord represents detailed tool usage information stored per-message
+type ToolUsageRecord struct {
+	ID         string                 `json:"id"`
+	Tool       string                 `json:"tool"`
+	Params     map[string]interface{} `json:"params,omitempty"`
+	Success    *bool                  `json:"success,omitempty"`
+	Summary    string                 `json:"summary,omitempty"`
+	DurationMs int                    `json:"durationMs,omitempty"`
+	Stdout     string                 `json:"stdout,omitempty"`
+	Stderr     string                 `json:"stderr,omitempty"`
+	StartTime  time.Time              `json:"-"` // Not persisted; used for timeline ordering
+}
+
+// TimelineEntry represents an entry in the interleaved message timeline
+type TimelineEntry struct {
+	Type    string `json:"type"`              // "text" or "tool"
+	Content string `json:"content,omitempty"` // For text entries
+	ToolID  string `json:"toolId,omitempty"`  // For tool entries, references ToolUsageRecord.ID
 }
 
 // ToolAction represents a tool usage record for the summary

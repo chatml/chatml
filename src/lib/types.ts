@@ -127,6 +127,11 @@ export interface ToolUsage {
   stderr?: string;
 }
 
+// Timeline entry preserving interleaved text/tool ordering in finalized messages
+export type TimelineEntry =
+  | { type: 'text'; content: string }
+  | { type: 'tool'; toolId: string };
+
 // Active tool during streaming (real-time tracking)
 export interface ActiveTool {
   id: string;
@@ -197,6 +202,8 @@ export interface Message {
   attachments?: Attachment[];
   // Extended thinking/reasoning content from the model
   thinkingContent?: string;
+  // Ordered timeline preserving interleaved text and tool structure from streaming
+  timeline?: TimelineEntry[];
 }
 
 // Run statistics from agent

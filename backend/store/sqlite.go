@@ -640,6 +640,58 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	logger.SQLite.Infof("Migration: user_skill_preferences table ready")
 
+	// Migration: Add tool_usage column to messages (JSON blob for per-message tool usage)
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'tool_usage'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN tool_usage TEXT DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added tool_usage column to messages")
+	}
+
+	// Migration: Add thinking_content column to messages
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'thinking_content'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN thinking_content TEXT DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added thinking_content column to messages")
+	}
+
+	// Migration: Add duration_ms column to messages
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'duration_ms'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN duration_ms INTEGER DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added duration_ms column to messages")
+	}
+
+	// Migration: Add timeline column to messages (JSON blob for interleaved text/tool ordering)
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'timeline'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN timeline TEXT DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added timeline column to messages")
+	}
+
 	return nil
 }
 
@@ -1469,7 +1521,9 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 	}
 
 	query := fmt.Sprintf(`
-		SELECT conversation_id, id, role, content, setup_info, run_summary, timestamp
+		SELECT conversation_id, id, role, content, setup_info, run_summary,
+			tool_usage, thinking_content, duration_ms, timeline,
+			timestamp
 		FROM messages
 		WHERE conversation_id IN (%s)
 		ORDER BY conversation_id, position`, strings.Join(placeholders, ","))
@@ -1491,9 +1545,13 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 		var convID string
 		var msg models.Message
 		var setupInfoJSON, runSummaryJSON sql.NullString
+		var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
+		var durationMsNull sql.NullInt64
 
 		if err := rows.Scan(&convID, &msg.ID, &msg.Role, &msg.Content,
-			&setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err != nil {
+			&setupInfoJSON, &runSummaryJSON,
+			&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
+			&msg.Timestamp); err != nil {
 			return fmt.Errorf("loadMessagesForConversations scan: %w", err)
 		}
 
@@ -1507,6 +1565,24 @@ func (s *SQLiteStore) loadMessagesForConversations(ctx context.Context, convMap 
 			var runSummary models.RunSummary
 			if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
 				msg.RunSummary = &runSummary
+			}
+		}
+		if toolUsageJSON.Valid {
+			var toolUsage []models.ToolUsageRecord
+			if json.Unmarshal([]byte(toolUsageJSON.String), &toolUsage) == nil {
+				msg.ToolUsage = toolUsage
+			}
+		}
+		if thinkingContentNull.Valid {
+			msg.ThinkingContent = thinkingContentNull.String
+		}
+		if durationMsNull.Valid {
+			msg.DurationMs = int(durationMsNull.Int64)
+		}
+		if timelineJSON.Valid {
+			var timeline []models.TimelineEntry
+			if json.Unmarshal([]byte(timelineJSON.String), &timeline) == nil {
+				msg.Timeline = timeline
 			}
 		}
 
@@ -1715,14 +1791,18 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 	var err error
 	if beforePosition != nil {
 		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, role, content, setup_info, run_summary, timestamp, position
+			SELECT id, role, content, setup_info, run_summary,
+				tool_usage, thinking_content, duration_ms, timeline,
+				timestamp, position
 			FROM messages
 			WHERE conversation_id = ? AND position < ?
 			ORDER BY position DESC
 			LIMIT ?`, convID, *beforePosition, fetchLimit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, role, content, setup_info, run_summary, timestamp, position
+			SELECT id, role, content, setup_info, run_summary,
+				tool_usage, thinking_content, duration_ms, timeline,
+				timestamp, position
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY position DESC
@@ -1742,8 +1822,12 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 	for rows.Next() {
 		var msg models.Message
 		var setupInfoJSON, runSummaryJSON sql.NullString
+		var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
+		var durationMsNull sql.NullInt64
 		var position int
-		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp, &position); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
+			&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
+			&msg.Timestamp, &position); err != nil {
 			return nil, fmt.Errorf("GetConversationMessages scan: %w", err)
 		}
 		if setupInfoJSON.Valid {
@@ -1756,6 +1840,24 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 			var runSummary models.RunSummary
 			if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
 				msg.RunSummary = &runSummary
+			}
+		}
+		if toolUsageJSON.Valid {
+			var toolUsage []models.ToolUsageRecord
+			if json.Unmarshal([]byte(toolUsageJSON.String), &toolUsage) == nil {
+				msg.ToolUsage = toolUsage
+			}
+		}
+		if thinkingContentNull.Valid {
+			msg.ThinkingContent = thinkingContentNull.String
+		}
+		if durationMsNull.Valid {
+			msg.DurationMs = int(durationMsNull.Int64)
+		}
+		if timelineJSON.Valid {
+			var timeline []models.TimelineEntry
+			if json.Unmarshal([]byte(timelineJSON.String), &timeline) == nil {
+				msg.Timeline = timeline
 			}
 		}
 		items = append(items, messageWithPos{msg: msg, position: position})
@@ -1855,7 +1957,9 @@ func (s *SQLiteStore) getConversationNoLock(ctx context.Context, id string) (*mo
 
 	// Load messages
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, role, content, setup_info, run_summary, timestamp
+		SELECT id, role, content, setup_info, run_summary,
+			tool_usage, thinking_content, duration_ms, timeline,
+			timestamp
 		FROM messages
 		WHERE conversation_id = ?
 		ORDER BY position`, id)
@@ -1866,9 +1970,12 @@ func (s *SQLiteStore) getConversationNoLock(ctx context.Context, id string) (*mo
 	msgIndexByID := make(map[string]int)
 	for rows.Next() {
 		var msg models.Message
-		var setupInfoJSON sql.NullString
-		var runSummaryJSON sql.NullString
-		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON, &msg.Timestamp); err != nil {
+		var setupInfoJSON, runSummaryJSON sql.NullString
+		var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
+		var durationMsNull sql.NullInt64
+		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
+			&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
+			&msg.Timestamp); err != nil {
 			return nil, fmt.Errorf("getConversationNoLock message scan: %w", err)
 		}
 		if setupInfoJSON.Valid {
@@ -1881,6 +1988,24 @@ func (s *SQLiteStore) getConversationNoLock(ctx context.Context, id string) (*mo
 			var runSummary models.RunSummary
 			if json.Unmarshal([]byte(runSummaryJSON.String), &runSummary) == nil {
 				msg.RunSummary = &runSummary
+			}
+		}
+		if toolUsageJSON.Valid {
+			var toolUsage []models.ToolUsageRecord
+			if json.Unmarshal([]byte(toolUsageJSON.String), &toolUsage) == nil {
+				msg.ToolUsage = toolUsage
+			}
+		}
+		if thinkingContentNull.Valid {
+			msg.ThinkingContent = thinkingContentNull.String
+		}
+		if durationMsNull.Valid {
+			msg.DurationMs = int(durationMsNull.Int64)
+		}
+		if timelineJSON.Valid {
+			var timeline []models.TimelineEntry
+			if json.Unmarshal([]byte(timelineJSON.String), &timeline) == nil {
+				msg.Timeline = timeline
 			}
 		}
 		msgIndexByID[msg.ID] = len(conv.Messages)
@@ -1946,6 +2071,33 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		runSummaryJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
+	// Serialize toolUsage if present
+	var toolUsageJSON sql.NullString
+	if len(msg.ToolUsage) > 0 {
+		data, err := json.Marshal(msg.ToolUsage)
+		if err != nil {
+			return fmt.Errorf("AddMessageToConversation marshal toolUsage: %w", err)
+		}
+		toolUsageJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
+	// Serialize timeline if present
+	var timelineJSON sql.NullString
+	if len(msg.Timeline) > 0 {
+		data, err := json.Marshal(msg.Timeline)
+		if err != nil {
+			return fmt.Errorf("AddMessageToConversation marshal timeline: %w", err)
+		}
+		timelineJSON = sql.NullString{String: string(data), Valid: true}
+	}
+
+	// Nullable scalar fields
+	thinkingContent := nullString(msg.ThinkingContent)
+	var durationMs sql.NullInt64
+	if msg.DurationMs > 0 {
+		durationMs = sql.NullInt64{Int64: int64(msg.DurationMs), Valid: true}
+	}
+
 	return RetryDBExec(ctx, "AddMessageToConversation", DefaultRetryConfig(), func(ctx context.Context) error {
 		// Use transaction to make position query + insert atomic
 		tx, err := s.db.BeginTx(ctx, nil)
@@ -1965,9 +2117,13 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		}
 
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary, timestamp, position)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON, msg.Timestamp, nextPos)
+			INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary,
+				tool_usage, thinking_content, duration_ms, timeline,
+				timestamp, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON,
+			toolUsageJSON, thinkingContent, durationMs, timelineJSON,
+			msg.Timestamp, nextPos)
 		if err != nil {
 			tx.Rollback()
 			return err
