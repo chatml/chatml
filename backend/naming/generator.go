@@ -7,17 +7,17 @@ import (
 	"strings"
 )
 
-// GenerateSessionName returns a random city name for session naming.
+// GenerateSessionName returns a random constellation/astronomy name for session naming.
 func GenerateSessionName() string {
-	idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(Cities))))
+	idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(Constellations))))
 	if err != nil {
-		// Fallback to first city if crypto/rand fails (extremely unlikely)
-		return Cities[0]
+		// Fallback to first entry if crypto/rand fails (extremely unlikely)
+		return Constellations[0]
 	}
-	return Cities[idx.Int64()]
+	return Constellations[idx.Int64()]
 }
 
-// GenerateUniqueSessionName generates a city name that doesn't conflict with existing names.
+// GenerateUniqueSessionName generates a constellation name that doesn't conflict with existing names.
 // If the generated name already exists, it appends a short random suffix.
 func GenerateUniqueSessionName(existingNames []string) string {
 	// Build lookup set for O(1) collision checking
@@ -26,7 +26,7 @@ func GenerateUniqueSessionName(existingNames []string) string {
 		existing[strings.ToLower(name)] = true
 	}
 
-	// Try to find an unused city (up to 10 attempts)
+	// Try to find an unused name (up to 10 attempts)
 	for i := 0; i < 10; i++ {
 		name := GenerateSessionName()
 		if !existing[strings.ToLower(name)] {

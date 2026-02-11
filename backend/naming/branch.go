@@ -29,7 +29,7 @@ var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+/`)
 // For example, "user/feature/deep/nested" returns "nested" rather than "deep/nested".
 //
 // Examples:
-//   - "session/tokyo" -> "tokyo"
+//   - "session/orion" -> "orion"
 //   - "mcastilho/fix-auth" -> "fix-auth"
 //   - "feature/add-login" -> "add-login"
 //   - "main" -> "main"

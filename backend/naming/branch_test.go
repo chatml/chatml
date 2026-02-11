@@ -7,8 +7,10 @@ func TestExtractSessionNameFromBranch(t *testing.T) {
 		branch   string
 		expected string
 	}{
-		// Session prefix
-		{"session/tokyo", "tokyo"},
+		// Session prefix with constellation names
+		{"session/orion", "orion"},
+		{"session/ursa-major", "ursa-major"},
+		{"session/andromeda-galaxy", "andromeda-galaxy"},
 		{"session/fix-auth-bug", "fix-auth-bug"},
 
 		// Feature/fix prefixes
@@ -31,6 +33,11 @@ func TestExtractSessionNameFromBranch(t *testing.T) {
 		{"main", "main"},
 		{"develop", "develop"},
 		{"my-branch", "my-branch"},
+
+		// Hyphenated names without prefix (constellation-style)
+		{"ursa-major", "ursa-major"},
+		{"orion-nebula", "orion-nebula"},
+		{"pillars-of-creation", "pillars-of-creation"},
 
 		// Nested slashes
 		{"mcastilho/session/nested", "nested"},
