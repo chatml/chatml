@@ -497,6 +497,14 @@ outer:
 						sa.ActiveTools = filtered
 					}
 				} else {
+					// Skip duplicate tool_end events — during session replay the agent-runner
+					// may emit tool_end twice for the same tool (once from the original execution,
+					// once from the replayed conversation history). The duplicate arrives with
+					// tool="Unknown" and causes UNIQUE constraint failures and ghost UI entries.
+					if _, ok := activeToolsMap[event.ID]; !ok {
+						logger.Manager.Debugf("Skipping duplicate tool_end for conv %s: tool=%s id=%s", convID, event.Tool, event.ID)
+						continue
+					}
 					delete(activeToolsMap, event.ID)
 
 					// Accumulate completed tool record for message persistence

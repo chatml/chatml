@@ -11,6 +11,7 @@ import (
 
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
@@ -18,6 +19,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	appdir.Init()
+	os.Exit(m.Run())
+}
 
 // setupTestHandlers creates handlers for testing
 // Note: agentManager is nil, tests that need it should use setupTestHandlersWithAgentManager

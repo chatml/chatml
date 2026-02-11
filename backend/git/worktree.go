@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/logger"
 )
 
@@ -20,17 +21,14 @@ var ErrBranchAlreadyCheckedOut = errors.New("branch is already checked out in an
 // ErrLocalBranchExists indicates the local branch already exists (but is not checked out in a worktree)
 var ErrLocalBranchExists = errors.New("local branch already exists")
 
-// WorkspacesBaseDir returns the default base directory for session worktrees: ~/.chatml/workspaces
+// WorkspacesBaseDir returns the default base directory for session worktrees:
+// ~/Library/Application Support/ChatML/workspaces
 func WorkspacesBaseDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-	return filepath.Join(homeDir, ".chatml", "workspaces"), nil
+	return appdir.WorkspacesDir(), nil
 }
 
 // WorkspacesBaseDirWithOverride returns the configured base directory if non-empty,
-// otherwise falls back to the default (~/.chatml/workspaces).
+// otherwise falls back to the default (~/Library/Application Support/ChatML/workspaces).
 func WorkspacesBaseDirWithOverride(configuredPath string) (string, error) {
 	if configuredPath != "" {
 		return configuredPath, nil

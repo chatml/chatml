@@ -3,9 +3,9 @@ package store
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sync"
 
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 )
@@ -35,22 +35,12 @@ func New() *Store {
 		conversations: make(map[string]*models.Conversation),
 	}
 
-	// Set up data path in user's home directory
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		dataDir := filepath.Join(homeDir, ".chatml")
-		if err := os.MkdirAll(dataDir, 0755); err != nil {
-			logger.Store.Errorf("Failed to create data dir: %v", err)
-		}
-		s.dataPath = filepath.Join(dataDir, "data.json")
-		logger.Store.Infof("Data path: %s", s.dataPath)
+	s.dataPath = appdir.DataPath()
+	logger.Store.Infof("Data path: %s", s.dataPath)
 
-		// Load existing data
-		if err := s.load(); err != nil {
-			logger.Store.Errorf("Failed to load data: %v", err)
-		}
-	} else {
-		logger.Store.Errorf("Failed to get home dir: %v", err)
+	// Load existing data
+	if err := s.load(); err != nil {
+		logger.Store.Errorf("Failed to load data: %v", err)
 	}
 
 	return s

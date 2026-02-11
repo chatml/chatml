@@ -6,11 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
 	_ "modernc.org/sqlite"
@@ -32,17 +31,7 @@ type SQLiteStore struct {
 
 // NewSQLiteStore creates a new SQLite-backed store
 func NewSQLiteStore() (*SQLiteStore, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-
-	dataDir := filepath.Join(homeDir, ".chatml")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, err
-	}
-
-	dbPath := filepath.Join(dataDir, "chatml.db")
+	dbPath := appdir.DBPath()
 
 	logger.SQLite.Infof("Opening database at %s", dbPath)
 
