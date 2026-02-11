@@ -28,6 +28,7 @@ import type {
   Summary,
   ScriptRun,
   SetupProgress,
+  TimelineEntry,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -312,6 +313,7 @@ interface AppState {
   setStreaming: (conversationId: string, isStreaming: boolean) => void;
   setStreamingError: (conversationId: string, error: string | null) => void;
   clearStreamingText: (conversationId: string) => void;
+  clearStreamingContent: (conversationId: string) => void;
   appendThinkingText: (conversationId: string, text: string) => void;
   setThinking: (conversationId: string, isThinking: boolean) => void;
   clearThinking: (conversationId: string) => void;
@@ -1166,6 +1168,18 @@ updateFileTabContent: (id, content) => set((state) => ({
       startTime: undefined,
     }),
   })),
+  // Clear stale content on process restart while preserving isStreaming and startTime
+  // so the "Agent is working" timer continues uninterrupted.
+  clearStreamingContent: (conversationId) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      text: '',
+      segments: [],
+      currentSegmentId: null,
+      error: null,
+      thinking: null,
+      isThinking: false,
+    }),
+  })),
   appendThinkingText: (conversationId, text) => set((state) => {
     const current = state.streamingState[conversationId];
     return {
@@ -1427,6 +1441,24 @@ updateFileTabContent: (id, content) => set((state) => ({
         };
       }
 
+      // Build interleaved timeline from text segments and tools
+      const segments = streaming.segments || [];
+      const tools = state.activeTools[conversationId] || [];
+      const timelineItems: Array<{ timestamp: number; entry: TimelineEntry }> = [];
+      for (const seg of segments) {
+        if (seg.text) {
+          timelineItems.push({ timestamp: seg.timestamp, entry: { type: 'text', content: seg.text } });
+        }
+      }
+      for (const tool of tools) {
+        if (!tool.agentId) {
+          timelineItems.push({ timestamp: tool.startTime, entry: { type: 'tool', toolId: tool.id } });
+        }
+      }
+      timelineItems.sort((a, b) => a.timestamp - b.timestamp);
+      const timeline: TimelineEntry[] | undefined =
+        timelineItems.length > 0 ? timelineItems.map(item => item.entry) : undefined;
+
       // Create the message from streaming text
       const newMessage: Message = {
         id: `msg-${Date.now()}`,
@@ -1438,6 +1470,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         toolUsage: metadata.toolUsage,
         runSummary: metadata.runSummary,
         ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
+        ...(timeline ? { timeline } : {}),
       };
 
       // Atomically: add message AND clear streaming state

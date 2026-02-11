@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -311,6 +312,27 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	var isThinking bool
 	var snapshotDirty bool
 
+	// Per-turn accumulation for message persistence (Phase 3)
+	var completedTools []models.ToolUsageRecord
+	toolStartTimes := make(map[string]time.Time)
+	type textSegment struct {
+		content   string
+		timestamp time.Time
+	}
+	var textSegments []textSegment
+	var currentSegmentText string
+	var currentSegmentStart *time.Time
+	turnStartTime := time.Now()
+
+	// maxOutputSize limits stdout/stderr stored per tool to prevent DB bloat
+	const maxOutputSize = 10 * 1024
+	truncateOutput := func(s string) string {
+		if len(s) > maxOutputSize {
+			return s[:maxOutputSize] + "\n... (truncated)"
+		}
+		return s
+	}
+
 	// Debounced snapshot flush: 500ms after last state change
 	snapshotTimer := time.NewTimer(snapshotDebounceInterval)
 	snapshotTimer.Stop() // Don't start until first state change
@@ -401,6 +423,12 @@ outer:
 			switch event.Type {
 			case EventTypeAssistantText:
 				currentAssistantMessage += event.Content
+				// Track text segments for timeline persistence
+				if currentSegmentStart == nil {
+					now := time.Now()
+					currentSegmentStart = &now
+				}
+				currentSegmentText += event.Content
 				markSnapshotDirty()
 
 			case EventTypeToolStart:
@@ -420,6 +448,17 @@ outer:
 					}
 				} else {
 					activeToolsMap[event.ID] = entry
+					// Seal current text segment for timeline
+					if currentSegmentStart != nil && currentSegmentText != "" {
+						textSegments = append(textSegments, textSegment{
+							content:   currentSegmentText,
+							timestamp: *currentSegmentStart,
+						})
+						currentSegmentText = ""
+						currentSegmentStart = nil
+					}
+					// Record tool start time for duration calculation
+					toolStartTimes[event.ID] = time.Now()
 				}
 				markSnapshotDirty()
 
@@ -459,10 +498,31 @@ outer:
 					}
 				} else {
 					delete(activeToolsMap, event.ID)
+
+					// Accumulate completed tool record for message persistence
+					durationMs := 0
+					var toolStart time.Time
+					if startTime, ok := toolStartTimes[event.ID]; ok {
+						durationMs = int(time.Since(startTime).Milliseconds())
+						toolStart = startTime
+						delete(toolStartTimes, event.ID)
+					}
+					success := event.Success
+					completedTools = append(completedTools, models.ToolUsageRecord{
+						ID:         event.ID,
+						Tool:       event.Tool,
+						Params:     event.Params,
+						Success:    &success,
+						Summary:    event.Summary,
+						DurationMs: durationMs,
+						Stdout:     truncateOutput(event.Stdout),
+						Stderr:     truncateOutput(event.Stderr),
+						StartTime:  toolStart,
+					})
 				}
 				markSnapshotDirty()
 
-				// Store tool action in summary
+				// Store tool action in summary (legacy flat list)
 				if err := m.store.AddToolActionToConversation(ctx, convID, models.ToolAction{
 					ID:      event.ID,
 					Tool:    event.Tool,
@@ -505,21 +565,75 @@ outer:
 				// streaming state. turn_complete means the process stays alive;
 				// complete/result means it will exit shortly.
 				if currentAssistantMessage != "" {
+					// Seal final text segment
+					if currentSegmentStart != nil && currentSegmentText != "" {
+						textSegments = append(textSegments, textSegment{
+							content:   currentSegmentText,
+							timestamp: *currentSegmentStart,
+						})
+					}
+
+					// Build interleaved timeline from text segments and completed tools
+					type timelineItem struct {
+						timestamp time.Time
+						entry     models.TimelineEntry
+					}
+					var items []timelineItem
+					for _, seg := range textSegments {
+						items = append(items, timelineItem{
+							timestamp: seg.timestamp,
+							entry:     models.TimelineEntry{Type: "text", Content: seg.content},
+						})
+					}
+					for _, tool := range completedTools {
+						ts := tool.StartTime
+						if ts.IsZero() {
+							ts = time.Now() // fallback
+						}
+						items = append(items, timelineItem{
+							timestamp: ts,
+							entry:     models.TimelineEntry{Type: "tool", ToolID: tool.ID},
+						})
+					}
+					sort.Slice(items, func(i, j int) bool {
+						return items[i].timestamp.Before(items[j].timestamp)
+					})
+					var timeline []models.TimelineEntry
+					if len(items) > 0 {
+						timeline = make([]models.TimelineEntry, len(items))
+						for i, item := range items {
+							timeline[i] = item.entry
+						}
+					}
+
+					durationMs := int(time.Since(turnStartTime).Milliseconds())
+
 					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
-						ID:        uuid.New().String()[:8],
-						Role:      "assistant",
-						Content:   currentAssistantMessage,
-						Timestamp: time.Now(),
+						ID:              uuid.New().String()[:8],
+						Role:            "assistant",
+						Content:         currentAssistantMessage,
+						ToolUsage:       completedTools,
+						ThinkingContent: currentThinking,
+						DurationMs:      durationMs,
+						Timeline:        timeline,
+						Timestamp:       time.Now(),
 					}); err != nil {
 						logger.Manager.Errorf("Failed to store assistant message for conv %s: %v", convID, err)
 					}
 					currentAssistantMessage = ""
 				}
+				// Reset per-turn accumulation state
 				currentThinking = ""
 				isThinking = false
 				activeToolsMap = make(map[string]ActiveToolEntry)
 				activeSubAgents = make(map[string]*SubAgentEntry)
 				pendingSubAgentTools = make(map[string][]ActiveToolEntry)
+				completedTools = nil
+				toolStartTimes = make(map[string]time.Time)
+				textSegments = nil
+				currentSegmentText = ""
+				currentSegmentStart = nil
+				turnStartTime = time.Now()
 				snapshotDirty = false
 
 				if err := m.store.ClearStreamingSnapshot(ctx, convID); err != nil {
@@ -564,13 +678,51 @@ outer:
 		}
 	}
 
-	// Store any remaining assistant message
+	// Store any remaining assistant message (with full enrichment)
 	if currentAssistantMessage != "" {
+		// Seal any in-progress text segment
+		if currentSegmentText != "" && currentSegmentStart != nil {
+			textSegments = append(textSegments, textSegment{content: currentSegmentText, timestamp: *currentSegmentStart})
+			currentSegmentText = ""
+			currentSegmentStart = nil
+		}
+
+		// Build timeline from text segments + completed tools
+		var timeline []models.TimelineEntry
+		if len(textSegments) > 0 || len(completedTools) > 0 {
+			type timelineItem struct {
+				timestamp time.Time
+				entry     models.TimelineEntry
+			}
+			var items []timelineItem
+			for _, seg := range textSegments {
+				items = append(items, timelineItem{timestamp: seg.timestamp, entry: models.TimelineEntry{Type: "text", Content: seg.content}})
+			}
+			for _, tool := range completedTools {
+				ts := tool.StartTime
+				if ts.IsZero() {
+					ts = time.Now()
+				}
+				items = append(items, timelineItem{timestamp: ts, entry: models.TimelineEntry{Type: "tool", ToolID: tool.ID}})
+			}
+			sort.Slice(items, func(i, j int) bool { return items[i].timestamp.Before(items[j].timestamp) })
+			timeline = make([]models.TimelineEntry, len(items))
+			for i, item := range items {
+				timeline[i] = item.entry
+			}
+		}
+
+		durationMs := int(time.Since(turnStartTime).Milliseconds())
+
 		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
-			ID:        uuid.New().String()[:8],
-			Role:      "assistant",
-			Content:   currentAssistantMessage,
-			Timestamp: time.Now(),
+			ID:              uuid.New().String()[:8],
+			Role:            "assistant",
+			Content:         currentAssistantMessage,
+			ToolUsage:       completedTools,
+			ThinkingContent: currentThinking,
+			DurationMs:      durationMs,
+			Timeline:        timeline,
+			Timestamp:       time.Now(),
 		}); err != nil {
 			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}

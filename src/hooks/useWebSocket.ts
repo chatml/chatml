@@ -174,10 +174,10 @@ export function useWebSocket(enabled: boolean = true) {
     switch (data.type) {
       case 'init':
         // If an init event arrives for an already-streaming conversation, it means the
-        // process was restarted. Clear stale streaming state before processing new events.
+        // process was restarted. Clear stale content but preserve isStreaming and startTime
+        // so the "Agent is working" timer continues uninterrupted.
         if (store.streamingState[conversationId]?.isStreaming) {
-          store.clearStreamingText(conversationId);
-          store.setStreaming(conversationId, false);
+          store.clearStreamingContent(conversationId);
           store.clearActiveTools(conversationId);
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
