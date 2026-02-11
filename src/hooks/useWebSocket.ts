@@ -370,6 +370,29 @@ export function useWebSocket(enabled: boolean = true) {
           };
           freshStore.setBudgetStatus(budgetStatus);
         }
+        // Update context meter from reliable result data.
+        // This ensures the meter is always updated at the end of each turn, even if
+        // the per-message context_usage events were unreliable during streaming.
+        const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
+        if (resultModelUsage) {
+          for (const key of Object.keys(resultModelUsage)) {
+            if (resultModelUsage[key]?.contextWindow) {
+              freshStore.setContextUsage(conversationId, {
+                contextWindow: resultModelUsage[key].contextWindow!,
+              });
+              break;
+            }
+          }
+        }
+        const resultUsage = normalizeUsage(event.usage);
+        if (resultUsage && resultUsage.inputTokens > 0) {
+          freshStore.setContextUsage(conversationId, {
+            inputTokens: resultUsage.inputTokens,
+            outputTokens: resultUsage.outputTokens,
+            cacheReadInputTokens: resultUsage.cacheReadInputTokens ?? 0,
+            cacheCreationInputTokens: resultUsage.cacheCreationInputTokens ?? 0,
+          });
+        }
         // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
         // Desktop notification for task completion.

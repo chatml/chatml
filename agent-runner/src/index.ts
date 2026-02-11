@@ -1325,16 +1325,20 @@ function handleMessage(message: SDKMessage): void {
         }
       }
 
-      // Extract per-message usage for context meter
-      const msgUsage = (message.message as { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }).usage;
-      if (msgUsage) {
-        emit({
-          type: "context_usage",
-          inputTokens: msgUsage.input_tokens ?? 0,
-          outputTokens: msgUsage.output_tokens ?? 0,
-          cacheReadInputTokens: msgUsage.cache_read_input_tokens ?? 0,
-          cacheCreationInputTokens: msgUsage.cache_creation_input_tokens ?? 0,
-        });
+      // Extract per-message usage for context meter — skip sub-agent messages
+      // to avoid overwriting the parent conversation's context usage.
+      if (!isSubAgentMessage) {
+        const msgUsage = (message.message as { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }).usage;
+        debug(`[context_usage] assistant message usage: ${JSON.stringify(msgUsage)}, isSubAgent=${isSubAgentMessage}, sessionId=${msgSessionId}`);
+        if (msgUsage) {
+          emit({
+            type: "context_usage",
+            inputTokens: msgUsage.input_tokens ?? 0,
+            outputTokens: msgUsage.output_tokens ?? 0,
+            cacheReadInputTokens: msgUsage.cache_read_input_tokens ?? 0,
+            cacheCreationInputTokens: msgUsage.cache_creation_input_tokens ?? 0,
+          });
+        }
       }
       break;
     }
@@ -1519,6 +1523,22 @@ function handleMessage(message: SDKMessage): void {
             message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
           });
         }
+      }
+
+      // Emit reliable context_usage from the result's cumulative usage.
+      // The SDK's per-assistant-message usage may not be populated correctly
+      // during streaming, but the result's usage is always reliable.
+      const resultUsage = resultMsg.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined;
+      debug(`[context_usage] result usage: ${JSON.stringify(resultUsage)}`);
+      debug(`[context_usage] result modelUsage: ${JSON.stringify(resultMsg.modelUsage)}`);
+      if (resultUsage?.input_tokens) {
+        emit({
+          type: "context_usage",
+          inputTokens: resultUsage.input_tokens,
+          outputTokens: resultUsage.output_tokens ?? 0,
+          cacheReadInputTokens: resultUsage.cache_read_input_tokens ?? 0,
+          cacheCreationInputTokens: resultUsage.cache_creation_input_tokens ?? 0,
+        });
       }
 
       // Extract context window size from modelUsage for context meter
