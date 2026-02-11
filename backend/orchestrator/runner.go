@@ -23,13 +23,21 @@ type Store interface {
 	ClearAgentError(ctx context.Context, agentID string) error
 }
 
+// SessionCreator creates sessions for orchestrator agents operating in creates-session mode.
+// The implementation is responsible for worktree creation, session persistence, and
+// spawning the agent-runner process with an initial message describing the polled item.
+type SessionCreator interface {
+	CreateSessionForItem(ctx context.Context, agent *models.OrchestratorAgent, item agents.PollItem) (sessionID string, err error)
+}
+
 // Runner executes agent runs
 type Runner struct {
-	mu       sync.RWMutex
-	store    Store
-	eventBus *EventBus
-	polling  *agents.PollingManager
-	running  map[string]*RunContext // runID -> context
+	mu             sync.RWMutex
+	store          Store
+	eventBus       *EventBus
+	polling        *agents.PollingManager
+	sessionCreator SessionCreator
+	running        map[string]*RunContext // runID -> context
 }
 
 // RunContext holds the state for a running agent
@@ -40,13 +48,15 @@ type RunContext struct {
 	StartTime time.Time
 }
 
-// NewRunner creates a new runner
-func NewRunner(store Store, eventBus *EventBus, polling *agents.PollingManager) *Runner {
+// NewRunner creates a new runner. The optional sessionCreator enables creates-session mode;
+// if nil, agents in creates-session mode will log items but not create sessions.
+func NewRunner(store Store, eventBus *EventBus, polling *agents.PollingManager, sessionCreator SessionCreator) *Runner {
 	return &Runner{
-		store:    store,
-		eventBus: eventBus,
-		polling:  polling,
-		running:  make(map[string]*RunContext),
+		store:          store,
+		eventBus:       eventBus,
+		polling:        polling,
+		sessionCreator: sessionCreator,
+		running:        make(map[string]*RunContext),
 	}
 }
 
@@ -110,11 +120,9 @@ func (r *Runner) executeRun(ctx context.Context, rc *RunContext) {
 	var resultSummary string
 	// TODO: Populate cost from polling results when cost tracking is available in the polling response.
 	var cost float64
-	// TODO: Populate sessionsCreated when agent execution mode supports session creation (creates-session mode).
-	var sessionsCreated []string
 
 	// Execute based on agent type
-	err := r.runAgent(ctx, rc)
+	sessionsCreated, err := r.runAgent(ctx, rc)
 	if err != nil {
 		resultStatus = models.AgentRunStatusFailed
 		resultSummary = fmt.Sprintf("Error: %v", err)
@@ -154,12 +162,12 @@ func (r *Runner) executeRun(ctx context.Context, rc *RunContext) {
 	r.eventBus.PublishAgentRunCompleted(rc.Agent.ID, rc.Run, duration.Milliseconds())
 }
 
-// runAgent executes the agent logic
-func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
+// runAgent executes the agent logic. Returns the list of created session IDs (if any) and an error.
+func (r *Runner) runAgent(ctx context.Context, rc *RunContext) ([]string, error) {
 	// Check for cancellation
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	default:
 	}
 
@@ -168,26 +176,28 @@ func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 	// Check if agent has polling configuration
 	if agent.Definition == nil || agent.Definition.Polling == nil {
 		r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID, "No polling configuration")
-		return nil
+		return nil, nil
 	}
 
 	r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID, "Polling for updates...")
 
-	// Execute polling
+	// Execute polling — ctx propagates cancellation to the polling adapters
+	// (GitHubAdapter.Poll and LinearAdapter.Poll both accept context.Context).
 	results, err := r.polling.Poll(ctx, agent)
 	if err != nil {
-		return fmt.Errorf("polling failed: %w", err)
+		return nil, fmt.Errorf("polling failed: %w", err)
 	}
 
-	// Process results
+	// Process results — collect all actionable items for session creation
 	var totalItems int
+	var actionableItems []agents.PollItem
 	var summaryParts []string
 
 	for _, result := range results {
 		// Check for cancellation between processing results
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -209,6 +219,8 @@ func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 		totalItems += len(result.Items)
 
 		if len(result.Items) > 0 {
+			actionableItems = append(actionableItems, result.Items...)
+
 			// Report what was found
 			r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID,
 				fmt.Sprintf("Found %d items from %s", len(result.Items), result.Source))
@@ -245,10 +257,57 @@ func (r *Runner) runAgent(ctx context.Context, rc *RunContext) error {
 
 	r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID, rc.Run.ResultSummary)
 
-	// TODO: In future phases, if agent.Definition.Execution.Mode == "creates-session"
-	// and there are actionable items, spawn the agent-runner to create sessions
+	// Create sessions for actionable items if agent is in creates-session mode
+	var sessionsCreated []string
+	if agent.Definition.Execution.Mode == models.AgentModeCreatesSession && len(actionableItems) > 0 {
+		sessionsCreated = r.createSessionsForItems(ctx, rc, agent, actionableItems)
+	}
 
-	return nil
+	return sessionsCreated, nil
+}
+
+// createSessionsForItems creates sessions for each actionable poll item, respecting rate limits.
+func (r *Runner) createSessionsForItems(ctx context.Context, rc *RunContext, agent *models.OrchestratorAgent, items []agents.PollItem) []string {
+	if r.sessionCreator == nil {
+		logger.Runner.Warnf("Agent %s is in creates-session mode but no SessionCreator is configured", agent.ID)
+		return nil
+	}
+
+	maxSessions := agent.Definition.Limits.MaxSessionsPerHour
+	if maxSessions <= 0 {
+		maxSessions = 5 // default limit
+	}
+
+	var sessionsCreated []string
+	for _, item := range items {
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			logger.Runner.Infof("Agent %s: session creation cancelled", agent.ID)
+			return sessionsCreated
+		default:
+		}
+
+		// Enforce per-run session limit
+		if len(sessionsCreated) >= maxSessions {
+			logger.Runner.Infof("Agent %s: reached max sessions per hour (%d), skipping remaining items", agent.ID, maxSessions)
+			break
+		}
+
+		r.eventBus.PublishAgentRunProgress(agent.ID, rc.Run.ID,
+			fmt.Sprintf("Creating session for %s: %s", item.Identifier, item.Title))
+
+		sessionID, err := r.sessionCreator.CreateSessionForItem(ctx, agent, item)
+		if err != nil {
+			logger.Runner.Warnf("Agent %s: failed to create session for item %s: %v", agent.ID, item.Identifier, err)
+			continue
+		}
+
+		sessionsCreated = append(sessionsCreated, sessionID)
+		logger.Runner.Infof("Agent %s: created session %s for item %s", agent.ID, sessionID, item.Identifier)
+	}
+
+	return sessionsCreated
 }
 
 // StopRun cancels a running agent

@@ -156,7 +156,7 @@ func TestNewRunner(t *testing.T) {
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
 
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	assert.NotNil(t, runner)
 	assert.NotNil(t, runner.running)
@@ -168,7 +168,7 @@ func TestRunner_StartRun(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	agent := createTestOrchestratorAgent("agent-1")
 
@@ -192,7 +192,7 @@ func TestRunner_StartRun_AlreadyRunning(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	// Create agent with polling so it takes time to execute
 	agent := createTestOrchestratorAgentWithPolling("agent-1")
@@ -211,7 +211,7 @@ func TestRunner_StopRun(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	agent := createTestOrchestratorAgentWithPolling("agent-1")
 
@@ -231,7 +231,7 @@ func TestRunner_StopRun_NotFound(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	err := runner.StopRun("non-existent")
 	require.Error(t, err)
@@ -242,7 +242,7 @@ func TestRunner_StopAgent(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	agent := createTestOrchestratorAgentWithPolling("agent-1")
 
@@ -260,7 +260,7 @@ func TestRunner_IsAgentRunning(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	// Initially not running
 	assert.False(t, runner.IsAgentRunning("agent-1"))
@@ -282,7 +282,7 @@ func TestRunner_GetRunningRuns(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	// Initially empty
 	assert.Empty(t, runner.GetRunningRuns())
@@ -308,7 +308,7 @@ func TestRunner_GetRunContext(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	// Not found case
 	rc, ok := runner.GetRunContext("non-existent")
@@ -337,7 +337,7 @@ func TestRunner_StopAll(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	agent1 := createTestOrchestratorAgentWithPolling("agent-1")
 	agent2 := createTestOrchestratorAgentWithPolling("agent-2")
@@ -362,7 +362,7 @@ func TestRunner_ExecuteRun_NoPollConfig(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	// Agent without polling config - should complete quickly
 	agent := createTestOrchestratorAgent("agent-1")
@@ -383,7 +383,7 @@ func TestRunner_EventsPublished(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	var startedEvents, completedEvents atomic.Int32
 
@@ -416,7 +416,7 @@ func TestRunner_ConcurrentStarts_ThreadSafety(t *testing.T) {
 	store := newMockRunnerStore()
 	eventBus := NewEventBus()
 	polling := agents.NewPollingManager(&agents.Config{})
-	runner := NewRunner(store, eventBus, polling)
+	runner := NewRunner(store, eventBus, polling, nil)
 
 	var wg sync.WaitGroup
 	var successCount, errorCount atomic.Int32
@@ -447,4 +447,165 @@ func TestRunner_ConcurrentStarts_ThreadSafety(t *testing.T) {
 	assert.GreaterOrEqual(t, successCount.Load(), int32(1), "at least one concurrent start should succeed")
 
 	runner.StopAll()
+}
+
+// mockSessionCreator implements SessionCreator for testing
+type mockSessionCreator struct {
+	mu             sync.Mutex
+	createdItems   []agents.PollItem
+	returnIDs      []string // IDs to return in order
+	returnErr      error
+	nextIDIndex    int
+}
+
+func newMockSessionCreator(ids ...string) *mockSessionCreator {
+	return &mockSessionCreator{
+		returnIDs: ids,
+	}
+}
+
+func (m *mockSessionCreator) CreateSessionForItem(_ context.Context, _ *models.OrchestratorAgent, item agents.PollItem) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.returnErr != nil {
+		return "", m.returnErr
+	}
+	m.createdItems = append(m.createdItems, item)
+	id := "session-0"
+	if m.nextIDIndex < len(m.returnIDs) {
+		id = m.returnIDs[m.nextIDIndex]
+		m.nextIDIndex++
+	}
+	return id, nil
+}
+
+func (m *mockSessionCreator) getCreatedItems() []agents.PollItem {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]agents.PollItem, len(m.createdItems))
+	copy(out, m.createdItems)
+	return out
+}
+
+func TestRunner_CreatesSessionMode(t *testing.T) {
+	store := newMockRunnerStore()
+	eventBus := NewEventBus()
+
+	// Create a mock polling manager that returns items
+	pollingCfg := &agents.Config{}
+	polling := agents.NewPollingManager(pollingCfg)
+
+	sessionCreator := newMockSessionCreator("sess-1", "sess-2")
+	runner := NewRunner(store, eventBus, polling, sessionCreator)
+
+	agent := &models.OrchestratorAgent{
+		ID:                "agent-cs",
+		YAMLPath:          "/agents/agent-cs.yaml",
+		Enabled:           true,
+		PollingIntervalMs: 60000,
+		Definition: &models.AgentDefinition{
+			Execution: models.AgentExecution{
+				Mode: models.AgentModeCreatesSession,
+			},
+			Polling: &models.AgentPolling{
+				Sources: []models.AgentPollingSource{
+					{Type: "github", Owner: "test", Repo: "repo"},
+				},
+			},
+			Limits: models.AgentLimits{
+				MaxSessionsPerHour: 10,
+			},
+		},
+	}
+
+	run, err := runner.StartRun(context.Background(), agent, models.AgentTriggerManual)
+	require.NoError(t, err)
+	assert.NotNil(t, run)
+
+	// Wait for async execution
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify run completed (polling returns empty results in test, so no sessions created)
+	storedRun := store.getRun(run.ID)
+	require.NotNil(t, storedRun)
+	assert.Equal(t, models.AgentRunStatusCompleted, storedRun.Status)
+}
+
+func TestRunner_CreatesSessionMode_NoCreator(t *testing.T) {
+	store := newMockRunnerStore()
+	eventBus := NewEventBus()
+	polling := agents.NewPollingManager(&agents.Config{})
+
+	// nil sessionCreator — should log warning but not panic
+	runner := NewRunner(store, eventBus, polling, nil)
+
+	agent := &models.OrchestratorAgent{
+		ID:                "agent-cs",
+		YAMLPath:          "/agents/agent-cs.yaml",
+		Enabled:           true,
+		PollingIntervalMs: 60000,
+		Definition: &models.AgentDefinition{
+			Execution: models.AgentExecution{
+				Mode: models.AgentModeCreatesSession,
+			},
+			Polling: &models.AgentPolling{
+				Sources: []models.AgentPollingSource{
+					{Type: "github", Owner: "test", Repo: "repo"},
+				},
+			},
+			Limits: models.AgentLimits{
+				MaxSessionsPerHour: 10,
+			},
+		},
+	}
+
+	run, err := runner.StartRun(context.Background(), agent, models.AgentTriggerManual)
+	require.NoError(t, err)
+
+	// Wait for async execution
+	time.Sleep(200 * time.Millisecond)
+
+	storedRun := store.getRun(run.ID)
+	require.NotNil(t, storedRun)
+	assert.Equal(t, models.AgentRunStatusCompleted, storedRun.Status)
+}
+
+func TestRunner_CreateSessionsForItems_RateLimit(t *testing.T) {
+	store := newMockRunnerStore()
+	eventBus := NewEventBus()
+	polling := agents.NewPollingManager(&agents.Config{})
+	sessionCreator := newMockSessionCreator("s1", "s2", "s3", "s4", "s5")
+	runner := NewRunner(store, eventBus, polling, sessionCreator)
+
+	agent := &models.OrchestratorAgent{
+		ID: "agent-rl",
+		Definition: &models.AgentDefinition{
+			Execution: models.AgentExecution{Mode: models.AgentModeCreatesSession},
+			Limits:    models.AgentLimits{MaxSessionsPerHour: 2},
+		},
+	}
+
+	rc := &RunContext{
+		Run:   &models.AgentRun{ID: "run-1", AgentID: agent.ID},
+		Agent: agent,
+	}
+
+	items := []agents.PollItem{
+		{Identifier: "GH-1", Title: "Issue 1"},
+		{Identifier: "GH-2", Title: "Issue 2"},
+		{Identifier: "GH-3", Title: "Issue 3"},
+		{Identifier: "GH-4", Title: "Issue 4"},
+	}
+
+	sessions := runner.createSessionsForItems(context.Background(), rc, agent, items)
+
+	// Should only create 2 sessions (rate limit)
+	assert.Len(t, sessions, 2)
+	assert.Equal(t, []string{"s1", "s2"}, sessions)
+
+	// Verify only 2 items were passed to the creator
+	created := sessionCreator.getCreatedItems()
+	assert.Len(t, created, 2)
+	assert.Equal(t, "GH-1", created[0].Identifier)
+	assert.Equal(t, "GH-2", created[1].Identifier)
 }

@@ -1683,7 +1683,9 @@ async function cleanup(reason: string): Promise<void> {
   // 5. Flush any remaining buffered text
   flushBlockBuffer();
 
-  // 6. Interrupt the query if active (may be null between turns)
+  // 6. Interrupt the query if active (may be null between turns).
+  // Note: MCP servers (chatmlMcp and user-configured servers) are managed by the SDK
+  // session lifecycle — interrupting the query tears down the session and its MCP connections.
   if (queryRef) {
     try {
       await queryRef.interrupt();

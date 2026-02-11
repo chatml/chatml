@@ -217,6 +217,7 @@ const (
 
 	// Warning events
 	EventTypeStreamingWarning = "streaming_warning"
+	EventTypeWarning          = "warning"
 
 	// Context usage events
 	EventTypeContextUsage      = "context_usage"
@@ -412,15 +413,15 @@ func FormatEvent(event StreamEvent) string {
 	case "text":
 		return event.Message
 	case "tool_start":
-		return "🔧 Using: " + event.Message
+		return "[tool] " + event.Message
 	case "tool_result":
-		return "✓ " + event.Message
+		return "[ok] " + event.Message
 	case "name_suggestion":
 		return "" // Don't display, just update state
 	case "done":
-		return "✅ " + event.Message
+		return "[done] " + event.Message
 	case "error":
-		return "❌ " + event.Message
+		return "[error] " + event.Message
 	default:
 		if event.Message != "" && !strings.HasPrefix(event.Message, "{") {
 			return event.Message

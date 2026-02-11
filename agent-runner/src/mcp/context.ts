@@ -114,15 +114,16 @@ export class WorkspaceContext {
   }
 
   private resolveLinearIssue(identifier: string): LinearIssue | null {
-    // TODO: Implement actual Linear API resolution when MCP Linear server is integrated.
-    // This placeholder returns a minimal structure so the context can be populated.
-    // When implementing, consider using the Linear SDK or MCP Linear server's get_issue tool.
+    // Returns a minimal structure with the identifier only. Full issue data (title,
+    // description, state, labels) should be populated at runtime by the agent using
+    // MCP Linear tools (e.g. mcp__linear__get_issue). The agent-runner does not have
+    // direct access to the Linear API.
     return {
       id: identifier,
       identifier,
-      title: `Issue ${identifier}`,
+      title: identifier,
       description: "",
-      state: "unknown",
+      state: "unresolved",
       labels: [],
     };
   }
