@@ -4786,31 +4786,45 @@ func TestGetRepoRemotes_NotFound(t *testing.T) {
 // ============================================================================
 
 func TestResolveRepoBranchPrefix_EmptyDefault(t *testing.T) {
+	h := &Handlers{ghClient: github.NewClient("", "")}
 	repo := &models.Repo{BranchPrefix: ""}
-	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+	assert.Equal(t, "session", h.resolveRepoBranchPrefix(repo))
 }
 
 func TestResolveRepoBranchPrefix_None(t *testing.T) {
+	h := &Handlers{ghClient: github.NewClient("", "")}
 	repo := &models.Repo{BranchPrefix: "none"}
-	assert.Equal(t, "", resolveRepoBranchPrefix(repo))
+	assert.Equal(t, "", h.resolveRepoBranchPrefix(repo))
 }
 
 func TestResolveRepoBranchPrefix_CustomWithValue(t *testing.T) {
+	h := &Handlers{ghClient: github.NewClient("", "")}
 	repo := &models.Repo{BranchPrefix: "custom", CustomPrefix: "my-prefix"}
-	assert.Equal(t, "my-prefix", resolveRepoBranchPrefix(repo))
+	assert.Equal(t, "my-prefix", h.resolveRepoBranchPrefix(repo))
 }
 
 func TestResolveRepoBranchPrefix_CustomWithEmptyPrefix(t *testing.T) {
+	h := &Handlers{ghClient: github.NewClient("", "")}
 	repo := &models.Repo{BranchPrefix: "custom", CustomPrefix: ""}
-	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+	assert.Equal(t, "session", h.resolveRepoBranchPrefix(repo))
 }
 
-func TestResolveRepoBranchPrefix_GitHub(t *testing.T) {
+func TestResolveRepoBranchPrefix_GitHubNoUser(t *testing.T) {
+	h := &Handlers{ghClient: github.NewClient("", "")}
 	repo := &models.Repo{BranchPrefix: "github"}
-	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+	assert.Equal(t, "session", h.resolveRepoBranchPrefix(repo))
+}
+
+func TestResolveRepoBranchPrefix_GitHubWithUser(t *testing.T) {
+	ghClient := github.NewClient("", "")
+	ghClient.SetUser(&github.User{Login: "mcastilho"})
+	h := &Handlers{ghClient: ghClient}
+	repo := &models.Repo{BranchPrefix: "github"}
+	assert.Equal(t, "mcastilho", h.resolveRepoBranchPrefix(repo))
 }
 
 func TestResolveRepoBranchPrefix_Unknown(t *testing.T) {
+	h := &Handlers{ghClient: github.NewClient("", "")}
 	repo := &models.Repo{BranchPrefix: "something-unknown"}
-	assert.Equal(t, "session", resolveRepoBranchPrefix(repo))
+	assert.Equal(t, "session", h.resolveRepoBranchPrefix(repo))
 }

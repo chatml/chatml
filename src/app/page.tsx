@@ -822,7 +822,9 @@ export default function Home() {
       useAppStore.getState().addWorkspace(workspace);
 
       // Auto-create first session for the new workspace (backend generates city-based name)
-      const prefix = getBranchPrefix();
+      const prefix = workspace.branchPrefix
+        ? getWorkspaceBranchPrefix(workspace)
+        : getBranchPrefix();
       const session = await createSession(workspace.id, {
         ...(prefix !== undefined && { branchPrefix: prefix }),
       });
