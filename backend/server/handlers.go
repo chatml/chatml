@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
-	"regexp"
 	"path/filepath"
-	"runtime"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -5295,8 +5293,9 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	// Check 2: ANTHROPIC_API_KEY environment variable
 	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
 
-	// Check 3: Claude Code CLI credentials
-	hasCliCredentials := checkClaudeCliCredentials()
+	// Check 3: Claude Code CLI credentials (validates token contents + expiration)
+	_, cliErr := ai.ReadClaudeCodeOAuthToken()
+	hasCliCredentials := cliErr == nil
 
 	configured := hasStoredKey || hasEnvKey || hasCliCredentials
 
@@ -5308,25 +5307,6 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// checkClaudeCliCredentials checks if Claude Code CLI credentials are available.
-// On macOS, checks the Keychain. On other platforms, checks ~/.claude/.credentials.json.
-func checkClaudeCliCredentials() bool {
-	if runtime.GOOS == "darwin" {
-		cmd := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials")
-		if err := cmd.Run(); err == nil {
-			return true
-		}
-	}
-
-	// Fallback: check for credentials file (Linux/Windows)
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	credFile := filepath.Join(home, ".claude", ".credentials.json")
-	info, err := os.Stat(credFile)
-	return err == nil && info.Size() > 0
-}
 
 // settingKeyMcpServers returns the settings key for MCP servers in a workspace
 func settingKeyMcpServers(workspaceID string) string {
