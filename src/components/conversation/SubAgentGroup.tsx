@@ -55,9 +55,10 @@ function AgentElapsedTime({ startTime }: { startTime: number }) {
 
 interface SubAgentRowProps {
   agent: SubAgent;
+  worktreePath?: string;
 }
 
-const SubAgentRow = memo(function SubAgentRow({ agent }: SubAgentRowProps) {
+const SubAgentRow = memo(function SubAgentRow({ agent, worktreePath }: SubAgentRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasTools = agent.tools.length > 0;
 
@@ -130,6 +131,7 @@ const SubAgentRow = memo(function SubAgentRow({ agent }: SubAgentRowProps) {
                 id={tool.id}
                 tool={tool.tool}
                 params={tool.params}
+                worktreePath={worktreePath}
                 isActive={!tool.endTime}
                 success={tool.success}
                 summary={tool.summary}
@@ -148,15 +150,16 @@ const SubAgentRow = memo(function SubAgentRow({ agent }: SubAgentRowProps) {
 
 interface SubAgentGroupProps {
   subAgents: readonly SubAgent[];
+  worktreePath?: string;
 }
 
-export const SubAgentGroup = memo(function SubAgentGroup({ subAgents }: SubAgentGroupProps) {
+export const SubAgentGroup = memo(function SubAgentGroup({ subAgents, worktreePath }: SubAgentGroupProps) {
   if (subAgents.length === 0) return null;
 
   return (
     <div className="space-y-0.5">
       {subAgents.map((agent) => (
-        <SubAgentRow key={agent.agentId} agent={agent} />
+        <SubAgentRow key={agent.agentId} agent={agent} worktreePath={worktreePath} />
       ))}
     </div>
   );

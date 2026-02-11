@@ -533,14 +533,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           section="StreamingMessage"
           fallback={<InlineErrorFallback message="Error displaying streaming message" />}
         >
-          <StreamingMessage conversationId={selectedConversationId} />
+          <StreamingMessage conversationId={selectedConversationId} worktreePath={currentSession?.worktreePath} />
         </ErrorBoundary>
         {queuedMessage && (
           <QueuedMessageBubble message={queuedMessage} />
         )}
       </div>
     );
-  }, [selectedConversationId, queuedMessage]);
+  }, [selectedConversationId, queuedMessage, currentSession?.worktreePath]);
 
   // Reset scroll on conversation change
   useEffect(() => {
@@ -1081,6 +1081,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             <VirtualizedMessageList
               ref={messageListRef}
               messages={conversationMessages}
+              worktreePath={currentSession?.worktreePath}
               searchQuery={searchQuery}
               currentMatchIndex={clampedMatchIndex}
               searchMatches={searchMatches}

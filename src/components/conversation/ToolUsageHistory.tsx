@@ -24,7 +24,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { cn, toRelativePath } from '@/lib/utils';
 import type { ToolUsage } from '@/lib/types';
 
 // Truncation limits (increased from original)
@@ -33,6 +33,7 @@ const PATH_TRUNCATE_LENGTH = 50;
 
 interface ToolUsageHistoryProps {
   tools: ToolUsage[];
+  worktreePath?: string;
 }
 
 const toolIcons: Record<string, React.ElementType> = {
@@ -57,7 +58,7 @@ interface ToolTargetInfo {
   isTruncated: boolean;
 }
 
-function formatToolTarget(tool: string, params?: Record<string, unknown>): ToolTargetInfo {
+function formatToolTarget(tool: string, params?: Record<string, unknown>, worktreePath?: string): ToolTargetInfo {
   const empty = { display: '', full: '', isTruncated: false };
   if (!params) return empty;
 
@@ -68,7 +69,8 @@ function formatToolTarget(tool: string, params?: Record<string, unknown>): ToolT
     case 'Read':
     case 'Write':
     case 'Edit': {
-      const filePath = params.file_path ? String(params.file_path) : '';
+      const rawPath = params.file_path ? String(params.file_path) : '';
+      const filePath = toRelativePath(rawPath, worktreePath);
       full = filePath;
       // Show more of the path now - last 2 directories + filename
       const parts = filePath.split('/').filter(Boolean);
@@ -135,7 +137,7 @@ function formatToolTarget(tool: string, params?: Record<string, unknown>): ToolT
   };
 }
 
-export const ToolUsageHistory = memo(function ToolUsageHistory({ tools }: ToolUsageHistoryProps) {
+export const ToolUsageHistory = memo(function ToolUsageHistory({ tools, worktreePath }: ToolUsageHistoryProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   if (tools.length === 0) return null;
@@ -164,7 +166,7 @@ export const ToolUsageHistory = memo(function ToolUsageHistory({ tools }: ToolUs
         <div className="mt-1.5 space-y-0.5">
           {tools.map((tool) => {
             const Icon = getToolIcon(tool.tool);
-            const targetInfo = formatToolTarget(tool.tool, tool.params);
+            const targetInfo = formatToolTarget(tool.tool, tool.params, worktreePath);
 
             return (
               <div

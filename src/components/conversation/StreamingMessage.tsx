@@ -17,6 +17,7 @@ type TimelineItem =
 
 interface StreamingMessageProps {
   conversationId: string;
+  worktreePath?: string;
 }
 
 // Enhanced error display component
@@ -93,7 +94,7 @@ function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => vo
   );
 }
 
-export function StreamingMessage({ conversationId }: StreamingMessageProps) {
+export function StreamingMessage({ conversationId, worktreePath }: StreamingMessageProps) {
   // Use scoped selectors for this conversation only - prevents re-renders from other conversations
   const streaming = useStreamingState(conversationId);
   const tools = useActiveTools(conversationId);
@@ -284,6 +285,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
                   id={item.id}
                   tool={item.tool}
                   params={item.params}
+                  worktreePath={worktreePath}
                   isActive={!item.endTime}
                   success={item.success}
                   summary={item.summary}
@@ -299,7 +301,7 @@ export function StreamingMessage({ conversationId }: StreamingMessageProps) {
 
           {/* Sub-agent group display */}
           {subAgents.length > 0 && (
-            <SubAgentGroup subAgents={subAgents} />
+            <SubAgentGroup subAgents={subAgents} worktreePath={worktreePath} />
           )}
 
           {/* Enhanced error display */}

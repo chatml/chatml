@@ -8,12 +8,14 @@ import {
 } from '@/components/ui/collapsible';
 import { ChevronRight, ChevronDown, FileCode } from 'lucide-react';
 import type { FileChange } from '@/lib/types';
+import { toRelativePath } from '@/lib/utils';
 
 interface FileChangesBlockProps {
   changes: FileChange[];
+  worktreePath?: string;
 }
 
-export const FileChangesBlock = memo(function FileChangesBlock({ changes }: FileChangesBlockProps) {
+export const FileChangesBlock = memo(function FileChangesBlock({ changes, worktreePath }: FileChangesBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
   const totalAdditions = changes.reduce((sum, c) => sum + c.additions, 0);
   const totalDeletions = changes.reduce((sum, c) => sum + c.deletions, 0);
@@ -39,7 +41,7 @@ export const FileChangesBlock = memo(function FileChangesBlock({ changes }: File
               className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono hover:bg-surface-2 cursor-pointer"
             >
               <FileCode className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="flex-1 truncate">{change.path}</span>
+              <span className="flex-1 truncate">{toRelativePath(change.path, worktreePath)}</span>
               <span className="text-text-success">+{change.additions}</span>
               <span className="text-text-error">-{change.deletions}</span>
             </div>
