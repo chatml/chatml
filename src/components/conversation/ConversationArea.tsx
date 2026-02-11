@@ -528,7 +528,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const messageListFooter = useMemo(() => {
     if (!selectedConversationId) return undefined;
     return (
-      <div className="pl-5 pr-12 pb-10">
+      <div className="pl-5 pr-12 pb-16">
         <ErrorBoundary
           section="StreamingMessage"
           fallback={<InlineErrorFallback message="Error displaying streaming message" />}
