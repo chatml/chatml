@@ -3150,6 +3150,7 @@ type CreateConversationRequest struct {
 	Model             string              `json:"model"`             // Model name override (optional)
 	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
+	Effort            string              `json:"effort"`            // Reasoning effort: low, medium, high, max (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
 	SummaryIDs        []string            `json:"summaryIds"`        // Summaries to attach as context (optional)
 }
@@ -3215,9 +3216,10 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" || req.Effort != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
+			Effort:            req.Effort,
 			Attachments:       req.Attachments,
 			PlanMode:          req.PlanMode,
 			Instructions:      instructions,

@@ -37,7 +37,7 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type EffortLevel } from '@/stores/settingsStore';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
@@ -71,9 +71,17 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 const MODELS = [
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', icon: Snowflake, supportsThinking: true, badge: 'NEW' as const },
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', icon: Snowflake, supportsThinking: true },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', icon: Snowflake, supportsThinking: true },
+  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', icon: Snowflake, supportsThinking: true, supportsEffort: true, badge: 'NEW' as const },
+  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', icon: Snowflake, supportsThinking: true, supportsEffort: false },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', icon: Snowflake, supportsThinking: true, supportsEffort: false },
+];
+
+// Effort levels for models that support the effort parameter (Opus 4.6+)
+const EFFORT_LEVELS: { id: EffortLevel; label: string }[] = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'max', label: 'Max' },
 ];
 
 // Models that support extended thinking mode (derived from MODELS)
@@ -102,6 +110,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
+  const defaultEffort = useSettingsStore((s) => s.defaultEffort);
+  const [effortLevel, setEffortLevel] = useState<EffortLevel>(defaultEffort);
+  const effortSupported = selectedModel.supportsEffort;
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
@@ -465,6 +476,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [thinkingSupported, thinkingEnabled]);
 
+  // Auto-reset effort to default when switching to an unsupported model
+  useEffect(() => {
+    if (!effortSupported && effortLevel !== 'high') {
+      setEffortLevel('high');
+    }
+  }, [effortSupported, effortLevel]);
+
   // Global keyboard shortcuts
 
   useEffect(() => {
@@ -474,10 +492,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         plateInputRef.current?.focus();
       }
-      // Alt+T to toggle thinking mode (only if model supports it)
+      // Alt+T to toggle thinking mode or cycle effort levels
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
+        const model = MODELS.find(m => m.id === selectedModel.id);
+        if (model?.supportsEffort) {
+          // Opus 4.6: cycle effort levels
+          setEffortLevel(prev => {
+            const ids = EFFORT_LEVELS.map(l => l.id);
+            const idx = ids.indexOf(prev);
+            return ids[(idx + 1) % ids.length];
+          });
+        } else if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
           setThinkingEnabled(prev => !prev);
         }
       }
@@ -497,7 +523,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     // Handle menu events from native Tauri menu
     const handleFocusInput = () => plateInputRef.current?.focus();
     const handleToggleThinking = () => {
-      if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
+      const model = MODELS.find(m => m.id === selectedModel.id);
+      if (model?.supportsEffort) {
+        setEffortLevel(prev => {
+          const ids = EFFORT_LEVELS.map(l => l.id);
+          const idx = ids.indexOf(prev);
+          return ids[(idx + 1) % ids.length];
+        });
+      } else if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
         setThinkingEnabled(prev => !prev);
       }
     };
@@ -568,8 +601,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           model: selectedModel.id,
           // Pass plan mode so agent starts in plan mode if toggled on before first message
           planMode: planModeEnabled ? true : undefined,
-          // Pass thinking tokens when thinking mode is enabled
-          maxThinkingTokens: thinkingEnabled ? maxThinkingTokens : undefined,
+          // Pass thinking tokens when thinking mode is enabled (non-Opus-4.6 models)
+          maxThinkingTokens: !effortSupported && thinkingEnabled ? maxThinkingTokens : undefined,
+          // Pass effort level for Opus 4.6 (only when non-default)
+          effort: effortSupported && effortLevel !== 'high' ? effortLevel : undefined,
           // Pass attachments with loaded content
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
           // Pass conversation summary context
@@ -897,28 +932,64 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Extended Thinking Toggle */}
-          <Button
-            variant="ghost"
-            size={thinkingEnabled ? 'sm' : 'icon'}
-            className={cn(
-              thinkingEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-              thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20',
-              !thinkingSupported && 'opacity-50 cursor-not-allowed'
-            )}
-            onClick={() => setThinkingEnabled(!thinkingEnabled)}
-            disabled={!thinkingSupported}
-            title={
-              !thinkingSupported
-                ? `Extended thinking not available for ${selectedModel.name}`
-                : `Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`
-            }
-            aria-label={`Extended thinking ${thinkingEnabled ? 'on' : 'off'}`}
-            aria-pressed={thinkingEnabled}
-          >
-            <Brain className="h-4 w-4" />
-            {thinkingEnabled && <span className="text-xs font-medium">Thinking</span>}
-          </Button>
+          {/* Thinking / Effort Control — adapts based on model */}
+          {effortSupported ? (
+            // Opus 4.6: Effort level dropdown (thinking is implicit via adaptive thinking)
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'h-7 gap-1.5 px-2 text-xs',
+                    effortLevel !== 'high' && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+                  )}
+                  title={`Reasoning effort: ${effortLevel} (⌥T to cycle)`}
+                  aria-label={`Reasoning effort: ${effortLevel}`}
+                >
+                  <Brain className="h-4 w-4" />
+                  <span className="font-medium capitalize">{effortLevel}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {EFFORT_LEVELS.map((level) => (
+                  <DropdownMenuItem
+                    key={level.id}
+                    onClick={() => setEffortLevel(level.id)}
+                  >
+                    {level.label}
+                    {level.id === 'high' && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            // Non-Opus-4.6 models: Regular thinking toggle
+            <Button
+              variant="ghost"
+              size={thinkingEnabled ? 'sm' : 'icon'}
+              className={cn(
+                thinkingEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
+                thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20',
+                !thinkingSupported && 'opacity-50 cursor-not-allowed'
+              )}
+              onClick={() => setThinkingEnabled(!thinkingEnabled)}
+              disabled={!thinkingSupported}
+              title={
+                !thinkingSupported
+                  ? `Extended thinking not available for ${selectedModel.name}`
+                  : `Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`
+              }
+              aria-label={`Extended thinking ${thinkingEnabled ? 'on' : 'off'}`}
+              aria-pressed={thinkingEnabled}
+            >
+              <Brain className="h-4 w-4" />
+              {thinkingEnabled && <span className="text-xs font-medium">Thinking</span>}
+            </Button>
+          )}
 
           {/* Plan Mode Toggle */}
           <Button

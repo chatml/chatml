@@ -102,6 +102,16 @@ const maxBudgetUsd = getNumericArg("--max-budget-usd");
 const maxTurns = getNumericArg("--max-turns");
 const maxThinkingTokens = getNumericArg("--max-thinking-tokens");
 
+// Reasoning effort level (Opus 4.6+)
+const validEffortLevels = ["low", "medium", "high", "max"] as const;
+type EffortLevel = typeof validEffortLevels[number];
+const effortArg = getArg("--effort");
+const effort: EffortLevel | undefined = effortArg
+  ? (validEffortLevels as readonly string[]).includes(effortArg)
+    ? (effortArg as EffortLevel)
+    : (() => { console.error(`Invalid --effort value: "${effortArg}". Ignoring.`); return undefined; })()
+  : undefined;
+
 // Permission mode (e.g., "plan" for plan mode at startup)
 const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
 type PermissionMode = typeof validPermissionModes[number];
@@ -1196,6 +1206,8 @@ async function main(): Promise<void> {
         settingSources,
         betas,
         model,
+        // Pass effort level to SDK if specified (Opus 4.6+)
+        ...(effort ? { extraArgs: { "--effort": effort } } : {}),
         fallbackModel,
         abortController: sessionAbortController,
         // Resume a previous session if requested (first turn loads its state)

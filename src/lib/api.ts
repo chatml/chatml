@@ -999,6 +999,7 @@ export async function createConversation(
     model?: string;
     planMode?: boolean;
     maxThinkingTokens?: number;
+    effort?: string;
     attachments?: AttachmentDTO[];
     summaryIds?: string[];
   }
