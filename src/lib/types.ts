@@ -153,6 +153,8 @@ export interface SubAgent {
   agentId: string;
   agentType: string; // e.g., "Explore", "Bash", "general-purpose"
   parentToolUseId?: string; // The Task tool_use_id that spawned this sub-agent
+  description?: string; // Task description from the Task tool's description parameter
+  output?: string; // Result text from sub-agent completion
   startTime: number;
   endTime?: number;
   completed: boolean;
@@ -295,6 +297,8 @@ export interface AgentEvent {
   // Subagent fields
   agentId?: string;
   agentType?: string;
+  description?: string;
+  agentOutput?: string;
   transcriptPath?: string;
 
   // Compact boundary fields
@@ -338,6 +342,10 @@ export interface AgentEvent {
   // User question fields (AskUserQuestion tool)
   requestId?: string;
   questions?: UserQuestion[];
+
+  // CLI crash recovery fields
+  attempt?: number;
+  maxAttempts?: number;
 }
 
 // MCP server status

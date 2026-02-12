@@ -551,6 +551,7 @@ outer:
 						AgentId:         event.AgentId,
 						AgentType:       event.AgentType,
 						ParentToolUseId: event.ParentToolUseId,
+						Description:     event.AgentDescription,
 						StartTime:       time.Now().Unix(),
 					}
 					// Drain any tools that arrived before this sub-agent registered
@@ -565,6 +566,12 @@ outer:
 			case EventTypeSubagentStopped:
 				if sa, ok := activeSubAgents[event.AgentId]; ok {
 					sa.Completed = true
+					markSnapshotDirty()
+				}
+
+			case EventTypeSubagentOutput:
+				if sa, ok := activeSubAgents[event.AgentId]; ok {
+					sa.Output = event.AgentOutput
 					markSnapshotDirty()
 				}
 

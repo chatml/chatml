@@ -362,6 +362,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [handleFileDrop]);
 
+  // Use a ref for the handler so the Tauri listener is registered once
+  const handleFileDropRef = useRef(handleFileDrop);
+  useEffect(() => { handleFileDropRef.current = handleFileDrop; }, [handleFileDrop]);
+
   // Listen for drag-drop events from Tauri
   useEffect(() => {
     let isCancelled = false;
@@ -369,11 +373,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     let unlistenEnter: (() => void) | undefined;
     let unlistenLeave: (() => void) | undefined;
 
+    const safeUnlisten = (fn?: () => void) => {
+      try { fn?.(); } catch { /* listener already removed */ }
+    };
+
     const setupListeners = async () => {
       try {
         const [drop, enter, leave] = await Promise.all([
           listenForFileDrop((paths) => {
-            handleFileDrop(paths);
+            handleFileDropRef.current(paths);
           }),
           listenForDragEnter(() => {
             setIsDragOver(true);
@@ -384,9 +392,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         ]);
 
         if (isCancelled) {
-          drop();
-          enter();
-          leave();
+          safeUnlisten(drop);
+          safeUnlisten(enter);
+          safeUnlisten(leave);
           return;
         }
 
@@ -395,10 +403,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         unlistenLeave = leave;
       } catch (error) {
         console.error('Failed to setup drag-drop listeners:', error);
-        // Clean up any listeners that were registered before the failure
-        unlistenDrop?.();
-        unlistenEnter?.();
-        unlistenLeave?.();
+        safeUnlisten(unlistenDrop);
+        safeUnlisten(unlistenEnter);
+        safeUnlisten(unlistenLeave);
       }
     };
 
@@ -406,11 +413,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     return () => {
       isCancelled = true;
-      unlistenDrop?.();
-      unlistenEnter?.();
-      unlistenLeave?.();
+      safeUnlisten(unlistenDrop);
+      safeUnlisten(unlistenEnter);
+      safeUnlisten(unlistenLeave);
     };
-  }, [handleFileDrop]);
+  }, []);
 
   // Handler for toggling plan mode - also notifies the backend
   const handlePlanModeToggle = useCallback(async () => {

@@ -361,13 +361,6 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
             }
           >
             <div className="mt-0.5 ml-4 space-y-1.5">
-              {/* Summary */}
-              {summary && (
-                <div className="text-2xs text-muted-foreground px-2 py-1 rounded bg-muted/30">
-                  {summary}
-                </div>
-              )}
-
               {/* Full command for Bash tools */}
               {isBashTool && fullTarget && (
                 <div className="rounded border bg-muted p-2">
@@ -375,6 +368,13 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
                   <pre className="font-mono text-2xs text-text-success whitespace-pre-wrap break-all">
                     $ {fullTarget}
                   </pre>
+                </div>
+              )}
+
+              {/* Summary */}
+              {summary && (
+                <div className="text-2xs text-muted-foreground px-2 py-1 rounded bg-muted/30">
+                  {summary}
                 </div>
               )}
 

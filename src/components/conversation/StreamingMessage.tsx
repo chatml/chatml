@@ -6,14 +6,15 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
-import { SubAgentGroup } from '@/components/conversation/SubAgentGroup';
+import { SubAgentRow } from '@/components/conversation/SubAgentGroup';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { cn } from '@/lib/utils';
 
 // Timeline item types for interleaved display
 type TimelineItem =
   | { type: 'text'; id: string; text: string; timestamp: number }
-  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number };
+  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number }
+  | { type: 'subagent'; agent: import('@/lib/types').SubAgent };
 
 interface StreamingMessageProps {
   conversationId: string;
@@ -162,9 +163,15 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       }
     }
 
-    // Add tools (exclude any sub-agent tools that may have leaked into activeTools)
+    // Collect Task tool IDs that spawned sub-agents — these are rendered by SubAgentRow instead
+    const subAgentParentIds = new Set(
+      subAgents.filter(a => a.parentToolUseId).map(a => a.parentToolUseId!)
+    );
+
+    // Add tools (exclude sub-agent tools AND Task tools that have a corresponding sub-agent)
     for (const tool of tools) {
       if (tool.agentId) continue;
+      if (tool.tool === 'Task' && subAgentParentIds.has(tool.id)) continue;
       items.push({
         type: 'tool',
         id: tool.id,
@@ -180,18 +187,23 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       });
     }
 
-    // Sort by timestamp (text segments use timestamp, tools use startTime)
+    // Add sub-agents into the timeline
+    for (const agent of subAgents) {
+      items.push({ type: 'subagent', agent });
+    }
+
+    // Sort by timestamp (text segments use timestamp, tools use startTime, sub-agents use startTime)
     items.sort((a, b) => {
-      const aTime = a.type === 'text' ? a.timestamp : a.startTime;
-      const bTime = b.type === 'text' ? b.timestamp : b.startTime;
+      const aTime = a.type === 'text' ? a.timestamp : a.type === 'subagent' ? a.agent.startTime : a.startTime;
+      const bTime = b.type === 'text' ? b.timestamp : b.type === 'subagent' ? b.agent.startTime : b.startTime;
       return aTime - bTime;
     });
 
     return items;
-  }, [streaming?.segments, tools]);
+  }, [streaming?.segments, tools, subAgents]);
 
   // Don't render if no streaming content, no active tools, no sub-agents, no thinking, and no error
-  if (timeline.length === 0 && subAgents.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
+  if (timeline.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
     return null;
   }
 
@@ -278,6 +290,14 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   />
                 </div>
               );
+            } else if (item.type === 'subagent') {
+              return (
+                <SubAgentRow
+                  key={item.agent.agentId}
+                  agent={item.agent}
+                  worktreePath={worktreePath}
+                />
+              );
             } else {
               return (
                 <ToolUsageBlock
@@ -298,11 +318,6 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
             }
           });
           })()}
-
-          {/* Sub-agent group display */}
-          {subAgents.length > 0 && (
-            <SubAgentGroup subAgents={subAgents} worktreePath={worktreePath} />
-          )}
 
           {/* Enhanced error display */}
           {streaming?.error && (

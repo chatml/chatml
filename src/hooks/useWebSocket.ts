@@ -315,7 +315,7 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      case 'result':
+      case 'result': {
         // Result event signals the end of a turn - finalize streaming atomically
         // This prevents data loss by creating message and clearing state in one update
         // Re-read store to capture any mutations from earlier cases in this handler
@@ -403,6 +403,7 @@ export function useWebSocket(enabled: boolean = true) {
           getConversationLabel(conversationId),
         );
         break;
+      }
 
       case 'turn_complete': {
         // Turn completed but process is still alive — finalize streaming state
@@ -438,7 +439,7 @@ export function useWebSocket(enabled: boolean = true) {
         break;
       }
 
-      case 'complete':
+      case 'complete': {
         // Complete event signals the entire conversation ended (stdin closed)
         // Commit any queued message so it appears in history
         store.commitQueuedMessage(conversationId);
@@ -451,6 +452,7 @@ export function useWebSocket(enabled: boolean = true) {
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
         break;
+      }
 
       case 'permission_mode_changed':
         // Handle plan mode changes from the backend
@@ -706,11 +708,10 @@ export function useWebSocket(enabled: boolean = true) {
       // Group I: Diagnostic Events
       // ====================================================================
       case 'agent_stop':
-        store.clearStreamingText(conversationId);
-        store.clearActiveTools(conversationId);
-        store.clearThinking(conversationId);
-        store.clearSubAgents(conversationId);
-        store.updateConversation(conversationId, { status: 'idle' });
+        // Informational only — do NOT clear streaming state here.
+        // The SDK's stopHook fires BEFORE the result message, so clearing
+        // here would destroy accumulated content. Cleanup is handled by
+        // result (finalizeStreamingMessage) → complete (final cleanup).
         break;
 
       case 'command_error':
@@ -722,6 +723,14 @@ export function useWebSocket(enabled: boolean = true) {
       case 'auth_status':
       case 'status_update':
         // Diagnostic — no UI action needed
+        break;
+
+      case 'session_recovering':
+        // CLI process crashed — agent-runner is auto-recovering.
+        // No UI change needed: streaming indicator keeps spinning.
+        // The 'init' event from the recovered session clears stale state.
+        // If all retries fail, the 'error' event handles it normally.
+        console.warn(`Session recovering for ${conversationId} (attempt ${event.attempt}/${event.maxAttempts})`);
         break;
 
       case 'agent_stderr':
@@ -765,6 +774,7 @@ export function useWebSocket(enabled: boolean = true) {
             agentId: event.agentId as string,
             agentType: event.agentType as string,
             parentToolUseId: event.parentToolUseId as string | undefined,
+            description: event.description,
             startTime: Date.now(),
             completed: false,
             tools: [],
@@ -775,6 +785,12 @@ export function useWebSocket(enabled: boolean = true) {
       case 'subagent_stopped':
         if (event?.agentId) {
           store.completeSubAgent(conversationId, event.agentId as string);
+        }
+        break;
+
+      case 'subagent_output':
+        if (event?.agentId) {
+          store.setSubAgentOutput(conversationId, event.agentId as string, event.agentOutput || '');
         }
         break;
 
