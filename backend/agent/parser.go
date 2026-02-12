@@ -71,8 +71,9 @@ type AgentEvent struct {
 	TranscriptPath string `json:"transcriptPath,omitempty"`
 
 	// Compact boundary fields
-	Trigger   string `json:"trigger,omitempty"`
-	PreTokens int    `json:"preTokens,omitempty"`
+	Trigger            string `json:"trigger,omitempty"`
+	PreTokens          int    `json:"preTokens,omitempty"`
+	CustomInstructions string `json:"customInstructions,omitempty"`
 
 	// Context usage fields
 	InputTokens              int `json:"inputTokens,omitempty"`
@@ -196,6 +197,7 @@ const (
 	EventTypeSubagentStarted   = "subagent_started"
 	EventTypeSubagentStopped   = "subagent_stopped"
 	EventTypeCompactBoundary   = "compact_boundary"
+	EventTypePreCompact        = "pre_compact"
 	EventTypeStatusUpdate      = "status_update"
 	EventTypeHookResponse      = "hook_response"
 	EventTypeToolProgress      = "tool_progress"

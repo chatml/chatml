@@ -587,6 +587,11 @@ export function useWebSocket(enabled: boolean = true) {
         });
         break;
 
+      case 'pre_compact':
+        // Hook fires BEFORE context compaction occurs
+        // Future: Could show "Compacting context..." indicator
+        break;
+
       // ====================================================================
       // Group B: Tool Progress — elapsed time on long-running tools
       // The agent SDK emits tool_progress with `parentToolUseId` as the
