@@ -27,6 +27,9 @@ export type ThemeOption = 'system' | 'light' | 'dark';
 // Font size options
 export type FontSize = 'small' | 'medium' | 'large';
 
+// Effort level options for reasoning depth control (Opus 4.6+)
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max';
+
 // Branch prefix options
 export type BranchPrefixType = 'github' | 'custom' | 'none';
 
@@ -72,6 +75,7 @@ interface SettingsState {
   soundEffectType: string;
   sendWithEnter: boolean;
   reviewModel: string;
+  defaultEffort: EffortLevel;
   defaultPlanMode: boolean;
   autoConvertLongText: boolean;
   showChatCost: boolean;
@@ -142,6 +146,7 @@ interface SettingsState {
   setSoundEffectType: (value: string) => void;
   setSendWithEnter: (value: boolean) => void;
   setReviewModel: (value: string) => void;
+  setDefaultEffort: (value: EffortLevel) => void;
   setDefaultPlanMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
@@ -201,6 +206,7 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffectType: 'chime',
       sendWithEnter: true,
       reviewModel: 'claude-opus-4-6',
+      defaultEffort: 'high',
       defaultPlanMode: false,
       autoConvertLongText: true,
       showChatCost: true,
@@ -251,6 +257,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEffectType: (value) => set({ soundEffectType: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
       setReviewModel: (value) => set({ reviewModel: value }),
+      setDefaultEffort: (value) => set({ defaultEffort: value }),
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),

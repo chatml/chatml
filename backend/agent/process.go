@@ -43,6 +43,7 @@ type ProcessOptions struct {
 	MaxBudgetUsd        float64
 	MaxTurns            int
 	MaxThinkingTokens   int
+	Effort              string // Reasoning effort: low, medium, high, max
 	PlanMode            bool   // Start agent in plan mode
 	Instructions        string // Additional instructions for the agent (e.g., conversation summaries)
 	StructuredOutput    string
@@ -179,6 +180,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.MaxThinkingTokens > 0 {
 		args = append(args, "--max-thinking-tokens", strconv.Itoa(opts.MaxThinkingTokens))
+	}
+	if opts.Effort != "" {
+		args = append(args, "--effort", opts.Effort)
 	}
 	if opts.PlanMode {
 		args = append(args, "--permission-mode", "plan")

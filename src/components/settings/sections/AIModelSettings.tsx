@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Eye, EyeOff } from 'lucide-react';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type EffortLevel } from '@/stores/settingsStore';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
@@ -23,6 +23,8 @@ export function AIModelSettings() {
   const setDefaultThinking = useSettingsStore((s) => s.setDefaultThinking);
   const reviewModel = useSettingsStore((s) => s.reviewModel);
   const setReviewModel = useSettingsStore((s) => s.setReviewModel);
+  const defaultEffort = useSettingsStore((s) => s.defaultEffort);
+  const setDefaultEffort = useSettingsStore((s) => s.setDefaultEffort);
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const setDefaultPlanMode = useSettingsStore((s) => s.setDefaultPlanMode);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
@@ -74,6 +76,23 @@ export function AIModelSettings() {
             <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
             <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
             <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+
+      <SettingsRow
+        title="Default reasoning effort"
+        description="Controls reasoning depth for Opus 4.6 conversations"
+      >
+        <Select value={defaultEffort} onValueChange={(v) => setDefaultEffort(v as EffortLevel)}>
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="low">Low</SelectItem>
+            <SelectItem value="medium">Medium</SelectItem>
+            <SelectItem value="high">High (default)</SelectItem>
+            <SelectItem value="max">Max (Opus 4.6)</SelectItem>
           </SelectContent>
         </Select>
       </SettingsRow>
