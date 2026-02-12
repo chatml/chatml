@@ -20,6 +20,7 @@ import {
   type SubagentStopHookInput,
   type PostToolUseFailureHookInput,
   type StopHookInput,
+  type PreCompactHookInput,
   type McpServerConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
@@ -807,6 +808,17 @@ const stopHook: HookCallback = async (input) => {
   return {};
 };
 
+const preCompactHook: HookCallback = async (input) => {
+  const hookInput = input as PreCompactHookInput;
+  emit({
+    type: "pre_compact",
+    trigger: hookInput.trigger,
+    customInstructions: hookInput.custom_instructions,
+    sessionId: hookInput.session_id,
+  });
+  return {};
+};
+
 const subagentStartHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStartHookInput;
   // Register session → agentId mapping for correlating sub-agent tool events
@@ -998,6 +1010,7 @@ const hooks = {
   SessionStart: [{ hooks: [sessionStartHook] }],
   SessionEnd: [{ hooks: [sessionEndHook] }],
   Stop: [{ hooks: [stopHook] }],
+  PreCompact: [{ hooks: [preCompactHook] }],
   SubagentStart: [{ hooks: [subagentStartHook] }],
   SubagentStop: [{ hooks: [subagentStopHook] }],
 };
