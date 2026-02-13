@@ -113,7 +113,7 @@ const effort: EffortLevel | undefined = effortArg
   : undefined;
 
 // Permission mode (e.g., "plan" for plan mode at startup)
-const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
+const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "delegate"] as const;
 type PermissionMode = typeof validPermissionModes[number];
 let initialPermissionMode: PermissionMode = "bypassPermissions";
 // Tracks the current permission mode and the mode before plan mode was activated.
