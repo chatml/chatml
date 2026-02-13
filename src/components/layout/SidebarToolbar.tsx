@@ -45,7 +45,7 @@ export function SidebarToolbar() {
       )}
     >
       <span
-        className="text-[20px] font-extrabold select-none truncate min-w-0"
+        className="text-[20px] font-extrabold select-none truncate min-w-0 tracking-tight"
         style={{
           fontFamily:
             'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
