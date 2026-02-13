@@ -59,6 +59,21 @@ interface SubAgentRowProps {
   worktreePath?: string;
 }
 
+// Strip redundant agent-type prefix from description (e.g., "Explore project structure" on an Explore agent → "project structure")
+function stripAgentPrefix(description: string, agentType: string): string {
+  const label = getAgentLabel(agentType).toLowerCase();
+  if (description.toLowerCase().startsWith(label + ' ')) {
+    return description.slice(label.length + 1);
+  }
+  return description;
+}
+
+// Extract the first nested Task tool's description from a sub-agent's tools
+function getNestedTaskDescription(agent: SubAgent): string | undefined {
+  const taskTool = agent.tools.find(t => t.tool === 'Task' && t.params?.description);
+  return taskTool?.params?.description as string | undefined;
+}
+
 export const SubAgentRow = memo(function SubAgentRow({ agent, worktreePath }: SubAgentRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasTools = agent.tools.length > 0;
@@ -70,6 +85,12 @@ export const SubAgentRow = memo(function SubAgentRow({ agent, worktreePath }: Su
     if (activeTool) return activeTool;
     return agent.tools[agent.tools.length - 1];
   }, [agent.tools]);
+
+  // Display description: strip redundant agent-type prefix
+  const displayDescription = useMemo(() => {
+    if (!agent.description) return null;
+    return stripAgentPrefix(agent.description, agent.agentType);
+  }, [agent.description, agent.agentType]);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -92,9 +113,9 @@ export const SubAgentRow = memo(function SubAgentRow({ agent, worktreePath }: Su
         <span className="font-medium text-foreground">{getAgentLabel(agent.agentType)}</span>
 
         {/* Task description (preferred) or current tool summary (fallback) */}
-        {agent.description ? (
+        {displayDescription ? (
           <span className="text-muted-foreground italic truncate max-w-[300px]">
-            {agent.description}
+            {displayDescription}
           </span>
         ) : currentTool && (
           <span className="text-muted-foreground truncate max-w-[200px]">
@@ -168,6 +189,200 @@ export const SubAgentRow = memo(function SubAgentRow({ agent, worktreePath }: Su
           </div>
         </CollapsibleContent>
       )}
+    </Collapsible>
+  );
+});
+
+// Compact row for an individual agent inside a grouped view — shows nested Task description as label
+const SubAgentCompactRow = memo(function SubAgentCompactRow({ agent, worktreePath }: SubAgentRowProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hasTools = agent.tools.length > 0;
+  const hasExpandableContent = hasTools || !!agent.output;
+
+  const nestedDescription = useMemo(() => getNestedTaskDescription(agent), [agent.tools]);
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <CollapsibleTrigger
+        className={cn(
+          'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-0.5 transition-colors',
+          'hover:bg-surface-2',
+        )}
+      >
+        <span className="flex items-center justify-center w-3 h-3 shrink-0">
+          {agent.completed ? (
+            <Circle className="w-2 h-2 fill-text-success text-text-success" />
+          ) : (
+            <span className="block w-2 h-2 rounded-full border-[1.5px] border-primary border-t-transparent animate-spin" />
+          )}
+        </span>
+
+        {/* Nested Task description (specific) or fallback to tool count */}
+        {nestedDescription ? (
+          <span className="text-muted-foreground italic truncate max-w-[300px]">
+            {nestedDescription}
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-2xs">
+            {agent.tools.length} tool{agent.tools.length !== 1 ? 's' : ''}
+          </span>
+        )}
+
+        {/* Tool count badge */}
+        {agent.tools.length > 0 && (
+          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+            {agent.tools.filter(t => t.endTime).length}/{agent.tools.length}
+          </span>
+        )}
+
+        <span className="flex-1" />
+
+        {/* Duration */}
+        {agent.completed && agent.endTime ? (
+          <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
+            {((agent.endTime - agent.startTime) / 1000).toFixed(1)}s
+          </span>
+        ) : !agent.completed ? (
+          <AgentElapsedTime startTime={agent.startTime} />
+        ) : null}
+
+        {hasExpandableContent && (
+          <span className="shrink-0 text-muted-foreground">
+            {isExpanded ? (
+              <ChevronDown className="w-2.5 h-2.5" />
+            ) : (
+              <ChevronRight className="w-2.5 h-2.5" />
+            )}
+          </span>
+        )}
+      </CollapsibleTrigger>
+
+      {hasExpandableContent && (
+        <CollapsibleContent>
+          <div className="ml-4 space-y-1">
+            {agent.output && (
+              <div className="prose prose-sm dark:prose-invert max-w-none text-sm px-2 py-1 rounded bg-muted/30">
+                <CachedMarkdown
+                  cacheKey={`subagent-output:${agent.agentId}`}
+                  content={agent.output}
+                />
+              </div>
+            )}
+            {hasTools && (
+              <div className="space-y-0.5">
+                {agent.tools.map((tool) => (
+                  <ToolUsageBlock
+                    key={tool.id}
+                    id={tool.id}
+                    tool={tool.tool}
+                    params={tool.params}
+                    worktreePath={worktreePath}
+                    isActive={!tool.endTime}
+                    success={tool.success}
+                    summary={tool.summary}
+                    duration={tool.endTime ? tool.endTime - tool.startTime : undefined}
+                    stdout={tool.stdout}
+                    stderr={tool.stderr}
+                    elapsedSeconds={tool.elapsedSeconds}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  );
+});
+
+// Grouped row that collapses multiple same-description sub-agents under a single header
+interface SubAgentGroupedRowProps {
+  agents: SubAgent[];
+  worktreePath?: string;
+}
+
+export const SubAgentGroupedRow = memo(function SubAgentGroupedRow({ agents, worktreePath }: SubAgentGroupedRowProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const firstAgent = agents[0];
+  const allCompleted = agents.every(a => a.completed);
+  const anyActive = agents.some(a => !a.completed);
+
+  const displayDescription = useMemo(() => {
+    if (!firstAgent.description) return null;
+    return stripAgentPrefix(firstAgent.description, firstAgent.agentType);
+  }, [firstAgent.description, firstAgent.agentType]);
+
+  // Total duration: from earliest start to latest end
+  const totalDuration = useMemo(() => {
+    if (!allCompleted) return null;
+    const starts = agents.map(a => a.startTime);
+    const ends = agents.filter(a => a.endTime).map(a => a.endTime!);
+    if (ends.length === 0) return null;
+    return Math.max(...ends) - Math.min(...starts);
+  }, [agents, allCompleted]);
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <CollapsibleTrigger
+        className={cn(
+          'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-0.5 transition-colors',
+          'hover:bg-surface-2',
+        )}
+      >
+        {/* Status indicator */}
+        <span className="flex items-center justify-center w-3 h-3 shrink-0">
+          {allCompleted ? (
+            <Circle className="w-2 h-2 fill-text-success text-text-success" />
+          ) : anyActive ? (
+            <span className="block w-2 h-2 rounded-full border-[1.5px] border-primary border-t-transparent animate-spin" />
+          ) : (
+            <Circle className="w-2 h-2 fill-muted-foreground/50 text-muted-foreground/50" />
+          )}
+        </span>
+
+        {/* Agent type label */}
+        <span className="font-medium text-foreground">{getAgentLabel(firstAgent.agentType)}</span>
+
+        {/* Shared description */}
+        {displayDescription && (
+          <span className="text-muted-foreground italic truncate max-w-[300px]">
+            {displayDescription}
+          </span>
+        )}
+
+        {/* Count badge */}
+        <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+          {'\u00D7'}{agents.length}
+        </span>
+
+        <span className="flex-1" />
+
+        {/* Total duration */}
+        {totalDuration ? (
+          <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
+            {(totalDuration / 1000).toFixed(1)}s
+          </span>
+        ) : anyActive ? (
+          <AgentElapsedTime startTime={Math.min(...agents.map(a => a.startTime))} />
+        ) : null}
+
+        <span className="shrink-0 text-muted-foreground">
+          {isExpanded ? (
+            <ChevronDown className="w-2.5 h-2.5" />
+          ) : (
+            <ChevronRight className="w-2.5 h-2.5" />
+          )}
+        </span>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div className="ml-4 space-y-0.5">
+          {agents.map((agent) => (
+            <SubAgentCompactRow key={agent.agentId} agent={agent} worktreePath={worktreePath} />
+          ))}
+        </div>
+      </CollapsibleContent>
     </Collapsible>
   );
 });
