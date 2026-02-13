@@ -3536,6 +3536,42 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, map[string]bool{"enabled": req.Enabled})
 }
 
+type SetMaxThinkingTokensRequest struct {
+	MaxThinkingTokens int `json:"maxThinkingTokens"`
+}
+
+func (h *Handlers) SetConversationMaxThinkingTokens(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	var req SetMaxThinkingTokensRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.MaxThinkingTokens <= 0 {
+		writeValidationError(w, "maxThinkingTokens must be positive")
+		return
+	}
+
+	if err := h.agentManager.SetConversationMaxThinkingTokens(convID, req.MaxThinkingTokens); err != nil {
+		writeInternalError(w, "failed to set max thinking tokens", err)
+		return
+	}
+
+	writeJSON(w, map[string]int{"maxThinkingTokens": req.MaxThinkingTokens})
+}
+
 // PlanApprovalRequest represents user approval/rejection of an ExitPlanMode tool call
 type PlanApprovalRequest struct {
 	RequestID string `json:"requestId"`
