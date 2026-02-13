@@ -1205,12 +1205,6 @@ func TestCreateSession_DuplicateUserProvidedName(t *testing.T) {
 	repoPath := createTestGitRepo(t)
 	repo := createTestRepo(t, s, "ws-1", repoPath)
 
-	// Clean up test session directory after test
-	t.Cleanup(func() {
-		workspacesDir, _ := git.WorkspacesBaseDir()
-		os.RemoveAll(filepath.Join(workspacesDir, "my-session"))
-	})
-
 	// Create first session with explicit name
 	body, _ := json.Marshal(CreateSessionRequest{Name: "my-session"})
 	req := httptest.NewRequest("POST", "/api/repos/ws-1/sessions", bytes.NewReader(body))
@@ -1985,7 +1979,10 @@ func TestGetSessionBranchCommits_CommitFilesHaveStats(t *testing.T) {
 // ============================================================================
 
 func TestGetWorkspacesBaseDir_Default(t *testing.T) {
-	h, _ := setupTestHandlers(t)
+	h, s := setupTestHandlers(t)
+
+	// Clear the workspaces-base-dir setting so the handler falls back to the default path
+	require.NoError(t, s.DeleteSetting(context.Background(), "workspaces-base-dir"))
 
 	req := httptest.NewRequest("GET", "/api/settings/workspaces-base-dir", nil)
 	w := httptest.NewRecorder()
@@ -4178,17 +4175,6 @@ func TestCreateSession_CheckoutExisting_Success(t *testing.T) {
 	runGit(t, cloneDir, "commit", "-m", "Add feature")
 	runGit(t, cloneDir, "push", "origin", "feature/existing-pr")
 
-	// Clean up test session directory after test
-	t.Cleanup(func() {
-		workspacesDir, _ := git.WorkspacesBaseDir()
-		entries, _ := os.ReadDir(workspacesDir)
-		for _, entry := range entries {
-			if entry.IsDir() {
-				os.RemoveAll(filepath.Join(workspacesDir, entry.Name()))
-			}
-		}
-	})
-
 	body, _ := json.Marshal(CreateSessionRequest{
 		Name:             "test-checkout-session",
 		Branch:           "feature/existing-pr",
@@ -4219,17 +4205,6 @@ func TestCreateSession_CheckoutExisting_BranchNotFound(t *testing.T) {
 
 	repoPath := createTestGitRepo(t)
 	repo := createTestRepo(t, s, "ws-1", repoPath)
-
-	// Clean up
-	t.Cleanup(func() {
-		workspacesDir, _ := git.WorkspacesBaseDir()
-		entries, _ := os.ReadDir(workspacesDir)
-		for _, entry := range entries {
-			if entry.IsDir() {
-				os.RemoveAll(filepath.Join(workspacesDir, entry.Name()))
-			}
-		}
-	})
 
 	body, _ := json.Marshal(CreateSessionRequest{
 		Name:             "test-nonexistent",
@@ -4269,16 +4244,6 @@ func TestCreateSession_CheckoutExisting_SystemMessageStored(t *testing.T) {
 	runGit(t, cloneDir, "add", ".")
 	runGit(t, cloneDir, "commit", "-m", "Test commit")
 	runGit(t, cloneDir, "push", "origin", "feature/sys-msg-test")
-
-	t.Cleanup(func() {
-		workspacesDir, _ := git.WorkspacesBaseDir()
-		entries, _ := os.ReadDir(workspacesDir)
-		for _, entry := range entries {
-			if entry.IsDir() {
-				os.RemoveAll(filepath.Join(workspacesDir, entry.Name()))
-			}
-		}
-	})
 
 	systemMsg := "## PR #42: Add auth\n**Branch:** feature/sys-msg-test → main\n**Changes:** +200 -50 across 8 files"
 
@@ -4379,12 +4344,6 @@ func TestCreateSession_WithBranchPrefix(t *testing.T) {
 
 	// Use timestamp-based session name to avoid conflicts
 	sessionName := fmt.Sprintf("test-session-%d", time.Now().UnixNano())
-
-	// Clean up test session directory after test
-	t.Cleanup(func() {
-		workspacesDir, _ := git.WorkspacesBaseDir()
-		os.RemoveAll(filepath.Join(workspacesDir, sessionName))
-	})
 
 	// Create session with BranchPrefix
 	reqBody := CreateSessionRequest{
