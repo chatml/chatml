@@ -1487,6 +1487,18 @@ func (m *Manager) SetConversationModel(convID, model string) error {
 	return proc.SetModel(model)
 }
 
+// SetConversationMaxThinkingTokens changes the max thinking tokens for a running conversation.
+func (m *Manager) SetConversationMaxThinkingTokens(convID string, tokens int) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("no active process for conversation %s", convID)
+	}
+	return proc.SetMaxThinkingTokens(tokens)
+}
+
 // loadEnvVars reads custom environment variables from the settings store.
 func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
 	raw, found, err := m.store.GetSetting(ctx, "env-vars")

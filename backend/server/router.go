@@ -177,6 +177,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{convId}/drop-stats", h.GetConversationDropStats)
 		r.Post("/{convId}/rewind", h.RewindConversation)
 		r.Post("/{convId}/plan-mode", h.SetConversationPlanMode)
+		r.Post("/{convId}/max-thinking-tokens", h.SetConversationMaxThinkingTokens)
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
 		r.Delete("/{convId}", h.DeleteConversation)

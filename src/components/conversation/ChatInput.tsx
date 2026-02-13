@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationMaxThinkingTokens, approvePlan } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ import {
   Loader2,
   Upload,
   ScrollText,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
@@ -84,6 +85,14 @@ const EFFORT_LEVELS: { id: EffortLevel; label: string }[] = [
   { id: 'max', label: 'Max' },
 ];
 
+// Preset options for max thinking tokens
+const THINKING_TOKEN_PRESETS = [
+  { value: 8000, label: '8K' },
+  { value: 10000, label: '10K' },
+  { value: 16000, label: '16K' },
+  { value: 32000, label: '32K' },
+];
+
 // Models that support extended thinking mode (derived from MODELS)
 const THINKING_SUPPORTED_MODELS = new Set(
   MODELS.filter((m) => m.supportsThinking).map((m) => m.id)
@@ -108,7 +117,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
-  const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
+  const defaultMaxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
+  const [localMaxThinkingTokens, setLocalMaxThinkingTokens] = useState(defaultMaxThinkingTokens);
   const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
   const defaultEffort = useSettingsStore((s) => s.defaultEffort);
   const [effortLevel, setEffortLevel] = useState<EffortLevel>(defaultEffort);
@@ -439,6 +449,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [planModeEnabled, selectedConversationId]);
 
+  // Handler for changing max thinking tokens - also notifies running conversation
+  const handleThinkingTokensChange = useCallback(async (tokens: number) => {
+    setLocalMaxThinkingTokens(tokens);
+    // Apply to running conversation if one exists
+    if (selectedConversationId) {
+      try {
+        await setConversationMaxThinkingTokens(selectedConversationId, tokens);
+      } catch {
+        // Silently ignore if process isn't running
+      }
+    }
+  }, [selectedConversationId]);
+
   // Handle plan approval
   const handleApprovePlan = useCallback(async () => {
     if (!selectedConversationId || !pendingPlanApproval || isApproving) return;
@@ -602,7 +625,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           // Pass plan mode so agent starts in plan mode if toggled on before first message
           planMode: planModeEnabled ? true : undefined,
           // Pass thinking tokens when thinking mode is enabled (non-Opus-4.6 models)
-          maxThinkingTokens: !effortSupported && thinkingEnabled ? maxThinkingTokens : undefined,
+          maxThinkingTokens: !effortSupported && thinkingEnabled ? localMaxThinkingTokens : undefined,
           // Pass effort level for Opus 4.6 (only when non-default)
           effort: effortSupported && effortLevel !== 'high' ? effortLevel : undefined,
           // Pass attachments with loaded content
@@ -989,6 +1012,30 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               <Brain className="h-4 w-4" />
               {thinkingEnabled && <span className="text-xs font-medium">Thinking</span>}
             </Button>
+          )}
+
+          {/* Thinking Tokens Selector — visible when thinking is active */}
+          {((effortSupported) || (!effortSupported && thinkingEnabled && thinkingSupported)) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 px-1.5 text-xs text-muted-foreground">
+                  {THINKING_TOKEN_PRESETS.find(p => p.value === localMaxThinkingTokens)?.label
+                    ?? `${Math.round(localMaxThinkingTokens / 1000)}K`}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {THINKING_TOKEN_PRESETS.map((preset) => (
+                  <DropdownMenuItem
+                    key={preset.value}
+                    onClick={() => handleThinkingTokensChange(preset.value)}
+                  >
+                    {preset.label} tokens
+                    {preset.value === localMaxThinkingTokens && <Check className="ml-auto h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {/* Plan Mode Toggle */}

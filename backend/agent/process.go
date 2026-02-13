@@ -92,6 +92,8 @@ type InputMessage struct {
 	// Plan approval response fields (for ExitPlanMode tool)
 	PlanApprovalRequestID string `json:"planApprovalRequestId,omitempty"`
 	PlanApproved          *bool  `json:"planApproved,omitempty"`
+	// Max thinking tokens override (for runtime adjustment)
+	MaxThinkingTokens int `json:"maxThinkingTokens,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -463,6 +465,14 @@ func (p *Process) SetPermissionMode(mode string) error {
 		p.mu.Unlock()
 	}
 	return err
+}
+
+// SetMaxThinkingTokens sends a message to change the max thinking tokens at runtime
+func (p *Process) SetMaxThinkingTokens(tokens int) error {
+	return p.sendInput(InputMessage{
+		Type:              "set_max_thinking_tokens",
+		MaxThinkingTokens: tokens,
+	})
 }
 
 // IsPlanModeActive returns whether the process is currently in plan mode

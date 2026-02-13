@@ -187,7 +187,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -199,6 +199,8 @@ interface InputMessage {
   // Plan approval response fields
   planApprovalRequestId?: string;
   planApproved?: boolean;
+  // Max thinking tokens override
+  maxThinkingTokens?: number;
 }
 
 // Escape a string for use in XML attribute values
@@ -355,6 +357,20 @@ function setupInputQueue(): void {
           });
         } else {
           emit({ type: "command_error", command: "set_permission_mode", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "set_max_thinking_tokens" && input.maxThinkingTokens) {
+        if (queryRef) {
+          debug(`Setting max thinking tokens: ${input.maxThinkingTokens}`);
+          void queryRef.setMaxThinkingTokens(input.maxThinkingTokens).then(() => {
+            emit({ type: "max_thinking_tokens_changed", maxThinkingTokens: input.maxThinkingTokens! });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "set_max_thinking_tokens", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "set_max_thinking_tokens", error: "No active query" });
         }
         return;
       }
