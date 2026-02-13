@@ -89,6 +89,7 @@ func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 // StartConversationOptions contains optional parameters for starting a conversation
 type StartConversationOptions struct {
 	MaxThinkingTokens int                 // Enable extended thinking with this token budget
+	Effort            string              // Reasoning effort: low, medium, high, max
 	Attachments       []models.Attachment // File attachments for the initial message
 	PlanMode          bool                // Start agent in plan mode
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
@@ -206,6 +207,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	// Apply optional parameters
 	if opts != nil {
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
+		procOpts.Effort = opts.Effort
 		procOpts.PlanMode = opts.PlanMode
 		procOpts.Instructions = opts.Instructions
 		procOpts.Model = opts.Model
@@ -1490,6 +1492,18 @@ func (m *Manager) SetConversationModel(convID, model string) error {
 		return fmt.Errorf("no active process for conversation %s", convID)
 	}
 	return proc.SetModel(model)
+}
+
+// SetConversationMaxThinkingTokens changes the max thinking tokens for a running conversation.
+func (m *Manager) SetConversationMaxThinkingTokens(convID string, tokens int) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("no active process for conversation %s", convID)
+	}
+	return proc.SetMaxThinkingTokens(tokens)
 }
 
 // loadEnvVars reads custom environment variables from the settings store.

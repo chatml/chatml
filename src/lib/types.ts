@@ -304,6 +304,7 @@ export interface AgentEvent {
   // Compact boundary fields
   trigger?: 'manual' | 'auto';
   preTokens?: number;
+  customInstructions?: string | null;
 
   // Status fields
   status?: string | null;
@@ -429,6 +430,7 @@ export const AgentEventTypes = {
 
   // System events
   COMPACT_BOUNDARY: 'compact_boundary',
+  PRE_COMPACT: 'pre_compact',
   STATUS_UPDATE: 'status_update',
   TOOL_PROGRESS: 'tool_progress',
   AUTH_STATUS: 'auth_status',

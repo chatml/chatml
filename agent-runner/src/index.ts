@@ -20,6 +20,7 @@ import {
   type SubagentStopHookInput,
   type PostToolUseFailureHookInput,
   type StopHookInput,
+  type PreCompactHookInput,
   type McpServerConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
@@ -101,10 +102,23 @@ const maxBudgetUsd = getNumericArg("--max-budget-usd");
 const maxTurns = getNumericArg("--max-turns");
 const maxThinkingTokens = getNumericArg("--max-thinking-tokens");
 
+// Reasoning effort level (Opus 4.6+)
+const validEffortLevels = ["low", "medium", "high", "max"] as const;
+type EffortLevel = typeof validEffortLevels[number];
+const effortArg = getArg("--effort");
+const effort: EffortLevel | undefined = effortArg
+  ? (validEffortLevels as readonly string[]).includes(effortArg)
+    ? (effortArg as EffortLevel)
+    : (() => { console.error(`Invalid --effort value: "${effortArg}". Ignoring.`); return undefined; })()
+  : undefined;
+
 // Permission mode (e.g., "plan" for plan mode at startup)
-const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
+const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "delegate"] as const;
 type PermissionMode = typeof validPermissionModes[number];
 let initialPermissionMode: PermissionMode = "bypassPermissions";
+// Tracks the current permission mode and the mode before plan mode was activated.
+let currentPermissionMode: PermissionMode = "bypassPermissions";
+let prePlanPermissionMode: PermissionMode = "bypassPermissions";
 {
   const value = getArg("--permission-mode");
   if (value) {
@@ -114,6 +128,8 @@ let initialPermissionMode: PermissionMode = "bypassPermissions";
       console.error(`Invalid --permission-mode value: "${value}". Using default "bypassPermissions".`);
     }
   }
+  currentPermissionMode = initialPermissionMode;
+  prePlanPermissionMode = initialPermissionMode;
 }
 
 // Task 6: Settings Sources Configuration
@@ -176,7 +192,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -188,6 +204,8 @@ interface InputMessage {
   // Plan approval response fields
   planApprovalRequestId?: string;
   planApproved?: boolean;
+  // Max thinking tokens override
+  maxThinkingTokens?: number;
 }
 
 // Escape a string for use in XML attribute values
@@ -337,6 +355,11 @@ function setupInputQueue(): void {
       if (input.type === "set_permission_mode" && input.permissionMode) {
         if (queryRef) {
           debug(`Setting permission mode: ${input.permissionMode}`);
+          // Track pre-plan mode so ExitPlanMode can restore it
+          if (input.permissionMode === "plan") {
+            prePlanPermissionMode = currentPermissionMode;
+          }
+          currentPermissionMode = input.permissionMode as PermissionMode;
           void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
             emit({ type: "permission_mode_changed", mode: input.permissionMode! });
           }).catch((cmdErr: unknown) => {
@@ -344,6 +367,20 @@ function setupInputQueue(): void {
           });
         } else {
           emit({ type: "command_error", command: "set_permission_mode", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "set_max_thinking_tokens" && input.maxThinkingTokens) {
+        if (queryRef) {
+          debug(`Setting max thinking tokens: ${input.maxThinkingTokens}`);
+          void queryRef.setMaxThinkingTokens(input.maxThinkingTokens).then(() => {
+            emit({ type: "max_thinking_tokens_changed", maxThinkingTokens: input.maxThinkingTokens! });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "set_max_thinking_tokens", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "set_max_thinking_tokens", error: "No active query" });
         }
         return;
       }
@@ -718,6 +755,24 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     sessionId: hookInput.session_id,
   });
 
+  // When ExitPlanMode completes, the SDK internally changes the permission mode
+  // from "plan" to the pre-plan mode. Explicitly restore the mode and emit
+  // permission_mode_changed to sync Go backend and frontend. This works around
+  // SDK bug #15755 where permissionDecision: "allow" from PreToolUse hooks
+  // sometimes doesn't properly transition the SDK out of plan mode.
+  if (hookInput.tool_name === "ExitPlanMode") {
+    const restoreMode = prePlanPermissionMode;
+    currentPermissionMode = restoreMode;
+    debug(`ExitPlanMode completed — restoring permission mode to "${restoreMode}"`);
+    emit({ type: "permission_mode_changed", mode: restoreMode });
+    // Also explicitly set the SDK's mode as a safety net
+    if (queryRef) {
+      void queryRef.setPermissionMode(restoreMode).catch((err: unknown) => {
+        debug(`Failed to restore permission mode after ExitPlanMode: ${err}`);
+      });
+    }
+  }
+
   // If this is a sub-agent tool, emit a tool_end event with agentId
   if (toolUseId) {
     const subTool = subagentActiveTools.get(toolUseId);
@@ -816,6 +871,17 @@ const stopHook: HookCallback = async (input) => {
   emit({
     type: "agent_stop",
     stopHookActive: hookInput.stop_hook_active,
+    sessionId: hookInput.session_id,
+  });
+  return {};
+};
+
+const preCompactHook: HookCallback = async (input) => {
+  const hookInput = input as PreCompactHookInput;
+  emit({
+    type: "pre_compact",
+    trigger: hookInput.trigger,
+    customInstructions: hookInput.custom_instructions,
     sessionId: hookInput.session_id,
   });
   return {};
@@ -1016,6 +1082,7 @@ const hooks = {
   SessionStart: [{ hooks: [sessionStartHook] }],
   SessionEnd: [{ hooks: [sessionEndHook] }],
   Stop: [{ hooks: [stopHook] }],
+  PreCompact: [{ hooks: [preCompactHook] }],
   SubagentStart: [{ hooks: [subagentStartHook] }],
   SubagentStop: [{ hooks: [subagentStopHook] }],
 };
@@ -1156,6 +1223,8 @@ async function main(): Promise<void> {
       settingSources,
       betas,
       model,
+      // Pass effort level to SDK if specified (Opus 4.6+)
+      ...(effort ? { extraArgs: { "--effort": effort } } : {}),
       fallbackModel,
       forkSession,
       // Debug options (SDK v0.2.30+)
@@ -1693,6 +1762,12 @@ function handleMessage(message: SDKMessage): void {
           status: statusMsg.status,
           sessionId: statusMsg.session_id,
         });
+        // SDK emits permissionMode in status messages when the mode changes
+        // (e.g., after ExitPlanMode executes). Propagate to Go backend/frontend.
+        if (statusMsg.permissionMode) {
+          currentPermissionMode = statusMsg.permissionMode;
+          emit({ type: "permission_mode_changed", mode: statusMsg.permissionMode });
+        }
       } else if (sysMsg.subtype === "hook_response") {
         const hookMsg = sysMsg as SDKHookResponseMessage;
         emit({

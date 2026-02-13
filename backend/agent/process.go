@@ -43,6 +43,7 @@ type ProcessOptions struct {
 	MaxBudgetUsd        float64
 	MaxTurns            int
 	MaxThinkingTokens   int
+	Effort              string // Reasoning effort: low, medium, high, max
 	PlanMode            bool   // Start agent in plan mode
 	Instructions        string // Additional instructions for the agent (e.g., conversation summaries)
 	StructuredOutput    string
@@ -91,6 +92,8 @@ type InputMessage struct {
 	// Plan approval response fields (for ExitPlanMode tool)
 	PlanApprovalRequestID string `json:"planApprovalRequestId,omitempty"`
 	PlanApproved          *bool  `json:"planApproved,omitempty"`
+	// Max thinking tokens override (for runtime adjustment)
+	MaxThinkingTokens int `json:"maxThinkingTokens,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -179,6 +182,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.MaxThinkingTokens > 0 {
 		args = append(args, "--max-thinking-tokens", strconv.Itoa(opts.MaxThinkingTokens))
+	}
+	if opts.Effort != "" {
+		args = append(args, "--effort", opts.Effort)
 	}
 	if opts.PlanMode {
 		args = append(args, "--permission-mode", "plan")
@@ -459,6 +465,14 @@ func (p *Process) SetPermissionMode(mode string) error {
 		p.mu.Unlock()
 	}
 	return err
+}
+
+// SetMaxThinkingTokens sends a message to change the max thinking tokens at runtime
+func (p *Process) SetMaxThinkingTokens(tokens int) error {
+	return p.sendInput(InputMessage{
+		Type:              "set_max_thinking_tokens",
+		MaxThinkingTokens: tokens,
+	})
 }
 
 // IsPlanModeActive returns whether the process is currently in plan mode

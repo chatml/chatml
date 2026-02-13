@@ -3150,6 +3150,7 @@ type CreateConversationRequest struct {
 	Model             string              `json:"model"`             // Model name override (optional)
 	PlanMode          bool                `json:"planMode"`          // Start in plan mode (optional)
 	MaxThinkingTokens int                 `json:"maxThinkingTokens"` // Enable extended thinking (optional)
+	Effort            string              `json:"effort"`            // Reasoning effort: low, medium, high, max (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
 	SummaryIDs        []string            `json:"summaryIds"`        // Summaries to attach as context (optional)
 }
@@ -3215,9 +3216,10 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
-	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" {
+	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" || req.Effort != "" {
 		opts = &agent.StartConversationOptions{
 			MaxThinkingTokens: req.MaxThinkingTokens,
+			Effort:            req.Effort,
 			Attachments:       req.Attachments,
 			PlanMode:          req.PlanMode,
 			Instructions:      instructions,
@@ -3532,6 +3534,42 @@ func (h *Handlers) SetConversationPlanMode(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, map[string]bool{"enabled": req.Enabled})
+}
+
+type SetMaxThinkingTokensRequest struct {
+	MaxThinkingTokens int `json:"maxThinkingTokens"`
+}
+
+func (h *Handlers) SetConversationMaxThinkingTokens(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	var req SetMaxThinkingTokensRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.MaxThinkingTokens <= 0 {
+		writeValidationError(w, "maxThinkingTokens must be positive")
+		return
+	}
+
+	if err := h.agentManager.SetConversationMaxThinkingTokens(convID, req.MaxThinkingTokens); err != nil {
+		writeInternalError(w, "failed to set max thinking tokens", err)
+		return
+	}
+
+	writeJSON(w, map[string]int{"maxThinkingTokens": req.MaxThinkingTokens})
 }
 
 // PlanApprovalRequest represents user approval/rejection of an ExitPlanMode tool call
