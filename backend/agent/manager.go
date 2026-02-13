@@ -358,8 +358,27 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 				subAgents = append(subAgents, *sa)
 			}
 		}
+		// Build text segments for timeline-preserving snapshot restoration.
+		// Include completed segments + current in-progress segment.
+		var snapshotSegments []SnapshotTextSegment
+		for _, seg := range textSegments {
+			if seg.content != "" {
+				snapshotSegments = append(snapshotSegments, SnapshotTextSegment{
+					Text:      seg.content,
+					Timestamp: seg.timestamp.UnixMilli(),
+				})
+			}
+		}
+		if currentSegmentText != "" && currentSegmentStart != nil {
+			snapshotSegments = append(snapshotSegments, SnapshotTextSegment{
+				Text:      currentSegmentText,
+				Timestamp: currentSegmentStart.UnixMilli(),
+			})
+		}
+
 		snapshot := StreamingSnapshot{
 			Text:           currentAssistantMessage,
+			TextSegments:   snapshotSegments,
 			ActiveTools:    tools,
 			Thinking:       currentThinking,
 			IsThinking:     isThinking,

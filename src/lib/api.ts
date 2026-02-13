@@ -1068,6 +1068,7 @@ export async function getActiveStreamingConversations(): Promise<{ conversationI
 
 export interface StreamingSnapshotDTO {
   text: string;
+  textSegments?: { text: string; timestamp: number }[];
   activeTools: { id: string; tool: string; startTime: number }[];
   thinking?: string;
   isThinking: boolean;

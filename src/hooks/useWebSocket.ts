@@ -587,11 +587,21 @@ export function useWebSocket(enabled: boolean = true) {
           cacheReadInputTokens: 0,
           cacheCreationInputTokens: 0,
         });
+        // Notify user that context was compacted
+        window.dispatchEvent(new CustomEvent('agent-notification', {
+          detail: {
+            title: 'Context compacted',
+            message: event?.trigger
+              ? `Conversation context was compacted (${event.trigger})`
+              : 'Conversation context was compacted to stay within limits',
+            type: 'info',
+            conversationId,
+          }
+        }));
         break;
 
       case 'pre_compact':
-        // Hook fires BEFORE context compaction occurs
-        // Future: Could show "Compacting context..." indicator
+        // Hook fires BEFORE context compaction occurs — no UI action needed
         break;
 
       // ====================================================================
@@ -736,6 +746,20 @@ export function useWebSocket(enabled: boolean = true) {
         // The 'init' event from the recovered session clears stale state.
         // If all retries fail, the 'error' event handles it normally.
         console.warn(`Session recovering for ${conversationId} (attempt ${event.attempt}/${event.maxAttempts})`);
+        break;
+
+      case 'warning':
+        // Surface agent warnings (e.g., API overloaded errors) as toast notifications
+        if (event?.message) {
+          window.dispatchEvent(new CustomEvent('agent-notification', {
+            detail: {
+              title: 'Agent warning',
+              message: event.message,
+              type: 'warning',
+              conversationId,
+            }
+          }));
+        }
         break;
 
       case 'agent_stderr':

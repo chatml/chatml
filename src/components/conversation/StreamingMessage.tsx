@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
@@ -8,7 +8,9 @@ import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'l
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { SubAgentRow } from '@/components/conversation/SubAgentGroup';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
+import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
 import { cn } from '@/lib/utils';
+import { PROSE_CLASSES } from '@/lib/constants';
 
 // Timeline item types for interleaved display
 type TimelineItem =
@@ -20,6 +22,66 @@ interface StreamingMessageProps {
   conversationId: string;
   worktreePath?: string;
 }
+
+// Format elapsed time as mm:ss.cc (centiseconds)
+function formatElapsedTime(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  const centis = Math.floor((ms % 1000) / 10);
+  return `${mins}:${secs.toString().padStart(2, '0')}.${centis.toString().padStart(2, '0')}`;
+}
+
+// Isolated elapsed timer component — manages its own 50ms interval without
+// causing re-renders in the parent StreamingMessage component.
+const ElapsedTimer = memo(function ElapsedTimer({ startTime, isStreaming }: { startTime?: number; isStreaming: boolean }) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      startTimeRef.current = null;
+      queueMicrotask(() => setElapsedMs(0));
+      return;
+    }
+
+    if (startTimeRef.current === null && startTime) {
+      startTimeRef.current = startTime;
+    }
+
+    if (startTimeRef.current) {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }
+
+    const interval = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedMs(Date.now() - startTimeRef.current);
+      }
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [isStreaming, startTime]);
+
+  const formatted = formatElapsedTime(elapsedMs);
+
+  return (
+    <div
+      className="flex items-center gap-2 pt-2 mt-2 animate-fade-in"
+      aria-label={`Agent is working, elapsed time: ${formatted}`}
+    >
+      <div className="flex items-end gap-[2px] h-3 w-3" aria-hidden="true">
+        <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-1" />
+        <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-2" />
+        <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-3" />
+      </div>
+      <span className="text-xs text-muted-foreground">Agent is working</span>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground/70" aria-hidden="true">
+        <Clock className="w-3 h-3" />
+        <span className="font-mono tabular-nums">{formatted}</span>
+      </div>
+    </div>
+  );
+});
 
 // Enhanced error display component
 function ErrorDisplay({ error, onDismiss }: { error: string; onDismiss: () => void }) {
@@ -102,54 +164,16 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const subAgents = useSubAgents(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   const budgetStatus = useAppStore((s) => s.budgetStatus);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const startTimeRef = useRef<number | null>(null);
 
   const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
 
   // Check if extended thinking is enabled for this conversation
   const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
 
-  // Update elapsed time every 50ms while streaming for smooth millisecond display
-  useEffect(() => {
-    if (!streaming?.isStreaming) {
-      startTimeRef.current = null;
-      queueMicrotask(() => setElapsedMs(0));
-      return;
-    }
-
-    // Capture startTime once when streaming starts
-    if (startTimeRef.current === null && streaming?.startTime) {
-      startTimeRef.current = streaming.startTime;
-    }
-
-    // Set initial elapsed time
-    if (startTimeRef.current) {
-      setElapsedMs(Date.now() - startTimeRef.current);
-    }
-
-    const interval = setInterval(() => {
-      if (startTimeRef.current) {
-        setElapsedMs(Date.now() - startTimeRef.current);
-      }
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [streaming?.isStreaming, streaming?.startTime]);
-
   // Thinking expansion state (must be before early return to satisfy Rules of Hooks)
   // Note: We don't need to reset this when thinking becomes null because the
   // expansion UI only renders when there's thinking content to show
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
-
-  // Format elapsed time as mm:ss.cc (centiseconds)
-  const formatElapsedTime = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    const centis = Math.floor((ms % 1000) / 10);
-    return `${mins}:${secs.toString().padStart(2, '0')}.${centis.toString().padStart(2, '0')}`;
-  };
 
   // Build interleaved timeline from segments and tools
   const timeline = useMemo((): TimelineItem[] => {
@@ -274,20 +298,25 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
 
           {/* Interleaved timeline of text and tools */}
           {(() => {
-            // The last text segment is actively streaming — skip cache for it
+            // The last text segment is actively streaming — use block-level
+            // memoized StreamingMarkdown for it; use CachedMarkdown for completed segments.
             const lastTextId = timeline.findLast((i) => i.type === 'text')?.id;
             return timeline.map((item) => {
             if (item.type === 'text') {
+              const isLastText = item.id === lastTextId;
               return (
                 <div
                   key={item.id}
-                  className="prose prose-base dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:marker:text-primary prose-ol:marker:text-primary"
+                  className={PROSE_CLASSES}
                 >
-                  <CachedMarkdown
-                    cacheKey={`seg:${item.id}`}
-                    content={item.text}
-                    skipCache={item.id === lastTextId}
-                  />
+                  {isLastText ? (
+                    <StreamingMarkdown id={item.id} content={item.text} />
+                  ) : (
+                    <CachedMarkdown
+                      cacheKey={`seg:${item.id}`}
+                      content={item.text}
+                    />
+                  )}
                 </div>
               );
             } else if (item.type === 'subagent') {
@@ -329,21 +358,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
 
           {/* Persistent working indicator with elapsed time */}
           {streaming?.isStreaming && !streaming?.error && (
-            <div
-              className="flex items-center gap-2 pt-2 mt-2 animate-fade-in"
-              aria-label={`Agent is working, elapsed time: ${formatElapsedTime(elapsedMs)}`}
-            >
-              <div className="flex items-end gap-[2px] h-3 w-3" aria-hidden="true">
-                <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-1" />
-                <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-2" />
-                <div className="w-[3px] bg-ai-active rounded-full animate-agent-bar-3" />
-              </div>
-              <span className="text-xs text-muted-foreground">Agent is working</span>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground/70" aria-hidden="true">
-                <Clock className="w-3 h-3" />
-                <span className="font-mono tabular-nums">{formatElapsedTime(elapsedMs)}</span>
-              </div>
-            </div>
+            <ElapsedTimer startTime={streaming.startTime} isStreaming={streaming.isStreaming} />
           )}
       </div>
     </div>
