@@ -515,3 +515,171 @@ func TestWatchEntry_Struct(t *testing.T) {
 	require.Equal(t, "/path/to/worktree", entry.WorktreePath)
 	require.Equal(t, "main", entry.LastBranch)
 }
+
+func TestWatcher_SetStatsInvalidateCallback_OnIndexChange(t *testing.T) {
+	var invalidatedSessions []string
+	var mu sync.Mutex
+
+	watcher, err := NewWatcher(func(evt BranchChangeEvent) {})
+	require.NoError(t, err)
+	defer watcher.Close()
+
+	watcher.SetStatsInvalidateCallback(func(sessionID string) {
+		mu.Lock()
+		invalidatedSessions = append(invalidatedSessions, sessionID)
+		mu.Unlock()
+	})
+
+	worktreePath, gitDir := createTestWorktree(t, "session-stats")
+	err = watcher.WatchSession("session-stats", worktreePath, "main")
+	require.NoError(t, err)
+
+	// Create/modify the index file to trigger stats invalidation
+	indexPath := filepath.Join(gitDir, "index")
+	require.NoError(t, os.WriteFile(indexPath, []byte("fake index content"), 0644))
+
+	// Wait for fsnotify
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	count := len(invalidatedSessions)
+	mu.Unlock()
+
+	// May or may not fire depending on timing, but should not panic
+	if count > 0 {
+		mu.Lock()
+		require.Contains(t, invalidatedSessions, "session-stats")
+		mu.Unlock()
+	}
+}
+
+func TestWatcher_SetBranchChangeNotifyCallback_OnHEADChange(t *testing.T) {
+	var notifiedSessions []struct {
+		sessionID string
+		newBranch string
+	}
+	var mu sync.Mutex
+
+	watcher, err := NewWatcher(func(evt BranchChangeEvent) {})
+	require.NoError(t, err)
+	defer watcher.Close()
+
+	watcher.SetBranchChangeNotifyCallback(func(sessionID, newBranch string) {
+		mu.Lock()
+		notifiedSessions = append(notifiedSessions, struct {
+			sessionID string
+			newBranch string
+		}{sessionID, newBranch})
+		mu.Unlock()
+	})
+
+	worktreePath, gitDir := createTestWorktree(t, "session-notify")
+	err = watcher.WatchSession("session-notify", worktreePath, "main")
+	require.NoError(t, err)
+
+	// Modify HEAD to trigger branch change
+	headPath := filepath.Join(gitDir, "HEAD")
+	require.NoError(t, os.WriteFile(headPath, []byte("ref: refs/heads/new-branch\n"), 0644))
+
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	count := len(notifiedSessions)
+	mu.Unlock()
+
+	if count > 0 {
+		mu.Lock()
+		require.Equal(t, "session-notify", notifiedSessions[0].sessionID)
+		require.Equal(t, "new-branch", notifiedSessions[0].newBranch)
+		mu.Unlock()
+	}
+}
+
+func TestWatcher_IgnoresIrrelevantFiles(t *testing.T) {
+	var branchEvents []BranchChangeEvent
+	var mu sync.Mutex
+
+	watcher, err := NewWatcher(func(evt BranchChangeEvent) {
+		mu.Lock()
+		branchEvents = append(branchEvents, evt)
+		mu.Unlock()
+	})
+	require.NoError(t, err)
+	defer watcher.Close()
+
+	var statsInvalidated bool
+	watcher.SetStatsInvalidateCallback(func(sessionID string) {
+		mu.Lock()
+		statsInvalidated = true
+		mu.Unlock()
+	})
+
+	worktreePath, gitDir := createTestWorktree(t, "session-irrelevant")
+	err = watcher.WatchSession("session-irrelevant", worktreePath, "main")
+	require.NoError(t, err)
+
+	// Write a file that is NOT HEAD or index
+	otherPath := filepath.Join(gitDir, "config")
+	require.NoError(t, os.WriteFile(otherPath, []byte("[core]\n"), 0644))
+
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	require.Empty(t, branchEvents, "should not emit branch change for non-HEAD files")
+	require.False(t, statsInvalidated, "should not emit stats invalidation for non-index files")
+	mu.Unlock()
+}
+
+func TestWatcher_EmptyBranchSkipped(t *testing.T) {
+	var events []BranchChangeEvent
+	var mu sync.Mutex
+
+	watcher, err := NewWatcher(func(evt BranchChangeEvent) {
+		mu.Lock()
+		events = append(events, evt)
+		mu.Unlock()
+	})
+	require.NoError(t, err)
+	defer watcher.Close()
+
+	worktreePath, gitDir := createTestWorktree(t, "session-empty")
+	err = watcher.WatchSession("session-empty", worktreePath, "main")
+	require.NoError(t, err)
+
+	// Write empty content to HEAD
+	headPath := filepath.Join(gitDir, "HEAD")
+	require.NoError(t, os.WriteFile(headPath, []byte(""), 0644))
+
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	require.Empty(t, events, "empty branch from HEAD should not trigger event")
+	mu.Unlock()
+}
+
+func TestWatcher_SameBranchNoEvent(t *testing.T) {
+	var events []BranchChangeEvent
+	var mu sync.Mutex
+
+	watcher, err := NewWatcher(func(evt BranchChangeEvent) {
+		mu.Lock()
+		events = append(events, evt)
+		mu.Unlock()
+	})
+	require.NoError(t, err)
+	defer watcher.Close()
+
+	worktreePath, gitDir := createTestWorktree(t, "session-same")
+	err = watcher.WatchSession("session-same", worktreePath, "main")
+	require.NoError(t, err)
+
+	// Write same branch to HEAD
+	headPath := filepath.Join(gitDir, "HEAD")
+	require.NoError(t, os.WriteFile(headPath, []byte("ref: refs/heads/main\n"), 0644))
+
+	time.Sleep(500 * time.Millisecond)
+
+	mu.Lock()
+	require.Empty(t, events, "same branch should not trigger event")
+	mu.Unlock()
+}

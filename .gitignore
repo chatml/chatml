@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+backend/coverage.out
+backend/coverage.html
 
 # next.js
 /.next/

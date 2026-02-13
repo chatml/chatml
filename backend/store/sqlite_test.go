@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -3105,4 +3108,403 @@ func TestGetSessionWithWorkspace_IncludesWorkspaceRemote(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, "", result.WorkspaceRemote)
 	})
+}
+
+// ============================================================================
+// Edge Case Tests
+// ============================================================================
+
+func TestAddMessage_LargeContent(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-large")
+	session := createTestSession(t, s, "sess-large", repo.ID)
+	conv := createTestConversation(t, s, "conv-large", session.ID)
+
+	largeContent := strings.Repeat("x", 100*1024) // 100KB
+	msg := createTestMessage("msg-large", "assistant", largeContent)
+
+	require.NoError(t, s.AddMessageToConversation(ctx, conv.ID, msg))
+
+	// Retrieve via paginated endpoint
+	page, err := s.GetConversationMessages(ctx, conv.ID, nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	assert.Len(t, page.Messages[0].Content, 100*1024)
+	assert.Equal(t, largeContent, page.Messages[0].Content)
+}
+
+func TestAddMessage_SpecialCharacters(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-special")
+	session := createTestSession(t, s, "sess-special", repo.ID)
+	conv := createTestConversation(t, s, "conv-special", session.ID)
+
+	// Unicode, emoji, null-like sequences, SQL injection attempts
+	specialContent := "Hello \u4e16\u754c \U0001F680\U0001F30D \x00-like \\0 NULL nil ' OR 1=1 --; DROP TABLE messages;"
+
+	msg := createTestMessage("msg-special", "user", specialContent)
+	require.NoError(t, s.AddMessageToConversation(ctx, conv.ID, msg))
+
+	page, err := s.GetConversationMessages(ctx, conv.ID, nil, 50)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	assert.Equal(t, specialContent, page.Messages[0].Content)
+}
+
+func TestDeleteSession_CascadesConversationsAndMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-cascade-sess")
+	session := createTestSession(t, s, "sess-cascade", repo.ID)
+	conv := createTestConversation(t, s, "conv-cascade", session.ID)
+
+	msg := createTestMessage("msg-cascade", "user", "will be deleted")
+	require.NoError(t, s.AddMessageToConversation(ctx, conv.ID, msg))
+
+	// Verify everything exists
+	gotSession, err := s.GetSession(ctx, "sess-cascade")
+	require.NoError(t, err)
+	require.NotNil(t, gotSession)
+
+	gotConv, err := s.GetConversation(ctx, "conv-cascade")
+	require.NoError(t, err)
+	require.NotNil(t, gotConv)
+
+	count, err := s.GetConversationMessageCount(ctx, "conv-cascade")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	// Delete the session
+	require.NoError(t, s.DeleteSession(ctx, "sess-cascade"))
+
+	// Session gone
+	gotSession, err = s.GetSession(ctx, "sess-cascade")
+	require.NoError(t, err)
+	assert.Nil(t, gotSession)
+
+	// Conversation gone (cascade)
+	gotConv, err = s.GetConversation(ctx, "conv-cascade")
+	require.NoError(t, err)
+	assert.Nil(t, gotConv)
+
+	// Messages gone (cascade)
+	count, err = s.GetConversationMessageCount(ctx, "conv-cascade")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestDeleteRepo_CascadesAll(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-cascade-all")
+	session := createTestSession(t, s, "sess-cascade-all", repo.ID)
+	conv := createTestConversation(t, s, "conv-cascade-all", session.ID)
+
+	msg := createTestMessage("msg-cascade-all", "assistant", "cascading content")
+	require.NoError(t, s.AddMessageToConversation(ctx, conv.ID, msg))
+
+	// Verify everything exists
+	gotRepo, err := s.GetRepo(ctx, "repo-cascade-all")
+	require.NoError(t, err)
+	require.NotNil(t, gotRepo)
+
+	// Delete the repo
+	require.NoError(t, s.DeleteRepo(ctx, "repo-cascade-all"))
+
+	// Repo gone
+	gotRepo, err = s.GetRepo(ctx, "repo-cascade-all")
+	require.NoError(t, err)
+	assert.Nil(t, gotRepo)
+
+	// Session gone (cascade through repos -> sessions)
+	gotSession, err := s.GetSession(ctx, "sess-cascade-all")
+	require.NoError(t, err)
+	assert.Nil(t, gotSession)
+
+	// Conversation gone (cascade through sessions -> conversations)
+	gotConv, err := s.GetConversation(ctx, "conv-cascade-all")
+	require.NoError(t, err)
+	assert.Nil(t, gotConv)
+
+	// Messages gone (cascade through conversations -> messages)
+	count, err := s.GetConversationMessageCount(ctx, "conv-cascade-all")
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestListSessions_PinnedOrdering(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-pinned-order")
+
+	now := time.Now()
+
+	// Create sessions with different pinned/time combinations
+	sessions := []*models.Session{
+		{
+			ID:          "s-old-unpinned",
+			WorkspaceID: "ws-pinned-order",
+			Name:        "Old Unpinned",
+			Status:      "idle",
+			Pinned:      false,
+			CreatedAt:   now.Add(-3 * time.Hour),
+			UpdatedAt:   now.Add(-3 * time.Hour),
+		},
+		{
+			ID:          "s-new-unpinned",
+			WorkspaceID: "ws-pinned-order",
+			Name:        "New Unpinned",
+			Status:      "idle",
+			Pinned:      false,
+			CreatedAt:   now.Add(-1 * time.Hour),
+			UpdatedAt:   now.Add(-1 * time.Hour),
+		},
+		{
+			ID:          "s-old-pinned",
+			WorkspaceID: "ws-pinned-order",
+			Name:        "Old Pinned",
+			Status:      "idle",
+			Pinned:      true,
+			CreatedAt:   now.Add(-4 * time.Hour),
+			UpdatedAt:   now.Add(-4 * time.Hour),
+		},
+		{
+			ID:          "s-new-pinned",
+			WorkspaceID: "ws-pinned-order",
+			Name:        "New Pinned",
+			Status:      "idle",
+			Pinned:      true,
+			CreatedAt:   now.Add(-2 * time.Hour),
+			UpdatedAt:   now.Add(-2 * time.Hour),
+		},
+	}
+
+	for _, sess := range sessions {
+		require.NoError(t, s.AddSession(ctx, sess))
+	}
+
+	result, err := s.ListSessions(ctx, "ws-pinned-order", true)
+	require.NoError(t, err)
+	require.Len(t, result, 4)
+
+	// Pinned sessions should come first
+	assert.True(t, result[0].Pinned, "first session should be pinned")
+	assert.True(t, result[1].Pinned, "second session should be pinned")
+	assert.False(t, result[2].Pinned, "third session should not be pinned")
+	assert.False(t, result[3].Pinned, "fourth session should not be pinned")
+}
+
+func TestGetSessionWithWorkspace_NotFound(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	result, err := s.GetSessionWithWorkspace(ctx, "nonexistent-session")
+	require.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestAddConversation_ForeignKeyViolation(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	conv := &models.Conversation{
+		ID:        "conv-orphan",
+		SessionID: "nonexistent-session",
+		Type:      models.ConversationTypeTask,
+		Name:      "Orphan Conversation",
+		Status:    models.ConversationStatusActive,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	err := s.AddConversation(ctx, conv)
+	assert.Error(t, err, "should fail with foreign key violation for nonexistent session")
+}
+
+func TestListConversationsForSessions_MultipleIDs(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-multi-conv")
+
+	// Create two sessions
+	session1 := createTestSession(t, s, "sess-multi-1", repo.ID)
+	session2 := createTestSession(t, s, "sess-multi-2", repo.ID)
+
+	// Create conversations under each session
+	createTestConversation(t, s, "conv-s1-a", session1.ID)
+	createTestConversation(t, s, "conv-s1-b", session1.ID)
+	createTestConversation(t, s, "conv-s2-a", session2.ID)
+
+	result, err := s.ListConversationsForSessions(ctx, []string{session1.ID, session2.ID})
+	require.NoError(t, err)
+
+	// Check correct grouping
+	assert.Len(t, result[session1.ID], 2, "session1 should have 2 conversations")
+	assert.Len(t, result[session2.ID], 1, "session2 should have 1 conversation")
+
+	// Verify conversation IDs in session1 group
+	s1IDs := make(map[string]bool)
+	for _, c := range result[session1.ID] {
+		s1IDs[c.ID] = true
+	}
+	assert.True(t, s1IDs["conv-s1-a"])
+	assert.True(t, s1IDs["conv-s1-b"])
+
+	// Verify conversation IDs in session2 group
+	assert.Equal(t, "conv-s2-a", result[session2.ID][0].ID)
+}
+
+func TestUpdateConversation_NotExists(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	// Updating a nonexistent conversation should not error (returns nil)
+	err := s.UpdateConversation(ctx, "nonexistent-conv", func(c *models.Conversation) {
+		c.Name = "Updated Name"
+	})
+	assert.NoError(t, err)
+}
+
+func TestStreamingSnapshot_CRUD(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	repo := createTestRepo(t, s, "repo-snap")
+	session := createTestSession(t, s, "sess-snap", repo.ID)
+	conv := createTestConversation(t, s, "conv-snap", session.ID)
+
+	// Get - should be nil initially
+	got, err := s.GetStreamingSnapshot(ctx, conv.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	// Set
+	snapshot := map[string]interface{}{
+		"text":        "snapshot content",
+		"activeTools": []interface{}{},
+		"isThinking":  true,
+	}
+	data, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.NoError(t, s.SetStreamingSnapshot(ctx, conv.ID, data))
+
+	// Get - should have content
+	got, err = s.GetStreamingSnapshot(ctx, conv.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	var parsed map[string]interface{}
+	require.NoError(t, json.Unmarshal(got, &parsed))
+	assert.Equal(t, "snapshot content", parsed["text"])
+	assert.True(t, parsed["isThinking"].(bool))
+
+	// Clear
+	require.NoError(t, s.ClearStreamingSnapshot(ctx, conv.ID))
+
+	// Get - should be nil again
+	got, err = s.GetStreamingSnapshot(ctx, conv.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestFileTabs_CRUD(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-tabs")
+
+	now := time.Now()
+
+	tabs := []*models.FileTab{
+		{
+			ID:             "tab-1",
+			WorkspaceID:    "ws-tabs",
+			Path:           "/src/main.go",
+			ViewMode:       "file",
+			IsPinned:       true,
+			Position:       0,
+			OpenedAt:       now,
+			LastAccessedAt: now,
+		},
+		{
+			ID:             "tab-2",
+			WorkspaceID:    "ws-tabs",
+			Path:           "/src/utils.go",
+			ViewMode:       "diff",
+			IsPinned:       false,
+			Position:       1,
+			OpenedAt:       now,
+			LastAccessedAt: now,
+		},
+	}
+
+	// SaveFileTabs
+	require.NoError(t, s.SaveFileTabs(ctx, "ws-tabs", tabs))
+
+	// ListFileTabs
+	listed, err := s.ListFileTabs(ctx, "ws-tabs")
+	require.NoError(t, err)
+	require.Len(t, listed, 2)
+
+	// Should be ordered by position
+	assert.Equal(t, "tab-1", listed[0].ID)
+	assert.Equal(t, "/src/main.go", listed[0].Path)
+	assert.Equal(t, "file", listed[0].ViewMode)
+	assert.True(t, listed[0].IsPinned)
+	assert.Equal(t, 0, listed[0].Position)
+
+	assert.Equal(t, "tab-2", listed[1].ID)
+	assert.Equal(t, "/src/utils.go", listed[1].Path)
+	assert.Equal(t, "diff", listed[1].ViewMode)
+	assert.False(t, listed[1].IsPinned)
+	assert.Equal(t, 1, listed[1].Position)
+
+	// DeleteFileTab
+	require.NoError(t, s.DeleteFileTab(ctx, "tab-1"))
+
+	listed, err = s.ListFileTabs(ctx, "ws-tabs")
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, "tab-2", listed[0].ID)
+}
+
+func TestUpdateSession_ConcurrentWrites(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	// Limit to 1 connection so all goroutines share the same in-memory DB
+	s.db.SetMaxOpenConns(1)
+
+	createTestRepo(t, s, "ws-concurrent")
+	createTestSession(t, s, "sess-concurrent", "ws-concurrent")
+
+	var wg sync.WaitGroup
+	errors := make([]error, 10)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		idx := i
+		go func() {
+			defer wg.Done()
+			errors[idx] = s.UpdateSession(ctx, "sess-concurrent", func(sess *models.Session) {
+				sess.Task = fmt.Sprintf("Updated by writer %d", idx)
+			})
+		}()
+	}
+
+	wg.Wait()
+
+	// All updates should succeed (SQLite retry handles contention)
+	for i, err := range errors {
+		assert.NoError(t, err, "writer %d should not error", i)
+	}
+
+	// Verify the session is still valid (not corrupted)
+	got, err := s.GetSession(ctx, "sess-concurrent")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// The task should reflect one of the 10 writers
+	assert.Contains(t, got.Task, "Updated by writer")
+	assert.NotEmpty(t, got.Status)
+	assert.NotEmpty(t, got.Name)
 }

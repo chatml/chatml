@@ -738,3 +738,288 @@ func TestAgentEvent_ContextUsageOmitsZeroFields(t *testing.T) {
 	assert.NotContains(t, jsonStr, `"cacheCreationInputTokens"`)
 	assert.NotContains(t, jsonStr, `"contextWindow"`)
 }
+
+// ============================================================================
+// Additional Event Type Tests (Phase 4)
+// ============================================================================
+
+func TestParseAgentLine_SessionStarted(t *testing.T) {
+	line := `{"type":"session_started","sessionId":"sess-abc123","source":"startup"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSessionStarted, event.Type)
+	assert.Equal(t, "sess-abc123", event.SessionID)
+	assert.Equal(t, "startup", event.Source)
+}
+
+func TestParseAgentLine_SessionStarted_Resume(t *testing.T) {
+	line := `{"type":"session_started","sessionId":"sess-resume","source":"resume","resuming":true}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSessionStarted, event.Type)
+	assert.True(t, event.Resuming)
+	assert.Equal(t, "resume", event.Source)
+}
+
+func TestParseAgentLine_SessionEnded(t *testing.T) {
+	line := `{"type":"session_ended","sessionId":"sess-ended"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSessionEnded, event.Type)
+	assert.Equal(t, "sess-ended", event.SessionID)
+}
+
+func TestParseAgentLine_HookPreTool(t *testing.T) {
+	line := `{"type":"hook_pre_tool","toolUseId":"tu-123","tool":"Bash","input":{"command":"ls"}}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeHookPreTool, event.Type)
+	assert.Equal(t, "tu-123", event.ToolUseId)
+	assert.Equal(t, "Bash", event.Tool)
+	assert.NotNil(t, event.Input)
+}
+
+func TestParseAgentLine_HookPostTool(t *testing.T) {
+	line := `{"type":"hook_post_tool","toolUseId":"tu-456","tool":"Read","response":"file content"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeHookPostTool, event.Type)
+	assert.Equal(t, "tu-456", event.ToolUseId)
+}
+
+func TestParseAgentLine_SubagentStarted(t *testing.T) {
+	line := `{"type":"subagent_started","agentId":"agent-1","agentType":"Explore","description":"Searching codebase","parentToolUseId":"tu-789"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSubagentStarted, event.Type)
+	assert.Equal(t, "agent-1", event.AgentId)
+	assert.Equal(t, "Explore", event.AgentType)
+	assert.Equal(t, "Searching codebase", event.AgentDescription)
+	assert.Equal(t, "tu-789", event.ParentToolUseId)
+}
+
+func TestParseAgentLine_SubagentStopped(t *testing.T) {
+	line := `{"type":"subagent_stopped","agentId":"agent-1"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSubagentStopped, event.Type)
+	assert.Equal(t, "agent-1", event.AgentId)
+}
+
+func TestParseAgentLine_SubagentOutput(t *testing.T) {
+	line := `{"type":"subagent_output","agentId":"agent-1","agentOutput":"Found 3 matching files"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSubagentOutput, event.Type)
+	assert.Equal(t, "agent-1", event.AgentId)
+	assert.Equal(t, "Found 3 matching files", event.AgentOutput)
+}
+
+func TestParseAgentLine_CompactBoundary(t *testing.T) {
+	line := `{"type":"compact_boundary","trigger":"auto","preTokens":180000}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeCompactBoundary, event.Type)
+	assert.Equal(t, "auto", event.Trigger)
+	assert.Equal(t, 180000, event.PreTokens)
+}
+
+func TestParseAgentLine_CliCrashRecovery(t *testing.T) {
+	line := `{"type":"session_recovering","attempt":2,"maxAttempts":3}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSessionRecovering, event.Type)
+	assert.Equal(t, 2, event.Attempt)
+	assert.Equal(t, 3, event.MaxAttempts)
+}
+
+func TestParseAgentLine_UserQuestionRequest(t *testing.T) {
+	line := `{"type":"user_question_request","requestId":"q-123","questions":[{"question":"Select environment","header":"Deploy config","options":[{"label":"Production","description":"Main server"}],"multiSelect":false}]}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeUserQuestionRequest, event.Type)
+	assert.Equal(t, "q-123", event.RequestID)
+	require.Len(t, event.Questions, 1)
+	assert.Equal(t, "Select environment", event.Questions[0].Question)
+	assert.Equal(t, "Deploy config", event.Questions[0].Header)
+	require.Len(t, event.Questions[0].Options, 1)
+	assert.Equal(t, "Production", event.Questions[0].Options[0].Label)
+	assert.False(t, event.Questions[0].MultiSelect)
+}
+
+func TestParseAgentLine_ToolProgress(t *testing.T) {
+	line := `{"type":"tool_progress","toolName":"Bash","elapsedTimeSeconds":5}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeToolProgress, event.Type)
+	assert.Equal(t, "Bash", event.ToolName)
+	assert.Equal(t, 5, event.ElapsedTimeSeconds)
+}
+
+func TestParseAgentLine_AuthError(t *testing.T) {
+	line := `{"type":"auth_error","message":"OAuth token expired"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeAuthError, event.Type)
+	assert.Equal(t, "OAuth token expired", event.Message)
+}
+
+func TestParseAgentLine_PermModeChanged(t *testing.T) {
+	line := `{"type":"permission_mode_changed","mode":"plan"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypePermModeChanged, event.Type)
+	assert.Equal(t, "plan", event.Mode)
+}
+
+func TestParseAgentLine_TurnComplete(t *testing.T) {
+	line := `{"type":"turn_complete"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeTurnComplete, event.Type)
+}
+
+func TestParseAgentLine_SessionIdUpdate(t *testing.T) {
+	line := `{"type":"session_id_update","sessionId":"new-sess-id"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeSessionIdUpdate, event.Type)
+	assert.Equal(t, "new-sess-id", event.SessionID)
+}
+
+func TestParseAgentLine_StatusUpdate(t *testing.T) {
+	line := `{"type":"status_update","status":"running","message":"Processing request"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeStatusUpdate, event.Type)
+	assert.Equal(t, "running", event.Status)
+	assert.Equal(t, "Processing request", event.Message)
+}
+
+func TestParseAgentLine_ThinkingDelta(t *testing.T) {
+	line := `{"type":"thinking_delta","content":"Let me consider this..."}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeThinkingDelta, event.Type)
+	assert.Equal(t, "Let me consider this...", event.Content)
+}
+
+func TestParseAgentLine_ModelChanged(t *testing.T) {
+	line := `{"type":"model_changed","model":"claude-sonnet-4-5-20250929"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeModelChanged, event.Type)
+	assert.Equal(t, "claude-sonnet-4-5-20250929", event.Model)
+}
+
+func TestParseAgentLine_HookResponse(t *testing.T) {
+	line := `{"type":"hook_response","hookName":"pre-commit","hookEvent":"tool_start","stdout":"ok","stderr":"","exitCode":0}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeHookResponse, event.Type)
+	assert.Equal(t, "pre-commit", event.HookName)
+	assert.Equal(t, "tool_start", event.HookEvent)
+	assert.Equal(t, "ok", event.Stdout)
+	require.NotNil(t, event.ExitCode)
+	assert.Equal(t, 0, *event.ExitCode)
+}
+
+func TestParseAgentLine_CheckpointCreated(t *testing.T) {
+	line := `{"type":"checkpoint_created","id":"cp-abc"}`
+	event := ParseAgentLine(line)
+	require.NotNil(t, event)
+	assert.Equal(t, EventTypeCheckpointCreated, event.Type)
+	assert.Equal(t, "cp-abc", event.ID)
+}
+
+func TestAgentEvent_IsHookEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		expected  bool
+	}{
+		{EventTypeHookPreTool, true},
+		{EventTypeHookPostTool, true},
+		{EventTypeHookToolFailure, true},
+		{EventTypeAgentNotification, true},
+		{EventTypeHookResponse, true},
+		{EventTypeAssistantText, false},
+		{EventTypeToolStart, false},
+		{EventTypeComplete, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			event := &AgentEvent{Type: tt.eventType}
+			assert.Equal(t, tt.expected, event.IsHookEvent())
+		})
+	}
+}
+
+func TestAgentEvent_IsSessionEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		expected  bool
+	}{
+		{EventTypeSessionStarted, true},
+		{EventTypeSessionEnded, true},
+		{EventTypeSessionIdUpdate, true},
+		{EventTypeAssistantText, false},
+		{EventTypeToolStart, false},
+		{EventTypeComplete, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			event := &AgentEvent{Type: tt.eventType}
+			assert.Equal(t, tt.expected, event.IsSessionEvent())
+		})
+	}
+}
+
+func TestAgentEvent_IsSubagentEvent(t *testing.T) {
+	tests := []struct {
+		eventType string
+		expected  bool
+	}{
+		{EventTypeSubagentStarted, true},
+		{EventTypeSubagentStopped, true},
+		{EventTypeSubagentOutput, true},
+		{EventTypeAssistantText, false},
+		{EventTypeToolStart, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			event := &AgentEvent{Type: tt.eventType}
+			assert.Equal(t, tt.expected, event.IsSubagentEvent())
+		})
+	}
+}
+
+func TestStreamingSnapshot_JSON(t *testing.T) {
+	snapshot := StreamingSnapshot{
+		Text: "Hello world",
+		ActiveTools: []ActiveToolEntry{
+			{ID: "t1", Tool: "Read", StartTime: 1700000000},
+		},
+		Thinking:       "thinking...",
+		IsThinking:     true,
+		PlanModeActive: false,
+		SubAgents: []SubAgentEntry{
+			{AgentId: "a1", AgentType: "Explore", StartTime: 1700000001},
+		},
+	}
+
+	data, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+
+	var parsed StreamingSnapshot
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Hello world", parsed.Text)
+	require.Len(t, parsed.ActiveTools, 1)
+	assert.Equal(t, "t1", parsed.ActiveTools[0].ID)
+	assert.Equal(t, "thinking...", parsed.Thinking)
+	assert.True(t, parsed.IsThinking)
+	assert.False(t, parsed.PlanModeActive)
+	require.Len(t, parsed.SubAgents, 1)
+	assert.Equal(t, "a1", parsed.SubAgents[0].AgentId)
+}

@@ -1,4 +1,4 @@
-.PHONY: build build-debug dev backend agent-runner clean init deps install-debug
+.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -66,6 +66,20 @@ install-debug: build-debug
 # Initialize fresh worktree - explicit setup command
 init: deps backend agent-runner
 	@echo "Worktree initialized. Run 'make dev' to start development."
+
+# Run Go backend tests
+test:
+	cd backend && go test -race ./...
+
+# Run Go backend tests with coverage report
+test-cover:
+	cd backend && go test -race -coverprofile=coverage.out -covermode=atomic ./...
+	cd backend && go tool cover -func=coverage.out | tail -1
+
+# Generate HTML coverage report
+test-cover-html: test-cover
+	cd backend && go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: backend/coverage.html"
 
 # Clean build artifacts
 clean:

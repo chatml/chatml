@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -856,4 +857,170 @@ func TestNewProcessWithOptions_McpServersAndInstructions(t *testing.T) {
 	// cmd.Args should contain BOTH --instructions-file and --mcp-servers-file
 	assert.Contains(t, p.cmd.Args, "--instructions-file", "args should contain --instructions-file")
 	assert.Contains(t, p.cmd.Args, "--mcp-servers-file", "args should contain --mcp-servers-file")
+}
+
+// ============================================================================
+// Additional Process Tests (Phase 4)
+// ============================================================================
+
+func TestProcess_LastStderrLines_Empty(t *testing.T) {
+	p := NewProcess("test-stderr", "/tmp", "conv-stderr")
+	lines := p.LastStderrLines()
+	assert.Empty(t, lines)
+}
+
+func TestProcess_LastStderrLines_Ring(t *testing.T) {
+	p := NewProcess("test-stderr-ring", "/tmp", "conv-stderr-ring")
+
+	// Simulate adding more than maxStderrLines (10) lines
+	for i := 0; i < 15; i++ {
+		p.mu.Lock()
+		if len(p.lastStderrLines) >= 10 {
+			p.lastStderrLines = p.lastStderrLines[1:]
+		}
+		p.lastStderrLines = append(p.lastStderrLines, fmt.Sprintf("line-%d", i))
+		p.mu.Unlock()
+	}
+
+	lines := p.LastStderrLines()
+	require.Len(t, lines, 10)
+	// Should have lines 5-14 (last 10)
+	assert.Equal(t, "line-5", lines[0])
+	assert.Equal(t, "line-14", lines[9])
+}
+
+func TestProcess_LastStderrLines_ReturnsCopy(t *testing.T) {
+	p := NewProcess("test-stderr-copy", "/tmp", "conv-stderr-copy")
+	p.mu.Lock()
+	p.lastStderrLines = []string{"line-1", "line-2"}
+	p.mu.Unlock()
+
+	lines := p.LastStderrLines()
+	lines[0] = "modified"
+
+	// Original should not be affected
+	origLines := p.LastStderrLines()
+	assert.Equal(t, "line-1", origLines[0])
+}
+
+func TestProcess_SawErrorEvent_DefaultFalse(t *testing.T) {
+	p := NewProcess("test-saw-error", "/tmp", "conv-saw-error")
+	assert.False(t, p.SawErrorEvent())
+}
+
+func TestProcess_SawErrorEvent_SetAndGet(t *testing.T) {
+	p := NewProcess("test-saw-error2", "/tmp", "conv-saw-error2")
+	p.SetSawErrorEvent()
+	assert.True(t, p.SawErrorEvent())
+}
+
+func TestProcess_Options_ReturnsOriginal(t *testing.T) {
+	opts := ProcessOptions{
+		ID:                  "opts-test",
+		Workdir:             "/tmp/opts",
+		ConversationID:      "conv-opts",
+		MaxThinkingTokens:   5000,
+		Effort:              "high",
+		Model:               "claude-opus-4-5-20251101",
+		TargetBranch:        "origin/develop",
+		EnableCheckpointing: true,
+	}
+	p := NewProcessWithOptions(opts)
+
+	returned := p.Options()
+	assert.Equal(t, "opts-test", returned.ID)
+	assert.Equal(t, "/tmp/opts", returned.Workdir)
+	assert.Equal(t, "conv-opts", returned.ConversationID)
+	assert.Equal(t, 5000, returned.MaxThinkingTokens)
+	assert.Equal(t, "high", returned.Effort)
+	assert.Equal(t, "claude-opus-4-5-20251101", returned.Model)
+	assert.Equal(t, "origin/develop", returned.TargetBranch)
+	assert.True(t, returned.EnableCheckpointing)
+}
+
+func TestProcess_PlanModeFromEvent(t *testing.T) {
+	p := NewProcess("test-plan-event", "/tmp", "conv-plan-event")
+	assert.False(t, p.IsPlanModeActive())
+
+	p.SetPlanModeFromEvent(true)
+	assert.True(t, p.IsPlanModeActive())
+
+	p.SetPlanModeFromEvent(false)
+	assert.False(t, p.IsPlanModeActive())
+}
+
+func TestProcess_SetRunningForTest(t *testing.T) {
+	p := NewProcess("test-set-running", "/tmp", "conv-set-running")
+	assert.False(t, p.IsRunning())
+
+	p.SetRunningForTest(true)
+	assert.True(t, p.IsRunning())
+
+	p.SetRunningForTest(false)
+	assert.False(t, p.IsRunning())
+}
+
+func TestProcess_PlanModeActive_InitFromOptions(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "plan-init",
+		Workdir:        "/tmp",
+		ConversationID: "conv-plan-init",
+		PlanMode:       true,
+	}
+	p := NewProcessWithOptions(opts)
+	assert.True(t, p.IsPlanModeActive())
+}
+
+func TestProcess_SendMessageWithAttachments_NotRunning(t *testing.T) {
+	p := NewProcess("test-attach", "/tmp", "conv-attach")
+	err := p.SendMessageWithAttachments("test", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestProcess_SetMaxThinkingTokens_NotRunning(t *testing.T) {
+	p := NewProcess("test-thinking", "/tmp", "conv-thinking")
+	err := p.SetMaxThinkingTokens(5000)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not running")
+}
+
+func TestNewProcessWithOptions_TargetBranch(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "target-branch-test",
+		Workdir:        "/tmp",
+		ConversationID: "conv-target",
+		TargetBranch:   "origin/develop",
+	}
+	p := NewProcessWithOptions(opts)
+
+	args := p.cmd.Args
+	found := false
+	for i, arg := range args {
+		if arg == "--target-branch" && i+1 < len(args) && args[i+1] == "origin/develop" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected --target-branch origin/develop in args: %v", args)
+}
+
+func TestNewProcessWithOptions_Effort(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "effort-test",
+		Workdir:        "/tmp",
+		ConversationID: "conv-effort",
+		Effort:         "high",
+	}
+	p := NewProcessWithOptions(opts)
+
+	args := p.cmd.Args
+	found := false
+	for i, arg := range args {
+		if arg == "--effort" && i+1 < len(args) && args[i+1] == "high" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected --effort high in args: %v", args)
 }
