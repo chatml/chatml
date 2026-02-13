@@ -66,9 +66,11 @@ type AgentEvent struct {
 	StopHookActive   bool        `json:"stopHookActive,omitempty"`
 
 	// Subagent fields
-	AgentId        string `json:"agentId,omitempty"`
-	AgentType      string `json:"agentType,omitempty"`
-	TranscriptPath string `json:"transcriptPath,omitempty"`
+	AgentId            string `json:"agentId,omitempty"`
+	AgentType          string `json:"agentType,omitempty"`
+	AgentDescription   string `json:"description,omitempty"`
+	AgentOutput        string `json:"agentOutput,omitempty"`
+	TranscriptPath     string `json:"transcriptPath,omitempty"`
 
 	// Compact boundary fields
 	Trigger            string `json:"trigger,omitempty"`
@@ -117,6 +119,10 @@ type AgentEvent struct {
 
 	// Command error fields
 	Command string `json:"command,omitempty"`
+
+	// CLI crash recovery fields
+	Attempt    int `json:"attempt,omitempty"`
+	MaxAttempts int `json:"maxAttempts,omitempty"`
 
 	// User question fields (AskUserQuestion tool)
 	RequestID string         `json:"requestId,omitempty"`
@@ -196,6 +202,7 @@ const (
 	EventTypeAgentStop         = "agent_stop"
 	EventTypeSubagentStarted   = "subagent_started"
 	EventTypeSubagentStopped   = "subagent_stopped"
+	EventTypeSubagentOutput    = "subagent_output"
 	EventTypeCompactBoundary   = "compact_boundary"
 	EventTypePreCompact        = "pre_compact"
 	EventTypeStatusUpdate      = "status_update"
@@ -238,6 +245,9 @@ const (
 
 	// Auth error (OAuth token expired or API key invalid)
 	EventTypeAuthError = "auth_error"
+
+	// CLI crash recovery (agent-runner auto-retrying)
+	EventTypeSessionRecovering = "session_recovering"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
@@ -285,6 +295,8 @@ type SubAgentEntry struct {
 	AgentId         string            `json:"agentId"`
 	AgentType       string            `json:"agentType"`
 	ParentToolUseId string            `json:"parentToolUseId,omitempty"`
+	Description     string            `json:"description,omitempty"`
+	Output          string            `json:"output,omitempty"`
 	StartTime       int64             `json:"startTime"`
 	ActiveTools     []ActiveToolEntry `json:"activeTools"`
 	Completed       bool              `json:"completed"`
@@ -347,7 +359,7 @@ func (e *AgentEvent) IsSessionEvent() bool {
 
 // IsSubagentEvent returns true if the event is subagent-related
 func (e *AgentEvent) IsSubagentEvent() bool {
-	return e.Type == EventTypeSubagentStarted || e.Type == EventTypeSubagentStopped
+	return e.Type == EventTypeSubagentStarted || e.Type == EventTypeSubagentStopped || e.Type == EventTypeSubagentOutput
 }
 
 // IsTerminalEvent returns true if the event signals end of processing

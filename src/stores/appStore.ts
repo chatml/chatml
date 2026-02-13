@@ -330,6 +330,7 @@ interface AppState {
   completeSubAgent: (conversationId: string, agentId: string) => void;
   addSubAgentTool: (conversationId: string, agentId: string, tool: ActiveTool) => void;
   completeSubAgentTool: (conversationId: string, agentId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
+  setSubAgentOutput: (conversationId: string, agentId: string, output: string) => void;
   clearSubAgents: (conversationId: string) => void;
 
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
@@ -338,7 +339,7 @@ interface AppState {
     thinking?: string;
     isThinking: boolean;
     planModeActive: boolean;
-    subAgents?: { agentId: string; agentType: string; parentToolUseId?: string; startTime: number; activeTools: { id: string; tool: string; startTime: number }[]; completed: boolean }[];
+    subAgents?: { agentId: string; agentType: string; parentToolUseId?: string; description?: string; output?: string; startTime: number; activeTools: { id: string; tool: string; startTime: number }[]; completed: boolean }[];
   }) => void;
 
   // Atomic streaming finalization - creates message and clears streaming in one update
@@ -1340,6 +1341,14 @@ updateFileTabContent: (id, content) => set((state) => ({
       ),
     },
   })),
+  setSubAgentOutput: (conversationId, agentId, output) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
+        a.agentId === agentId ? { ...a, output } : a
+      ),
+    },
+  })),
   clearSubAgents: (conversationId) => set((state) => ({
     subAgents: {
       ...state.subAgents,
@@ -1366,6 +1375,8 @@ updateFileTabContent: (id, content) => set((state) => ({
       agentId: sa.agentId,
       agentType: sa.agentType,
       parentToolUseId: sa.parentToolUseId,
+      description: sa.description,
+      output: sa.output,
       startTime: sa.startTime * 1000, // Convert seconds to ms
       completed: sa.completed,
       tools: sa.activeTools.map((t) => ({

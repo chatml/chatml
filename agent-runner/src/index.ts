@@ -638,6 +638,8 @@ const completedToolNames = new Map<string, string>();
 const sessionToAgentId = new Map<string, string>();
 // Track sub-agent active tools (keyed by toolUseId)
 const subagentActiveTools = new Map<string, { agentId: string; tool: string; startTime: number }>();
+// Track Task tool descriptions by tool_use_id for sub-agent description plumbing (Issue 3)
+const taskToolDescriptions = new Map<string, string>();
 
 // Track statistics for the run
 interface RunStats {
@@ -711,6 +713,14 @@ const preToolUseHook: HookCallback = async (input, toolUseId) => {
     sessionId: hookInput.session_id,
   });
 
+  // Capture Task tool descriptions for sub-agent description plumbing (Issue 3)
+  if (hookInput.tool_name === "Task" && toolUseId) {
+    const taskInput = hookInput.tool_input as { description?: string };
+    if (taskInput.description) {
+      taskToolDescriptions.set(toolUseId, taskInput.description);
+    }
+  }
+
   // If this is a sub-agent tool, emit a tool_start event with agentId
   if (agentId && toolUseId) {
     subagentActiveTools.set(toolUseId, {
@@ -780,6 +790,8 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
       });
       subagentActiveTools.delete(toolUseId);
     }
+    // Clean up Task tool description after completion
+    taskToolDescriptions.delete(toolUseId);
   }
 
   return {};
@@ -813,6 +825,8 @@ const postToolUseFailureHook: HookCallback = async (input, toolUseId) => {
       });
       subagentActiveTools.delete(toolUseId);
     }
+    // Clean up Task tool description after failure
+    taskToolDescriptions.delete(toolUseId);
   }
 
   return {};
@@ -888,12 +902,16 @@ const subagentStartHook: HookCallback = async (input) => {
     }
   }
 
+  // Look up the Task tool description for this sub-agent (Issue 3)
+  const description = parentToolUseId ? taskToolDescriptions.get(parentToolUseId) : undefined;
+
   emit({
     type: "subagent_started",
     agentId: hookInput.agent_id,
     agentType: hookInput.agent_type,
     sessionId: hookInput.session_id,
     parentToolUseId,
+    description,
   });
   return {};
 };
@@ -1181,134 +1199,184 @@ async function main(): Promise<void> {
     // Resolve tool preset to allowedTools/disallowedTools
     const presetConfig = resolveToolPreset(toolPreset);
 
-    // Single AbortController for the entire session
-    const sessionAbortController = new AbortController();
-    abortControllerRef = sessionAbortController;
+    // Shared query options (everything except resume, abortController, and prompt
+    // which change per recovery attempt)
+    const queryOptions = {
+      cwd,
+      permissionMode: initialPermissionMode,
+      allowDangerouslySkipPermissions: true,
+      canUseTool,
+      mcpServers: mergedMcpServers,
+      includePartialMessages: true,
+      tools: { type: "preset" as const, preset: "claude_code" as const },
+      systemPrompt: instructions
+        ? { type: "preset" as const, preset: "claude_code" as const, append: instructions }
+        : { type: "preset" as const, preset: "claude_code" as const },
+      hooks,
+      allowedTools: presetConfig.allowedTools,
+      disallowedTools: presetConfig.disallowedTools,
+      enableFileCheckpointing: enableCheckpointing,
+      outputFormat,
+      maxBudgetUsd,
+      maxTurns,
+      maxThinkingTokens,
+      settingSources,
+      betas,
+      model,
+      // Pass effort level to SDK if specified (Opus 4.6+)
+      ...(effort ? { extraArgs: { "--effort": effort } } : {}),
+      fallbackModel,
+      forkSession,
+      // Debug options (SDK v0.2.30+)
+      debug: sdkDebug || !!process.env.DEBUG_CLAUDE_AGENT_SDK,
+      debugFile: sdkDebugFile,
+      stderr: (data: string) => {
+        console.error(`[CLI stderr] ${data.trimEnd()}`);
+        emit({ type: "agent_stderr", data });
+      },
+    };
 
     // ====================================================================
-    // Persistent message generator: yields user messages across turns.
-    // The generator stays alive for the entire process lifetime. The SDK's
-    // streamInput() iterates this, writing each yielded message to CLI stdin.
-    // Between yields, the generator blocks on waitForNextMessage(), keeping
-    // stdin open (endInput() is NOT called until the generator returns).
+    // Persistent message generator factory: creates a fresh generator per
+    // query() call. Each generator yields user messages across turns.
+    // On recovery, the old generator is canceled (via messageWaiter(null))
+    // and a new one is created for the new query() call.
     // ====================================================================
-    async function* messageStream(): AsyncGenerator<SDKUserMessage> {
-      while (mainLoopRunning) {
-        const msg = await waitForNextMessage();
-        if (!msg) {
-          debug("messageStream: no more messages, returning");
-          break;
+    function createMessageStream(): AsyncGenerator<SDKUserMessage> {
+      async function* messageStream(): AsyncGenerator<SDKUserMessage> {
+        while (mainLoopRunning) {
+          const msg = await waitForNextMessage();
+          if (!msg) {
+            debug("messageStream: no more messages, returning");
+            break;
+          }
+
+          turnCount++;
+          currentTurnStartTime = Date.now();
+          debug(`Turn ${turnCount} starting: content="${msg.content.slice(0, 80)}"`);
+
+          // Reset per-turn state
+          blockBuffer = "";
+          resetRunStats();
+
+          // Update workspace context with current session ID if it changed
+          if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
+            workspaceContext.updateSessionId(currentSessionId);
+          }
+
+          yield buildUserMessage(msg);
         }
-
-        turnCount++;
-        currentTurnStartTime = Date.now();
-        debug(`Turn ${turnCount} starting: content="${msg.content.slice(0, 80)}"`);
-
-        // Reset per-turn state
-        blockBuffer = "";
-        resetRunStats();
-
-        // Update workspace context with current session ID if it changed
-        if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
-          workspaceContext.updateSessionId(currentSessionId);
-        }
-
-        console.error(`[DIAG] Turn ${turnCount}: streaming mode, cwd=${cwd}, model=${model}, yielding message to SDK`);
-        yield buildUserMessage(msg);
-        console.error(`[DIAG] Turn ${turnCount}: yield consumed, SDK requested next message`);
       }
-      console.error(`[DIAG] messageStream generator returning (mainLoopRunning=${mainLoopRunning})`);
+      return messageStream();
     }
 
     // ====================================================================
-    // Single query() call for the entire process lifetime.
-    // The CLI subprocess persists across all turns. Messages are fed via
-    // the messageStream generator. Results from ALL turns stream through
-    // the same for-await loop below.
+    // Query loop with CLI crash recovery.
+    // If the CLI child process crashes (exit code 1), we retry query()
+    // with resume: currentSessionId so the new CLI process loads the
+    // previous session state. The agent-runner Node.js process stays alive
+    // with its message queue, stdin listener, and all state intact.
     // ====================================================================
-    const result = query({
-      prompt: messageStream(),
-      options: {
-        cwd,
-        permissionMode: initialPermissionMode,
-        allowDangerouslySkipPermissions: true,
-        canUseTool,
-        mcpServers: mergedMcpServers,
-        includePartialMessages: true,
-        tools: { type: "preset" as const, preset: "claude_code" as const },
-        systemPrompt: instructions
-          ? { type: "preset" as const, preset: "claude_code" as const, append: instructions }
-          : { type: "preset" as const, preset: "claude_code" as const },
-        hooks,
-        allowedTools: presetConfig.allowedTools,
-        disallowedTools: presetConfig.disallowedTools,
-        enableFileCheckpointing: enableCheckpointing,
-        outputFormat,
-        maxBudgetUsd,
-        maxTurns,
-        maxThinkingTokens,
-        settingSources,
-        betas,
-        model,
-        // Pass effort level to SDK if specified (Opus 4.6+)
-        ...(effort ? { extraArgs: { "--effort": effort } } : {}),
-        fallbackModel,
-        abortController: sessionAbortController,
-        // Resume a previous session if requested (first turn loads its state)
-        resume: resumeSessionId,
-        forkSession,
-        // Debug options (SDK v0.2.30+)
-        debug: sdkDebug || !!process.env.DEBUG_CLAUDE_AGENT_SDK,
-        debugFile: sdkDebugFile,
-        stderr: (data: string) => {
-          console.error(`[CLI stderr] ${data.trimEnd()}`);
-          emit({ type: "agent_stderr", data });
-        },
-      },
-    });
+    const MAX_CLI_RECOVERY = 2;
+    let cliRecoveryAttempts = 0;
 
-    queryRef = result;
+    while (true) {
+      try {
+        // Fresh AbortController per attempt (old one may be aborted)
+        const sessionAbortController = new AbortController();
+        abortControllerRef = sessionAbortController;
 
-    // ====================================================================
-    // Process ALL messages from ALL turns in a single loop.
-    // Result messages mark turn boundaries but don't end the session.
-    // ====================================================================
-    for await (const message of result) {
-      handleMessage(message);
+        const result = query({
+          prompt: createMessageStream(),
+          options: {
+            ...queryOptions,
+            abortController: sessionAbortController,
+            // Resume uses currentSessionId on recovery, or resumeSessionId on first attempt
+            resume: currentSessionId || resumeSessionId,
+          },
+        });
 
-      // Result messages mark the end of a turn
-      if (message.type === "result") {
-        flushBlockBuffer();
+        queryRef = result;
 
-        const turnDurationMs = Date.now() - currentTurnStartTime;
-        debug(`Turn ${turnCount} completed in ${turnDurationMs}ms (sessionId=${currentSessionId})`);
+        // ====================================================================
+        // Process ALL messages from ALL turns in a single loop.
+        // Result messages mark turn boundaries but don't end the session.
+        // ====================================================================
+        for await (const message of result) {
+          handleMessage(message);
 
-        emit({ type: "turn_complete", sessionId: currentSessionId });
-        currentTurnStartTime = 0;
+          // Result messages mark the end of a turn — but only for parent-agent results.
+          // Sub-agent result messages are handled inside handleMessage (Issue 5).
+          if (message.type === "result") {
+            const msgSid = "session_id" in message ? (message as { session_id?: string }).session_id : undefined;
+            const isSubAgent = msgSid ? sessionToAgentId.has(msgSid) : false;
+            if (isSubAgent) continue; // Skip sub-agent results — don't emit turn_complete
 
-        // Check for auth errors in result
-        const resultMsg = message as SDKResultMessage;
-        if (resultMsg.subtype !== "success") {
-          const resultErrors = "errors" in resultMsg ? resultMsg.errors : [];
-          const errorText = Array.isArray(resultErrors) ? resultErrors.join(" ") : String(resultErrors);
-          if (detectAuthError(errorText)) {
-            emit({
-              type: "auth_error",
-              message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
-            });
-            // Auth errors are fatal — break out to stop the session
-            stopMainLoop();
+            flushBlockBuffer();
+
+            const turnDurationMs = Date.now() - currentTurnStartTime;
+            debug(`Turn ${turnCount} completed in ${turnDurationMs}ms (sessionId=${currentSessionId})`);
+
+            emit({ type: "turn_complete", sessionId: currentSessionId });
+            currentTurnStartTime = 0;
+
+            // Reset recovery counter on successful turn — fresh retries for future crashes
+            cliRecoveryAttempts = 0;
+
+            // Check for auth errors in result
+            const resultMsg = message as SDKResultMessage;
+            if (resultMsg.subtype !== "success") {
+              const resultErrors = "errors" in resultMsg ? resultMsg.errors : [];
+              const errorText = Array.isArray(resultErrors) ? resultErrors.join(" ") : String(resultErrors);
+              if (detectAuthError(errorText)) {
+                emit({
+                  type: "auth_error",
+                  message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+                });
+                // Auth errors are fatal — break out to stop the session
+                stopMainLoop();
+              }
+            }
           }
         }
+
+        // Normal exit — session ended (generator returned or CLI exited cleanly)
+        queryRef = null;
+        flushBlockBuffer();
+        emit({ type: "complete", sessionId: currentSessionId });
+        debug(`Session ended after ${turnCount} turns`);
+        break; // Exit retry loop
+
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        // Non-retriable errors — throw to top-level handler
+        if (detectAuthError(errMsg) || !mainLoopRunning) throw err;
+
+        const isProcessCrash = errMsg.includes("process exited") || errMsg.includes("exit code");
+        if (!isProcessCrash || cliRecoveryAttempts >= MAX_CLI_RECOVERY) throw err;
+
+        // CLI process crashed — attempt silent recovery
+        queryRef = null;
+
+        // Cancel old generator's pending wait so a fresh one can be created
+        if (messageWaiter) {
+          messageWaiter(null);
+          messageWaiter = null;
+        }
+
+        cliRecoveryAttempts++;
+        const delay = cliRecoveryAttempts * 1500; // 1.5s, 3s
+        debug(`CLI crashed, recovering (attempt ${cliRecoveryAttempts}/${MAX_CLI_RECOVERY}), session=${currentSessionId}`);
+        emit({
+          type: "session_recovering",
+          attempt: cliRecoveryAttempts,
+          maxAttempts: MAX_CLI_RECOVERY,
+          sessionId: currentSessionId,
+        });
+        await new Promise(r => setTimeout(r, delay));
       }
     }
-
-    // Session ended (generator returned or CLI exited)
-    console.error(`[DIAG] Result stream ended after ${turnCount} turns — CLI process likely exited`);
-    queryRef = null;
-    flushBlockBuffer();
-    emit({ type: "complete", sessionId: currentSessionId });
-    debug(`Session ended after ${turnCount} turns`);
   } catch (err) {
     // Re-throw to let the top-level handler deal with cleanup and exit
     throw err;
@@ -1521,6 +1589,22 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "result": {
+      // Filter sub-agent result messages (Issues 4 & 5):
+      // Sub-agent results must NOT trigger parent-level finalization.
+      // Instead, capture the result text and emit a subagent_output event.
+      if (isSubAgentMessage) {
+        const agentId = sessionToAgentId.get(msgSessionId!);
+        const resultMsg = message as SDKResultMessage;
+        if (agentId) {
+          emit({
+            type: "subagent_output",
+            agentId,
+            agentOutput: resultMsg.subtype === "success" ? resultMsg.result : "",
+          });
+        }
+        break;
+      }
+
       flushBlockBuffer();
       const resultMsg = message as SDKResultMessage;
 
