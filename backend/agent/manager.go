@@ -197,6 +197,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		ID:                  convID,
 		Workdir:             session.WorktreePath,
 		ConversationID:      convID,
+		SdkSessionID:        uuid.New().String(), // Full UUID required by SDK
 		EnableCheckpointing: true,
 	}
 

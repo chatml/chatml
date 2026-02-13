@@ -65,7 +65,8 @@ export function createScriptTools(context: WorkspaceContext) {
             }],
           };
         }
-      }
+      },
+      { annotations: { readOnlyHint: true } }
     ),
 
     tool(
@@ -99,7 +100,8 @@ export function createScriptTools(context: WorkspaceContext) {
             text: `Proposed .chatml/config.json:\n\n\`\`\`json\n${JSON.stringify(config, null, 2)}\n\`\`\`\n\nPresent this to the user and ask them to approve before writing it to .chatml/config.json using the Write tool.`,
           }],
         };
-      }
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];
 }

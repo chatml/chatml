@@ -32,7 +32,8 @@ export function createLinearTools(context: WorkspaceContext) {
             }, null, 2),
           }],
         };
-      }
+      },
+      { annotations: { readOnlyHint: true } }
     ),
 
     // Start working on a Linear issue
@@ -88,7 +89,8 @@ export function createLinearTools(context: WorkspaceContext) {
             content: [{ type: "text", text: `Error starting issue: ${error}` }],
           };
         }
-      }
+      },
+      { annotations: { idempotentHint: true } }
     ),
 
     // Update Linear issue status
@@ -118,7 +120,8 @@ export function createLinearTools(context: WorkspaceContext) {
             text: `Updated local status for ${issue.identifier} to "${state}".\n\nNote: To update Linear, use: mcp__linear__update_issue`,
           }],
         };
-      }
+      },
+      { annotations: { idempotentHint: true } }
     ),
   ];
 }

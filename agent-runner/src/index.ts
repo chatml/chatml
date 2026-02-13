@@ -72,6 +72,9 @@ const cwd = getArg("--cwd") || process.cwd();
 const conversationId = getArg("--conversation-id") || "default";
 const resumeSessionId = getArg("--resume");
 const forkSession = hasFlag("--fork");
+// Custom session ID — when provided, the SDK uses this instead of auto-generating one.
+// Typically set to the conversation ID so session tracking aligns with our data model.
+const customSessionId = getArg("--session-id");
 
 const linearIssue = getArg("--linear-issue");
 const toolPreset = (getArg("--tool-preset") || "full") as "full" | "read-only" | "no-bash" | "safe-edit";
@@ -192,7 +195,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -206,6 +209,9 @@ interface InputMessage {
   planApproved?: boolean;
   // Max thinking tokens override
   maxThinkingTokens?: number;
+  // MCP server management fields (SDK v0.2.21+)
+  serverName?: string;
+  serverEnabled?: boolean;
 }
 
 // Escape a string for use in XML attribute values
@@ -420,6 +426,34 @@ function setupInputQueue(): void {
           });
         } else {
           emit({ type: "command_error", command: "get_mcp_status", error: "No active query" });
+        }
+        return;
+      }
+
+      // MCP server management (SDK v0.2.21+)
+      if (input.type === "reconnect_mcp_server" && input.serverName) {
+        if (queryRef) {
+          void queryRef.reconnectMcpServer(input.serverName).then(() => {
+            emit({ type: "mcp_server_reconnected", serverName: input.serverName! });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "reconnect_mcp_server", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "reconnect_mcp_server", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "toggle_mcp_server" && input.serverName) {
+        if (queryRef) {
+          const enabled = input.serverEnabled !== false;
+          void queryRef.toggleMcpServer(input.serverName, enabled).then(() => {
+            emit({ type: "mcp_server_toggled", serverName: input.serverName!, enabled });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "toggle_mcp_server", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "toggle_mcp_server", error: "No active query" });
         }
         return;
       }
@@ -1226,6 +1260,8 @@ async function main(): Promise<void> {
       // Pass effort level to SDK if specified (Opus 4.6+)
       ...(effort ? { extraArgs: { "--effort": effort } } : {}),
       fallbackModel,
+      // Custom session ID — aligns SDK session with our conversation ID (SDK v0.2.33+)
+      ...(customSessionId ? { sessionId: customSessionId } : {}),
       forkSession,
       // Debug options (SDK v0.2.30+)
       debug: sdkDebug || !!process.env.DEBUG_CLAUDE_AGENT_SDK,
@@ -1884,6 +1920,13 @@ async function cleanup(reason: string): Promise<void> {
   if (queryRef) {
     try {
       await queryRef.interrupt();
+    } catch {
+      // Ignore errors during shutdown
+    }
+    // Force-close the query to ensure the subprocess is terminated (SDK v0.2.15+).
+    // close() kills the process immediately — useful when interrupt() alone isn't enough.
+    try {
+      queryRef.close();
     } catch {
       // Ignore errors during shutdown
     }
