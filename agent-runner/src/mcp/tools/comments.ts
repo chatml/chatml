@@ -64,7 +64,8 @@ export function createCommentTools(context: WorkspaceContext) {
             }],
           };
         }
-      }
+      },
+      { annotations: { readOnlyHint: false, openWorldHint: true } }
     ),
 
     // List review comments for the current session
@@ -132,7 +133,8 @@ export function createCommentTools(context: WorkspaceContext) {
             }],
           };
         }
-      }
+      },
+      { annotations: { readOnlyHint: true } }
     ),
 
     // Get comment statistics for the session
@@ -192,7 +194,8 @@ export function createCommentTools(context: WorkspaceContext) {
             }],
           };
         }
-      }
+      },
+      { annotations: { readOnlyHint: true } }
     ),
   ];
 }

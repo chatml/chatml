@@ -35,6 +35,7 @@ type ProcessOptions struct {
 	ID                  string
 	Workdir             string
 	ConversationID      string
+	SdkSessionID        string // Full UUID for SDK session tracking (must be valid UUID)
 	ResumeSession       string // Session ID to resume
 	ForkSession         bool   // Whether to fork the session
 	LinearIssue         string // Linear issue identifier (e.g., "LIN-123")
@@ -94,6 +95,9 @@ type InputMessage struct {
 	PlanApproved          *bool  `json:"planApproved,omitempty"`
 	// Max thinking tokens override (for runtime adjustment)
 	MaxThinkingTokens int `json:"maxThinkingTokens,omitempty"`
+	// MCP server management fields (SDK v0.2.21+)
+	ServerName    string `json:"serverName,omitempty"`
+	ServerEnabled *bool  `json:"serverEnabled,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -146,6 +150,14 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		agentRunnerPath,
 		"--cwd", opts.Workdir,
 		"--conversation-id", opts.ConversationID,
+	}
+
+	// Pass a custom session ID to align SDK session tracking with our data model
+	// (SDK v0.2.33+). The SDK requires a valid UUID and prohibits combining
+	// --session-id with --resume unless --fork-session is also set, so only
+	// pass it for new (non-resume) sessions.
+	if opts.SdkSessionID != "" && opts.ResumeSession == "" {
+		args = append(args, "--session-id", opts.SdkSessionID)
 	}
 
 	// Add session resume if specified
@@ -533,6 +545,23 @@ func (p *Process) SendPlanApprovalResponse(requestId string, approved bool) erro
 		Type:                  "plan_approval_response",
 		PlanApprovalRequestID: requestId,
 		PlanApproved:          &approved,
+	})
+}
+
+// ReconnectMcpServer requests the agent to reconnect a failed MCP server (SDK v0.2.21+)
+func (p *Process) ReconnectMcpServer(serverName string) error {
+	return p.sendInput(InputMessage{
+		Type:       "reconnect_mcp_server",
+		ServerName: serverName,
+	})
+}
+
+// ToggleMcpServer enables or disables an MCP server at runtime (SDK v0.2.21+)
+func (p *Process) ToggleMcpServer(serverName string, enabled bool) error {
+	return p.sendInput(InputMessage{
+		Type:          "toggle_mcp_server",
+		ServerName:    serverName,
+		ServerEnabled: &enabled,
 	})
 }
 

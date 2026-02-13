@@ -48,7 +48,8 @@ export function createChatMLMcpServer(options: McpServerOptions) {
               }, null, 2),
             }],
           };
-        }
+        },
+        { annotations: { readOnlyHint: true } }
       ),
 
       // Workspace diff tool
@@ -80,7 +81,8 @@ export function createChatMLMcpServer(options: McpServerOptions) {
               content: [{ type: "text", text: `Error getting diff: ${error}` }],
             };
           }
-        }
+        },
+        { annotations: { readOnlyHint: true } }
       ),
 
       // Recent activity tool
@@ -103,7 +105,8 @@ export function createChatMLMcpServer(options: McpServerOptions) {
               content: [{ type: "text", text: `Error getting logs: ${error}` }],
             };
           }
-        }
+        },
+        { annotations: { readOnlyHint: true } }
       ),
 
       // Linear integration tools
