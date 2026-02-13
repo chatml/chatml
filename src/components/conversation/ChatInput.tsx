@@ -27,12 +27,14 @@ import {
   Upload,
   ScrollText,
   Check,
+  Copy,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
-import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
+import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog, copyToClipboard } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
@@ -116,6 +118,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [isSending, setIsSending] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
   const defaultMaxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const [localMaxThinkingTokens, setLocalMaxThinkingTokens] = useState(defaultMaxThinkingTokens);
@@ -510,6 +513,67 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setApprovalError(null);
   }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval]);
 
+  // Handle copying plan content to clipboard
+  const handleCopyPlan = useCallback(async () => {
+    if (!pendingPlanApproval?.planContent) return;
+    const ok = await copyToClipboard(pendingPlanApproval.planContent);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }, [pendingPlanApproval]);
+
+  // Handle handing off the plan to a new conversation
+  const handleHandOff = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId || !pendingPlanApproval?.planContent) return;
+
+    try {
+      // Create a new conversation pre-loaded with the plan content
+      const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
+        type: 'task',
+        message: pendingPlanApproval.planContent,
+        model: selectedModel.id,
+      });
+
+      addConversation({
+        id: conv.id,
+        sessionId: conv.sessionId,
+        type: conv.type,
+        name: conv.name,
+        status: conv.status,
+        model: conv.model || selectedModel.id,
+        messages: [],
+        toolSummary: [],
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+      });
+
+      addMessage({
+        id: crypto.randomUUID(),
+        conversationId: conv.id,
+        role: 'user',
+        content: pendingPlanApproval.planContent,
+        timestamp: new Date().toISOString(),
+      });
+
+      selectConversation(conv.id);
+      setStreaming(conv.id, true);
+
+      // Reject the current plan to clean up approval state
+      if (selectedConversationId) {
+        try {
+          await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
+        } catch {
+          // Ignore - agent may have timed out
+        }
+        clearPendingPlanApproval(selectedConversationId);
+      }
+    } catch (error) {
+      console.error('Failed to hand off plan:', error);
+      showError('Failed to create new conversation for hand off');
+    }
+  }, [selectedWorkspaceId, selectedSessionId, selectedConversationId, pendingPlanApproval, selectedModel.id, addConversation, addMessage, selectConversation, setStreaming, clearPendingPlanApproval, showError]);
+
   // Auto-disable thinking when switching to an unsupported model
   useEffect(() => {
     if (thinkingEnabled && !thinkingSupported) {
@@ -810,6 +874,30 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               Approve the plan (<kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">⌘⇧↵</kbd>) or tell the AI what to do differently <kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">↵</kbd>
             </span>
             <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={handleCopyPlan}
+                disabled={!pendingPlanApproval?.planContent}
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={handleHandOff}
+                disabled={!pendingPlanApproval?.planContent || isApproving}
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+                Hand off
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
