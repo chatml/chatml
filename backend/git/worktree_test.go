@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -15,8 +16,17 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	tmpHome, err := os.MkdirTemp("", "chatml-test-home-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp home: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv("HOME", tmpHome)
 	appdir.Init()
-	os.Exit(m.Run())
+
+	code := m.Run()
+	os.RemoveAll(tmpHome)
+	os.Exit(code)
 }
 
 func TestNewWorktreeManager(t *testing.T) {
