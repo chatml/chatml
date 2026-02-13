@@ -305,6 +305,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     ? streamingState[selectedConversationId]?.pendingPlanApproval
     : null;
 
+  // Sync local planModeEnabled with store's planModeActive (source of truth when agent is running).
+  // This ensures the toggle button reflects plan mode entered by the SDK/agent, not just user clicks.
+  const storePlanModeActive = selectedConversationId
+    ? streamingState[selectedConversationId]?.planModeActive
+    : undefined;
+  useEffect(() => {
+    if (storePlanModeActive !== undefined) {
+      setPlanModeEnabled(storePlanModeActive);
+    }
+  }, [storePlanModeActive]);
+
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
 

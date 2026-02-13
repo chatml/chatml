@@ -241,6 +241,11 @@ let questionRequestCounter = 0;
 // Pending plan approval requests (for ExitPlanMode tool)
 const PLAN_APPROVAL_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as long as they need
 
+// Guard against SDK bug #15755: after ExitPlanMode completes, the SDK may emit
+// a stale status message with permissionMode: "plan" that overrides our manual
+// mode restoration. This flag suppresses those stale messages.
+let suppressStalePlanMode = false;
+
 interface PendingPlanApprovalRequest {
   resolve: (approved: boolean) => void;
   reject: (error: Error) => void;
@@ -368,10 +373,12 @@ function setupInputQueue(): void {
           // Track pre-plan mode so ExitPlanMode can restore it
           if (input.permissionMode === "plan") {
             prePlanPermissionMode = currentPermissionMode;
+            // Reset suppression — user is explicitly entering plan mode
+            suppressStalePlanMode = false;
           }
           currentPermissionMode = input.permissionMode as PermissionMode;
           void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
-            emit({ type: "permission_mode_changed", mode: input.permissionMode! });
+            emit({ type: "permission_mode_changed", mode: input.permissionMode!, source: "user" });
           }).catch((cmdErr: unknown) => {
             emit({ type: "command_error", command: "set_permission_mode", error: String(cmdErr) });
           });
@@ -810,13 +817,18 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
   if (hookInput.tool_name === "ExitPlanMode") {
     const restoreMode = prePlanPermissionMode;
     currentPermissionMode = restoreMode;
-    debug(`ExitPlanMode completed — restoring permission mode to "${restoreMode}"`);
-    emit({ type: "permission_mode_changed", mode: restoreMode });
-    // Also explicitly set the SDK's mode as a safety net
+    // Suppress stale SDK status messages that try to re-set plan mode
+    suppressStalePlanMode = true;
+    debug(`ExitPlanMode completed — restoring permission mode to "${restoreMode}", suppressing stale plan status`);
+    emit({ type: "permission_mode_changed", mode: restoreMode, source: "exit_plan" });
+    // Await the SDK mode change to ensure it takes effect before the next turn
     if (queryRef) {
-      void queryRef.setPermissionMode(restoreMode).catch((err: unknown) => {
+      try {
+        await queryRef.setPermissionMode(restoreMode);
+        debug(`SDK permission mode confirmed set to "${restoreMode}"`);
+      } catch (err: unknown) {
         debug(`Failed to restore permission mode after ExitPlanMode: ${err}`);
-      });
+      }
     }
   }
 
@@ -1834,8 +1846,19 @@ function handleMessage(message: SDKMessage): void {
         // SDK emits permissionMode in status messages when the mode changes
         // (e.g., after ExitPlanMode executes). Propagate to Go backend/frontend.
         if (statusMsg.permissionMode) {
-          currentPermissionMode = statusMsg.permissionMode;
-          emit({ type: "permission_mode_changed", mode: statusMsg.permissionMode });
+          // Guard against SDK bug #15755: after ExitPlanMode, the SDK may emit
+          // a stale status with permissionMode "plan" even though we already
+          // restored the mode. Suppress these to prevent the plan-mode loop.
+          if (statusMsg.permissionMode === "plan" && suppressStalePlanMode) {
+            debug(`Suppressing stale SDK plan mode status (already exited plan mode)`);
+          } else {
+            // Clear suppression when SDK confirms a non-plan mode
+            if (statusMsg.permissionMode !== "plan") {
+              suppressStalePlanMode = false;
+            }
+            currentPermissionMode = statusMsg.permissionMode;
+            emit({ type: "permission_mode_changed", mode: statusMsg.permissionMode, source: "sdk_status" });
+          }
         }
       } else if (sysMsg.subtype === "hook_response") {
         const hookMsg = sysMsg as SDKHookResponseMessage;

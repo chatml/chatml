@@ -16,6 +16,10 @@ import { getConversationDropStats, getActiveStreamingConversations, getConversat
 import { useSettingsStore } from '@/stores/settingsStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
+// Conversations that recently exited plan mode. Used to suppress stale SDK status
+// messages that try to re-activate plan mode after ExitPlanMode approval (SDK bug #15755).
+const recentlyExitedPlanMode = new Set<string>();
+
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 
@@ -455,18 +459,39 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'permission_mode_changed':
-        // Handle plan mode changes from the backend
+        // Handle plan mode changes from the backend.
+        // Events carry a `source` field: "user" (explicit UI action), "exit_plan"
+        // (ExitPlanMode restoration), or "sdk_status" (SDK status message).
         if (event?.mode) {
-          const isPlanMode = event.mode === 'plan';
-          store.setPlanModeActive(conversationId, isPlanMode);
-          if (isPlanMode) {
-            notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+          if (event.mode === 'plan') {
+            // User-initiated plan mode activations are always honored.
+            // SDK-originated events are suppressed if we just exited plan mode
+            // (guards against SDK bug #15755 stale status messages).
+            if (event.source === 'user') {
+              recentlyExitedPlanMode.delete(conversationId);
+              store.setPlanModeActive(conversationId, true);
+              notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+            } else if (recentlyExitedPlanMode.has(conversationId)) {
+              recentlyExitedPlanMode.delete(conversationId);
+            } else {
+              store.setPlanModeActive(conversationId, true);
+              notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+            }
+          } else {
+            // Exiting plan mode — track so we can suppress stale re-activation
+            const current = store.streamingState[conversationId];
+            if (current?.planModeActive) {
+              recentlyExitedPlanMode.add(conversationId);
+            }
+            store.setPlanModeActive(conversationId, false);
           }
         }
         break;
 
       case 'plan_approval_request':
         // ExitPlanMode tool intercepted by PreToolUse hook - show approval UI
+        // Clear stale exit tracking — this is a fresh plan approval cycle
+        recentlyExitedPlanMode.delete(conversationId);
         if (event?.requestId) {
           store.setPendingPlanApproval(
             conversationId,
