@@ -271,15 +271,23 @@ type UserQuestionOption struct {
 	Description string `json:"description"`
 }
 
+// SnapshotTextSegment represents a text segment in the streaming snapshot,
+// preserving the interleaved ordering of text and tools for reconnection recovery.
+type SnapshotTextSegment struct {
+	Text      string `json:"text"`
+	Timestamp int64  `json:"timestamp"` // Unix milliseconds
+}
+
 // StreamingSnapshot captures the current streaming state for reconnection recovery.
 // Periodically flushed to DB so the frontend can restore its view on WebSocket reconnect.
 type StreamingSnapshot struct {
-	Text           string            `json:"text"`
-	ActiveTools    []ActiveToolEntry `json:"activeTools"`
-	Thinking       string            `json:"thinking,omitempty"`
-	IsThinking     bool              `json:"isThinking"`
-	PlanModeActive bool              `json:"planModeActive"`
-	SubAgents      []SubAgentEntry   `json:"subAgents,omitempty"`
+	Text           string                `json:"text"`
+	TextSegments   []SnapshotTextSegment `json:"textSegments,omitempty"`
+	ActiveTools    []ActiveToolEntry     `json:"activeTools"`
+	Thinking       string                `json:"thinking,omitempty"`
+	IsThinking     bool                  `json:"isThinking"`
+	PlanModeActive bool                  `json:"planModeActive"`
+	SubAgents      []SubAgentEntry       `json:"subAgents,omitempty"`
 }
 
 // ActiveToolEntry represents a tool currently in-flight during streaming.

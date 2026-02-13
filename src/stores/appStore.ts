@@ -335,6 +335,7 @@ interface AppState {
 
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
     text: string;
+    textSegments?: { text: string; timestamp: number }[];
     activeTools: { id: string; tool: string; startTime: number; agentId?: string }[];
     thinking?: string;
     isThinking: boolean;
@@ -1358,8 +1359,27 @@ updateFileTabContent: (id, content) => set((state) => ({
 
   restoreStreamingFromSnapshot: (conversationId, snapshot) => {
     // Restore streaming state from a backend snapshot after WebSocket reconnection.
-    // Creates a single segment from the recovered text so existing rendering works.
-    const segmentId = `recovered-${conversationId}-${crypto.randomUUID()}`;
+    // When textSegments are available, restore individual segments to preserve
+    // the interleaved timeline of text and tools.
+    // Falls back to a single segment from the flat text field for older snapshots.
+    let segments: TextSegment[];
+    let currentSegmentId: string | null;
+
+    if (snapshot.textSegments && snapshot.textSegments.length > 0) {
+      // Restore individual segments from snapshot
+      segments = snapshot.textSegments.map((seg, i) => ({
+        id: `recovered-${conversationId}-${i}-${crypto.randomUUID().slice(0, 8)}`,
+        text: seg.text,
+        timestamp: seg.timestamp, // Already in milliseconds from backend
+      }));
+      // The last segment is the current (potentially in-progress) segment
+      currentSegmentId = segments[segments.length - 1].id;
+    } else {
+      // Legacy fallback: single segment from flat text
+      const segmentId = `recovered-${conversationId}-${crypto.randomUUID()}`;
+      segments = [{ id: segmentId, text: snapshot.text, timestamp: Date.now() }];
+      currentSegmentId = segmentId;
+    }
 
     // Filter parent-agent tools (no agentId) for flat activeTools
     const parentTools = snapshot.activeTools
@@ -1390,8 +1410,8 @@ updateFileTabContent: (id, content) => set((state) => ({
     set((state) => ({
       streamingState: updateStreamingConv(state.streamingState, conversationId, {
         text: snapshot.text,
-        segments: [{ id: segmentId, text: snapshot.text, timestamp: Date.now() }],
-        currentSegmentId: segmentId,
+        segments,
+        currentSegmentId,
         isStreaming: true,
         thinking: snapshot.thinking || null,
         isThinking: snapshot.isThinking,

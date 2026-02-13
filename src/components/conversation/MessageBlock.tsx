@@ -11,7 +11,7 @@ import {
 import { Copy, Check, FileText, Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
-import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
 import { ToolUsageHistory } from '@/components/conversation/ToolUsageHistory';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
@@ -127,41 +127,67 @@ export const MessageBlock = memo(function MessageBlock({
 
         {/* Interleaved timeline rendering (preserves text/tool ordering from streaming) */}
         {message.timeline && message.timeline.length > 0 && message.toolUsage ? (
-          <>
-            {message.timeline.map((entry, idx) => {
-              if (entry.type === 'text') {
-                return (
-                  <div
-                    key={`tl-text-${idx}`}
-                    className="prose prose-base dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary"
-                  >
-                    <CachedMarkdown
-                      cacheKey={`msg:${message.id}:tl:${idx}`}
-                      content={entry.content}
-                    />
-                  </div>
-                );
-              } else {
-                const tool = message.toolUsage!.find(t => t.id === entry.toolId);
-                if (!tool) return null;
-                return (
-                  <ToolUsageBlock
-                    key={`tl-tool-${entry.toolId}`}
-                    id={tool.id}
-                    tool={tool.tool}
-                    params={tool.params}
-                    isActive={false}
-                    success={tool.success}
-                    summary={tool.summary}
-                    duration={tool.durationMs}
-                    stdout={tool.stdout}
-                    stderr={tool.stderr}
-                    worktreePath={worktreePath}
-                  />
-                );
-              }
-            })}
-          </>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div className="group relative">
+                {message.timeline.map((entry, idx) => {
+                  if (entry.type === 'text') {
+                    return (
+                      <div
+                        key={`tl-text-${idx}`}
+                        className={PROSE_CLASSES}
+                      >
+                        <CachedMarkdown
+                          cacheKey={`msg:${message.id}:tl:${idx}`}
+                          content={entry.content}
+                        />
+                      </div>
+                    );
+                  } else {
+                    const tool = message.toolUsage!.find(t => t.id === entry.toolId);
+                    if (!tool) return null;
+                    return (
+                      <ToolUsageBlock
+                        key={`tl-tool-${entry.toolId}`}
+                        id={tool.id}
+                        tool={tool.tool}
+                        params={tool.params}
+                        isActive={false}
+                        success={tool.success}
+                        summary={tool.summary}
+                        duration={tool.durationMs}
+                        stdout={tool.stdout}
+                        stderr={tool.stderr}
+                        worktreePath={worktreePath}
+                      />
+                    );
+                  }
+                })}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-0 right-0 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={copyContent}
+                >
+                  {copied ? (
+                    <Check className="h-2.5 w-2.5 text-text-success" />
+                  ) : (
+                    <Copy className="h-2.5 w-2.5" />
+                  )}
+                </Button>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onClick={copyContent}>
+                <Copy className="size-4" />
+                Copy
+              </ContextMenuItem>
+              <ContextMenuItem onClick={copyContent}>
+                <FileText className="size-4" />
+                Copy as Markdown
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         ) : (
           <>
             {/* Legacy fallback: Tool Usage History (collapsed) + full content */}
@@ -179,7 +205,7 @@ export const MessageBlock = memo(function MessageBlock({
               <ContextMenu>
                 <ContextMenuTrigger asChild>
                   <div className="group relative">
-                    <div className="prose prose-base dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary">
+                    <div className={PROSE_CLASSES}>
                       <ErrorBoundary
                         section="MessageContent"
                         fallback={

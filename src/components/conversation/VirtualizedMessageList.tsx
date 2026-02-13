@@ -28,6 +28,8 @@ interface VirtualizedMessageListProps {
   onStartReached?: () => void;
   firstItemIndex?: number;
   isLoadingOlder?: boolean;
+  /** When true, use instant scroll for followOutput to prevent bounce during streaming */
+  isStreaming?: boolean;
 }
 
 export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, VirtualizedMessageListProps>(
@@ -45,6 +47,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       onStartReached,
       firstItemIndex,
       isLoadingOlder,
+      isStreaming,
     },
     ref
   ) {
@@ -89,13 +92,15 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       [worktreePath, searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches]
     );
 
-    // Determine follow output behavior: auto-scroll when at bottom
+    // Determine follow output behavior: auto-scroll when at bottom.
+    // During streaming, use instant scroll to prevent bounce caused by
+    // smooth scrolling + rapid dynamic height changes (react-virtuoso #317).
     const followOutput = useCallback(
       (isAtBottom: boolean) => {
-        if (isAtBottom) return 'smooth' as const;
+        if (isAtBottom) return isStreaming ? true as const : 'smooth' as const;
         return false as const;
       },
-      []
+      [isStreaming]
     );
 
     // Footer component: streaming message + padding

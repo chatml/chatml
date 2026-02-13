@@ -1098,6 +1098,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 ) : undefined
               }
               footer={messageListFooter}
+              isStreaming={selectedConversationId ? streamingState[selectedConversationId]?.isStreaming : false}
             />
             {/* Fade overlay at bottom of messages */}
             <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />

@@ -1506,6 +1506,15 @@ function handleMessage(message: SDKMessage): void {
         if (contentBlock?.type === "thinking") {
           emit({ type: "thinking_start" });
         }
+      } else if (event.type === "error") {
+        // Surface API-level errors (e.g., overloaded_error) during streaming
+        const errorEvent = event as { error?: { type?: string; message?: string } };
+        const errorType = errorEvent.error?.type || "unknown";
+        const errorMsg = errorEvent.error?.message || "An API error occurred during streaming";
+        emit({
+          type: "warning",
+          message: `API error (${errorType}): ${errorMsg}`,
+        });
       }
       break;
     }
