@@ -248,6 +248,10 @@ interface PendingPlanApprovalRequest {
 const pendingPlanApprovalRequests = new Map<string, PendingPlanApprovalRequest>();
 let planApprovalRequestCounter = 0;
 
+// Track the last file written during plan mode so we can include plan content
+// in the plan_approval_request event when ExitPlanMode fires.
+let lastPlanFilePath: string | null = null;
+
 // Module-level references for cleanup
 let abortControllerRef: AbortController | null = null;
 
@@ -771,6 +775,15 @@ const preToolUseHook: HookCallback = async (input, toolUseId) => {
     });
   }
 
+  // Track Write tool file paths during plan mode so exitPlanModeHook can
+  // read the plan content and include it in the plan_approval_request event.
+  if (currentPermissionMode === "plan" && hookInput.tool_name === "Write") {
+    const writeInput = hookInput.tool_input as { file_path?: string };
+    if (writeInput.file_path) {
+      lastPlanFilePath = writeInput.file_path;
+    }
+  }
+
   return {}; // Allow all tools (no blocking)
 };
 
@@ -1044,11 +1057,22 @@ const askUserQuestionHook: HookCallback = async (input) => {
 const exitPlanModeHook: HookCallback = async (_input) => {
   const requestId = `plan-approval-${++planApprovalRequestCounter}-${Date.now()}`;
 
-  // Emit the plan approval request to the Go backend
+  // Read plan file content if tracked during plan mode
+  let planContent: string | undefined;
+  if (lastPlanFilePath) {
+    try {
+      planContent = readFileSync(lastPlanFilePath, "utf-8");
+    } catch (err) {
+      debug(`Failed to read plan file ${lastPlanFilePath}: ${err}`);
+    }
+  }
+
+  // Emit the plan approval request to the Go backend (with plan content if available)
   emit({
     type: "plan_approval_request",
     requestId,
     sessionId: currentSessionId,
+    ...(planContent && { planContent }),
   });
 
   // Wait for user response with a safety timeout matching the hook timeout

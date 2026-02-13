@@ -468,7 +468,11 @@ export function useWebSocket(enabled: boolean = true) {
       case 'plan_approval_request':
         // ExitPlanMode tool intercepted by PreToolUse hook - show approval UI
         if (event?.requestId) {
-          store.setPendingPlanApproval(conversationId, event.requestId as string);
+          store.setPendingPlanApproval(
+            conversationId,
+            event.requestId as string,
+            event.planContent as string | undefined,
+          );
           notifyDesktop(conversationId, 'Plan ready for approval', 'Review and approve the plan to continue');
         }
         break;

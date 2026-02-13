@@ -344,6 +344,9 @@ export interface AgentEvent {
   requestId?: string;
   questions?: UserQuestion[];
 
+  // Plan approval fields (ExitPlanMode tool)
+  planContent?: string;
+
   // CLI crash recovery fields
   attempt?: number;
   maxAttempts?: number;

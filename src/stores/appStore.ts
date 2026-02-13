@@ -142,7 +142,7 @@ interface StreamingState {
   isThinking: boolean;
   startTime?: number; // When streaming started (for elapsed time)
   planModeActive: boolean; // Whether plan mode is active for this conversation
-  pendingPlanApproval: { requestId: string } | null; // Pending ExitPlanMode approval request
+  pendingPlanApproval: { requestId: string; planContent?: string } | null; // Pending ExitPlanMode approval request
 }
 
 // ActiveTool is imported from @/lib/types
@@ -318,7 +318,7 @@ interface AppState {
   setThinking: (conversationId: string, isThinking: boolean) => void;
   clearThinking: (conversationId: string) => void;
   setPlanModeActive: (conversationId: string, active: boolean) => void;
-  setPendingPlanApproval: (conversationId: string, requestId: string) => void;
+  setPendingPlanApproval: (conversationId: string, requestId: string, planContent?: string) => void;
   clearPendingPlanApproval: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
@@ -1208,9 +1208,9 @@ updateFileTabContent: (id, content) => set((state) => ({
       planModeActive: active,
     }),
   })),
-  setPendingPlanApproval: (conversationId, requestId) => set((state) => ({
+  setPendingPlanApproval: (conversationId, requestId, planContent) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
-      pendingPlanApproval: { requestId },
+      pendingPlanApproval: { requestId, ...(planContent && { planContent }) },
     }),
   })),
   clearPendingPlanApproval: (conversationId) => set((state) => ({
