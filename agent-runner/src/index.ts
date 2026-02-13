@@ -116,6 +116,9 @@ const effort: EffortLevel | undefined = effortArg
 const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
 type PermissionMode = typeof validPermissionModes[number];
 let initialPermissionMode: PermissionMode = "bypassPermissions";
+// Tracks the current permission mode and the mode before plan mode was activated.
+let currentPermissionMode: PermissionMode = "bypassPermissions";
+let prePlanPermissionMode: PermissionMode = "bypassPermissions";
 {
   const value = getArg("--permission-mode");
   if (value) {
@@ -125,6 +128,8 @@ let initialPermissionMode: PermissionMode = "bypassPermissions";
       console.error(`Invalid --permission-mode value: "${value}". Using default "bypassPermissions".`);
     }
   }
+  currentPermissionMode = initialPermissionMode;
+  prePlanPermissionMode = initialPermissionMode;
 }
 
 // Task 6: Settings Sources Configuration
@@ -350,6 +355,11 @@ function setupInputQueue(): void {
       if (input.type === "set_permission_mode" && input.permissionMode) {
         if (queryRef) {
           debug(`Setting permission mode: ${input.permissionMode}`);
+          // Track pre-plan mode so ExitPlanMode can restore it
+          if (input.permissionMode === "plan") {
+            prePlanPermissionMode = currentPermissionMode;
+          }
+          currentPermissionMode = input.permissionMode as PermissionMode;
           void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
             emit({ type: "permission_mode_changed", mode: input.permissionMode! });
           }).catch((cmdErr: unknown) => {
@@ -734,6 +744,24 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     response: responseSummary,
     sessionId: hookInput.session_id,
   });
+
+  // When ExitPlanMode completes, the SDK internally changes the permission mode
+  // from "plan" to the pre-plan mode. Explicitly restore the mode and emit
+  // permission_mode_changed to sync Go backend and frontend. This works around
+  // SDK bug #15755 where permissionDecision: "allow" from PreToolUse hooks
+  // sometimes doesn't properly transition the SDK out of plan mode.
+  if (hookInput.tool_name === "ExitPlanMode") {
+    const restoreMode = prePlanPermissionMode;
+    currentPermissionMode = restoreMode;
+    debug(`ExitPlanMode completed — restoring permission mode to "${restoreMode}"`);
+    emit({ type: "permission_mode_changed", mode: restoreMode });
+    // Also explicitly set the SDK's mode as a safety net
+    if (queryRef) {
+      void queryRef.setPermissionMode(restoreMode).catch((err: unknown) => {
+        debug(`Failed to restore permission mode after ExitPlanMode: ${err}`);
+      });
+    }
+  }
 
   // If this is a sub-agent tool, emit a tool_end event with agentId
   if (toolUseId) {
@@ -1650,6 +1678,12 @@ function handleMessage(message: SDKMessage): void {
           status: statusMsg.status,
           sessionId: statusMsg.session_id,
         });
+        // SDK emits permissionMode in status messages when the mode changes
+        // (e.g., after ExitPlanMode executes). Propagate to Go backend/frontend.
+        if (statusMsg.permissionMode) {
+          currentPermissionMode = statusMsg.permissionMode;
+          emit({ type: "permission_mode_changed", mode: statusMsg.permissionMode });
+        }
       } else if (sysMsg.subtype === "hook_response") {
         const hookMsg = sysMsg as SDKHookResponseMessage;
         emit({
