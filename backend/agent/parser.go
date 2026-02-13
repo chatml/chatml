@@ -127,6 +127,9 @@ type AgentEvent struct {
 	// User question fields (AskUserQuestion tool)
 	RequestID string         `json:"requestId,omitempty"`
 	Questions []UserQuestion `json:"questions,omitempty"`
+
+	// Plan approval fields (ExitPlanMode tool)
+	PlanContent string `json:"planContent,omitempty"`
 }
 
 // McpServerStatus represents MCP server connection status

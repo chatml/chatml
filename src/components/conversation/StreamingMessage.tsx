@@ -226,8 +226,8 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     return items;
   }, [streaming?.segments, tools, subAgents]);
 
-  // Don't render if no streaming content, no active tools, no sub-agents, no thinking, and no error
-  if (timeline.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming) {
+  // Don't render if no streaming content, no active tools, no sub-agents, no thinking, no error, and no pending plan
+  if (timeline.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming && !streaming?.pendingPlanApproval?.planContent) {
     return null;
   }
 
@@ -347,6 +347,16 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
             }
           });
           })()}
+
+          {/* Plan content display - shown when ExitPlanMode sends plan for approval */}
+          {streaming?.pendingPlanApproval?.planContent && (
+            <div className={PROSE_CLASSES}>
+              <CachedMarkdown
+                cacheKey={`plan:${streaming.pendingPlanApproval.requestId}`}
+                content={streaming.pendingPlanApproval.planContent}
+              />
+            </div>
+          )}
 
           {/* Enhanced error display */}
           {streaming?.error && (

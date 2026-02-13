@@ -263,7 +263,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     const now = new Date().toISOString();
     const t0 = performance.now();
 
-    // Add placeholder session and navigate immediately — no waiting
+    // Add placeholder session to sidebar immediately (but don't navigate —
+    // that happens after the backend creates the real session, preventing
+    // effects from firing API calls with the temp ID).
     addSession({
       id: tempId,
       workspaceId,
@@ -277,11 +279,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       updatedAt: now,
     });
     expandWorkspace(workspaceId);
-    navigate({
-      workspaceId,
-      sessionId: tempId,
-      contentView: { type: 'conversation' },
-    });
 
     try {
       // Create session via backend API (generates city-based name, branch, and worktree path)
@@ -294,16 +291,14 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
       });
       console.debug(`[CreateSession] API returned in ${(performance.now() - t0).toFixed(0)}ms`);
 
-      // Atomically swap the temp placeholder with the real session in a single
-      // setState call. This avoids any intermediate state where selectedSessionId
-      // is null (removeSession nullifies it when the removed session is selected,
-      // and navigate uses startTransition which defers the re-select).
+      // Swap the temp placeholder with the real session. The temp was never
+      // navigated to (selectedSessionId was not set to tempId), so we only
+      // need to replace it in the sessions list. Navigation happens below
+      // after conversations are fetched, which triggers effects only once.
       const t1 = performance.now();
       const realSession = mapSessionDTO(session);
       useAppStore.setState((state) => ({
         sessions: [realSession, ...state.sessions.filter((s) => s.id !== tempId)],
-        selectedSessionId: realSession.id,
-        selectedConversationId: null,
       }));
 
       // Register file watcher (non-blocking)
