@@ -240,6 +240,25 @@ func (rm *RepoManager) GetChangedFilesWithStats(ctx context.Context, repoPath, b
 	return changes, nil
 }
 
+// GetMergeBase returns the merge-base (common ancestor) of two refs.
+// This is the correct fork point for computing diffs between branches,
+// stable even when the target branch advances or the branch is rebased.
+func (rm *RepoManager) GetMergeBase(ctx context.Context, repoPath, ref1, ref2 string) (string, error) {
+	if err := ValidateGitRef(ref1); err != nil {
+		return "", fmt.Errorf("invalid ref1: %w", err)
+	}
+	if err := ValidateGitRef(ref2); err != nil {
+		return "", fmt.Errorf("invalid ref2: %w", err)
+	}
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "merge-base", ref1, ref2)
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // GetUntrackedFiles returns files that are not tracked by git
 func (rm *RepoManager) GetUntrackedFiles(ctx context.Context, repoPath string) ([]FileChange, error) {
 	// Use -uall to show individual files inside untracked directories

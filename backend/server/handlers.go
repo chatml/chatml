@@ -624,10 +624,22 @@ func (h *Handlers) getSessionAndWorkspace(ctx context.Context, sessionID string)
 		workingPath = session.WorkspacePath
 	}
 
-	// Use the session's effective target branch for diff calculations.
-	// This respects the user's target branch selection (e.g., "origin/develop")
-	// and falls back to "<remote>/<default-branch>" when not set.
-	baseRef = session.EffectiveTargetBranch()
+	// Compute the merge-base between the target branch and HEAD.
+	// This gives us the exact fork point, which is stable even when
+	// the target branch advances or the agent rebases directly.
+	// Using the live tracking ref (e.g. origin/main) directly would cause
+	// phantom file changes whenever main advances ahead of the session.
+	targetBranch := session.EffectiveTargetBranch()
+	mergeBase, mbErr := h.repoManager.GetMergeBase(ctx, workingPath, targetBranch, "HEAD")
+	if mbErr == nil && mergeBase != "" {
+		baseRef = mergeBase
+	} else if session.BaseCommitSHA != "" {
+		// Fallback: use stored base commit SHA
+		baseRef = session.BaseCommitSHA
+	} else {
+		// Last resort: use the live target branch ref (original behavior)
+		baseRef = targetBranch
+	}
 
 	return session, workingPath, baseRef, nil
 }
@@ -648,18 +660,22 @@ func checkWorktreePath(w http.ResponseWriter, path string) bool {
 
 // computeSessionStats calculates total additions/deletions for a session's worktree.
 // Returns nil if the session has no worktree path or no changes.
-func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Session, workspaceBranch string) *models.SessionStats {
+// effectiveTargetBranch should be the fully-qualified remote ref (e.g. "origin/main"),
+// matching the logic from SessionWithWorkspace.EffectiveTargetBranch().
+func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Session, effectiveTargetBranch string) *models.SessionStats {
 	workingPath := session.WorktreePath
 	if workingPath == "" {
 		return nil
 	}
 
-	// Determine base ref: prefer BaseCommitSHA, fall back to workspace branch, then "main"
-	baseRef := session.BaseCommitSHA
-	if baseRef == "" {
-		baseRef = workspaceBranch
+	// Compute merge-base for accurate diff base, consistent with getSessionAndWorkspace.
+	// This avoids phantom file changes when the target branch advances.
+	baseRef, mbErr := h.repoManager.GetMergeBase(ctx, workingPath, effectiveTargetBranch, "HEAD")
+	if mbErr != nil || baseRef == "" {
+		// Fallback: prefer BaseCommitSHA, then effective target branch
+		baseRef = session.BaseCommitSHA
 		if baseRef == "" {
-			baseRef = "main"
+			baseRef = effectiveTargetBranch
 		}
 	}
 
@@ -888,12 +904,23 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 				defer func() { <-sem }() // Release
 
 				workspace := workspaceByID[s.WorkspaceID]
-				workspaceBranch := ""
-				if workspace != nil {
-					workspaceBranch = workspace.Branch
+				// Compute effective target branch, matching EffectiveTargetBranch() logic
+				effectiveTarget := s.TargetBranch
+				if effectiveTarget == "" {
+					remote := "origin"
+					branch := "main"
+					if workspace != nil {
+						if workspace.Remote != "" {
+							remote = workspace.Remote
+						}
+						if workspace.Branch != "" {
+							branch = workspace.Branch
+						}
+					}
+					effectiveTarget = remote + "/" + branch
 				}
 
-				stats := h.computeSessionStats(ctx, s, workspaceBranch)
+				stats := h.computeSessionStats(ctx, s, effectiveTarget)
 
 				mu.Lock()
 				s.Stats = stats

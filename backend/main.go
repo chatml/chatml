@@ -241,13 +241,32 @@ func main() {
 					return
 				}
 
-				// Determine base ref
-				baseRef := sess.BaseCommitSHA
-				if baseRef == "" && repo != nil {
-					baseRef = repo.Branch
+				// Determine base ref using merge-base for accurate diff base,
+				// consistent with getSessionAndWorkspace and computeSessionStats.
+				// Use EffectiveTargetBranch logic: per-session override, then remote/branch.
+				remoteRef := sess.TargetBranch
+				if remoteRef == "" {
+					remote := "origin"
+					branch := "main"
+					if repo != nil {
+						if repo.Remote != "" {
+							remote = repo.Remote
+						}
+						if repo.Branch != "" {
+							branch = repo.Branch
+						}
+					}
+					remoteRef = remote + "/" + branch
 				}
-				if baseRef == "" {
-					baseRef = "main"
+				baseRef, mbErr := repoManager.GetMergeBase(ctx, sess.WorktreePath, remoteRef, "HEAD")
+				if mbErr != nil || baseRef == "" {
+					baseRef = sess.BaseCommitSHA
+					if baseRef == "" && repo != nil {
+						baseRef = repo.Branch
+					}
+					if baseRef == "" {
+						baseRef = "main"
+					}
 				}
 
 				// Compute stats
