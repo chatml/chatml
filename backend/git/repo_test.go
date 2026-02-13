@@ -677,3 +677,276 @@ func TestGetDiffSummary_InvalidBaseRef(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid base ref")
 }
+
+// ============================================================================
+// GetMergeBase Tests
+// ============================================================================
+
+func TestGetMergeBase_SameCommit(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	headSHA := getCommitSHA(t, repoPath)
+
+	// merge-base of HEAD with itself is HEAD
+	result, err := rm.GetMergeBase(context.Background(), repoPath, "HEAD", "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, headSHA, result)
+}
+
+func TestGetMergeBase_LinearHistory(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	baseSHA := getCommitSHA(t, repoPath)
+
+	// Add commits on top of main
+	createAndCommitFile(t, repoPath, "file1.txt", "content\n", "Commit 1")
+	createAndCommitFile(t, repoPath, "file2.txt", "content\n", "Commit 2")
+
+	// merge-base of baseSHA and HEAD should be baseSHA (linear history)
+	result, err := rm.GetMergeBase(context.Background(), repoPath, baseSHA, "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, baseSHA, result)
+}
+
+func TestGetMergeBase_DivergedBranches(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Record the fork point
+	forkSHA := getCommitSHA(t, repoPath)
+
+	// Create a feature branch with its own commits
+	runGit(t, repoPath, "checkout", "-b", "feature/test")
+	createAndCommitFile(t, repoPath, "feature.txt", "feature code\n", "Feature commit")
+
+	// Go back to main and add commits (simulating origin/main advancing)
+	runGit(t, repoPath, "checkout", "main")
+	createAndCommitFile(t, repoPath, "main-update.txt", "main update\n", "Main commit")
+
+	// Go back to feature branch
+	runGit(t, repoPath, "checkout", "feature/test")
+
+	// merge-base of main and feature should be the fork point
+	result, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, forkSHA, result)
+}
+
+func TestGetMergeBase_DivergedBranches_DiffAccuracy(t *testing.T) {
+	// This test demonstrates the core bug fix: diffing against merge-base
+	// shows only session changes, while diffing against the live branch
+	// would show phantom changes from main.
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Record the fork point
+	forkSHA := getCommitSHA(t, repoPath)
+
+	// Create a feature branch with one file change
+	runGit(t, repoPath, "checkout", "-b", "feature/session")
+	createAndCommitFile(t, repoPath, "session-work.txt", "session code\n", "Session commit")
+
+	// Go back to main and add a DIFFERENT file (simulating origin/main advancing)
+	runGit(t, repoPath, "checkout", "main")
+	createAndCommitFile(t, repoPath, "other-dev-work.txt", "other dev code\n", "Other dev commit")
+
+	// Go back to the feature branch
+	runGit(t, repoPath, "checkout", "feature/session")
+
+	// Using merge-base (correct): diff should show ONLY the session's file
+	mergeBase, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, forkSHA, mergeBase)
+
+	changesFromMergeBase, err := rm.GetChangedFilesWithStats(context.Background(), repoPath, mergeBase)
+	require.NoError(t, err)
+	assert.Len(t, changesFromMergeBase, 1, "merge-base diff should show only session changes")
+	assert.Equal(t, "session-work.txt", changesFromMergeBase[0].Path)
+
+	// Using live branch (broken): diff would show BOTH the session's file
+	// AND the other dev's file as a "deletion" (since feature branch doesn't have it)
+	changesFromMain, err := rm.GetChangedFilesWithStats(context.Background(), repoPath, "main")
+	require.NoError(t, err)
+	assert.Greater(t, len(changesFromMain), 1, "live branch diff incorrectly shows files from main")
+}
+
+func TestGetMergeBase_AfterRebase(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create a feature branch with commits
+	runGit(t, repoPath, "checkout", "-b", "feature/rebase-test")
+	createAndCommitFile(t, repoPath, "feature.txt", "feature code\n", "Feature commit")
+
+	// Go back to main, add commits (simulating origin/main advancing)
+	runGit(t, repoPath, "checkout", "main")
+	createAndCommitFile(t, repoPath, "main-advance.txt", "main code\n", "Main advance")
+	newMainSHA := getCommitSHA(t, repoPath)
+
+	// Push updated main to origin
+	runGit(t, repoPath, "push", "origin", "main")
+
+	// Go back to feature and rebase onto updated main
+	runGit(t, repoPath, "checkout", "feature/rebase-test")
+	runGit(t, repoPath, "rebase", "main")
+
+	// After rebase, merge-base should be the NEW main tip (rebase point)
+	result, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, newMainSHA, result)
+
+	// Diff against merge-base should show ONLY the feature file
+	changes, err := rm.GetChangedFilesWithStats(context.Background(), repoPath, result)
+	require.NoError(t, err)
+	assert.Len(t, changes, 1)
+	assert.Equal(t, "feature.txt", changes[0].Path)
+}
+
+func TestGetMergeBase_AfterRebase_MainAdvancesFurther(t *testing.T) {
+	// This is the exact scenario reported as a bug: after rebase, main
+	// advances again, and the Changes panel should still only show session changes.
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create feature branch
+	runGit(t, repoPath, "checkout", "-b", "feature/post-rebase")
+	createAndCommitFile(t, repoPath, "feature.txt", "feature\n", "Feature commit")
+
+	// Main advances
+	runGit(t, repoPath, "checkout", "main")
+	createAndCommitFile(t, repoPath, "main1.txt", "main1\n", "Main advance 1")
+
+	// Rebase feature onto main
+	runGit(t, repoPath, "checkout", "feature/post-rebase")
+	runGit(t, repoPath, "rebase", "main")
+	rebasePointSHA := getCommitSHA(t, repoPath)
+	// Get the merge-base right after rebase (should be main tip at rebase time)
+	mbAfterRebase, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.NoError(t, err)
+
+	// Main advances AGAIN (this is what triggers the bug with the old approach)
+	runGit(t, repoPath, "checkout", "main")
+	createAndCommitFile(t, repoPath, "main2.txt", "main2\n", "Main advance 2")
+
+	// Go back to feature
+	runGit(t, repoPath, "checkout", "feature/post-rebase")
+
+	// merge-base should STILL be the rebase point, not the new main tip
+	mbAfterMainAdvance, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, mbAfterRebase, mbAfterMainAdvance, "merge-base should be stable after main advances")
+
+	// And that merge-base should NOT be the current HEAD of feature
+	assert.NotEqual(t, rebasePointSHA, mbAfterMainAdvance, "merge-base should be the rebase point, not feature HEAD")
+
+	// Diff against merge-base: only session changes
+	changes, err := rm.GetChangedFilesWithStats(context.Background(), repoPath, mbAfterMainAdvance)
+	require.NoError(t, err)
+	assert.Len(t, changes, 1, "should only show session's file, not main2.txt")
+	assert.Equal(t, "feature.txt", changes[0].Path)
+
+	// Diff against live main (broken approach): would show extra files
+	changesFromMain, err := rm.GetChangedFilesWithStats(context.Background(), repoPath, "main")
+	require.NoError(t, err)
+	assert.Greater(t, len(changesFromMain), 1, "live main diff incorrectly includes main2.txt")
+}
+
+func TestGetMergeBase_WithOriginRef(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create feature branch
+	runGit(t, repoPath, "checkout", "-b", "feature/origin-test")
+	createAndCommitFile(t, repoPath, "feature.txt", "feature\n", "Feature commit")
+
+	// merge-base with origin/main should work (origin/main was set up in createTestGitRepo)
+	result, err := rm.GetMergeBase(context.Background(), repoPath, "origin/main", "HEAD")
+	require.NoError(t, err)
+	assert.NotEmpty(t, result)
+	assert.Len(t, result, 40, "should be a full SHA")
+}
+
+func TestGetMergeBase_InvalidRef1(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	_, err := rm.GetMergeBase(context.Background(), repoPath, "ref; rm -rf /", "HEAD")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid ref1")
+}
+
+func TestGetMergeBase_InvalidRef2(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	_, err := rm.GetMergeBase(context.Background(), repoPath, "HEAD", "ref; rm -rf /")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid ref2")
+}
+
+func TestGetMergeBase_NonExistentRef(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	_, err := rm.GetMergeBase(context.Background(), repoPath, "nonexistent-branch", "HEAD")
+	require.Error(t, err)
+}
+
+func TestGetMergeBase_NoCommonAncestor(t *testing.T) {
+	// Create two repos with no shared history (orphan branches)
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create an orphan branch with no common ancestor to main
+	runGit(t, repoPath, "checkout", "--orphan", "orphan-branch")
+	runGit(t, repoPath, "rm", "-rf", ".")
+	writeFile(t, repoPath, "orphan.txt", "orphan content\n")
+	runGit(t, repoPath, "add", ".")
+	runGit(t, repoPath, "commit", "-m", "Orphan commit")
+
+	// merge-base should fail because there's no common ancestor
+	_, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.Error(t, err)
+}
+
+func TestGetMergeBase_MultipleSessionCommits(t *testing.T) {
+	// Simulate a real session: multiple commits on a feature branch,
+	// main advances, verify merge-base and diff are correct.
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	forkSHA := getCommitSHA(t, repoPath)
+
+	// Feature branch with multiple commits
+	runGit(t, repoPath, "checkout", "-b", "feature/multi-commit")
+	createAndCommitFile(t, repoPath, "feat1.go", "package feat\n", "Add feat1")
+	createAndCommitFile(t, repoPath, "feat2.go", "package feat\n", "Add feat2")
+	modifyAndCommitFile(t, repoPath, "feat1.go", "package feat\n\nfunc Init() {}\n", "Update feat1")
+
+	// Main advances with unrelated changes
+	runGit(t, repoPath, "checkout", "main")
+	createAndCommitFile(t, repoPath, "unrelated.txt", "unrelated\n", "Unrelated main commit")
+	createAndCommitFile(t, repoPath, "another.txt", "another\n", "Another main commit")
+
+	// Back to feature
+	runGit(t, repoPath, "checkout", "feature/multi-commit")
+
+	// merge-base should be the original fork point
+	result, err := rm.GetMergeBase(context.Background(), repoPath, "main", "HEAD")
+	require.NoError(t, err)
+	assert.Equal(t, forkSHA, result)
+
+	// Diff against merge-base: only the 2 feature files
+	changes, err := rm.GetChangedFilesWithStats(context.Background(), repoPath, result)
+	require.NoError(t, err)
+	paths := map[string]bool{}
+	for _, c := range changes {
+		paths[c.Path] = true
+	}
+	assert.True(t, paths["feat1.go"], "should include feat1.go")
+	assert.True(t, paths["feat2.go"], "should include feat2.go")
+	assert.False(t, paths["unrelated.txt"], "should NOT include unrelated.txt from main")
+	assert.False(t, paths["another.txt"], "should NOT include another.txt from main")
+}
