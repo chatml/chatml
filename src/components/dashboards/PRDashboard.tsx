@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
@@ -13,6 +14,12 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { isTauri, copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 import { getLabelStyles } from '@/lib/label-colors';
@@ -34,6 +41,7 @@ import {
   GitMerge,
   Wrench,
   GitBranch,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWorkspaceColor } from '@/lib/workspace-colors';
@@ -328,9 +336,15 @@ export function PRDashboard({
   const [searchTerm, setSearchTerm] = useState('');
 
   const workspaces = useAppStore((s) => s.workspaces);
+  const { setLastRepoDashboardWorkspaceId } = useSettingsStore();
 
   // Get workspace name for the title
   const workspace = workspaces.find((w) => w.id === initialWorkspaceId);
+
+  const handleWorkspaceChange = useCallback((newWorkspaceId: string) => {
+    setLastRepoDashboardWorkspaceId(newWorkspaceId);
+    navigate({ contentView: { type: 'pr-dashboard', workspaceId: newWorkspaceId } });
+  }, [setLastRepoDashboardWorkspaceId]);
 
   const fetchPRsRef = useRef<(isRefresh?: boolean) => void>(() => {});
 
@@ -659,16 +673,44 @@ export function PRDashboard({
     titlePosition: 'center' as const,
     title: (
       <span className="flex items-center gap-1.5 min-w-0">
-        {workspace && (
+        {workspace && workspaces.length > 1 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden hover:bg-surface-1 px-1.5 py-0.5 rounded-md transition-colors">
+                <div
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: getWorkspaceColor(initialWorkspaceId ?? '') }}
+                />
+                <span className="text-base font-semibold truncate">{workspace.name}</span>
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              {workspaces.map((w) => (
+                <DropdownMenuItem
+                  key={w.id}
+                  onClick={() => handleWorkspaceChange(w.id)}
+                  className={cn(w.id === initialWorkspaceId && 'bg-surface-2')}
+                >
+                  <div
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: getWorkspaceColor(w.id) }}
+                  />
+                  <span className="truncate font-medium">{w.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : workspace ? (
           <span className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden">
             <div
               className="w-3 h-3 rounded-full shrink-0"
               style={{ backgroundColor: getWorkspaceColor(initialWorkspaceId ?? '') }}
             />
             <span className="text-base font-semibold truncate">{workspace.name}</span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           </span>
-        )}
+        ) : null}
+        {workspace && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
         <span className="flex items-center gap-1.5 shrink-0">
           <GitPullRequest className="h-4 w-4 text-violet-400" />
           <h1 className="text-base font-semibold">Pull Requests</h1>
@@ -698,7 +740,7 @@ export function PRDashboard({
         </Button>
       ),
     },
-  }), [workspace, initialWorkspaceId, stats, refreshing]);
+  }), [workspace, workspaces, initialWorkspaceId, stats, refreshing, handleWorkspaceChange]);
   useMainToolbarContent(toolbarConfig);
 
   return (
