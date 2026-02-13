@@ -117,15 +117,26 @@ func (w *PRWatcher) UnwatchSession(sessionID string) {
 }
 
 // UpdateSessionBranch updates the branch for a watched session (e.g., after branch rename)
+// and invalidates the PR cache for the affected repo so the next poll fetches fresh data.
 func (w *PRWatcher) UpdateSessionBranch(sessionID, newBranch string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var repoPath string
 
+	w.mu.Lock()
 	if entry, exists := w.sessions[sessionID]; exists {
 		entry.Branch = newBranch
 		// Reset last checked to trigger re-check
 		entry.LastChecked = time.Time{}
+		repoPath = entry.RepoPath
 		logger.PRWatcher.Infof("Updated branch for session %s: %s", sessionID, newBranch)
+	}
+	w.mu.Unlock()
+
+	// Invalidate PR cache so next tick fetches fresh data from GitHub
+	if repoPath != "" && w.prCache != nil {
+		owner, repo, err := w.repoManager.GetGitHubRemote(w.ctx, repoPath)
+		if err == nil {
+			w.prCache.Invalidate(owner, repo)
+		}
 	}
 }
 
@@ -232,12 +243,15 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 			return
 		}
 
-		// Try the shared cache first
+		// Try the shared cache — only use fresh entries (within freshTTL).
+		// Stale entries are skipped so the PRWatcher fetches from GitHub directly,
+		// ensuring eager detection of newly created PRs within ~30 seconds.
 		var openPRs []github.PRListItem
 		if w.prCache != nil {
-			cached, ok := w.prCache.Get(key.owner, key.repo)
-			if ok {
-				openPRs = cached
+			entry, freshness := w.prCache.GetWithStale(key.owner, key.repo)
+			if freshness == github.CacheFresh && entry != nil {
+				openPRs = make([]github.PRListItem, len(entry.PRs))
+				copy(openPRs, entry.PRs)
 			}
 		}
 

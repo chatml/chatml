@@ -375,6 +375,14 @@ func main() {
 		}
 	}
 
+	// Notify PRWatcher when branches change so it can update its in-memory state
+	// and invalidate the PR cache for immediate re-detection
+	if branchWatcher != nil {
+		branchWatcher.SetBranchChangeNotifyCallback(func(sessionID, newBranch string) {
+			prWatcher.UpdateSessionBranch(sessionID, newBranch)
+		})
+	}
+
 	// Issue cache for GitHub Issues API
 	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)
 	defer issueCache.Close()
