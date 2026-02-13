@@ -34,9 +34,10 @@ type Watcher struct {
 	mu                sync.RWMutex
 	watcher           *fsnotify.Watcher
 	sessions          map[string]*WatchEntry // sessionID -> entry
-	onChange          func(BranchChangeEvent)
-	onStatsInvalidate func(sessionID string) // Called when worktree files change
-	ctx               context.Context
+	onChange              func(BranchChangeEvent)
+	onStatsInvalidate    func(sessionID string)              // Called when worktree files change
+	onBranchChangeNotify func(sessionID, newBranch string)   // Called when branch changes (e.g., to notify PRWatcher)
+	ctx                  context.Context
 	cancel            context.CancelFunc
 }
 
@@ -138,6 +139,14 @@ func (w *Watcher) SetStatsInvalidateCallback(cb func(sessionID string)) {
 	w.onStatsInvalidate = cb
 }
 
+// SetBranchChangeNotifyCallback sets a callback invoked on branch changes.
+// Used to notify other subsystems (e.g., PRWatcher) when a session's branch is renamed.
+func (w *Watcher) SetBranchChangeNotifyCallback(cb func(sessionID, newBranch string)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.onBranchChangeNotify = cb
+}
+
 // Close stops the watcher
 func (w *Watcher) Close() error {
 	w.cancel()
@@ -190,7 +199,8 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	var statsInvalidateSessions []string
 
 	w.mu.Lock()
-	onStatsInvalidate := w.onStatsInvalidate // Capture callback while holding lock
+	onStatsInvalidate := w.onStatsInvalidate       // Capture callback while holding lock
+	onBranchChangeNotify := w.onBranchChangeNotify // Capture callback while holding lock
 
 	// Find which session(s) this file belongs to
 	for sessionID, entry := range w.sessions {
@@ -252,6 +262,13 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	if onStatsInvalidate != nil {
 		for _, sessionID := range statsInvalidateSessions {
 			onStatsInvalidate(sessionID)
+		}
+	}
+
+	// Notify subscribers of branch changes (e.g., PRWatcher)
+	if onBranchChangeNotify != nil {
+		for _, evt := range branchEvents {
+			onBranchChangeNotify(evt.SessionID, evt.NewBranch)
 		}
 	}
 }
