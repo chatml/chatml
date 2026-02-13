@@ -199,7 +199,7 @@ const SubAgentCompactRow = memo(function SubAgentCompactRow({ agent, worktreePat
   const hasTools = agent.tools.length > 0;
   const hasExpandableContent = hasTools || !!agent.output;
 
-  const nestedDescription = useMemo(() => getNestedTaskDescription(agent), [agent.tools]);
+  const nestedDescription = useMemo(() => getNestedTaskDescription(agent), [agent]);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
