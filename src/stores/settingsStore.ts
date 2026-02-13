@@ -132,6 +132,9 @@ interface SettingsState {
   sidebarSortBy: SidebarSortBy;
   collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
 
+  // Last selected workspace for PR/Branches dashboard views (shared between both)
+  lastRepoDashboardWorkspaceId: string | null;
+
   // Actions
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
@@ -188,6 +191,7 @@ interface SettingsState {
   setSidebarGroupBy: (value: SidebarGroupBy) => void;
   setSidebarSortBy: (value: SidebarSortBy) => void;
   toggleSidebarGroupCollapsed: (key: string) => void;
+  setLastRepoDashboardWorkspaceId: (id: string | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -242,6 +246,7 @@ export const useSettingsStore = create<SettingsState>()(
       sidebarGroupBy: 'project', // Default: group by project
       sidebarSortBy: 'recent', // Default: sort by recency
       collapsedSidebarGroups: [], // Keys toggled from default state
+      lastRepoDashboardWorkspaceId: null, // Last workspace selected in PR/Branches views
 
       // Actions
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
@@ -355,6 +360,7 @@ export const useSettingsStore = create<SettingsState>()(
       resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
+      setLastRepoDashboardWorkspaceId: (id) => set({ lastRepoDashboardWorkspaceId: id }),
       toggleSidebarGroupCollapsed: (key) =>
         set((state) => {
           const has = state.collapsedSidebarGroups.includes(key);

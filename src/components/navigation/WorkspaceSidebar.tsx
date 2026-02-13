@@ -177,7 +177,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   // Track which workspaces are collapsed (persisted)
-  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, sidebarSortBy, setSidebarGroupBy, setSidebarSortBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed } = useSettingsStore();
+  const { collapsedWorkspaces, toggleWorkspaceCollapsed, expandWorkspace, contentView, recentlyRemovedWorkspaces, addRecentlyRemovedWorkspace, removeRecentlyRemovedWorkspace, unreadWorkspaces, markWorkspaceUnread, markWorkspaceRead, workspaceColors, sidebarGroupBy, sidebarSortBy, setSidebarGroupBy, setSidebarSortBy, collapsedSidebarGroups, toggleSidebarGroupCollapsed, lastRepoDashboardWorkspaceId, setLastRepoDashboardWorkspaceId } = useSettingsStore();
 
   const isWorkspaceExpanded = (workspaceId: string) => {
     return !collapsedWorkspaces.includes(workspaceId);
@@ -426,6 +426,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   // Navigation helpers for branches/PRs
   const navigateToBranches = (workspaceId: string, event?: React.MouseEvent) => {
+    setLastRepoDashboardWorkspaceId(workspaceId);
     navigateOrOpenTab({
       workspaceId,
       sessionId: null,
@@ -434,6 +435,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   };
 
   const navigateToPRs = (workspaceId: string, event?: React.MouseEvent) => {
+    setLastRepoDashboardWorkspaceId(workspaceId);
     navigateOrOpenTab({
       workspaceId,
       sessionId: null,
@@ -535,6 +537,70 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
               : "text-muted-foreground group-hover:text-foreground"
           )}>
             Sessions
+          </span>
+        </div>
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'pr-dashboard'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={(e) => {
+            const resolvedId = (lastRepoDashboardWorkspaceId && workspaces.some(w => w.id === lastRepoDashboardWorkspaceId))
+              ? lastRepoDashboardWorkspaceId
+              : workspaces[0]?.id;
+            if (!resolvedId) return;
+            navigateOrOpenTab({
+              workspaceId: resolvedId,
+              sessionId: null,
+              contentView: { type: 'pr-dashboard', workspaceId: resolvedId },
+            }, e);
+          }}
+        >
+          <GitPullRequest className={cn(
+            "w-4 h-4",
+            contentView.type === 'pr-dashboard' ? "text-nav-icon-prs" : "text-nav-icon-prs/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            contentView.type === 'pr-dashboard'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Pull Requests
+          </span>
+        </div>
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            contentView.type === 'branches'
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={(e) => {
+            const resolvedId = (lastRepoDashboardWorkspaceId && workspaces.some(w => w.id === lastRepoDashboardWorkspaceId))
+              ? lastRepoDashboardWorkspaceId
+              : workspaces[0]?.id;
+            if (!resolvedId) return;
+            navigateOrOpenTab({
+              workspaceId: resolvedId,
+              sessionId: null,
+              contentView: { type: 'branches', workspaceId: resolvedId },
+            }, e);
+          }}
+        >
+          <GitBranch className={cn(
+            "w-4 h-4",
+            contentView.type === 'branches' ? "text-nav-icon-branches" : "text-nav-icon-branches/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            contentView.type === 'branches'
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Branches
           </span>
         </div>
         <div
