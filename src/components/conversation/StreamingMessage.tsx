@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
 import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
-import { SubAgentRow } from '@/components/conversation/SubAgentGroup';
+import { SubAgentRow, SubAgentGroupedRow } from '@/components/conversation/SubAgentGroup';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,8 @@ import { PROSE_CLASSES } from '@/lib/constants';
 type TimelineItem =
   | { type: 'text'; id: string; text: string; timestamp: number }
   | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number }
-  | { type: 'subagent'; agent: import('@/lib/types').SubAgent };
+  | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
+  | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
 interface StreamingMessageProps {
   conversationId: string;
@@ -217,13 +218,43 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     }
 
     // Sort by timestamp (text segments use timestamp, tools use startTime, sub-agents use startTime)
-    items.sort((a, b) => {
-      const aTime = a.type === 'text' ? a.timestamp : a.type === 'subagent' ? a.agent.startTime : a.startTime;
-      const bTime = b.type === 'text' ? b.timestamp : b.type === 'subagent' ? b.agent.startTime : b.startTime;
-      return aTime - bTime;
-    });
+    const getItemTime = (item: TimelineItem): number => {
+      switch (item.type) {
+        case 'text': return item.timestamp;
+        case 'subagent': return item.agent.startTime;
+        case 'subagent_group': return item.agents[0].startTime;
+        default: return item.startTime;
+      }
+    };
+    items.sort((a, b) => getItemTime(a) - getItemTime(b));
 
-    return items;
+    // Group consecutive sub-agents that share the same description and agent type
+    const grouped: TimelineItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type === 'subagent' && item.agent.description) {
+        // Collect consecutive sub-agents with same description + agentType
+        const batch: import('@/lib/types').SubAgent[] = [item.agent];
+        while (
+          i + 1 < items.length &&
+          items[i + 1].type === 'subagent' &&
+          (items[i + 1] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent.description === item.agent.description &&
+          (items[i + 1] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent.agentType === item.agent.agentType
+        ) {
+          i++;
+          batch.push((items[i] as { type: 'subagent'; agent: import('@/lib/types').SubAgent }).agent);
+        }
+        if (batch.length > 1) {
+          grouped.push({ type: 'subagent_group', agents: batch });
+        } else {
+          grouped.push(item);
+        }
+      } else {
+        grouped.push(item);
+      }
+    }
+
+    return grouped;
   }, [streaming?.segments, tools, subAgents]);
 
   // Don't render if no streaming content, no active tools, no sub-agents, no thinking, no error, and no pending plan
@@ -318,6 +349,14 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                     />
                   )}
                 </div>
+              );
+            } else if (item.type === 'subagent_group') {
+              return (
+                <SubAgentGroupedRow
+                  key={item.agents.map(a => a.agentId).join(',')}
+                  agents={item.agents}
+                  worktreePath={worktreePath}
+                />
               );
             } else if (item.type === 'subagent') {
               return (
