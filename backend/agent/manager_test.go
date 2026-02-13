@@ -1272,3 +1272,192 @@ func TestNewAIClient_EncryptedKeyOverridesEnvVarsSetting(t *testing.T) {
 	// because loadEnvVars() sets envMap["ANTHROPIC_API_KEY"] = decrypted at the end
 	assert.Equal(t, "sk-encrypted-wins", client.AuthValue())
 }
+
+// ============================================================================
+// Additional Manager Tests (Phase 4)
+// ============================================================================
+
+func TestManager_IsConversationInPlanMode_NoProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+	assert.False(t, m.IsConversationInPlanMode("nonexistent"))
+}
+
+func TestManager_IsConversationInPlanMode_PlanActive(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcessWithOptions(ProcessOptions{
+		ID:             "plan-active",
+		Workdir:        t.TempDir(),
+		ConversationID: "conv-plan-active",
+		PlanMode:       true,
+	})
+	proc.SetRunningForTest(true)
+	m.InsertProcessForTest("conv-plan-active", proc)
+
+	assert.True(t, m.IsConversationInPlanMode("conv-plan-active"))
+}
+
+func TestManager_IsConversationInPlanMode_PlanInactive(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	proc := NewProcessWithOptions(ProcessOptions{
+		ID:             "plan-inactive",
+		Workdir:        t.TempDir(),
+		ConversationID: "conv-plan-inactive",
+		PlanMode:       false,
+	})
+	proc.SetRunningForTest(true)
+	m.InsertProcessForTest("conv-plan-inactive", proc)
+
+	assert.False(t, m.IsConversationInPlanMode("conv-plan-inactive"))
+}
+
+func TestManager_SetConversationModel_NoProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+	err := m.SetConversationModel("nonexistent", "claude-sonnet-4-5-20250929")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no active process")
+}
+
+func TestManager_SetConversationMaxThinkingTokens_NoProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+	err := m.SetConversationMaxThinkingTokens("nonexistent", 5000)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no active process")
+}
+
+func TestManager_RewindConversationFiles_NoProcess(t *testing.T) {
+	m, _ := setupTestManager(t)
+	err := m.RewindConversationFiles("nonexistent", "checkpoint-uuid")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conversation process not running")
+}
+
+func TestManager_SetSessionEventHandler(t *testing.T) {
+	m, _ := setupTestManager(t)
+
+	var capturedSessionID string
+	var capturedEvent map[string]interface{}
+	handler := func(sessionID string, event map[string]interface{}) {
+		capturedSessionID = sessionID
+		capturedEvent = event
+	}
+
+	m.SetSessionEventHandler(handler)
+	assert.NotNil(t, m.onSessionEvent)
+
+	m.onSessionEvent("sess-1", map[string]interface{}{"type": "test"})
+	assert.Equal(t, "sess-1", capturedSessionID)
+	assert.Equal(t, "test", capturedEvent["type"])
+}
+
+func TestManager_LoadMcpServers(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	// Store MCP servers config
+	mcpJSON := `[{"name":"test-server","type":"stdio","command":"echo"}]`
+	require.NoError(t, s.SetSetting(ctx, "mcp-servers:ws-1", mcpJSON))
+
+	result, err := m.loadMcpServers(ctx, "ws-1")
+	require.NoError(t, err)
+	assert.Equal(t, mcpJSON, result)
+}
+
+func TestManager_LoadMcpServers_NotFound(t *testing.T) {
+	ctx := context.Background()
+	m, _ := setupTestManager(t)
+
+	result, err := m.loadMcpServers(ctx, "nonexistent-ws")
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+func TestFormatSessionName_AdditionalCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single word verb",
+			input:    "Refactor",
+			expected: "refactor",
+		},
+		{
+			name:     "all prepositions",
+			input:    "to for with and or in on at",
+			expected: "",
+		},
+		{
+			name:     "unicode characters stripped",
+			input:    "Fix the café bug",
+			expected: "fix-caf-bug",
+		},
+		{
+			name:     "hyphens and underscores",
+			input:    "Add real-time_updates",
+			expected: "add-real-time-updates",
+		},
+		{
+			name:     "very long input",
+			input:    "Implement a comprehensive distributed system for managing real-time notifications across all microservices",
+			expected: "implement-comprehensive-distributed-syst",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatSessionName(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestManager_StartConversation_NoInitialMessage(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	repo := createTestRepo(t, s, "ws-no-msg")
+	_ = createTestSession(t, s, "sess-no-msg", repo.ID)
+
+	conv, err := m.StartConversation(ctx, "sess-no-msg", "task", "", nil)
+	require.NoError(t, err)
+	require.NotNil(t, conv)
+
+	// Should be idle since no initial message
+	assert.Equal(t, models.ConversationStatusIdle, conv.Status)
+
+	// Should have a setupInfo system message
+	require.Len(t, conv.Messages, 1)
+	assert.Equal(t, "system", conv.Messages[0].Role)
+	assert.NotNil(t, conv.Messages[0].SetupInfo)
+}
+
+func TestManager_StartConversation_ConversationNaming(t *testing.T) {
+	ctx := context.Background()
+	m, s := setupTestManager(t)
+
+	repo := createTestRepo(t, s, "ws-naming")
+	_ = createTestSession(t, s, "sess-naming", repo.ID)
+
+	// First task conversation
+	conv1, err := m.StartConversation(ctx, "sess-naming", "task", "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "Task #1", conv1.Name)
+
+	// Second task conversation
+	conv2, err := m.StartConversation(ctx, "sess-naming", "task", "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "Task #2", conv2.Name)
+
+	// First review conversation
+	conv3, err := m.StartConversation(ctx, "sess-naming", "review", "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "Review #1", conv3.Name)
+
+	// First chat conversation
+	conv4, err := m.StartConversation(ctx, "sess-naming", "chat", "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "Chat #1", conv4.Name)
+}

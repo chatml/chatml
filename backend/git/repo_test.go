@@ -2,7 +2,9 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -949,4 +951,639 @@ func TestGetMergeBase_MultipleSessionCommits(t *testing.T) {
 	assert.True(t, paths["feat2.go"], "should include feat2.go")
 	assert.False(t, paths["unrelated.txt"], "should NOT include unrelated.txt from main")
 	assert.False(t, paths["another.txt"], "should NOT include another.txt from main")
+}
+
+// ============================================================================
+// ValidateGitRef Security Tests
+// ============================================================================
+
+func TestValidateGitRef_EmptyRef(t *testing.T) {
+	err := ValidateGitRef("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty git ref")
+}
+
+func TestValidateGitRef_ValidRefs(t *testing.T) {
+	validRefs := []struct {
+		name string
+		ref  string
+	}{
+		{"simple branch", "main"},
+		{"feature branch", "feature/foo"},
+		{"version tag", "v1.0.0"},
+		{"tilde ref", "abc123~2"},
+		{"caret ref", "HEAD^{}"},
+		{"double dot range", "main..feature"},
+		{"at sign ref", "HEAD@{1}"},
+		{"SHA prefix", "abc1234"},
+		{"full SHA", "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"},
+		{"nested slashes", "fix/issue/123"},
+		{"underscores", "fix_something"},
+		{"dots in name", "release.1.0"},
+	}
+
+	for _, tt := range validRefs {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitRef(tt.ref)
+			assert.NoError(t, err, "ref %q should be valid", tt.ref)
+		})
+	}
+}
+
+func TestValidateGitRef_HyphenPrefix(t *testing.T) {
+	// Flag injection: refs starting with hyphen could be interpreted as git flags
+	dangerousRefs := []string{
+		"--exec=whoami",
+		"-D",
+		"--all",
+		"-v",
+		"--force",
+	}
+
+	for _, ref := range dangerousRefs {
+		t.Run(ref, func(t *testing.T) {
+			err := ValidateGitRef(ref)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "cannot start with hyphen")
+		})
+	}
+}
+
+func TestValidateGitRef_ShellMetachars(t *testing.T) {
+	// Shell metacharacters that could enable command injection
+	metachars := []struct {
+		name string
+		ref  string
+	}{
+		{"semicolon", "ref;rm -rf /"},
+		{"pipe", "ref|cat /etc/passwd"},
+		{"ampersand", "ref&whoami"},
+		{"dollar", "ref$HOME"},
+		{"backtick", "ref`id`"},
+		{"open paren", "ref(cmd)"},
+		{"close paren", "ref)"},
+		{"space", "ref with space"},
+		{"exclamation", "ref!important"},
+		{"backslash", "ref\\path"},
+		{"single quote", "ref'inject"},
+		{"double quote", `ref"inject`},
+		{"newline", "ref\ninjection"},
+	}
+
+	for _, tt := range metachars {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitRef(tt.ref)
+			assert.Error(t, err, "ref %q should be rejected", tt.ref)
+		})
+	}
+}
+
+func TestValidateGitRef_NullByte(t *testing.T) {
+	err := ValidateGitRef("ref\x00injection")
+	assert.Error(t, err, "null byte should be rejected")
+}
+
+func TestValidateGitRef_DoubleDotAllowed(t *testing.T) {
+	// ".." is valid git range syntax
+	err := ValidateGitRef("main..feature")
+	assert.NoError(t, err)
+
+	err = ValidateGitRef("v1.0..v2.0")
+	assert.NoError(t, err)
+}
+
+func TestValidateGitRef_UnicodeRejected(t *testing.T) {
+	unicodeRefs := []string{
+		"branché",
+		"ブランチ",
+		"分支",
+		"ветка",
+	}
+
+	for _, ref := range unicodeRefs {
+		t.Run(ref, func(t *testing.T) {
+			err := ValidateGitRef(ref)
+			assert.Error(t, err, "unicode ref %q should be rejected", ref)
+		})
+	}
+}
+
+// ============================================================================
+// ListRemotes Tests
+// ============================================================================
+
+func TestListRemotes_Success(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	remotes, err := rm.ListRemotes(context.Background(), repoPath)
+	require.NoError(t, err)
+	assert.Contains(t, remotes, "origin")
+}
+
+func TestListRemotes_NoRemotes(t *testing.T) {
+	// Create a repo without a remote
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	writeFile(t, dir, "README.md", "# Test")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Initial commit")
+
+	rm := NewRepoManager()
+	remotes, err := rm.ListRemotes(context.Background(), dir)
+	require.NoError(t, err)
+	assert.Empty(t, remotes)
+}
+
+func TestListRemotes_MultipleRemotes(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Add a second remote
+	upstreamDir := t.TempDir()
+	runGit(t, upstreamDir, "init", "--bare")
+	runGit(t, repoPath, "remote", "add", "upstream", upstreamDir)
+
+	remotes, err := rm.ListRemotes(context.Background(), repoPath)
+	require.NoError(t, err)
+	assert.Len(t, remotes, 2)
+	assert.Contains(t, remotes, "origin")
+	assert.Contains(t, remotes, "upstream")
+}
+
+// ============================================================================
+// ListRemoteBranches Tests
+// ============================================================================
+
+func TestListRemoteBranches_Success(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Push a feature branch to origin
+	runGit(t, repoPath, "checkout", "-b", "feature/remote-test")
+	createAndCommitFile(t, repoPath, "remote.txt", "content", "Remote commit")
+	runGit(t, repoPath, "push", "origin", "feature/remote-test")
+	runGit(t, repoPath, "checkout", "main")
+
+	branches, err := rm.ListRemoteBranches(context.Background(), repoPath, "origin")
+	require.NoError(t, err)
+	assert.Contains(t, branches, "origin/main")
+	assert.Contains(t, branches, "origin/feature/remote-test")
+}
+
+// ============================================================================
+// RefExists Tests
+// ============================================================================
+
+func TestRefExists_ExistingBranch(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	assert.True(t, rm.RefExists(context.Background(), repoPath, "main"))
+}
+
+func TestRefExists_NonExistent(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	assert.False(t, rm.RefExists(context.Background(), repoPath, "nonexistent-branch"))
+}
+
+func TestRefExists_CommitSHA(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	sha := getCommitSHA(t, repoPath)
+	assert.True(t, rm.RefExists(context.Background(), repoPath, sha))
+}
+
+// ============================================================================
+// GetUntrackedFiles Tests
+// ============================================================================
+
+func TestGetUntrackedFiles_NonePresent(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	files, err := rm.GetUntrackedFiles(context.Background(), repoPath)
+	require.NoError(t, err)
+	assert.Empty(t, files)
+}
+
+func TestGetUntrackedFiles_SomePresent(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create untracked files
+	writeFile(t, repoPath, "untracked1.txt", "content1")
+	writeFile(t, repoPath, "untracked2.txt", "content2")
+
+	files, err := rm.GetUntrackedFiles(context.Background(), repoPath)
+	require.NoError(t, err)
+	assert.Len(t, files, 2)
+
+	paths := make(map[string]bool)
+	for _, f := range files {
+		paths[f.Path] = true
+		assert.Equal(t, "untracked", f.Status)
+	}
+	assert.True(t, paths["untracked1.txt"])
+	assert.True(t, paths["untracked2.txt"])
+}
+
+func TestGetUntrackedFiles_IgnoresDirectories(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create untracked files in a subdirectory
+	writeFile(t, repoPath, "subdir/file.txt", "content")
+
+	files, err := rm.GetUntrackedFiles(context.Background(), repoPath)
+	require.NoError(t, err)
+
+	// Should return individual files, not directories
+	for _, f := range files {
+		assert.False(t, f.Path == "subdir/", "should not include directory entries")
+	}
+}
+
+// ============================================================================
+// GetFileCommitHistory Tests
+// ============================================================================
+
+func TestGetFileCommitHistory_SingleFile(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create a file with multiple commits
+	createAndCommitFile(t, repoPath, "tracked.txt", "line1\n", "First version")
+	modifyAndCommitFile(t, repoPath, "tracked.txt", "line1\nline2\n", "Second version")
+
+	commits, err := rm.GetFileCommitHistory(context.Background(), repoPath, "tracked.txt")
+	require.NoError(t, err)
+	require.Len(t, commits, 2)
+
+	// Most recent first
+	assert.Equal(t, "Second version", commits[0].Message)
+	assert.Equal(t, "First version", commits[1].Message)
+
+	// Verify fields are populated
+	for _, c := range commits {
+		assert.Len(t, c.SHA, 40)
+		assert.True(t, len(c.ShortSHA) >= 7)
+		assert.Equal(t, "Test User", c.Author)
+		assert.Equal(t, "test@test.com", c.Email)
+		assert.False(t, c.Timestamp.IsZero())
+	}
+
+	// Second version should show additions
+	assert.Greater(t, commits[0].Additions, 0)
+}
+
+func TestGetFileCommitHistory_NoCommits(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Request history for a file that doesn't exist
+	commits, err := rm.GetFileCommitHistory(context.Background(), repoPath, "nonexistent.txt")
+	require.NoError(t, err)
+	assert.Empty(t, commits)
+}
+
+// ============================================================================
+// GetStatus Tests
+// ============================================================================
+
+func TestGetStatus_CleanWorktree(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	status, err := rm.GetStatus(context.Background(), repoPath, "main")
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, status.WorkingDirectory.StagedCount)
+	assert.Equal(t, 0, status.WorkingDirectory.UnstagedCount)
+	assert.Equal(t, 0, status.WorkingDirectory.UntrackedCount)
+	assert.Equal(t, 0, status.WorkingDirectory.TotalUncommitted)
+	assert.False(t, status.WorkingDirectory.HasChanges)
+	assert.Equal(t, "none", status.InProgress.Type)
+}
+
+func TestGetStatus_MixedChanges(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create staged change
+	writeFile(t, repoPath, "staged.txt", "staged content")
+	runGit(t, repoPath, "add", "staged.txt")
+
+	// Create unstaged change
+	writeFile(t, repoPath, "README.md", "modified readme")
+
+	// Create untracked file
+	writeFile(t, repoPath, "untracked.txt", "untracked content")
+
+	status, err := rm.GetStatus(context.Background(), repoPath, "main")
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, status.WorkingDirectory.StagedCount)
+	assert.Equal(t, 1, status.WorkingDirectory.UnstagedCount)
+	assert.Equal(t, 1, status.WorkingDirectory.UntrackedCount)
+	assert.Equal(t, 3, status.WorkingDirectory.TotalUncommitted)
+	assert.True(t, status.WorkingDirectory.HasChanges)
+}
+
+func TestGetStatus_InProgressMerge(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create conflicting branches
+	runGit(t, repoPath, "checkout", "-b", "conflict-branch")
+	modifyAndCommitFile(t, repoPath, "README.md", "conflict branch content", "Conflict commit")
+	runGit(t, repoPath, "checkout", "main")
+	modifyAndCommitFile(t, repoPath, "README.md", "main content", "Main commit")
+
+	// Start a merge that will conflict
+	runGitMayFail(repoPath, "merge", "conflict-branch")
+
+	status, err := rm.GetStatus(context.Background(), repoPath, "main")
+	require.NoError(t, err)
+
+	assert.Equal(t, "merge", status.InProgress.Type)
+
+	// Cleanup
+	runGitMayFail(repoPath, "merge", "--abort")
+}
+
+// ============================================================================
+// GetHeadSHA Tests
+// ============================================================================
+
+func TestGetHeadSHA_ReturnsValidSHA(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	sha, err := rm.GetHeadSHA(context.Background(), repoPath)
+	require.NoError(t, err)
+	assert.Len(t, sha, 40)
+	assert.Regexp(t, `^[0-9a-f]{40}$`, sha)
+}
+
+func TestGetHeadSHA_MatchesExpected(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	expected := getCommitSHA(t, repoPath)
+	sha, err := rm.GetHeadSHA(context.Background(), repoPath)
+	require.NoError(t, err)
+	assert.Equal(t, expected, sha)
+}
+
+// ============================================================================
+// GetGitHubRemote Tests
+// ============================================================================
+
+func TestGetGitHubRemote_SSHFormat(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	writeFile(t, dir, "README.md", "# Test")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Initial commit")
+	runGit(t, dir, "remote", "add", "origin", "git@github.com:myowner/myrepo.git")
+
+	rm := NewRepoManager()
+	owner, repo, err := rm.GetGitHubRemote(context.Background(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, "myowner", owner)
+	assert.Equal(t, "myrepo", repo)
+}
+
+func TestGetGitHubRemote_HTTPSFormat(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	writeFile(t, dir, "README.md", "# Test")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Initial commit")
+	runGit(t, dir, "remote", "add", "origin", "https://github.com/myowner/myrepo.git")
+
+	rm := NewRepoManager()
+	owner, repo, err := rm.GetGitHubRemote(context.Background(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, "myowner", owner)
+	assert.Equal(t, "myrepo", repo)
+}
+
+func TestGetGitHubRemote_NonGitHubRemote(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	writeFile(t, dir, "README.md", "# Test")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Initial commit")
+	runGit(t, dir, "remote", "add", "origin", "https://gitlab.com/myowner/myrepo.git")
+
+	rm := NewRepoManager()
+	_, _, err := rm.GetGitHubRemote(context.Background(), dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unable to parse GitHub remote")
+}
+
+func TestGetGitHubRemote_NoOrigin(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	writeFile(t, dir, "README.md", "# Test")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Initial commit")
+
+	rm := NewRepoManager()
+	_, _, err := rm.GetGitHubRemote(context.Background(), dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get origin remote")
+}
+
+// ============================================================================
+// ListBranches Tests
+// ============================================================================
+
+func TestListBranches_DefaultSort(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create several branches with commits
+	runGit(t, repoPath, "checkout", "-b", "branch-a")
+	createAndCommitFile(t, repoPath, "a.txt", "a", "Commit A")
+	runGit(t, repoPath, "checkout", "main")
+
+	runGit(t, repoPath, "checkout", "-b", "branch-b")
+	createAndCommitFile(t, repoPath, "b.txt", "b", "Commit B")
+	runGit(t, repoPath, "checkout", "main")
+
+	result, err := rm.ListBranches(context.Background(), repoPath, BranchListOptions{
+		SortBy:   "date",
+		SortDesc: true,
+	})
+	require.NoError(t, err)
+
+	assert.GreaterOrEqual(t, len(result.Branches), 3) // main, branch-a, branch-b
+	assert.Equal(t, len(result.Branches), result.Total)
+
+	// Verify date-descending order: each commit date should be >= next
+	for i := 0; i < len(result.Branches)-1; i++ {
+		assert.True(t,
+			!result.Branches[i].LastCommitDate.Before(result.Branches[i+1].LastCommitDate),
+			"branch %q date should be >= %q date",
+			result.Branches[i].Name, result.Branches[i+1].Name,
+		)
+	}
+}
+
+func TestListBranches_SearchFilter(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	runGit(t, repoPath, "checkout", "-b", "feature/search-me")
+	createAndCommitFile(t, repoPath, "s.txt", "s", "Commit S")
+	runGit(t, repoPath, "checkout", "main")
+
+	runGit(t, repoPath, "checkout", "-b", "fix/something")
+	createAndCommitFile(t, repoPath, "f.txt", "f", "Commit F")
+	runGit(t, repoPath, "checkout", "main")
+
+	result, err := rm.ListBranches(context.Background(), repoPath, BranchListOptions{
+		Search: "search",
+	})
+	require.NoError(t, err)
+
+	assert.Len(t, result.Branches, 1)
+	assert.Equal(t, "feature/search-me", result.Branches[0].Name)
+}
+
+func TestListBranches_Pagination(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create 5 branches
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("branch-%d", i)
+		runGit(t, repoPath, "checkout", "-b", name)
+		createAndCommitFile(t, repoPath, name+".txt", "content", "Commit "+name)
+		runGit(t, repoPath, "checkout", "main")
+	}
+
+	// Get first page
+	result, err := rm.ListBranches(context.Background(), repoPath, BranchListOptions{
+		Limit:  2,
+		Offset: 0,
+	})
+	require.NoError(t, err)
+	assert.Len(t, result.Branches, 2)
+	assert.True(t, result.HasMore)
+	assert.Equal(t, 6, result.Total) // 5 + main
+
+	// Get second page
+	result2, err := rm.ListBranches(context.Background(), repoPath, BranchListOptions{
+		Limit:  2,
+		Offset: 2,
+	})
+	require.NoError(t, err)
+	assert.Len(t, result2.Branches, 2)
+	assert.True(t, result2.HasMore)
+
+	// Get last page
+	result3, err := rm.ListBranches(context.Background(), repoPath, BranchListOptions{
+		Limit:  2,
+		Offset: 4,
+	})
+	require.NoError(t, err)
+	assert.Len(t, result3.Branches, 2)
+	assert.False(t, result3.HasMore)
+
+	// All branches across pages should be different
+	allNames := make(map[string]bool)
+	for _, b := range result.Branches {
+		allNames[b.Name] = true
+	}
+	for _, b := range result2.Branches {
+		allNames[b.Name] = true
+	}
+	for _, b := range result3.Branches {
+		allNames[b.Name] = true
+	}
+	assert.Len(t, allNames, 6, "all branches should be unique across pages")
+}
+
+func TestListBranches_NameSort(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	runGit(t, repoPath, "checkout", "-b", "zebra")
+	createAndCommitFile(t, repoPath, "z.txt", "z", "Z")
+	runGit(t, repoPath, "checkout", "main")
+
+	runGit(t, repoPath, "checkout", "-b", "alpha")
+	createAndCommitFile(t, repoPath, "a.txt", "a", "A")
+	runGit(t, repoPath, "checkout", "main")
+
+	result, err := rm.ListBranches(context.Background(), repoPath, BranchListOptions{
+		SortBy:   "name",
+		SortDesc: false,
+	})
+	require.NoError(t, err)
+
+	// Should be alphabetically sorted
+	assert.Equal(t, "alpha", result.Branches[0].Name)
+}
+
+// ============================================================================
+// sortBranches Tests
+// ============================================================================
+
+func TestSortBranches_DateAscDesc(t *testing.T) {
+	now := time.Now()
+	branches := []BranchInfo{
+		{Name: "old", LastCommitDate: now.Add(-2 * time.Hour)},
+		{Name: "new", LastCommitDate: now},
+		{Name: "mid", LastCommitDate: now.Add(-1 * time.Hour)},
+	}
+
+	// Sort ascending
+	sortBranches(branches, "date", false)
+	assert.Equal(t, "old", branches[0].Name)
+	assert.Equal(t, "mid", branches[1].Name)
+	assert.Equal(t, "new", branches[2].Name)
+
+	// Sort descending
+	sortBranches(branches, "date", true)
+	assert.Equal(t, "new", branches[0].Name)
+	assert.Equal(t, "mid", branches[1].Name)
+	assert.Equal(t, "old", branches[2].Name)
+}
+
+func TestSortBranches_NameAscDesc(t *testing.T) {
+	branches := []BranchInfo{
+		{Name: "charlie"},
+		{Name: "alpha"},
+		{Name: "bravo"},
+	}
+
+	// Sort ascending
+	sortBranches(branches, "name", false)
+	assert.Equal(t, "alpha", branches[0].Name)
+	assert.Equal(t, "bravo", branches[1].Name)
+	assert.Equal(t, "charlie", branches[2].Name)
+
+	// Sort descending
+	sortBranches(branches, "name", true)
+	assert.Equal(t, "charlie", branches[0].Name)
+	assert.Equal(t, "bravo", branches[1].Name)
+	assert.Equal(t, "alpha", branches[2].Name)
 }
