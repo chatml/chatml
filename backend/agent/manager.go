@@ -312,6 +312,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	// Buffer tools that arrive before their sub-agent registers (race recovery)
 	pendingSubAgentTools := make(map[string][]ActiveToolEntry)
 	var currentThinking string
+	var pendingPlanContent string
 	var isThinking bool
 	var snapshotDirty bool
 
@@ -597,6 +598,9 @@ outer:
 					markSnapshotDirty()
 				}
 
+			case EventTypePlanApprovalRequest:
+				pendingPlanContent = event.PlanContent
+
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
 				// Turn or session completed — store accumulated message and reset
 				// streaming state. turn_complete means the process stays alive;
@@ -645,12 +649,24 @@ outer:
 
 					durationMs := int(time.Since(turnStartTime).Milliseconds())
 
+					// Only persist plan content if ExitPlanMode succeeded this turn
+					var planContent string
+					if pendingPlanContent != "" {
+						for _, tool := range completedTools {
+							if tool.Tool == "ExitPlanMode" && tool.Success != nil && *tool.Success {
+								planContent = pendingPlanContent
+								break
+							}
+						}
+					}
+
 					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 						ID:              uuid.New().String()[:8],
 						Role:            "assistant",
 						Content:         currentAssistantMessage,
 						ToolUsage:       completedTools,
 						ThinkingContent: currentThinking,
+						PlanContent:     planContent,
 						DurationMs:      durationMs,
 						Timeline:        timeline,
 						Timestamp:       time.Now(),
@@ -661,6 +677,7 @@ outer:
 				}
 				// Reset per-turn accumulation state
 				currentThinking = ""
+				pendingPlanContent = ""
 				isThinking = false
 				activeToolsMap = make(map[string]ActiveToolEntry)
 				activeSubAgents = make(map[string]*SubAgentEntry)
@@ -751,12 +768,24 @@ outer:
 
 		durationMs := int(time.Since(turnStartTime).Milliseconds())
 
+		// Only persist plan content if ExitPlanMode succeeded this turn
+		var finalPlanContent string
+		if pendingPlanContent != "" {
+			for _, tool := range completedTools {
+				if tool.Tool == "ExitPlanMode" && tool.Success != nil && *tool.Success {
+					finalPlanContent = pendingPlanContent
+					break
+				}
+			}
+		}
+
 		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 			ID:              uuid.New().String()[:8],
 			Role:            "assistant",
 			Content:         currentAssistantMessage,
 			ToolUsage:       completedTools,
 			ThinkingContent: currentThinking,
+			PlanContent:     finalPlanContent,
 			DurationMs:      durationMs,
 			Timeline:        timeline,
 			Timestamp:       time.Now(),

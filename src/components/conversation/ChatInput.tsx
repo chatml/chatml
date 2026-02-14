@@ -126,6 +126,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setQueuedMessage,
     commitQueuedMessage,
     clearPendingPlanApproval,
+    setApprovedPlanContent,
     clearActiveTools,
     setPlanModeActive,
   } = useAppStore();
@@ -439,7 +440,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const handleApprovePlan = useCallback(async () => {
     if (!selectedConversationId || !pendingPlanApproval) return;
 
-    const { requestId } = pendingPlanApproval;
+    const { requestId, planContent } = pendingPlanApproval;
+
+    // Save approved plan content for message persistence before clearing
+    if (planContent) {
+      setApprovedPlanContent(selectedConversationId, planContent);
+    }
 
     // Clear UI immediately — don't wait for the HTTP round-trip
     clearPendingPlanApproval(selectedConversationId);
@@ -453,7 +459,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to approve plan:', error);
       showError(error instanceof Error ? error.message : 'Failed to approve plan');
     }
-  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, showError]);
+  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, setApprovedPlanContent, showError]);
 
   // Handle reject - sends denial to the agent so it stays in plan mode
   const handleRejectPlan = useCallback(async () => {

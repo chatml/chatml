@@ -8,7 +8,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Copy, Check, FileText, Brain, ChevronDown, ChevronRight } from 'lucide-react';
+import { Copy, Check, FileText, Brain, ClipboardCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
@@ -49,6 +49,7 @@ export const MessageBlock = memo(function MessageBlock({
 }: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
   const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
 
   const copyContent = useCallback(async () => {
@@ -120,6 +121,29 @@ export const MessageBlock = memo(function MessageBlock({
             {isThinkingExpanded && (
               <div className="ml-5 text-xs px-2 py-1.5 rounded bg-ai-thinking/10 text-muted-foreground font-mono border border-ai-thinking/20 whitespace-pre-wrap max-h-[300px] overflow-y-auto">
                 {message.thinkingContent}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Approved Plan Content */}
+        {message.planContent && (
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={() => setIsPlanExpanded(!isPlanExpanded)}
+              className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span className="font-medium">Approved Plan</span>
+              {isPlanExpanded ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+            </button>
+            {isPlanExpanded && (
+              <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
+                <CachedMarkdown cacheKey={`plan:${message.id}`} content={message.planContent} />
               </div>
             )}
           </div>
@@ -276,6 +300,7 @@ export const MessageBlock = memo(function MessageBlock({
     prev.timestamp !== next.timestamp ||
     prev.role !== next.role ||
     prev.thinkingContent !== next.thinkingContent ||
+    prev.planContent !== next.planContent ||
     prevProps.isFirst !== nextProps.isFirst ||
     prevProps.worktreePath !== nextProps.worktreePath ||
     prevProps.searchQuery !== nextProps.searchQuery) {
