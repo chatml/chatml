@@ -33,6 +33,10 @@ export function GeneralSettings() {
   const setSendWithEnter = useSettingsStore((s) => s.setSendWithEnter);
   const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
   const setAutoConvertLongText = useSettingsStore((s) => s.setAutoConvertLongText);
+  const suggestionsEnabled = useSettingsStore((s) => s.suggestionsEnabled);
+  const setSuggestionsEnabled = useSettingsStore((s) => s.setSuggestionsEnabled);
+  const autoSubmitPillSuggestion = useSettingsStore((s) => s.autoSubmitPillSuggestion);
+  const setAutoSubmitPillSuggestion = useSettingsStore((s) => s.setAutoSubmitPillSuggestion);
   const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
   const setDefaultOpenApp = useSettingsStore((s) => s.setDefaultOpenApp);
   const { installedApps } = useInstalledApps();
@@ -65,6 +69,20 @@ export function GeneralSettings() {
             <SelectItem value="cmd-enter">Cmd+Enter</SelectItem>
           </SelectContent>
         </Select>
+      </SettingsRow>
+
+      <SettingsRow
+        title="Input suggestions"
+        description="Show AI-suggested prompts after each assistant turn"
+      >
+        <Switch checked={suggestionsEnabled} onCheckedChange={setSuggestionsEnabled} />
+      </SettingsRow>
+
+      <SettingsRow
+        title="Auto-submit pill suggestions"
+        description="Automatically send the message when clicking a suggestion pill"
+      >
+        <Switch checked={autoSubmitPillSuggestion} onCheckedChange={setAutoSubmitPillSuggestion} />
       </SettingsRow>
 
       <SettingsRow title="Default editor" description="App used by the toolbar Open button">

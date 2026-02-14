@@ -73,6 +73,8 @@ interface SettingsState {
   soundEffects: boolean;
   soundEffectType: string;
   sendWithEnter: boolean;
+  suggestionsEnabled: boolean;
+  autoSubmitPillSuggestion: boolean;
   reviewModel: string;
   defaultPlanMode: boolean;
   autoConvertLongText: boolean;
@@ -146,6 +148,8 @@ interface SettingsState {
   setSoundEffects: (value: boolean) => void;
   setSoundEffectType: (value: string) => void;
   setSendWithEnter: (value: boolean) => void;
+  setSuggestionsEnabled: (value: boolean) => void;
+  setAutoSubmitPillSuggestion: (value: boolean) => void;
   setReviewModel: (value: string) => void;
   setDefaultPlanMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
@@ -206,6 +210,8 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffects: false,
       soundEffectType: 'chime',
       sendWithEnter: true,
+      suggestionsEnabled: true,
+      autoSubmitPillSuggestion: false,
       reviewModel: 'claude-opus-4-6',
       defaultPlanMode: false,
       autoConvertLongText: true,
@@ -257,6 +263,8 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEffects: (value) => set({ soundEffects: value }),
       setSoundEffectType: (value) => set({ soundEffectType: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
+      setSuggestionsEnabled: (value) => set({ suggestionsEnabled: value }),
+      setAutoSubmitPillSuggestion: (value) => set({ autoSubmitPillSuggestion: value }),
       setReviewModel: (value) => set({ reviewModel: value }),
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),

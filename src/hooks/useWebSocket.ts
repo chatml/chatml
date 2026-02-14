@@ -228,6 +228,8 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.content) {
           store.clearThinking(conversationId);
           store.appendStreamingText(conversationId, event.content);
+          // Clear input suggestions when new turn starts streaming
+          store.clearInputSuggestion(conversationId);
         }
         break;
 
@@ -324,6 +326,18 @@ export function useWebSocket(enabled: boolean = true) {
           store.updateConversation(conversationId, { name: event.name });
         }
         break;
+
+      case 'input_suggestion': {
+        // AI-generated input suggestion (ghost text + optional pills)
+        const currentStreaming = getStore().streamingState[conversationId];
+        if (!currentStreaming?.isStreaming && useSettingsStore.getState().suggestionsEnabled) {
+          store.setInputSuggestion(conversationId, {
+            ghostText: event?.ghostText || '',
+            pills: event?.pills || [],
+          });
+        }
+        break;
+      }
 
       case 'result': {
         // Result event signals the end of a turn - finalize streaming atomically

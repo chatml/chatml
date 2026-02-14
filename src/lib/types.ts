@@ -184,6 +184,18 @@ export interface Attachment {
   preview?: string;          // Text preview (first N chars)
 }
 
+// SuggestionPill = A clickable suggestion option
+export interface SuggestionPill {
+  label: string;
+  value: string;
+}
+
+// InputSuggestion = AI-generated input suggestion (ghost text + optional pills)
+export interface InputSuggestion {
+  ghostText: string;
+  pills: SuggestionPill[];
+}
+
 // Message = Individual message in a conversation
 export interface Message {
   id: string;
@@ -348,6 +360,10 @@ export interface AgentEvent {
 
   // Plan approval fields (ExitPlanMode tool)
   planContent?: string;
+
+  // Input suggestion fields
+  ghostText?: string;
+  pills?: SuggestionPill[];
 
   // CLI crash recovery fields
   attempt?: number;
