@@ -253,9 +253,9 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'assistant_text':
-        // Append streaming text - clear thinking when regular text starts
+        // Append streaming text - mark thinking as done but preserve content
         if (event?.content) {
-          store.clearThinking(conversationId);
+          store.setThinking(conversationId, false);
           store.appendStreamingText(conversationId, event.content);
           // Clear input suggestions when new turn starts streaming
           store.clearInputSuggestion(conversationId);

@@ -324,7 +324,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	activeSubAgents := make(map[string]*SubAgentEntry)
 	// Buffer tools that arrive before their sub-agent registers (race recovery)
 	pendingSubAgentTools := make(map[string][]ActiveToolEntry)
-	var currentThinking string
+	var currentThinking string // Accumulated thinking for snapshot/backwards compat
 	var pendingPlanContent string
 	var isThinking bool
 	var snapshotDirty bool
@@ -336,7 +336,14 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 		content   string
 		timestamp time.Time
 	}
+	type thinkingBlock struct {
+		content   string
+		timestamp time.Time
+	}
 	var textSegments []textSegment
+	var thinkingBlocks []thinkingBlock
+	var currentThinkingText string
+	var thinkingBlockStart *time.Time
 	var currentSegmentText string
 	var currentSegmentStart *time.Time
 	turnStartTime := time.Now()
@@ -458,6 +465,14 @@ outer:
 			// Handle specific event types
 			switch event.Type {
 			case EventTypeAssistantText:
+				// Seal thinking block when text starts
+				if thinkingBlockStart != nil && currentThinkingText != "" {
+					thinkingBlocks = append(thinkingBlocks, thinkingBlock{content: currentThinkingText, timestamp: *thinkingBlockStart})
+					currentThinkingText = ""
+					thinkingBlockStart = nil
+				}
+				isThinking = false
+
 				currentAssistantMessage += event.Content
 				// Track text segments for timeline persistence
 				if currentSegmentStart == nil {
@@ -515,7 +530,23 @@ outer:
 				proc.SetPlanModeFromEvent(event.Mode == "plan")
 				markSnapshotDirty()
 
+			case EventTypeThinkingStart:
+				// Seal previous thinking block if any
+				if thinkingBlockStart != nil && currentThinkingText != "" {
+					thinkingBlocks = append(thinkingBlocks, thinkingBlock{content: currentThinkingText, timestamp: *thinkingBlockStart})
+				}
+				now := time.Now()
+				thinkingBlockStart = &now
+				currentThinkingText = ""
+				isThinking = true
+				markSnapshotDirty()
+
 			case EventTypeThinking, EventTypeThinkingDelta:
+				if thinkingBlockStart == nil {
+					now := time.Now()
+					thinkingBlockStart = &now
+				}
+				currentThinkingText += event.Content
 				currentThinking += event.Content
 				isThinking = true
 				markSnapshotDirty()
@@ -655,8 +686,14 @@ outer:
 							timestamp: *currentSegmentStart,
 						})
 					}
+					// Seal any in-progress thinking block
+					if thinkingBlockStart != nil && currentThinkingText != "" {
+						thinkingBlocks = append(thinkingBlocks, thinkingBlock{content: currentThinkingText, timestamp: *thinkingBlockStart})
+						currentThinkingText = ""
+						thinkingBlockStart = nil
+					}
 
-					// Build interleaved timeline from text segments and completed tools
+					// Build interleaved timeline from text segments, thinking blocks, and completed tools
 					type timelineItem struct {
 						timestamp time.Time
 						entry     models.TimelineEntry
@@ -666,6 +703,12 @@ outer:
 						items = append(items, timelineItem{
 							timestamp: seg.timestamp,
 							entry:     models.TimelineEntry{Type: "text", Content: seg.content},
+						})
+					}
+					for _, block := range thinkingBlocks {
+						items = append(items, timelineItem{
+							timestamp: block.timestamp,
+							entry:     models.TimelineEntry{Type: "thinking", Content: block.content},
 						})
 					}
 					for _, tool := range completedTools {
@@ -721,6 +764,9 @@ outer:
 				currentThinking = ""
 				pendingPlanContent = ""
 				isThinking = false
+				thinkingBlocks = nil
+				currentThinkingText = ""
+				thinkingBlockStart = nil
 				activeToolsMap = make(map[string]ActiveToolEntry)
 				activeSubAgents = make(map[string]*SubAgentEntry)
 				pendingSubAgentTools = make(map[string][]ActiveToolEntry)
@@ -787,10 +833,16 @@ outer:
 			currentSegmentText = ""
 			currentSegmentStart = nil
 		}
+		// Seal any in-progress thinking block
+		if thinkingBlockStart != nil && currentThinkingText != "" {
+			thinkingBlocks = append(thinkingBlocks, thinkingBlock{content: currentThinkingText, timestamp: *thinkingBlockStart})
+			currentThinkingText = ""
+			thinkingBlockStart = nil
+		}
 
-		// Build timeline from text segments + completed tools
+		// Build timeline from text segments, thinking blocks, and completed tools
 		var timeline []models.TimelineEntry
-		if len(textSegments) > 0 || len(completedTools) > 0 {
+		if len(textSegments) > 0 || len(completedTools) > 0 || len(thinkingBlocks) > 0 {
 			type timelineItem struct {
 				timestamp time.Time
 				entry     models.TimelineEntry
@@ -798,6 +850,9 @@ outer:
 			var items []timelineItem
 			for _, seg := range textSegments {
 				items = append(items, timelineItem{timestamp: seg.timestamp, entry: models.TimelineEntry{Type: "text", Content: seg.content}})
+			}
+			for _, block := range thinkingBlocks {
+				items = append(items, timelineItem{timestamp: block.timestamp, entry: models.TimelineEntry{Type: "thinking", Content: block.content}})
 			}
 			for _, tool := range completedTools {
 				ts := tool.StartTime
