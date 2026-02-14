@@ -31,7 +31,7 @@ export function ActionsCell({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-text-warning/70 hover:text-text-warning hover:bg-text-warning/10"
+              className="h-7 w-7 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
               onClick={(e) => {
                 e.stopPropagation();
                 onArchive();

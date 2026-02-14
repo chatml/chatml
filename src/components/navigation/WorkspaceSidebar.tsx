@@ -1636,7 +1636,7 @@ function SessionRow({
               {/* Actions - positioned absolutely to avoid layout shift */}
               <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                  className="p-0.5 rounded hover:bg-surface-1 text-muted-foreground hover:text-foreground"
+                  className="p-0.5 rounded hover:bg-destructive/10 text-destructive/70 hover:text-destructive"
                   onClick={(e) => {
                     e.stopPropagation();
                     onArchiveSession(session.id);
