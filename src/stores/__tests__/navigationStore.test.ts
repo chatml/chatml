@@ -70,7 +70,7 @@ describe('navigationStore', () => {
     it('does not dedup entries that differ by contentView type', () => {
       const { pushEntry } = useNavigationStore.getState();
       pushEntry(makeEntry({ contentView: { type: 'conversation' } }));
-      pushEntry(makeEntry({ contentView: { type: 'global-dashboard' } }));
+      pushEntry(makeEntry({ contentView: { type: 'repositories' } }));
 
       expect(getTab().backStack).toHaveLength(2);
     });
@@ -86,10 +86,10 @@ describe('navigationStore', () => {
     it('does not dedup entries that differ by contentView workspaceId', () => {
       const { pushEntry } = useNavigationStore.getState();
       pushEntry(makeEntry({
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-a' },
+        contentView: { type: 'branches', workspaceId: 'ws-a' },
       }));
       pushEntry(makeEntry({
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-b' },
+        contentView: { type: 'branches', workspaceId: 'ws-b' },
       }));
 
       expect(getTab().backStack).toHaveLength(2);

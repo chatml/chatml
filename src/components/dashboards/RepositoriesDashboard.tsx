@@ -137,23 +137,13 @@ export function RepositoriesDashboard({
   const handleRowClick = useCallback((workspace: Workspace) => {
     navigate({
       workspaceId: workspace.id,
-      contentView: { type: 'workspace-dashboard', workspaceId: workspace.id },
+      contentView: { type: 'branches', workspaceId: workspace.id },
     });
   }, []);
 
   // Context menu actions for a workspace
   const getWorkspaceContextMenu = useCallback((workspace: Workspace): ContextMenuItem[] => {
     return [
-      {
-        label: 'Open Dashboard',
-        icon: <Folder className="h-4 w-4" />,
-        onClick: () => {
-          navigate({
-            workspaceId: workspace.id,
-            contentView: { type: 'workspace-dashboard', workspaceId: workspace.id },
-          });
-        },
-      },
       {
         label: 'View Branches',
         icon: <GitBranch className="h-4 w-4" />,

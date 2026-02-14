@@ -8,7 +8,7 @@ import { buildNavigationLabel, goToBackEntry, goToForwardEntry } from '@/lib/nav
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   MessageSquare,
-  LayoutDashboard,
+
   GitBranch,
   GitPullRequest,
   FolderGit2,
@@ -21,9 +21,6 @@ function EntryIcon({ contentViewType, className }: { contentViewType: string; cl
   switch (contentViewType) {
     case 'conversation':
       return <MessageSquare className={className} />;
-    case 'global-dashboard':
-    case 'workspace-dashboard':
-      return <LayoutDashboard className={className} />;
     case 'branches':
       return <GitBranch className={className} />;
     case 'pr-dashboard':

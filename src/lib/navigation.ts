@@ -59,12 +59,6 @@ export function buildNavigationLabel(
       }
       return 'Conversation';
     }
-    case 'global-dashboard':
-      return 'Dashboard';
-    case 'workspace-dashboard': {
-      const ws = wsName(contentView.workspaceId);
-      return ws ?? 'Workspace';
-    }
     case 'pr-dashboard': {
       const ws = wsName(contentView.workspaceId);
       return ws ? `${ws} › Pull Requests` : 'Pull Requests';
@@ -140,7 +134,6 @@ function isEntryValid(entry: NavigationEntry): boolean {
 
   const cv = entry.contentView;
   switch (cv.type) {
-    case 'workspace-dashboard':
     case 'branches':
       return workspaces.some((w) => w.id === cv.workspaceId);
     case 'pr-dashboard':
@@ -149,7 +142,6 @@ function isEntryValid(entry: NavigationEntry): boolean {
         return workspaces.some((w) => w.id === cv.workspaceId);
       }
       return true;
-    case 'global-dashboard':
     case 'repositories':
     case 'session-manager':
       return true;

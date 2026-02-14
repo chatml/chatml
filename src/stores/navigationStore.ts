@@ -28,7 +28,6 @@ function emptyTabHistory(): TabHistory {
 /** Extract workspaceId from content views that carry one */
 function contentViewWorkspaceId(cv: ContentView): string | undefined {
   switch (cv.type) {
-    case 'workspace-dashboard':
     case 'branches':
     case 'pr-dashboard':
       return cv.workspaceId;

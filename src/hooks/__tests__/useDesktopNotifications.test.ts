@@ -240,7 +240,7 @@ describe('useDesktopNotifications', () => {
 
   it('switches to conversation view if on a different view', () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    useSettingsStore.setState({ contentView: { type: 'global-dashboard' } });
+    useSettingsStore.setState({ contentView: { type: 'repositories' } });
 
     const { unmount } = renderHook(() => useDesktopNotifications());
 

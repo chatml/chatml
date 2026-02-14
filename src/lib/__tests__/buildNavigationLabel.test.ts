@@ -111,26 +111,6 @@ describe('buildNavigationLabel', () => {
     });
   });
 
-  // ---------- Global dashboard ----------
-
-  describe('global-dashboard', () => {
-    it('returns "Dashboard"', () => {
-      expect(label({ type: 'global-dashboard' })).toBe('Dashboard');
-    });
-  });
-
-  // ---------- Workspace dashboard ----------
-
-  describe('workspace-dashboard', () => {
-    it('returns workspace name', () => {
-      expect(label({ type: 'workspace-dashboard', workspaceId: 'ws-1' })).toBe('My Repo');
-    });
-
-    it('returns "Workspace" when workspace is not found', () => {
-      expect(label({ type: 'workspace-dashboard', workspaceId: 'ws-unknown' })).toBe('Workspace');
-    });
-  });
-
   // ---------- PR dashboard ----------
 
   describe('pr-dashboard', () => {

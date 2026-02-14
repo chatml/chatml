@@ -20,7 +20,6 @@ import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
 import type { LucideIcon } from 'lucide-react';
 import {
   // Navigation
-  LayoutDashboard,
   FolderGit2,
   GitBranch,
   MessageSquare,
@@ -161,15 +160,6 @@ const COMMANDS: Command[] = [
     keywords: ['repos', 'workspaces', 'projects'],
     action: () => useSettingsStore.getState().setContentView({ type: 'repositories' }),
   },
-  {
-    id: 'go-to-dashboard',
-    category: 'Navigation',
-    label: 'Go to Dashboard',
-    icon: LayoutDashboard,
-    keywords: ['home', 'overview'],
-    action: () => useSettingsStore.getState().setContentView({ type: 'global-dashboard' }),
-  },
-
   // Actions
   {
     id: 'new-session',
@@ -429,7 +419,7 @@ const SUBMENU_PAGES: Record<string, SubmenuPage> = {
         action: () =>
           navigate({
             workspaceId: w.id,
-            contentView: { type: 'workspace-dashboard', workspaceId: w.id },
+            contentView: { type: 'branches', workspaceId: w.id },
           }),
       }));
     },

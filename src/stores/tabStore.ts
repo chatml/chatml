@@ -19,7 +19,7 @@ export interface BrowserTab {
 function createDefaultTab(): BrowserTab {
   return {
     id: DEFAULT_TAB_ID,
-    label: 'Dashboard',
+    label: 'New Tab',
     selectedWorkspaceId: null,
     selectedSessionId: null,
     selectedConversationId: null,
@@ -126,8 +126,8 @@ export const useTabStore = create<TabStoreState>()(
         if (tabOrder.length <= 1) {
           const freshTab = createDefaultTab();
           freshTab.id = generateTabId();
-          freshTab.contentView = { type: 'global-dashboard' };
-          freshTab.label = 'Dashboard';
+          freshTab.contentView = { type: 'repositories' };
+          freshTab.label = 'Repositories';
           set({
             tabs: { [freshTab.id]: freshTab },
             tabOrder: [freshTab.id],
@@ -284,7 +284,20 @@ export const useTabStore = create<TabStoreState>()(
         // Build clean tabs map (only tabs in the order)
         const tabs: Record<string, BrowserTab> = {};
         for (const id of validOrder) {
-          tabs[id] = persisted.tabs[id];
+          const tab = { ...persisted.tabs[id] };
+          // Migrate removed contentView types
+          const cvType = (tab.contentView as { type: string })?.type;
+          if (cvType === 'global-dashboard') {
+            tab.contentView = { type: 'repositories' };
+          } else if (cvType === 'workspace-dashboard') {
+            const workspaceId = (tab.contentView as { workspaceId?: string }).workspaceId;
+            if (workspaceId) {
+              tab.contentView = { type: 'branches', workspaceId };
+            } else {
+              tab.contentView = { type: 'repositories' };
+            }
+          }
+          tabs[id] = tab;
         }
 
         return {

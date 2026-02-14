@@ -64,8 +64,6 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { PRDashboard } from '@/components/dashboards/PRDashboard';
 import { BranchesDashboard } from '@/components/dashboards/BranchesDashboard';
 import { RepositoriesDashboard } from '@/components/dashboards/RepositoriesDashboard';
-import { GlobalDashboard } from '@/components/dashboards/GlobalDashboard';
-import { WorkspaceDashboard } from '@/components/dashboards/workspace-dashboard';
 import { SessionManager } from '@/components/session-manager';
 import { SkillsStore } from '@/components/skills/SkillsStore';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -610,7 +608,7 @@ export default function Home() {
           : undefined;
         const contentViewWorkspaceValid = contentViewWorkspaceId
           ? mappedWorkspaces.some(w => w.id === contentViewWorkspaceId)
-          : true; // views without workspaceId (global-dashboard, repositories, session-manager) are always valid
+          : true; // views without workspaceId (repositories, session-manager, skills-store) are always valid
         const hasValidPersistedState = workspaceValid || sessionValid ||
           (hasPersistedTab && activeTab.contentView.type !== 'conversation' && contentViewWorkspaceValid);
 
@@ -1333,9 +1331,6 @@ export default function Home() {
                 ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
                   // Full Content Views take entire main content area
                   <ErrorBoundary section="FullContent">
-                {contentView.type === 'global-dashboard' && (
-                  <GlobalDashboard />
-                )}
                 {contentView.type === 'pr-dashboard' && (
                   <PRDashboard
                     initialWorkspaceId={contentView.workspaceId}
@@ -1362,15 +1357,6 @@ export default function Home() {
                 )}
                 {contentView.type === 'skills-store' && (
                   <SkillsStore />
-                )}
-                {contentView.type === 'workspace-dashboard' && (
-                  <WorkspaceDashboard
-                    workspaceId={contentView.workspaceId}
-                    onOpenSettings={() => setShowSettings(true)}
-                    onOpenShortcuts={() => setShowShortcuts(true)}
-                    showLeftSidebar={!leftSidebarCollapsed}
-                    onCreateSession={handleNewSession}
-                  />
                 )}
                 {!selectedSessionId && contentView.type === 'conversation' && (
                   <EmptyView
