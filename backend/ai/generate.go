@@ -598,9 +598,18 @@ type SuggestionPill struct {
 	Value string `json:"value"`
 }
 
-// SuggestionRequest contains the recent conversation messages for generating input suggestions.
+// SuggestionToolAction is a simplified tool action for suggestion context.
+type SuggestionToolAction struct {
+	Tool    string `json:"tool"`
+	Summary string `json:"summary,omitempty"`
+	Success *bool  `json:"success,omitempty"`
+}
+
+// SuggestionRequest contains the agent's last output for generating input suggestions.
 type SuggestionRequest struct {
-	Messages []SummaryMessage `json:"messages"`
+	AgentText      string                 `json:"agentText"`
+	ToolActions    []SuggestionToolAction `json:"toolActions,omitempty"`
+	SessionContext string                 `json:"sessionContext,omitempty"` // PR status, git state, etc.
 }
 
 // SuggestionResponse contains the AI-generated input suggestion.
@@ -609,15 +618,28 @@ type SuggestionResponse struct {
 	Pills     []SuggestionPill `json:"pills"`
 }
 
-const suggestionSystemPrompt = `You analyze AI coding assistant conversations and suggest what the user should say next.
+const suggestionSystemPrompt = `You suggest what the user should say next to an AI coding assistant based on the assistant's last output.
+
+You will receive the assistant's last text output and a list of actions it performed (tools used, files edited, etc.).
+You may also receive session context describing the current state (PR status, git state). Use it to avoid redundant suggestions.
 
 Rules:
-- If the assistant just completed a task successfully, suggest a follow-up action (e.g., "Run the test suite", "Review the changes", "Let's commit and make a PR")
-- If the assistant is asking the user a question, provide 2-3 short pill answers the user can click, plus a ghost_text with the most likely answer
-- If no suggestion is appropriate (e.g., the assistant is mid-task, or the context is unclear), return empty ghost_text and empty pills array
+- Suggest a natural follow-up based on what the assistant just did
+- If the assistant completed a task: suggest reviewing, testing, committing, or extending the work
+- If the assistant asked the user a question: provide 2-3 short pill answers the user can click, plus ghost_text with the most likely answer
+- If the assistant just read/explored code: suggest asking for changes, explanations, or next steps
+- If a PR already exists for this session, never suggest creating a PR
+- If the PR is already merged, suggest archiving the session or starting new work
+- If no suggestion is appropriate, return empty ghost_text and empty pills array
 - ghost_text should be 5-15 words, natural language, imperative mood
 - pill labels should be 2-4 words; pill values should be complete sentences the user would type
 - Output valid JSON only, no markdown fences, no extra text
+
+NEVER suggest any of these destructive operations:
+- Deleting branches, cleaning up branches, or worktree operations (sessions use worktrees)
+- git push --force, git reset --hard, git clean -f, rm -rf
+- Archiving or deleting the current session
+- Any operation that destroys local work or git history
 
 Output format:
 {"ghost_text": "...", "pills": [{"label": "...", "value": "..."}]}`
@@ -632,21 +654,45 @@ func (c *Client) GenerateInputSuggestion(ctx context.Context, req SuggestionRequ
 		return nil, fmt.Errorf("AI client not configured")
 	}
 
-	// Build user message from recent messages, capping total chars
+	// Build user message from agent's last output, capping total chars
 	var userMsg strings.Builder
-	totalChars := 0
-	for _, m := range req.Messages {
-		content := m.Content
-		remaining := suggestionMaxInputChars - totalChars
-		if remaining <= 0 {
-			break
+
+	// Include session context if available
+	if req.SessionContext != "" {
+		userMsg.WriteString("Session context:\n")
+		userMsg.WriteString(req.SessionContext)
+		userMsg.WriteString("\n\n")
+	}
+
+	// Include tool actions summary if available
+	if len(req.ToolActions) > 0 {
+		userMsg.WriteString("Actions performed:\n")
+		for _, action := range req.ToolActions {
+			status := ""
+			if action.Success != nil && !*action.Success {
+				status = " [FAILED]"
+			}
+			if action.Summary != "" {
+				userMsg.WriteString(fmt.Sprintf("- %s: %s%s\n", action.Tool, action.Summary, status))
+			} else {
+				userMsg.WriteString(fmt.Sprintf("- %s%s\n", action.Tool, status))
+			}
 		}
-		if len(content) > remaining {
-			content = content[:remaining]
+		userMsg.WriteString("\n")
+	}
+
+	// Include agent text output, truncated to fit
+	if req.AgentText != "" {
+		text := req.AgentText
+		remaining := suggestionMaxInputChars - userMsg.Len()
+		if remaining > 0 {
+			if len(text) > remaining {
+				text = text[:remaining]
+			}
+			userMsg.WriteString("Assistant output:\n")
+			userMsg.WriteString(text)
+			userMsg.WriteString("\n")
 		}
-		role := strings.ToUpper(m.Role[:1]) + m.Role[1:]
-		userMsg.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", role, content))
-		totalChars += len(content)
 	}
 
 	apiReq := anthropicRequest{

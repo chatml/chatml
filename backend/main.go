@@ -371,6 +371,9 @@ func main() {
 					"updatedAt": time.Now().Unix(),
 				},
 			})
+
+			// Regenerate input suggestions for the session so they reflect current PR state
+			agentMgr.RegenerateSessionSuggestions(ctx, event.SessionID)
 		}()
 	})
 	defer prWatcher.Close()
@@ -401,6 +404,10 @@ func main() {
 			prWatcher.UpdateSessionBranch(sessionID, newBranch)
 		})
 	}
+
+	// Notify PRWatcher immediately when an agent creates a PR via bash,
+	// bypassing the 30-second polling delay for instant UI updates.
+	agentMgr.SetOnPRCreated(prWatcher.ForceCheckSession)
 
 	// Issue cache for GitHub Issues API
 	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)

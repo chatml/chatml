@@ -22,6 +22,13 @@ import (
 
 const snapshotDebounceInterval = 500 * time.Millisecond
 
+// prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
+var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/\d+`)
+
+// dangerousSuggestionPattern matches destructive operations that should never appear in suggestions.
+// These operations could break the worktree-based session model or destroy work.
+var dangerousSuggestionPattern = regexp.MustCompile(`(?i)(delete\s.*branch|git\s+branch\s+-[dD]|rm\s+-rf|git\s+push\s+--force|git\s+reset\s+--hard|git\s+clean\s+-[fd])`)
+
 // Legacy handlers (for backwards compatibility)
 type OutputHandler func(agentID string, line string)
 type StatusHandler func(agentID string, status models.AgentStatus)
@@ -52,6 +59,8 @@ type Manager struct {
 	// Session event handler
 	onSessionEvent SessionEventHandler
 
+	// Callback fired when agent creates a PR via bash (sessionID)
+	onPRCreated func(sessionID string)
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
@@ -84,6 +93,10 @@ func (m *Manager) SetConversationStatusHandler(handler ConversationStatusHandler
 
 func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 	m.onSessionEvent = handler
+}
+
+func (m *Manager) SetOnPRCreated(handler func(sessionID string)) {
+	m.onPRCreated = handler
 }
 
 // StartConversationOptions contains optional parameters for starting a conversation
@@ -561,6 +574,16 @@ outer:
 					Success: event.Success,
 				}); err != nil {
 					logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
+				}
+
+				// Detect PR creation from Bash tool stdout (e.g., gh pr create)
+				if event.Tool == "Bash" && event.Success && prURLPattern.MatchString(event.Stdout) {
+					if m.onPRCreated != nil {
+						conv, _ := m.store.GetConversationMeta(ctx, convID)
+						if conv != nil {
+							go m.onPRCreated(conv.SessionID)
+						}
+					}
 				}
 
 			case EventTypeNameSuggestion:
@@ -1344,6 +1367,42 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	m.tryAutoNameSession(ctx, sessionID, title)
 }
 
+// buildSessionContext builds a context string describing the session's current state
+// (PR status, git state) for use in suggestion generation.
+func (m *Manager) buildSessionContext(ctx context.Context, convID string) string {
+	conv, err := m.store.GetConversationMeta(ctx, convID)
+	if err != nil || conv == nil {
+		return ""
+	}
+
+	sess, err := m.store.GetSession(ctx, conv.SessionID)
+	if err != nil || sess == nil {
+		return ""
+	}
+
+	var parts []string
+
+	switch sess.PRStatus {
+	case models.PRStatusOpen:
+		part := fmt.Sprintf("PR #%d is open", sess.PRNumber)
+		if sess.HasCheckFailures {
+			part += "; CI checks are failing"
+		} else if sess.HasMergeConflict {
+			part += "; has merge conflicts"
+		}
+		parts = append(parts, part)
+	case models.PRStatusMerged:
+		parts = append(parts, fmt.Sprintf("PR #%d has been merged", sess.PRNumber))
+	case models.PRStatusClosed:
+		parts = append(parts, fmt.Sprintf("PR #%d was closed", sess.PRNumber))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "; ")
+}
+
 // generateInputSuggestion uses the AI client to generate a suggested next prompt
 // from recent conversation messages, then broadcasts it via WebSocket.
 func (m *Manager) generateInputSuggestion(convID string) {
@@ -1355,23 +1414,58 @@ func (m *Manager) generateInputSuggestion(convID string) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
-	// Fetch last 4 messages from the conversation
-	page, err := m.store.GetConversationMessages(ctx, convID, nil, 4)
+	// Fetch last 2 messages to find the most recent assistant message
+	page, err := m.store.GetConversationMessages(ctx, convID, nil, 2)
 	if err != nil || len(page.Messages) == 0 {
 		return
 	}
 
-	// Convert to SummaryMessage format
-	var msgs []ai.SummaryMessage
-	for _, msg := range page.Messages {
-		msgs = append(msgs, ai.SummaryMessage{Role: msg.Role, Content: msg.Content})
+	// Find the last assistant message
+	var lastAssistant *models.Message
+	for i := len(page.Messages) - 1; i >= 0; i-- {
+		if page.Messages[i].Role == "assistant" {
+			lastAssistant = &page.Messages[i]
+			break
+		}
+	}
+	if lastAssistant == nil {
+		return
 	}
 
-	suggestion, err := client.GenerateInputSuggestion(ctx, ai.SuggestionRequest{Messages: msgs})
+	// Convert tool usage to suggestion tool actions
+	var toolActions []ai.SuggestionToolAction
+	for _, tool := range lastAssistant.ToolUsage {
+		toolActions = append(toolActions, ai.SuggestionToolAction{
+			Tool:    tool.Tool,
+			Summary: tool.Summary,
+			Success: tool.Success,
+		})
+	}
+
+	// Build session context for PR/git state awareness
+	sessionContext := m.buildSessionContext(ctx, convID)
+
+	suggestion, err := client.GenerateInputSuggestion(ctx, ai.SuggestionRequest{
+		AgentText:      lastAssistant.Content,
+		ToolActions:    toolActions,
+		SessionContext: sessionContext,
+	})
 	if err != nil {
 		logger.Manager.Debugf("Failed to generate input suggestion for conv %s: %v", convID, err)
 		return
 	}
+
+	// Filter out dangerous suggestions (defense in depth)
+	if dangerousSuggestionPattern.MatchString(suggestion.GhostText) {
+		suggestion.GhostText = ""
+	}
+	var safePills []ai.SuggestionPill
+	for _, pill := range suggestion.Pills {
+		if !dangerousSuggestionPattern.MatchString(pill.Value) {
+			safePills = append(safePills, pill)
+		}
+	}
+	suggestion.Pills = safePills
 
 	// Only broadcast if there's something to suggest
 	if suggestion.GhostText == "" && len(suggestion.Pills) == 0 {
@@ -1384,6 +1478,30 @@ func (m *Manager) generateInputSuggestion(convID string) {
 			GhostText: suggestion.GhostText,
 			Pills:     suggestion.Pills,
 		})
+	}
+}
+
+// RegenerateSessionSuggestions re-runs input suggestion generation for all idle
+// conversations in a session. Called when PR status changes so suggestions
+// reflect the current state (e.g., stop suggesting "Create PR" after one exists).
+func (m *Manager) RegenerateSessionSuggestions(ctx context.Context, sessionID string) {
+	convs, err := m.store.ListConversations(ctx, sessionID)
+	if err != nil {
+		logger.Manager.Debugf("Failed to list conversations for suggestion regen (session %s): %v", sessionID, err)
+		return
+	}
+
+	for _, conv := range convs {
+		// Only regenerate for idle conversations (not currently streaming)
+		m.mu.RLock()
+		proc, hasProc := m.convProcesses[conv.ID]
+		m.mu.RUnlock()
+
+		if hasProc && proc.IsRunning() {
+			continue // Skip active conversations
+		}
+
+		go m.generateInputSuggestion(conv.ID)
 	}
 }
 

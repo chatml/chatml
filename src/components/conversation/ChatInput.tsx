@@ -305,12 +305,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     (s) => selectedConversationId ? s.messages.some(m => m.conversationId === selectedConversationId) : false
   );
 
+  // Suggestions older than 5 minutes are considered stale and auto-hidden
+  const SUGGESTION_MAX_AGE_MS = 5 * 60 * 1000;
+  const isSuggestionStale = inputSuggestion?.timestamp
+    ? (Date.now() - inputSuggestion.timestamp) > SUGGESTION_MAX_AGE_MS
+    : false;
+
   // Ghost text visibility: show after first message when editor is empty and not streaming
   const showGhostText = suggestionsEnabled
     && !isStreaming
     && !message.trim()
     && !!inputSuggestion?.ghostText
-    && conversationHasMessages;
+    && conversationHasMessages
+    && !isSuggestionStale;
 
   // Check if there's a pending plan approval request
   const pendingPlanApproval = selectedConversationId
@@ -491,8 +498,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     // Clear UI immediately — don't wait for the HTTP round-trip
     clearPendingPlanApproval(selectedConversationId);
     setApprovalError(null);
-    // Approving a plan exits plan mode — turn off the toggle
+    // Approving a plan exits plan mode — turn off the toggle and clear active state
     setPlanModeEnabled(false);
+    setPlanModeActive(selectedConversationId, false);
 
     try {
       await approvePlan(selectedConversationId, requestId, true);
@@ -890,21 +898,30 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   return (
     <div className="pt-1 px-3 pb-3">
       {/* Pill Suggestions */}
-      {suggestionsEnabled && inputSuggestion?.pills && inputSuggestion.pills.length > 0 && !isStreaming && !pendingPlanApproval && (
+      {suggestionsEnabled && inputSuggestion?.pills && inputSuggestion.pills.length > 0 && !isStreaming && !pendingPlanApproval && !isSuggestionStale && (
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs text-muted-foreground shrink-0">Suggested:</span>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {inputSuggestion.pills.map((pill, i) => (
-              <Button
-                key={i}
-                variant="secondary"
-                size="sm"
-                className="h-7 text-xs rounded-full px-3"
-                onClick={() => handlePillClick(pill)}
-              >
-                {pill.label}
-              </Button>
-            ))}
+            {inputSuggestion.pills.map((pill, i) => {
+              const needsTooltip = pill.label !== pill.value;
+              const button = (
+                <Button
+                  key={i}
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 text-xs rounded-full px-3"
+                  onClick={() => handlePillClick(pill)}
+                >
+                  {pill.label}
+                </Button>
+              );
+              return needsTooltip ? (
+                <Tooltip key={i}>
+                  <TooltipTrigger asChild>{button}</TooltipTrigger>
+                  <TooltipContent className="max-w-xs">{pill.value}</TooltipContent>
+                </Tooltip>
+              ) : button;
+            })}
           </div>
         </div>
       )}
@@ -1066,10 +1083,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
-          {/* Ghost text suggestion */}
+          {/* Ghost text suggestion — padding must match wrapper (px-3 py-2) + Editor (py-1) */}
           {showGhostText && (
-            <div className="absolute inset-0 px-0 py-1 pointer-events-none z-0 flex items-start">
-              <span className="text-muted-foreground/40 text-base leading-relaxed">
+            <div className="absolute inset-0 px-3 py-3 pointer-events-none z-0 flex items-start">
+              <span className="text-muted-foreground/40 text-base">
                 {inputSuggestion!.ghostText}
                 <span className="text-muted-foreground/25 text-xs ml-2">Tab</span>
               </span>

@@ -149,6 +149,7 @@ export function useActionState(
         message: 'Commit my changes',
         dropdownActions: [
           { label: 'Commit & Push', message: 'Commit my changes and push to remote', icon: Rocket },
+          { label: 'Commit & Create PR', message: 'Commit my changes, push to remote, and create a pull request', icon: GitPullRequest },
           { label: 'Stash Changes', message: 'Stash my changes for later', icon: Package },
           { label: 'Amend Last Commit', message: 'Add these changes to my last commit', icon: History },
         ],
@@ -188,11 +189,20 @@ export function useActionState(
 
     // Priority 7b: Open PR (view only)
     if (session?.prStatus === 'open') {
+      // Variant depends on CI check status:
+      // - checks passed or no checks → green (success)
+      // - checks pending or unknown  → neutral (default)
+      // Note: checks failed is caught by Priority 2 above
+      const mergeVariant =
+        prDetails?.checkStatus === 'success' || prDetails?.checkStatus === 'none'
+          ? 'success' as const
+          : 'default' as const;
+
       return {
         type: 'view-pr',
         label: 'Merge PR',
         icon: GitMerge,
-        variant: 'success',
+        variant: mergeVariant,
         message: 'Squash and merge the pull request',
         dropdownActions: [
           {
