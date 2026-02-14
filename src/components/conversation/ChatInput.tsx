@@ -289,10 +289,23 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     return hasText ? 'queue' : 'stop';
   })();
 
+  // Check if plan mode is active (agent-driven state from backend events)
+  const planModeActive = selectedConversationId
+    ? streamingState[selectedConversationId]?.planModeActive ?? false
+    : false;
+
   // Check if there's a pending plan approval request
   const pendingPlanApproval = selectedConversationId
     ? streamingState[selectedConversationId]?.pendingPlanApproval
     : null;
+
+  // Sync toggle ON when agent enters plan mode (e.g. EnterPlanMode tool).
+  // Only syncs activation — deactivation is handled by handleApprovePlan.
+  useEffect(() => {
+    if (planModeActive && !planModeEnabled) {
+      setPlanModeEnabled(true);
+    }
+  }, [planModeActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
