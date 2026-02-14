@@ -1,16 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useTheme } from 'next-themes';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import 'github-markdown-css';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows, WrapText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MonacoEditor, MonacoDiffEditor } from '@/components/files/MonacoEditor';
-import { COPY_FEEDBACK_DURATION_MS } from '@/lib/constants';
+import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
+import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 import { getShikiLanguage } from '@/lib/languageMapping';
@@ -61,7 +57,6 @@ export function CodeViewer({
   onDeleteComment,
   onCreateComment,
 }: CodeViewerProps) {
-  const { resolvedTheme } = useTheme();
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
@@ -240,14 +235,9 @@ export function CodeViewer({
       {/* Content */}
       <div className="flex-1 overflow-hidden min-h-0">
         {isMarkdown && viewMode === 'rendered' ? (
-          <div
-            className="h-full overflow-auto overscroll-contain"
-            data-color-mode={resolvedTheme === 'dark' ? 'dark' : 'light'}
-          >
-            <div className="markdown-body !bg-transparent px-6 py-5">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {content}
-              </ReactMarkdown>
+          <div className="h-full overflow-auto overscroll-contain">
+            <div className={cn(PROSE_CLASSES, 'px-6 py-5')}>
+              <CachedMarkdown cacheKey={`file-preview:${filename}`} content={content} skipCache />
             </div>
           </div>
         ) : isMarkdown && viewMode === 'code' ? (
