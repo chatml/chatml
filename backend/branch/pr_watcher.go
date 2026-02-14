@@ -140,6 +140,36 @@ func (w *PRWatcher) UpdateSessionBranch(sessionID, newBranch string) {
 	}
 }
 
+// ForceCheckSession invalidates the PR cache for a session's repo and immediately
+// checks for PRs. Used when the agent creates a PR via bash so the UI updates
+// within seconds instead of waiting for the next poll cycle.
+func (w *PRWatcher) ForceCheckSession(sessionID string) {
+	w.mu.RLock()
+	entry, exists := w.sessions[sessionID]
+	if !exists {
+		w.mu.RUnlock()
+		return
+	}
+	repoPath := entry.RepoPath
+	branch := entry.Branch
+	w.mu.RUnlock()
+
+	logger.PRWatcher.Infof("Force-checking PR status for session %s (branch: %s)", sessionID, branch)
+
+	// Invalidate cache so we fetch fresh data from GitHub
+	if repoPath != "" && w.prCache != nil {
+		owner, repo, err := w.repoManager.GetGitHubRemote(w.ctx, repoPath)
+		if err == nil {
+			w.prCache.Invalidate(owner, repo)
+		}
+	}
+
+	// Run immediate check for sessions without PR (the common case after `gh pr create`)
+	w.checkSessionsWithoutPR()
+	// Also check sessions with PR in case this was an update
+	w.checkSessionsWithPR()
+}
+
 // Close stops the PR watcher
 func (w *PRWatcher) Close() error {
 	w.cancel()

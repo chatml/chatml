@@ -253,13 +253,10 @@ export function SessionToolbarContent() {
               const reviewVariant =
                 (selectedSession.hasMergeConflict || selectedSession.hasCheckFailures)
                   ? 'destructive' as const
-                  : selectedSession.prStatus === 'open'
-                    ? 'success' as const
-                    : 'secondary' as const;
+                  : 'secondary' as const;
 
               const separatorColor = {
                 destructive: 'border-l-red-400/40',
-                success: 'border-l-emerald-400/40',
                 secondary: 'border-l-secondary-foreground/10',
               }[reviewVariant];
 

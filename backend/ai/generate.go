@@ -607,8 +607,9 @@ type SuggestionToolAction struct {
 
 // SuggestionRequest contains the agent's last output for generating input suggestions.
 type SuggestionRequest struct {
-	AgentText   string                 `json:"agentText"`
-	ToolActions []SuggestionToolAction `json:"toolActions,omitempty"`
+	AgentText      string                 `json:"agentText"`
+	ToolActions    []SuggestionToolAction `json:"toolActions,omitempty"`
+	SessionContext string                 `json:"sessionContext,omitempty"` // PR status, git state, etc.
 }
 
 // SuggestionResponse contains the AI-generated input suggestion.
@@ -620,12 +621,15 @@ type SuggestionResponse struct {
 const suggestionSystemPrompt = `You suggest what the user should say next to an AI coding assistant based on the assistant's last output.
 
 You will receive the assistant's last text output and a list of actions it performed (tools used, files edited, etc.).
+You may also receive session context describing the current state (PR status, git state). Use it to avoid redundant suggestions.
 
 Rules:
 - Suggest a natural follow-up based on what the assistant just did
 - If the assistant completed a task: suggest reviewing, testing, committing, or extending the work
 - If the assistant asked the user a question: provide 2-3 short pill answers the user can click, plus ghost_text with the most likely answer
 - If the assistant just read/explored code: suggest asking for changes, explanations, or next steps
+- If a PR already exists for this session, never suggest creating a PR
+- If the PR is already merged, suggest archiving the session or starting new work
 - If no suggestion is appropriate, return empty ghost_text and empty pills array
 - ghost_text should be 5-15 words, natural language, imperative mood
 - pill labels should be 2-4 words; pill values should be complete sentences the user would type
@@ -646,6 +650,13 @@ func (c *Client) GenerateInputSuggestion(ctx context.Context, req SuggestionRequ
 
 	// Build user message from agent's last output, capping total chars
 	var userMsg strings.Builder
+
+	// Include session context if available
+	if req.SessionContext != "" {
+		userMsg.WriteString("Session context:\n")
+		userMsg.WriteString(req.SessionContext)
+		userMsg.WriteString("\n\n")
+	}
 
 	// Include tool actions summary if available
 	if len(req.ToolActions) > 0 {

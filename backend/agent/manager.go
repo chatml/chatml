@@ -22,6 +22,9 @@ import (
 
 const snapshotDebounceInterval = 500 * time.Millisecond
 
+// prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
+var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/\d+`)
+
 // Legacy handlers (for backwards compatibility)
 type OutputHandler func(agentID string, line string)
 type StatusHandler func(agentID string, status models.AgentStatus)
@@ -52,6 +55,8 @@ type Manager struct {
 	// Session event handler
 	onSessionEvent SessionEventHandler
 
+	// Callback fired when agent creates a PR via bash (sessionID)
+	onPRCreated func(sessionID string)
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
@@ -84,6 +89,10 @@ func (m *Manager) SetConversationStatusHandler(handler ConversationStatusHandler
 
 func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 	m.onSessionEvent = handler
+}
+
+func (m *Manager) SetOnPRCreated(handler func(sessionID string)) {
+	m.onPRCreated = handler
 }
 
 // StartConversationOptions contains optional parameters for starting a conversation
@@ -561,6 +570,16 @@ outer:
 					Success: event.Success,
 				}); err != nil {
 					logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
+				}
+
+				// Detect PR creation from Bash tool stdout (e.g., gh pr create)
+				if event.Tool == "Bash" && event.Success && prURLPattern.MatchString(event.Stdout) {
+					if m.onPRCreated != nil {
+						conv, _ := m.store.GetConversationMeta(ctx, convID)
+						if conv != nil {
+							go m.onPRCreated(conv.SessionID)
+						}
+					}
 				}
 
 			case EventTypeNameSuggestion:
@@ -1344,6 +1363,42 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	m.tryAutoNameSession(ctx, sessionID, title)
 }
 
+// buildSessionContext builds a context string describing the session's current state
+// (PR status, git state) for use in suggestion generation.
+func (m *Manager) buildSessionContext(ctx context.Context, convID string) string {
+	conv, err := m.store.GetConversationMeta(ctx, convID)
+	if err != nil || conv == nil {
+		return ""
+	}
+
+	sess, err := m.store.GetSession(ctx, conv.SessionID)
+	if err != nil || sess == nil {
+		return ""
+	}
+
+	var parts []string
+
+	switch sess.PRStatus {
+	case models.PRStatusOpen:
+		part := fmt.Sprintf("PR #%d is open", sess.PRNumber)
+		if sess.HasCheckFailures {
+			part += "; CI checks are failing"
+		} else if sess.HasMergeConflict {
+			part += "; has merge conflicts"
+		}
+		parts = append(parts, part)
+	case models.PRStatusMerged:
+		parts = append(parts, fmt.Sprintf("PR #%d has been merged", sess.PRNumber))
+	case models.PRStatusClosed:
+		parts = append(parts, fmt.Sprintf("PR #%d was closed", sess.PRNumber))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "; ")
+}
+
 // generateInputSuggestion uses the AI client to generate a suggested next prompt
 // from recent conversation messages, then broadcasts it via WebSocket.
 func (m *Manager) generateInputSuggestion(convID string) {
@@ -1383,9 +1438,13 @@ func (m *Manager) generateInputSuggestion(convID string) {
 		})
 	}
 
+	// Build session context for PR/git state awareness
+	sessionContext := m.buildSessionContext(ctx, convID)
+
 	suggestion, err := client.GenerateInputSuggestion(ctx, ai.SuggestionRequest{
-		AgentText:   lastAssistant.Content,
-		ToolActions: toolActions,
+		AgentText:      lastAssistant.Content,
+		ToolActions:    toolActions,
+		SessionContext: sessionContext,
 	})
 	if err != nil {
 		logger.Manager.Debugf("Failed to generate input suggestion for conv %s: %v", convID, err)

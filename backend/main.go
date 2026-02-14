@@ -402,6 +402,10 @@ func main() {
 		})
 	}
 
+	// Notify PRWatcher immediately when an agent creates a PR via bash,
+	// bypassing the 30-second polling delay for instant UI updates.
+	agentMgr.SetOnPRCreated(prWatcher.ForceCheckSession)
+
 	// Issue cache for GitHub Issues API
 	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)
 	defer issueCache.Close()
