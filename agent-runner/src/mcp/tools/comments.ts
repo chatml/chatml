@@ -6,6 +6,14 @@ import type { WorkspaceContext } from "../context.js";
 // Backend URL from environment. This matches the default port used by the Go backend.
 // TODO: Consider adding backendUrl to WorkspaceContext for consistency with other tools
 const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://localhost:9876";
+const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
+
+function buildHeaders(json = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (json) headers["Content-Type"] = "application/json";
+  if (AUTH_TOKEN) headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+  return headers;
+}
 
 export function createCommentTools(context: WorkspaceContext) {
   return [
@@ -26,7 +34,7 @@ export function createCommentTools(context: WorkspaceContext) {
             `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/comments`,
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: buildHeaders(true),
               body: JSON.stringify({
                 filePath,
                 lineNumber,
@@ -82,7 +90,7 @@ export function createCommentTools(context: WorkspaceContext) {
             url += `?filePath=${encodeURIComponent(filePath)}`;
           }
 
-          const response = await fetch(url);
+          const response = await fetch(url, { headers: buildHeaders() });
           if (!response.ok) {
             const error = await response.text();
             return {
@@ -145,7 +153,8 @@ export function createCommentTools(context: WorkspaceContext) {
       async () => {
         try {
           const response = await fetch(
-            `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/comments/stats`
+            `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/comments/stats`,
+            { headers: buildHeaders() }
           );
 
           if (!response.ok) {
