@@ -28,11 +28,13 @@ import {
   Check,
   Copy,
   MessageSquarePlus,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog, copyToClipboard } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
@@ -277,6 +279,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const isStreaming = selectedConversationId
     ? streamingState[selectedConversationId]?.isStreaming
     : false;
+
+  // Derive compose button mode from streaming + text + queue state
+  const hasText = message.trim().length > 0;
+  const buttonMode: 'send' | 'stop' | 'queue' | 'queue-disabled' | 'send-disabled' = (() => {
+    if (!isStreaming) return hasText ? 'send' : 'send-disabled';
+    if (hasQueuedMessage) return hasText ? 'queue-disabled' : 'stop';
+    return hasText ? 'queue' : 'stop';
+  })();
 
   // Check if there's a pending plan approval request
   const pendingPlanApproval = selectedConversationId
@@ -534,6 +544,22 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setThinkingLevel(prev => clampThinkingLevel(prev, selectedModel));
   }, [selectedModel]);
 
+  const handleStop = useCallback(async () => {
+    if (!selectedConversationId || !isStreaming) return;
+
+    try {
+      // Commit any queued message to history before stopping
+      commitQueuedMessage(selectedConversationId);
+      await stopConversation(selectedConversationId);
+      setStreaming(selectedConversationId, false);
+      updateConversation(selectedConversationId, { status: 'idle' });
+      clearActiveTools(selectedConversationId);
+    } catch (error) {
+      console.error('Failed to stop conversation:', error);
+      showError('Failed to stop conversation. Please try again.');
+    }
+  }, [selectedConversationId, isStreaming, commitQueuedMessage, setStreaming, updateConversation, clearActiveTools, showError]);
+
   // Global keyboard shortcuts
 
   useEffect(() => {
@@ -564,6 +590,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         handleOpenFilePicker();
       }
+      // Escape to stop agent (only when streaming, no dialog/combobox open)
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        const hasOpenOverlay = document.querySelector('[role="listbox"], [role="dialog"]');
+        if (!hasOpenOverlay && isStreaming) {
+          e.preventDefault();
+          handleStop();
+        }
+      }
       // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
     };
 
@@ -590,7 +624,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel]);
+  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, isStreaming, handleStop]);
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
@@ -758,22 +792,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Keep ref in sync for programmatic submit from sendMessage
   handleSubmitRef.current = handleSubmit;
-
-  const handleStop = async () => {
-    if (!selectedConversationId || !isStreaming) return;
-
-    try {
-      // Commit any queued message to history before stopping
-      commitQueuedMessage(selectedConversationId);
-      await stopConversation(selectedConversationId);
-      setStreaming(selectedConversationId, false);
-      updateConversation(selectedConversationId, { status: 'idle' });
-      clearActiveTools(selectedConversationId);
-    } catch (error) {
-      console.error('Failed to stop conversation:', error);
-      showError('Failed to stop conversation. Please try again.');
-    }
-  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Check if a combobox is active (mention or slash command selection in progress)
@@ -1095,30 +1113,46 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Stop Button (when streaming) */}
-          {isStreaming && (
+          {/* Single Contextual Action Button — changes between Stop/Queue/Send based on state */}
+          {buttonMode === 'stop' ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="h-8 w-8 rounded-lg"
+                  onClick={handleStop}
+                  aria-label="Stop agent (Escape)"
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Stop agent (Esc)</TooltipContent>
+            </Tooltip>
+          ) : buttonMode === 'queue' ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  className="h-8 w-8 rounded-lg relative"
+                  onClick={handleSubmit}
+                  disabled={!selectedSessionId || isSending || authDisabled}
+                  aria-label="Queue message"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                  <Clock className="h-2.5 w-2.5 absolute -top-0.5 -right-0.5 text-amber-500" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Queue message — sent after current response</TooltipContent>
+            </Tooltip>
+          ) : (
             <Button
               size="icon"
-              variant="destructive"
-              className="h-8 w-8 rounded-full"
-              onClick={handleStop}
-              aria-label="Stop agent"
-            >
-              <Square className="h-4 w-4" />
-            </Button>
-          )}
-          {/* Send Button — also shown during streaming to queue a message (unless one is already queued) */}
-          {(!isStreaming || !hasQueuedMessage) && (
-            <Button
-              size="icon"
-              className={cn(
-                'h-8 w-8 rounded-lg',
-                (!message.trim() || isSending || hasQueuedMessage) && 'opacity-50'
-              )}
+              className={cn('h-8 w-8 rounded-lg', buttonMode !== 'send' && 'opacity-50')}
               onClick={handleSubmit}
-              disabled={!message.trim() || !selectedSessionId || isSending || hasQueuedMessage || authDisabled}
-              aria-label={isStreaming ? 'Queue message' : (sendWithEnter ? 'Send message (Enter)' : 'Send message (⌘Enter)')}
-              title={isStreaming ? 'Queue message' : (sendWithEnter ? 'Send (Enter)' : 'Send (⌘Enter)')}
+              disabled={buttonMode !== 'send' || !selectedSessionId || isSending || authDisabled}
+              aria-label={sendWithEnter ? 'Send message (Enter)' : 'Send message (Cmd+Enter)'}
+              title={sendWithEnter ? 'Send (Enter)' : 'Send (Cmd+Enter)'}
             >
               <ArrowUp className="h-4 w-4" />
             </Button>
