@@ -46,7 +46,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
         set({ status: 'idle', version: null });
       }
     } catch (err) {
-      console.error('Update check failed:', err);
+      console.debug('Update check failed:', err);
       // Silently return to idle on check failure — not actionable for users
       set({ status: 'idle' });
     }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
-import { AlertCircle, Brain, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { AlertCircle, Brain, ChevronDown, ChevronRight, ClipboardCheck, Clock } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { SubAgentRow, SubAgentGroupedRow } from '@/components/conversation/SubAgentGroup';
@@ -170,6 +170,8 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   // Check if extended thinking is enabled for this conversation
   const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
 
+  const [isApprovedPlanExpanded, setIsApprovedPlanExpanded] = useState(true);
+
   // Build interleaved timeline from segments, tools, and thinking
   const timeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
@@ -264,7 +266,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   }, [streaming, tools, subAgents]);
 
   // Don't render if no streaming content, no active tools, no sub-agents, no thinking, no error, and no pending plan
-  if (timeline.length === 0 && !streaming?.error && !streaming?.isThinking && !streaming?.isStreaming && !streaming?.pendingPlanApproval?.planContent) {
+  if (timeline.length === 0 && !streaming?.error && !streaming?.isThinking && !streaming?.isStreaming && !streaming?.pendingPlanApproval?.planContent && !streaming?.approvedPlanContent) {
     return null;
   }
 
@@ -354,6 +356,32 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                 cacheKey={`plan:${streaming.pendingPlanApproval.requestId}`}
                 content={streaming.pendingPlanApproval.planContent}
               />
+            </div>
+          )}
+
+          {/* Approved plan content - persists after plan approval during continued streaming */}
+          {!streaming?.pendingPlanApproval?.planContent && streaming?.approvedPlanContent && (
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => setIsApprovedPlanExpanded(!isApprovedPlanExpanded)}
+                className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span className="font-medium">Approved Plan</span>
+                {isApprovedPlanExpanded ? (
+                  <ChevronDown className="w-3 h-3" />
+                ) : (
+                  <ChevronRight className="w-3 h-3" />
+                )}
+              </button>
+              {isApprovedPlanExpanded && (
+                <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
+                  <CachedMarkdown
+                    cacheKey={`approved-plan:${conversationId}`}
+                    content={streaming.approvedPlanContent}
+                  />
+                </div>
+              )}
             </div>
           )}
 

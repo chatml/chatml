@@ -421,8 +421,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     let unlistenEnter: (() => void) | undefined;
     let unlistenLeave: (() => void) | undefined;
 
-    const safeUnlisten = (fn?: () => void) => {
+    const safeUnlisten = (fn?: () => void): undefined => {
       try { fn?.(); } catch { /* listener already removed */ }
+      return undefined;
     };
 
     const setupListeners = async () => {
@@ -451,9 +452,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         unlistenLeave = leave;
       } catch (error) {
         console.error('Failed to setup drag-drop listeners:', error);
-        safeUnlisten(unlistenDrop);
-        safeUnlisten(unlistenEnter);
-        safeUnlisten(unlistenLeave);
+        unlistenDrop = safeUnlisten(unlistenDrop);
+        unlistenEnter = safeUnlisten(unlistenEnter);
+        unlistenLeave = safeUnlisten(unlistenLeave);
       }
     };
 
@@ -461,9 +462,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     return () => {
       isCancelled = true;
-      safeUnlisten(unlistenDrop);
-      safeUnlisten(unlistenEnter);
-      safeUnlisten(unlistenLeave);
+      unlistenDrop = safeUnlisten(unlistenDrop);
+      unlistenEnter = safeUnlisten(unlistenEnter);
+      unlistenLeave = safeUnlisten(unlistenLeave);
     };
   }, []);
 
