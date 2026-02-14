@@ -11,7 +11,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Eye, EyeOff } from 'lucide-react';
-import { useSettingsStore, type EffortLevel } from '@/stores/settingsStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
@@ -19,12 +20,10 @@ import { SettingsRow } from '../shared/SettingsRow';
 export function AIModelSettings() {
   const defaultModel = useSettingsStore((s) => s.defaultModel);
   const setDefaultModel = useSettingsStore((s) => s.setDefaultModel);
-  const defaultThinking = useSettingsStore((s) => s.defaultThinking);
-  const setDefaultThinking = useSettingsStore((s) => s.setDefaultThinking);
+  const defaultThinkingLevel = useSettingsStore((s) => s.defaultThinkingLevel);
+  const setDefaultThinkingLevel = useSettingsStore((s) => s.setDefaultThinkingLevel);
   const reviewModel = useSettingsStore((s) => s.reviewModel);
   const setReviewModel = useSettingsStore((s) => s.setReviewModel);
-  const defaultEffort = useSettingsStore((s) => s.defaultEffort);
-  const setDefaultEffort = useSettingsStore((s) => s.setDefaultEffort);
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const setDefaultPlanMode = useSettingsStore((s) => s.setDefaultPlanMode);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
@@ -41,30 +40,16 @@ export function AIModelSettings() {
       <h2 className="text-xl font-semibold mb-5">AI & Models</h2>
 
       <SettingsRow title="Default model" description="Model for new conversations">
-        <div className="flex gap-2">
-          <Select value={defaultModel} onValueChange={setDefaultModel}>
-            <SelectTrigger className="w-52">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
-              <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
-              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={defaultThinking ? 'thinking-on' : 'thinking-off'}
-            onValueChange={(v) => setDefaultThinking(v === 'thinking-on')}
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="thinking-on">Thinking on</SelectItem>
-              <SelectItem value="thinking-off">Thinking off</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={defaultModel} onValueChange={setDefaultModel}>
+          <SelectTrigger className="w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
+            <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
+            <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
+          </SelectContent>
+        </Select>
       </SettingsRow>
 
       <SettingsRow title="Review model" description="Model for code reviews">
@@ -81,18 +66,19 @@ export function AIModelSettings() {
       </SettingsRow>
 
       <SettingsRow
-        title="Default reasoning effort"
-        description="Controls reasoning depth for Opus 4.6 conversations"
+        title="Default thinking"
+        description="Controls reasoning depth for new conversations"
       >
-        <Select value={defaultEffort} onValueChange={(v) => setDefaultEffort(v as EffortLevel)}>
+        <Select value={defaultThinkingLevel} onValueChange={(v) => setDefaultThinkingLevel(v as ThinkingLevel)}>
           <SelectTrigger className="w-36">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="off">Off</SelectItem>
             <SelectItem value="low">Low</SelectItem>
             <SelectItem value="medium">Medium</SelectItem>
             <SelectItem value="high">High (default)</SelectItem>
-            <SelectItem value="max">Max (Opus 4.6)</SelectItem>
+            <SelectItem value="max">Max</SelectItem>
           </SelectContent>
         </Select>
       </SettingsRow>
@@ -104,28 +90,30 @@ export function AIModelSettings() {
         <Switch checked={defaultPlanMode} onCheckedChange={setDefaultPlanMode} />
       </SettingsRow>
 
-      <SettingsRow
-        title="Max thinking tokens"
-        description="Maximum tokens for extended thinking"
-      >
-        <Select
-          value={maxThinkingTokens.toString()}
-          onValueChange={(value) => {
-            const n = parseInt(value, 10);
-            if (!isNaN(n) && n > 0) setMaxThinkingTokens(n);
-          }}
+      {defaultThinkingLevel !== 'off' && (
+        <SettingsRow
+          title="Max thinking budget"
+          description="Token budget cap for Sonnet & Haiku (Opus uses adaptive thinking)"
         >
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="8000">8,000</SelectItem>
-            <SelectItem value="10000">10,000</SelectItem>
-            <SelectItem value="16000">16,000</SelectItem>
-            <SelectItem value="32000">32,000</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingsRow>
+          <Select
+            value={maxThinkingTokens.toString()}
+            onValueChange={(value) => {
+              const n = parseInt(value, 10);
+              if (!isNaN(n) && n > 0) setMaxThinkingTokens(n);
+            }}
+          >
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="8000">8,000</SelectItem>
+              <SelectItem value="10000">10,000</SelectItem>
+              <SelectItem value="16000">16,000</SelectItem>
+              <SelectItem value="32000">32,000</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      )}
 
       <SettingsRow
         title="Show token usage"
