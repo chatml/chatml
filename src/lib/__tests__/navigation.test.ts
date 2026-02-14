@@ -117,12 +117,12 @@ describe('navigation helpers', () => {
     });
 
     it('calls setContentView when contentView is provided', () => {
-      navigate({ contentView: { type: 'global-dashboard' } });
-      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'global-dashboard' });
+      navigate({ contentView: { type: 'repositories' } });
+      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'repositories' });
     });
 
     it('pushes current state onto backStack before navigating', () => {
-      navigate({ contentView: { type: 'global-dashboard' } });
+      navigate({ contentView: { type: 'repositories' } });
 
       const tab = getTab();
       expect(tab.backStack).toHaveLength(1);
@@ -133,24 +133,10 @@ describe('navigation helpers', () => {
 
     it('generates a breadcrumb label from current state when pushing history', () => {
       // Current state has conversation with conv-1 named 'Task Chat' in workspace 'My Repo'
-      navigate({ contentView: { type: 'global-dashboard' } });
+      navigate({ contentView: { type: 'repositories' } });
 
       const tab = getTab();
       expect(tab.backStack[0].label).toBe('My Repo › Task Chat');
-    });
-
-    it('generates dashboard label for global-dashboard', () => {
-      mockSettingsState.contentView = { type: 'global-dashboard' };
-      navigate({ contentView: { type: 'conversation' } });
-
-      expect(getTab().backStack[0].label).toBe('Dashboard');
-    });
-
-    it('generates workspace name label for workspace-dashboard', () => {
-      mockSettingsState.contentView = { type: 'workspace-dashboard', workspaceId: 'ws-1' };
-      navigate({ contentView: { type: 'conversation' } });
-
-      expect(getTab().backStack[0].label).toBe('My Repo');
     });
 
     it('generates breadcrumb branches label', () => {
@@ -184,7 +170,7 @@ describe('navigation helpers', () => {
     it('falls back to breadcrumb session name when no conversation is selected', () => {
       mockAppState.selectedConversationId = null as unknown as string;
       mockAppState.conversations = [];
-      navigate({ contentView: { type: 'global-dashboard' } });
+      navigate({ contentView: { type: 'repositories' } });
 
       expect(getTab().backStack[0].label).toBe('My Repo › boston');
     });
@@ -192,11 +178,11 @@ describe('navigation helpers', () => {
     it('skips history push when isRestoring is true', () => {
       useNavigationStore.getState().setRestoring(true);
 
-      navigate({ contentView: { type: 'global-dashboard' } });
+      navigate({ contentView: { type: 'repositories' } });
 
       expect(getTab().backStack).toHaveLength(0);
       // But still applies the navigation
-      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'global-dashboard' });
+      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'repositories' });
     });
 
     it('handles partial params (only contentView)', () => {
@@ -224,7 +210,7 @@ describe('navigation helpers', () => {
         workspaceId: 'ws-prev',
         sessionId: 'sess-prev',
         conversationId: 'conv-prev',
-        contentView: { type: 'global-dashboard' },
+        contentView: { type: 'repositories' },
       });
       useNavigationStore.setState({
         tabs: { default: { backStack: [entry], forwardStack: [] } },
@@ -235,7 +221,7 @@ describe('navigation helpers', () => {
       expect(mockSelectWorkspace).toHaveBeenCalledWith('ws-prev');
       expect(mockSelectSession).toHaveBeenCalledWith('sess-prev');
       expect(mockSelectConversation).toHaveBeenCalledWith('conv-prev');
-      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'global-dashboard' });
+      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'repositories' });
     });
 
     it('pushes current state to forwardStack', () => {
@@ -328,9 +314,9 @@ describe('navigation helpers', () => {
     });
 
     it('pushes current state to backStack', () => {
-      // Use a dashboard view so the entry is always valid
+      // Use a repositories view so the entry is always valid
       useNavigationStore.setState({
-        tabs: { default: { backStack: [], forwardStack: [makeEntry({ sessionId: null, contentView: { type: 'global-dashboard' } })] } },
+        tabs: { default: { backStack: [], forwardStack: [makeEntry({ sessionId: null, contentView: { type: 'repositories' } })] } },
       });
 
       goForward();
@@ -437,9 +423,9 @@ describe('navigation helpers', () => {
   // ---------- Entry validation ----------
 
   describe('entry validation (via goBack)', () => {
-    it('considers dashboard views valid even without matching data', () => {
+    it('considers global views valid even without matching data', () => {
       const entry = makeEntry({
-        contentView: { type: 'global-dashboard' },
+        contentView: { type: 'repositories' },
         sessionId: null,
         workspaceId: null,
         conversationId: null,
@@ -450,12 +436,12 @@ describe('navigation helpers', () => {
 
       goBack();
 
-      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'global-dashboard' });
+      expect(mockSetContentView).toHaveBeenCalledWith({ type: 'repositories' });
     });
 
-    it('rejects workspace-dashboard when workspace is deleted', () => {
+    it('rejects branches view when workspace is deleted', () => {
       const entry = makeEntry({
-        contentView: { type: 'workspace-dashboard', workspaceId: 'deleted-ws' },
+        contentView: { type: 'branches', workspaceId: 'deleted-ws' },
         sessionId: null,
         conversationId: null,
       });

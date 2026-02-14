@@ -13,7 +13,7 @@ function resetStore() {
   // Reset to a known single-tab state
   const defaultTab: BrowserTab = {
     id: 'default',
-    label: 'Dashboard',
+    label: 'New Tab',
     selectedWorkspaceId: null,
     selectedSessionId: null,
     selectedConversationId: null,
@@ -65,14 +65,14 @@ describe('tabStore', () => {
         label: 'My Tab',
         selectedWorkspaceId: 'ws-1',
         selectedSessionId: 'sess-1',
-        contentView: { type: 'global-dashboard' },
+        contentView: { type: 'repositories' },
       });
 
       const tab = getTab(id)!;
       expect(tab.label).toBe('My Tab');
       expect(tab.selectedWorkspaceId).toBe('ws-1');
       expect(tab.selectedSessionId).toBe('sess-1');
-      expect(tab.contentView).toEqual({ type: 'global-dashboard' });
+      expect(tab.contentView).toEqual({ type: 'repositories' });
     });
 
     it('defaults label to "New Tab" when not provided', () => {
@@ -135,14 +135,14 @@ describe('tabStore', () => {
       expect(getState().activeTabId).toBe('default');
     });
 
-    it('creates a fresh Dashboard tab when closing the last tab', () => {
+    it('creates a fresh Repositories tab when closing the last tab', () => {
       getState().closeTab('default');
 
       const state = getState();
       expect(state.tabOrder).toHaveLength(1);
       expect(state.tabs[state.activeTabId]).toBeDefined();
-      expect(state.tabs[state.activeTabId].contentView).toEqual({ type: 'global-dashboard' });
-      expect(state.tabs[state.activeTabId].label).toBe('Dashboard');
+      expect(state.tabs[state.activeTabId].contentView).toEqual({ type: 'repositories' });
+      expect(state.tabs[state.activeTabId].label).toBe('Repositories');
     });
 
     it('no-ops for non-existent tab ID', () => {
@@ -247,7 +247,7 @@ describe('tabStore', () => {
         selectedWorkspaceId: 'ws-1',
         selectedSessionId: 'sess-1',
         label: 'Original',
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-1' },
+        contentView: { type: 'branches', workspaceId: 'ws-1' },
       });
 
       const dupId = getState().duplicateTab('default');
@@ -256,7 +256,7 @@ describe('tabStore', () => {
       expect(dup.selectedWorkspaceId).toBe('ws-1');
       expect(dup.selectedSessionId).toBe('sess-1');
       expect(dup.label).toBe('Original');
-      expect(dup.contentView).toEqual({ type: 'workspace-dashboard', workspaceId: 'ws-1' });
+      expect(dup.contentView).toEqual({ type: 'branches', workspaceId: 'ws-1' });
       expect(dup.id).not.toBe('default');
     });
 
@@ -394,7 +394,7 @@ describe('tabStore', () => {
       getState().updateActiveTab({
         selectedWorkspaceId: 'ws-1',
         selectedSessionId: 'sess-1',
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-1' },
+        contentView: { type: 'branches', workspaceId: 'ws-1' },
         label: 'My Workspace',
       });
 
@@ -402,7 +402,7 @@ describe('tabStore', () => {
       const tab = stored.state.tabs['default'];
       expect(tab.selectedWorkspaceId).toBe('ws-1');
       expect(tab.selectedSessionId).toBe('sess-1');
-      expect(tab.contentView).toEqual({ type: 'workspace-dashboard', workspaceId: 'ws-1' });
+      expect(tab.contentView).toEqual({ type: 'branches', workspaceId: 'ws-1' });
       expect(tab.label).toBe('My Workspace');
     });
 
@@ -449,7 +449,7 @@ describe('tabStore', () => {
       getState().updateActiveTab({
         selectedWorkspaceId: 'ws-dup',
         label: 'Source',
-        contentView: { type: 'global-dashboard' },
+        contentView: { type: 'repositories' },
       });
 
       const dupId = getState().duplicateTab('default');
@@ -519,7 +519,7 @@ describe('tabStore', () => {
       // The merge function is: (persistedState, currentState) => mergedState
       // We can test it by manually setting state as if rehydration occurred
       const currentState = {
-        tabs: { default: makeTab({ id: 'default', label: 'Dashboard' }) },
+        tabs: { default: makeTab({ id: 'default', label: 'New Tab' }) },
         tabOrder: ['default'],
         activeTabId: 'default',
       };
@@ -685,7 +685,7 @@ describe('tabStore', () => {
     it('preserves contentView types through serialization', () => {
       const tab = makeTab({
         id: 'tab-cv',
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-123' },
+        contentView: { type: 'branches', workspaceId: 'ws-123' },
       });
 
       const result = simulateMerge({
@@ -695,7 +695,7 @@ describe('tabStore', () => {
       });
 
       expect(result.tabs['tab-cv'].contentView).toEqual({
-        type: 'workspace-dashboard',
+        type: 'branches',
         workspaceId: 'ws-123',
       });
     });
@@ -707,7 +707,7 @@ describe('tabStore', () => {
         selectedWorkspaceId: 'ws-1',
         selectedSessionId: 'sess-1',
         selectedConversationId: 'conv-1',
-        contentView: { type: 'global-dashboard' },
+        contentView: { type: 'repositories' },
         selectedFileTabId: 'file-1',
         createdAt: 1234567890,
       });
@@ -724,7 +724,7 @@ describe('tabStore', () => {
       expect(restored.selectedWorkspaceId).toBe('ws-1');
       expect(restored.selectedSessionId).toBe('sess-1');
       expect(restored.selectedConversationId).toBe('conv-1');
-      expect(restored.contentView).toEqual({ type: 'global-dashboard' });
+      expect(restored.contentView).toEqual({ type: 'repositories' });
       expect(restored.selectedFileTabId).toBe('file-1');
       expect(restored.createdAt).toBe(1234567890);
     });
@@ -810,7 +810,7 @@ describe('tabStore', () => {
         label: 'Session B',
         selectedWorkspaceId: 'ws-b',
         selectedSessionId: 'sess-b',
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-b' },
+        contentView: { type: 'branches', workspaceId: 'ws-b' },
       });
       getState().activateTab(id1);
 
@@ -824,7 +824,7 @@ describe('tabStore', () => {
       expect(parsed.state.tabOrder).toContain(id2);
       expect(parsed.state.activeTabId).toBe(id1);
       expect(parsed.state.tabs[id2].contentView).toEqual({
-        type: 'workspace-dashboard',
+        type: 'branches',
         workspaceId: 'ws-b',
       });
     });
@@ -875,7 +875,7 @@ describe('tabStore', () => {
         selectedWorkspaceId: null,
         selectedSessionId: null,
         selectedConversationId: null,
-        contentView: { type: 'global-dashboard' },
+        contentView: { type: 'repositories' },
         selectedFileTabId: null,
         createdAt: Date.now(),
       };
@@ -898,7 +898,7 @@ describe('tabStore', () => {
         selectedWorkspaceId: 'ws-dup',
         selectedSessionId: 'sess-dup',
         selectedConversationId: null,
-        contentView: { type: 'workspace-dashboard', workspaceId: 'ws-dup' },
+        contentView: { type: 'branches', workspaceId: 'ws-dup' },
         selectedFileTabId: null,
         createdAt: Date.now(),
       };
@@ -914,7 +914,7 @@ describe('tabStore', () => {
       expect(dup.label).toBe('Original');
       expect(dup.selectedWorkspaceId).toBe('ws-dup');
       expect(dup.selectedSessionId).toBe('sess-dup');
-      expect(dup.contentView).toEqual({ type: 'workspace-dashboard', workspaceId: 'ws-dup' });
+      expect(dup.contentView).toEqual({ type: 'branches', workspaceId: 'ws-dup' });
     });
 
     it('closeOtherTabs works correctly after rehydration', () => {

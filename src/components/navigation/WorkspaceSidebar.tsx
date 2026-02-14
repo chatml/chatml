@@ -75,7 +75,7 @@ import {
   Search,
   X,
   Filter,
-  LayoutDashboard,
+
   Layers,
   Bot,
   Circle,
@@ -490,28 +490,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
       {/* Global Navigation */}
       <div className="px-1 py-2 shrink-0">
-        <div
-          className={cn(
-            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
-            contentView.type === 'global-dashboard'
-              ? "bg-surface-2 text-foreground"
-              : "hover:bg-surface-1"
-          )}
-          onClick={(e) => navigateOrOpenTab({ contentView: { type: 'global-dashboard' } }, e)}
-        >
-          <LayoutDashboard className={cn(
-            "w-4 h-4",
-            contentView.type === 'global-dashboard' ? "text-nav-icon-dashboard" : "text-nav-icon-dashboard/70"
-          )} />
-          <span className={cn(
-            "text-base font-medium",
-            contentView.type === 'global-dashboard'
-              ? "text-foreground"
-              : "text-muted-foreground group-hover:text-foreground"
-          )}>
-            Dashboard
-          </span>
-        </div>
         <div
           className={cn(
             "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
