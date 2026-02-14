@@ -187,6 +187,8 @@ export function useWebSocket(enabled: boolean = true) {
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
         }
+        // Clear stale input suggestions from the previous turn
+        store.clearInputSuggestion(conversationId);
         // Capture budget configuration from init event
         if (event?.budgetConfig) {
           const config = event.budgetConfig as { maxBudgetUsd?: number; maxTurns?: number; maxThinkingTokens?: number };
@@ -1106,6 +1108,15 @@ export function useWebSocket(enabled: boolean = true) {
             }
 
             getStore().updateSession(data.sessionId, updates);
+
+            // Clear stale input suggestions for conversations in this session
+            // so they regenerate with fresh PR context
+            const sessionConvs = getStore().conversations.filter(
+              (c: { sessionId: string }) => c.sessionId === data.sessionId
+            );
+            for (const conv of sessionConvs) {
+              getStore().clearInputSuggestion(conv.id);
+            }
 
             // Auto-archive on merge if setting is enabled
             if (updates.prStatus === 'merged') {

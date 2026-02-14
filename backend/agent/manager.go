@@ -25,6 +25,10 @@ const snapshotDebounceInterval = 500 * time.Millisecond
 // prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
 var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/\d+`)
 
+// dangerousSuggestionPattern matches destructive operations that should never appear in suggestions.
+// These operations could break the worktree-based session model or destroy work.
+var dangerousSuggestionPattern = regexp.MustCompile(`(?i)(delete\s.*branch|git\s+branch\s+-[dD]|rm\s+-rf|git\s+push\s+--force|git\s+reset\s+--hard|git\s+clean\s+-[fd])`)
+
 // Legacy handlers (for backwards compatibility)
 type OutputHandler func(agentID string, line string)
 type StatusHandler func(agentID string, status models.AgentStatus)
@@ -1451,6 +1455,18 @@ func (m *Manager) generateInputSuggestion(convID string) {
 		return
 	}
 
+	// Filter out dangerous suggestions (defense in depth)
+	if dangerousSuggestionPattern.MatchString(suggestion.GhostText) {
+		suggestion.GhostText = ""
+	}
+	var safePills []ai.SuggestionPill
+	for _, pill := range suggestion.Pills {
+		if !dangerousSuggestionPattern.MatchString(pill.Value) {
+			safePills = append(safePills, pill)
+		}
+	}
+	suggestion.Pills = safePills
+
 	// Only broadcast if there's something to suggest
 	if suggestion.GhostText == "" && len(suggestion.Pills) == 0 {
 		return
@@ -1462,6 +1478,30 @@ func (m *Manager) generateInputSuggestion(convID string) {
 			GhostText: suggestion.GhostText,
 			Pills:     suggestion.Pills,
 		})
+	}
+}
+
+// RegenerateSessionSuggestions re-runs input suggestion generation for all idle
+// conversations in a session. Called when PR status changes so suggestions
+// reflect the current state (e.g., stop suggesting "Create PR" after one exists).
+func (m *Manager) RegenerateSessionSuggestions(ctx context.Context, sessionID string) {
+	convs, err := m.store.ListConversations(ctx, sessionID)
+	if err != nil {
+		logger.Manager.Debugf("Failed to list conversations for suggestion regen (session %s): %v", sessionID, err)
+		return
+	}
+
+	for _, conv := range convs {
+		// Only regenerate for idle conversations (not currently streaming)
+		m.mu.RLock()
+		proc, hasProc := m.convProcesses[conv.ID]
+		m.mu.RUnlock()
+
+		if hasProc && proc.IsRunning() {
+			continue // Skip active conversations
+		}
+
+		go m.generateInputSuggestion(conv.ID)
 	}
 }
 

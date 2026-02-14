@@ -635,6 +635,12 @@ Rules:
 - pill labels should be 2-4 words; pill values should be complete sentences the user would type
 - Output valid JSON only, no markdown fences, no extra text
 
+NEVER suggest any of these destructive operations:
+- Deleting branches, cleaning up branches, or worktree operations (sessions use worktrees)
+- git push --force, git reset --hard, git clean -f, rm -rf
+- Archiving or deleting the current session
+- Any operation that destroys local work or git history
+
 Output format:
 {"ghost_text": "...", "pills": [{"label": "...", "value": "..."}]}`
 

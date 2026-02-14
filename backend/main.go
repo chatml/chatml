@@ -371,6 +371,9 @@ func main() {
 					"updatedAt": time.Now().Unix(),
 				},
 			})
+
+			// Regenerate input suggestions for the session so they reflect current PR state
+			agentMgr.RegenerateSessionSuggestions(ctx, event.SessionID)
 		}()
 	})
 	defer prWatcher.Close()

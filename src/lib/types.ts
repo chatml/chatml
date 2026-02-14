@@ -194,6 +194,7 @@ export interface SuggestionPill {
 export interface InputSuggestion {
   ghostText: string;
   pills: SuggestionPill[];
+  timestamp?: number; // Date.now() when suggestion was created
 }
 
 // Message = Individual message in a conversation

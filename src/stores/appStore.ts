@@ -841,7 +841,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Input suggestion actions
   setInputSuggestion: (conversationId, suggestion) => set((state) => ({
-    inputSuggestions: { ...state.inputSuggestions, [conversationId]: suggestion },
+    inputSuggestions: { ...state.inputSuggestions, [conversationId]: { ...suggestion, timestamp: Date.now() } },
   })),
   clearInputSuggestion: (conversationId) => set((state) => {
     const { [conversationId]: _, ...rest } = state.inputSuggestions;
