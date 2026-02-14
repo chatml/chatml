@@ -15,6 +15,7 @@ import { useConnectionStore } from '@/stores/connectionStore';
 import { BrowserTabStrip, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { AppSettingsMenu } from '@/components/settings/AppSettingsMenu';
+import { UpdatePill } from '@/components/shared/UpdatePill';
 
 /** Renders the shared leading | title | spacer | actions slot layout */
 function ToolbarRow({
@@ -221,7 +222,13 @@ export function MainToolbar({
                 </Tooltip>
               </div>
 
-              {/* Spacer between toggles and settings */}
+              {/* Spacer between toggles and update pill / settings */}
+              <div className="mx-1.5" />
+
+              {/* Update pill — only visible when an update is available */}
+              <UpdatePill />
+
+              {/* Spacer between update pill and settings */}
               <div className="mx-1.5" />
 
               {/* Settings Menu */}

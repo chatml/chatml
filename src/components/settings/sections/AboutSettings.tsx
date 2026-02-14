@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ExternalLink,
@@ -8,11 +8,18 @@ import {
   Loader2,
   CheckCircle2,
 } from 'lucide-react';
+import { useUpdateStore } from '@/stores/updateStore';
 
 export function AboutSettings() {
   const [version, setVersion] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [upToDate, setUpToDate] = useState(false);
+  const [checkedOnce, setCheckedOnce] = useState(false);
+
+  const updateStatus = useUpdateStore((s) => s.status);
+  const checkForUpdates = useUpdateStore((s) => s.checkForUpdates);
+
+  const isChecking = updateStatus === 'checking';
+  const isUpToDate = checkedOnce && updateStatus === 'idle';
+  const isUpdateAvailable = updateStatus === 'available' || updateStatus === 'downloading' || updateStatus === 'ready';
 
   useEffect(() => {
     // Get app version from Tauri
@@ -25,26 +32,10 @@ export function AboutSettings() {
     }
   }, []);
 
-  const handleCheckForUpdates = async () => {
-    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-    setChecking(true);
-    setUpToDate(false);
-    try {
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const result = await check();
-      if (result) {
-        // Update available -- the UpdateChecker dialog will handle it
-        // Dispatch event so UpdateChecker can show its dialog
-        window.dispatchEvent(new CustomEvent('show-update-dialog'));
-      } else {
-        setUpToDate(true);
-      }
-    } catch (err) {
-      console.error('Update check failed:', err);
-    } finally {
-      setChecking(false);
-    }
-  };
+  const handleCheckForUpdates = useCallback(async () => {
+    await checkForUpdates();
+    setCheckedOnce(true);
+  }, [checkForUpdates]);
 
   return (
     <div>
@@ -62,17 +53,19 @@ export function AboutSettings() {
           variant="outline"
           size="sm"
           className="gap-1.5"
-          disabled={checking}
+          disabled={isChecking}
           onClick={handleCheckForUpdates}
         >
-          {checking ? (
+          {isChecking ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : upToDate ? (
+          ) : isUpToDate ? (
             <CheckCircle2 className="w-3.5 h-3.5 text-text-success" />
+          ) : isUpdateAvailable ? (
+            <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
           ) : (
             <RefreshCw className="w-3.5 h-3.5" />
           )}
-          {checking ? 'Checking...' : upToDate ? 'Up to date' : 'Check for updates'}
+          {isChecking ? 'Checking...' : isUpToDate ? 'Up to date' : isUpdateAvailable ? 'Update available' : 'Check for updates'}
         </Button>
       </div>
 
