@@ -145,6 +145,7 @@ export function useWebSocket(enabled: boolean = true) {
           store.clearActiveTools(conversationId);
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
+          store.clearAgentTodos(conversationId);
         }
       } else {
         console.warn('Invalid conversation status payload:', data.payload);
@@ -199,6 +200,11 @@ export function useWebSocket(enabled: boolean = true) {
             currentTurns: existingStatus?.currentTurns || 0,
             currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
           });
+        }
+        // Sync plan mode state from the agent's initial permission mode
+        if (event?.permissionMode) {
+          const isPlan = event.permissionMode === 'plan';
+          store.setPlanModeActive(conversationId, isPlan);
         }
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {
@@ -399,6 +405,8 @@ export function useWebSocket(enabled: boolean = true) {
         }
         // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
+        // Clear agent todos — tasks are no longer relevant after turn ends
+        freshStore.clearAgentTodos(conversationId);
         // Desktop notification for task completion.
         // success defaults to true when the field is absent (only explicitly false means failure).
         notifyDesktop(
@@ -440,6 +448,8 @@ export function useWebSocket(enabled: boolean = true) {
         // streaming/activeTools state but does NOT update conversation status.
         // The process is still alive and ready for the next message.
         turnStore.updateConversation(conversationId, { status: 'active' });
+        // Clear agent todos — tasks are no longer relevant after turn ends
+        turnStore.clearAgentTodos(conversationId);
         break;
       }
 
@@ -453,6 +463,7 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearThinking(conversationId);
         store.clearActiveTools(conversationId);
         store.clearSubAgents(conversationId);
+        store.clearAgentTodos(conversationId);
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
         break;
@@ -482,6 +493,14 @@ export function useWebSocket(enabled: boolean = true) {
             const current = store.streamingState[conversationId];
             if (current?.planModeActive) {
               recentlyExitedPlanMode.add(conversationId);
+            }
+            // Only honor plan mode deactivation from explicit sources:
+            // - "exit_plan": ExitPlanMode tool completed (postToolUseHook)
+            // - "user": user toggled plan mode off via the UI
+            // SDK status messages are unreliable — they may carry stale permission
+            // modes (e.g., the initial non-plan mode) that override the user's intent.
+            if (event.source === 'sdk_status') {
+              break;
             }
             store.setPlanModeActive(conversationId, false);
           }

@@ -22,8 +22,7 @@ import {
   Plus,
   Link,
   FolderSymlink,
-  RotateCcw,
-  Loader2,
+  PenLine,
   Upload,
   ScrollText,
   Check,
@@ -116,7 +115,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
   );
   const [isSending, setIsSending] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
@@ -153,6 +151,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     commitQueuedMessage,
     clearPendingPlanApproval,
     clearActiveTools,
+    setPlanModeActive,
   } = useAppStore();
   const hasQueuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
@@ -307,17 +306,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const pendingPlanApproval = selectedConversationId
     ? streamingState[selectedConversationId]?.pendingPlanApproval
     : null;
-
-  // Sync local planModeEnabled with store's planModeActive (source of truth when agent is running).
-  // This ensures the toggle button reflects plan mode entered by the SDK/agent, not just user clicks.
-  const storePlanModeActive = selectedConversationId
-    ? streamingState[selectedConversationId]?.planModeActive
-    : undefined;
-  useEffect(() => {
-    if (storePlanModeActive !== undefined) {
-      setPlanModeEnabled(storePlanModeActive);
-    }
-  }, [storePlanModeActive]);
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
@@ -483,22 +471,25 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId]);
 
-  // Handle plan approval
+  // Handle plan approval — clear UI optimistically so the bar disappears instantly
   const handleApprovePlan = useCallback(async () => {
-    if (!selectedConversationId || !pendingPlanApproval || isApproving) return;
+    if (!selectedConversationId || !pendingPlanApproval) return;
 
-    setIsApproving(true);
+    const { requestId } = pendingPlanApproval;
+
+    // Clear UI immediately — don't wait for the HTTP round-trip
+    clearPendingPlanApproval(selectedConversationId);
     setApprovalError(null);
+    // Approving a plan exits plan mode — turn off the toggle
+    setPlanModeEnabled(false);
+
     try {
-      await approvePlan(selectedConversationId, pendingPlanApproval.requestId, true);
-      clearPendingPlanApproval(selectedConversationId);
+      await approvePlan(selectedConversationId, requestId, true);
     } catch (error) {
       console.error('Failed to approve plan:', error);
-      setApprovalError(error instanceof Error ? error.message : 'Failed to approve plan');
-    } finally {
-      setIsApproving(false);
+      showError(error instanceof Error ? error.message : 'Failed to approve plan');
     }
-  }, [selectedConversationId, pendingPlanApproval, isApproving, clearPendingPlanApproval]);
+  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, showError]);
 
   // Handle reject - sends denial to the agent so it stays in plan mode
   const handleRejectPlan = useCallback(async () => {
@@ -694,6 +685,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       if (isNewConversation) {
         // Show immediate feedback on the placeholder conversation while API call is in-flight
         if (selectedConversationId) {
+          if (planModeEnabled) {
+            setPlanModeActive(selectedConversationId, true);
+          }
           setStreaming(selectedConversationId, true);
         }
 
@@ -750,6 +744,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         selectConversation(conv.id);
 
         // Mark as streaming on the real conversation
+        if (planModeEnabled) {
+          setPlanModeActive(conv.id, true);
+        }
         setStreaming(conv.id, true);
       } else {
         const messageId = crypto.randomUUID();
@@ -893,7 +890,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 size="sm"
                 className="h-7 gap-1.5 text-xs text-muted-foreground"
                 onClick={handleHandOff}
-                disabled={!pendingPlanApproval?.planContent || isApproving}
+                disabled={!pendingPlanApproval?.planContent}
               >
                 <MessageSquarePlus className="h-3.5 w-3.5" />
                 Hand off
@@ -903,9 +900,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 size="sm"
                 className="h-7 gap-1.5 text-xs text-muted-foreground"
                 onClick={handleRejectPlan}
-                disabled={isApproving}
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <PenLine className="h-3.5 w-3.5" />
                 Request changes
               </Button>
               <Button
@@ -913,16 +909,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 size="sm"
                 className="h-7 gap-1.5 text-xs bg-background hover:bg-surface-2"
                 onClick={handleApprovePlan}
-                disabled={isApproving}
               >
-                {isApproving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <>
-                    Approve
-                    <kbd className="px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘⇧↵</kbd>
-                  </>
-                )}
+                Approve
+                <kbd className="px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘⇧↵</kbd>
               </Button>
             </div>
           </div>

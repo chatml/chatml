@@ -132,7 +132,9 @@ let prePlanPermissionMode: PermissionMode = "bypassPermissions";
     }
   }
   currentPermissionMode = initialPermissionMode;
-  prePlanPermissionMode = initialPermissionMode;
+  // If the agent starts in plan mode, the pre-plan fallback should be
+  // bypassPermissions so that ExitPlanMode restores to the correct non-plan mode.
+  prePlanPermissionMode = initialPermissionMode === "plan" ? "bypassPermissions" : initialPermissionMode;
 }
 
 // Task 6: Settings Sources Configuration
@@ -373,8 +375,9 @@ function setupInputQueue(): void {
           // Track pre-plan mode so ExitPlanMode can restore it
           if (input.permissionMode === "plan") {
             prePlanPermissionMode = currentPermissionMode;
-            // Reset suppression — user is explicitly entering plan mode
+            // Reset suppression and cooldown — user is explicitly entering plan mode
             suppressStalePlanMode = false;
+            lastExitPlanApprovalTime = 0;
           }
           currentPermissionMode = input.permissionMode as PermissionMode;
           void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
@@ -1064,9 +1067,31 @@ const askUserQuestionHook: HookCallback = async (input) => {
   }
 };
 
+// Tracks the last time ExitPlanMode was approved by the user. Used to auto-approve
+// duplicate ExitPlanMode calls caused by SDK bug #15755 (SDK doesn't properly exit
+// plan mode after permissionDecision: "allow", so the agent retries).
+let lastExitPlanApprovalTime = 0;
+const EXIT_PLAN_APPROVAL_COOLDOWN_MS = 30_000; // 30 seconds
+
 // PreToolUse hook that intercepts ExitPlanMode to route approval through our UI.
 // Uses the same pattern as AskUserQuestion: hook blocks execution until user responds.
 const exitPlanModeHook: HookCallback = async (_input) => {
+  // SDK bug #15755: after the first ExitPlanMode is approved and executed, the SDK
+  // may retry ExitPlanMode because its internal state didn't update. Returning "allow"
+  // again would re-trigger the same bug. Instead, DENY the retry with a clear message
+  // so the agent knows the plan was approved and should proceed with implementation.
+  if (Date.now() - lastExitPlanApprovalTime < EXIT_PLAN_APPROVAL_COOLDOWN_MS) {
+    debug("Denying ExitPlanMode retry (recently approved, SDK bug #15755) — telling agent to proceed");
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "deny" as const,
+        permissionDecisionReason: "Plan mode already exited successfully. Your plan was approved by the user. Do not call ExitPlanMode again. Proceed with implementation immediately.",
+      },
+      systemMessage: "The user has already approved your plan. Plan mode has been exited. Proceed with implementing the plan now.",
+    };
+  }
+
   const requestId = `plan-approval-${++planApprovalRequestCounter}-${Date.now()}`;
 
   // Read plan file content if tracked during plan mode
@@ -1101,6 +1126,8 @@ const exitPlanModeHook: HookCallback = async (_input) => {
     });
 
     if (approved) {
+      // Record approval time to auto-approve retries caused by SDK bug #15755
+      lastExitPlanApprovalTime = Date.now();
       // Allow tool execution - SDK will exit plan mode naturally
       return {
         hookSpecificOutput: {
