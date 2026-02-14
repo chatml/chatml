@@ -1066,10 +1066,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
-          {/* Ghost text suggestion */}
+          {/* Ghost text suggestion — padding must match wrapper (px-3 py-2) + Editor (py-1) */}
           {showGhostText && (
-            <div className="absolute inset-0 px-0 py-1 pointer-events-none z-0 flex items-start">
-              <span className="text-muted-foreground/40 text-base leading-relaxed">
+            <div className="absolute inset-0 px-3 py-3 pointer-events-none z-0 flex items-start">
+              <span className="text-muted-foreground/40 text-base">
                 {inputSuggestion!.ghostText}
                 <span className="text-muted-foreground/25 text-xs ml-2">Tab</span>
               </span>

@@ -1355,19 +1355,38 @@ func (m *Manager) generateInputSuggestion(convID string) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
-	// Fetch last 4 messages from the conversation
-	page, err := m.store.GetConversationMessages(ctx, convID, nil, 4)
+	// Fetch last 2 messages to find the most recent assistant message
+	page, err := m.store.GetConversationMessages(ctx, convID, nil, 2)
 	if err != nil || len(page.Messages) == 0 {
 		return
 	}
 
-	// Convert to SummaryMessage format
-	var msgs []ai.SummaryMessage
-	for _, msg := range page.Messages {
-		msgs = append(msgs, ai.SummaryMessage{Role: msg.Role, Content: msg.Content})
+	// Find the last assistant message
+	var lastAssistant *models.Message
+	for i := len(page.Messages) - 1; i >= 0; i-- {
+		if page.Messages[i].Role == "assistant" {
+			lastAssistant = &page.Messages[i]
+			break
+		}
+	}
+	if lastAssistant == nil {
+		return
 	}
 
-	suggestion, err := client.GenerateInputSuggestion(ctx, ai.SuggestionRequest{Messages: msgs})
+	// Convert tool usage to suggestion tool actions
+	var toolActions []ai.SuggestionToolAction
+	for _, tool := range lastAssistant.ToolUsage {
+		toolActions = append(toolActions, ai.SuggestionToolAction{
+			Tool:    tool.Tool,
+			Summary: tool.Summary,
+			Success: tool.Success,
+		})
+	}
+
+	suggestion, err := client.GenerateInputSuggestion(ctx, ai.SuggestionRequest{
+		AgentText:   lastAssistant.Content,
+		ToolActions: toolActions,
+	})
 	if err != nil {
 		logger.Manager.Debugf("Failed to generate input suggestion for conv %s: %v", convID, err)
 		return
