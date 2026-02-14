@@ -431,7 +431,7 @@ export function SessionToolbarContent() {
                   <RefreshCw /> Sync with Main
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={handleArchive}>
+                <DropdownMenuItem variant="destructive" onSelect={handleArchive}>
                   <Archive /> Archive Session
                 </DropdownMenuItem>
               </DropdownMenuContent>

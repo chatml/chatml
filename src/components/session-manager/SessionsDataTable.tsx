@@ -250,6 +250,7 @@ export function SessionsDataTable({
           label: 'Archive',
           icon: <Archive className="h-4 w-4" />,
           onClick: () => onArchiveSession(row.session.id),
+          variant: 'destructive',
         });
       }
 
