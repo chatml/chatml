@@ -59,9 +59,18 @@ export function CodeViewer({
 }: CodeViewerProps) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<'code' | 'rendered'>('code');
+  const [viewMode, setViewMode] = useState<'code' | 'rendered'>(
+    isMarkdownFile(filename) ? 'rendered' : 'code'
+  );
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
   const [wordWrap, setWordWrap] = useState(false);
+
+  // Reset view mode when switching files
+  const [prevFilename, setPrevFilename] = useState(filename);
+  if (prevFilename !== filename) {
+    setPrevFilename(filename);
+    setViewMode(isMarkdownFile(filename) ? 'rendered' : 'code');
+  }
 
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
