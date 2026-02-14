@@ -8,13 +8,14 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Copy, Check, FileText, Brain, ClipboardCheck, ChevronDown, ChevronRight } from 'lucide-react';
+import { Copy, Check, FileText, ClipboardCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
 import { ToolUsageHistory } from '@/components/conversation/ToolUsageHistory';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
+import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { VerificationBlock } from '@/components/conversation/VerificationBlock';
 import { FileChangesBlock } from '@/components/conversation/FileChangesBlock';
 import { RunSummaryBlock } from '@/components/conversation/RunSummaryBlock';
@@ -25,7 +26,6 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { MentionText } from '@/components/conversation/MentionText';
-import { useSettingsStore } from '@/stores/settingsStore';
 
 export interface MessageBlockProps {
   message: Message;
@@ -48,9 +48,7 @@ export const MessageBlock = memo(function MessageBlock({
   // comparator below to skip re-renders for messages without search matches.
 }: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
-  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
   const [isPlanExpanded, setIsPlanExpanded] = useState(false);
-  const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
 
   const copyContent = useCallback(async () => {
     const success = await copyToClipboard(message.content);
@@ -103,29 +101,6 @@ export const MessageBlock = memo(function MessageBlock({
   return (
     <div className="py-2">
       <div className="space-y-1.5">
-        {/* Thinking/Reasoning Content */}
-        {message.role === 'assistant' && showThinkingBlocks && message.thinkingContent && (
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-              className="flex items-center gap-2 text-xs text-ai-thinking hover:text-ai-thinking/80 transition-colors"
-            >
-              <Brain className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-              <span className="font-medium">Thinking</span>
-              {isThinkingExpanded ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
-            </button>
-            {isThinkingExpanded && (
-              <div className="ml-5 text-xs px-2 py-1.5 rounded bg-ai-thinking/10 text-muted-foreground font-mono border border-ai-thinking/20 whitespace-pre-wrap max-h-[300px] overflow-y-auto">
-                {message.thinkingContent}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Approved Plan Content */}
         {message.planContent && (
           <div className="flex flex-col gap-1">
@@ -155,7 +130,14 @@ export const MessageBlock = memo(function MessageBlock({
             <ContextMenuTrigger asChild>
               <div className="group relative">
                 {message.timeline.map((entry, idx) => {
-                  if (entry.type === 'text') {
+                  if (entry.type === 'thinking') {
+                    return (
+                      <ThinkingNode
+                        key={`tl-thinking-${idx}`}
+                        content={entry.content}
+                      />
+                    );
+                  } else if (entry.type === 'text') {
                     return (
                       <div
                         key={`tl-text-${idx}`}
@@ -167,7 +149,7 @@ export const MessageBlock = memo(function MessageBlock({
                         />
                       </div>
                     );
-                  } else {
+                  } else if (entry.type === 'tool') {
                     const tool = message.toolUsage!.find(t => t.id === entry.toolId);
                     if (!tool) return null;
                     return (
@@ -186,6 +168,7 @@ export const MessageBlock = memo(function MessageBlock({
                       />
                     );
                   }
+                  return null;
                 })}
                 <Button
                   variant="ghost"
@@ -214,6 +197,11 @@ export const MessageBlock = memo(function MessageBlock({
           </ContextMenu>
         ) : (
           <>
+            {/* Legacy fallback: Thinking content for messages without timeline */}
+            {message.role === 'assistant' && message.thinkingContent && (
+              <ThinkingNode content={message.thinkingContent} />
+            )}
+
             {/* Legacy fallback: Tool Usage History (collapsed) + full content */}
             {message.toolUsage && message.toolUsage.length > 0 && (
               <ErrorBoundary

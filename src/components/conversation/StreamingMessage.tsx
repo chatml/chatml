@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
-import { Loader2, AlertCircle, Brain, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { AlertCircle, Brain, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
+import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { SubAgentRow, SubAgentGroupedRow } from '@/components/conversation/SubAgentGroup';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
@@ -16,6 +16,7 @@ import { PROSE_CLASSES } from '@/lib/constants';
 type TimelineItem =
   | { type: 'text'; id: string; text: string; timestamp: number }
   | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number }
+  | { type: 'thinking'; id: string; text: string; isActive: boolean; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
@@ -166,19 +167,23 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
   const budgetStatus = useAppStore((s) => s.budgetStatus);
 
-  const showThinkingBlocks = useSettingsStore((s) => s.showThinkingBlocks);
-
   // Check if extended thinking is enabled for this conversation
   const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
 
-  // Thinking expansion state (must be before early return to satisfy Rules of Hooks)
-  // Note: We don't need to reset this when thinking becomes null because the
-  // expansion UI only renders when there's thinking content to show
-  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
-
-  // Build interleaved timeline from segments and tools
+  // Build interleaved timeline from segments, tools, and thinking
   const timeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
+
+    // Add thinking as a timeline item
+    if (streaming?.thinking) {
+      items.push({
+        type: 'thinking',
+        id: 'thinking-current',
+        text: streaming.thinking,
+        isActive: !!streaming.isThinking,
+        timestamp: streaming.startTime || 0,
+      });
+    }
 
     // Add text segments
     const segments = streaming?.segments || [];
@@ -221,6 +226,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     const getItemTime = (item: TimelineItem): number => {
       switch (item.type) {
         case 'text': return item.timestamp;
+        case 'thinking': return item.timestamp;
         case 'subagent': return item.agent.startTime;
         case 'subagent_group': return item.agents[0].startTime;
         default: return item.startTime;
@@ -255,85 +261,39 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     }
 
     return grouped;
-  }, [streaming?.segments, tools, subAgents]);
+  }, [streaming, tools, subAgents]);
 
   // Don't render if no streaming content, no active tools, no sub-agents, no thinking, no error, and no pending plan
-  if (timeline.length === 0 && !streaming?.error && !streaming?.thinking && !streaming?.isThinking && !streaming?.isStreaming && !streaming?.pendingPlanApproval?.planContent) {
+  if (timeline.length === 0 && !streaming?.error && !streaming?.isThinking && !streaming?.isStreaming && !streaming?.pendingPlanApproval?.planContent) {
     return null;
   }
-
-  // Truncate thinking text for display (increased limit)
-  const THINKING_TRUNCATE_LENGTH = 120;
-  const truncateThinking = (text: string) => {
-    if (text.length <= THINKING_TRUNCATE_LENGTH) return text;
-    return text.slice(0, THINKING_TRUNCATE_LENGTH) + '...';
-  };
-
-  const thinkingNeedsTruncation = streaming?.thinking && streaming.thinking.length > THINKING_TRUNCATE_LENGTH;
 
   return (
     <div className="py-2" role="status" aria-live="polite" aria-atomic="false">
       <div className="space-y-1.5">
           {/* Extended thinking mode indicator - shows when thinking is enabled but no content yet */}
-          {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && (
+          {isExtendedThinkingEnabled && streaming?.isStreaming && !streaming?.isThinking && !streaming?.thinking && timeline.length === 0 && (
             <div className="flex items-center gap-2 animate-fade-in" aria-label="Extended thinking enabled">
               <Brain className="w-3.5 h-3.5 text-ai-thinking shrink-0 animate-thinking-pulse" aria-hidden="true" />
               <span className="text-xs text-ai-thinking">Extended thinking active</span>
             </div>
           )}
 
-          {/* Thinking indicator with expandable content */}
-          {(streaming?.isThinking || streaming?.thinking) && (
-            <div className="flex flex-col gap-1 animate-slide-up-fade" aria-label="Agent is thinking">
-              <div className="flex items-center gap-2">
-                <Brain className={cn(
-                  "w-3.5 h-3.5 shrink-0 text-ai-thinking",
-                  streaming.isThinking && "animate-thinking-pulse"
-                )} aria-hidden="true" />
-                <span className="text-xs font-medium text-ai-thinking">Thinking</span>
-                {streaming.isThinking && (
-                  <Loader2 className="w-3 h-3 animate-spin text-ai-thinking" aria-hidden="true" />
-                )}
-                {showThinkingBlocks && thinkingNeedsTruncation && (
-                  <button
-                    onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-                    className="flex items-center gap-0.5 text-xs text-primary hover:text-primary/80 transition-colors"
-                  >
-                    {isThinkingExpanded ? (
-                      <>
-                        <ChevronDown className="w-3 h-3" />
-                        <span>collapse</span>
-                      </>
-                    ) : (
-                      <>
-                        <ChevronRight className="w-3 h-3" />
-                        <span>expand</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-              {showThinkingBlocks && streaming.thinking && (
-                <div
-                  className={cn(
-                    'ml-5 text-xs px-2 py-1.5 rounded bg-ai-thinking/10 text-muted-foreground font-mono',
-                    'border border-ai-thinking/20',
-                    isThinkingExpanded ? 'whitespace-pre-wrap max-h-[200px] overflow-y-auto' : 'truncate max-w-full'
-                  )}
-                >
-                  {isThinkingExpanded ? streaming.thinking : truncateThinking(streaming.thinking)}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Interleaved timeline of text and tools */}
+          {/* Interleaved timeline of thinking, text, and tools */}
           {(() => {
             // The last text segment is actively streaming — use block-level
             // memoized StreamingMarkdown for it; use CachedMarkdown for completed segments.
             const lastTextId = timeline.findLast((i) => i.type === 'text')?.id;
             return timeline.map((item) => {
-            if (item.type === 'text') {
+            if (item.type === 'thinking') {
+              return (
+                <ThinkingNode
+                  key={item.id}
+                  content={item.text}
+                  isStreaming={item.isActive}
+                />
+              );
+            } else if (item.type === 'text') {
               const isLastText = item.id === lastTextId;
               return (
                 <div

@@ -202,8 +202,8 @@ type ToolUsageRecord struct {
 
 // TimelineEntry represents an entry in the interleaved message timeline
 type TimelineEntry struct {
-	Type    string `json:"type"`              // "text" or "tool"
-	Content string `json:"content,omitempty"` // For text entries
+	Type    string `json:"type"`              // "text", "tool", or "thinking"
+	Content string `json:"content,omitempty"` // For text and thinking entries
 	ToolID  string `json:"toolId,omitempty"`  // For tool entries, references ToolUsageRecord.ID
 }
 

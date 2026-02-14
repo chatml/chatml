@@ -130,7 +130,8 @@ export interface ToolUsage {
 // Timeline entry preserving interleaved text/tool ordering in finalized messages
 export type TimelineEntry =
   | { type: 'text'; content: string }
-  | { type: 'tool'; toolId: string };
+  | { type: 'tool'; toolId: string }
+  | { type: 'thinking'; content: string };
 
 // Active tool during streaming (real-time tracking)
 export interface ActiveTool {
