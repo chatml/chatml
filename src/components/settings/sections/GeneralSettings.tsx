@@ -100,7 +100,7 @@ export function GeneralSettings() {
                   <SelectItem key={app.id} value={app.id}>
                     <div className="flex items-center gap-2">
                       {installedApp?.iconBase64 ? (
-                        <img src={`data:image/png;base64,${installedApp.iconBase64}`} className="h-4 w-4 shrink-0" alt="" />
+                        <img src={`data:image/png;base64,${installedApp.iconBase64}`} className="h-4 w-4 shrink-0" alt="" aria-hidden="true" />
                       ) : (
                         <FallbackIcon className="h-4 w-4 shrink-0" />
                       )}

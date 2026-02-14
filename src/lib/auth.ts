@@ -272,31 +272,81 @@ async function getStrongholdStore() {
   return strongholdLoadPromise;
 }
 
+// Timeout to prevent Stronghold from blocking app startup
+const STRONGHOLD_TIMEOUT_MS = 3000;
+
 /**
- * Store token in secure storage
- * TODO: Re-enable Stronghold once performance issue is resolved
+ * Store token in secure storage (Stronghold preferred, localStorage fallback)
  */
 export async function storeToken(token: string): Promise<void> {
-  console.log('[Auth] storeToken: using localStorage (Stronghold disabled for debugging)');
+  if (isTauri()) {
+    try {
+      const { store, stronghold } = await Promise.race([
+        getStrongholdStore(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Stronghold timeout')), STRONGHOLD_TIMEOUT_MS)
+        ),
+      ]);
+      const encoder = new TextEncoder();
+      await store.insert(STRONGHOLD_TOKEN_KEY, encoder.encode(token));
+      await stronghold.save();
+      console.log('[Auth] storeToken: saved to Stronghold');
+      return;
+    } catch (err) {
+      console.warn('[Auth] storeToken: Stronghold failed, falling back to localStorage:', err);
+    }
+  }
   localStorage.setItem(STRONGHOLD_TOKEN_KEY, token);
 }
 
 /**
- * Load token from secure storage
- * TODO: Re-enable Stronghold once performance issue is resolved
+ * Load token from secure storage (Stronghold preferred, localStorage fallback)
  */
 export async function loadToken(): Promise<string | null> {
-  console.log('[Auth] loadToken: using localStorage (Stronghold disabled for debugging)');
+  if (isTauri()) {
+    try {
+      const { store } = await Promise.race([
+        getStrongholdStore(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Stronghold timeout')), STRONGHOLD_TIMEOUT_MS)
+        ),
+      ]);
+      const data = await store.get(STRONGHOLD_TOKEN_KEY);
+      if (data) {
+        const decoder = new TextDecoder();
+        const token = decoder.decode(new Uint8Array(data));
+        console.log('[Auth] loadToken: loaded from Stronghold');
+        return token;
+      }
+    } catch (err) {
+      console.warn('[Auth] loadToken: Stronghold failed, falling back to localStorage:', err);
+    }
+  }
   return localStorage.getItem(STRONGHOLD_TOKEN_KEY);
 }
 
 /**
- * Clear token from secure storage
- * TODO: Re-enable Stronghold once performance issue is resolved
+ * Clear token from secure storage (both Stronghold and localStorage)
  */
 export async function clearToken(): Promise<void> {
-  console.log('[Auth] clearToken: using localStorage (Stronghold disabled for debugging)');
+  // Always clear localStorage (may have legacy token)
   localStorage.removeItem(STRONGHOLD_TOKEN_KEY);
+
+  if (isTauri()) {
+    try {
+      const { store, stronghold } = await Promise.race([
+        getStrongholdStore(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Stronghold timeout')), STRONGHOLD_TIMEOUT_MS)
+        ),
+      ]);
+      await store.remove(STRONGHOLD_TOKEN_KEY);
+      await stronghold.save();
+      console.log('[Auth] clearToken: cleared from Stronghold');
+    } catch (err) {
+      console.warn('[Auth] clearToken: Stronghold failed:', err);
+    }
+  }
 }
 
 /**
