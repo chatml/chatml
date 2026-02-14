@@ -663,7 +663,7 @@ const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; alwaysVisible?: b
   changes: { label: 'Changes', alwaysVisible: true },
   review: { label: 'Review' },
   checks: { label: 'Checks' },
-  files: { label: 'Files' },
+  files: { label: 'Files', alwaysVisible: true },
 };
 
 // Bottom panel tabs configuration
