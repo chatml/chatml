@@ -8,8 +8,6 @@ import type {
   FileTab,
   TerminalSession,
   TerminalInstance,
-  Repo,
-  Agent,
   AgentTodoItem,
   CustomTodoItem,
   McpServerStatus,
@@ -423,20 +421,6 @@ interface AppState {
 
   // File watcher actions
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
-
-  // Legacy support
-  repos: Repo[];
-  selectedRepoId: string | null;
-  agents: Agent[];
-  agentOutputs: { [agentId: string]: string[] };
-  setRepos: (repos: Repo[]) => void;
-  addRepo: (repo: Repo) => void;
-  removeRepo: (id: string) => void;
-  selectRepo: (id: string | null) => void;
-  setAgents: (agents: Agent[]) => void;
-  addAgent: (agent: Agent) => void;
-  updateAgentStatus: (agentId: string, status: Agent['status']) => void;
-  removeAgent: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -1896,26 +1880,4 @@ updateFileTabContent: (id, content) => set((state) => ({
     lastFileChange: { ...event, timestamp: Date.now() },
   }),
 
-  // Legacy support
-  repos: [],
-  selectedRepoId: null,
-  agents: [],
-  agentOutputs: {},
-  setRepos: (repos) => set({ repos }),
-  addRepo: (repo) => set((state) => ({ repos: [...state.repos, repo] })),
-  removeRepo: (id) => set((state) => ({
-    repos: state.repos.filter((r) => r.id !== id),
-    selectedRepoId: state.selectedRepoId === id ? null : state.selectedRepoId,
-  })),
-  selectRepo: (id) => set({ selectedRepoId: id }),
-  setAgents: (agents) => set({ agents }),
-  addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
-  updateAgentStatus: (agentId, status) => set((state) => ({
-    agents: state.agents.map((a) =>
-      a.id === agentId ? { ...a, status } : a
-    ),
-  })),
-  removeAgent: (id) => set((state) => ({
-    agents: state.agents.filter((a) => a.id !== id),
-  })),
 }));

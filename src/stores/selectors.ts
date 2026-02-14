@@ -374,40 +374,6 @@ export const usePendingUserQuestion = (conversationId: string | null) =>
   useAppStore((s) => (conversationId ? s.pendingUserQuestion[conversationId] ?? null : null));
 
 // ============================================================================
-// Repo State (Legacy)
-// ============================================================================
-
-/**
- * Repo list and selection state.
- * Use in: CommandPalette, components that don't need agents
- */
-export const useRepoState = () =>
-  useAppStore(
-    useShallow((s) => ({
-      repos: s.repos,
-      selectedRepoId: s.selectedRepoId,
-      selectRepo: s.selectRepo,
-      removeRepo: s.removeRepo,
-    }))
-  );
-
-/**
- * Repo state with agents — extends useRepoState for components that also
- * render agent info alongside repos (e.g. showing agent count per repo).
- * Use in: RepoList
- */
-export const useRepoStateWithAgents = () =>
-  useAppStore(
-    useShallow((s) => ({
-      repos: s.repos,
-      selectedRepoId: s.selectedRepoId,
-      selectRepo: s.selectRepo,
-      removeRepo: s.removeRepo,
-      agents: s.agents,
-    }))
-  );
-
-// ============================================================================
 // Page-level Actions
 // ============================================================================
 

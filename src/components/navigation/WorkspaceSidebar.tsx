@@ -128,7 +128,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [taskStatusFilters, setTaskStatusFilters] = useState<Set<SessionTaskStatus>>(new Set());
-  const [agentStatusFilters, setAgentStatusFilters] = useState<Set<'active' | 'idle' | 'done' | 'error'>>(new Set());
   const [prStatusFilters, setPrStatusFilters] = useState<Set<'none' | 'open' | 'merged' | 'closed'>>(new Set());
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -192,29 +191,16 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     filters: {
       searchTerm,
       taskStatusFilters,
-      agentStatusFilters,
       prStatusFilters,
     },
     workspaceColors,
     getWorkspaceColor,
   });
 
-  const activeFilterCount = taskStatusFilters.size + agentStatusFilters.size + prStatusFilters.size;
+  const activeFilterCount = taskStatusFilters.size + prStatusFilters.size;
 
   const toggleTaskStatusFilter = (status: SessionTaskStatus) => {
     setTaskStatusFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
-  };
-
-  const toggleAgentStatusFilter = (status: 'active' | 'idle' | 'done' | 'error') => {
-    setAgentStatusFilters((prev) => {
       const next = new Set(prev);
       if (next.has(status)) {
         next.delete(status);
@@ -239,7 +225,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
 
   const clearAllFilters = () => {
     setTaskStatusFilters(new Set());
-    setAgentStatusFilters(new Set());
     setPrStatusFilters(new Set());
   };
 
@@ -1143,34 +1128,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                     onSelect={(e) => e.preventDefault()}
                   >
                     <TaskStatusIcon status={option.value} className="w-3.5 h-3.5" />
-                    {option.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
-            {/* Agent Status Sub-Menu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                Agent
-                {agentStatusFilters.size > 0 && (
-                  <span className="ml-auto text-xs text-primary">{agentStatusFilters.size}</span>
-                )}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-44">
-                {[
-                  { value: 'active' as const, label: 'Running', color: 'text-text-success fill-text-success' },
-                  { value: 'idle' as const, label: 'Idle', color: 'text-text-warning fill-text-warning' },
-                  { value: 'done' as const, label: 'Done', color: 'text-muted-foreground fill-muted-foreground' },
-                  { value: 'error' as const, label: 'Error', color: 'text-text-error fill-text-error' },
-                ].map((option) => (
-                  <DropdownMenuCheckboxItem
-                    key={option.value}
-                    checked={agentStatusFilters.has(option.value)}
-                    onCheckedChange={() => toggleAgentStatusFilter(option.value)}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <Circle className={cn('w-3 h-3', option.color)} />
                     {option.label}
                   </DropdownMenuCheckboxItem>
                 ))}

@@ -558,25 +558,6 @@ export interface CustomTodoItem {
   createdAt: string;
 }
 
-// Legacy types for backward compatibility
-export interface Repo {
-  id: string;
-  name: string;
-  path: string;
-  branch: string;
-  createdAt: string;
-}
-
-export interface Agent {
-  id: string;
-  repoId: string;
-  task: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-  worktree: string;
-  branch: string;
-  createdAt: string;
-}
-
 export interface WSEvent {
   type: string; // 'output' | 'status' | 'assistant_text' | 'tool_start' | 'tool_end' | 'name_suggestion' | 'conversation_status' | 'thinking' | 'thinking_delta' | 'thinking_start' | etc.
   agentId?: string;

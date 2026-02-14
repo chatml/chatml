@@ -38,8 +38,8 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 
 	linearClient := linear.NewClient("")
 
-	// Create router without orchestrator, branch watcher, pr watcher, or stats cache
-	router := NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, nil, nil, prCache, nil, nil, nil, nil)
+	// Create router without branch watcher, pr watcher, or stats cache
+	router := NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, nil, prCache, nil, nil, nil, nil)
 
 	return router, s
 }
@@ -210,25 +210,6 @@ func TestNewRouter_AgentRoutes(t *testing.T) {
 
 		// Stop is idempotent - returns success even if agent not running
 		require.Equal(t, http.StatusNoContent, w.Code)
-	})
-}
-
-// ============================================================================
-// Orchestrator Route Tests
-// ============================================================================
-
-func TestNewRouter_OrchestratorRoutes_NilOrch(t *testing.T) {
-	router, _ := setupTestRouter(t)
-
-	// When orchestrator is nil, orchestrator routes should return 404
-	t.Run("GET /api/orchestrator/agents - not found when orch is nil", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/orchestrator/agents", nil)
-		w := httptest.NewRecorder()
-
-		router.ServeHTTP(w, req)
-
-		// Route should not exist when orchestrator is nil
-		require.Equal(t, http.StatusNotFound, w.Code)
 	})
 }
 

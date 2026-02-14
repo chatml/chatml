@@ -103,16 +103,6 @@ export interface RepoDTO {
   createdAt: string;
 }
 
-export interface AgentDTO {
-  id: string;
-  repoId: string;
-  task: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-  worktree: string;
-  branch: string;
-  createdAt: string;
-}
-
 export interface FileNodeDTO {
   name: string;
   path: string;
@@ -742,40 +732,6 @@ export async function sendSessionMessage(
     const text = await res.text();
     throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
   }
-}
-
-export async function listAgents(repoId: string): Promise<AgentDTO[]> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/agents`);
-  return handleResponse<AgentDTO[]>(res);
-}
-
-export async function spawnAgent(repoId: string, task: string): Promise<AgentDTO> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${repoId}/agents`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ task }),
-  });
-  return handleResponse<AgentDTO>(res);
-}
-
-export async function stopAgent(agentId: string): Promise<void> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}/stop`, { method: 'POST' });
-  await handleVoidResponse(res, 'Failed to stop agent');
-}
-
-export async function getAgentDiff(agentId: string): Promise<string> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}/diff`);
-  return res.text();
-}
-
-export async function mergeAgent(agentId: string): Promise<void> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}/merge`, { method: 'POST' });
-  await handleVoidResponse(res, 'Failed to merge agent changes');
-}
-
-export async function deleteAgent(agentId: string): Promise<void> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/agents/${agentId}`, { method: 'DELETE' });
-  await handleVoidResponse(res, 'Failed to delete agent');
 }
 
 export async function checkHealth(): Promise<boolean> {

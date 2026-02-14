@@ -147,9 +147,6 @@ func main() {
 	// Repo manager for stats computation in callbacks
 	repoManager := git.NewRepoManager()
 
-	// Agent orchestrator disabled - feature hidden for later release
-	// To re-enable: uncomment orchestrator initialization and pass orch to NewRouter
-
 	// Branch watcher for instant detection of git branch changes
 	branchWatcher, err := branch.NewWatcher(func(event branch.BranchChangeEvent) {
 		// Handle updates asynchronously to avoid blocking the watcher's event loop
@@ -448,7 +445,7 @@ func main() {
 		},
 	)
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{

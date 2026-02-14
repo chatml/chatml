@@ -33,12 +33,6 @@ var (
 	Manager *log.Logger
 	Process *log.Logger
 
-	// Orchestrator
-	Orchestrator *log.Logger
-	Scheduler    *log.Logger
-	Runner       *log.Logger
-	Polling      *log.Logger
-
 	// Scripts
 	Scripts *log.Logger
 
@@ -59,7 +53,6 @@ var (
 	colorStorage = lipgloss.NewStyle().Foreground(lipgloss.Color("#c084fc")) // purple
 	colorHTTP    = lipgloss.NewStyle().Foreground(lipgloss.Color("#22d3ee")) // cyan
 	colorAgent   = lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24")) // amber
-	colorOrch    = lipgloss.NewStyle().Foreground(lipgloss.Color("#f472b6")) // pink
 	colorUtil    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a3a3a3")) // gray
 )
 
@@ -119,12 +112,6 @@ func init() {
 	// Agent management
 	Manager = base.WithPrefix(colorAgent.Render("manager"))
 	Process = base.WithPrefix(colorAgent.Render("process"))
-
-	// Orchestrator
-	Orchestrator = base.WithPrefix(colorOrch.Render("orchestrator"))
-	Scheduler = base.WithPrefix(colorOrch.Render("scheduler"))
-	Runner = base.WithPrefix(colorOrch.Render("runner"))
-	Polling = base.WithPrefix(colorOrch.Render("polling"))
 
 	// Scripts
 	Scripts = base.WithPrefix(colorAgent.Render("scripts"))
