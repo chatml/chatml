@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { usePendingUserQuestion, useUserQuestionActions } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
   const { updateUserQuestionAnswer, nextUserQuestion, prevUserQuestion, clearPendingUserQuestion } = useUserQuestionActions();
   const { error: showError } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [freeTextValue, setFreeTextValue] = useState('');
 
   const currentQuestion: UserQuestion | undefined = pending?.questions[pending.currentIndex];
   const totalQuestions = pending?.questions.length ?? 0;
@@ -51,7 +52,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
   }, [conversationId, currentQuestion, selectedValues, updateUserQuestionAnswer]);
 
   const handleDismiss = useCallback(async () => {
-    if (!pending) return;
+    if (!pending || isSubmitting) return;
     // Send cancellation to the agent so it doesn't wait for timeout
     try {
       await answerConversationQuestion(conversationId, pending.requestId, { __cancelled: 'true' });
@@ -59,7 +60,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
       // Ignore errors - the question may have already timed out
     }
     clearPendingUserQuestion(conversationId);
-  }, [conversationId, pending, clearPendingUserQuestion]);
+  }, [conversationId, pending, isSubmitting, clearPendingUserQuestion]);
 
   const handlePrev = useCallback(() => {
     prevUserQuestion(conversationId);
@@ -92,6 +93,15 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
     });
   }, [pending]);
 
+  // Sync free-text state when the current question changes
+  const currentHeader = currentQuestion?.header;
+  const hasFreeText = currentQuestion && currentQuestion.options.length === 0;
+  useEffect(() => {
+    if (hasFreeText && currentHeader && pending) {
+      setFreeTextValue(pending.answers[currentHeader] || '');
+    }
+  }, [currentHeader, hasFreeText, pending]);
+
   if (!pending || !currentQuestion) return null;
 
   return (
@@ -105,46 +115,70 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
             size="icon"
             className="h-6 w-6 -mt-1 -mr-1 text-muted-foreground hover:text-foreground"
             onClick={handleDismiss}
+            disabled={isSubmitting}
             data-testid="dismiss-question"
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Options List */}
+        {/* Options List or Free-text Input */}
         <div className="px-2 pb-2">
-          {currentQuestion.options.map((option, index) => {
-            const isSelected = selectedValues.has(option.label);
-            return (
-              <button
-                key={option.label}
-                type="button"
-                onClick={() => handleOptionToggle(option.label)}
-                className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors',
-                  isSelected
-                    ? 'bg-primary/10 text-foreground'
-                    : 'text-muted-foreground hover:bg-surface-1/60 hover:text-foreground'
-                )}
-              >
-                <span className="text-xs font-mono text-muted-foreground/70 w-4">{index + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm block">{option.label}</span>
-                  {option.description && (
-                    <span className="text-xs text-muted-foreground/70 block truncate">{option.description}</span>
+          {currentQuestion.options.length > 0 ? (
+            currentQuestion.options.map((option, index) => {
+              const isSelected = selectedValues.has(option.label);
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => handleOptionToggle(option.label)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors',
+                    isSelected
+                      ? 'bg-primary/10 text-foreground'
+                      : 'text-muted-foreground hover:bg-surface-1/60 hover:text-foreground'
                   )}
-                </div>
-                <div className={cn(
-                  'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0',
-                  isSelected
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-muted-foreground/40'
-                )}>
-                  {isSelected && <Check className="h-3 w-3" />}
-                </div>
-              </button>
-            );
-          })}
+                >
+                  <span className="text-xs font-mono text-muted-foreground/70 w-4">{index + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm block">{option.label}</span>
+                    {option.description && (
+                      <span className="text-xs text-muted-foreground/70 block truncate">{option.description}</span>
+                    )}
+                  </div>
+                  <div className={cn(
+                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0',
+                    isSelected
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-muted-foreground/40'
+                  )}>
+                    {isSelected && <Check className="h-3 w-3" />}
+                  </div>
+                </button>
+              );
+            })
+          ) : (
+            <div className="px-2 py-1">
+              <input
+                type="text"
+                className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Type your answer..."
+                value={freeTextValue}
+                onChange={(e) => {
+                  setFreeTextValue(e.target.value);
+                  updateUserQuestionAnswer(conversationId, currentQuestion.header, e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && canSubmit && !isSubmitting) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
+                autoFocus
+                data-testid="free-text-input"
+              />
+            </div>
+          )}
         </div>
 
         {/* Footer with pagination and submit */}

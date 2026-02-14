@@ -240,6 +240,12 @@ interface PendingQuestionRequest {
 const pendingQuestionRequests = new Map<string, PendingQuestionRequest>();
 let questionRequestCounter = 0;
 
+// Retry dedup for AskUserQuestion — similar to ExitPlanMode's cooldown for SDK bug #15755.
+// After the user answers, cache answers so SDK retries get auto-approved without re-prompting.
+let lastQuestionAnswers: Record<string, string> | null = null;
+let lastQuestionAnswerTime = 0;
+const ASK_USER_QUESTION_COOLDOWN_MS = 30_000; // 30 seconds
+
 // Pending plan approval requests (for ExitPlanMode tool)
 const PLAN_APPROVAL_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as long as they need
 
@@ -1021,7 +1027,30 @@ interface AskUserQuestionInput {
 const askUserQuestionHook: HookCallback = async (input) => {
   const hookInput = input as PreToolUseHookInput;
   const toolInput = hookInput.tool_input as unknown as AskUserQuestionInput;
+
+  // SDK retry guard: if we recently answered a question, auto-return the cached
+  // answers instead of prompting the user again. Mirrors the ExitPlanMode
+  // cooldown workaround for SDK bug #15755.
+  if (lastQuestionAnswers && Date.now() - lastQuestionAnswerTime < ASK_USER_QUESTION_COOLDOWN_MS) {
+    debug("Auto-returning cached answers for AskUserQuestion retry (cooldown active)");
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "allow" as const,
+        updatedInput: {
+          ...(hookInput.tool_input as Record<string, unknown>),
+          answers: lastQuestionAnswers,
+        },
+      },
+    };
+  }
+
   const requestId = `question-${++questionRequestCounter}-${Date.now()}`;
+
+  // Flush any buffered text so it appears BEFORE the question UI.
+  // The PreToolUse hook fires before the SDK yields the assistant message
+  // through the iterator, so flushBlockBuffer() in handleMessage hasn't run yet.
+  flushBlockBuffer();
 
   // Emit the question request to the Go backend
   emit({
@@ -1044,6 +1073,10 @@ const askUserQuestionHook: HookCallback = async (input) => {
       }, ASK_USER_QUESTION_HOOK_TIMEOUT_S * 1000);
     });
 
+    // Cache answers for retry dedup
+    lastQuestionAnswers = answers;
+    lastQuestionAnswerTime = Date.now();
+
     // Allow tool execution with answers populated
     return {
       hookSpecificOutput: {
@@ -1056,6 +1089,10 @@ const askUserQuestionHook: HookCallback = async (input) => {
       },
     };
   } catch (error) {
+    // Clear cached answers on cancellation/timeout
+    lastQuestionAnswers = null;
+    lastQuestionAnswerTime = 0;
+
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       hookSpecificOutput: {
@@ -1093,6 +1130,9 @@ const exitPlanModeHook: HookCallback = async (_input) => {
   }
 
   const requestId = `plan-approval-${++planApprovalRequestCounter}-${Date.now()}`;
+
+  // Flush any buffered text so plan content appears before the approval UI
+  flushBlockBuffer();
 
   // Read plan file content if tracked during plan mode
   let planContent: string | undefined;
@@ -1168,9 +1208,18 @@ const PLAN_MODE_DENIED_TOOLS = new Set([
 // In plan mode the SDK should enforce restrictions natively, but we double-check here.
 const canUseTool = async (
   toolName: string,
-  _toolInput: Record<string, unknown>,
+  toolInput: Record<string, unknown>,
   _options: { signal: AbortSignal; toolUseID: string }
 ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
+  // Defense-in-depth: if AskUserQuestion reaches canUseTool with cached answers,
+  // provide them via updatedInput. In bypassPermissions mode (the default), the SDK
+  // auto-allows before reaching this callback — this covers non-bypass modes.
+  if (toolName === "AskUserQuestion" && lastQuestionAnswers &&
+      Date.now() - lastQuestionAnswerTime < ASK_USER_QUESTION_COOLDOWN_MS) {
+    const answers = lastQuestionAnswers;
+    lastQuestionAnswers = null; // Consume once
+    return { behavior: "allow", updatedInput: { ...toolInput, answers } };
+  }
   if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
     return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
   }
@@ -1621,6 +1670,10 @@ function handleMessage(message: SDKMessage): void {
         if (contentBlock?.type === "thinking") {
           emit({ type: "thinking_start" });
         }
+      } else if (event.type === "content_block_stop") {
+        // Text block finished — flush any remaining buffered content so text
+        // is fully emitted before subsequent tool events.
+        flushBlockBuffer();
       } else if (event.type === "error") {
         // Surface API-level errors (e.g., overloaded_error) during streaming
         const errorEvent = event as { error?: { type?: string; message?: string } };
