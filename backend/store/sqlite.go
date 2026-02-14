@@ -694,6 +694,27 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added plan_content column to messages")
 	}
 
+	// Migration: Create checkpoints table (file state snapshots from Agent SDK)
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS checkpoints (
+			id TEXT PRIMARY KEY,
+			conversation_id TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			uuid TEXT NOT NULL,
+			message_index INTEGER NOT NULL DEFAULT 0,
+			is_result INTEGER NOT NULL DEFAULT 0,
+			timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+		)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_checkpoints_conversation ON checkpoints(conversation_id)`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -2654,6 +2675,55 @@ func (s *SQLiteStore) DeleteReviewCommentsForSession(ctx context.Context, sessio
 	_, err := s.db.ExecContext(ctx, `DELETE FROM review_comments WHERE session_id = ?`, sessionID)
 	if err != nil {
 		return fmt.Errorf("DeleteReviewCommentsForSession: %w", err)
+	}
+	return nil
+}
+
+// ============================================================================
+// Checkpoint methods
+// ============================================================================
+
+func (s *SQLiteStore) AddCheckpoint(ctx context.Context, cp *models.Checkpoint) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO checkpoints (id, conversation_id, session_id, uuid, message_index, is_result, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		cp.ID, cp.ConversationID, cp.SessionID, cp.UUID, cp.MessageIndex, boolToInt(cp.IsResult), cp.Timestamp)
+	if err != nil {
+		return fmt.Errorf("AddCheckpoint: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListCheckpointsByConversation(ctx context.Context, conversationID string) ([]*models.Checkpoint, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, conversation_id, session_id, uuid, message_index, is_result, timestamp
+		FROM checkpoints WHERE conversation_id = ?
+		ORDER BY timestamp ASC`, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("ListCheckpointsByConversation: %w", err)
+	}
+	defer rows.Close()
+
+	checkpoints := []*models.Checkpoint{}
+	for rows.Next() {
+		var cp models.Checkpoint
+		var isResult int
+		if err := rows.Scan(&cp.ID, &cp.ConversationID, &cp.SessionID, &cp.UUID, &cp.MessageIndex, &isResult, &cp.Timestamp); err != nil {
+			return nil, fmt.Errorf("ListCheckpointsByConversation scan: %w", err)
+		}
+		cp.IsResult = intToBool(isResult)
+		checkpoints = append(checkpoints, &cp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListCheckpointsByConversation rows: %w", err)
+	}
+	return checkpoints, nil
+}
+
+func (s *SQLiteStore) DeleteCheckpointsForConversation(ctx context.Context, conversationID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM checkpoints WHERE conversation_id = ?`, conversationID)
+	if err != nil {
+		return fmt.Errorf("DeleteCheckpointsForConversation: %w", err)
 	}
 	return nil
 }

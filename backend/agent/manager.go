@@ -601,6 +601,25 @@ outer:
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
 
+			case EventTypeCheckpointCreated:
+				if event.CheckpointUuid != "" {
+					conv, _ := m.store.GetConversationMeta(ctx, convID)
+					if conv != nil {
+						cp := &models.Checkpoint{
+							ID:             uuid.New().String(),
+							ConversationID: convID,
+							SessionID:      conv.SessionID,
+							UUID:           event.CheckpointUuid,
+							MessageIndex:   event.MessageIndex,
+							IsResult:       event.IsResult,
+							Timestamp:      time.Now(),
+						}
+						if err := m.store.AddCheckpoint(ctx, cp); err != nil {
+							logger.Manager.Errorf("Failed to persist checkpoint for conv %s: %v", convID, err)
+						}
+					}
+				}
+
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
 				// Turn or session completed — store accumulated message and reset
 				// streaming state. turn_complete means the process stays alive;
