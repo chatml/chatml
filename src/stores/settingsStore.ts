@@ -20,7 +20,7 @@ export type TopPanelTab = 'review' | 'checks' | 'files';
 export type AllTopPanelTab = 'changes' | TopPanelTab;
 
 // Default top tab order
-export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['changes', 'review', 'checks', 'files'];
+export const DEFAULT_TOP_TAB_ORDER: AllTopPanelTab[] = ['files', 'changes', 'checks', 'review'];
 
 // Theme options
 export type ThemeOption = 'system' | 'light' | 'dark';
