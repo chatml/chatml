@@ -13,7 +13,6 @@ import { ChecksPanel } from '@/components/panels/ChecksPanel';
 
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
-import { PlansPanel } from '@/components/panels/PlansPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
 import { ScriptsPanel } from '@/components/panels/ScriptsPanel';
@@ -626,11 +625,6 @@ export function ChangesPanel() {
                   <TodoPanel />
                 </ErrorBoundary>
               )}
-              {bottomTab === 'plans' && (
-                <ErrorBoundary section="PlansPanel" fallback={<InlineErrorFallback message="Unable to display plans" />}>
-                  <PlansPanel />
-                </ErrorBoundary>
-              )}
               {bottomTab === 'budget' && (
                 <ErrorBoundary section="BudgetPanel" fallback={<InlineErrorFallback message="Unable to display budget" />}>
                   <BudgetStatusPanel />
@@ -675,7 +669,6 @@ const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; alwaysVisible?: b
 // Bottom panel tabs configuration
 const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisible?: boolean }> = {
   todos: { label: 'Tasks', alwaysVisible: true },
-  plans: { label: 'Plans' },
   history: { label: 'Checkpoints' },
   'file-history': { label: 'File History' },
   budget: { label: 'Budget' },
