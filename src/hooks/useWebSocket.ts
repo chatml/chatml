@@ -450,6 +450,8 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.updateConversation(conversationId, { status: 'completed' });
         // Clear agent todos — tasks are no longer relevant after turn ends
         freshStore.clearAgentTodos(conversationId);
+        // Clear any stale pending question — the turn is over
+        freshStore.clearPendingUserQuestion(conversationId);
         // Desktop notification for task completion.
         // success defaults to true when the field is absent (only explicitly false means failure).
         notifyDesktop(
@@ -507,6 +509,7 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearActiveTools(conversationId);
         store.clearSubAgents(conversationId);
         store.clearAgentTodos(conversationId);
+        store.clearPendingUserQuestion(conversationId);
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
         break;
@@ -781,10 +784,12 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearActiveTools(conversationId);
         store.clearThinking(conversationId);
         store.clearSubAgents(conversationId);
+        store.clearPendingUserQuestion(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });
         break;
 
       case 'user_question_timeout':
+      case 'user_question_cancelled':
         store.clearPendingUserQuestion(conversationId);
         break;
 
