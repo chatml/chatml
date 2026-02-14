@@ -930,6 +930,7 @@ export interface MessageDTO {
   thinkingContent?: string;
   durationMs?: number;
   timeline?: TimelineEntryDTO[];
+  planContent?: string;
   timestamp: string;
 }
 
@@ -976,6 +977,7 @@ export function toStoreMessage(dto: MessageDTO, conversationId: string): import(
     thinkingContent: dto.thinkingContent,
     durationMs: dto.durationMs,
     timeline: dto.timeline as import('@/lib/types').TimelineEntry[] | undefined,
+    planContent: dto.planContent,
     timestamp: dto.timestamp,
   };
 }

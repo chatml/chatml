@@ -20,6 +20,7 @@ import {
   Search,
   Globe,
   FolderOpen,
+  ClipboardCheck,
   Circle,
   type LucideIcon,
 } from 'lucide-react';
@@ -112,6 +113,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         return Globe;
       case 'list_dir':
         return FolderOpen;
+      case 'ExitPlanMode':
+        return ClipboardCheck;
       default:
         return Terminal;
     }
@@ -143,6 +146,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         return 'Search web';
       case 'list_dir':
         return 'List';
+      case 'ExitPlanMode':
+        return isActive ? 'Propose Plan' : 'Exiting Plan mode';
       default:
         return tool;
     }

@@ -206,6 +206,8 @@ export interface Message {
   thinkingContent?: string;
   // Ordered timeline preserving interleaved text and tool structure from streaming
   timeline?: TimelineEntry[];
+  // Approved plan content from ExitPlanMode
+  planContent?: string;
 }
 
 // Run statistics from agent

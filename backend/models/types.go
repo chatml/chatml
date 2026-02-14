@@ -183,6 +183,7 @@ type Message struct {
 	ThinkingContent string             `json:"thinkingContent,omitempty"` // Extended thinking/reasoning content
 	DurationMs      int                `json:"durationMs,omitempty"`      // Turn duration in milliseconds
 	Timeline        []TimelineEntry    `json:"timeline,omitempty"`        // Interleaved text/tool ordering
+	PlanContent     string             `json:"planContent,omitempty"`     // Approved plan content
 	Timestamp       time.Time          `json:"timestamp"`
 }
 

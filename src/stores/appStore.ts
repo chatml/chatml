@@ -143,6 +143,7 @@ interface StreamingState {
   startTime?: number; // When streaming started (for elapsed time)
   planModeActive: boolean; // Whether plan mode is active for this conversation
   pendingPlanApproval: { requestId: string; planContent?: string } | null; // Pending ExitPlanMode approval request
+  approvedPlanContent?: string; // Plan content to persist after approval
 }
 
 // ActiveTool is imported from @/lib/types
@@ -320,6 +321,7 @@ interface AppState {
   setPlanModeActive: (conversationId: string, active: boolean) => void;
   setPendingPlanApproval: (conversationId: string, requestId: string, planContent?: string) => void;
   clearPendingPlanApproval: (conversationId: string) => void;
+  setApprovedPlanContent: (conversationId: string, content: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   updateToolProgress: (conversationId: string, toolId: string, progress: { elapsedTimeSeconds?: number; toolName?: string }) => void;
@@ -1218,6 +1220,11 @@ updateFileTabContent: (id, content) => set((state) => ({
       pendingPlanApproval: null,
     }),
   })),
+  setApprovedPlanContent: (conversationId, content) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      approvedPlanContent: content,
+    }),
+  })),
   addActiveTool: (conversationId, tool, opts) => {
     // Set up timeout to force-complete orphaned tools (skip for synthetic entries that will be completed immediately)
     if (!opts?.skipTimeout) {
@@ -1452,6 +1459,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         startTime: hasQueuedMessage ? Date.now() : undefined,
         planModeActive: streaming?.planModeActive || false,
         pendingPlanApproval: null,
+        approvedPlanContent: undefined,
       };
 
       // If no streaming text, just clear the state
@@ -1502,6 +1510,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         runSummary: metadata.runSummary,
         ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
         ...(timeline ? { timeline } : {}),
+        ...(streaming.approvedPlanContent ? { planContent: streaming.approvedPlanContent } : {}),
       };
 
       // Atomically: add message AND clear streaming state

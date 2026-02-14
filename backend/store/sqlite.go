@@ -681,6 +681,19 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added timeline column to messages")
 	}
 
+	// Migration: Add plan_content column to messages (approved plan content from ExitPlanMode)
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'plan_content'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN plan_content TEXT DEFAULT NULL`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added plan_content column to messages")
+	}
+
 	return nil
 }
 
@@ -1782,7 +1795,7 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				timestamp, position
+				plan_content, timestamp, position
 			FROM messages
 			WHERE conversation_id = ? AND position < ?
 			ORDER BY position DESC
@@ -1791,7 +1804,7 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				timestamp, position
+				plan_content, timestamp, position
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY position DESC
@@ -1812,11 +1825,12 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		var msg models.Message
 		var setupInfoJSON, runSummaryJSON sql.NullString
 		var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
+		var planContentNull sql.NullString
 		var durationMsNull sql.NullInt64
 		var position int
 		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
 			&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
-			&msg.Timestamp, &position); err != nil {
+			&planContentNull, &msg.Timestamp, &position); err != nil {
 			return nil, fmt.Errorf("GetConversationMessages scan: %w", err)
 		}
 		if setupInfoJSON.Valid {
@@ -1848,6 +1862,9 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 			if json.Unmarshal([]byte(timelineJSON.String), &timeline) == nil {
 				msg.Timeline = timeline
 			}
+		}
+		if planContentNull.Valid {
+			msg.PlanContent = planContentNull.String
 		}
 		items = append(items, messageWithPos{msg: msg, position: position})
 	}
@@ -2082,6 +2099,7 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 
 	// Nullable scalar fields
 	thinkingContent := nullString(msg.ThinkingContent)
+	planContent := nullString(msg.PlanContent)
 	var durationMs sql.NullInt64
 	if msg.DurationMs > 0 {
 		durationMs = sql.NullInt64{Int64: int64(msg.DurationMs), Valid: true}
@@ -2108,11 +2126,11 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				timestamp, position)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				plan_content, timestamp, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON,
 			toolUsageJSON, thinkingContent, durationMs, timelineJSON,
-			msg.Timestamp, nextPos)
+			planContent, msg.Timestamp, nextPos)
 		if err != nil {
 			tx.Rollback()
 			return err
