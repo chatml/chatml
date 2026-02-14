@@ -342,7 +342,7 @@ export function SessionToolbarContent() {
                 }}
               >
                 {defaultInstalled?.iconBase64 ? (
-                  <img src={`data:image/png;base64,${defaultInstalled.iconBase64}`} className="h-4.5 w-4.5 shrink-0" alt="" />
+                  <img src={`data:image/png;base64,${defaultInstalled.iconBase64}`} className="h-4.5 w-4.5 shrink-0" alt="" aria-hidden="true" />
                 ) : (
                   <DefaultIcon className="h-3.5 w-3.5" />
                 )}
@@ -382,7 +382,7 @@ export function SessionToolbarContent() {
                             }}
                           >
                             {app.iconBase64 ? (
-                              <img src={`data:image/png;base64,${app.iconBase64}`} className="h-5 w-5 shrink-0" alt="" />
+                              <img src={`data:image/png;base64,${app.iconBase64}`} className="h-5 w-5 shrink-0" alt="" aria-hidden="true" />
                             ) : (
                               <FallbackIcon className="h-4 w-4 shrink-0" />
                             )}

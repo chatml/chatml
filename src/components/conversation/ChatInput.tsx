@@ -323,7 +323,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (planModeActive && !planModeEnabled) {
       setPlanModeEnabled(true);
     }
-  }, [planModeActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [planModeActive, planModeEnabled]);
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);

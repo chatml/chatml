@@ -19,7 +19,7 @@ interface CloneFromUrlDialogProps {
 
 // Validates common git URL formats: https://, git@, ssh://, git://
 function isValidGitUrl(url: string): boolean {
-  const gitUrlPattern = /^(https?:\/\/|git@|ssh:\/\/|git:\/\/).+/i;
+  const gitUrlPattern = /^(https?:\/\/[\w.-]+\/.+|git@[\w.-]+:.+|ssh:\/\/[\w.-]+\/.+|git:\/\/[\w.-]+\/.+)$/i;
   return gitUrlPattern.test(url.trim());
 }
 
@@ -54,6 +54,10 @@ export function CloneFromUrlDialog({ isOpen, onClose }: CloneFromUrlDialogProps)
     // Validate git URL format
     if (!isValidGitUrl(gitUrl)) {
       setUrlError('Please enter a valid git URL (https://, git@, ssh://, or git://)');
+      return;
+    }
+
+    if (!cloneLocation.trim()) {
       return;
     }
 

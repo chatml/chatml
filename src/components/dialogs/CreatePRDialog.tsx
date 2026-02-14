@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { generatePRDescription, createPR } from '@/lib/api';
 import { Loader2, RefreshCw, GitPullRequest, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CreatePRDialogProps {
   open: boolean;
@@ -127,13 +128,24 @@ export function CreatePRDialog({
               <label htmlFor="pr-title" className="text-sm font-medium">
                 Title
               </label>
-              <Input
-                id="pr-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="PR title"
-                autoFocus
-              />
+              <div className="relative">
+                <Input
+                  id="pr-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="PR title"
+                  maxLength={255}
+                  autoFocus
+                />
+                {title.length > 200 && (
+                  <span className={cn(
+                    "absolute right-2 top-1/2 -translate-y-1/2 text-xs",
+                    title.length >= 255 ? "text-destructive" : "text-muted-foreground"
+                  )}>
+                    {title.length}/255
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">

@@ -665,6 +665,7 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Failed to load data from backend:', error);
+        showError('Failed to load workspace data. Try reloading the app.', 'Data Load Error');
       } finally {
         setIsLoadingData(false);
       }
@@ -706,8 +707,9 @@ export default function Home() {
       });
     } catch (error) {
       console.error('Failed to create session:', error);
+      showError(error instanceof Error ? error.message : 'Failed to create session. Please try again.', 'Session Error');
     }
-  }, [selectedWorkspaceId, workspaces, addSession]);
+  }, [selectedWorkspaceId, workspaces, addSession, showError]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -745,8 +747,9 @@ export default function Home() {
       selectConversation(newConv.id);
     } catch (error) {
       console.error('Failed to create conversation:', error);
+      showError(error instanceof Error ? error.message : 'Failed to create conversation. Please try again.', 'Conversation Error');
     }
-  }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation]);
+  }, [selectedWorkspaceId, selectedSessionId, addConversation, selectConversation, showError]);
 
   // Actually perform the close operation
   const doCloseTab = useCallback(async (convId: string) => {

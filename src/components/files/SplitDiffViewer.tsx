@@ -156,12 +156,15 @@ export function SplitDiffViewer({
             {/* Line numbers */}
             <div className="shrink-0 py-2 pl-2 pr-2 text-xs font-mono text-muted-foreground/50 text-right select-none border-r border-border/30 sticky left-0 bg-background">
               {diffLines.map((line, i) => (
-                <div key={i} className="leading-[18px] h-[18px]">
-                  {line.type !== 'added' ? line.oldLineNum : ''}
+                <div key={i} className="leading-[18px] h-[18px] flex items-center justify-end gap-0.5">
+                  {line.type === 'removed' && <span className="text-destructive" aria-label="Removed">-</span>}
+                  <span>{line.type !== 'added' ? line.oldLineNum : ''}</span>
                 </div>
               ))}
             </div>
-            {/* Code */}
+            {/* Code — uses dangerouslySetInnerHTML to render Shiki syntax highlighting output.
+               Shiki is a trusted library producing sanitized HTML. The escapeHtml() fallback
+               handles cases where Shiki fails. Raw user content is only rendered through Shiki's tokenizer. */}
             <div className="flex-1 py-2 pl-2 pr-4 text-xs font-mono overflow-x-auto">
               {diffLines.map((line, i) => {
                 const isRemoved = line.type === 'removed';
@@ -203,8 +206,9 @@ export function SplitDiffViewer({
             {/* Line numbers */}
             <div className="shrink-0 py-2 pl-2 pr-2 text-xs font-mono text-muted-foreground/50 text-right select-none border-r border-border/30 sticky left-0 bg-background">
               {diffLines.map((line, i) => (
-                <div key={i} className="leading-[18px] h-[18px]">
-                  {line.type !== 'removed' ? line.newLineNum : ''}
+                <div key={i} className="leading-[18px] h-[18px] flex items-center justify-end gap-0.5">
+                  {line.type === 'added' && <span className="text-green-500" aria-label="Added">+</span>}
+                  <span>{line.type !== 'removed' ? line.newLineNum : ''}</span>
                 </div>
               ))}
             </div>

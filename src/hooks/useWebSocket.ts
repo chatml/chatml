@@ -91,6 +91,33 @@ function isValidConversationStatus(value: unknown): value is ConversationStatus 
   return typeof value === 'string' && VALID_CONVERSATION_STATUSES.includes(value as ConversationStatus);
 }
 
+function isModelUsageRecord(value: unknown): value is Record<string, ModelUsageInfo> {
+  if (typeof value !== 'object' || value === null) return false;
+  return Object.values(value as Record<string, unknown>).every(v => {
+    if (typeof v !== 'object' || v === null) return false;
+    const entry = v as Record<string, unknown>;
+    return typeof entry.inputTokens === 'number' && typeof entry.outputTokens === 'number';
+  });
+}
+
+function isUserQuestionArray(value: unknown): value is UserQuestion[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(q => {
+    if (typeof q !== 'object' || q === null) return false;
+    const obj = q as Record<string, unknown>;
+    return typeof obj.question === 'string' && typeof obj.header === 'string' && Array.isArray(obj.options);
+  });
+}
+
+function isMcpServerStatusArray(value: unknown): value is McpServerStatus[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(s => {
+    if (typeof s !== 'object' || s === null) return false;
+    const obj = s as Record<string, unknown>;
+    return typeof obj.name === 'string' && typeof obj.status === 'string';
+  });
+}
+
 // Get WebSocket URL dynamically based on the backend port
 function getWsUrl(): string {
   if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
@@ -373,7 +400,7 @@ export function useWebSocket(enabled: boolean = true) {
             stats: event.stats,
             errors: event.errors,
             usage: normalizeUsage(event.usage),
-            modelUsage: event.modelUsage as Record<string, ModelUsageInfo> | undefined,
+            modelUsage: isModelUsageRecord(event.modelUsage) ? event.modelUsage : undefined,
           },
         });
         // Update budget status from result event, preserving max values
@@ -609,10 +636,10 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'user_question_request':
         // AskUserQuestion tool - set pending question for the conversation
-        if (event?.requestId && Array.isArray(event?.questions)) {
+        if (event?.requestId && isUserQuestionArray(event?.questions)) {
           store.setPendingUserQuestion(conversationId, {
             requestId: event.requestId as string,
-            questions: event.questions as UserQuestion[],
+            questions: event.questions,
             currentIndex: 0,
             answers: {},
           });
@@ -845,8 +872,8 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'mcp_status':
-        if (event?.servers) {
-          store.setMcpServers(event.servers as McpServerStatus[]);
+        if (event?.servers && isMcpServerStatusArray(event.servers)) {
+          store.setMcpServers(event.servers);
         }
         break;
 

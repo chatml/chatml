@@ -23,6 +23,7 @@ function ZoomControls() {
         className="h-6 w-6"
         onClick={() => zoomIn()}
         title="Zoom in"
+        aria-label="Zoom in diagram"
       >
         <ZoomIn className="h-3.5 w-3.5" />
       </Button>
@@ -32,6 +33,7 @@ function ZoomControls() {
         className="h-6 w-6"
         onClick={() => zoomOut()}
         title="Zoom out"
+        aria-label="Zoom out diagram"
       >
         <ZoomOut className="h-3.5 w-3.5" />
       </Button>
@@ -41,6 +43,7 @@ function ZoomControls() {
         className="h-6 w-6"
         onClick={() => resetTransform()}
         title="Reset zoom"
+        aria-label="Reset diagram zoom"
       >
         <Undo2 className="h-3.5 w-3.5" />
       </Button>
@@ -70,7 +73,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? 'dark' : 'default',
-          securityLevel: 'loose',
+          securityLevel: 'strict',
           fontFamily: 'inherit',
           flowchart: {
             padding: 8,

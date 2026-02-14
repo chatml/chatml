@@ -138,13 +138,11 @@ export function useFileWatcher() {
 
     return () => {
       isMounted = false;
-      setTimeout(() => {
-        try {
-          cleanupRef.current?.();
-        } catch {
-          // Ignore errors if listener cleanup fails
-        }
-      }, 10);
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // Ignore errors if listener cleanup fails
+      }
     };
   }, [handleFileChange, setLastFileChange, showError]);
 }
