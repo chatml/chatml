@@ -1157,12 +1157,23 @@ const exitPlanModeHook: HookCallback = async (_input) => {
   }
 };
 
-// Required by SDK interface; AskUserQuestion is handled via PreToolUse hook above
+// Tools that are NOT allowed in plan mode (write/execute tools).
+// Plan mode restricts the agent to read-only until ExitPlanMode is approved.
+const PLAN_MODE_DENIED_TOOLS = new Set([
+  "Write", "Edit", "Bash", "NotebookEdit",
+]);
+
+// Permission callback — enforces plan mode restrictions as defense-in-depth.
+// In bypassPermissions mode the SDK auto-allows all tools before reaching this.
+// In plan mode the SDK should enforce restrictions natively, but we double-check here.
 const canUseTool = async (
-  _toolName: string,
+  toolName: string,
   _toolInput: Record<string, unknown>,
   _options: { signal: AbortSignal; toolUseID: string }
 ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
+  if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
+    return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
+  }
   return { behavior: "allow" };
 };
 
@@ -1301,7 +1312,12 @@ async function main(): Promise<void> {
     const queryOptions = {
       cwd,
       permissionMode: initialPermissionMode,
-      allowDangerouslySkipPermissions: true,
+      // Do NOT set allowDangerouslySkipPermissions: true — it bypasses plan mode
+      // restrictions in the SDK (isBypassPermissionsModeAvailable becomes true,
+      // causing the plan mode check to auto-allow all tools). In bypassPermissions
+      // mode the SDK already allows all tools via a direct mode check, so this
+      // flag is not needed. canUseTool provides additional defense-in-depth.
+      allowDangerouslySkipPermissions: false,
       canUseTool,
       mcpServers: mergedMcpServers,
       includePartialMessages: true,
