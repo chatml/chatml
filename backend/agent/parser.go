@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/chatml/chatml-backend/ai"
 )
 
 // AgentEvent represents a parsed event from the agent-runner stdout
@@ -130,6 +132,10 @@ type AgentEvent struct {
 
 	// Plan approval fields (ExitPlanMode tool)
 	PlanContent string `json:"planContent,omitempty"`
+
+	// Input suggestion fields (Haiku-generated prompt suggestions)
+	GhostText string              `json:"ghostText,omitempty"`
+	Pills     []ai.SuggestionPill `json:"pills,omitempty"`
 }
 
 // McpServerStatus represents MCP server connection status
@@ -251,6 +257,9 @@ const (
 
 	// CLI crash recovery (agent-runner auto-retrying)
 	EventTypeSessionRecovering = "session_recovering"
+
+	// Input suggestion events (Haiku-generated prompt suggestions)
+	EventTypeInputSuggestion = "input_suggestion"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

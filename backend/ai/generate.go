@@ -591,3 +591,120 @@ func (c *Client) GenerateSessionSummary(ctx context.Context, req GenerateSession
 
 	return strings.TrimSpace(apiResp.Content[0].Text), nil
 }
+
+// SuggestionPill represents a clickable suggestion option.
+type SuggestionPill struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// SuggestionRequest contains the recent conversation messages for generating input suggestions.
+type SuggestionRequest struct {
+	Messages []SummaryMessage `json:"messages"`
+}
+
+// SuggestionResponse contains the AI-generated input suggestion.
+type SuggestionResponse struct {
+	GhostText string           `json:"ghost_text"`
+	Pills     []SuggestionPill `json:"pills"`
+}
+
+const suggestionSystemPrompt = `You analyze AI coding assistant conversations and suggest what the user should say next.
+
+Rules:
+- If the assistant just completed a task successfully, suggest a follow-up action (e.g., "Run the test suite", "Review the changes", "Let's commit and make a PR")
+- If the assistant is asking the user a question, provide 2-3 short pill answers the user can click, plus a ghost_text with the most likely answer
+- If no suggestion is appropriate (e.g., the assistant is mid-task, or the context is unclear), return empty ghost_text and empty pills array
+- ghost_text should be 5-15 words, natural language, imperative mood
+- pill labels should be 2-4 words; pill values should be complete sentences the user would type
+- Output valid JSON only, no markdown fences, no extra text
+
+Output format:
+{"ghost_text": "...", "pills": [{"label": "...", "value": "..."}]}`
+
+const suggestionMaxTokens = 200
+const suggestionMaxInputChars = 2000
+
+// GenerateInputSuggestion calls the Anthropic API to generate a suggested next prompt
+// based on recent conversation messages. Returns an empty suggestion on error.
+func (c *Client) GenerateInputSuggestion(ctx context.Context, req SuggestionRequest) (*SuggestionResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("AI client not configured")
+	}
+
+	// Build user message from recent messages, capping total chars
+	var userMsg strings.Builder
+	totalChars := 0
+	for _, m := range req.Messages {
+		content := m.Content
+		remaining := suggestionMaxInputChars - totalChars
+		if remaining <= 0 {
+			break
+		}
+		if len(content) > remaining {
+			content = content[:remaining]
+		}
+		role := strings.ToUpper(m.Role[:1]) + m.Role[1:]
+		userMsg.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", role, content))
+		totalChars += len(content)
+	}
+
+	apiReq := anthropicRequest{
+		Model:     haikuModel,
+		MaxTokens: suggestionMaxTokens,
+		System:    suggestionSystemPrompt,
+		Messages: []anthropicMessage{
+			{Role: "user", Content: userMsg.String()},
+		},
+	}
+
+	body, err := json.Marshal(apiReq)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.apiURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(c.authHeader, c.authValue)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("calling Anthropic API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Anthropic API returned %d: %s", resp.StatusCode, respBody)
+	}
+
+	var apiResp anthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	if len(apiResp.Content) == 0 {
+		return &SuggestionResponse{}, nil
+	}
+
+	// Parse JSON response
+	var suggestion SuggestionResponse
+	text := strings.TrimSpace(apiResp.Content[0].Text)
+	if err := json.Unmarshal([]byte(text), &suggestion); err != nil {
+		// Haiku may wrap in markdown fences — try stripping them
+		text = strings.TrimPrefix(text, "```json")
+		text = strings.TrimPrefix(text, "```")
+		text = strings.TrimSuffix(text, "```")
+		text = strings.TrimSpace(text)
+		if err := json.Unmarshal([]byte(text), &suggestion); err != nil {
+			return nil, fmt.Errorf("parsing suggestion JSON: %w", err)
+		}
+	}
+
+	return &suggestion, nil
+}

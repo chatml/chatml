@@ -36,7 +36,7 @@ import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog, copyToClipboard } from '@/lib/tauri';
-import type { Attachment } from '@/lib/types';
+import type { Attachment, SuggestionPill } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
@@ -106,6 +106,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
   const autoConvertLongText = useSettingsStore((s) => s.autoConvertLongText);
+  const suggestionsEnabled = useSettingsStore((s) => s.suggestionsEnabled);
+  const autoSubmitPill = useSettingsStore((s) => s.autoSubmitPillSuggestion);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -131,9 +133,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setApprovedPlanContent,
     clearActiveTools,
     setPlanModeActive,
+    clearInputSuggestion,
   } = useAppStore();
   const hasQueuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
+  );
+  const inputSuggestion = useAppStore(
+    (s) => selectedConversationId ? s.inputSuggestions[selectedConversationId] : undefined
   );
   const { error: showError, info: showInfo } = useToast();
 
@@ -293,6 +299,18 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const planModeActive = selectedConversationId
     ? streamingState[selectedConversationId]?.planModeActive ?? false
     : false;
+
+  // Check if conversation has messages (for ghost text vs placeholder)
+  const conversationHasMessages = useAppStore(
+    (s) => selectedConversationId ? s.messages.some(m => m.conversationId === selectedConversationId) : false
+  );
+
+  // Ghost text visibility: show after first message when editor is empty and not streaming
+  const showGhostText = suggestionsEnabled
+    && !isStreaming
+    && !message.trim()
+    && !!inputSuggestion?.ghostText
+    && conversationHasMessages;
 
   // Check if there's a pending plan approval request
   const pendingPlanApproval = selectedConversationId
@@ -557,6 +575,20 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       showError('Failed to create new conversation for hand off');
     }
   }, [selectedWorkspaceId, selectedSessionId, selectedConversationId, pendingPlanApproval, selectedModel.id, addConversation, addMessage, selectConversation, setStreaming, clearPendingPlanApproval, showError]);
+
+  // Handle pill suggestion click
+  const handlePillClick = useCallback((pill: SuggestionPill) => {
+    if (selectedConversationId) {
+      clearInputSuggestion(selectedConversationId);
+    }
+    if (autoSubmitPill) {
+      sendMessage(pill.value);
+    } else {
+      plateInputRef.current?.setText(pill.value);
+      setMessage(pill.value);
+      plateInputRef.current?.focus();
+    }
+  }, [selectedConversationId, autoSubmitPill, sendMessage, clearInputSuggestion]);
 
   // Clamp thinking level when switching models (e.g. 'off' → 'low' for Opus)
   useEffect(() => {
@@ -823,6 +855,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       return;
     }
 
+    // Tab to accept ghost text suggestion
+    if (e.key === 'Tab' && !e.shiftKey && showGhostText && inputSuggestion?.ghostText && selectedConversationId) {
+      e.preventDefault();
+      plateInputRef.current?.setText(inputSuggestion.ghostText);
+      setMessage(inputSuggestion.ghostText);
+      clearInputSuggestion(selectedConversationId);
+      return;
+    }
+
     // ⌘⇧↵ to approve plan
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.shiftKey && pendingPlanApproval) {
       e.preventDefault();
@@ -848,6 +889,26 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   return (
     <div className="pt-1 px-3 pb-3">
+      {/* Pill Suggestions */}
+      {suggestionsEnabled && inputSuggestion?.pills && inputSuggestion.pills.length > 0 && !isStreaming && !pendingPlanApproval && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-muted-foreground shrink-0">Suggested:</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {inputSuggestion.pills.map((pill, i) => (
+              <Button
+                key={i}
+                variant="secondary"
+                size="sm"
+                className="h-7 text-xs rounded-full px-3"
+                onClick={() => handlePillClick(pill)}
+              >
+                {pill.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Plan Approval Bar */}
       {pendingPlanApproval && (
         <div className="space-y-1.5 mb-2">
@@ -984,7 +1045,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         <div className="relative px-3 py-2">
           <PlateInput
             ref={plateInputRef}
-            placeholder="Describe your task, @ to reference files, / for skills and commands"
+            placeholder={conversationHasMessages && suggestionsEnabled
+              ? undefined
+              : "Describe your task, @ to reference files, / for skills and commands"
+            }
             className="bg-transparent dark:bg-transparent relative z-10"
             mentionItems={mentionItems}
             mentionItemsLoading={mentionItemsLoading}
@@ -992,12 +1056,25 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onSlashCommandExecute={handleSlashCommandExecute}
             onInput={(text) => {
               setMessage(text);
+              // Clear suggestion when user starts typing
+              if (text.trim() && selectedConversationId) {
+                clearInputSuggestion(selectedConversationId);
+              }
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
           />
+          {/* Ghost text suggestion */}
+          {showGhostText && (
+            <div className="absolute inset-0 px-0 py-1 pointer-events-none z-0 flex items-start">
+              <span className="text-muted-foreground/40 text-base leading-relaxed">
+                {inputSuggestion!.ghostText}
+                <span className="text-muted-foreground/25 text-xs ml-2">Tab</span>
+              </span>
+            </div>
+          )}
           {/* Cmd+L hint - hidden when focused */}
           {!isFocused && (
             <div className="absolute top-3 right-3 text-xs text-muted-foreground/50 pointer-events-none z-20">

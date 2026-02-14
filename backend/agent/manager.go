@@ -700,6 +700,11 @@ outer:
 				m.onConversationEvent(convID, event)
 			}
 
+			// Generate input suggestion after turn completes (async, fire-and-forget)
+			if event.Type == EventTypeResult {
+				go m.generateInputSuggestion(convID)
+			}
+
 			// Also support legacy output handler (for backwards compatibility)
 			if m.onOutput != nil {
 				legacy := ParseStreamLine(line)
@@ -1318,6 +1323,49 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 
 	// Also try to auto-name the session
 	m.tryAutoNameSession(ctx, sessionID, title)
+}
+
+// generateInputSuggestion uses the AI client to generate a suggested next prompt
+// from recent conversation messages, then broadcasts it via WebSocket.
+func (m *Manager) generateInputSuggestion(convID string) {
+	client := m.newAIClient()
+	if client == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+	defer cancel()
+
+	// Fetch last 4 messages from the conversation
+	page, err := m.store.GetConversationMessages(ctx, convID, nil, 4)
+	if err != nil || len(page.Messages) == 0 {
+		return
+	}
+
+	// Convert to SummaryMessage format
+	var msgs []ai.SummaryMessage
+	for _, msg := range page.Messages {
+		msgs = append(msgs, ai.SummaryMessage{Role: msg.Role, Content: msg.Content})
+	}
+
+	suggestion, err := client.GenerateInputSuggestion(ctx, ai.SuggestionRequest{Messages: msgs})
+	if err != nil {
+		logger.Manager.Debugf("Failed to generate input suggestion for conv %s: %v", convID, err)
+		return
+	}
+
+	// Only broadcast if there's something to suggest
+	if suggestion.GhostText == "" && len(suggestion.Pills) == 0 {
+		return
+	}
+
+	if m.onConversationEvent != nil {
+		m.onConversationEvent(convID, &AgentEvent{
+			Type:      EventTypeInputSuggestion,
+			GhostText: suggestion.GhostText,
+			Pills:     suggestion.Pills,
+		})
+	}
 }
 
 // tryAutoNameSession attempts to auto-name a session based on the first conversation's name suggestion.

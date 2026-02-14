@@ -29,6 +29,7 @@ import type {
   ScriptRun,
   SetupProgress,
   TimelineEntry,
+  InputSuggestion,
 } from '@/lib/types';
 
 // Maximum number of file tabs before LRU eviction kicks in
@@ -212,6 +213,9 @@ interface AppState {
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
 
+  // Input suggestions from Haiku (keyed by conversationId)
+  inputSuggestions: { [conversationId: string]: InputSuggestion };
+
   // Conversation summaries (keyed by conversationId)
   summaries: { [conversationId: string]: Summary };
 
@@ -262,6 +266,10 @@ interface AppState {
   // Summary actions
   setSummary: (conversationId: string, summary: Summary) => void;
   updateSummary: (conversationId: string, updates: Partial<Summary>) => void;
+
+  // Input suggestion actions
+  setInputSuggestion: (conversationId: string, suggestion: InputSuggestion) => void;
+  clearInputSuggestion: (conversationId: string) => void;
 
   // Message actions
   setMessages: (messages: Message[]) => void;
@@ -469,6 +477,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncDismissed: {},
   branchSyncCompletedAt: {},
   pendingUserQuestion: {},
+  inputSuggestions: {},
   summaries: {},
   lastFileChange: null,
   messagePagination: {},
@@ -828,6 +837,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     return {
       summaries: { ...state.summaries, [conversationId]: { ...existing, ...updates } },
     };
+  }),
+
+  // Input suggestion actions
+  setInputSuggestion: (conversationId, suggestion) => set((state) => ({
+    inputSuggestions: { ...state.inputSuggestions, [conversationId]: suggestion },
+  })),
+  clearInputSuggestion: (conversationId) => set((state) => {
+    const { [conversationId]: _, ...rest } = state.inputSuggestions;
+    return { inputSuggestions: rest };
   }),
 
   // Message actions
