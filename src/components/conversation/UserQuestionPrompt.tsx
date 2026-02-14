@@ -96,7 +96,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
 
   return (
     <div className="pt-1 px-3 pb-3">
-      <div className="relative rounded-lg border border-[#434343] bg-input">
+      <div className="relative rounded-lg border border-border bg-card dark:bg-input">
         {/* Question Header */}
         <div className="flex items-start justify-between px-4 pt-4 pb-2">
           <p className="text-sm text-foreground leading-relaxed pr-8">{currentQuestion.question}</p>
@@ -123,8 +123,8 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                 className={cn(
                   'w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors',
                   isSelected
-                    ? 'bg-surface-2 text-foreground'
-                    : 'text-muted-foreground hover:bg-surface-1 hover:text-foreground'
+                    ? 'bg-primary/10 text-foreground'
+                    : 'text-muted-foreground hover:bg-surface-1/60 hover:text-foreground'
                 )}
               >
                 <span className="text-xs font-mono text-muted-foreground/70 w-4">{index + 1}</span>
@@ -138,7 +138,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                   'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0',
                   isSelected
                     ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-muted-foreground/30'
+                    : 'border-muted-foreground/40'
                 )}>
                   {isSelected && <Check className="h-3 w-3" />}
                 </div>
@@ -168,7 +168,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                       key={i}
                       className={cn(
                         'w-2 h-2 rounded-full transition-colors',
-                        i === currentIndex ? 'bg-foreground' : 'bg-muted-foreground/30'
+                        i === currentIndex ? 'bg-foreground' : 'bg-muted-foreground/40'
                       )}
                     />
                   ))}
