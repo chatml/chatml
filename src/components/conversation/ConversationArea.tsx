@@ -94,13 +94,20 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const claudeAuthConfigured = useClaudeAuthStatus();
 
   // Use messages selector scoped to the selected conversation
-  const conversationMessages = useMessages(selectedConversationId);
+  const allConversationMessages = useMessages(selectedConversationId);
   const pagination = useMessagePagination(selectedConversationId);
   const setMessagePage = useAppStore((s) => s.setMessagePage);
   const prependMessages = useAppStore((s) => s.prependMessages);
   const setLoadingMoreMessages = useAppStore((s) => s.setLoadingMoreMessages);
   // Get Set of conversation IDs that have user messages (avoids subscribing to all messages)
   const conversationsWithUserMessages = useConversationsWithUserMessages();
+
+  // Hide the setupInfo system card once the user has sent their first message
+  const conversationMessages = useMemo(() => {
+    if (!selectedConversationId) return allConversationMessages;
+    if (!conversationsWithUserMessages.includes(selectedConversationId)) return allConversationMessages;
+    return allConversationMessages.filter(m => !(m.role === 'system' && m.setupInfo));
+  }, [allConversationMessages, selectedConversationId, conversationsWithUserMessages]);
 
   // Review comments for current session
   const reviewComments = useReviewComments(selectedSessionId);
