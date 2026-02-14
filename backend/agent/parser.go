@@ -65,6 +65,11 @@ type AgentEvent struct {
 	IsInterrupt      bool        `json:"isInterrupt,omitempty"`
 	StopHookActive   bool        `json:"stopHookActive,omitempty"`
 
+	// Checkpoint fields
+	CheckpointUuid string `json:"checkpointUuid,omitempty"`
+	MessageIndex   int    `json:"messageIndex,omitempty"`
+	IsResult       bool   `json:"isResult,omitempty"`
+
 	// Subagent fields
 	AgentId            string `json:"agentId,omitempty"`
 	AgentType          string `json:"agentType,omitempty"`

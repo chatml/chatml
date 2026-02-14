@@ -438,3 +438,14 @@ type BranchSyncResult struct {
 	ConflictFiles []string `json:"conflictFiles,omitempty"`
 	ErrorMessage  string   `json:"errorMessage,omitempty"`
 }
+
+// Checkpoint represents a file state snapshot created by the Claude Agent SDK at message boundaries.
+type Checkpoint struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversationId"`
+	SessionID      string    `json:"sessionId"`
+	UUID           string    `json:"uuid"`
+	MessageIndex   int       `json:"messageIndex"`
+	IsResult       bool      `json:"isResult"`
+	Timestamp      time.Time `json:"timestamp"`
+}
