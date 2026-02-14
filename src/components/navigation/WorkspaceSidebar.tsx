@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -1558,6 +1558,16 @@ function SessionRow({
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
 
+  // Derive active agent state from conversations (more reliable than session.status)
+  const sessionId = session.id;
+  const isAgentActive = useAppStore(
+    useCallback(
+      (state: { conversations: { sessionId: string; status: string }[] }) =>
+        state.conversations.some(c => c.sessionId === sessionId && c.status === 'active'),
+      [sessionId]
+    )
+  );
+
   // Determine PR status display
   const getPRStatusInfo = () => {
     if (!hasPR) return null;
@@ -1593,7 +1603,7 @@ function SessionRow({
           {/* First line: status icon + branch name + stats/actions */}
           <div className="flex items-center gap-1">
             {/* Task status / active indicator */}
-            {session.status === 'active' ? (
+            {isAgentActive ? (
               <div className="w-4 shrink-0 flex items-center justify-center">
                 <div className="session-active-indicator">
                   <div className="bar" />

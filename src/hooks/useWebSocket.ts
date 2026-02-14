@@ -16,6 +16,10 @@ import { getConversationDropStats, getActiveStreamingConversations, getConversat
 import { useSettingsStore } from '@/stores/settingsStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
+// Conversations that recently exited plan mode. Used to suppress stale SDK status
+// messages that try to re-activate plan mode after ExitPlanMode approval (SDK bug #15755).
+const recentlyExitedPlanMode = new Set<string>();
+
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
 const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
 
@@ -141,6 +145,7 @@ export function useWebSocket(enabled: boolean = true) {
           store.clearActiveTools(conversationId);
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
+          store.clearAgentTodos(conversationId);
         }
       } else {
         console.warn('Invalid conversation status payload:', data.payload);
@@ -195,6 +200,11 @@ export function useWebSocket(enabled: boolean = true) {
             currentTurns: existingStatus?.currentTurns || 0,
             currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
           });
+        }
+        // Sync plan mode state from the agent's initial permission mode
+        if (event?.permissionMode) {
+          const isPlan = event.permissionMode === 'plan';
+          store.setPlanModeActive(conversationId, isPlan);
         }
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {
@@ -395,6 +405,8 @@ export function useWebSocket(enabled: boolean = true) {
         }
         // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
+        // Clear agent todos — tasks are no longer relevant after turn ends
+        freshStore.clearAgentTodos(conversationId);
         // Desktop notification for task completion.
         // success defaults to true when the field is absent (only explicitly false means failure).
         notifyDesktop(
@@ -436,6 +448,8 @@ export function useWebSocket(enabled: boolean = true) {
         // streaming/activeTools state but does NOT update conversation status.
         // The process is still alive and ready for the next message.
         turnStore.updateConversation(conversationId, { status: 'active' });
+        // Clear agent todos — tasks are no longer relevant after turn ends
+        turnStore.clearAgentTodos(conversationId);
         break;
       }
 
@@ -449,24 +463,54 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearThinking(conversationId);
         store.clearActiveTools(conversationId);
         store.clearSubAgents(conversationId);
+        store.clearAgentTodos(conversationId);
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
         break;
       }
 
       case 'permission_mode_changed':
-        // Handle plan mode changes from the backend
+        // Handle plan mode changes from the backend.
+        // Events carry a `source` field: "user" (explicit UI action), "exit_plan"
+        // (ExitPlanMode restoration), or "sdk_status" (SDK status message).
         if (event?.mode) {
-          const isPlanMode = event.mode === 'plan';
-          store.setPlanModeActive(conversationId, isPlanMode);
-          if (isPlanMode) {
-            notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+          if (event.mode === 'plan') {
+            // User-initiated plan mode activations are always honored.
+            // SDK-originated events are suppressed if we just exited plan mode
+            // (guards against SDK bug #15755 stale status messages).
+            if (event.source === 'user') {
+              recentlyExitedPlanMode.delete(conversationId);
+              store.setPlanModeActive(conversationId, true);
+              notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+            } else if (recentlyExitedPlanMode.has(conversationId)) {
+              recentlyExitedPlanMode.delete(conversationId);
+            } else {
+              store.setPlanModeActive(conversationId, true);
+              notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+            }
+          } else {
+            // Exiting plan mode — track so we can suppress stale re-activation
+            const current = store.streamingState[conversationId];
+            if (current?.planModeActive) {
+              recentlyExitedPlanMode.add(conversationId);
+            }
+            // Only honor plan mode deactivation from explicit sources:
+            // - "exit_plan": ExitPlanMode tool completed (postToolUseHook)
+            // - "user": user toggled plan mode off via the UI
+            // SDK status messages are unreliable — they may carry stale permission
+            // modes (e.g., the initial non-plan mode) that override the user's intent.
+            if (event.source === 'sdk_status') {
+              break;
+            }
+            store.setPlanModeActive(conversationId, false);
           }
         }
         break;
 
       case 'plan_approval_request':
         // ExitPlanMode tool intercepted by PreToolUse hook - show approval UI
+        // Clear stale exit tracking — this is a fresh plan approval cycle
+        recentlyExitedPlanMode.delete(conversationId);
         if (event?.requestId) {
           store.setPendingPlanApproval(
             conversationId,

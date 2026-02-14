@@ -132,7 +132,9 @@ let prePlanPermissionMode: PermissionMode = "bypassPermissions";
     }
   }
   currentPermissionMode = initialPermissionMode;
-  prePlanPermissionMode = initialPermissionMode;
+  // If the agent starts in plan mode, the pre-plan fallback should be
+  // bypassPermissions so that ExitPlanMode restores to the correct non-plan mode.
+  prePlanPermissionMode = initialPermissionMode === "plan" ? "bypassPermissions" : initialPermissionMode;
 }
 
 // Task 6: Settings Sources Configuration
@@ -240,6 +242,11 @@ let questionRequestCounter = 0;
 
 // Pending plan approval requests (for ExitPlanMode tool)
 const PLAN_APPROVAL_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as long as they need
+
+// Guard against SDK bug #15755: after ExitPlanMode completes, the SDK may emit
+// a stale status message with permissionMode: "plan" that overrides our manual
+// mode restoration. This flag suppresses those stale messages.
+let suppressStalePlanMode = false;
 
 interface PendingPlanApprovalRequest {
   resolve: (approved: boolean) => void;
@@ -368,10 +375,13 @@ function setupInputQueue(): void {
           // Track pre-plan mode so ExitPlanMode can restore it
           if (input.permissionMode === "plan") {
             prePlanPermissionMode = currentPermissionMode;
+            // Reset suppression and cooldown — user is explicitly entering plan mode
+            suppressStalePlanMode = false;
+            lastExitPlanApprovalTime = 0;
           }
           currentPermissionMode = input.permissionMode as PermissionMode;
           void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
-            emit({ type: "permission_mode_changed", mode: input.permissionMode! });
+            emit({ type: "permission_mode_changed", mode: input.permissionMode!, source: "user" });
           }).catch((cmdErr: unknown) => {
             emit({ type: "command_error", command: "set_permission_mode", error: String(cmdErr) });
           });
@@ -810,13 +820,18 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
   if (hookInput.tool_name === "ExitPlanMode") {
     const restoreMode = prePlanPermissionMode;
     currentPermissionMode = restoreMode;
-    debug(`ExitPlanMode completed — restoring permission mode to "${restoreMode}"`);
-    emit({ type: "permission_mode_changed", mode: restoreMode });
-    // Also explicitly set the SDK's mode as a safety net
+    // Suppress stale SDK status messages that try to re-set plan mode
+    suppressStalePlanMode = true;
+    debug(`ExitPlanMode completed — restoring permission mode to "${restoreMode}", suppressing stale plan status`);
+    emit({ type: "permission_mode_changed", mode: restoreMode, source: "exit_plan" });
+    // Await the SDK mode change to ensure it takes effect before the next turn
     if (queryRef) {
-      void queryRef.setPermissionMode(restoreMode).catch((err: unknown) => {
+      try {
+        await queryRef.setPermissionMode(restoreMode);
+        debug(`SDK permission mode confirmed set to "${restoreMode}"`);
+      } catch (err: unknown) {
         debug(`Failed to restore permission mode after ExitPlanMode: ${err}`);
-      });
+      }
     }
   }
 
@@ -1052,9 +1067,31 @@ const askUserQuestionHook: HookCallback = async (input) => {
   }
 };
 
+// Tracks the last time ExitPlanMode was approved by the user. Used to auto-approve
+// duplicate ExitPlanMode calls caused by SDK bug #15755 (SDK doesn't properly exit
+// plan mode after permissionDecision: "allow", so the agent retries).
+let lastExitPlanApprovalTime = 0;
+const EXIT_PLAN_APPROVAL_COOLDOWN_MS = 30_000; // 30 seconds
+
 // PreToolUse hook that intercepts ExitPlanMode to route approval through our UI.
 // Uses the same pattern as AskUserQuestion: hook blocks execution until user responds.
 const exitPlanModeHook: HookCallback = async (_input) => {
+  // SDK bug #15755: after the first ExitPlanMode is approved and executed, the SDK
+  // may retry ExitPlanMode because its internal state didn't update. Returning "allow"
+  // again would re-trigger the same bug. Instead, DENY the retry with a clear message
+  // so the agent knows the plan was approved and should proceed with implementation.
+  if (Date.now() - lastExitPlanApprovalTime < EXIT_PLAN_APPROVAL_COOLDOWN_MS) {
+    debug("Denying ExitPlanMode retry (recently approved, SDK bug #15755) — telling agent to proceed");
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "deny" as const,
+        permissionDecisionReason: "Plan mode already exited successfully. Your plan was approved by the user. Do not call ExitPlanMode again. Proceed with implementation immediately.",
+      },
+      systemMessage: "The user has already approved your plan. Plan mode has been exited. Proceed with implementing the plan now.",
+    };
+  }
+
   const requestId = `plan-approval-${++planApprovalRequestCounter}-${Date.now()}`;
 
   // Read plan file content if tracked during plan mode
@@ -1089,6 +1126,8 @@ const exitPlanModeHook: HookCallback = async (_input) => {
     });
 
     if (approved) {
+      // Record approval time to auto-approve retries caused by SDK bug #15755
+      lastExitPlanApprovalTime = Date.now();
       // Allow tool execution - SDK will exit plan mode naturally
       return {
         hookSpecificOutput: {
@@ -1118,12 +1157,23 @@ const exitPlanModeHook: HookCallback = async (_input) => {
   }
 };
 
-// Required by SDK interface; AskUserQuestion is handled via PreToolUse hook above
+// Tools that are NOT allowed in plan mode (write/execute tools).
+// Plan mode restricts the agent to read-only until ExitPlanMode is approved.
+const PLAN_MODE_DENIED_TOOLS = new Set([
+  "Write", "Edit", "Bash", "NotebookEdit",
+]);
+
+// Permission callback — enforces plan mode restrictions as defense-in-depth.
+// In bypassPermissions mode the SDK auto-allows all tools before reaching this.
+// In plan mode the SDK should enforce restrictions natively, but we double-check here.
 const canUseTool = async (
-  _toolName: string,
+  toolName: string,
   _toolInput: Record<string, unknown>,
   _options: { signal: AbortSignal; toolUseID: string }
 ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
+  if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
+    return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
+  }
   return { behavior: "allow" };
 };
 
@@ -1262,7 +1312,12 @@ async function main(): Promise<void> {
     const queryOptions = {
       cwd,
       permissionMode: initialPermissionMode,
-      allowDangerouslySkipPermissions: true,
+      // Do NOT set allowDangerouslySkipPermissions: true — it bypasses plan mode
+      // restrictions in the SDK (isBypassPermissionsModeAvailable becomes true,
+      // causing the plan mode check to auto-allow all tools). In bypassPermissions
+      // mode the SDK already allows all tools via a direct mode check, so this
+      // flag is not needed. canUseTool provides additional defense-in-depth.
+      allowDangerouslySkipPermissions: false,
       canUseTool,
       mcpServers: mergedMcpServers,
       includePartialMessages: true,
@@ -1834,8 +1889,19 @@ function handleMessage(message: SDKMessage): void {
         // SDK emits permissionMode in status messages when the mode changes
         // (e.g., after ExitPlanMode executes). Propagate to Go backend/frontend.
         if (statusMsg.permissionMode) {
-          currentPermissionMode = statusMsg.permissionMode;
-          emit({ type: "permission_mode_changed", mode: statusMsg.permissionMode });
+          // Guard against SDK bug #15755: after ExitPlanMode, the SDK may emit
+          // a stale status with permissionMode "plan" even though we already
+          // restored the mode. Suppress these to prevent the plan-mode loop.
+          if (statusMsg.permissionMode === "plan" && suppressStalePlanMode) {
+            debug(`Suppressing stale SDK plan mode status (already exited plan mode)`);
+          } else {
+            // Clear suppression when SDK confirms a non-plan mode
+            if (statusMsg.permissionMode !== "plan") {
+              suppressStalePlanMode = false;
+            }
+            currentPermissionMode = statusMsg.permissionMode;
+            emit({ type: "permission_mode_changed", mode: statusMsg.permissionMode, source: "sdk_status" });
+          }
         }
       } else if (sysMsg.subtype === "hook_response") {
         const hookMsg = sysMsg as SDKHookResponseMessage;

@@ -22,17 +22,18 @@ import {
   Plus,
   Link,
   FolderSymlink,
-  RotateCcw,
-  Loader2,
+  PenLine,
   Upload,
   ScrollText,
   Check,
+  Copy,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { ContextMeter } from './ContextMeter';
 import { useToast } from '@/components/ui/toast';
-import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog } from '@/lib/tauri';
+import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog, copyToClipboard } from '@/lib/tauri';
 import type { Attachment } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
@@ -114,8 +115,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
   );
   const [isSending, setIsSending] = useState(false);
-  const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
   const defaultMaxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const [localMaxThinkingTokens, setLocalMaxThinkingTokens] = useState(defaultMaxThinkingTokens);
@@ -150,6 +151,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     commitQueuedMessage,
     clearPendingPlanApproval,
     clearActiveTools,
+    setPlanModeActive,
   } = useAppStore();
   const hasQueuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
@@ -469,22 +471,25 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId]);
 
-  // Handle plan approval
+  // Handle plan approval — clear UI optimistically so the bar disappears instantly
   const handleApprovePlan = useCallback(async () => {
-    if (!selectedConversationId || !pendingPlanApproval || isApproving) return;
+    if (!selectedConversationId || !pendingPlanApproval) return;
 
-    setIsApproving(true);
+    const { requestId } = pendingPlanApproval;
+
+    // Clear UI immediately — don't wait for the HTTP round-trip
+    clearPendingPlanApproval(selectedConversationId);
     setApprovalError(null);
+    // Approving a plan exits plan mode — turn off the toggle
+    setPlanModeEnabled(false);
+
     try {
-      await approvePlan(selectedConversationId, pendingPlanApproval.requestId, true);
-      clearPendingPlanApproval(selectedConversationId);
+      await approvePlan(selectedConversationId, requestId, true);
     } catch (error) {
       console.error('Failed to approve plan:', error);
-      setApprovalError(error instanceof Error ? error.message : 'Failed to approve plan');
-    } finally {
-      setIsApproving(false);
+      showError(error instanceof Error ? error.message : 'Failed to approve plan');
     }
-  }, [selectedConversationId, pendingPlanApproval, isApproving, clearPendingPlanApproval]);
+  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, showError]);
 
   // Handle reject - sends denial to the agent so it stays in plan mode
   const handleRejectPlan = useCallback(async () => {
@@ -498,6 +503,67 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearPendingPlanApproval(selectedConversationId);
     setApprovalError(null);
   }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval]);
+
+  // Handle copying plan content to clipboard
+  const handleCopyPlan = useCallback(async () => {
+    if (!pendingPlanApproval?.planContent) return;
+    const ok = await copyToClipboard(pendingPlanApproval.planContent);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }, [pendingPlanApproval]);
+
+  // Handle handing off the plan to a new conversation
+  const handleHandOff = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId || !pendingPlanApproval?.planContent) return;
+
+    try {
+      // Create a new conversation pre-loaded with the plan content
+      const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
+        type: 'task',
+        message: pendingPlanApproval.planContent,
+        model: selectedModel.id,
+      });
+
+      addConversation({
+        id: conv.id,
+        sessionId: conv.sessionId,
+        type: conv.type,
+        name: conv.name,
+        status: conv.status,
+        model: conv.model || selectedModel.id,
+        messages: [],
+        toolSummary: [],
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+      });
+
+      addMessage({
+        id: crypto.randomUUID(),
+        conversationId: conv.id,
+        role: 'user',
+        content: pendingPlanApproval.planContent,
+        timestamp: new Date().toISOString(),
+      });
+
+      selectConversation(conv.id);
+      setStreaming(conv.id, true);
+
+      // Reject the current plan to clean up approval state
+      if (selectedConversationId) {
+        try {
+          await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
+        } catch {
+          // Ignore - agent may have timed out
+        }
+        clearPendingPlanApproval(selectedConversationId);
+      }
+    } catch (error) {
+      console.error('Failed to hand off plan:', error);
+      showError('Failed to create new conversation for hand off');
+    }
+  }, [selectedWorkspaceId, selectedSessionId, selectedConversationId, pendingPlanApproval, selectedModel.id, addConversation, addMessage, selectConversation, setStreaming, clearPendingPlanApproval, showError]);
 
   // Auto-disable thinking when switching to an unsupported model
   useEffect(() => {
@@ -619,6 +685,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       if (isNewConversation) {
         // Show immediate feedback on the placeholder conversation while API call is in-flight
         if (selectedConversationId) {
+          if (planModeEnabled) {
+            setPlanModeActive(selectedConversationId, true);
+          }
           setStreaming(selectedConversationId, true);
         }
 
@@ -675,6 +744,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         selectConversation(conv.id);
 
         // Mark as streaming on the real conversation
+        if (planModeEnabled) {
+          setPlanModeActive(conv.id, true);
+        }
         setStreaming(conv.id, true);
       } else {
         const messageId = crypto.randomUUID();
@@ -803,10 +875,33 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 text-xs text-muted-foreground"
-                onClick={handleRejectPlan}
-                disabled={isApproving}
+                onClick={handleCopyPlan}
+                disabled={!pendingPlanApproval?.planContent}
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={handleHandOff}
+                disabled={!pendingPlanApproval?.planContent}
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+                Hand off
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={handleRejectPlan}
+              >
+                <PenLine className="h-3.5 w-3.5" />
                 Request changes
               </Button>
               <Button
@@ -814,16 +909,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 size="sm"
                 className="h-7 gap-1.5 text-xs bg-background hover:bg-surface-2"
                 onClick={handleApprovePlan}
-                disabled={isApproving}
               >
-                {isApproving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <>
-                    Approve
-                    <kbd className="px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘⇧↵</kbd>
-                  </>
-                )}
+                Approve
+                <kbd className="px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘⇧↵</kbd>
               </Button>
             </div>
           </div>
