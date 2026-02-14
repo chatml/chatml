@@ -10,7 +10,6 @@ import (
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/linear"
 	"github.com/chatml/chatml-backend/models"
-	"github.com/chatml/chatml-backend/orchestrator"
 	"github.com/chatml/chatml-backend/scripts"
 	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
@@ -19,7 +18,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, orch *orchestrator.Orchestrator, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) http.Handler {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient, scriptRunner)
@@ -210,24 +209,6 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{id}/merge", h.MergeAgent)
 		r.Delete("/{id}", h.DeleteAgent)
 	})
-
-	// Orchestrator agent endpoints
-	if orch != nil {
-		oh := NewOrchestratorHandlers(orch)
-		r.Route("/api/orchestrator/agents", func(r chi.Router) {
-			r.Get("/", oh.ListAgents)
-			r.Post("/reload", oh.ReloadAgents)
-
-			r.Route("/{agentId}", func(r chi.Router) {
-				r.Get("/", oh.GetAgent)
-				r.Patch("/", oh.UpdateAgentState)
-				r.Post("/run", oh.TriggerAgentRun)
-				r.Get("/runs", oh.ListAgentRuns)
-				r.Get("/runs/{runId}", oh.GetAgentRun)
-				r.Post("/runs/{runId}/stop", oh.StopAgentRun)
-			})
-		})
-	}
 
 	// Skills catalog endpoints
 	r.Route("/api/skills", func(r chi.Router) {

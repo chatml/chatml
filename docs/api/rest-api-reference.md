@@ -746,44 +746,6 @@ Delete an agent.
 
 ---
 
-## Orchestrator
-
-Endpoints for the agent orchestrator (multi-agent coordination).
-
-### `GET /api/orchestrator/agents`
-
-List all orchestrator agents.
-
-### `POST /api/orchestrator/agents/reload`
-
-Reload agent configurations.
-
-### `GET /api/orchestrator/agents/{agentId}`
-
-Get an orchestrator agent by ID.
-
-### `PATCH /api/orchestrator/agents/{agentId}`
-
-Update an orchestrator agent's state.
-
-### `POST /api/orchestrator/agents/{agentId}/run`
-
-Trigger a manual agent run.
-
-### `GET /api/orchestrator/agents/{agentId}/runs`
-
-List runs for an orchestrator agent.
-
-### `GET /api/orchestrator/agents/{agentId}/runs/{runId}`
-
-Get details of a specific run.
-
-### `POST /api/orchestrator/agents/{agentId}/runs/{runId}/stop`
-
-Stop a running orchestrator agent run.
-
----
-
 ## Skills
 
 ### `GET /api/skills`

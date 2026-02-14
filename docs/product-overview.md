@@ -315,11 +315,3 @@ On-demand AI-generated summaries of conversations:
 - **Session summaries** — View summaries across all conversations in a session
 - **Status tracking** — Summary generation status (generating, completed, failed)
 
-### Agent Orchestrator
-
-An orchestrator system for managing multiple agent configurations:
-
-- **Agent definitions** — Define agent configurations with specific parameters
-- **Manual triggers** — Trigger agent runs on demand
-- **Run history** — Track agent run history and results
-- **State management** — Enable/disable agents and manage their state

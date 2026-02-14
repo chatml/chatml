@@ -34,7 +34,7 @@ The Rust layer is the outermost shell. It provides:
 
 The Go backend is the central coordination layer. It handles:
 
-- **REST API** — 100+ endpoints organized under `/api/` for repos, sessions, conversations, messages, review comments, CI, settings, skills, agents, and orchestrator. Uses `chi` router with middleware for logging, panic recovery, token auth, and rate limiting.
+- **REST API** — 100+ endpoints organized under `/api/` for repos, sessions, conversations, messages, review comments, CI, settings, skills, and agents. Uses `chi` router with middleware for logging, panic recovery, token auth, and rate limiting.
 - **WebSocket Hub** — A hub-and-spoke broadcast system where agent events flow through a central hub to all connected clients. The hub has a 4096-message broadcast buffer and 2048 per-client buffers with backpressure protection.
 - **Agent process management** — Spawns Node.js agent runner processes per conversation, manages their lifecycle (start, message, stop, interrupt), routes events between processes and the WebSocket hub.
 - **SQLite persistence** — Stores workspaces, sessions, conversations, messages, tool actions, review comments, file tabs, settings, and streaming snapshots. Uses WAL mode for concurrent reads, busy timeout for lock contention, and retry with exponential backoff.

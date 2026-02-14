@@ -21,7 +21,7 @@ The frontend consists of 44+ React components organized by feature area. The mai
 
 ## State Management
 
-ChatML uses Zustand for state management with 12 stores. Zustand was chosen over Redux for its simplicity, minimal boilerplate, and excellent support for scoped subscriptions that prevent unnecessary re-renders.
+ChatML uses Zustand for state management with 11 stores. Zustand was chosen over Redux for its simplicity, minimal boilerplate, and excellent support for scoped subscriptions that prevent unnecessary re-renders.
 
 ### Store Overview
 
@@ -38,7 +38,6 @@ ChatML uses Zustand for state management with 12 stores. Zustand was chosen over
 | `slashCommandStore` | `src/stores/slashCommandStore.ts` | Slash command registry |
 | `tabStore` | `src/stores/tabStore.ts` | File tab management |
 | `uiStore` | `src/stores/uiStore.ts` | UI-specific state (panel sizes, modals) |
-| `agentStore` | `src/stores/agentStore.ts` | Orchestrator agent state |
 
 ### StreamingState
 

@@ -284,16 +284,6 @@ func (h *Hub) Broadcast(event Event) BroadcastResult {
 	return result
 }
 
-// BroadcastJSON sends any JSON-serializable data to all clients
-// Used for orchestrator events and other generic messages
-func (h *Hub) BroadcastJSON(data interface{}) {
-	// Wrap the data in an Event structure for consistency
-	h.Broadcast(Event{
-		Type:    "orchestrator",
-		Payload: data,
-	})
-}
-
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Validate token from query parameter.
 	// Note: WebSocket connections cannot use custom HTTP headers, so we pass the token
