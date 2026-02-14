@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, setConversationMaxThinkingTokens, approvePlan } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -39,7 +39,8 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion } from '@/stores/selectors';
-import { useSettingsStore, type EffortLevel } from '@/stores/settingsStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
@@ -78,26 +79,6 @@ const MODELS = [
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', icon: Snowflake, supportsThinking: true, supportsEffort: false },
 ];
 
-// Effort levels for models that support the effort parameter (Opus 4.6+)
-const EFFORT_LEVELS: { id: EffortLevel; label: string }[] = [
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
-  { id: 'max', label: 'Max' },
-];
-
-// Preset options for max thinking tokens
-const THINKING_TOKEN_PRESETS = [
-  { value: 8000, label: '8K' },
-  { value: 10000, label: '10K' },
-  { value: 16000, label: '16K' },
-  { value: 32000, label: '32K' },
-];
-
-// Models that support extended thinking mode (derived from MODELS)
-const THINKING_SUPPORTED_MODELS = new Set(
-  MODELS.filter((m) => m.supportsThinking).map((m) => m.id)
-);
 
 interface ChatInputProps {
   onMessageSubmit?: () => void;
@@ -110,20 +91,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Read store defaults once at mount time — these initialize per-conversation
   // state and intentionally don't sync if the user changes settings mid-session.
   const defaultModel = useSettingsStore((s) => s.defaultModel);
-  const defaultThinking = useSettingsStore((s) => s.defaultThinking);
+  const defaultThinkingLevel = useSettingsStore((s) => s.defaultThinkingLevel);
   const [selectedModel, setSelectedModel] = useState(
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
   );
   const [isSending, setIsSending] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [thinkingEnabled, setThinkingEnabled] = useState(defaultThinking);
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(defaultThinkingLevel);
   const defaultMaxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
-  const [localMaxThinkingTokens, setLocalMaxThinkingTokens] = useState(defaultMaxThinkingTokens);
-  const thinkingSupported = THINKING_SUPPORTED_MODELS.has(selectedModel.id);
-  const defaultEffort = useSettingsStore((s) => s.defaultEffort);
-  const [effortLevel, setEffortLevel] = useState<EffortLevel>(defaultEffort);
-  const effortSupported = selectedModel.supportsEffort;
   const defaultPlanMode = useSettingsStore((s) => s.defaultPlanMode);
   const [planModeEnabled, setPlanModeEnabled] = useState(defaultPlanMode);
   const sendWithEnter = useSettingsStore((s) => s.sendWithEnter);
@@ -458,18 +434,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [planModeEnabled, selectedConversationId]);
 
-  // Handler for changing max thinking tokens - also notifies running conversation
-  const handleThinkingTokensChange = useCallback(async (tokens: number) => {
-    setLocalMaxThinkingTokens(tokens);
-    // Apply to running conversation if one exists
-    if (selectedConversationId) {
-      try {
-        await setConversationMaxThinkingTokens(selectedConversationId, tokens);
-      } catch {
-        // Silently ignore if process isn't running
-      }
-    }
-  }, [selectedConversationId]);
 
   // Handle plan approval — clear UI optimistically so the bar disappears instantly
   const handleApprovePlan = useCallback(async () => {
@@ -565,19 +529,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedWorkspaceId, selectedSessionId, selectedConversationId, pendingPlanApproval, selectedModel.id, addConversation, addMessage, selectConversation, setStreaming, clearPendingPlanApproval, showError]);
 
-  // Auto-disable thinking when switching to an unsupported model
+  // Clamp thinking level when switching models (e.g. 'off' → 'low' for Opus)
   useEffect(() => {
-    if (thinkingEnabled && !thinkingSupported) {
-      setThinkingEnabled(false);
-    }
-  }, [thinkingSupported, thinkingEnabled]);
-
-  // Auto-reset effort to default when switching to an unsupported model
-  useEffect(() => {
-    if (!effortSupported && effortLevel !== 'high') {
-      setEffortLevel('high');
-    }
-  }, [effortSupported, effortLevel]);
+    setThinkingLevel(prev => clampThinkingLevel(prev, selectedModel));
+  }, [selectedModel]);
 
   // Global keyboard shortcuts
 
@@ -588,20 +543,16 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         plateInputRef.current?.focus();
       }
-      // Alt+T to toggle thinking mode or cycle effort levels
+      // Alt+T to cycle thinking levels
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        const model = MODELS.find(m => m.id === selectedModel.id);
-        if (model?.supportsEffort) {
-          // Opus 4.6: cycle effort levels
-          setEffortLevel(prev => {
-            const ids = EFFORT_LEVELS.map(l => l.id);
-            const idx = ids.indexOf(prev);
-            return ids[(idx + 1) % ids.length];
-          });
-        } else if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
-          setThinkingEnabled(prev => !prev);
-        }
+        setThinkingLevel(prev => {
+          const levels = THINKING_LEVELS.map(l => l.id);
+          const allowOff = canDisableThinking(selectedModel);
+          const available = allowOff ? levels : levels.filter(l => l !== 'off');
+          const idx = available.indexOf(prev);
+          return available[(idx + 1) % available.length];
+        });
       }
       // Shift+Tab to toggle plan mode
       if (e.code === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -619,16 +570,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     // Handle menu events from native Tauri menu
     const handleFocusInput = () => plateInputRef.current?.focus();
     const handleToggleThinking = () => {
-      const model = MODELS.find(m => m.id === selectedModel.id);
-      if (model?.supportsEffort) {
-        setEffortLevel(prev => {
-          const ids = EFFORT_LEVELS.map(l => l.id);
-          const idx = ids.indexOf(prev);
-          return ids[(idx + 1) % ids.length];
-        });
-      } else if (THINKING_SUPPORTED_MODELS.has(selectedModel.id)) {
-        setThinkingEnabled(prev => !prev);
-      }
+      setThinkingLevel(prev => {
+        const levels = THINKING_LEVELS.map(l => l.id);
+        const allowOff = canDisableThinking(selectedModel);
+        const available = allowOff ? levels : levels.filter(l => l !== 'off');
+        const idx = available.indexOf(prev);
+        return available[(idx + 1) % available.length];
+      });
     };
     const handleTogglePlanMode = () => handlePlanModeToggle();
 
@@ -642,7 +590,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel.id]);
+  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel]);
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
@@ -693,20 +641,20 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
         // Create new conversation with initial message via API
         const convType = currentConversation?.type || 'task';
+        // Resolve thinking level into backend params based on model
+        const thinkingParams = resolveThinkingParams(
+          thinkingLevel,
+          selectedModel,
+          defaultMaxThinkingTokens,
+        );
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: convType,
           message: trimmedContent,
-          // Pass selected model so agent uses the correct model
           model: selectedModel.id,
-          // Pass plan mode so agent starts in plan mode if toggled on before first message
           planMode: planModeEnabled ? true : undefined,
-          // Pass thinking tokens when thinking mode is enabled (non-Opus-4.6 models)
-          maxThinkingTokens: !effortSupported && thinkingEnabled ? localMaxThinkingTokens : undefined,
-          // Pass effort level for Opus 4.6 (only when non-default)
-          effort: effortSupported && effortLevel !== 'high' ? effortLevel : undefined,
-          // Pass attachments with loaded content
+          maxThinkingTokens: thinkingParams.maxThinkingTokens,
+          effort: thinkingParams.effort,
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
-          // Pass conversation summary context
           summaryIds: selectedSummaryIds.length > 0 ? selectedSummaryIds : undefined,
         });
 
@@ -1050,88 +998,43 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Thinking / Effort Control — adapts based on model */}
-          {effortSupported ? (
-            // Opus 4.6: Effort level dropdown (thinking is implicit via adaptive thinking)
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'h-7 gap-1.5 px-2 text-xs',
-                    effortLevel !== 'high' && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
-                  )}
-                  title={`Reasoning effort: ${effortLevel} (⌥T to cycle)`}
-                  aria-label={`Reasoning effort: ${effortLevel}`}
+          {/* Unified Thinking Level Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'h-7 gap-1.5 px-2 text-xs',
+                  thinkingLevel !== 'high' && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+                )}
+                title={`Thinking: ${thinkingLevel} (⌥T to cycle)`}
+                aria-label={`Thinking: ${thinkingLevel}`}
+              >
+                <Brain className="h-4 w-4" />
+                <span className="font-medium capitalize">{thinkingLevel}</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {THINKING_LEVELS.map((level) => (
+                <DropdownMenuItem
+                  key={level.id}
+                  disabled={level.id === 'off' && !canDisableThinking(selectedModel)}
+                  onClick={() => setThinkingLevel(level.id)}
                 >
-                  <Brain className="h-4 w-4" />
-                  <span className="font-medium capitalize">{effortLevel}</span>
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {EFFORT_LEVELS.map((level) => (
-                  <DropdownMenuItem
-                    key={level.id}
-                    onClick={() => setEffortLevel(level.id)}
-                  >
-                    {level.label}
-                    {level.id === 'high' && (
-                      <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            // Non-Opus-4.6 models: Regular thinking toggle
-            <Button
-              variant="ghost"
-              size={thinkingEnabled ? 'sm' : 'icon'}
-              className={cn(
-                thinkingEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-                thinkingEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20',
-                !thinkingSupported && 'opacity-50 cursor-not-allowed'
-              )}
-              onClick={() => setThinkingEnabled(!thinkingEnabled)}
-              disabled={!thinkingSupported}
-              title={
-                !thinkingSupported
-                  ? `Extended thinking not available for ${selectedModel.name}`
-                  : `Extended thinking ${thinkingEnabled ? 'on' : 'off'} (⌥T)`
-              }
-              aria-label={`Extended thinking ${thinkingEnabled ? 'on' : 'off'}`}
-              aria-pressed={thinkingEnabled}
-            >
-              <Brain className="h-4 w-4" />
-              {thinkingEnabled && <span className="text-xs font-medium">Thinking</span>}
-            </Button>
-          )}
-
-          {/* Thinking Tokens Selector — visible when thinking is active */}
-          {((effortSupported) || (!effortSupported && thinkingEnabled && thinkingSupported)) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 gap-1 px-1.5 text-xs text-muted-foreground">
-                  {THINKING_TOKEN_PRESETS.find(p => p.value === localMaxThinkingTokens)?.label
-                    ?? `${Math.round(localMaxThinkingTokens / 1000)}K`}
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {THINKING_TOKEN_PRESETS.map((preset) => (
-                  <DropdownMenuItem
-                    key={preset.value}
-                    onClick={() => handleThinkingTokensChange(preset.value)}
-                  >
-                    {preset.label} tokens
-                    {preset.value === localMaxThinkingTokens && <Check className="ml-auto h-3.5 w-3.5" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+                  {level.label}
+                  {level.id === 'high' && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
+                  )}
+                  {level.id === 'off' && !canDisableThinking(selectedModel) && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">(Opus always thinks)</span>
+                  )}
+                  {level.id === thinkingLevel && <Check className="ml-auto h-3.5 w-3.5" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Plan Mode Toggle */}
           <Button

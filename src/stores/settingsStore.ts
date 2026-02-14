@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Workspace } from '@/lib/types';
 import { useAuthStore } from '@/stores/authStore';
+import type { ThinkingLevel } from '@/lib/thinkingLevels';
 
 // Bottom panel tab IDs that can be toggled (Tasks is always visible)
 export type BottomPanelTab = 'plans' | 'history' | 'budget' | 'mcp' | 'file-history' | 'scripts';
@@ -27,8 +28,8 @@ export type ThemeOption = 'system' | 'light' | 'dark';
 // Font size options
 export type FontSize = 'small' | 'medium' | 'large';
 
-// Effort level options for reasoning depth control (Opus 4.6+)
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max';
+// Re-export ThinkingLevel for convenience
+export type { ThinkingLevel } from '@/lib/thinkingLevels';
 
 // Branch prefix options
 export type BranchPrefixType = 'github' | 'custom' | 'none';
@@ -64,8 +65,8 @@ interface SettingsState {
   confirmCloseActiveTab: boolean;
   confirmArchiveDirtySession: boolean;
   defaultModel: string;
-  defaultThinking: boolean;
-  maxThinkingTokens: number;
+  defaultThinkingLevel: ThinkingLevel;
+  maxThinkingTokens: number; // Secondary setting for Sonnet/Haiku token budget
   showThinkingBlocks: boolean; // Whether to show thinking/reasoning content in messages
   showTokenUsage: boolean; // Whether to show token counts and cost breakdown in run summaries
   desktopNotifications: boolean;
@@ -73,7 +74,6 @@ interface SettingsState {
   soundEffectType: string;
   sendWithEnter: boolean;
   reviewModel: string;
-  defaultEffort: EffortLevel;
   defaultPlanMode: boolean;
   autoConvertLongText: boolean;
   showChatCost: boolean;
@@ -137,7 +137,7 @@ interface SettingsState {
   setConfirmCloseActiveTab: (value: boolean) => void;
   setConfirmArchiveDirtySession: (value: boolean) => void;
   setDefaultModel: (value: string) => void;
-  setDefaultThinking: (value: boolean) => void;
+  setDefaultThinkingLevel: (value: ThinkingLevel) => void;
   setMaxThinkingTokens: (value: number) => void;
   setShowThinkingBlocks: (value: boolean) => void;
   toggleShowThinkingBlocks: () => void;
@@ -147,7 +147,6 @@ interface SettingsState {
   setSoundEffectType: (value: string) => void;
   setSendWithEnter: (value: boolean) => void;
   setReviewModel: (value: string) => void;
-  setDefaultEffort: (value: EffortLevel) => void;
   setDefaultPlanMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
@@ -199,8 +198,8 @@ export const useSettingsStore = create<SettingsState>()(
       confirmCloseActiveTab: true,
       confirmArchiveDirtySession: true,
       defaultModel: 'claude-opus-4-6',
-      defaultThinking: true,
-      maxThinkingTokens: 10000,
+      defaultThinkingLevel: 'high' as ThinkingLevel,
+      maxThinkingTokens: 16000,
       showThinkingBlocks: true,
       showTokenUsage: true,
       desktopNotifications: true,
@@ -208,7 +207,6 @@ export const useSettingsStore = create<SettingsState>()(
       soundEffectType: 'chime',
       sendWithEnter: true,
       reviewModel: 'claude-opus-4-6',
-      defaultEffort: 'high',
       defaultPlanMode: false,
       autoConvertLongText: true,
       showChatCost: true,
@@ -250,7 +248,7 @@ export const useSettingsStore = create<SettingsState>()(
       setConfirmCloseActiveTab: (value) => set({ confirmCloseActiveTab: value }),
       setConfirmArchiveDirtySession: (value) => set({ confirmArchiveDirtySession: value }),
       setDefaultModel: (value) => set({ defaultModel: value }),
-      setDefaultThinking: (value) => set({ defaultThinking: value }),
+      setDefaultThinkingLevel: (value) => set({ defaultThinkingLevel: value }),
       setMaxThinkingTokens: (value) => set({ maxThinkingTokens: value }),
       setShowThinkingBlocks: (value) => set({ showThinkingBlocks: value }),
       toggleShowThinkingBlocks: () => set((state) => ({ showThinkingBlocks: !state.showThinkingBlocks })),
@@ -260,7 +258,6 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEffectType: (value) => set({ soundEffectType: value }),
       setSendWithEnter: (value) => set({ sendWithEnter: value }),
       setReviewModel: (value) => set({ reviewModel: value }),
-      setDefaultEffort: (value) => set({ defaultEffort: value }),
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),
@@ -381,6 +378,14 @@ export const useSettingsStore = create<SettingsState>()(
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<SettingsState>;
         const merged = { ...currentState, ...persisted };
+
+        // Migrate old thinking settings → unified ThinkingLevel
+        const oldState = persistedState as Record<string, unknown>;
+        if ('defaultThinking' in oldState && !('defaultThinkingLevel' in oldState)) {
+          const wasOn = oldState.defaultThinking as boolean;
+          const oldEffort = (oldState.defaultEffort as string) || 'high';
+          merged.defaultThinkingLevel = (wasOn ? oldEffort : 'off') as ThinkingLevel;
+        }
 
         // Ensure bottomTabOrder includes all tabs from DEFAULT_BOTTOM_TAB_ORDER
         // and remove any tabs that no longer exist in the defaults

@@ -211,13 +211,15 @@ const COMMANDS: Command[] = [
   {
     id: 'toggle-thinking-mode',
     category: 'Actions',
-    label: 'Toggle Thinking Mode',
+    label: 'Cycle Thinking Level',
     icon: Brain,
     shortcutId: 'toggleThinking',
-    keywords: ['extended', 'reasoning', 'deep'],
+    keywords: ['extended', 'reasoning', 'deep', 'effort', 'thinking'],
     action: () => {
       const store = useSettingsStore.getState();
-      store.setDefaultThinking(!store.defaultThinking);
+      const levels = ['off', 'low', 'medium', 'high', 'max'] as const;
+      const idx = levels.indexOf(store.defaultThinkingLevel);
+      store.setDefaultThinkingLevel(levels[(idx + 1) % levels.length]);
     },
   },
   {
