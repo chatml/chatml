@@ -58,7 +58,6 @@ import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
 import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
-// import { UpdateChecker } from '@/components/shared/UpdateChecker';
 import { BackendStatus } from '@/components/shared/BackendStatus';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { PRDashboard } from '@/components/dashboards/PRDashboard';
@@ -1562,9 +1561,6 @@ export default function Home() {
         {/* Command Palette (Cmd+K) */}
         <CommandPalette />
 
-        {/* Update Checker - disabled until remote URL is configured
-        <UpdateChecker />
-        */}
         </div>
       </TooltipProvider>
     </>
