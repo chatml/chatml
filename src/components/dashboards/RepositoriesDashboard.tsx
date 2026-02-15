@@ -19,7 +19,8 @@ import {
   GitBranch,
 } from 'lucide-react';
 import type { Workspace } from '@/lib/types';
-import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { resolveWorkspaceColor } from '@/lib/workspace-colors';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { showInFinder, openInTerminal, copyToClipboard } from '@/lib/tauri';
 import { useToast } from '@/components/ui/toast';
 
@@ -52,11 +53,12 @@ function formatTimeAgo(dateStr: string): string {
 
 // Icon cell component
 function IconCell({ workspace }: { workspace: Workspace }) {
+  const workspaceColors = useSettingsStore((s) => s.workspaceColors);
   return (
     <div className="flex items-center justify-center">
       <div
         className="w-3 h-3 rounded-full"
-        style={{ backgroundColor: getWorkspaceColor(workspace.id) }}
+        style={{ backgroundColor: resolveWorkspaceColor(workspace.id, workspaceColors) }}
       />
     </div>
   );

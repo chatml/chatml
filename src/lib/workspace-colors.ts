@@ -4,6 +4,13 @@ export const WORKSPACE_COLORS = [
   '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
 ];
 
+export function resolveWorkspaceColor(
+  workspaceId: string,
+  workspaceColors: Record<string, string>
+): string {
+  return workspaceColors[workspaceId] || getWorkspaceColor(workspaceId);
+}
+
 export function getWorkspaceColor(workspaceId: string): string {
   let hash = 0;
   for (let i = 0; i < workspaceId.length; i++) {

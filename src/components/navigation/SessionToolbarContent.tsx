@@ -39,7 +39,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,6 +100,7 @@ export function SessionToolbarContent() {
   const [openAppPopoverOpen, setOpenAppPopoverOpen] = useState(false);
   const { installedApps } = useInstalledApps();
   const defaultOpenApp = useSettingsStore((s) => s.defaultOpenApp);
+  const workspaceColors = useSettingsStore((s) => s.workspaceColors);
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onSuccess: () => showSuccess('Session archived'),
     onError: () => showError('Failed to archive session'),
@@ -194,7 +195,7 @@ export function SessionToolbarContent() {
           <span className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden">
             <div
               className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: getWorkspaceColor(selectedWorkspace.id) }}
+              style={{ backgroundColor: resolveWorkspaceColor(selectedWorkspace.id, workspaceColors) }}
             />
             <span className="text-base font-semibold truncate">{selectedWorkspace.name}</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -437,7 +438,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors]);
 
   useMainToolbarContent(toolbarConfig);
 
