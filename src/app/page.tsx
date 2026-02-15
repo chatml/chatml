@@ -19,6 +19,7 @@ import { switchToTab, createAndSwitchToNewTab } from '@/components/navigation/Br
 import { useNavigationStore } from '@/stores/navigationStore';
 import { useUpdateStore } from '@/stores/updateStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { GuidedTour } from '@/components/onboarding/GuidedTour';
@@ -563,6 +564,12 @@ export default function Home() {
         const mappedWorkspaces = dashboardData.workspaces.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
+        // Prefetch branch lists for all workspaces (fire-and-forget)
+        const { fetchBranches: prefetchBranches } = useBranchCacheStore.getState();
+        for (const ws of mappedWorkspaces) {
+          prefetchBranches(ws.id).catch(() => {});
+        }
+
         // Map sessions (stats already come from backend if available)
         const allSessions = dashboardData.sessions.map(s => mapSessionDTO(s));
         setSessions(allSessions);
@@ -824,6 +831,9 @@ export default function Home() {
         createdAt: repo.createdAt,
       };
       useAppStore.getState().addWorkspace(workspace);
+
+      // Prefetch branches for new workspace
+      useBranchCacheStore.getState().fetchBranches(workspace.id).catch(() => {});
 
       // Auto-create first session for the new workspace (backend generates city-based name)
       const prefix = workspace.branchPrefix

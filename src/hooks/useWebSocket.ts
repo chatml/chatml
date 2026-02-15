@@ -14,6 +14,7 @@ import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 
 // Conversations that recently exited plan mode. Used to suppress stale SDK status
@@ -1101,6 +1102,9 @@ export function useWebSocket(enabled: boolean = true) {
 
         // Handle dashboard-level invalidation events (PR or branch changes)
         if (data.type === 'pr_dashboard_update' || data.type === 'branch_dashboard_update') {
+          if (data.type === 'branch_dashboard_update') {
+            useBranchCacheStore.getState().invalidateAll();
+          }
           window.dispatchEvent(new CustomEvent(data.type, { detail: data.payload }));
           // Don't return -- pr_dashboard_update is also followed by session_pr_update
           // which we still want to process
