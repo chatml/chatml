@@ -33,8 +33,8 @@ export function usePRStatus(
 
   // Fetch PR status
   const fetchStatus = useCallback(async () => {
-    // Only fetch if we have a session with an open PR
-    if (!workspaceId || !sessionId || prStatus !== 'open') {
+    // Only fetch if we have a session with a PR
+    if (!workspaceId || !sessionId || !prStatus || prStatus === 'none') {
       setPRDetails(null);
       setLoading(false);
       return;
@@ -68,7 +68,7 @@ export function usePRStatus(
   useEffect(() => {
     isMountedRef.current = true;
 
-    if (prStatus === 'open') {
+    if (prStatus && prStatus !== 'none') {
       setLoading(true);
       fetchStatus();
     } else {

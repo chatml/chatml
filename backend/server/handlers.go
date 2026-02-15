@@ -4228,8 +4228,8 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if session has a PR
-	if session.PRStatus != "open" || session.PRNumber == 0 {
-		writeNotFound(w, "no open PR for this session")
+	if session.PRNumber == 0 {
+		writeNotFound(w, "no PR for this session")
 		return
 	}
 
