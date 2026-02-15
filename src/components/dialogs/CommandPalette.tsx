@@ -194,7 +194,6 @@ const COMMANDS: Command[] = [
     category: 'Actions',
     label: 'Add Repository',
     icon: Plus,
-    shortcutId: 'addWorkspace',
     keywords: ['workspace', 'project', 'clone', 'create'],
     action: () => window.dispatchEvent(new CustomEvent('add-workspace')),
   },
@@ -518,11 +517,19 @@ export function CommandPalette() {
     }, [])
   );
 
-  // Listen for close event (from file picker opening)
+  // Listen for open/close events (from menu bar and file picker)
   useEffect(() => {
+    const handleOpen = () => {
+      window.dispatchEvent(new CustomEvent('close-file-picker'));
+      setOpen(true);
+    };
     const handleClose = () => setOpen(false);
+    window.addEventListener('open-command-palette', handleOpen);
     window.addEventListener('close-command-palette', handleClose);
-    return () => window.removeEventListener('close-command-palette', handleClose);
+    return () => {
+      window.removeEventListener('open-command-palette', handleOpen);
+      window.removeEventListener('close-command-palette', handleClose);
+    };
   }, []);
 
   // Filter commands by availability — no memo needed, filtering ~30 items is negligible

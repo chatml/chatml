@@ -17,6 +17,7 @@ import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
 import { switchToTab, createAndSwitchToNewTab } from '@/components/navigation/BrowserTabBar';
 import { useNavigationStore } from '@/stores/navigationStore';
+import { useUpdateStore } from '@/stores/updateStore';
 import { useAuthStore } from '@/stores/authStore';
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
@@ -26,7 +27,7 @@ import { refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { getLinearAuthStatus } from '@/lib/linearAuth';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
-import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, registerSession, unregisterSession, getSessionDirName, setOnboardingWindowSize, restoreDefaultWindowSize } from '@/lib/tauri';
+import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, copyToClipboard, openUrlInBrowser, getCurrentWindow, registerSession, unregisterSession, getSessionDirName, setOnboardingWindowSize, restoreDefaultWindowSize } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
@@ -492,9 +493,12 @@ export default function Home() {
     setShowShortcuts((prev) => !prev);
   }, []));
 
-  useShortcut('addWorkspace', useCallback(() => {
-    setShowAddWorkspace(true);
-  }, []));
+  // Listen for show-shortcuts event from menu bar
+  useEffect(() => {
+    const handleShowShortcuts = () => setShowShortcuts(true);
+    window.addEventListener('show-shortcuts', handleShowShortcuts);
+    return () => window.removeEventListener('show-shortcuts', handleShowShortcuts);
+  }, []);
 
   useShortcut('createFromPR', useCallback(() => {
     setShowCreateFromPR(true);
@@ -901,7 +905,10 @@ export default function Home() {
     setPendingCloseFileTabId(null);
   }, [pendingCloseFileTabId, closeFileTab, setPendingCloseFileTabId]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (only for shortcuts NOT handled by native menu accelerators)
+  // Most shortcuts are now native menu accelerators in menu.rs which emit 'menu-event'.
+  // This handler covers: shortcuts without menu items, context-dependent shortcuts,
+  // and shortcuts that need special terminal/focus handling.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+R to reload the app
@@ -909,57 +916,16 @@ export default function Home() {
         e.preventDefault();
         window.location.reload();
       }
-      // Cmd+Shift+N to add workspace
-      if (e.key === 'n' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-        e.preventDefault();
-        setShowAddWorkspace(true);
-        return;
-      }
-      // Cmd+N to create new session in selected workspace
-      if (e.key === 'n' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        if (!selectedWorkspaceId && workspaces.length === 0) return;
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent('spawn-agent'));
-      }
-      // Cmd+K for command palette (future) - but allow terminal to handle it for clear
+      // Cmd+K for command palette - allow terminal to handle it for clear
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        // Don't intercept if focus is inside terminal (let terminal handle Cmd+K for clear)
         const isInTerminal = (e.target as HTMLElement)?.closest('.xterm');
         if (!isInTerminal) {
           e.preventDefault();
-          // TODO: Open command palette
+          window.dispatchEvent(new CustomEvent('open-command-palette'));
         }
       }
-      // Cmd+, to open settings (standard macOS)
-      if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setShowSettings(true);
-      }
-      // Cmd+Shift+O to open workspace in VS Code
-      if (e.key === 'o' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-        e.preventDefault();
-        const workspace = workspaces.find((w) => w.id === selectedWorkspaceId);
-        if (workspace?.path && isTauri()) {
-          import('@tauri-apps/plugin-shell').then(({ Command }) => {
-            Command.create('code', [workspace.path]).spawn().catch(console.error);
-          });
-        }
-      }
-      // Cmd+B to toggle left sidebar
-      if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        toggleLeftSidebar();
-      }
-      // Cmd+Option+B to toggle right sidebar (only when session is selected)
-      if (e.code === 'KeyB' && (e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey) {
-        e.preventDefault();
-        if (selectedSessionIdRef.current) {
-          toggleRightSidebar();
-        }
-      }
-      // Ctrl+` or Cmd+J to toggle bottom terminal (Cmd+` is reserved by macOS for window switching)
-      if ((e.key === '`' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) ||
-          (e.key === 'j' && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey)) {
+      // Cmd+J as alternative terminal toggle (Cmd+` is reserved by macOS for window switching)
+      if (e.key === 'j' && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         toggleBottomTerminal();
       }
@@ -995,27 +961,6 @@ export default function Home() {
         e.preventDefault();
         createAndSwitchToNewTab();
       }
-      // Cmd+W to close tab (file tab first, then conversation, then browser tab)
-      if (e.key === 'w' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        e.preventDefault();
-        // If a file tab is selected, close it first
-        if (selectedFileTabId) {
-          handleCloseFileTab(selectedFileTabId);
-        } else if (ENABLE_BROWSER_TABS && useTabStore.getState().tabOrder.length > 1) {
-          // Close the browser tab if more than one exists
-          const tabStore = useTabStore.getState();
-          const closingId = tabStore.activeTabId;
-          tabStore.closeTab(closingId);
-          // Restore new active tab's state
-          const newActiveId = tabStore.activeTabId;
-          if (newActiveId !== closingId) {
-            switchToTab(newActiveId);
-          }
-        } else {
-          // Otherwise close the conversation
-          handleCloseTab();
-        }
-      }
       // Cmd+Shift+] for next browser tab
       if (ENABLE_BROWSER_TABS && e.key === ']' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -1036,11 +981,6 @@ export default function Home() {
           switchToTab(tabOrder[prevIndex]);
         }
       }
-      // Cmd+S to save current file tab
-      if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        e.preventDefault();
-        saveCurrentTab();
-      }
       // Cmd+1-9 to select browser tabs by position (Cmd+9 = last tab)
       if (ENABLE_BROWSER_TABS && e.key >= '1' && e.key <= '9' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -1054,20 +994,6 @@ export default function Home() {
           }
         }
       }
-      // Cmd+. to toggle zen mode (distraction-free mode, only when session is selected)
-      if (e.code === 'Period' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        if (selectedSessionIdRef.current) {
-          setZenMode(!zenModeRef.current);
-        }
-      }
-      // Cmd+Shift+R to reset all panel layouts to defaults
-      if (e.key === 'r' && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        resetLayouts();
-        // Force page reload to apply default layouts
-        window.location.reload();
-      }
       // Escape to exit zen mode
       if (e.key === 'Escape') {
         if (zenModeRef.current) {
@@ -1079,7 +1005,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sessions, conversations, workspaces, selectedWorkspaceId, selectedFileTabId, selectSession, selectConversation, handleCloseTab, toggleBottomTerminal, selectNextTab, selectPreviousTab, handleCloseFileTab, saveCurrentTab, setZenMode, toggleLeftSidebar, toggleRightSidebar, resetLayouts]);
+  }, [sessions, toggleBottomTerminal, selectNextTab, selectPreviousTab, setZenMode]);
 
   // Handle Tauri menu events
   useEffect(() => {
@@ -1087,29 +1013,65 @@ export default function Home() {
 
     safeListen<string>('menu-event', (menuId) => {
       switch (menuId) {
+        // App menu
+        case 'check_for_updates':
+          useUpdateStore.getState().checkForUpdates();
+          break;
         case 'settings':
           setShowSettings(true);
           break;
+
+        // File menu
         case 'new_session':
           handleNewSession();
           break;
         case 'new_conversation':
           handleNewConversation();
           break;
+        case 'create_from_pr':
+          window.dispatchEvent(new CustomEvent('create-from-pr'));
+          break;
         case 'add_workspace':
           setShowAddWorkspace(true);
-          break;
-        case 'close_tab':
-          handleCloseTab();
           break;
         case 'save_file':
           saveCurrentTab();
           break;
+        case 'close_tab': {
+          // Close file tab first, then browser tab, then conversation
+          const fileTabId = useAppStore.getState().selectedFileTabId;
+          if (fileTabId) {
+            handleCloseFileTab(fileTabId);
+          } else if (ENABLE_BROWSER_TABS && useTabStore.getState().tabOrder.length > 1) {
+            const tabStore = useTabStore.getState();
+            const closingId = tabStore.activeTabId;
+            tabStore.closeTab(closingId);
+            const newActiveId = tabStore.activeTabId;
+            if (newActiveId !== closingId) {
+              switchToTab(newActiveId);
+            }
+          } else {
+            handleCloseTab();
+          }
+          break;
+        }
+
+        // Edit > Find
+        case 'find':
+          window.dispatchEvent(new CustomEvent('search-chat'));
+          break;
+        case 'find_next':
+          window.dispatchEvent(new CustomEvent('search-next'));
+          break;
+        case 'find_previous':
+          window.dispatchEvent(new CustomEvent('search-prev'));
+          break;
+
+        // View menu
         case 'toggle_left_sidebar':
           toggleLeftSidebar();
           break;
         case 'toggle_right_sidebar':
-          // Only toggle right sidebar if a session is selected
           if (selectedSessionIdRef.current) {
             toggleRightSidebar();
           }
@@ -1117,16 +1079,78 @@ export default function Home() {
         case 'toggle_terminal':
           toggleBottomTerminal();
           break;
-        case 'toggle_thinking':
-          // Emit event for ChatInput to handle
-          window.dispatchEvent(new CustomEvent('toggle-thinking'));
+        case 'command_palette':
+          window.dispatchEvent(new CustomEvent('open-command-palette'));
+          break;
+        case 'file_picker':
+          window.dispatchEvent(new CustomEvent('open-file-picker'));
+          break;
+        case 'open_session_manager':
+          useSettingsStore.getState().setContentView({ type: 'session-manager' });
+          break;
+        case 'open_pr_dashboard':
+          useSettingsStore.getState().setContentView({ type: 'pr-dashboard' });
+          break;
+        case 'open_repositories':
+          useSettingsStore.getState().setContentView({ type: 'repositories' });
+          break;
+        case 'toggle_zen_mode':
+          if (selectedSessionIdRef.current) {
+            setZenMode(!zenModeRef.current);
+          }
+          break;
+        case 'reset_layouts':
+          resetLayouts();
+          window.location.reload();
+          break;
+        case 'enter_full_screen':
+          getCurrentWindow().then(async (win) => {
+            if (win) {
+              const isFullscreen = await win.isFullscreen();
+              await win.setFullscreen(!isFullscreen);
+            }
+          });
+          break;
+
+        // Go menu
+        case 'navigate_back':
+          useNavigationStore.getState().goBack();
+          break;
+        case 'navigate_forward':
+          useNavigationStore.getState().goForward();
+          break;
+        case 'go_to_workspace':
+        case 'go_to_session':
+        case 'go_to_conversation':
+          window.dispatchEvent(new CustomEvent('open-command-palette'));
+          break;
+        case 'search_workspaces':
+          window.dispatchEvent(new CustomEvent('search-workspaces'));
+          break;
+
+        // Session menu
+        case 'thinking_off':
+          useSettingsStore.getState().setDefaultThinkingLevel('off');
+          break;
+        case 'thinking_low':
+          useSettingsStore.getState().setDefaultThinkingLevel('low');
+          break;
+        case 'thinking_medium':
+          useSettingsStore.getState().setDefaultThinkingLevel('medium');
+          break;
+        case 'thinking_high':
+          useSettingsStore.getState().setDefaultThinkingLevel('high');
+          break;
+        case 'thinking_max':
+          useSettingsStore.getState().setDefaultThinkingLevel('max');
           break;
         case 'toggle_plan_mode':
-          // Emit event for ChatInput to handle
           window.dispatchEvent(new CustomEvent('toggle-plan-mode'));
           break;
+        case 'approve_plan':
+          window.dispatchEvent(new CustomEvent('approve-plan'));
+          break;
         case 'focus_input':
-          // Emit event for ChatInput to handle
           window.dispatchEvent(new CustomEvent('focus-input'));
           break;
         case 'next_tab':
@@ -1135,6 +1159,57 @@ export default function Home() {
         case 'previous_tab':
           selectPreviousTab();
           break;
+        case 'quick_review':
+          window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'quick' } }));
+          break;
+        case 'deep_review':
+          window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'deep' } }));
+          break;
+        case 'security_audit':
+          window.dispatchEvent(new CustomEvent('start-review', { detail: { type: 'security' } }));
+          break;
+        case 'open_in_vscode': {
+          const { selectedSessionId, sessions: allSessions } = useAppStore.getState();
+          const session = allSessions.find((s) => s.id === selectedSessionId);
+          if (session?.worktreePath) {
+            openInVSCode(session.worktreePath);
+          }
+          break;
+        }
+        case 'open_terminal':
+          window.dispatchEvent(new CustomEvent('show-bottom-panel'));
+          break;
+
+        // Git menu
+        case 'git_commit':
+          window.dispatchEvent(new CustomEvent('git-commit'));
+          break;
+        case 'git_create_pr':
+          window.dispatchEvent(new CustomEvent('git-create-pr'));
+          break;
+        case 'git_sync':
+          window.dispatchEvent(new CustomEvent('git-sync'));
+          break;
+        case 'git_copy_branch': {
+          const { selectedSessionId: sid, sessions: allSessions } = useAppStore.getState();
+          const sess = allSessions.find((s) => s.id === sid);
+          if (sess?.branch) {
+            copyToClipboard(sess.branch);
+          }
+          break;
+        }
+
+        // Help menu
+        case 'keyboard_shortcuts':
+          window.dispatchEvent(new CustomEvent('show-shortcuts'));
+          break;
+        case 'release_notes':
+          openUrlInBrowser('https://github.com/chatml/chatml/releases');
+          break;
+        case 'report_issue':
+          openUrlInBrowser('https://github.com/chatml/chatml/issues/new');
+          break;
+
         default:
           // Unhandled menu event
       }
@@ -1145,7 +1220,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, toggleBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar, selectNextTab, selectPreviousTab]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, handleCloseFileTab, toggleBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar, selectNextTab, selectPreviousTab, setZenMode, resetLayouts]);
 
   // Handle window close confirmation
   useEffect(() => {
