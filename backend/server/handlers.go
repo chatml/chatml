@@ -1863,7 +1863,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Start watching for PR status changes
 	if h.prWatcher != nil {
-		h.prWatcher.WatchSession(sess.ID, workspaceID, branchName, repo.Path, models.PRStatusNone)
+		h.prWatcher.WatchSession(sess.ID, workspaceID, branchName, repo.Path, models.PRStatusNone, 0, "")
 	}
 
 	// Invalidate branch cache after new session/branch creation
@@ -4443,7 +4443,7 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 	// Register with PR watcher for status tracking
 	if h.prWatcher != nil {
 		repoPath := session.WorkspacePath
-		h.prWatcher.WatchSession(sessionID, session.WorkspaceID, session.Branch, repoPath, models.PRStatusOpen)
+		h.prWatcher.WatchSession(sessionID, session.WorkspaceID, session.Branch, repoPath, models.PRStatusOpen, prResult.Number, prResult.HTMLURL)
 	}
 
 	// Broadcast WebSocket event

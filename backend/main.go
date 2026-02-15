@@ -387,7 +387,7 @@ func main() {
 				}
 				for _, sess := range sessions {
 					if sess.WorktreePath != "" && sess.Branch != "" {
-						prWatcher.WatchSession(sess.ID, sess.WorkspaceID, sess.Branch, repo.Path, sess.PRStatus)
+						prWatcher.WatchSession(sess.ID, sess.WorkspaceID, sess.Branch, repo.Path, sess.PRStatus, sess.PRNumber, sess.PRUrl)
 					}
 				}
 			}

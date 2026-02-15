@@ -99,7 +99,7 @@ func TestPRWatcher_WatchSession_AddsEntry(t *testing.T) {
 	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
 	defer w.Close()
 
-	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none")
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
 
 	w.mu.RLock()
 	defer w.mu.RUnlock()
@@ -113,12 +113,28 @@ func TestPRWatcher_WatchSession_AddsEntry(t *testing.T) {
 	assert.Equal(t, "none", entry.PRStatus)
 }
 
+func TestPRWatcher_WatchSession_WithPRNumber(t *testing.T) {
+	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
+	defer w.Close()
+
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "open", 42, "https://github.com/org/repo/pull/42")
+
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	entry, ok := w.sessions["sess-1"]
+	require.True(t, ok, "session entry should exist")
+	assert.Equal(t, 42, entry.PRNumber)
+	assert.Equal(t, "https://github.com/org/repo/pull/42", entry.PRUrl)
+	assert.Equal(t, "open", entry.PRStatus)
+}
+
 func TestPRWatcher_WatchSession_Idempotent(t *testing.T) {
 	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
 	defer w.Close()
 
-	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none")
-	w.WatchSession("sess-1", "ws-1", "feature/bar", "/other/path", "open")
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
+	w.WatchSession("sess-1", "ws-1", "feature/bar", "/other/path", "open", 1, "")
 
 	w.mu.RLock()
 	defer w.mu.RUnlock()
@@ -140,7 +156,7 @@ func TestPRWatcher_UnwatchSession_RemovesEntry(t *testing.T) {
 	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
 	defer w.Close()
 
-	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none")
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
 	w.UnwatchSession("sess-1")
 
 	w.mu.RLock()
@@ -169,7 +185,7 @@ func TestPRWatcher_UpdateSessionBranch_UpdatesEntry(t *testing.T) {
 	w := newTestPRWatcher(newMockStore(), repoMgr, nil)
 	defer w.Close()
 
-	w.WatchSession("sess-1", "ws-1", "feature/old", "/repo/path", "none")
+	w.WatchSession("sess-1", "ws-1", "feature/old", "/repo/path", "none", 0, "")
 
 	// Set LastChecked to a non-zero value so we can verify it gets reset.
 	w.mu.Lock()
@@ -193,7 +209,7 @@ func TestPRWatcher_UpdateSessionBranch_InvalidatesPRCache(t *testing.T) {
 	w := newTestPRWatcher(newMockStore(), repoMgr, prCache)
 	defer w.Close()
 
-	w.WatchSession("sess-1", "ws-1", "feature/old", "/repo/path", "none")
+	w.WatchSession("sess-1", "ws-1", "feature/old", "/repo/path", "none", 0, "")
 
 	// This should call prCache.Invalidate internally without panicking.
 	assert.NotPanics(t, func() {
