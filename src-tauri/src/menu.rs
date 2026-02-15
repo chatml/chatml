@@ -6,10 +6,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let app_menu = SubmenuBuilder::new(app, "ChatML")
         .item(&PredefinedMenuItem::about(app, Some("About ChatML"), None)?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("check_for_updates", "Check for Updates...")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("check_for_updates", "Check for Updates...").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("settings", "Settings...")
@@ -42,10 +39,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("add_workspace", "Add Repository...")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("add_workspace", "Add Repository...").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("save_file", "Save")
@@ -124,28 +118,16 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("command_palette", "Command Palette")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("command_palette", "Command Palette").build(app)?)
         .item(
             &MenuItemBuilder::with_id("file_picker", "File Picker")
                 .accelerator("CmdOrCtrl+P")
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("open_session_manager", "Session Manager")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("open_pr_dashboard", "PR Dashboard")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("open_repositories", "Repositories")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("open_session_manager", "Session Manager").build(app)?)
+        .item(&MenuItemBuilder::with_id("open_pr_dashboard", "PR Dashboard").build(app)?)
+        .item(&MenuItemBuilder::with_id("open_repositories", "Repositories").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("toggle_zen_mode", "Zen Mode")
@@ -178,18 +160,9 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("go_to_workspace", "Go to Workspace...")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("go_to_session", "Go to Session...")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("go_to_conversation", "Go to Conversation...")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("go_to_workspace", "Go to Workspace...").build(app)?)
+        .item(&MenuItemBuilder::with_id("go_to_session", "Go to Session...").build(app)?)
+        .item(&MenuItemBuilder::with_id("go_to_conversation", "Go to Conversation...").build(app)?)
         .separator()
         .item(
             &MenuItemBuilder::with_id("search_workspaces", "Search Workspaces")
@@ -200,87 +173,39 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // 6. Session menu with Thinking Level submenu
     let thinking_submenu = SubmenuBuilder::new(app, "Thinking Level")
-        .item(
-            &MenuItemBuilder::with_id("thinking_off", "Off")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("thinking_low", "Low")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("thinking_medium", "Medium")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("thinking_high", "High")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("thinking_max", "Max")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("thinking_off", "Off").build(app)?)
+        .item(&MenuItemBuilder::with_id("thinking_low", "Low").build(app)?)
+        .item(&MenuItemBuilder::with_id("thinking_medium", "Medium").build(app)?)
+        .item(&MenuItemBuilder::with_id("thinking_high", "High").build(app)?)
+        .item(&MenuItemBuilder::with_id("thinking_max", "Max").build(app)?)
         .build()?;
 
     let session_menu = SubmenuBuilder::new(app, "Session")
         .item(&thinking_submenu)
-        .item(
-            &MenuItemBuilder::with_id("toggle_plan_mode", "Plan Mode")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("toggle_plan_mode", "Plan Mode").build(app)?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("approve_plan", "Approve Plan")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("approve_plan", "Approve Plan").build(app)?)
         .item(
             &MenuItemBuilder::with_id("focus_input", "Focus Chat Input")
                 .accelerator("CmdOrCtrl+L")
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("quick_review", "Quick Review")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("deep_review", "Deep Review")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("security_audit", "Security Audit")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("quick_review", "Quick Review").build(app)?)
+        .item(&MenuItemBuilder::with_id("deep_review", "Deep Review").build(app)?)
+        .item(&MenuItemBuilder::with_id("security_audit", "Security Audit").build(app)?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("open_in_vscode", "Open in VS Code")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("open_terminal", "Open in Terminal")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("open_in_vscode", "Open in VS Code").build(app)?)
+        .item(&MenuItemBuilder::with_id("open_terminal", "Open in Terminal").build(app)?)
         .build()?;
 
     // 7. Git menu
     let git_menu = SubmenuBuilder::new(app, "Git")
-        .item(
-            &MenuItemBuilder::with_id("git_commit", "Commit Changes...")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("git_create_pr", "Create Pull Request...")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("git_sync", "Sync with Main")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("git_commit", "Commit Changes...").build(app)?)
+        .item(&MenuItemBuilder::with_id("git_create_pr", "Create Pull Request...").build(app)?)
+        .item(&MenuItemBuilder::with_id("git_sync", "Sync with Main").build(app)?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("git_copy_branch", "Copy Branch Name")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("git_copy_branch", "Copy Branch Name").build(app)?)
         .build()?;
 
     // 8. Window menu
@@ -288,32 +213,20 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .item(&PredefinedMenuItem::minimize(app, None)?)
         .item(&PredefinedMenuItem::maximize(app, Some("Zoom"))?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front").build(app)?)
         .build()?;
 
     // 9. Help menu
     let help_menu = SubmenuBuilder::new(app, "Help")
-        .item(
-            &MenuItemBuilder::with_id("help", "ChatML Help")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("help", "ChatML Help").build(app)?)
         .item(
             &MenuItemBuilder::with_id("keyboard_shortcuts", "Keyboard Shortcuts")
                 .accelerator("CmdOrCtrl+/")
                 .build(app)?,
         )
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("release_notes", "Release Notes")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("report_issue", "Report an Issue...")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("release_notes", "Release Notes").build(app)?)
+        .item(&MenuItemBuilder::with_id("report_issue", "Report an Issue...").build(app)?)
         .build()?;
 
     // Build the full menu bar
