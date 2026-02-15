@@ -53,6 +53,11 @@ import { useBranchSync } from '@/hooks/useBranchSync';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { KeyRound, Settings2 } from 'lucide-react';
 
+// Module-level scroll position cache (singleton — ConversationArea is only rendered once).
+// Stored outside the component to avoid ref-in-render lint issues since we read it during
+// render to compute initialTopMostItemIndex for Virtuoso.
+const scrollPositions = new Map<string, { dataIndex: number; wasAtBottom: boolean }>();
+
 interface ConversationAreaProps {
   children?: React.ReactNode;
 }
@@ -508,15 +513,39 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Auto-scroll management via Virtuoso
   const messageListRef = useRef<VirtualizedMessageListHandle>(null);
-  const selectedConversationIdRef = useRef(selectedConversationId);
-  useEffect(() => {
-    selectedConversationIdRef.current = selectedConversationId;
-  }, [selectedConversationId]);
   const [showScrollButton, setShowScrollButton] = useState(false);
+
+  // Scroll position memory across tab switches.
+  // We track the first visible data index per conversation via Virtuoso's rangeChanged.
+  // On remount (key change), Virtuoso uses initialTopMostItemIndex — no animation, no flash.
+  const isAtBottomRef = useRef(true);
+
+  // Continuously track the visible range — called by Virtuoso on every scroll
+  const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
+    if (!selectedConversationId) return;
+    scrollPositions.set(selectedConversationId, {
+      dataIndex: range.startIndex,
+      wasAtBottom: isAtBottomRef.current,
+    });
+  }, [selectedConversationId]);
+
+  // Compute initialTopMostItemIndex for the current conversation.
+  // Read from the module-level map — this is computed fresh each render when
+  // selectedConversationId changes (which triggers Virtuoso remount via key).
+  const initialTopMostItemIndex = useMemo(() => {
+    if (!selectedConversationId) return { index: 'LAST' as const, align: 'end' as const };
+    const saved = scrollPositions.get(selectedConversationId);
+    if (saved && !saved.wasAtBottom) {
+      return { index: saved.dataIndex, align: 'start' as const };
+    }
+    // First visit or was at bottom — start at bottom
+    return { index: 'LAST' as const, align: 'end' as const };
+  }, [selectedConversationId]);
 
   // Track at-bottom state from Virtuoso
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     setShowScrollButton(!atBottom);
+    isAtBottomRef.current = atBottom;
   }, []);
 
   // Force scroll to bottom (for manual button click or message submit)
@@ -548,18 +577,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       </div>
     );
   }, [selectedConversationId, queuedMessage, currentSession?.worktreePath]);
-
-  // Reset scroll on conversation change
-  useEffect(() => {
-    const conversationId = selectedConversationId;
-    // Scroll to bottom after a tick to let Virtuoso render
-    const frameId = requestAnimationFrame(() => {
-      // Guard: skip if conversation changed before this frame fired
-      if (conversationId !== selectedConversationIdRef.current) return;
-      messageListRef.current?.scrollToBottom('auto');
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [selectedConversationId]);
 
   // Listen for message submit events to force scroll to bottom
   useEffect(() => {
@@ -1086,6 +1103,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               partialResults={pagination?.hasMore}
             />
             <VirtualizedMessageList
+              key={selectedConversationId ?? 'none'}
               ref={messageListRef}
               messages={conversationMessages}
               worktreePath={currentSession?.worktreePath}
@@ -1093,6 +1111,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               currentMatchIndex={clampedMatchIndex}
               searchMatches={searchMatches}
               messageHasMatches={messageHasMatches}
+              initialTopMostItemIndex={initialTopMostItemIndex}
+              onRangeChanged={handleRangeChanged}
               onAtBottomStateChange={handleAtBottomStateChange}
               onStartReached={pagination?.hasMore ? handleStartReached : undefined}
               firstItemIndex={firstItemIndex}
