@@ -11,10 +11,11 @@ import {
   CommandItem,
 } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
-import { GitBranch, Check, ArrowRight, RotateCcw } from 'lucide-react';
+import { GitBranch, Check, ArrowRight, RotateCcw, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { listBranches, updateSession as apiUpdateSession, mapSessionDTO } from '@/lib/api';
+import { updateSession as apiUpdateSession, mapSessionDTO } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
+import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import type { BranchDTO } from '@/lib/api';
@@ -73,7 +74,14 @@ function BranchPickerContent({
         />
         <CommandList>
           <CommandEmpty>
-            {loading ? 'Loading...' : 'No branches found'}
+            {loading ? (
+              <div className="flex items-center justify-center py-6 gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Loading branches...</span>
+              </div>
+            ) : (
+              'No branches found'
+            )}
           </CommandEmpty>
           <CommandGroup>
             {filteredBranches.map((branch) => {
@@ -131,42 +139,36 @@ export function TargetBranchSelector({
   disabled = false,
 }: TargetBranchSelectorProps) {
   const [open, setOpen] = useState(false);
-  const [branches, setBranches] = useState<BranchDTO[]>([]);
-  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const { error: showError } = useToast();
   const updateSession = useAppStore((s) => s.updateSession);
+
+  // Use cached branches from the store
+  const cachedBranches = useBranchCacheStore((s) => s.cache[workspaceId]?.branches);
+  const cacheLoading = useBranchCacheStore((s) => s.cache[workspaceId]?.isLoading ?? false);
+  const fetchBranches = useBranchCacheStore((s) => s.fetchBranches);
+
+  const branches = cachedBranches ?? [];
+  const loading = (!cachedBranches || cachedBranches.length === 0) && cacheLoading;
 
   const effectiveTarget = currentTargetBranch || `${workspaceRemote}/${workspaceDefaultBranch}`;
   const displayTarget = stripRemotePrefix(effectiveTarget);
   const isDefault = !currentTargetBranch;
 
-  const loadBranches = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await listBranches(workspaceId, {
-        includeRemote: true,
-        sortBy: 'date',
-        limit: 100,
-      });
-      // Combine and deduplicate — prefer remote branches for target selection
-      const allBranches = [...res.sessionBranches, ...res.otherBranches];
-      // Filter to remote branches only (since target branch is always "origin/...")
-      const remoteBranches = allBranches.filter((b) => b.isRemote);
-      setBranches(remoteBranches);
-    } catch {
-      showError('Failed to load branches');
-    } finally {
-      setLoading(false);
+  const handleOpenChange = useCallback((isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      setSearch('');
     }
-  }, [workspaceId, showError]);
+  }, []);
 
   useEffect(() => {
     if (open) {
-      loadBranches();
-      setSearch('');
+      fetchBranches(workspaceId).catch(() => {
+        showError('Failed to load branches');
+      });
     }
-  }, [open, loadBranches]);
+  }, [open, workspaceId, fetchBranches, showError]);
 
   const handleSelect = useCallback(
     async (branchName: string) => {
@@ -199,7 +201,7 @@ export function TargetBranchSelector({
 
   if (variant === 'toolbar') {
     return (
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <Tooltip open={open ? false : undefined}>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
@@ -230,7 +232,7 @@ export function TargetBranchSelector({
 
   // Panel variant - full row with label
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           className={cn(

@@ -12,6 +12,7 @@ import {
   listBranches,
   mapSessionDTO,
 } from '@/lib/api';
+import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import type { ResolvePRResponse } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import {
@@ -158,41 +159,51 @@ export function CreateFromPRModal({ isOpen, onClose }: CreateFromPRModalProps) {
   }, [prUrl]);
 
   // Fetch branches when workspace changes (branch tab)
+  // Uses the branch cache for initial display (no search), falls back to API for search
   useEffect(() => {
     if (tab !== 'branch' || !selectedWorkspaceId) {
       setBranches([]);
       return;
     }
 
+    // Note: Keep this list in sync with backend/git/protected.go
+    const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
+
+    const filterBranches = (rawBranches: { name: string; isRemote: boolean; lastCommitDate: string; lastAuthor: string; lastCommitSubject: string; aheadMain: number; behindMain: number }[]) =>
+      rawBranches
+        .filter((b) => {
+          if (!b.isRemote) return false;
+          if (b.name.startsWith('session/')) return false;
+          const branchName = b.name.replace(/^origin\//, '');
+          return !PROTECTED_BRANCHES.includes(branchName);
+        })
+        .map((b) => ({
+          name: b.name,
+          lastCommitDate: b.lastCommitDate,
+          lastAuthor: b.lastAuthor,
+          lastCommitSubject: b.lastCommitSubject,
+          aheadMain: b.aheadMain,
+          behindMain: b.behindMain,
+        }));
+
     const fetchBranches = async () => {
       setBranchLoading(true);
       try {
-        const result = await listBranches(selectedWorkspaceId, {
-          includeRemote: true,
-          search: branchSearch || undefined,
-          sortBy: 'date',
-          limit: 50,
-        });
-        // Combine session and other branches, filter out session/* branches and protected branches
-        // Note: Keep this list in sync with backend/git/protected.go
-        const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
-        const allBranches = [...result.sessionBranches, ...result.otherBranches]
-          .filter((b) => {
-            if (!b.isRemote) return false;
-            if (b.name.startsWith('session/')) return false;
-            // Filter out protected branches (main, master, develop)
-            const branchName = b.name.replace(/^origin\//, '');
-            return !PROTECTED_BRANCHES.includes(branchName);
-          })
-          .map((b) => ({
-            name: b.name,
-            lastCommitDate: b.lastCommitDate,
-            lastAuthor: b.lastAuthor,
-            lastCommitSubject: b.lastCommitSubject,
-            aheadMain: b.aheadMain,
-            behindMain: b.behindMain,
-          }));
-        setBranches(allBranches);
+        if (!branchSearch) {
+          // Use cache for initial display
+          const cached = await useBranchCacheStore.getState().fetchBranches(selectedWorkspaceId);
+          setBranches(filterBranches(cached).slice(0, 50));
+        } else {
+          // Use API for server-side search
+          const result = await listBranches(selectedWorkspaceId, {
+            includeRemote: true,
+            search: branchSearch,
+            sortBy: 'date',
+            limit: 50,
+          });
+          const allBranches = [...result.sessionBranches, ...result.otherBranches];
+          setBranches(filterBranches(allBranches));
+        }
       } catch {
         setBranches([]);
       } finally {
