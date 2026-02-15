@@ -25,6 +25,9 @@ const snapshotDebounceInterval = 500 * time.Millisecond
 // prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
 var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/\d+`)
 
+// prMergedPattern matches merge confirmation messages in Bash stdout (e.g., "Merged pull request", "successfully merged")
+var prMergedPattern = regexp.MustCompile(`(?i)(merged\s+pull\s+request|pull\s+request\s+.+\s+was\s+already\s+merged|successfully\s+merged)`)
+
 // dangerousSuggestionPattern matches destructive operations that should never appear in suggestions.
 // These operations could break the worktree-based session model or destroy work.
 var dangerousSuggestionPattern = regexp.MustCompile(`(?i)(delete\s.*branch|git\s+branch\s+-[dD]|rm\s+-rf|git\s+push\s+--force|git\s+reset\s+--hard|git\s+clean\s+-[fd])`)
@@ -61,6 +64,9 @@ type Manager struct {
 
 	// Callback fired when agent creates a PR via bash (sessionID)
 	onPRCreated func(sessionID string)
+
+	// Callback fired when agent merges a PR via bash (sessionID)
+	onPRMerged func(sessionID string)
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
@@ -97,6 +103,10 @@ func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 
 func (m *Manager) SetOnPRCreated(handler func(sessionID string)) {
 	m.onPRCreated = handler
+}
+
+func (m *Manager) SetOnPRMerged(handler func(sessionID string)) {
+	m.onPRMerged = handler
 }
 
 // StartConversationOptions contains optional parameters for starting a conversation
@@ -613,6 +623,16 @@ outer:
 						conv, _ := m.store.GetConversationMeta(ctx, convID)
 						if conv != nil {
 							go m.onPRCreated(conv.SessionID)
+						}
+					}
+				}
+
+				// Detect PR merge from Bash tool stdout (e.g., gh pr merge)
+				if event.Tool == "Bash" && event.Success && prMergedPattern.MatchString(event.Stdout) {
+					if m.onPRMerged != nil {
+						conv, _ := m.store.GetConversationMeta(ctx, convID)
+						if conv != nil {
+							go m.onPRMerged(conv.SessionID)
 						}
 					}
 				}
