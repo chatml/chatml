@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,6 +22,25 @@ export function ActionButton({
   onCreatePR,
   className,
 }: ActionButtonProps) {
+  // Pending action state — blocks duplicate clicks and shows spinner feedback.
+  // pendingActionKey tracks which action was clicked. When the action identity changes
+  // (type or label), the mismatch means the click has been processed → not pending.
+  const [pendingActionKey, setPendingActionKey] = useState<string | null>(null);
+  const actionKey = action ? `${action.type}:${action.label}` : null;
+  const pendingAction = pendingActionKey !== null && pendingActionKey === actionKey;
+
+  // Safety timeout: reset after 3s in case the action object doesn't change
+  useEffect(() => {
+    if (!pendingActionKey) return;
+    const timer = setTimeout(() => setPendingActionKey(null), 3000);
+    return () => clearTimeout(timer);
+  }, [pendingActionKey]);
+
+  // Mark as pending for the current action
+  const markPending = useCallback(() => {
+    setPendingActionKey(actionKey);
+  }, [actionKey]);
+
   // Nothing to render if action is null (e.g., merged PR)
   if (!action) {
     return null;
@@ -28,13 +48,19 @@ export function ActionButton({
 
   const Icon = action.icon;
   const isDisabled = disabled || action.type === 'disabled';
-  // Only show spinner for 'disabled' type (agent working), not during data fetches
-  // This prevents jarring transitions when switching sessions
-  const showSpinner = action.type === 'disabled';
+  // Show spinner for 'disabled' type (agent working) or when pending action
+  const showSpinner = action.type === 'disabled' || pendingAction;
 
   // Handle click based on action type
-  const handleClick = () => {
-    if (isDisabled) return;
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isDisabled || pendingAction) return;
+
+    // For actions that send a message to the agent, block subsequent clicks
+    const isMessageAction = action.type === 'fix-issues' || (action.message != null);
+    if (isMessageAction) {
+      markPending();
+    }
 
     if (action.type === 'fix-issues' && onFixIssues) {
       // Fetch CI failure context and forward to agent
@@ -89,14 +115,14 @@ export function ActionButton({
           size="sm"
           className="h-6 text-xs gap-1 px-2 rounded-r-none rounded-l-sm border-r-0 transition-none"
           onClick={handleClick}
-          disabled={isDisabled}
+          disabled={isDisabled || pendingAction}
         >
           {showSpinner ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <Icon className="h-3.5 w-3.5" />
           )}
-          {action.label}
+          {pendingAction ? 'Sending...' : action.label}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -107,7 +133,7 @@ export function ActionButton({
                 'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l',
                 separatorColor
               )}
-              disabled={isDisabled}
+              disabled={isDisabled || pendingAction}
             >
               <ChevronDown className="size-2.5" />
             </Button>
@@ -151,14 +177,14 @@ export function ActionButton({
       size="sm"
       className={cn("h-6 text-xs gap-1 px-2 rounded-sm transition-none", className)}
       onClick={handleClick}
-      disabled={isDisabled}
+      disabled={isDisabled || pendingAction}
     >
       {showSpinner ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : (
         <Icon className="h-3.5 w-3.5" />
       )}
-      {action.label}
+      {pendingAction ? 'Sending...' : action.label}
     </Button>
   );
 }

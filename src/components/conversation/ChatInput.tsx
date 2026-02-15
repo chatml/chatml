@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
+import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -473,6 +474,15 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     const newValue = !planModeEnabled;
     setPlanModeEnabled(newValue);
 
+    // Update store state optimistically so the banner and toggle react together
+    if (selectedConversationId) {
+      setPlanModeActive(selectedConversationId, newValue);
+      // Suppress stale backend events that would re-activate plan mode
+      if (!newValue) {
+        markPlanModeExited(selectedConversationId);
+      }
+    }
+
     // If there's an active conversation with a running process, notify the backend
     if (selectedConversationId) {
       try {
@@ -482,7 +492,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         // plan mode will be applied when the next message starts
       }
     }
-  }, [planModeEnabled, selectedConversationId]);
+  }, [planModeEnabled, selectedConversationId, setPlanModeActive]);
 
 
   // Handle plan approval — clear UI optimistically so the bar disappears instantly
@@ -502,6 +512,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     // Approving a plan exits plan mode — turn off the toggle and clear active state
     setPlanModeEnabled(false);
     setPlanModeActive(selectedConversationId, false);
+    // Suppress stale backend events (init, permission_mode_changed) from re-activating
+    markPlanModeExited(selectedConversationId);
 
     try {
       await approvePlan(selectedConversationId, requestId, true);
