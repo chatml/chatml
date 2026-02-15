@@ -36,6 +36,7 @@ type PRDetails struct {
 	State          string        `json:"state"`         // "open", "closed"
 	Title          string        `json:"title"`
 	HTMLURL        string        `json:"htmlUrl"`
+	Merged         bool          `json:"merged"`         // true if the PR has been merged
 	Mergeable      *bool         `json:"mergeable"`      // Can be null while GitHub computes it
 	MergeableState string        `json:"mergeableState"` // "clean", "dirty", "blocked", "unknown", "unstable"
 	CheckStatus    CheckStatus   `json:"checkStatus"`
@@ -48,6 +49,7 @@ type githubPR struct {
 	State          string `json:"state"`
 	Title          string `json:"title"`
 	HTMLURL        string `json:"html_url"`
+	Merged         bool   `json:"merged"`
 	Mergeable      *bool  `json:"mergeable"`
 	MergeableState string `json:"mergeable_state"`
 	Head           struct {
@@ -112,6 +114,7 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 		State:          pr.State,
 		Title:          pr.Title,
 		HTMLURL:        pr.HTMLURL,
+		Merged:         pr.Merged,
 		Mergeable:      pr.Mergeable,
 		MergeableState: pr.MergeableState,
 		CheckStatus:    CheckStatusNone,
@@ -517,4 +520,31 @@ func (c *Client) FindPRForBranch(ctx context.Context, owner, repo, branch string
 	}
 
 	return prs[0].Number, nil
+}
+
+// IsPRMerged checks if a PR was merged using the dedicated GitHub merge endpoint.
+// Returns true if the PR has been merged (HTTP 204), false otherwise (HTTP 404).
+func (c *Client) IsPRMerged(ctx context.Context, owner, repo string, prNumber int) (bool, error) {
+	token := c.GetToken()
+	if token == "" {
+		return false, fmt.Errorf("not authenticated")
+	}
+
+	mergeURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/merge", c.apiURL, owner, repo, prNumber)
+	req, err := http.NewRequestWithContext(ctx, "GET", mergeURL, nil)
+	if err != nil {
+		return false, fmt.Errorf("creating merge check request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("checking merge status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 204 = merged, 404 = not merged
+	return resp.StatusCode == http.StatusNoContent, nil
 }

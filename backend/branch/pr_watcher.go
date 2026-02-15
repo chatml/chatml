@@ -352,8 +352,11 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 		details, err := w.ghClient.GetPRDetails(w.ctx, owner, repo, entry.PRNumber)
 		if err == nil && details != nil {
 			if details.State == "closed" {
-				// Check if it was merged
-				if details.MergeableState == "merged" || w.isPRMerged(owner, repo, entry.PRNumber) {
+				// Check if it was merged using the `merged` boolean from the PR response,
+				// falling back to the dedicated /merge endpoint
+				if details.Merged {
+					newStatus = models.PRStatusMerged
+				} else if merged, mergeErr := w.ghClient.IsPRMerged(w.ctx, owner, repo, entry.PRNumber); mergeErr == nil && merged {
 					newStatus = models.PRStatusMerged
 				} else {
 					newStatus = models.PRStatusClosed
@@ -362,8 +365,12 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 				prUrl = details.HTMLURL
 			}
 		} else {
-			// Couldn't fetch details - assume closed
-			newStatus = models.PRStatusClosed
+			// Couldn't fetch details - check merge endpoint directly
+			if merged, mergeErr := w.ghClient.IsPRMerged(w.ctx, owner, repo, entry.PRNumber); mergeErr == nil && merged {
+				newStatus = models.PRStatusMerged
+			} else {
+				newStatus = models.PRStatusClosed
+			}
 			prNumber = entry.PRNumber
 			prUrl = entry.PRUrl
 		}
@@ -436,14 +443,6 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 	}
 }
 
-// isPRMerged checks if a PR was merged using the merge API endpoint
-func (w *PRWatcher) isPRMerged(owner, repo string, prNumber int) bool {
-	// The PR details API shows state="closed" for both closed and merged PRs
-	// We already have the details, so check if mergeable_state indicates merged
-	// This is a simplification - in practice, the mergeable_state check in checkSessionPR
-	// should be sufficient for most cases
-	return false
-}
 
 // boolPtrEqual compares two *bool values for equality
 func boolPtrEqual(a, b *bool) bool {
