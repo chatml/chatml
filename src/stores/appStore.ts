@@ -1041,22 +1041,61 @@ updateFileTabContent: (id, content) => set((state) => ({
   }),
 
   selectNextTab: () => set((state) => {
-    if (state.fileTabs.length === 0) return state;
-    const currentIdx = state.fileTabs.findIndex(
-      (t) => t.id === state.selectedFileTabId
-    );
-    const nextIdx = (currentIdx + 1) % state.fileTabs.length;
-    return { selectedFileTabId: state.fileTabs[nextIdx].id };
+    if (!state.selectedSessionId) return state;
+
+    // Build unified tab list matching TabBar render order: file tabs then conversations
+    const sessionFileTabs = state.fileTabs.filter(t => t.sessionId === state.selectedSessionId);
+    const sessionConvs = state.conversations.filter(c => c.sessionId === state.selectedSessionId);
+    const unified: { id: string; type: 'file' | 'conversation' }[] = [
+      ...sessionFileTabs.map(t => ({ id: t.id, type: 'file' as const })),
+      ...sessionConvs.map(c => ({ id: c.id, type: 'conversation' as const })),
+    ];
+    if (unified.length === 0) return state;
+
+    const activeId = state.selectedFileTabId ?? state.selectedConversationId;
+    const currentIdx = unified.findIndex(t => t.id === activeId);
+    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % unified.length;
+    const next = unified[nextIdx];
+
+    // Clear selectedFileTabId when navigating to conversation (file tabs take precedence in active-tab logic)
+    if (next.type === 'file') return { selectedFileTabId: next.id };
+    return {
+      selectedFileTabId: null,
+      selectedConversationId: next.id,
+      checkpoints: [],
+      lastActiveConversationPerSession: {
+        ...state.lastActiveConversationPerSession,
+        [state.selectedSessionId]: next.id,
+      },
+    };
   }),
 
   selectPreviousTab: () => set((state) => {
-    if (state.fileTabs.length === 0) return state;
-    const currentIdx = state.fileTabs.findIndex(
-      (t) => t.id === state.selectedFileTabId
-    );
-    const prevIdx =
-      currentIdx <= 0 ? state.fileTabs.length - 1 : currentIdx - 1;
-    return { selectedFileTabId: state.fileTabs[prevIdx].id };
+    if (!state.selectedSessionId) return state;
+
+    const sessionFileTabs = state.fileTabs.filter(t => t.sessionId === state.selectedSessionId);
+    const sessionConvs = state.conversations.filter(c => c.sessionId === state.selectedSessionId);
+    const unified: { id: string; type: 'file' | 'conversation' }[] = [
+      ...sessionFileTabs.map(t => ({ id: t.id, type: 'file' as const })),
+      ...sessionConvs.map(c => ({ id: c.id, type: 'conversation' as const })),
+    ];
+    if (unified.length === 0) return state;
+
+    const activeId = state.selectedFileTabId ?? state.selectedConversationId;
+    const currentIdx = unified.findIndex(t => t.id === activeId);
+    const prevIdx = currentIdx <= 0 ? unified.length - 1 : currentIdx - 1;
+    const prev = unified[prevIdx];
+
+    if (prev.type === 'file') return { selectedFileTabId: prev.id };
+    return {
+      selectedFileTabId: null,
+      selectedConversationId: prev.id,
+      checkpoints: [],
+      lastActiveConversationPerSession: {
+        ...state.lastActiveConversationPerSession,
+        [state.selectedSessionId]: prev.id,
+      },
+    };
   }),
 
   setPendingCloseFileTabId: (id) => set({ pendingCloseFileTabId: id }),

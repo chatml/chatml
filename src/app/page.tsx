@@ -1129,6 +1129,12 @@ export default function Home() {
           // Emit event for ChatInput to handle
           window.dispatchEvent(new CustomEvent('focus-input'));
           break;
+        case 'next_tab':
+          selectNextTab();
+          break;
+        case 'previous_tab':
+          selectPreviousTab();
+          break;
         default:
           // Unhandled menu event
       }
@@ -1139,7 +1145,7 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, toggleBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar]);
+  }, [handleNewSession, handleNewConversation, handleCloseTab, toggleBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar, selectNextTab, selectPreviousTab]);
 
   // Handle window close confirmation
   useEffect(() => {

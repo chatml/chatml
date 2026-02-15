@@ -78,6 +78,17 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         )
         .separator()
         .item(
+            &MenuItemBuilder::with_id("next_tab", "Next Tab")
+                .accelerator("CmdOrCtrl+Alt+]")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("previous_tab", "Previous Tab")
+                .accelerator("CmdOrCtrl+Alt+[")
+                .build(app)?,
+        )
+        .separator()
+        .item(
             &MenuItemBuilder::with_id("toggle_thinking", "Toggle Thinking Mode")
                 .accelerator("Alt+T")
                 .build(app)?,

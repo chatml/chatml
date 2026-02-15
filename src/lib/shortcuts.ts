@@ -102,6 +102,20 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Search workspaces',
     category: 'Navigation',
   },
+  {
+    id: 'nextTab',
+    key: ']',
+    modifiers: ['meta', 'alt'],
+    label: 'Next tab',
+    category: 'Navigation',
+  },
+  {
+    id: 'previousTab',
+    key: '[',
+    modifiers: ['meta', 'alt'],
+    label: 'Previous tab',
+    category: 'Navigation',
+  },
 
   // Chat
   {
