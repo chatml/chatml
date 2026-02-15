@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef, useCallback, useMemo, useRef, useImperativeHandle } from 'react';
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
+import { Virtuoso, type VirtuosoHandle, type ListRange } from 'react-virtuoso';
 import { MessageBlock } from '@/components/conversation/MessageBlock';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
@@ -30,6 +30,10 @@ interface VirtualizedMessageListProps {
   isLoadingOlder?: boolean;
   /** When true, use instant scroll for followOutput to prevent bounce during streaming */
   isStreaming?: boolean;
+  /** Initial scroll position — index-based, avoids flash. Defaults to bottom. */
+  initialTopMostItemIndex?: number | { index: number | 'LAST'; align?: 'start' | 'center' | 'end' };
+  /** Called when the visible range changes — use to track scroll position for persistence */
+  onRangeChanged?: (range: ListRange) => void;
 }
 
 export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, VirtualizedMessageListProps>(
@@ -48,6 +52,8 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       firstItemIndex,
       isLoadingOlder,
       isStreaming,
+      initialTopMostItemIndex,
+      onRangeChanged,
     },
     ref
   ) {
@@ -139,15 +145,20 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       );
     }
 
+    // Default to bottom if no initial position provided
+    const resolvedInitialIndex = initialTopMostItemIndex ?? { index: 'LAST' as const, align: 'end' as const };
+
     return (
       <Virtuoso
         ref={virtuosoRef}
         data={messages}
         firstItemIndex={firstItemIndex ?? INITIAL_FIRST_ITEM_INDEX}
+        initialTopMostItemIndex={resolvedInitialIndex}
         itemContent={itemContent}
         followOutput={followOutput}
         alignToBottom
         startReached={onStartReached}
+        rangeChanged={onRangeChanged}
         increaseViewportBy={{ top: 2000, bottom: 2000 }}
         atBottomStateChange={onAtBottomStateChange}
         atBottomThreshold={50}
