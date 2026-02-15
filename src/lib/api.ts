@@ -644,7 +644,9 @@ export interface PRDetails {
   number: number;
   state: string;
   title: string;
+  body: string;
   htmlUrl: string;
+  merged: boolean;
   mergeable: boolean | null;
   mergeableState: string;
   checkStatus: CheckStatus;

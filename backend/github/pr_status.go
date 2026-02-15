@@ -35,6 +35,7 @@ type PRDetails struct {
 	Number         int           `json:"number"`
 	State          string        `json:"state"`         // "open", "closed"
 	Title          string        `json:"title"`
+	Body           string        `json:"body"`
 	HTMLURL        string        `json:"htmlUrl"`
 	Merged         bool          `json:"merged"`         // true if the PR has been merged
 	Mergeable      *bool         `json:"mergeable"`      // Can be null while GitHub computes it
@@ -48,6 +49,7 @@ type githubPR struct {
 	Number         int    `json:"number"`
 	State          string `json:"state"`
 	Title          string `json:"title"`
+	Body           string `json:"body"`
 	HTMLURL        string `json:"html_url"`
 	Merged         bool   `json:"merged"`
 	Mergeable      *bool  `json:"mergeable"`
@@ -113,6 +115,7 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber 
 		Number:         pr.Number,
 		State:          pr.State,
 		Title:          pr.Title,
+		Body:           pr.Body,
 		HTMLURL:        pr.HTMLURL,
 		Merged:         pr.Merged,
 		Mergeable:      pr.Mergeable,
