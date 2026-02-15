@@ -84,7 +84,7 @@ func NewPRWatcher(
 }
 
 // WatchSession starts watching a session for PR status changes
-func (w *PRWatcher) WatchSession(sessionID, workspaceID, branch, repoPath, currentPRStatus string) {
+func (w *PRWatcher) WatchSession(sessionID, workspaceID, branch, repoPath, currentPRStatus string, prNumber int, prUrl string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -99,10 +99,12 @@ func (w *PRWatcher) WatchSession(sessionID, workspaceID, branch, repoPath, curre
 		Branch:      branch,
 		RepoPath:    repoPath,
 		PRStatus:    currentPRStatus,
+		PRNumber:    prNumber,
+		PRUrl:       prUrl,
 		LastChecked: time.Time{}, // Force immediate check
 	}
 
-	logger.PRWatcher.Infof("Started watching session %s (branch: %s)", sessionID, branch)
+	logger.PRWatcher.Infof("Started watching session %s (branch: %s, pr: %d)", sessionID, branch, prNumber)
 }
 
 // UnwatchSession stops watching a session for PR status changes
@@ -193,6 +195,11 @@ func (w *PRWatcher) run() {
 		return
 	case <-time.After(5 * time.Second):
 	}
+
+	// Immediately check all sessions on startup so merged/closed PRs
+	// are detected without waiting for the 2-minute slow ticker.
+	w.checkSessionsWithPR()
+	w.checkSessionsWithoutPR()
 
 	for {
 		select {
