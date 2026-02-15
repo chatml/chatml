@@ -44,7 +44,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getWorkspaceColor } from '@/lib/workspace-colors';
+import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 
@@ -336,7 +336,7 @@ export function PRDashboard({
   const [searchTerm, setSearchTerm] = useState('');
 
   const workspaces = useAppStore((s) => s.workspaces);
-  const { setLastRepoDashboardWorkspaceId } = useSettingsStore();
+  const { setLastRepoDashboardWorkspaceId, workspaceColors } = useSettingsStore();
 
   // Get workspace name for the title
   const workspace = workspaces.find((w) => w.id === initialWorkspaceId);
@@ -679,7 +679,7 @@ export function PRDashboard({
               <button className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden hover:bg-surface-1 px-1.5 py-0.5 rounded-md transition-colors">
                 <div
                   className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: getWorkspaceColor(initialWorkspaceId ?? '') }}
+                  style={{ backgroundColor: resolveWorkspaceColor(initialWorkspaceId ?? '', workspaceColors) }}
                 />
                 <span className="text-base font-semibold truncate">{workspace.name}</span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -694,7 +694,7 @@ export function PRDashboard({
                 >
                   <div
                     className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: getWorkspaceColor(w.id) }}
+                    style={{ backgroundColor: resolveWorkspaceColor(w.id, workspaceColors) }}
                   />
                   <span className="truncate font-medium">{w.name}</span>
                 </DropdownMenuItem>
@@ -705,7 +705,7 @@ export function PRDashboard({
           <span className="flex items-center gap-1.5 min-w-0 shrink overflow-hidden">
             <div
               className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: getWorkspaceColor(initialWorkspaceId ?? '') }}
+              style={{ backgroundColor: resolveWorkspaceColor(initialWorkspaceId ?? '', workspaceColors) }}
             />
             <span className="text-base font-semibold truncate">{workspace.name}</span>
           </span>
@@ -740,7 +740,7 @@ export function PRDashboard({
         </Button>
       ),
     },
-  }), [workspace, workspaces, initialWorkspaceId, stats, refreshing, handleWorkspaceChange]);
+  }), [workspace, workspaces, initialWorkspaceId, stats, refreshing, handleWorkspaceChange, workspaceColors]);
   useMainToolbarContent(toolbarConfig);
 
   return (
