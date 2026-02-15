@@ -131,6 +131,7 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            commands::update_menu_state,
             commands::mark_app_ready,
             commands::restart_sidecar,
             commands::set_minimize_to_tray,
