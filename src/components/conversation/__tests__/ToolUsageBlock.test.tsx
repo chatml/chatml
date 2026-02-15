@@ -116,6 +116,36 @@ describe('ToolUsageBlock', () => {
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
+  it('renders formatted label and server badge for MCP tools', () => {
+    render(
+      <ToolUsageBlock
+        id="t-mcp"
+        tool="mcp__chatml__get_session_status"
+        params={{}}
+        success={true}
+        duration={200}
+      />
+    );
+
+    expect(screen.getByText('Get session status')).toBeInTheDocument();
+    expect(screen.getByText('ChatML')).toBeInTheDocument();
+  });
+
+  it('renders formatted label for Linear MCP tools', () => {
+    render(
+      <ToolUsageBlock
+        id="t-mcp-linear"
+        tool="mcp__claude_ai_Linear__get_issue"
+        params={{ id: 'LIN-123' }}
+        success={true}
+        duration={300}
+      />
+    );
+
+    expect(screen.getByText('Get issue')).toBeInTheDocument();
+    expect(screen.getByText('Linear')).toBeInTheDocument();
+  });
+
   it('shows edit stats for Edit tool', () => {
     render(
       <ToolUsageBlock

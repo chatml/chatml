@@ -22,9 +22,11 @@ import {
   FolderOpen,
   ClipboardCheck,
   Circle,
+  Plug,
   type LucideIcon,
 } from 'lucide-react';
 import { cn, toRelativePath } from '@/lib/utils';
+import { parseMcpToolName } from '@/lib/format';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 
@@ -88,6 +90,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   elapsedSeconds,
 }: ToolUsageBlockProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const mcpInfo = useMemo(() => parseMcpToolName(tool), [tool]);
 
   const ToolIcon = useMemo((): LucideIcon => {
     switch (tool) {
@@ -116,6 +119,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       case 'ExitPlanMode':
         return ClipboardCheck;
       default:
+        if (tool.startsWith('mcp__')) return Plug;
         return Terminal;
     }
   }, [tool]);
@@ -149,7 +153,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       case 'ExitPlanMode':
         return isActive ? 'Propose Plan' : 'Exiting Plan mode';
       default:
-        return tool;
+        return mcpInfo ? mcpInfo.displayLabel : tool;
     }
   };
 
@@ -265,6 +269,11 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           <>
             <ToolIcon className="w-3 h-3 text-muted-foreground shrink-0" />
             <span className="font-medium text-foreground">{getToolLabel()}</span>
+            {mcpInfo && (
+              <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground/70">
+                {mcpInfo.displayServer}
+              </span>
+            )}
 
             {/* Description (if available, shows instead of/before target) */}
             {description && (

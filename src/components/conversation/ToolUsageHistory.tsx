@@ -13,6 +13,7 @@ import {
   Globe,
   GitBranch,
   Wrench,
+  Plug,
 } from 'lucide-react';
 import {
   Collapsible,
@@ -25,6 +26,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn, toRelativePath } from '@/lib/utils';
+import { parseMcpToolName } from '@/lib/format';
 import type { ToolUsage } from '@/lib/types';
 
 // Truncation limits (increased from original)
@@ -49,6 +51,7 @@ const toolIcons: Record<string, React.ElementType> = {
 };
 
 function getToolIcon(toolName: string) {
+  if (toolName.startsWith('mcp__')) return Plug;
   return toolIcons[toolName] || Wrench;
 }
 
@@ -126,8 +129,19 @@ function formatToolTarget(tool: string, params?: Record<string, unknown>, worktr
         ? full.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...'
         : full;
       break;
-    default:
+    default: {
+      if (tool.startsWith('mcp__')) {
+        const val = params.query || params.issueId || params.id || params.name || params.selector || params.command;
+        if (typeof val === 'string') {
+          full = val;
+          display = full.length > PATH_TRUNCATE_LENGTH
+            ? full.slice(0, PATH_TRUNCATE_LENGTH - 3) + '...'
+            : full;
+          return { display, full, isTruncated: display !== full && full.length > 0 };
+        }
+      }
       return empty;
+    }
   }
 
   return {
@@ -167,6 +181,7 @@ export const ToolUsageHistory = memo(function ToolUsageHistory({ tools, worktree
           {tools.map((tool) => {
             const Icon = getToolIcon(tool.tool);
             const targetInfo = formatToolTarget(tool.tool, tool.params, worktreePath);
+            const mcpInfo = parseMcpToolName(tool.tool);
 
             return (
               <div
@@ -179,7 +194,12 @@ export const ToolUsageHistory = memo(function ToolUsageHistory({ tools, worktree
                   <CheckCircle2 className="w-3 h-3 text-text-success shrink-0" />
                 )}
                 <Icon className="w-3 h-3 shrink-0" />
-                <span className="font-medium">{tool.tool}</span>
+                <span className="font-medium">{mcpInfo ? mcpInfo.displayLabel : tool.tool}</span>
+                {mcpInfo && (
+                  <span className="text-2xs px-0.5 text-muted-foreground/50">
+                    {mcpInfo.displayServer}
+                  </span>
+                )}
                 {targetInfo.display && (
                   targetInfo.isTruncated ? (
                     <Tooltip>
