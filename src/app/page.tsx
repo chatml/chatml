@@ -909,6 +909,23 @@ export default function Home() {
     setPendingCloseFileTabId(null);
   }, [pendingCloseFileTabId, closeFileTab, setPendingCloseFileTabId]);
 
+  // Refs for menu-event handler callbacks — prevents safeListen re-registration race condition.
+  // Without refs, unstable callbacks cause the useEffect to re-run, tearing down the Tauri
+  // listener and asynchronously re-registering it. During the async gap, menu events are lost.
+  const handleNewSessionRef = useRef(handleNewSession);
+  const handleNewConversationRef = useRef(handleNewConversation);
+  const handleCloseTabRef = useRef(handleCloseTab);
+  const handleCloseFileTabRef = useRef(handleCloseFileTab);
+  const toggleBottomTerminalRef = useRef(toggleBottomTerminal);
+  const saveCurrentTabRef = useRef(saveCurrentTab);
+
+  useEffect(() => { handleNewSessionRef.current = handleNewSession; }, [handleNewSession]);
+  useEffect(() => { handleNewConversationRef.current = handleNewConversation; }, [handleNewConversation]);
+  useEffect(() => { handleCloseTabRef.current = handleCloseTab; }, [handleCloseTab]);
+  useEffect(() => { handleCloseFileTabRef.current = handleCloseFileTab; }, [handleCloseFileTab]);
+  useEffect(() => { toggleBottomTerminalRef.current = toggleBottomTerminal; }, [toggleBottomTerminal]);
+  useEffect(() => { saveCurrentTabRef.current = saveCurrentTab; }, [saveCurrentTab]);
+
   // Keyboard shortcuts (only for shortcuts NOT handled by native menu accelerators)
   // Most shortcuts are now native menu accelerators in menu.rs which emit 'menu-event'.
   // This handler covers: shortcuts without menu items, context-dependent shortcuts,
@@ -1027,10 +1044,10 @@ export default function Home() {
 
         // File menu
         case 'new_session':
-          handleNewSession();
+          handleNewSessionRef.current();
           break;
         case 'new_conversation':
-          handleNewConversation();
+          handleNewConversationRef.current();
           break;
         case 'create_from_pr':
           window.dispatchEvent(new CustomEvent('create-from-pr'));
@@ -1039,13 +1056,13 @@ export default function Home() {
           setShowAddWorkspace(true);
           break;
         case 'save_file':
-          saveCurrentTab();
+          saveCurrentTabRef.current();
           break;
         case 'close_tab': {
           // Close file tab first, then browser tab, then conversation
           const fileTabId = useAppStore.getState().selectedFileTabId;
           if (fileTabId) {
-            handleCloseFileTab(fileTabId);
+            handleCloseFileTabRef.current(fileTabId);
           } else if (ENABLE_BROWSER_TABS && useTabStore.getState().tabOrder.length > 1) {
             const tabStore = useTabStore.getState();
             const closingId = tabStore.activeTabId;
@@ -1055,7 +1072,7 @@ export default function Home() {
               switchToTab(newActiveId);
             }
           } else {
-            handleCloseTab();
+            handleCloseTabRef.current();
           }
           break;
         }
@@ -1081,7 +1098,7 @@ export default function Home() {
           }
           break;
         case 'toggle_terminal':
-          toggleBottomTerminal();
+          toggleBottomTerminalRef.current();
           break;
         case 'command_palette':
           window.dispatchEvent(new CustomEvent('open-command-palette'));
@@ -1224,7 +1241,8 @@ export default function Home() {
     return () => {
       cleanup?.();
     };
-  }, [handleNewSession, handleNewConversation, handleCloseTab, handleCloseFileTab, toggleBottomTerminal, saveCurrentTab, toggleLeftSidebar, toggleRightSidebar, selectNextTab, selectPreviousTab, setZenMode, resetLayouts]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handle window close confirmation
   useEffect(() => {
