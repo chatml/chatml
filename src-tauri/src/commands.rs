@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
+use tauri::menu::MenuItemKind;
 use tauri::{Manager, State};
 
 use crate::error::AppResult;
@@ -272,6 +273,69 @@ pub fn get_user_shell() -> Option<String> {
     {
         std::env::var("COMSPEC").ok()
     }
+}
+
+// ============================================================================
+// Menu state commands
+// ============================================================================
+
+/// Update enabled/disabled state of menu items.
+/// Receives a list of (menu_item_id, enabled) tuples from the frontend.
+#[tauri::command]
+pub fn update_menu_state(app: tauri::AppHandle, items: Vec<(String, bool)>) -> Result<(), String> {
+    if let Some(menu) = app.menu() {
+        for (id, enabled) in items {
+            if let Some(item) = find_menu_item_recursive(&menu, &id) {
+                match item {
+                    MenuItemKind::MenuItem(mi) => {
+                        let _ = mi.set_enabled(enabled);
+                    }
+                    MenuItemKind::Check(ci) => {
+                        let _ = ci.set_enabled(enabled);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Recursively search through menu and all submenus to find an item by ID.
+/// Tauri's `Menu::get()` only searches top-level items, but our menu items
+/// are all inside submenus (and some are nested 2 levels deep).
+fn find_menu_item_recursive<R: tauri::Runtime>(
+    menu: &tauri::menu::Menu<R>,
+    target_id: &str,
+) -> Option<MenuItemKind<R>> {
+    for item in menu.items().unwrap_or_default() {
+        if item.id().as_ref() == target_id {
+            return Some(item);
+        }
+        if let MenuItemKind::Submenu(sub) = &item {
+            if let Some(found) = find_in_submenu(sub, target_id) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn find_in_submenu<R: tauri::Runtime>(
+    submenu: &tauri::menu::Submenu<R>,
+    target_id: &str,
+) -> Option<MenuItemKind<R>> {
+    for item in submenu.items().unwrap_or_default() {
+        if item.id().as_ref() == target_id {
+            return Some(item);
+        }
+        if let MenuItemKind::Submenu(sub) = &item {
+            if let Some(found) = find_in_submenu(sub, target_id) {
+                return Some(found);
+            }
+        }
+    }
+    None
 }
 
 /// Count lines in a text file

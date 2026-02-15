@@ -39,6 +39,7 @@ import { useExternalLinkGuard } from '@/hooks/useExternalLinkGuard';
 import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
 import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
+import { useMenuState } from '@/hooks/useMenuState';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
@@ -470,6 +471,9 @@ export default function Home() {
 
   // Listen for /review, /deep-review, /security slash commands
   useReviewTrigger();
+
+  // Keep macOS menu item enabled/disabled state in sync with app state
+  useMenuState();
 
   // Persist file tabs to backend
   useTabPersistence();
