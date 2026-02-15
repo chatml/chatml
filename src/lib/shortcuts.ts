@@ -52,10 +52,10 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'General',
   },
   {
-    id: 'addWorkspace',
+    id: 'newConversation',
     key: 'n',
     modifiers: ['meta', 'shift'],
-    label: 'Add workspace',
+    label: 'New conversation',
     category: 'General',
   },
   {
@@ -66,10 +66,31 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'General',
   },
   {
+    id: 'save',
+    key: 's',
+    modifiers: ['meta'],
+    label: 'Save',
+    category: 'General',
+  },
+  {
     id: 'resetLayouts',
     key: 'r',
     modifiers: ['meta', 'shift'],
     label: 'Reset panel layouts to defaults',
+    category: 'General',
+  },
+  {
+    id: 'zenMode',
+    key: '.',
+    modifiers: ['meta'],
+    label: 'Toggle zen mode',
+    category: 'General',
+  },
+  {
+    id: 'enterFullScreen',
+    key: 'f',
+    modifiers: ['ctrl', 'meta'],
+    label: 'Enter full screen',
     category: 'General',
   },
 
