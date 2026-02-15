@@ -155,12 +155,18 @@ export function TargetBranchSelector({
   const displayTarget = stripRemotePrefix(effectiveTarget);
   const isDefault = !currentTargetBranch;
 
+  const handleOpenChange = useCallback((isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      setSearch('');
+    }
+  }, []);
+
   useEffect(() => {
     if (open) {
       fetchBranches(workspaceId).catch(() => {
         showError('Failed to load branches');
       });
-      setSearch('');
     }
   }, [open, workspaceId, fetchBranches, showError]);
 
@@ -195,7 +201,7 @@ export function TargetBranchSelector({
 
   if (variant === 'toolbar') {
     return (
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <Tooltip open={open ? false : undefined}>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
@@ -226,7 +232,7 @@ export function TargetBranchSelector({
 
   // Panel variant - full row with label
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           className={cn(
