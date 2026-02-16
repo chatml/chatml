@@ -298,7 +298,7 @@ func TestManager_StartConversation_SessionNotFound(t *testing.T) {
 func TestManager_SendConversationMessage_ConversationNotFound(t *testing.T) {
 	manager, _ := setupTestManager(t)
 
-	err := manager.SendConversationMessage(context.Background(), "nonexistent", "hello", nil)
+	err := manager.SendConversationMessage(context.Background(), "nonexistent", "hello", nil, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "conversation not found")
 }
@@ -686,10 +686,10 @@ func TestHandleConversationCompletion_CompletesNormally(t *testing.T) {
 func TestSetConversationPlanMode_NoProcess(t *testing.T) {
 	m, _ := setupTestManager(t)
 
-	// Should fail when no process exists for the conversation
+	// Should succeed gracefully when no process exists (plan mode will be
+	// sent with the next message via planMode field)
 	err := m.SetConversationPlanMode("nonexistent-conv", true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "conversation process not running")
+	require.NoError(t, err)
 }
 
 func TestSetConversationPlanMode_StoppedProcess(t *testing.T) {
@@ -703,9 +703,11 @@ func TestSetConversationPlanMode_StoppedProcess(t *testing.T) {
 	m.convProcesses["conv-stopped"] = proc
 	m.mu.Unlock()
 
+	// Should succeed and persist plan mode in options for restart
 	err := m.SetConversationPlanMode("conv-stopped", true)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "conversation process not running")
+	require.NoError(t, err)
+	assert.True(t, proc.Options().PlanMode)
+	assert.True(t, proc.IsPlanModeActive())
 }
 
 // ============================================================================

@@ -1033,7 +1033,7 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 }
 
 // SendConversationMessage sends a follow-up message to an existing conversation
-func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment) error {
+func (m *Manager) SendConversationMessage(ctx context.Context, convID, message string, attachments []models.Attachment, planMode *bool) error {
 	// Track whether we should generate a title (set in the idle-start path)
 	var shouldGenerateTitle bool
 	var titleSessionID string
@@ -1107,6 +1107,13 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		}
 		if restartOpts.ResumeSession == "" && conv.AgentSessionID != "" {
 			restartOpts.ResumeSession = conv.AgentSessionID
+		}
+
+		// Apply plan mode override from the message request. This covers the
+		// edge case where the process was fully removed from the map (so
+		// SetConversationPlanMode had no process to update).
+		if planMode != nil {
+			restartOpts.PlanMode = *planMode
 		}
 
 		// Check if we should generate a title for this session
@@ -1236,8 +1243,16 @@ func (m *Manager) SetConversationPlanMode(convID string, enabled bool) error {
 	proc, ok := m.convProcesses[convID]
 	m.mu.RUnlock()
 
-	if !ok || proc.IsStopped() || !proc.IsRunning() {
-		return fmt.Errorf("conversation process not running: %s", convID)
+	if !ok {
+		// Process fully cleaned up — return success; plan mode
+		// will be sent with the next message via planMode field.
+		return nil
+	}
+
+	if proc.IsStopped() || !proc.IsRunning() {
+		// Process idle — persist in options so restart picks it up
+		proc.SetOptionsPlanMode(enabled)
+		return nil
 	}
 
 	mode := "bypassPermissions"

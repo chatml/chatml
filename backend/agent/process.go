@@ -751,4 +751,13 @@ func (p *Process) SetPlanModeFromEvent(active bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.planModeActive = active
+	p.opts.PlanMode = active
+}
+
+// SetOptionsPlanMode updates the plan mode in process options so it survives restart.
+func (p *Process) SetOptionsPlanMode(enabled bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.opts.PlanMode = enabled
+	p.planModeActive = enabled
 }

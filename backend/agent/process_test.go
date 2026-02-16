@@ -941,12 +941,29 @@ func TestProcess_Options_ReturnsOriginal(t *testing.T) {
 func TestProcess_PlanModeFromEvent(t *testing.T) {
 	p := NewProcess("test-plan-event", "/tmp", "conv-plan-event")
 	assert.False(t, p.IsPlanModeActive())
+	assert.False(t, p.Options().PlanMode)
 
 	p.SetPlanModeFromEvent(true)
 	assert.True(t, p.IsPlanModeActive())
+	assert.True(t, p.Options().PlanMode, "opts.PlanMode should sync with planModeActive")
 
 	p.SetPlanModeFromEvent(false)
 	assert.False(t, p.IsPlanModeActive())
+	assert.False(t, p.Options().PlanMode, "opts.PlanMode should sync with planModeActive")
+}
+
+func TestProcess_SetOptionsPlanMode(t *testing.T) {
+	p := NewProcess("test-opts-plan", "/tmp", "conv-opts-plan")
+	assert.False(t, p.IsPlanModeActive())
+	assert.False(t, p.Options().PlanMode)
+
+	p.SetOptionsPlanMode(true)
+	assert.True(t, p.IsPlanModeActive())
+	assert.True(t, p.Options().PlanMode)
+
+	p.SetOptionsPlanMode(false)
+	assert.False(t, p.IsPlanModeActive())
+	assert.False(t, p.Options().PlanMode)
 }
 
 func TestProcess_SetRunningForTest(t *testing.T) {
