@@ -359,7 +359,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	turnStartTime := time.Now()
 
 	// maxOutputSize limits stdout/stderr stored per tool to prevent DB bloat
-	const maxOutputSize = 10 * 1024
+	const maxOutputSize = 100 * 1024
 	truncateOutput := func(s string) string {
 		if len(s) > maxOutputSize {
 			return s[:maxOutputSize] + "\n... (truncated)"
@@ -496,6 +496,7 @@ outer:
 				entry := ActiveToolEntry{
 					ID:        event.ID,
 					Tool:      event.Tool,
+					Params:    event.Params,
 					StartTime: time.Now().Unix(),
 					AgentId:   event.AgentId,
 				}
@@ -578,7 +579,8 @@ outer:
 					// may emit tool_end twice for the same tool (once from the original execution,
 					// once from the replayed conversation history). The duplicate arrives with
 					// tool="Unknown" and causes UNIQUE constraint failures and ghost UI entries.
-					if _, ok := activeToolsMap[event.ID]; !ok {
+					toolEntry, entryOk := activeToolsMap[event.ID]
+				if !entryOk {
 						logger.Manager.Debugf("Skipping duplicate tool_end for conv %s: tool=%s id=%s", convID, event.Tool, event.ID)
 						continue
 					}
@@ -596,7 +598,7 @@ outer:
 					completedTools = append(completedTools, models.ToolUsageRecord{
 						ID:         event.ID,
 						Tool:       event.Tool,
-						Params:     event.Params,
+						Params:     toolEntry.Params,
 						Success:    &success,
 						Summary:    event.Summary,
 						DurationMs: durationMs,

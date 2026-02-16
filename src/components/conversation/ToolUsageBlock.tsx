@@ -89,7 +89,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   stderr,
   elapsedSeconds,
 }: ToolUsageBlockProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(success === false && !isActive);
   const mcpInfo = useMemo(() => parseMcpToolName(tool), [tool]);
 
   const ToolIcon = useMemo((): LucideIcon => {
@@ -254,38 +254,39 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           )}
         </span>
 
-        {/* Tool icon and label - show "Error" when tool failed */}
-        {success === false ? (
-          <>
-            <ToolIcon className="w-3 h-3 text-text-error shrink-0" />
-            <span className="font-medium text-text-error">Error</span>
-            {summary && (
-              <span className="text-text-error/80 text-2xs truncate max-w-[350px]">
-                {summary}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            <ToolIcon className="w-3 h-3 text-muted-foreground shrink-0" />
-            <span className="font-medium text-foreground">{getToolLabel()}</span>
-            {mcpInfo && (
-              <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground/70">
-                {mcpInfo.displayServer}
-              </span>
-            )}
-
-            {/* Description (if available, shows instead of/before target) */}
-            {description && (
-              <span className="text-muted-foreground italic truncate max-w-[200px]">
-                {description}
-              </span>
-            )}
-          </>
+        {/* Tool icon and label */}
+        <ToolIcon className={cn('w-3 h-3 shrink-0', success === false ? 'text-text-error' : 'text-muted-foreground')} />
+        <span className={cn('font-medium', success === false ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
+        {success === false && (
+          <span className="text-2xs px-1 py-0.5 rounded bg-text-error/10 text-text-error font-medium shrink-0">
+            Error
+          </span>
+        )}
+        {mcpInfo && (
+          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground/70">
+            {mcpInfo.displayServer}
+          </span>
         )}
 
-        {/* Target with tooltip for truncated content - hide when error */}
-        {success !== false && truncatedTarget && !description && (
+        {/* Description (if available, shows instead of/before target) */}
+        {description && (
+          <span className={cn('italic truncate max-w-[200px]', success === false ? 'text-text-error/70' : 'text-muted-foreground')}>
+            {description}
+          </span>
+        )}
+
+        {/* Summary fallback when no target/description (e.g., params missing from DB) */}
+        {!truncatedTarget && !description && summary && (
+          <span className={cn(
+            'text-2xs truncate max-w-[350px]',
+            success === false ? 'text-text-error/80' : 'text-muted-foreground'
+          )}>
+            {summary}
+          </span>
+        )}
+
+        {/* Target with tooltip for truncated content */}
+        {truncatedTarget && !description && (
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -307,8 +308,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           )
         )}
 
-        {/* Target when description is shown (smaller, secondary) - hide when error */}
-        {success !== false && truncatedTarget && description && (
+        {/* Target when description is shown (smaller, secondary) */}
+        {truncatedTarget && description && (
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -330,8 +331,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           )
         )}
 
-        {/* Git line stats for Edit tools - hide when error or no net change */}
-        {success !== false && isEditTool && editStats && !isActive && (editStats.additions > 0 || editStats.deletions > 0) && (
+        {/* Git line stats for Edit tools */}
+        {isEditTool && editStats && !isActive && (editStats.additions > 0 || editStats.deletions > 0) && (
           <span className="flex items-center gap-0.5 text-2xs font-mono shrink-0">
             <span className="text-text-success">+{editStats.additions}</span>
             <span className="text-text-error">-{editStats.deletions}</span>
@@ -387,7 +388,10 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
               {/* Summary */}
               {summary && (
-                <div className="text-2xs text-muted-foreground px-2 py-1 rounded bg-muted/30">
+                <div className={cn(
+                  'text-2xs px-2 py-1 rounded',
+                  success === false ? 'text-text-error bg-text-error/10' : 'text-muted-foreground bg-muted/30'
+                )}>
                   {summary}
                 </div>
               )}

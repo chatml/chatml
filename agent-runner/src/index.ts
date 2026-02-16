@@ -1715,6 +1715,24 @@ function handleMessage(message: SDKMessage): void {
               }
             }
 
+            // Extract full output for persistence (capped at 100KB to match backend truncateOutput)
+            const MAX_TOOL_OUTPUT = 100 * 1024;
+            let stdout = "";
+            if (typeof block.content === "string") {
+              stdout = block.content.slice(0, MAX_TOOL_OUTPUT);
+            } else if (Array.isArray(block.content)) {
+              const textContent = block.content.find(
+                (c: { type: string }) => c.type === "text"
+              );
+              if (textContent && "text" in textContent) {
+                stdout = (textContent as { text: string }).text.slice(0, MAX_TOOL_OUTPUT);
+              }
+            }
+
+            // Tools whose success output is not useful to persist (file contents, glob lists)
+            const SKIP_OUTPUT_TOOLS = new Set(["Read", "Write", "Edit", "Glob", "NotebookEdit"]);
+            const shouldIncludeOutput = isError || !SKIP_OUTPUT_TOOLS.has(toolInfo?.tool ?? "");
+
             if (toolInfo) {
               const duration = Date.now() - toolInfo.startTime;
               trackToolEnd(duration);
@@ -1726,6 +1744,7 @@ function handleMessage(message: SDKMessage): void {
                 success: !isError,
                 summary,
                 duration,
+                ...(shouldIncludeOutput && stdout ? { stdout } : {}),
               });
               activeTools.delete(block.tool_use_id);
             } else if (completedToolNames.has(block.tool_use_id)) {
@@ -1746,6 +1765,7 @@ function handleMessage(message: SDKMessage): void {
                 summary,
                 duration: 0,
                 untracked: true,
+                ...(shouldIncludeOutput && stdout ? { stdout } : {}),
               });
             }
           }
