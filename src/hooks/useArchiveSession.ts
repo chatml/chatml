@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useTabStore } from '@/stores/tabStore';
+import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { updateSession as updateSessionApi, getGitStatus } from '@/lib/api';
 import type { ArchiveSessionDialogGitStatus } from '@/components/dialogs/ArchiveSessionDialog';
 
@@ -57,6 +59,16 @@ export function useArchiveSession(options?: {
           // Session was archived normally
           archiveSession(sessionId);
         }
+
+        // Sync updated selection to tabStore so persisted state doesn't reference archived/removed session
+        if (ENABLE_BROWSER_TABS) {
+          const { selectedSessionId, selectedConversationId } = useAppStore.getState();
+          useTabStore.getState().updateActiveTab({
+            selectedSessionId,
+            selectedConversationId,
+          });
+        }
+
         onSuccessRef.current?.();
       } catch (error) {
         console.error('Failed to archive session:', error);
