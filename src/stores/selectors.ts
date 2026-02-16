@@ -312,12 +312,6 @@ export const useTotalCost = () => useAppStore((s) => s.totalCost);
 export const useFileChanges = () => useAppStore((s) => s.fileChanges);
 
 /**
- * Budget status.
- * Use in: BudgetDisplay
- */
-export const useBudgetStatus = () => useAppStore((s) => s.budgetStatus);
-
-/**
  * Checkpoints.
  * Use in: CheckpointTimeline
  *

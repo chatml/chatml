@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, BudgetStatus, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus } from '@/lib/types';
 
 import {
   WEBSOCKET_RECONNECT_BASE_DELAY_MS,
@@ -264,18 +264,12 @@ export function useWebSocket(enabled: boolean = true) {
         }
         // Clear stale input suggestions from the previous turn
         store.clearInputSuggestion(conversationId);
-        // Capture budget configuration from init event
+        // Capture budget/thinking configuration from init event (per-conversation)
         if (event?.budgetConfig) {
-          const config = event.budgetConfig as { maxBudgetUsd?: number; maxTurns?: number; maxThinkingTokens?: number };
-          // Initialize budget status with max values from config
-          const existingStatus = store.budgetStatus;
-          store.setBudgetStatus({
-            maxBudgetUsd: config.maxBudgetUsd,
-            maxTurns: config.maxTurns,
-            maxThinkingTokens: config.maxThinkingTokens,
-            currentCostUsd: existingStatus?.currentCostUsd || 0,
-            currentTurns: existingStatus?.currentTurns || 0,
-            currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
+          const config = event.budgetConfig;
+          store.updateConversation(conversationId, {
+            budgetConfig: { maxBudgetUsd: config.maxBudgetUsd, maxTurns: config.maxTurns },
+            thinkingConfig: { effort: config.effort, maxThinkingTokens: config.maxThinkingTokens },
           });
         }
         // Sync plan mode state from the agent's initial permission mode.
@@ -458,26 +452,11 @@ export function useWebSocket(enabled: boolean = true) {
             errors: event.errors,
             usage: normalizeUsage(event.usage),
             modelUsage: isModelUsageRecord(event.modelUsage) ? event.modelUsage : undefined,
+            limitExceeded: event.subtype === 'error_max_budget_usd' ? 'budget' as const
+                         : event.subtype === 'error_max_turns' ? 'turns' as const
+                         : undefined,
           },
         });
-        // Update budget status from result event, preserving max values
-        if (event.cost !== undefined) {
-          const existingStatus = freshStore.budgetStatus;
-          const budgetStatus: BudgetStatus = {
-            // Preserve max values from init event
-            maxBudgetUsd: existingStatus?.maxBudgetUsd,
-            maxTurns: existingStatus?.maxTurns,
-            maxThinkingTokens: existingStatus?.maxThinkingTokens,
-            // Update current values from result
-            currentCostUsd: (event.cost as number) || 0,
-            currentTurns: (event.turns as number) || 0,
-            currentThinkingTokens: existingStatus?.currentThinkingTokens || 0,
-            limitExceeded: event.subtype === 'error_max_budget_usd' ? 'budget'
-                         : event.subtype === 'error_max_turns' ? 'turns'
-                         : undefined,
-          };
-          freshStore.setBudgetStatus(budgetStatus);
-        }
         // Update context meter from reliable result data.
         // This ensures the meter is always updated at the end of each turn, even if
         // the per-message context_usage events were unreliable during streaming.
