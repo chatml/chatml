@@ -80,6 +80,7 @@ function calculateEditStats(params?: Record<string, unknown>): { additions: numb
 }
 
 export const ToolUsageBlock = memo(function ToolUsageBlock({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   id,
   tool,
   params,

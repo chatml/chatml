@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 import { usePRStatus } from '@/hooks/usePRStatus';
-import { getCheckStatusInfo, formatDuration } from '@/lib/check-utils';
+import { getCheckStatusInfo } from '@/lib/check-utils';
 import type { PRDetails, CheckDetail } from '@/lib/api';
 
 interface PRHoverCardProps {
@@ -13,6 +13,7 @@ interface PRHoverCardProps {
   sessionId: string;
   prNumber: number;
   prStatus: 'open' | 'merged' | 'closed';
+  checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   prUrl?: string;
   size?: 'sm' | 'md';
 }
@@ -176,10 +177,14 @@ export function PRHoverCard({
   sessionId,
   prNumber,
   prStatus,
+  checkStatus,
   prUrl,
   size,
 }: PRHoverCardProps) {
   const { prDetails, loading, error } = usePRStatus(workspaceId, sessionId, prStatus);
+
+  // Use prDetails checkStatus if available (more accurate), otherwise fall back to session-level
+  const effectiveCheckStatus = prDetails?.checkStatus ?? checkStatus;
 
   // If there's an error fetching details, just render the badge without hover
   if (error) {
@@ -187,6 +192,7 @@ export function PRHoverCard({
       <PRNumberBadge
         prNumber={prNumber}
         prStatus={prStatus}
+        checkStatus={effectiveCheckStatus}
         prUrl={prUrl}
         size={size}
       />
@@ -200,6 +206,7 @@ export function PRHoverCard({
           <PRNumberBadge
             prNumber={prNumber}
             prStatus={prStatus}
+            checkStatus={effectiveCheckStatus}
             prUrl={prUrl}
             size={size}
           />

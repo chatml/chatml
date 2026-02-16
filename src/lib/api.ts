@@ -281,6 +281,7 @@ export interface SessionDTO {
   prNumber?: number;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
+  checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string;
   pinned?: boolean;
   archived?: boolean;
@@ -308,6 +309,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     prNumber: session.prNumber,
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
+    checkStatus: session.checkStatus as import('@/lib/types').WorktreeSession['checkStatus'],
     targetBranch: session.targetBranch,
     pinned: session.pinned,
     archived: session.archived,
@@ -675,6 +677,13 @@ export async function getPRStatus(workspaceId: string, sessionId: string): Promi
     }
     throw error;
   }
+}
+
+export async function refreshPRStatus(workspaceId: string, sessionId: string): Promise<void> {
+  await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr-refresh`, {
+    method: 'POST',
+  });
+  // 202 Accepted — fire-and-forget, result comes via WebSocket
 }
 
 // PR Dashboard types

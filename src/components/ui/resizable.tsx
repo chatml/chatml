@@ -32,6 +32,7 @@ function ResizablePanelGroup({
 const ResizablePanel = React.forwardRef<
   PanelImperativeHandle,
   React.ComponentProps<typeof Panel>
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 >(({ className, panelRef: _panelRef, ...props }, ref) => {
   return (
     <Panel

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
@@ -117,7 +118,7 @@ export function SessionToolbarContent() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId, showWarning]);
 
-  const [fixIssuesLoading, setFixIssuesLoading] = useState(false);
+  const [, setFixIssuesLoading] = useState(false);
 
   const handleFixIssues = useCallback(async () => {
     if (!selectedConversationId || !selectedWorkspaceId || !selectedSessionId) {
@@ -221,6 +222,7 @@ export function SessionToolbarContent() {
                 sessionId={selectedSession.id}
                 prNumber={selectedSession.prNumber}
                 prStatus={selectedSession.prStatus as 'open' | 'merged' | 'closed'}
+                checkStatus={selectedSession.checkStatus}
                 prUrl={selectedSession.prUrl}
                 size="sm"
               />
@@ -342,7 +344,7 @@ export function SessionToolbarContent() {
                 }}
               >
                 {defaultInstalled?.iconBase64 ? (
-                  <img src={`data:image/png;base64,${defaultInstalled.iconBase64}`} className="h-4.5 w-4.5 shrink-0" alt="" aria-hidden="true" />
+                  <Image src={`data:image/png;base64,${defaultInstalled.iconBase64}`} className="h-4.5 w-4.5 shrink-0" alt="" aria-hidden="true" width={18} height={18} unoptimized />
                 ) : (
                   <DefaultIcon className="h-3.5 w-3.5" />
                 )}
@@ -382,7 +384,7 @@ export function SessionToolbarContent() {
                             }}
                           >
                             {app.iconBase64 ? (
-                              <img src={`data:image/png;base64,${app.iconBase64}`} className="h-5 w-5 shrink-0" alt="" aria-hidden="true" />
+                              <Image src={`data:image/png;base64,${app.iconBase64}`} className="h-5 w-5 shrink-0" alt="" aria-hidden="true" width={20} height={20} unoptimized />
                             ) : (
                               <FallbackIcon className="h-4 w-4 shrink-0" />
                             )}

@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import type { DataTableGroupProps } from './types';
 
 export function DataTableGroup({
-  groupKey: _groupKey,
   label,
   icon,
   count,
@@ -88,7 +87,6 @@ export function DataTableGroup({
 
 // A simpler inline group header variant (not using grid row)
 export function DataTableGroupHeader({
-  groupKey: _groupKey,
   label,
   count,
   isCollapsed,

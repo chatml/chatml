@@ -112,10 +112,12 @@ export function PrStatusBadge({
   status,
   prNumber,
   prUrl,
+  checkStatus,
 }: {
   status: string;
   prNumber?: number;
   prUrl?: string;
+  checkStatus?: 'none' | 'pending' | 'success' | 'failure';
 }) {
   const colorMap: Record<string, string> = {
     open: 'text-text-success',
@@ -123,6 +125,15 @@ export function PrStatusBadge({
     closed: 'text-text-error',
     none: 'text-muted-foreground',
   };
+
+  // Override open PR color based on check status
+  if (status === 'open' && checkStatus) {
+    if (checkStatus === 'pending') {
+      colorMap.open = 'text-amber-500';
+    } else if (checkStatus === 'failure') {
+      colorMap.open = 'text-text-error';
+    }
+  }
 
   if (status === 'none') {
     return <span className="text-muted-foreground">None</span>;

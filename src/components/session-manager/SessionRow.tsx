@@ -37,17 +37,20 @@ export function SessionRow({ session, workspace, onSelect, onUnarchive, onPrevie
     if (session.status === 'active') {
       return { text: 'Working...', color: 'text-text-warning' };
     }
-    if (session.hasCheckFailures) {
-      return { text: '1 check pending', color: 'text-text-warning' };
-    }
     if (session.hasMergeConflict) {
       return { text: 'Merge conflict', color: 'text-text-error' };
     }
-    if (session.prStatus === 'open') {
-      return { text: 'Ready to merge', color: 'text-text-success' };
+    if (session.hasCheckFailures) {
+      return { text: 'Checks failing', color: 'text-text-error' };
     }
     if (session.prStatus === 'merged') {
       return { text: 'Merged', color: 'text-primary' };
+    }
+    if (session.prStatus === 'open') {
+      if (session.checkStatus === 'pending') {
+        return { text: 'Checks running', color: 'text-amber-500' };
+      }
+      return { text: 'Ready to merge', color: 'text-text-success' };
     }
     return null;
   };

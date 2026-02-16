@@ -169,7 +169,7 @@ describe('ContextMeter', () => {
         [CONV_ID]: makeContextUsage({ inputTokens: 100000, contextWindow: 200000 }),
       },
     });
-    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
+    render(<ContextMeter conversationId={CONV_ID} />);
 
     fireEvent.click(screen.getByRole('button'));
 
@@ -276,7 +276,7 @@ describe('ContextMeter', () => {
         [CONV_ID]: makeContextUsage({ inputTokens: 250000, contextWindow: 200000 }),
       },
     });
-    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
+    render(<ContextMeter conversationId={CONV_ID} />);
 
     fireEvent.click(screen.getByRole('button'));
 

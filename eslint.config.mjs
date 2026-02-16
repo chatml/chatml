@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Compiled TypeScript output
     "agent-runner/dist/**",
+    // Tauri build artifacts
+    "src-tauri/target/**",
   ]),
 ]);
 

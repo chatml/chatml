@@ -1118,6 +1118,17 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
+        // Handle session task status auto-update (backlog→in_progress, in_review, done)
+        if (data.type === 'session_task_status_update' && data.sessionId) {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload?.taskStatus && typeof payload.taskStatus === 'string') {
+            getStore().updateSession(data.sessionId, {
+              taskStatus: payload.taskStatus as import('@/lib/types').SessionTaskStatus,
+            });
+          }
+          return;
+        }
+
         // Handle session stats update (real-time stats from file watcher)
         if (data.type === 'session_stats_update' && data.sessionId) {
           const payload = data.payload as Record<string, unknown> | undefined;
@@ -1183,6 +1194,8 @@ export function useWebSocket(enabled: boolean = true) {
               prUrl?: string;
               hasCheckFailures?: boolean;
               hasMergeConflict?: boolean;
+              checkStatus?: 'none' | 'pending' | 'success' | 'failure';
+              taskStatus?: import('@/lib/types').SessionTaskStatus;
             } = {};
 
             if (typeof payload.prStatus === 'string' && validPRStatuses.includes(payload.prStatus as PRStatus)) {
@@ -1194,13 +1207,18 @@ export function useWebSocket(enabled: boolean = true) {
             if (typeof payload.prUrl === 'string') {
               updates.prUrl = payload.prUrl;
             }
-            // Map checkStatus to hasCheckFailures
+            // Map checkStatus to hasCheckFailures AND preserve full checkStatus
             if (typeof payload.checkStatus === 'string') {
               updates.hasCheckFailures = payload.checkStatus === 'failure';
+              updates.checkStatus = payload.checkStatus as 'none' | 'pending' | 'success' | 'failure';
             }
             // Map mergeable to hasMergeConflict
             if (typeof payload.mergeable === 'boolean') {
               updates.hasMergeConflict = !payload.mergeable;
+            }
+            // Pass through taskStatus if backend auto-updated it
+            if (typeof payload.taskStatus === 'string') {
+              updates.taskStatus = payload.taskStatus as import('@/lib/types').SessionTaskStatus;
             }
 
             getStore().updateSession(data.sessionId, updates);

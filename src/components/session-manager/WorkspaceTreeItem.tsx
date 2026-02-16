@@ -48,6 +48,9 @@ export function WorkspaceTreeItem({
       return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
     }
     if (session.prStatus === 'open') {
+      if (session.checkStatus === 'pending') {
+        return { text: 'Checks running', color: 'text-amber-500', icon: AlertTriangle };
+      }
       return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
     }
     return null;

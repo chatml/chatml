@@ -31,6 +31,7 @@ type Session struct {
 	PRNumber         int           `json:"prNumber,omitempty"`
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
+	CheckStatus      string        `json:"checkStatus,omitempty"` // none, pending, success, failure
 	Priority         int           `json:"priority"`             // 0=None, 1=Urgent, 2=High, 3=Medium, 4=Low
 	TaskStatus       string        `json:"taskStatus"`           // backlog, in_progress, in_review, done, cancelled
 	Pinned           bool          `json:"pinned,omitempty"`
@@ -308,6 +309,14 @@ const (
 	PRStatusOpen   = "open"
 	PRStatusMerged = "merged"
 	PRStatusClosed = "closed"
+)
+
+// CheckStatus constants
+const (
+	CheckStatusNone    = "none"
+	CheckStatusPending = "pending"
+	CheckStatusSuccess = "success"
+	CheckStatusFailure = "failure"
 )
 
 // ValidPRStatuses is the set of valid PR status values

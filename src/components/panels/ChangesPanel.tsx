@@ -25,7 +25,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, DEFAULT_BOTTOM_TAB_ORDER, type TopPanelTab, type AllTopPanelTab, DEFAULT_TOP_TAB_ORDER } from '@/stores/settingsStore';
+import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, type TopPanelTab, type AllTopPanelTab } from '@/stores/settingsStore';
 import {
   DndContext,
   closestCenter,
@@ -43,7 +43,6 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   ResizablePanelGroup,
   ResizablePanel,

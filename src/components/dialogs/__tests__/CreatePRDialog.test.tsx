@@ -119,7 +119,6 @@ describe('CreatePRDialog', () => {
   });
 
   it('disables Create button when title is empty', async () => {
-    const user = userEvent.setup();
     mockGenerateSuccess('', 'Some body');
 
     render(<CreatePRDialog {...defaultProps} />);

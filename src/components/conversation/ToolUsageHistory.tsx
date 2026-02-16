@@ -25,7 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cn, toRelativePath } from '@/lib/utils';
+import { toRelativePath } from '@/lib/utils';
 import { parseMcpToolName } from '@/lib/format';
 import type { ToolUsage } from '@/lib/types';
 

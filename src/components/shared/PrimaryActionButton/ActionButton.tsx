@@ -14,7 +14,6 @@ import type { ActionButtonProps } from './types';
 
 export function ActionButton({
   action,
-  isLoading,
   disabled,
   onSendMessage,
   onFixIssues,

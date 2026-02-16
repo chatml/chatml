@@ -101,6 +101,7 @@ export function ArchivedSessionPreviewDialog({
                       status={session.prStatus}
                       prNumber={session.prNumber}
                       prUrl={session.prUrl}
+                      checkStatus={session.checkStatus}
                     />
                   }
                 />

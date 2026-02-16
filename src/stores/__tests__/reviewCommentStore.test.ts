@@ -322,6 +322,7 @@ describe('reviewCommentStore', () => {
       // The clearSession action is called when deleting a session
       // which clears reviewComments among other things
       const state = getState();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { ['session-1']: _removed, ...remaining } = state.reviewComments;
       useAppStore.setState({ reviewComments: remaining });
 

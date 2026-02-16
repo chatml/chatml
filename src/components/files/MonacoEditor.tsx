@@ -3,7 +3,6 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import Editor, { DiffEditor, OnMount, OnChange } from '@monaco-editor/react';
 import type { editor, IDisposable } from 'monaco-editor';
-import { createRoot } from 'react-dom/client';
 import { Loader2, FileCode } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';

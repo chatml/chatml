@@ -5,7 +5,6 @@ import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isTauri } from '@/lib/tauri';
 import { getFileIcon, getFolderIcon, getIconifyName, preloadFolderIcons } from '@/lib/vscodeIcons';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 
@@ -32,28 +31,11 @@ interface FileTreeProps {
   workspaceName?: string;
 }
 
-export function FileTree({ files, onFileSelect, workspacePath, workspaceName }: FileTreeProps) {
+export function FileTree({ files, onFileSelect }: FileTreeProps) {
   // Preload folder icons on first render
   useEffect(() => {
     ensureIconsPreloaded();
   }, []);
-
-  const handleOpenInVSCode = async () => {
-    if (!workspacePath || !isTauri()) return;
-    try {
-      const { Command } = await import('@tauri-apps/plugin-shell');
-      Command.create('code', [workspacePath]).spawn().catch(console.error);
-    } catch (e) {
-      console.error('Failed to open in VS Code:', e);
-    }
-  };
-
-  // Truncate path for display, showing the last part
-  const displayPath = workspacePath
-    ? workspacePath.length > 35
-      ? '...' + workspacePath.slice(-32)
-      : workspacePath
-    : workspaceName || 'Files';
 
   return (
     <ScrollArea className="h-full w-full">

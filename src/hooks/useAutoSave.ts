@@ -129,9 +129,12 @@ export function useAutoSave(options?: UseAutoSaveOptions) {
       }
     });
 
+    // Capture ref value for cleanup (React lint rule: ref values may change)
+    const currentTimeouts = saveTimeoutRef.current;
+
     // Cleanup on unmount
     return () => {
-      Object.values(saveTimeoutRef.current).forEach((timeout) =>
+      Object.values(currentTimeouts).forEach((timeout) =>
         clearTimeout(timeout)
       );
     };
