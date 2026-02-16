@@ -250,18 +250,19 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       const workspaceId = state.selectedWorkspaceId;
       const sessionId = state.selectedSessionId;
       if (!workspaceId || !sessionId) return;
-      const filename = fullFilePath.split('/').pop() || fullFilePath;
-      const tabId = `${workspaceId}-${sessionId}-${fullFilePath}`;
+      const relativePath = toRelativePath(fullFilePath, worktreePath);
+      const filename = relativePath.split('/').pop() || relativePath;
+      const tabId = `${workspaceId}-${sessionId}-${relativePath}`;
       state.openFileTab({
         id: tabId,
         workspaceId,
         sessionId,
-        path: fullFilePath,
+        path: relativePath,
         name: filename,
         isLoading: true,
       });
     };
-  }, [fullFilePath]);
+  }, [fullFilePath, worktreePath]);
 
   // Metadata summary text (inline after target)
   const metadataSummary = useMemo(() => {
@@ -363,7 +364,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               <TooltipTrigger asChild>
                 <code
                   className={cn(
-                    'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]',
+                    'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate min-w-0',
                     handleFileClick ? 'cursor-pointer hover:underline hover:text-foreground' : 'cursor-help'
                   )}
                   onClick={handleFileClick}
@@ -381,7 +382,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           ) : (
             <code
               className={cn(
-                'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]',
+                'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate min-w-0',
                 handleFileClick && 'cursor-pointer hover:underline hover:text-foreground'
               )}
               onClick={handleFileClick}
@@ -398,7 +399,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               <TooltipTrigger asChild>
                 <code
                   className={cn(
-                    'text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]',
+                    'text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate min-w-0',
                     handleFileClick ? 'cursor-pointer hover:underline hover:text-foreground' : 'cursor-help'
                   )}
                   onClick={handleFileClick}
@@ -416,7 +417,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           ) : (
             <code
               className={cn(
-                'text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]',
+                'text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate min-w-0',
                 handleFileClick && 'cursor-pointer hover:underline hover:text-foreground'
               )}
               onClick={handleFileClick}
