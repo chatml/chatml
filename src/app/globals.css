@@ -1031,6 +1031,24 @@ code.hljs { padding: 3px 5px; }
   }
 }
 
+/* Session awaiting input / approval - pulsing attention indicator */
+.session-awaiting-input-indicator,
+.session-awaiting-approval-indicator {
+  animation: session-attention-pulse 2s ease-in-out infinite;
+}
+
+@keyframes session-attention-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-awaiting-input-indicator,
+  .session-awaiting-approval-indicator {
+    animation: none;
+  }
+}
+
 /* Agent working indicator - equalizer bars */
 @keyframes agent-bar-1 {
   0%, 100% { height: 25%; }

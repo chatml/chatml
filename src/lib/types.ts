@@ -4,6 +4,9 @@ export type SessionPriority = 0 | 1 | 2 | 3 | 4;
 // Session task status (user-managed workflow state, distinct from agent execution status)
 export type SessionTaskStatus = 'backlog' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
 
+// Session activity state (derived from agent process state for sidebar indicators)
+export type SessionActivityState = 'working' | 'awaiting_input' | 'awaiting_approval' | 'idle';
+
 // Workspace = A repository pointed to a path on disk
 export interface Workspace {
   id: string;

@@ -26,6 +26,7 @@ const mockSettingsState = {
   contentView: { type: 'conversation' } as ContentView,
   setContentView: mockSetContentView,
   markWorkspaceRead: vi.fn(),
+  markSessionRead: vi.fn(),
 };
 
 vi.mock('@/stores/appStore', () => ({

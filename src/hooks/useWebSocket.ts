@@ -16,6 +16,7 @@ import { getConversationDropStats, getActiveStreamingConversations, getConversat
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
+import { playSound } from '@/lib/sounds';
 
 // Conversations that recently exited plan mode. Maps conversationId → exit timestamp.
 // Used to suppress stale SDK status messages that try to re-activate plan mode after
@@ -43,6 +44,28 @@ export function markPlanModeExited(conversationId: string) {
       recentlyExitedPlanMode.delete(conversationId);
     }
   }, PLAN_MODE_EXIT_COOLDOWN_MS + 100);
+}
+
+/**
+ * Mark a session as unread and play an in-app sound when a background session
+ * has a notable event (turn complete, question, plan approval).
+ * Only fires if the conversation belongs to a session that is NOT currently selected.
+ * Sound plays even when the app is focused (notifyDesktop only plays when unfocused).
+ */
+function notifyBackgroundSession(conversationId: string): void {
+  const state = useAppStore.getState();
+  const conv = state.conversations.find((c) => c.id === conversationId);
+  if (!conv || conv.sessionId === state.selectedSessionId) return;
+
+  useSettingsStore.getState().markSessionUnread(conv.sessionId);
+
+  // Play in-app sound when focused (notifyDesktop handles the unfocused case)
+  if (typeof document !== 'undefined' && document.hasFocus()) {
+    const { soundEffects, soundEffectType } = useSettingsStore.getState();
+    if (soundEffects) {
+      playSound(soundEffectType);
+    }
+  }
 }
 
 // Safely coerce an unknown value to a number, returning undefined for non-numeric values.
@@ -484,6 +507,8 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.clearAgentTodos(conversationId);
         // Clear any stale pending question — the turn is over
         freshStore.clearPendingUserQuestion(conversationId);
+        // Notify background session (unread dot + in-app sound when focused)
+        notifyBackgroundSession(conversationId);
         // Desktop notification for task completion.
         // success defaults to true when the field is absent (only explicitly false means failure).
         notifyDesktop(
@@ -527,6 +552,8 @@ export function useWebSocket(enabled: boolean = true) {
         turnStore.updateConversation(conversationId, { status: 'active' });
         // Clear agent todos — tasks are no longer relevant after turn ends
         turnStore.clearAgentTodos(conversationId);
+        // Notify background session (unread dot + in-app sound when focused)
+        notifyBackgroundSession(conversationId);
         break;
       }
 
@@ -595,6 +622,7 @@ export function useWebSocket(enabled: boolean = true) {
             event.requestId as string,
             event.planContent as string | undefined,
           );
+          notifyBackgroundSession(conversationId);
           notifyDesktop(conversationId, 'Plan ready for approval', 'Review and approve the plan to continue');
         }
         break;
@@ -680,6 +708,7 @@ export function useWebSocket(enabled: boolean = true) {
             currentIndex: 0,
             answers: {},
           });
+          notifyBackgroundSession(conversationId);
           notifyDesktop(conversationId, 'Question from AI', 'The AI needs your input');
         }
         break;

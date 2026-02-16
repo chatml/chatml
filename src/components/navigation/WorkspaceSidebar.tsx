@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -82,6 +82,8 @@ import {
   Clock,
   Sparkles,
   Check,
+  MessageCircleQuestion,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -103,6 +105,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
+import { useSessionActivityState, useIsSessionUnread } from '@/stores/selectors';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -1493,15 +1496,10 @@ function SessionRow({
   const hasPR = session.prStatus && session.prStatus !== 'none';
   const hasStats = session.stats && (session.stats.additions > 0 || session.stats.deletions > 0);
 
-  // Derive active agent state from conversations (more reliable than session.status)
+  // Derive activity state from streaming, pending questions, and plan approvals
   const sessionId = session.id;
-  const isAgentActive = useAppStore(
-    useCallback(
-      (state: { conversations: { sessionId: string; status: string }[] }) =>
-        state.conversations.some(c => c.sessionId === sessionId && c.status === 'active'),
-      [sessionId]
-    )
-  );
+  const activityState = useSessionActivityState(sessionId);
+  const isSessionUnread = useIsSessionUnread(sessionId);
 
   // Determine PR status display
   const getPRStatusInfo = () => {
@@ -1538,12 +1536,24 @@ function SessionRow({
           {/* First line: status icon + branch name + stats/actions */}
           <div className="flex items-center gap-1">
             {/* Task status / active indicator */}
-            {isAgentActive ? (
+            {activityState === 'working' ? (
               <div className="w-4 shrink-0 flex items-center justify-center">
                 <div className="session-active-indicator">
                   <div className="bar" />
                   <div className="bar" />
                   <div className="bar" />
+                </div>
+              </div>
+            ) : activityState === 'awaiting_input' ? (
+              <div className="w-4 shrink-0 flex items-center justify-center">
+                <div className="session-awaiting-input-indicator">
+                  <MessageCircleQuestion className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+              </div>
+            ) : activityState === 'awaiting_approval' ? (
+              <div className="w-4 shrink-0 flex items-center justify-center">
+                <div className="session-awaiting-approval-indicator">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-400" />
                 </div>
               </div>
             ) : (
@@ -1575,12 +1585,17 @@ function SessionRow({
             {/* Branch name container - grows and truncates */}
             <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
               <span className={cn(
-                "text-base font-normal truncate flex-1 w-0",
-                isSessionSelected ? "text-foreground" : "text-foreground/60"
+                "text-base truncate flex-1 w-0",
+                isSessionSelected ? "text-foreground font-normal" : "text-foreground/60 font-normal",
+                isSessionUnread && !isSessionSelected && "font-medium text-foreground/80"
               )}>
                 {session.branch || session.name}
               </span>
             </div>
+            {/* Unread indicator */}
+            {isSessionUnread && !isSessionSelected && (
+              <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+            )}
             {/* Git line stats badge and actions container */}
             <div className="relative shrink-0 flex items-center">
               {/* Stats - fade out on hover */}
