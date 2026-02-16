@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import {
   useConversationState,
@@ -10,6 +11,7 @@ import {
   useConversationsWithUserMessages,
   useReviewComments,
   useReviewCommentActions,
+  useStreamingState,
 } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
 import {
@@ -90,7 +92,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const sessions = useAppStore((s) => s.sessions);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
-  const streamingState = useAppStore((s) => s.streamingState);
+  // Session-scoped streaming state for the selected conversation only
+  const selectedStreaming = useStreamingState(selectedConversationId);
   const queuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] : null
   );
@@ -428,11 +431,34 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [conversationsWithUserMessages]
   );
 
+  // Session-scoped streaming states for conversation tab indicators.
+  // Only subscribes to isStreaming/error for this session's conversations,
+  // preventing cross-session re-renders. Flattened to primitives so
+  // useShallow comparison prevents unnecessary re-renders.
+  const sessionConvIds = useMemo(
+    () => sessionConversations.map((c) => c.id),
+    [sessionConversations]
+  );
+  const sessionStreamingFlat = useAppStore(
+    useShallow(
+      (s) => {
+        const result: Record<string, boolean | string | null> = {};
+        for (const id of sessionConvIds) {
+          const ss = s.streamingState[id];
+          result[`${id}:s`] = ss?.isStreaming ?? false;
+          result[`${id}:e`] = ss?.error ?? null;
+        }
+        return result;
+      }
+    )
+  );
+
   // Get status indicator for conversation tabs
   const getStatusIndicator = useCallback(
     (conv: Conversation) => {
-      const streaming = streamingState[conv.id];
-      if (streaming?.isStreaming) {
+      const isConvStreaming = sessionStreamingFlat[`${conv.id}:s`];
+      const convError = sessionStreamingFlat[`${conv.id}:e`];
+      if (isConvStreaming) {
         return (
           <div className="flex items-end gap-[1.5px] h-2.5 w-2.5">
             <div className="w-[2px] bg-primary rounded-full animate-agent-bar-1" />
@@ -441,7 +467,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           </div>
         );
       }
-      if (streaming?.error) {
+      if (convError) {
         return <Circle className="w-2.5 h-2.5 text-destructive fill-destructive" />;
       }
       if (conv.status === 'idle' && isFreshConversation(conv.id)) {
@@ -459,7 +485,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           return <Circle className="w-2.5 h-2.5 text-muted-foreground/50" />;
       }
     },
-    [streamingState, isFreshConversation]
+    [sessionStreamingFlat, isFreshConversation]
   );
 
   // Convert FileTab to TabItemData
@@ -555,10 +581,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }, []);
 
   // Check if plan mode is active for the current conversation
-  const planModeActive = useMemo(
-    () => selectedConversationId ? streamingState[selectedConversationId]?.planModeActive : false,
-    [selectedConversationId, streamingState]
-  );
+  const planModeActive = selectedStreaming?.planModeActive ?? false;
 
   // Stable footer for VirtualizedMessageList (avoids remounting on every render)
   const messageListFooter = useMemo(() => {
@@ -1125,7 +1148,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 ) : undefined
               }
               footer={messageListFooter}
-              isStreaming={selectedConversationId ? streamingState[selectedConversationId]?.isStreaming : false}
+              isStreaming={selectedStreaming?.isStreaming ?? false}
             />
             {/* Fade overlay at bottom of messages */}
             <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
