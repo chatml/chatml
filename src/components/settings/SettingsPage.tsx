@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -15,6 +15,7 @@ import {
   Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { GeneralSettings } from './sections/GeneralSettings';
 import { AppearanceSettings } from './sections/AppearanceSettings';
 import { AIModelSettings } from './sections/AIModelSettings';
@@ -61,6 +62,17 @@ const moreNavItems: NavItem[] = [
 
 export function SettingsPage({ onBack, initialCategory = 'general' }: SettingsPageProps) {
   const [selectedCategory, setSelectedCategory] = useState<SettingsCategory>(initialCategory);
+
+  const toolbarConfig = useMemo(() => ({
+    titlePosition: 'center' as const,
+    title: (
+      <span className="flex items-center gap-1.5">
+        <Settings2 className="h-4 w-4 text-muted-foreground" />
+        <h1 className="text-base font-semibold">Settings</h1>
+      </span>
+    ),
+  }), []);
+  useMainToolbarContent(toolbarConfig);
 
   return (
     <div className="flex h-full bg-content-background">
@@ -127,8 +139,8 @@ export function SettingsPage({ onBack, initialCategory = 'general' }: SettingsPa
 
       {/* Settings Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Drag region for window - matches sidebar header height */}
-        <div data-tauri-drag-region className="h-10 shrink-0 border-b" />
+        {/* Spacer to match toolbar height */}
+        <div className="h-10 shrink-0" />
 
         <ScrollArea className="flex-1">
           <div className="max-w-2xl mx-auto py-8 px-8">
