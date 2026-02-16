@@ -1210,6 +1210,107 @@ func TestGetUntrackedFiles_IgnoresDirectories(t *testing.T) {
 }
 
 // ============================================================================
+// FilterGitIgnored Tests
+// ============================================================================
+
+func TestFilterGitIgnored_EmptyList(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	result := rm.FilterGitIgnored(context.Background(), repoPath, []FileChange{})
+	assert.Empty(t, result)
+}
+
+func TestFilterGitIgnored_NoIgnoredFiles(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create a .gitignore that ignores dist/
+	writeFile(t, repoPath, ".gitignore", "dist/\n")
+	runGit(t, repoPath, "add", ".gitignore")
+	runGit(t, repoPath, "commit", "-m", "Add gitignore")
+
+	changes := []FileChange{
+		{Path: "src/main.go", Status: "modified"},
+		{Path: "README.md", Status: "added"},
+	}
+
+	result := rm.FilterGitIgnored(context.Background(), repoPath, changes)
+	assert.Len(t, result, 2)
+}
+
+func TestFilterGitIgnored_FiltersIgnoredFiles(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create a .gitignore that ignores dist/ and build/
+	writeFile(t, repoPath, ".gitignore", "dist/\nbuild/\n*.log\n")
+	runGit(t, repoPath, "add", ".gitignore")
+	runGit(t, repoPath, "commit", "-m", "Add gitignore")
+
+	changes := []FileChange{
+		{Path: "src/main.go", Status: "modified"},
+		{Path: "dist/bundle.js", Status: "added"},
+		{Path: "dist/bundle.css", Status: "added"},
+		{Path: "build/output.bin", Status: "added"},
+		{Path: "app.log", Status: "untracked"},
+		{Path: "README.md", Status: "modified"},
+	}
+
+	result := rm.FilterGitIgnored(context.Background(), repoPath, changes)
+	assert.Len(t, result, 2)
+
+	paths := make(map[string]bool)
+	for _, f := range result {
+		paths[f.Path] = true
+	}
+	assert.True(t, paths["src/main.go"])
+	assert.True(t, paths["README.md"])
+}
+
+func TestFilterGitIgnored_NestedGitignore(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	// Create a nested .gitignore
+	writeFile(t, repoPath, ".gitignore", "*.log\n")
+	writeFile(t, repoPath, "src/.gitignore", "*.generated.go\n")
+	runGit(t, repoPath, "add", ".gitignore", "src/.gitignore")
+	runGit(t, repoPath, "commit", "-m", "Add gitignore files")
+
+	changes := []FileChange{
+		{Path: "src/main.go", Status: "modified"},
+		{Path: "src/types.generated.go", Status: "added"},
+		{Path: "debug.log", Status: "untracked"},
+	}
+
+	result := rm.FilterGitIgnored(context.Background(), repoPath, changes)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "src/main.go", result[0].Path)
+}
+
+func TestFilterGitIgnored_PreservesFileChangeFields(t *testing.T) {
+	repoPath := createTestGitRepo(t)
+	rm := NewRepoManager()
+
+	writeFile(t, repoPath, ".gitignore", "dist/\n")
+	runGit(t, repoPath, "add", ".gitignore")
+	runGit(t, repoPath, "commit", "-m", "Add gitignore")
+
+	changes := []FileChange{
+		{Path: "src/main.go", Additions: 10, Deletions: 5, Status: "modified"},
+		{Path: "dist/bundle.js", Additions: 100, Deletions: 0, Status: "added"},
+	}
+
+	result := rm.FilterGitIgnored(context.Background(), repoPath, changes)
+	require.Len(t, result, 1)
+	assert.Equal(t, "src/main.go", result[0].Path)
+	assert.Equal(t, 10, result[0].Additions)
+	assert.Equal(t, 5, result[0].Deletions)
+	assert.Equal(t, "modified", result[0].Status)
+}
+
+// ============================================================================
 // GetFileCommitHistory Tests
 // ============================================================================
 
