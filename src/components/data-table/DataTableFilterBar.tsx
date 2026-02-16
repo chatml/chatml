@@ -82,17 +82,6 @@ export function DataTableFilterBar({
     onFilterChange(filters.filter((f) => f.column !== column));
   };
 
-  // Update filter value
-  const updateFilterValue = (column: string, oldValue: string, newValue: string) => {
-    onFilterChange(
-      filters.map((f) =>
-        f.column === column && String(f.value) === oldValue
-          ? { ...f, value: newValue }
-          : f
-      )
-    );
-  };
-
   // Toggle a filter value (for multi-select)
   const toggleFilterValue = (column: string, value: string) => {
     const existingFilter = filters.find(
@@ -176,7 +165,6 @@ interface FilterPillProps {
 }
 
 function FilterPill({
-  column,
   label,
   operator,
   operatorLabel,
@@ -184,7 +172,6 @@ function FilterPill({
   options,
   operators,
   onRemove,
-  onRemoveValue,
   onToggleValue,
   onOperatorChange,
 }: FilterPillProps) {

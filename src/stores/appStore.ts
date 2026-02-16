@@ -633,9 +633,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     // Clean up custom todos, session outputs, review comments, and last active conversation
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _lastActive, ...remainingLastActive } = state.lastActiveConversationPerSession;
 
     return {
@@ -750,11 +754,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   })),
   removeConversation: (id) => set((state) => {
     // Clean up orphaned state for the removed conversation
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _streaming, ...remainingStreamingState } = state.streamingState;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _tools, ...remainingActiveTools } = state.activeTools;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _todos, ...remainingAgentTodos } = state.agentTodos;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _queued, ...remainingQueuedMessage } = state.queuedMessage;
 
     const removedConv = state.conversations.find((c) => c.id === id);
@@ -778,7 +788,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Clean up lastActiveConversationPerSession if this was the remembered conversation
     let updatedLastActive = state.lastActiveConversationPerSession;
     if (removedConv && state.lastActiveConversationPerSession[removedConv.sessionId] === id) {
-      const { [removedConv.sessionId]: _, ...rest } = state.lastActiveConversationPerSession;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [removedConv.sessionId]: _removed, ...rest } = state.lastActiveConversationPerSession;
       updatedLastActive = rest;
     }
 
@@ -828,7 +839,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     inputSuggestions: { ...state.inputSuggestions, [conversationId]: { ...suggestion, timestamp: Date.now() } },
   })),
   clearInputSuggestion: (conversationId) => set((state) => {
-    const { [conversationId]: _, ...rest } = state.inputSuggestions;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [conversationId]: _removed, ...rest } = state.inputSuggestions;
     return { inputSuggestions: rest };
   }),
 
@@ -1139,7 +1151,8 @@ updateFileTabContent: (id, content) => set((state) => ({
     },
   })),
   closeTerminalSession: (id) => set((state) => {
-    const { [id]: _, ...rest } = state.terminalSessions;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _removed, ...rest } = state.terminalSessions;
     return { terminalSessions: rest };
   }),
 
@@ -1782,7 +1795,8 @@ updateFileTabContent: (id, content) => set((state) => ({
     };
   }),
   clearContextUsage: (conversationId) => set((state) => {
-    const { [conversationId]: _, ...rest } = state.contextUsage;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [conversationId]: _removed, ...rest } = state.contextUsage;
     return { contextUsage: rest };
   }),
 
@@ -1844,8 +1858,11 @@ updateFileTabContent: (id, content) => set((state) => ({
     },
   })),
   clearBranchSyncStatus: (sessionId) => set((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [sessionId]: _status, ...remainingStatus } = state.branchSyncStatus;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [sessionId]: _loading, ...remainingLoading } = state.branchSyncLoading;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [sessionId]: _dismissed, ...remainingDismissed } = state.branchSyncDismissed;
     return {
       branchSyncStatus: remainingStatus,

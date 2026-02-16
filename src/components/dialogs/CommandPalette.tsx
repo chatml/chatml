@@ -500,8 +500,8 @@ export function CommandPalette() {
   const currentPage = pages[pages.length - 1];
 
   // Subscribe to minimal store state to trigger re-render when command availability may change
-  const selectedWorkspaceId = useAppStore((state) => state.selectedWorkspaceId);
-  const selectedSessionId = useAppStore((state) => state.selectedSessionId);
+  useAppStore((state) => state.selectedWorkspaceId);
+  useAppStore((state) => state.selectedSessionId);
 
   // Register Cmd+K shortcut
   useShortcut(

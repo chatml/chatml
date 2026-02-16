@@ -660,6 +660,19 @@ func (s *SQLiteStore) runMigrations() error {
 		logger.SQLite.Infof("Migration: Added plan_content column to messages")
 	}
 
+	// Migration: Add check_status column to sessions (granular check status: none/pending/success/failure)
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'check_status'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN check_status TEXT NOT NULL DEFAULT 'none'`)
+		if err != nil {
+			return err
+		}
+		logger.SQLite.Infof("Migration: Added check_status column to sessions")
+	}
+
 	// Migration: Create checkpoints table (file state snapshots from Agent SDK)
 	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS checkpoints (
@@ -821,14 +834,15 @@ func (s *SQLiteStore) AddSession(ctx context.Context, session *models.Session) e
 		_, err := s.db.ExecContext(ctx, `
 			INSERT INTO sessions (id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
 				task, status, agent_id, pr_status, pr_url, pr_number, has_merge_conflict,
-				has_check_failures, stats_additions, stats_deletions, pinned, archived,
+				has_check_failures, check_status, stats_additions, stats_deletions, pinned, archived,
 				priority, task_status, archive_summary, archive_summary_status, auto_named, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			session.ID, session.WorkspaceID, session.Name, session.Branch,
 			session.WorktreePath, session.BaseCommitSHA, nullString(session.TargetBranch),
 			session.Task, session.Status, session.AgentID,
 			session.PRStatus, session.PRUrl, session.PRNumber,
 			boolToInt(session.HasMergeConflict), boolToInt(session.HasCheckFailures),
+			session.CheckStatus,
 			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
 			session.Priority, session.TaskStatus,
 			session.ArchiveSummary, session.ArchiveSummaryStatus,
@@ -846,7 +860,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
 			task, status, agent_id,
-			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures, check_status,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
 			archive_summary, archive_summary_status, auto_named, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
@@ -854,7 +868,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*models.Sessio
 		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
 		&session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
-		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+		&hasMergeConflict, &hasCheckFailures, &session.CheckStatus, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
 		&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 		&autoNamed,
@@ -897,7 +911,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 	err := s.db.QueryRowContext(ctx, `
 		SELECT s.id, s.workspace_id, s.name, s.branch, s.worktree_path, s.base_commit_sha,
 			s.target_branch, s.task, s.status, s.agent_id, s.pr_status, s.pr_url, s.pr_number,
-			s.has_merge_conflict, s.has_check_failures, s.stats_additions, s.stats_deletions,
+			s.has_merge_conflict, s.has_check_failures, s.check_status, s.stats_additions, s.stats_deletions,
 			s.pinned, s.archived, s.priority, s.task_status, s.archive_summary, s.archive_summary_status,
 			s.auto_named, s.created_at, s.updated_at,
 			r.path, r.branch, r.remote
@@ -908,7 +922,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 		&result.WorktreePath, &result.BaseCommitSHA, &targetBranch,
 		&result.Task, &result.Status, &agentID,
 		&result.PRStatus, &result.PRUrl, &result.PRNumber,
-		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+		&hasMergeConflict, &hasCheckFailures, &result.CheckStatus, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &result.Priority, &result.TaskStatus, &result.ArchiveSummary, &result.ArchiveSummaryStatus,
 		&autoNamed, &result.CreatedAt, &result.UpdatedAt,
 		&result.WorkspacePath, &result.WorkspaceBranch, &result.WorkspaceRemote)
@@ -943,7 +957,7 @@ func (s *SQLiteStore) GetSessionWithWorkspace(ctx context.Context, id string) (*
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, includeArchived bool) ([]*models.Session, error) {
 	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
 		task, status, agent_id,
-		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures, check_status,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
 		archive_summary, archive_summary_status, auto_named, created_at, updated_at
 		FROM sessions WHERE workspace_id = ?`
@@ -968,7 +982,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 			&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
 			&session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
-			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+			&hasMergeConflict, &hasCheckFailures, &session.CheckStatus, &statsAdditions, &statsDeletions,
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
 			&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 			&autoNamed,
@@ -1007,7 +1021,7 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string, incl
 func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool) ([]*models.Session, error) {
 	query := `SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
 		task, status, agent_id,
-		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+		pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures, check_status,
 		stats_additions, stats_deletions, pinned, archived, priority, task_status,
 		archive_summary, archive_summary_status, auto_named, created_at, updated_at
 		FROM sessions`
@@ -1032,7 +1046,7 @@ func (s *SQLiteStore) ListAllSessions(ctx context.Context, includeArchived bool)
 			&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
 			&session.Task, &session.Status, &agentID,
 			&session.PRStatus, &session.PRUrl, &session.PRNumber,
-			&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+			&hasMergeConflict, &hasCheckFailures, &session.CheckStatus, &statsAdditions, &statsDeletions,
 			&pinned, &archived, &session.Priority, &session.TaskStatus,
 			&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 			&autoNamed,
@@ -1121,7 +1135,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 			UPDATE sessions SET
 				name = ?, branch = ?, worktree_path = ?, base_commit_sha = ?, target_branch = ?,
 				task = ?, status = ?, agent_id = ?, pr_status = ?, pr_url = ?,
-				pr_number = ?, has_merge_conflict = ?, has_check_failures = ?,
+				pr_number = ?, has_merge_conflict = ?, has_check_failures = ?, check_status = ?,
 				stats_additions = ?, stats_deletions = ?, pinned = ?, archived = ?,
 				priority = ?, task_status = ?, archive_summary = ?, archive_summary_status = ?,
 				auto_named = ?, updated_at = ?
@@ -1130,7 +1144,7 @@ func (s *SQLiteStore) UpdateSession(ctx context.Context, id string, updates func
 			nullString(session.TargetBranch),
 			session.Task, session.Status, session.AgentID, session.PRStatus, session.PRUrl,
 			session.PRNumber, boolToInt(session.HasMergeConflict),
-			boolToInt(session.HasCheckFailures),
+			boolToInt(session.HasCheckFailures), session.CheckStatus,
 			statsAdditions, statsDeletions, boolToInt(session.Pinned), boolToInt(session.Archived),
 			session.Priority, session.TaskStatus,
 			session.ArchiveSummary, session.ArchiveSummaryStatus,
@@ -1148,7 +1162,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workspace_id, name, branch, worktree_path, base_commit_sha, target_branch,
 			task, status, agent_id,
-			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures,
+			pr_status, pr_url, pr_number, has_merge_conflict, has_check_failures, check_status,
 			stats_additions, stats_deletions, pinned, archived, priority, task_status,
 			archive_summary, archive_summary_status, auto_named, created_at, updated_at
 		FROM sessions WHERE id = ?`, id).Scan(
@@ -1156,7 +1170,7 @@ func (s *SQLiteStore) getSessionNoLock(ctx context.Context, id string) (*models.
 		&session.WorktreePath, &session.BaseCommitSHA, &targetBranch,
 		&session.Task, &session.Status, &agentID,
 		&session.PRStatus, &session.PRUrl, &session.PRNumber,
-		&hasMergeConflict, &hasCheckFailures, &statsAdditions, &statsDeletions,
+		&hasMergeConflict, &hasCheckFailures, &session.CheckStatus, &statsAdditions, &statsDeletions,
 		&pinned, &archived, &session.Priority, &session.TaskStatus,
 		&session.ArchiveSummary, &session.ArchiveSummaryStatus,
 		&autoNamed,

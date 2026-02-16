@@ -347,17 +347,23 @@ func main() {
 			logger.PRWatcher.Infof("Broadcasting PR update for session %s: status=%s, pr=%d",
 				event.SessionID, event.PRStatus, event.PRNumber)
 
+			// Read back the session to get auto-updated taskStatus
+			payload := map[string]interface{}{
+				"prStatus":    event.PRStatus,
+				"prNumber":    event.PRNumber,
+				"prUrl":       event.PRUrl,
+				"checkStatus": event.CheckStatus,
+				"mergeable":   event.Mergeable,
+			}
+			if sess, err := s.GetSession(ctx, event.SessionID); err == nil && sess != nil {
+				payload["taskStatus"] = sess.TaskStatus
+			}
+
 			// Emit per-session WebSocket event for session views
 			hub.Broadcast(server.Event{
 				Type:      "session_pr_update",
 				SessionID: event.SessionID,
-				Payload: map[string]interface{}{
-					"prStatus":    event.PRStatus,
-					"prNumber":    event.PRNumber,
-					"prUrl":       event.PRUrl,
-					"checkStatus": event.CheckStatus,
-					"mergeable":   event.Mergeable,
-				},
+				Payload:   payload,
 			})
 
 			// Emit dashboard-level invalidation signal for PR dashboard

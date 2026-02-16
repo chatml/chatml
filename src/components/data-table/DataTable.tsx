@@ -451,7 +451,7 @@ export function DataTable<T>({
               </div>
             )}
             {/* Column headers */}
-            {visibleColumns.map((column, colIndex) => (
+            {visibleColumns.map((column) => (
               <div
                 key={column.id}
                 role="columnheader"

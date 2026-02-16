@@ -11,7 +11,7 @@ import {
   usePageActions,
   useMessages,
 } from '@/stores/selectors';
-import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, DEFAULT_LAYOUTS } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
@@ -28,7 +28,7 @@ import { refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { initAuth, listenForOAuthCallback, validateStoredToken, OAUTH_TIMEOUT_MS } from '@/lib/auth';
 import { getLinearAuthStatus } from '@/lib/linearAuth';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
-import { isTauri, safeListen, closeWindow, openFolderDialog, openInVSCode, copyToClipboard, openUrlInBrowser, getCurrentWindow, registerSession, unregisterSession, getSessionDirName, setOnboardingWindowSize, restoreDefaultWindowSize } from '@/lib/tauri';
+import { safeListen, closeWindow, openFolderDialog, openInVSCode, copyToClipboard, openUrlInBrowser, getCurrentWindow, registerSession, getSessionDirName, setOnboardingWindowSize, restoreDefaultWindowSize } from '@/lib/tauri';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
@@ -42,7 +42,7 @@ import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useMenuState } from '@/hooks/useMenuState';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type SessionDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
@@ -416,7 +416,7 @@ export default function Home() {
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const { conversations, selectedConversationId, removeConversation } = useConversationState();
   const {
-    fileTabs, selectedFileTabId, closeFileTab,
+    fileTabs, closeFileTab,
     pendingCloseFileTabId, setPendingCloseFileTabId,
   } = useFileTabState();
   const {
@@ -687,7 +687,7 @@ export default function Home() {
     }
 
     loadData();
-  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, selectConversation, addConversation, setMessagePage]);
+  }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, selectConversation, addConversation, setMessagePage, showError]);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {

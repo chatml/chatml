@@ -4301,6 +4301,19 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, prDetails)
 }
 
+// RefreshPRStatus triggers an immediate PR status check for a session
+func (h *Handlers) RefreshPRStatus(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+
+	if h.prWatcher == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	h.prWatcher.ForceCheckSession(sessionID)
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // GeneratePRDescription uses AI to generate a PR title and body from session changes
 func (h *Handlers) GeneratePRDescription(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

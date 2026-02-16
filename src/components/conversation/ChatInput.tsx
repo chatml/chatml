@@ -521,7 +521,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to approve plan:', error);
       showError(error instanceof Error ? error.message : 'Failed to approve plan');
     }
-  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, setApprovedPlanContent, showError]);
+  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, setApprovedPlanContent, setPlanModeActive, showError]);
 
   // Handle reject - sends denial to the agent so it stays in plan mode
   const handleRejectPlan = useCallback(async () => {

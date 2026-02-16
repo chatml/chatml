@@ -7,7 +7,6 @@ import {
   GitCommit,
   Upload,
   GitPullRequest,
-  ExternalLink,
   Archive,
   FileEdit,
   GitMerge,
@@ -15,9 +14,6 @@ import {
   Package,
   History,
   Download,
-  UserPlus,
-  CheckCircle,
-  XOctagon,
 } from 'lucide-react';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
 import type { PrimaryAction } from './types';

@@ -100,7 +100,7 @@ describe('useFileWatcher', () => {
 
     // Let async initWatcher resolve
     await act(async () => {
-      await vi.dynamicImportSettled?.() ?? new Promise((r) => setTimeout(r, 0));
+      await (vi.dynamicImportSettled?.() ?? new Promise((r) => setTimeout(r, 0)));
     });
 
     expect(mockedGetWorkspacesBasePath).toHaveBeenCalled();

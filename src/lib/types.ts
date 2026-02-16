@@ -41,6 +41,7 @@ export interface WorktreeSession {
   prNumber?: number;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
+  checkStatus?: 'none' | 'pending' | 'success' | 'failure';
   targetBranch?: string; // Per-session target branch override (e.g. "origin/develop")
   createdAt: string;
   updatedAt: string;

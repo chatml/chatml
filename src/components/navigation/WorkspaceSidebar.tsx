@@ -466,9 +466,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
     { value: 'name', label: 'Name' },
   ];
 
-  // Detect macOS for traffic light styling
-  const isMacOS = typeof window !== 'undefined' && navigator.platform.includes('Mac');
-
   return (
     <div className="relative flex flex-col h-full bg-sidebar text-sidebar-foreground select-none overflow-hidden">
 
@@ -1245,8 +1242,6 @@ function SortableWorkspaceItem({
   const currentColor = customColor || getWorkspaceColor(workspace.id);
 
   const {
-    attributes,
-    listeners,
     setNodeRef,
     transform,
     transition,
@@ -1516,6 +1511,9 @@ function SessionRow({
       return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
     }
     if (session.prStatus === 'open') {
+      if (session.checkStatus === 'pending') {
+        return { text: 'Checks running', color: 'text-amber-500', icon: AlertTriangle };
+      }
       return { text: 'Ready to merge', color: 'text-text-success', icon: CheckCircle2 };
     }
     return null;
@@ -1620,6 +1618,7 @@ function SessionRow({
                   <PRNumberBadge
                     prNumber={session.prNumber}
                     prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
+                    checkStatus={session.checkStatus}
                     prUrl={session.prUrl}
                     size="sm"
                   />
@@ -1824,8 +1823,6 @@ function SortableProjectStatusItem({
   const currentColor = customColor || getWorkspaceColor(workspace.id);
 
   const {
-    attributes,
-    listeners,
     setNodeRef,
     transform,
     transition,

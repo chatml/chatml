@@ -33,14 +33,11 @@ export function ScriptsPanel() {
   const { selectedSessionId, selectedWorkspaceId } = useSelectedIds();
   const scriptRuns = useAppStore((s) => s.scriptRuns);
   const setupProgress = useAppStore((s) => s.setupProgress);
-  const sessions = useAppStore((s) => s.sessions);
-
   const [config, setConfig] = useState<ChatMLConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingDetected, setPendingDetected] = useState<ChatMLConfig | null>(null);
 
-  const session = sessions.find(s => s.id === selectedSessionId);
   const sessionRuns = selectedSessionId ? scriptRuns[selectedSessionId] || [] : [];
   const sessionSetupProgress = selectedSessionId ? setupProgress[selectedSessionId] : undefined;
 

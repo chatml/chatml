@@ -1186,6 +1186,7 @@ const EXIT_PLAN_APPROVAL_COOLDOWN_MS = 30_000; // 30 seconds
 
 // PreToolUse hook that intercepts ExitPlanMode to route approval through our UI.
 // Uses the same pattern as AskUserQuestion: hook blocks execution until user responds.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const exitPlanModeHook: HookCallback = async (_input) => {
   // SDK bug #15755: after the first ExitPlanMode is approved and executed, the SDK
   // may retry ExitPlanMode because its internal state didn't update. Returning "allow"
@@ -1283,7 +1284,7 @@ const PLAN_MODE_DENIED_TOOLS = new Set([
 const canUseTool = async (
   toolName: string,
   toolInput: Record<string, unknown>,
-  _options: { signal: AbortSignal; toolUseID: string }
+  _options: { signal: AbortSignal; toolUseID: string } // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
   // Defense-in-depth: if AskUserQuestion reaches canUseTool with cached answers,
   // provide them via updatedInput. In bypassPermissions mode (the default), the SDK

@@ -429,8 +429,20 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 			sess.PRNumber = prNumber
 			sess.PRUrl = prUrl
 			sess.HasCheckFailures = checkStatus == string(github.CheckStatusFailure)
+			sess.CheckStatus = checkStatus
+			if sess.CheckStatus == "" {
+				sess.CheckStatus = models.CheckStatusNone
+			}
 			if mergeable != nil {
 				sess.HasMergeConflict = !*mergeable
+			}
+
+			// Auto-update taskStatus based on PR lifecycle
+			if newStatus == models.PRStatusOpen && sess.TaskStatus == models.TaskStatusInProgress {
+				sess.TaskStatus = models.TaskStatusInReview
+			}
+			if newStatus == models.PRStatusMerged {
+				sess.TaskStatus = models.TaskStatusDone
 			}
 		}); err != nil {
 			logger.PRWatcher.Errorf("Failed to update session %s in DB: %v", entry.SessionID, err)

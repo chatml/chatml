@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getPRStatus, type PRDetails } from '@/lib/api';
+import { getPRStatus, refreshPRStatus, type PRDetails } from '@/lib/api';
 
 const PR_STATUS_FALLBACK_POLL_MS = 300000; // 5 minutes (fallback, WebSocket is primary)
 
@@ -71,6 +71,14 @@ export function usePRStatus(
     if (prStatus && prStatus !== 'none') {
       setLoading(true);
       fetchStatus();
+
+      // Trigger a backend force-check so we get fresh data from GitHub
+      if (workspaceId && sessionId) {
+        refreshPRStatus(workspaceId, sessionId).catch(() => {
+          // Silently ignore — the force-check is best-effort;
+          // the GET above already returns cached data for immediate display
+        });
+      }
     } else {
       setPRDetails(null);
     }
@@ -78,7 +86,7 @@ export function usePRStatus(
     return () => {
       isMountedRef.current = false;
     };
-  }, [fetchStatus, prStatus]);
+  }, [fetchStatus, prStatus, workspaceId, sessionId]);
 
   // Slow fallback poll when PR is open (WebSocket is the primary update mechanism)
   useEffect(() => {

@@ -354,6 +354,7 @@ export const useSettingsStore = create<SettingsState>()(
         })),
       clearWorkspaceColor: (workspaceId) =>
         set((state) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { [workspaceId]: _, ...rest } = state.workspaceColors;
           return { workspaceColors: rest };
         }),

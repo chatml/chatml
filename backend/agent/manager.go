@@ -281,6 +281,22 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	// Handle completion
 	go m.handleConversationCompletion(convID, proc)
 
+	// Auto-transition session taskStatus from "backlog" to "in_progress" when agent starts working
+	if session.TaskStatus == models.TaskStatusBacklog {
+		if err := m.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+			if s.TaskStatus == models.TaskStatusBacklog {
+				s.TaskStatus = models.TaskStatusInProgress
+			}
+		}); err != nil {
+			logger.Manager.Errorf("Failed to auto-update taskStatus for session %s: %v", sessionID, err)
+		} else if m.onSessionEvent != nil {
+			m.onSessionEvent(sessionID, map[string]interface{}{
+				"type":       "session_task_status_update",
+				"taskStatus": models.TaskStatusInProgress,
+			})
+		}
+	}
+
 	// Send the initial message if provided
 	if initialMessage != "" {
 		// Collect attachments from options
@@ -1131,6 +1147,22 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			}
 			if m.onConversationStatus != nil {
 				m.onConversationStatus(convID, models.ConversationStatusActive)
+			}
+
+			// Auto-transition session taskStatus from "backlog" to "in_progress"
+			if session.TaskStatus == models.TaskStatusBacklog {
+				if err := m.store.UpdateSession(ctx, conv.SessionID, func(s *models.Session) {
+					if s.TaskStatus == models.TaskStatusBacklog {
+						s.TaskStatus = models.TaskStatusInProgress
+					}
+				}); err != nil {
+					logger.Manager.Errorf("Failed to auto-update taskStatus for session %s: %v", conv.SessionID, err)
+				} else if m.onSessionEvent != nil {
+					m.onSessionEvent(conv.SessionID, map[string]interface{}{
+						"type":       "session_task_status_update",
+						"taskStatus": models.TaskStatusInProgress,
+					})
+				}
 			}
 
 			proc = newProc

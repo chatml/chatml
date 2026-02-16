@@ -119,7 +119,7 @@ describe('tabStore', () => {
 
     it('activates the next tab when closing the active tab', () => {
       const id1 = getState().createTab({ label: 'Tab 1' });
-      const id2 = getState().createTab({ label: 'Tab 2' });
+      getState().createTab({ label: 'Tab 2' });
       getState().activateTab(id1);
 
       getState().closeTab(id1);
@@ -232,7 +232,7 @@ describe('tabStore', () => {
     });
 
     it('handles moving tab to same position', () => {
-      const id1 = getState().createTab({ label: 'A' });
+      getState().createTab({ label: 'A' });
       const orderBefore = [...getState().tabOrder];
       getState().reorderTabs(0, 0);
       expect(getState().tabOrder).toEqual(orderBefore);
@@ -374,10 +374,6 @@ describe('tabStore', () => {
       return raw ? JSON.parse(raw) : null;
     }
 
-    function setPersistedData(data: unknown) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-
     it('writes state to localStorage on mutation', () => {
       // Trigger a state change
       getState().createTab({ label: 'Persisted Tab' });
@@ -498,17 +494,6 @@ describe('tabStore', () => {
         selectedFileTabId: overrides.selectedFileTabId ?? null,
         createdAt: overrides.createdAt ?? 1000,
       };
-    }
-
-    function seedLocalStorage(state: {
-      tabs?: Record<string, BrowserTab>;
-      tabOrder?: string[];
-      activeTabId?: string;
-    }) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        state,
-        version: 0,
-      }));
     }
 
     // We can't truly re-initialize the Zustand store module,

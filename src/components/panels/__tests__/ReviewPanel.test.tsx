@@ -64,17 +64,6 @@ function setupMswListCommentsError(status = 500) {
   );
 }
 
-function setupMswUpdateComment(response?: Partial<ReviewComment>) {
-  server.use(
-    http.patch(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/comments/:commentId`, async ({ params }) => {
-      return HttpResponse.json({
-        ...makeComment({ id: params.commentId as string, resolved: true, resolvedBy: 'user' }),
-        ...response,
-      });
-    })
-  );
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('ReviewPanel', () => {
