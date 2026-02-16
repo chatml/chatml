@@ -434,10 +434,32 @@ export function ChangesPanel() {
   const lastFileChange = useAppStore((s) => s.lastFileChange);
   useEffect(() => {
     if (!selectedSessionId || !lastFileChange) return;
-    if (lastFileChange.workspaceId === selectedSessionId) {
+    if (lastFileChange.workspaceId === selectedWorkspaceId) {
       debouncedFetchChanges();
     }
-  }, [lastFileChange, selectedSessionId, debouncedFetchChanges]);
+  }, [lastFileChange, selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
+
+  // React to session stats updates (WebSocket push from backend git index watcher).
+  // When the agent commits or stages files, the backend detects git index changes and
+  // broadcasts session_stats_update. Use this as an additional trigger to refetch changes.
+  const sessionStats = useAppStore((s) => {
+    if (!selectedSessionId) return undefined;
+    const session = s.sessions.find((sess) => sess.id === selectedSessionId);
+    return session?.stats;
+  });
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedSessionId || !sessionStats) return;
+    debouncedFetchChanges();
+  }, [sessionStats, selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
+
+  // Polling fallback — catch changes that event-driven paths might miss
+  useEffect(() => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+    const interval = setInterval(() => {
+      fetchChanges();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [selectedWorkspaceId, selectedSessionId, fetchChanges]);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
