@@ -70,8 +70,12 @@ export function useGitStatus(
           permanentErrorRef.current = true;
         }
 
+        // Only log as error for unexpected failures, not transient network issues
         if (!isPermanent) {
-          console.error('Failed to fetch git status:', err);
+          const isTransientNetwork = err instanceof ApiError && err.status === 0;
+          if (!isTransientNetwork) {
+            console.error('Failed to fetch git status:', err);
+          }
         }
         setError(err instanceof Error ? err.message : 'Failed to fetch git status');
         setErrorCode(err instanceof ApiError ? (err.code ?? null) : null);
