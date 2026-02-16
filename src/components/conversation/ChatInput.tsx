@@ -773,7 +773,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
-    if (!content.trim() || !selectedWorkspaceId || !selectedSessionId || isSending || hasQueuedMessage) return;
+    const hasContent = !!content.trim();
+    const hasAttachments = attachments.length > 0;
+    if ((!hasContent && !hasAttachments) || !selectedWorkspaceId || !selectedSessionId || isSending || hasQueuedMessage) return;
 
     // Can't queue a message to a conversation that doesn't exist yet — check before clearing input
     const conversationMessagesEarly = currentConversation

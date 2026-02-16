@@ -594,8 +594,10 @@ func (p *Process) sendInput(msg InputMessage) error {
 	}
 
 	// Write JSON line to stdin
+	logger.Process.Debugf("Writing %s to stdin (%d bytes)", msg.Type, len(data))
 	_, err = p.stdin.Write(append(data, '\n'))
 	if err != nil {
+		logger.Process.Errorf("Failed to write %s to stdin: %v", msg.Type, err)
 		return fmt.Errorf("write to stdin: %w", err)
 	}
 
