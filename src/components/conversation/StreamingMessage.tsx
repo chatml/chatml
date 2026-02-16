@@ -17,6 +17,7 @@ type TimelineItem =
   | { type: 'text'; id: string; text: string; timestamp: number }
   | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number; metadata?: import('@/lib/types').ToolMetadata }
   | { type: 'thinking'; id: string; text: string; isActive: boolean; timestamp: number }
+  | { type: 'plan'; id: string; content: string; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
@@ -220,6 +221,26 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       });
     }
 
+    // Add approved plan content at its chronological position
+    if (streaming?.approvedPlanContent && streaming?.approvedPlanTimestamp) {
+      items.push({
+        type: 'plan',
+        id: 'approved-plan',
+        content: streaming.approvedPlanContent,
+        timestamp: streaming.approvedPlanTimestamp,
+      });
+    }
+
+    // Add pending plan content (awaiting approval) — place at end of current content
+    if (streaming?.pendingPlanApproval?.planContent) {
+      items.push({
+        type: 'plan',
+        id: 'pending-plan',
+        content: streaming.pendingPlanApproval.planContent,
+        timestamp: Number.MAX_SAFE_INTEGER, // Sort to end of current timeline
+      });
+    }
+
     // Add sub-agents into the timeline
     for (const agent of subAgents) {
       items.push({ type: 'subagent', agent });
@@ -230,6 +251,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       switch (item.type) {
         case 'text': return item.timestamp;
         case 'thinking': return item.timestamp;
+        case 'plan': return item.timestamp;
         case 'subagent': return item.agent.startTime;
         case 'subagent_group': return item.agents[0].startTime;
         default: return item.startTime;
@@ -266,8 +288,8 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
     return grouped;
   }, [streaming, tools, subAgents]);
 
-  // Don't render if no streaming content, no active tools, no sub-agents, no thinking, no error, and no pending plan
-  if (timeline.length === 0 && !streaming?.error && !streaming?.isThinking && !streaming?.isStreaming && !streaming?.pendingPlanApproval?.planContent && !streaming?.approvedPlanContent) {
+  // Don't render if no streaming content, no active tools, no sub-agents, no thinking, and no error
+  if (timeline.length === 0 && !streaming?.error && !streaming?.isThinking && !streaming?.isStreaming) {
     return null;
   }
 
@@ -313,6 +335,39 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   )}
                 </div>
               );
+            } else if (item.type === 'plan') {
+              const isPending = item.id === 'pending-plan';
+              return isPending ? (
+                <div key={item.id} className={PROSE_CLASSES}>
+                  <CachedMarkdown
+                    cacheKey={`plan:${item.id}`}
+                    content={item.content}
+                  />
+                </div>
+              ) : (
+                <div key={item.id} className="flex flex-col gap-1">
+                  <button
+                    onClick={() => setIsApprovedPlanExpanded(!isApprovedPlanExpanded)}
+                    className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    <span className="font-medium">Approved Plan</span>
+                    {isApprovedPlanExpanded ? (
+                      <ChevronDown className="w-3 h-3" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3" />
+                    )}
+                  </button>
+                  {isApprovedPlanExpanded && (
+                    <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
+                      <CachedMarkdown
+                        cacheKey={`approved-plan:${conversationId}`}
+                        content={item.content}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
             } else if (item.type === 'subagent_group') {
               return (
                 <SubAgentGroupedRow
@@ -350,42 +405,6 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
             }
           });
           })()}
-
-          {/* Plan content display - shown when ExitPlanMode sends plan for approval */}
-          {streaming?.pendingPlanApproval?.planContent && (
-            <div className={PROSE_CLASSES}>
-              <CachedMarkdown
-                cacheKey={`plan:${streaming.pendingPlanApproval.requestId}`}
-                content={streaming.pendingPlanApproval.planContent}
-              />
-            </div>
-          )}
-
-          {/* Approved plan content - persists after plan approval during continued streaming */}
-          {!streaming?.pendingPlanApproval?.planContent && streaming?.approvedPlanContent && (
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={() => setIsApprovedPlanExpanded(!isApprovedPlanExpanded)}
-                className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
-              >
-                <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                <span className="font-medium">Approved Plan</span>
-                {isApprovedPlanExpanded ? (
-                  <ChevronDown className="w-3 h-3" />
-                ) : (
-                  <ChevronRight className="w-3 h-3" />
-                )}
-              </button>
-              {isApprovedPlanExpanded && (
-                <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
-                  <CachedMarkdown
-                    cacheKey={`approved-plan:${conversationId}`}
-                    content={streaming.approvedPlanContent}
-                  />
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Enhanced error display */}
           {streaming?.error && (

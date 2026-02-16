@@ -890,7 +890,7 @@ export interface ToolUsageDTO {
 }
 
 export interface TimelineEntryDTO {
-  type: 'text' | 'tool';
+  type: 'text' | 'tool' | 'thinking' | 'plan';
   content?: string;
   toolId?: string;
 }
