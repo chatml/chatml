@@ -200,6 +200,10 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
                 <Editor
                   variant="none"
                   placeholder={placeholder}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  autoComplete="off"
                   className={cn(
                     'min-h-[100px] max-h-[200px] py-1 text-base rounded-none',
                     'caret-foreground [&_[data-slate-editor]]:min-h-[1lh]',
