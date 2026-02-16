@@ -47,6 +47,7 @@ import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinki
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
+import { MODELS as SHARED_MODELS } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
 import { listSessionFiles, type FileNodeDTO } from '@/lib/api';
 
@@ -77,9 +78,9 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 const MODELS = [
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', icon: Snowflake, supportsThinking: true, supportsEffort: true, badge: 'NEW' as const },
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', icon: Snowflake, supportsThinking: true, supportsEffort: false },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', icon: Snowflake, supportsThinking: true, supportsEffort: false },
+  { ...SHARED_MODELS[0], icon: Snowflake, badge: 'NEW' as const },
+  { ...SHARED_MODELS[1], icon: Snowflake },
+  { ...SHARED_MODELS[2], icon: Snowflake },
 ];
 
 

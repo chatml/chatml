@@ -58,6 +58,8 @@ export interface Conversation {
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
   model?: string; // Last-used model (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-20250514")
+  budgetConfig?: { maxBudgetUsd?: number; maxTurns?: number };
+  thinkingConfig?: { effort?: string; maxThinkingTokens?: number };
   messages: Message[];
   messageCount?: number; // Total messages (set when messages are loaded lazily)
   toolSummary: ToolAction[];
@@ -117,6 +119,7 @@ export interface RunSummary {
   errors?: unknown[];
   usage?: TokenUsage;
   modelUsage?: Record<string, ModelUsageInfo>;
+  limitExceeded?: 'budget' | 'turns';
 }
 
 // Structured metadata extracted from tool results (tool-specific)
@@ -303,6 +306,7 @@ export interface AgentEvent {
     maxBudgetUsd?: number;
     maxTurns?: number;
     maxThinkingTokens?: number;
+    effort?: string;
   };
 
   // Extended result fields
@@ -551,17 +555,6 @@ export interface CheckpointInfo {
   messageIndex: number;
   isResult?: boolean;
   conversationId?: string;
-}
-
-// Budget and limits status
-export interface BudgetStatus {
-  maxBudgetUsd?: number;
-  currentCostUsd: number;
-  maxTurns?: number;
-  currentTurns: number;
-  maxThinkingTokens?: number;
-  currentThinkingTokens: number;
-  limitExceeded?: 'budget' | 'turns' | 'thinking_tokens';
 }
 
 // Context window usage tracking

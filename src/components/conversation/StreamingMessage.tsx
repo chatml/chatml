@@ -11,6 +11,7 @@ import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
 import { cn } from '@/lib/utils';
 import { PROSE_CLASSES } from '@/lib/constants';
+import { getModelInfo } from '@/lib/models';
 
 // Timeline item types for interleaved display
 type TimelineItem =
@@ -165,10 +166,9 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   const tools = useActiveTools(conversationId);
   const subAgents = useSubAgents(conversationId);
   const clearStreamingText = useAppStore((s) => s.clearStreamingText);
-  const budgetStatus = useAppStore((s) => s.budgetStatus);
-
-  // Check if extended thinking is enabled for this conversation
-  const isExtendedThinkingEnabled = budgetStatus?.maxThinkingTokens !== undefined && budgetStatus.maxThinkingTokens > 0;
+  // Check if extended thinking is enabled based on model capabilities
+  const conversationModel = useAppStore((s) => s.conversations.find(c => c.id === conversationId)?.model);
+  const isExtendedThinkingEnabled = conversationModel ? (getModelInfo(conversationModel)?.supportsThinking ?? false) : false;
 
   const [isApprovedPlanExpanded, setIsApprovedPlanExpanded] = useState(true);
 

@@ -2021,6 +2021,7 @@ function handleMessage(message: SDKMessage): void {
             maxBudgetUsd,
             maxTurns,
             maxThinkingTokens,
+            effort,
           },
         });
         currentSessionId = initMsg.session_id;

@@ -13,7 +13,6 @@ import type {
   McpServerStatus,
   McpServerConfig,
   CheckpointInfo,
-  BudgetStatus,
   ContextUsage,
   ToolUsage,
   RunSummary,
@@ -194,7 +193,6 @@ interface AppState {
 
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
-  budgetStatus: BudgetStatus | null;
 
   // Context window usage (keyed by conversationId)
   contextUsage: { [conversationId: string]: ContextUsage };
@@ -394,7 +392,6 @@ interface AppState {
   setCheckpoints: (checkpoints: CheckpointInfo[]) => void;
   addCheckpoint: (checkpoint: CheckpointInfo) => void;
   clearCheckpoints: () => void;
-  setBudgetStatus: (status: BudgetStatus | null) => void;
 
   // Context usage actions
   setContextUsage: (conversationId: string, usage: Partial<ContextUsage>) => void;
@@ -454,7 +451,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpConfigLoading: false,
   mcpToolsByServer: {},
   checkpoints: [],
-  budgetStatus: null,
   contextUsage: {},
   reviewComments: {},
   branchSyncStatus: {},
@@ -1781,7 +1777,6 @@ updateFileTabContent: (id, content) => set((state) => ({
     checkpoints: [...state.checkpoints, checkpoint]
   })),
   clearCheckpoints: () => set({ checkpoints: [] }),
-  setBudgetStatus: (budgetStatus) => set({ budgetStatus }),
 
   // Context usage actions
   setContextUsage: (conversationId, usage) => set((state) => {

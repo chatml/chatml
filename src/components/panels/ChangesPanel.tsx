@@ -647,7 +647,7 @@ export function ChangesPanel() {
                 </ErrorBoundary>
               )}
               {bottomTab === 'budget' && (
-                <ErrorBoundary section="BudgetPanel" fallback={<InlineErrorFallback message="Unable to display budget" />}>
+                <ErrorBoundary section="BudgetPanel" fallback={<InlineErrorFallback message="Unable to display usage" />}>
                   <BudgetStatusPanel />
                 </ErrorBoundary>
               )}
@@ -692,7 +692,7 @@ const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisib
   todos: { label: 'Tasks', alwaysVisible: true },
   history: { label: 'Checkpoints' },
   'file-history': { label: 'File History' },
-  budget: { label: 'Budget' },
+  budget: { label: 'Usage' },
   mcp: { label: 'MCP' },
   scripts: { label: 'Scripts' },
 };
