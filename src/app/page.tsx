@@ -612,7 +612,7 @@ export default function Home() {
         const workspaceValid = hasPersistedTab && activeTab.selectedWorkspaceId &&
           mappedWorkspaces.some(w => w.id === activeTab.selectedWorkspaceId);
         const sessionValid = hasPersistedTab && activeTab.selectedSessionId &&
-          allSessions.some(s => s.id === activeTab.selectedSessionId);
+          allSessions.some(s => s.id === activeTab.selectedSessionId && !s.archived);
         // Only validate conversation if its session is also valid
         const conversationValid = sessionValid && activeTab.selectedConversationId &&
           allConversations.some(c => c.id === activeTab.selectedConversationId);
@@ -633,7 +633,7 @@ export default function Home() {
             selectWorkspace(activeTab.selectedWorkspaceId);
             // If workspace is valid but session is stale, select first available session in this workspace
             if (!sessionValid) {
-              const fallbackSession = allSessions.find(s => s.workspaceId === activeTab.selectedWorkspaceId);
+              const fallbackSession = allSessions.find(s => s.workspaceId === activeTab.selectedWorkspaceId && !s.archived);
               if (fallbackSession) selectSession(fallbackSession.id);
             }
           }
@@ -644,7 +644,7 @@ export default function Home() {
         } else if (mappedWorkspaces.length > 0) {
           // First launch — select first workspace and session
           selectWorkspace(mappedWorkspaces[0].id);
-          const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id);
+          const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id && !s.archived);
           if (firstSession) {
             // Create a placeholder conversation if none exist for this session
             const sessionConvs = allConversations.filter(c => c.sessionId === firstSession.id);
