@@ -56,6 +56,11 @@ func (h *Handlers) resolveGitHubContext(w http.ResponseWriter, r *http.Request) 
 		return nil, false
 	}
 
+	if !h.ghClient.IsAuthenticated() {
+		writeUnauthorized(w, "GitHub not authenticated")
+		return nil, false
+	}
+
 	return &githubContext{owner: owner, repo: repoName, session: session}, true
 }
 
