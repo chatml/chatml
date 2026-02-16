@@ -1808,7 +1808,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 		Status:        "idle",
 		PRStatus:      "none",
 		Priority:      models.PriorityNone,
-		TaskStatus:    models.TaskStatusBacklog,
+		TaskStatus:    models.TaskStatusInProgress,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
