@@ -1080,14 +1080,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         {/* Animated marching ants border for plan mode */}
         {planModeEnabled && !isStreaming && (
           <svg
-            className="absolute -inset-[1px] w-[calc(100%+2px)] h-[calc(100%+2px)] pointer-events-none z-10"
+            className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible"
             preserveAspectRatio="none"
           >
             <rect
-              x="1"
-              y="1"
-              width="calc(100% - 2px)"
-              height="calc(100% - 2px)"
+              x="0"
+              y="0"
+              width="100%"
+              height="100%"
               rx="8"
               ry="8"
               fill="none"

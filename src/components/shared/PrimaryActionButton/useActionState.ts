@@ -59,14 +59,17 @@ export function useActionState(
     }
 
     // Priority 9: PR is merged - show archive session button
-    if (session?.prStatus === 'merged') {
+    // Check both the session store (updated by PRWatcher) and live prDetails
+    // (fetched from GitHub) to handle the case where the PR was just merged
+    // but the store hasn't been updated yet.
+    if (session?.prStatus === 'merged' || prDetails?.merged) {
       return {
         type: 'archive-session',
         label: 'Archive Session',
 
         icon: Archive,
         variant: 'default',
-        sessionId: session.id,
+        sessionId: session?.id,
       };
     }
 
