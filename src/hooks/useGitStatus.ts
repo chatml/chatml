@@ -25,7 +25,8 @@ interface UseGitStatusResult {
  */
 export function useGitStatus(
   workspaceId: string | null,
-  sessionId: string | null
+  sessionId: string | null,
+  active: boolean = true
 ): UseGitStatusResult {
   const [status, setStatus] = useState<GitStatusDTO | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,7 +120,7 @@ export function useGitStatus(
 
   // Periodic polling
   useEffect(() => {
-    if (!workspaceId || !sessionId) return;
+    if (!active || !workspaceId || !sessionId) return;
 
     const interval = setInterval(() => {
       if (!permanentErrorRef.current) {
@@ -128,15 +129,15 @@ export function useGitStatus(
     }, GIT_STATUS_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [workspaceId, sessionId, fetchStatus]);
+  }, [active, workspaceId, sessionId, fetchStatus]);
 
   // React to file change events from centralized store
   useEffect(() => {
-    if (!workspaceId || !lastFileChange) return;
+    if (!active || !workspaceId || !lastFileChange) return;
     if (lastFileChange.workspaceId === workspaceId) {
       debouncedRefetch();
     }
-  }, [lastFileChange, workspaceId, debouncedRefetch]);
+  }, [active, lastFileChange, workspaceId, debouncedRefetch]);
 
   return { status, loading, error, errorCode, refetch };
 }

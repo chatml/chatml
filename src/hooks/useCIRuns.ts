@@ -36,7 +36,8 @@ interface UseCIRunsResult {
  */
 export function useCIRuns(
   workspaceId: string | null,
-  sessionId: string | null
+  sessionId: string | null,
+  active: boolean = true
 ): UseCIRunsResult {
   const [runs, setRuns] = useState<WorkflowRunDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -154,14 +155,14 @@ export function useCIRuns(
 
   // Periodic polling when there are in-progress runs
   useEffect(() => {
-    if (!workspaceId || !sessionId || !hasInProgressRuns) return;
+    if (!active || !workspaceId || !sessionId || !hasInProgressRuns) return;
 
     const interval = setInterval(() => {
       fetchRuns();
     }, CI_POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [workspaceId, sessionId, hasInProgressRuns, fetchRuns]);
+  }, [active, workspaceId, sessionId, hasInProgressRuns, fetchRuns]);
 
   return {
     runs,

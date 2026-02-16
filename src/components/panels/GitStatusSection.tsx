@@ -323,11 +323,12 @@ function buildStatusItems(
 
 interface GitStatusSectionProps {
   onSendMessage?: (content: string) => void;
+  active?: boolean;
 }
 
-export function GitStatusSection({ onSendMessage }: GitStatusSectionProps) {
+export function GitStatusSection({ onSendMessage, active = true }: GitStatusSectionProps) {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
-  const { status, loading, error, errorCode, refetch } = useGitStatus(selectedWorkspaceId, selectedSessionId);
+  const { status, loading, error, errorCode, refetch } = useGitStatus(selectedWorkspaceId, selectedSessionId, active);
 
   // Wrapper that handles missing callback
   const sendMessage = (content: string) => {

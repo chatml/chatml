@@ -43,6 +43,7 @@ import {
 interface ChecksPanelProps {
   onSendMessage?: (content: string) => void;
   onPrUrlChange?: (url: string | null) => void;
+  active?: boolean;
 }
 
 export interface ChecksPanelHandle {
@@ -145,7 +146,7 @@ function computeMergeReadiness(
 // Main component
 // ---------------------------------------------------------------------------
 
-export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(function ChecksPanel({ onSendMessage, onPrUrlChange }, ref) {
+export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(function ChecksPanel({ onSendMessage, onPrUrlChange, active = true }, ref) {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
 
   // Get session's prStatus from store to pass to usePRStatus hook
@@ -159,7 +160,8 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
   const { prDetails, loading: prLoading, refetch: refetchPR } = usePRStatus(
     selectedWorkspaceId,
     selectedSessionId,
-    prStatus
+    prStatus,
+    active
   );
   const {
     runs,
@@ -168,10 +170,11 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
     getJobs,
     rerunWorkflow,
     analyzeFailure,
-  } = useCIRuns(selectedWorkspaceId, selectedSessionId);
+  } = useCIRuns(selectedWorkspaceId, selectedSessionId, active);
   const { status: gitStatus, loading: gitLoading, refetch: refetchGit } = useGitStatus(
     selectedWorkspaceId,
-    selectedSessionId
+    selectedSessionId,
+    active
   );
 
   // Compute merge readiness
@@ -240,7 +243,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
             </span>
           </div>
           <div className="px-1.5 pb-2">
-            <GitStatusSection onSendMessage={onSendMessage} />
+            <GitStatusSection onSendMessage={onSendMessage} active={active} />
           </div>
         </div>
       </div>

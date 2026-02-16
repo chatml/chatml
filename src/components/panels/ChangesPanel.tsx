@@ -395,15 +395,15 @@ export function ChangesPanel() {
     }
   }, [selectedWorkspaceId, selectedSessionId, updateReviewComment]);
 
-  // Fetch files from session's worktree when session changes or tab switches to files
-  // Deferred via requestIdleCallback so it doesn't block the main conversation render on navigation
+  // Fetch files from session's worktree when session changes.
+  // Decoupled from tab visibility so data is ready when the user switches tabs.
+  // Debounced to avoid redundant API calls when rapidly switching sessions.
   useEffect(() => {
-    if (selectedTab === 'files' && selectedWorkspaceId && selectedSessionId) {
+    if (selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
-      const schedule = () => {
-        if (cancelled) return;
-        setFilesLoading(true);
-        setFilesError(null);
+      setFilesLoading(true);
+      setFilesError(null);
+      const timeout = setTimeout(() => {
         listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
           .then((data) => {
             if (!cancelled) setFiles(data as FileNode[]);
@@ -415,29 +415,23 @@ export function ChangesPanel() {
               } else {
                 setFilesError('error');
               }
+              console.error(err);
             }
-            console.error(err);
           })
           .finally(() => { if (!cancelled) setFilesLoading(false); });
-      };
-      if (typeof requestIdleCallback === 'function') {
-        const id = requestIdleCallback(schedule, { timeout: 3000 });
-        return () => { cancelled = true; cancelIdleCallback(id); };
-      } else {
-        const id = setTimeout(schedule, 150);
-        return () => { cancelled = true; clearTimeout(id); };
-      }
+      }, 150);
+      return () => { cancelled = true; clearTimeout(timeout); };
     }
-  }, [selectedTab, selectedWorkspaceId, selectedSessionId]);
+  }, [selectedWorkspaceId, selectedSessionId]);
 
-  // Fetch changes and branch commits when session changes, tab switches to changes, or branch is renamed
-  // Deferred via requestIdleCallback so it doesn't block the main conversation render on navigation
+  // Fetch changes and branch commits when session changes or branch is renamed.
+  // Decoupled from tab visibility so data is ready when the user switches tabs.
+  // Debounced to avoid redundant API calls when rapidly switching sessions.
   useEffect(() => {
-    if (selectedTab === 'changes' && selectedWorkspaceId && selectedSessionId) {
+    if (selectedWorkspaceId && selectedSessionId) {
       let cancelled = false;
-      const schedule = () => {
-        if (cancelled) return;
-        setChangesLoading(true);
+      setChangesLoading(true);
+      const timeout = setTimeout(() => {
         Promise.all([
           getSessionChanges(selectedWorkspaceId, selectedSessionId),
           getSessionBranchCommits(selectedWorkspaceId, selectedSessionId),
@@ -450,16 +444,10 @@ export function ChangesPanel() {
           })
           .catch(console.error)
           .finally(() => { if (!cancelled) setChangesLoading(false); });
-      };
-      if (typeof requestIdleCallback === 'function') {
-        const id = requestIdleCallback(schedule, { timeout: 3000 });
-        return () => { cancelled = true; cancelIdleCallback(id); };
-      } else {
-        const id = setTimeout(schedule, 150);
-        return () => { cancelled = true; clearTimeout(id); };
-      }
+      }, 150);
+      return () => { cancelled = true; clearTimeout(timeout); };
     }
-  }, [selectedTab, selectedWorkspaceId, selectedSessionId, currentBranch, currentTargetBranch]);
+  }, [selectedWorkspaceId, selectedSessionId, currentBranch, currentTargetBranch]);
 
   // Refetch changes when branch sync completes (rebase/merge)
   useEffect(() => {
@@ -545,8 +533,9 @@ export function ChangesPanel() {
       >
         {/* File List */}
         <ResizablePanel id="file-list" defaultSize="65%" minSize="20%" className="overflow-hidden">
-          {selectedTab === 'files' ? (
-            filesLoading ? (
+          {/* All panels stay mounted; CSS visibility toggling prevents unmount/remount flash */}
+          <div className={cn("h-full", selectedTab !== 'files' && 'hidden')}>
+            {filesLoading && files.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
@@ -577,9 +566,10 @@ export function ChangesPanel() {
                   />
                 </ErrorBoundary>
               </div>
-            )
-          ) : selectedTab === 'changes' ? (
-            changesLoading ? (
+            )}
+          </div>
+          <div className={cn("h-full", selectedTab !== 'changes' && 'hidden')}>
+            {changesLoading && !changes?.length && !branchCommits?.length ? (
               <div className="h-full flex items-center justify-center">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
@@ -677,23 +667,18 @@ export function ChangesPanel() {
                   )}
                 </div>
               </ScrollArea>
-            )
-          ) : selectedTab === 'review' ? (
+            )}
+          </div>
+          <div className={cn("h-full", selectedTab !== 'review' && 'hidden')}>
             <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
               <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} onSendFeedback={handleSendFeedback} showResolved={showResolved} />
             </ErrorBoundary>
-          ) : selectedTab === 'checks' ? (
+          </div>
+          <div className={cn("h-full", selectedTab !== 'checks' && 'hidden')}>
             <ErrorBoundary section="ChecksPanel" fallback={<InlineErrorFallback message="Unable to display checks" />}>
-              <ChecksPanel ref={checksPanelRef} onSendMessage={handleGitActionMessage} onPrUrlChange={setPrUrl} />
+              <ChecksPanel ref={checksPanelRef} onSendMessage={handleGitActionMessage} onPrUrlChange={setPrUrl} active={selectedTab === 'checks'} />
             </ErrorBoundary>
-          ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No content</p>
-              </div>
-            </div>
-          )}
+          </div>
         </ResizablePanel>
 
         <ResizableHandle direction="vertical" />
