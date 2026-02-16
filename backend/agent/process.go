@@ -36,6 +36,8 @@ type ProcessOptions struct {
 	Workdir             string
 	ConversationID      string
 	SdkSessionID        string // Full UUID for SDK session tracking (must be valid UUID)
+	WorkspaceID         string // Backend workspace/repo ID for MCP tools
+	BackendSessionID    string // Backend session ID for MCP tools (distinct from SDK session ID)
 	ResumeSession       string // Session ID to resume
 	ForkSession         bool   // Whether to fork the session
 	LinearIssue         string // Linear issue identifier (e.g., "LIN-123")
@@ -150,6 +152,14 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		agentRunnerPath,
 		"--cwd", opts.Workdir,
 		"--conversation-id", opts.ConversationID,
+	}
+
+	// Pass workspace and session IDs so MCP tools can reach the correct backend endpoints
+	if opts.WorkspaceID != "" {
+		args = append(args, "--workspace-id", opts.WorkspaceID)
+	}
+	if opts.BackendSessionID != "" {
+		args = append(args, "--backend-session-id", opts.BackendSessionID)
 	}
 
 	// Pass a custom session ID to align SDK session tracking with our data model

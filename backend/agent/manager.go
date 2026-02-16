@@ -221,6 +221,8 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		Workdir:             session.WorktreePath,
 		ConversationID:      convID,
 		SdkSessionID:        uuid.New().String(), // Full UUID required by SDK
+		WorkspaceID:         session.WorkspaceID, // Backend workspace ID for MCP tools
+		BackendSessionID:    sessionID,           // Backend session ID for MCP tools
 		EnableCheckpointing: true,
 	}
 
@@ -1088,6 +1090,13 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			restartOpts.EnableCheckpointing = true
 		}
 		restartOpts.Workdir = session.WorktreePath
+		// Always ensure backend IDs are set for MCP tools (may be missing from old opts)
+		if restartOpts.WorkspaceID == "" {
+			restartOpts.WorkspaceID = session.WorkspaceID
+		}
+		if restartOpts.BackendSessionID == "" {
+			restartOpts.BackendSessionID = conv.SessionID
+		}
 		// Restore model from conversation record if not already set
 		if restartOpts.Model == "" && conv.Model != "" {
 			restartOpts.Model = conv.Model

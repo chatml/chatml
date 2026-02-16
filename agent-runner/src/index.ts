@@ -76,6 +76,11 @@ const forkSession = hasFlag("--fork");
 // Typically set to the conversation ID so session tracking aligns with our data model.
 const customSessionId = getArg("--session-id");
 
+// Backend IDs for MCP tools — these correspond to the backend's workspace/session IDs
+// (distinct from the SDK's internal session UUID).
+const backendWorkspaceId = getArg("--workspace-id");
+const backendSessionId = getArg("--backend-session-id");
+
 const linearIssue = getArg("--linear-issue");
 const toolPreset = (getArg("--tool-preset") || "full") as "full" | "read-only" | "no-bash" | "safe-edit";
 const enableCheckpointing = hasFlag("--enable-checkpointing");
@@ -1356,11 +1361,13 @@ async function main(): Promise<void> {
   let turnCount = 0;
 
   try {
-    // Create workspace context for MCP tools
+    // Create workspace context for MCP tools.
+    // Use backend IDs (workspace/session) when available so MCP tools hit the correct
+    // backend API endpoints. Fall back to conversationId for backwards compatibility.
     const workspaceContext = new WorkspaceContext({
       cwd,
-      workspaceId: conversationId,
-      sessionId: currentSessionId || "pending",
+      workspaceId: backendWorkspaceId || conversationId,
+      sessionId: backendSessionId || "pending",
       linearIssue,
       targetBranch,
     });
@@ -1498,8 +1505,11 @@ async function main(): Promise<void> {
           blockBuffer = "";
           resetRunStats();
 
-          // Update workspace context with current session ID if it changed
-          if (currentSessionId && workspaceContext.sessionId !== currentSessionId) {
+          // Update workspace context with current session ID if it changed.
+          // When backendSessionId is provided, keep using it — the SDK's internal
+          // session UUID is different from the backend session ID and must not
+          // overwrite it (MCP tools need the backend session ID for API calls).
+          if (!backendSessionId && currentSessionId && workspaceContext.sessionId !== currentSessionId) {
             workspaceContext.updateSessionId(currentSessionId);
           }
 
