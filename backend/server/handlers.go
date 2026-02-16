@@ -2298,6 +2298,10 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	// Combine untracked files first, then tracked changes
 	allChanges := append(untracked, changes...)
 
+	// Filter out files that match .gitignore rules — this handles cases where
+	// build artifacts (e.g. dist/) get committed by agents and show in the diff
+	allChanges = h.repoManager.FilterGitIgnored(ctx, workingPath, allChanges)
+
 	writeJSON(w, allChanges)
 }
 

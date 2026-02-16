@@ -259,6 +259,50 @@ func (rm *RepoManager) GetMergeBase(ctx context.Context, repoPath, ref1, ref2 st
 	return strings.TrimSpace(string(out)), nil
 }
 
+// FilterGitIgnored removes files that match .gitignore rules from the changes list.
+// This handles cases where build artifacts (e.g. dist/) get committed by agents
+// or otherwise appear in the diff despite being gitignored.
+func (rm *RepoManager) FilterGitIgnored(ctx context.Context, repoPath string, changes []FileChange) []FileChange {
+	if len(changes) == 0 {
+		return changes
+	}
+
+	// Collect all paths to check
+	paths := make([]string, len(changes))
+	for i, c := range changes {
+		paths[i] = c.Path
+	}
+
+	// Use git check-ignore --stdin to batch-check all paths in a single call
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "check-ignore", "--stdin")
+	defer cancel()
+	cmd.Stdin = strings.NewReader(strings.Join(paths, "\n"))
+	out, _ := cmd.Output() // exit code 1 means "none ignored", not an error
+
+	// If no files are ignored, return as-is
+	output := strings.TrimSpace(string(out))
+	if output == "" {
+		return changes
+	}
+
+	// Build set of ignored paths
+	ignored := make(map[string]bool)
+	for _, line := range strings.Split(output, "\n") {
+		if line != "" {
+			ignored[line] = true
+		}
+	}
+
+	// Filter out ignored files
+	filtered := make([]FileChange, 0, len(changes))
+	for _, c := range changes {
+		if !ignored[c.Path] {
+			filtered = append(filtered, c)
+		}
+	}
+	return filtered
+}
+
 // GetUntrackedFiles returns files that are not tracked by git
 func (rm *RepoManager) GetUntrackedFiles(ctx context.Context, repoPath string) ([]FileChange, error) {
 	// Use -uall to show individual files inside untracked directories
