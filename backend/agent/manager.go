@@ -1220,9 +1220,13 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	}
 
 	// Send to process with attachments
+	logger.Manager.Infof("Sending message to conv %s (content=%d chars, attachments=%d, processRestarted=%v)",
+		convID, len(message), len(attachments), needsRestart)
 	if err := proc.SendMessageWithAttachments(message, attachments); err != nil {
+		logger.Manager.Errorf("Failed to send message to conv %s: %v (attachments=%d)", convID, err, len(attachments))
 		return err
 	}
+	logger.Manager.Debugf("Message delivered to conv %s successfully", convID)
 
 	// Generate session title if this is the first message on an idle-started session
 	if shouldGenerateTitle {

@@ -3389,8 +3389,8 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if req.Content == "" {
-		writeValidationError(w, "content is required")
+	if req.Content == "" && len(req.Attachments) == 0 {
+		writeValidationError(w, "content or attachments required")
 		return
 	}
 
@@ -3414,6 +3414,7 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	logger.Handlers.Infof("Accepted message for conv %s (content=%d chars, attachments=%d)", convID, len(req.Content), len(req.Attachments))
 	w.WriteHeader(http.StatusAccepted)
 	writeJSON(w, map[string]string{"status": "sent"})
 }
