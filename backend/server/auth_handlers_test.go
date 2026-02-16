@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/chatml/chatml-backend/github"
+	"github.com/chatml/chatml-backend/store"
 )
 
 // setupMockGitHubServer creates a mock GitHub API server for testing
@@ -53,12 +54,23 @@ func newTestGitHubClient(t *testing.T, mockServer *httptest.Server) *github.Clie
 	return client
 }
 
+// newTestStore creates an in-memory SQLite store for testing
+func newTestAuthStore(t *testing.T) *store.SQLiteStore {
+	t.Helper()
+	s, err := store.NewSQLiteStoreInMemory()
+	if err != nil {
+		t.Fatalf("Failed to create test store: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
 func TestAuthHandlers_SetToken(t *testing.T) {
 	mockServer := setupMockGitHubServer(t)
 	defer mockServer.Close()
 
 	ghClient := newTestGitHubClient(t, mockServer)
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{"token":"test_token_123"}`)
 	req := httptest.NewRequest("POST", "/api/auth/token", body)
@@ -88,7 +100,7 @@ func TestAuthHandlers_SetToken_InvalidToken(t *testing.T) {
 	defer mockServer.Close()
 
 	ghClient := newTestGitHubClient(t, mockServer)
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{"token":"invalid_token"}`)
 	req := httptest.NewRequest("POST", "/api/auth/token", body)
@@ -112,7 +124,7 @@ func TestAuthHandlers_SetToken_EmptyToken(t *testing.T) {
 	defer mockServer.Close()
 
 	ghClient := newTestGitHubClient(t, mockServer)
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{"token":""}`)
 	req := httptest.NewRequest("POST", "/api/auth/token", body)
@@ -131,7 +143,7 @@ func TestAuthHandlers_SetToken_InvalidJSON(t *testing.T) {
 	defer mockServer.Close()
 
 	ghClient := newTestGitHubClient(t, mockServer)
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{invalid json}`)
 	req := httptest.NewRequest("POST", "/api/auth/token", body)
@@ -145,9 +157,36 @@ func TestAuthHandlers_SetToken_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestAuthHandlers_SetToken_SkipsWhenAlreadyAuthenticated(t *testing.T) {
+	mockServer := setupMockGitHubServer(t)
+	defer mockServer.Close()
+
+	ghClient := newTestGitHubClient(t, mockServer)
+	// Pre-set tokens (simulating SQLite restore)
+	ghClient.SetTokens(&github.TokenSet{AccessToken: "existing_token"})
+	ghClient.SetUser(&github.User{Login: "existinguser"})
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
+
+	body := bytes.NewBufferString(`{"token":"frontend_token"}`)
+	req := httptest.NewRequest("POST", "/api/auth/token", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.SetToken(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Token should still be the existing one, not the frontend one
+	if ghClient.GetToken() != "existing_token" {
+		t.Errorf("Token should remain existing_token, got %s", ghClient.GetToken())
+	}
+}
+
 func TestAuthHandlers_GetStatus_Unauthenticated(t *testing.T) {
 	ghClient := github.NewClient("", "")
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	req := httptest.NewRequest("GET", "/api/auth/status", nil)
 	w := httptest.NewRecorder()
@@ -175,7 +214,7 @@ func TestAuthHandlers_GetStatus_Authenticated(t *testing.T) {
 	ghClient := github.NewClient("", "")
 	ghClient.SetToken("test_token")
 	ghClient.SetUser(&github.User{Login: "testuser", Name: "Test User"})
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	req := httptest.NewRequest("GET", "/api/auth/status", nil)
 	w := httptest.NewRecorder()
@@ -203,7 +242,7 @@ func TestAuthHandlers_Logout(t *testing.T) {
 	ghClient := github.NewClient("", "")
 	ghClient.SetToken("test_token")
 	ghClient.SetUser(&github.User{Login: "testuser"})
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	req := httptest.NewRequest("POST", "/api/auth/logout", nil)
 	w := httptest.NewRecorder()
@@ -228,7 +267,7 @@ func TestAuthHandlers_GitHubCallback(t *testing.T) {
 	defer mockServer.Close()
 
 	ghClient := newTestGitHubClient(t, mockServer)
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{"code":"test_oauth_code"}`)
 	req := httptest.NewRequest("POST", "/api/auth/github/callback", body)
@@ -264,7 +303,7 @@ func TestAuthHandlers_GitHubCallback(t *testing.T) {
 
 func TestAuthHandlers_GitHubCallback_EmptyCode(t *testing.T) {
 	ghClient := github.NewClient("", "")
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{"code":""}`)
 	req := httptest.NewRequest("POST", "/api/auth/github/callback", body)
@@ -280,7 +319,7 @@ func TestAuthHandlers_GitHubCallback_EmptyCode(t *testing.T) {
 
 func TestAuthHandlers_GitHubCallback_InvalidJSON(t *testing.T) {
 	ghClient := github.NewClient("", "")
-	handlers := NewAuthHandlers(ghClient)
+	handlers := NewAuthHandlers(ghClient, newTestAuthStore(t))
 
 	body := bytes.NewBufferString(`{invalid}`)
 	req := httptest.NewRequest("POST", "/api/auth/github/callback", body)

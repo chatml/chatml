@@ -23,6 +23,15 @@ type User struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
+// TokenSet holds the OAuth token data for GitHub Apps with expiring tokens.
+type TokenSet struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	TokenType    string    `json:"token_type"`
+	Scope        string    `json:"scope"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
 // Client handles GitHub API interactions
 type Client struct {
 	clientID         string
@@ -33,9 +42,11 @@ type Client struct {
 	apiURL           string       // API base URL (api.github.com)
 
 	// In-memory token storage
-	mu    sync.RWMutex
-	token string
-	user  *User
+	mu             sync.RWMutex
+	token          string    // plain token (backward compat for non-expiring tokens)
+	tokens         *TokenSet // token set with refresh support
+	user           *User
+	onTokenRefresh func(*TokenSet) // callback to persist tokens after refresh
 }
 
 // NewClient creates a new GitHub client
@@ -55,9 +66,11 @@ func NewClient(clientID, clientSecret string) *Client {
 	}
 }
 
-// ExchangeCode exchanges an OAuth code for an access token
-// If codeVerifier is provided, it's included for PKCE validation
-func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier string) (string, error) {
+// ExchangeCode exchanges an OAuth code for an access token and optional refresh token.
+// If codeVerifier is provided, it's included for PKCE validation.
+// Returns a TokenSet with refresh token and expiry if the GitHub App has expiring tokens enabled,
+// otherwise returns a TokenSet with only the access token populated (zero ExpiresAt, empty RefreshToken).
+func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier string) (*TokenSet, error) {
 	// Log the exchange attempt (mask sensitive values)
 	hasClientID := c.clientID != ""
 	hasClientSecret := c.clientSecret != ""
@@ -66,10 +79,10 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 		hasClientID, hasClientSecret, hasCodeVerifier, len(code))
 
 	if !hasClientID {
-		return "", fmt.Errorf("GITHUB_CLIENT_ID not configured")
+		return nil, fmt.Errorf("GITHUB_CLIENT_ID not configured")
 	}
 	if !hasClientSecret {
-		return "", fmt.Errorf("GITHUB_CLIENT_SECRET not configured")
+		return nil, fmt.Errorf("GITHUB_CLIENT_SECRET not configured")
 	}
 
 	data := url.Values{}
@@ -84,7 +97,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 		c.baseURL+"/login/oauth/access_token",
 		strings.NewReader(data.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -92,40 +105,56 @@ func (c *Client) ExchangeCode(ctx context.Context, code string, codeVerifier str
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("exchanging code: %w", err)
+		return nil, fmt.Errorf("exchanging code: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Read body for logging (GitHub returns 200 even on errors)
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("reading response: %w", err)
+		return nil, fmt.Errorf("reading response: %w", err)
 	}
 
 	logger.GitHub.Debugf("OAuth response: status=%d, body_length=%d", resp.StatusCode, len(body))
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
 	}
 
 	var result struct {
-		AccessToken string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-		Scope       string `json:"scope"`
-		Error       string `json:"error"`
-		ErrorDesc   string `json:"error_description"`
+		AccessToken           string `json:"access_token"`
+		RefreshToken          string `json:"refresh_token"`
+		TokenType             string `json:"token_type"`
+		Scope                 string `json:"scope"`
+		ExpiresIn             int64  `json:"expires_in"`               // seconds until access token expires
+		RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"` // seconds until refresh token expires
+		Error                 string `json:"error"`
+		ErrorDesc             string `json:"error_description"`
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("decoding response: %w", err)
+		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
 	if result.Error != "" {
-		return "", fmt.Errorf("GitHub error: %s - %s", result.Error, result.ErrorDesc)
+		return nil, fmt.Errorf("GitHub error: %s - %s", result.Error, result.ErrorDesc)
 	}
 
-	logger.GitHub.Debugf("Token exchange successful, scope=%s", result.Scope)
-	return result.AccessToken, nil
+	tokenSet := &TokenSet{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		TokenType:    result.TokenType,
+		Scope:        result.Scope,
+	}
+
+	// If expires_in is present, compute absolute expiration time
+	if result.ExpiresIn > 0 {
+		tokenSet.ExpiresAt = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+	}
+
+	logger.GitHub.Debugf("Token exchange successful, scope=%s, hasRefreshToken=%v, expiresIn=%ds",
+		result.Scope, result.RefreshToken != "", result.ExpiresIn)
+	return tokenSet, nil
 }
 
 // GetUser fetches the authenticated user's profile
@@ -210,6 +239,7 @@ func (c *Client) ClearAuth() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.token = ""
+	c.tokens = nil
 	c.user = nil
 }
 
@@ -217,7 +247,161 @@ func (c *Client) ClearAuth() {
 func (c *Client) IsAuthenticated() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.token != ""
+	return c.token != "" || (c.tokens != nil && c.tokens.AccessToken != "")
+}
+
+// SetOnTokenRefresh sets a callback invoked after a successful token refresh.
+func (c *Client) SetOnTokenRefresh(fn func(*TokenSet)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onTokenRefresh = fn
+}
+
+// SetTokens stores a TokenSet in memory (for expiring tokens with refresh support).
+func (c *Client) SetTokens(tokens *TokenSet) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if tokens == nil {
+		c.tokens = nil
+		c.token = ""
+		return
+	}
+	cp := *tokens
+	c.tokens = &cp
+	c.token = tokens.AccessToken // keep plain token in sync for backward compat
+}
+
+// GetTokens returns a copy of the stored TokenSet.
+func (c *Client) GetTokens() *TokenSet {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.tokens == nil {
+		return nil
+	}
+	cp := *c.tokens
+	return &cp
+}
+
+// RefreshToken refreshes the access token using the refresh token.
+func (c *Client) RefreshToken(ctx context.Context) (*TokenSet, error) {
+	c.mu.RLock()
+	refreshToken := ""
+	if c.tokens != nil {
+		refreshToken = c.tokens.RefreshToken
+	}
+	c.mu.RUnlock()
+
+	if refreshToken == "" {
+		return nil, fmt.Errorf("no refresh token available")
+	}
+
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("client_id", c.clientID)
+	data.Set("client_secret", c.clientSecret)
+	data.Set("refresh_token", refreshToken)
+
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		c.baseURL+"/login/oauth/access_token",
+		strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("refreshing token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		AccessToken           string `json:"access_token"`
+		RefreshToken          string `json:"refresh_token"`
+		TokenType             string `json:"token_type"`
+		Scope                 string `json:"scope"`
+		ExpiresIn             int64  `json:"expires_in"`
+		RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"`
+		Error                 string `json:"error"`
+		ErrorDesc             string `json:"error_description"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	if result.Error != "" {
+		return nil, fmt.Errorf("GitHub refresh error: %s - %s", result.Error, result.ErrorDesc)
+	}
+
+	tokens := &TokenSet{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		TokenType:    result.TokenType,
+		Scope:        result.Scope,
+	}
+	if result.ExpiresIn > 0 {
+		tokens.ExpiresAt = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+	}
+
+	c.mu.Lock()
+	c.tokens = tokens
+	c.token = tokens.AccessToken
+	callback := c.onTokenRefresh
+	c.mu.Unlock()
+
+	// Persist refreshed tokens
+	if callback != nil {
+		callback(tokens)
+	}
+
+	logger.GitHub.Debugf("Token refresh successful, expiresIn=%ds", result.ExpiresIn)
+	return tokens, nil
+}
+
+// getValidToken returns a valid access token, auto-refreshing if within 5 minutes of expiry.
+// Falls back to plain token if no TokenSet is available (backward compat with non-expiring tokens).
+func (c *Client) getValidToken(ctx context.Context) (string, error) {
+	c.mu.RLock()
+	tokens := c.tokens
+	plainToken := c.token
+	c.mu.RUnlock()
+
+	// If we have a TokenSet with refresh support
+	if tokens != nil {
+		// If ExpiresAt is zero, tokens don't expire (non-expiring OAuth app token)
+		if tokens.ExpiresAt.IsZero() {
+			return tokens.AccessToken, nil
+		}
+		// Refresh if within 5 minutes of expiry
+		if time.Until(tokens.ExpiresAt) < 5*time.Minute {
+			logger.GitHub.Debugf("GitHub token expiring soon, refreshing...")
+			refreshed, err := c.RefreshToken(ctx)
+			if err != nil {
+				return "", fmt.Errorf("auto-refresh failed: %w", err)
+			}
+			return refreshed.AccessToken, nil
+		}
+		return tokens.AccessToken, nil
+	}
+
+	// Fall back to plain token (backward compat)
+	if plainToken != "" {
+		return plainToken, nil
+	}
+
+	return "", fmt.Errorf("not authenticated")
 }
 
 // SetBaseURL sets the OAuth base URL (for testing)
@@ -263,7 +447,7 @@ func (c *Client) GetAvatarByEmail(ctx context.Context, email string) (string, er
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
 	// Use token if available for higher rate limits
-	token := c.GetToken()
+	token, _ := c.getValidToken(ctx)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -330,9 +514,9 @@ type CombinedStatus struct {
 
 // CreateCommitStatus posts a status to a commit
 func (c *Client) CreateCommitStatus(ctx context.Context, owner, repo, sha string, status CommitStatus) (*CommitStatusResponse, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	statusURL := fmt.Sprintf("%s/repos/%s/%s/statuses/%s", c.apiURL, owner, repo, sha)
@@ -390,9 +574,9 @@ type CreatePullRequestResponse struct {
 
 // CreatePullRequest creates a new pull request on GitHub
 func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, pr CreatePullRequestRequest) (*CreatePullRequestResponse, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	prURL := fmt.Sprintf("%s/repos/%s/%s/pulls", c.apiURL, owner, repo)
@@ -432,9 +616,9 @@ func (c *Client) CreatePullRequest(ctx context.Context, owner, repo string, pr C
 
 // GetCombinedStatus gets the combined status for a ref (branch, tag, or SHA)
 func (c *Client) GetCombinedStatus(ctx context.Context, owner, repo, ref string) (*CombinedStatus, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	statusURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/status", c.apiURL, owner, repo, ref)
