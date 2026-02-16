@@ -1595,18 +1595,18 @@ function SessionRow({
               <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
             )}
             {/* Git line stats badge and actions container */}
-            <div className="relative shrink-0 flex items-center">
-              {/* Stats - fade out on hover */}
+            <div className="shrink-0 flex items-center">
+              {/* Stats - hidden on hover, replaced by archive action */}
               {hasStats && (
-                <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:opacity-0 transition-opacity whitespace-nowrap">
+                <span className="text-xs px-1 py-px rounded border border-text-success/40 font-mono tabular-nums group-hover:hidden whitespace-nowrap">
                   <span className="text-text-success">+{session.stats!.additions}</span>
                   <span className="text-text-error ml-1">-{session.stats!.deletions}</span>
                 </span>
               )}
-              {/* Actions - positioned absolutely to avoid layout shift */}
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {/* Archive action - visible on hover */}
+              <div className="hidden group-hover:flex items-center gap-1">
                 <button
-                  className="p-0.5 rounded hover:bg-destructive/10 text-destructive/70 hover:text-destructive"
+                  className="p-0.5 rounded hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground"
                   onClick={(e) => {
                     e.stopPropagation();
                     onArchiveSession(session.id);
