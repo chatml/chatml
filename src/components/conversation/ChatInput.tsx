@@ -41,7 +41,7 @@ import type { Attachment, SuggestionPill } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
-import { usePendingUserQuestion } from '@/stores/selectors';
+import { usePendingUserQuestion, useStreamingState } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
@@ -124,7 +124,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     selectedWorkspaceId,
     selectedSessionId,
     conversations,
-    streamingState,
     addMessage,
     addConversation,
     removeConversation,
@@ -142,6 +141,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setDraftInput,
     clearDraftInput,
   } = useAppStore();
+  // Session-scoped streaming state — prevents cross-session plan/state leakage
+  const streaming = useStreamingState(selectedConversationId);
   const hasQueuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
   );
@@ -324,9 +325,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   }, [setInstalledSkills, selectedSessionId]);
 
   // Check if currently streaming
-  const isStreaming = selectedConversationId
-    ? streamingState[selectedConversationId]?.isStreaming
-    : false;
+  const isStreaming = streaming?.isStreaming ?? false;
 
   // Derive compose button mode from streaming + text + queue state
   const hasText = message.trim().length > 0;
@@ -337,9 +336,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   })();
 
   // Check if plan mode is active (agent-driven state from backend events)
-  const planModeActive = selectedConversationId
-    ? streamingState[selectedConversationId]?.planModeActive ?? false
-    : false;
+  const planModeActive = streaming?.planModeActive ?? false;
 
   // Check if conversation has messages (for ghost text vs placeholder)
   const conversationHasMessages = useAppStore(
@@ -361,9 +358,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     && !isSuggestionStale;
 
   // Check if there's a pending plan approval request
-  const pendingPlanApproval = selectedConversationId
-    ? streamingState[selectedConversationId]?.pendingPlanApproval
-    : null;
+  const pendingPlanApproval = streaming?.pendingPlanApproval ?? null;
 
   // Sync toggle ON when agent enters plan mode (e.g. EnterPlanMode tool).
   // Only syncs activation — deactivation is handled by handleApprovePlan.

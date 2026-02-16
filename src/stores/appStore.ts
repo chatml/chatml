@@ -70,6 +70,17 @@ function clearToolTimeoutsForConversation(conversationId: string, tools: { id: s
   }
 }
 
+/** Clear all tool timeouts for conversations matching the given IDs */
+function clearToolTimeoutsForConversations(conversationIds: string[]) {
+  for (const [key, timeout] of toolTimeouts) {
+    const convId = key.split(':')[0];
+    if (conversationIds.includes(convId)) {
+      clearTimeout(timeout);
+      toolTimeouts.delete(key);
+    }
+  }
+}
+
 /** Clear all tool timeouts globally (for HMR, tests, or app teardown) */
 export function clearAllToolTimeouts() {
   for (const timeout of toolTimeouts.values()) {
@@ -637,63 +648,73 @@ export const useAppStore = create<AppState>((set, get) => ({
       s.id === id ? { ...s, ...updates } : s
     ),
   })),
-  removeSession: (id) => set((state) => {
-    // Get all conversation IDs for this session to clean up related state
+  removeSession: (id) => {
+    // Clean up external buffers before updating Zustand state
+    const state = get();
     const sessionConvIds = state.conversations
       .filter((c) => c.sessionId === id)
       .map((c) => c.id);
+    clearScriptOutputBuffers(id);
+    clearToolTimeoutsForConversations(sessionConvIds);
 
-    // Clean up streaming state, active tools, and agent todos for all session conversations
-    const cleanedStreamingState = { ...state.streamingState };
-    const cleanedActiveTools = { ...state.activeTools };
-    const cleanedAgentTodos = { ...state.agentTodos };
-    const cleanedContextUsage = { ...state.contextUsage };
-    const cleanedQueuedMessage = { ...state.queuedMessage };
-    for (const convId of sessionConvIds) {
-      delete cleanedStreamingState[convId];
-      delete cleanedActiveTools[convId];
-      delete cleanedAgentTodos[convId];
-      delete cleanedContextUsage[convId];
-      delete cleanedQueuedMessage[convId];
-    }
+    set((state) => {
+      // Re-derive conv IDs inside set() for consistency with latest state
+      const convIds = state.conversations
+        .filter((c) => c.sessionId === id)
+        .map((c) => c.id);
 
-    // Clean up custom todos, session outputs, review comments, and last active conversation
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _lastActive, ...remainingLastActive } = state.lastActiveConversationPerSession;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _toggleState, ...remainingToggleState } = state.sessionToggleState;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _draft, ...remainingDraftInputs } = state.draftInputs;
+      // Clean up streaming state, active tools, and agent todos for all session conversations
+      const cleanedStreamingState = { ...state.streamingState };
+      const cleanedActiveTools = { ...state.activeTools };
+      const cleanedAgentTodos = { ...state.agentTodos };
+      const cleanedContextUsage = { ...state.contextUsage };
+      const cleanedQueuedMessage = { ...state.queuedMessage };
+      for (const convId of convIds) {
+        delete cleanedStreamingState[convId];
+        delete cleanedActiveTools[convId];
+        delete cleanedAgentTodos[convId];
+        delete cleanedContextUsage[convId];
+        delete cleanedQueuedMessage[convId];
+      }
 
-    return {
-      sessions: state.sessions.filter((s) => s.id !== id),
-      conversations: state.conversations.filter((c) => c.sessionId !== id),
-      messages: state.messages.filter((m) => !sessionConvIds.includes(m.conversationId)),
-      selectedSessionId: state.selectedSessionId === id ? null : state.selectedSessionId,
-      selectedConversationId: sessionConvIds.includes(state.selectedConversationId || '')
-        ? null
-        : state.selectedConversationId,
-      streamingState: cleanedStreamingState,
-      activeTools: cleanedActiveTools,
-      agentTodos: cleanedAgentTodos,
-      contextUsage: cleanedContextUsage,
-      queuedMessage: cleanedQueuedMessage,
-      customTodos: remainingCustomTodos,
-      sessionOutputs: remainingSessionOutputs,
-      reviewComments: remainingReviewComments,
-      lastActiveConversationPerSession: remainingLastActive,
-      sessionToggleState: remainingToggleState,
-      draftInputs: remainingDraftInputs,
-      selectedFileTabId: null,
-      fileTabs: [],
-    };
-  }),
+      // Clean up custom todos, session outputs, review comments, and last active conversation
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _customTodos, ...remainingCustomTodos } = state.customTodos;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _output, ...remainingSessionOutputs } = state.sessionOutputs;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _lastActive, ...remainingLastActive } = state.lastActiveConversationPerSession;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _toggleState, ...remainingToggleState } = state.sessionToggleState;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _draft, ...remainingDraftInputs } = state.draftInputs;
+
+      return {
+        sessions: state.sessions.filter((s) => s.id !== id),
+        conversations: state.conversations.filter((c) => c.sessionId !== id),
+        messages: state.messages.filter((m) => !convIds.includes(m.conversationId)),
+        selectedSessionId: state.selectedSessionId === id ? null : state.selectedSessionId,
+        selectedConversationId: convIds.includes(state.selectedConversationId || '')
+          ? null
+          : state.selectedConversationId,
+        streamingState: cleanedStreamingState,
+        activeTools: cleanedActiveTools,
+        agentTodos: cleanedAgentTodos,
+        contextUsage: cleanedContextUsage,
+        queuedMessage: cleanedQueuedMessage,
+        customTodos: remainingCustomTodos,
+        sessionOutputs: remainingSessionOutputs,
+        reviewComments: remainingReviewComments,
+        lastActiveConversationPerSession: remainingLastActive,
+        sessionToggleState: remainingToggleState,
+        draftInputs: remainingDraftInputs,
+        selectedFileTabId: null,
+        fileTabs: [],
+      };
+    });
+  },
   selectSession: (id) => {
     // NOTE: This intentionally uses get() instead of set((state) => ...) pattern.
     // Using get() ensures we read the latest state, avoiding stale closure issues
@@ -794,7 +815,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       c.id === id ? { ...c, ...updates } : c
     ),
   })),
-  removeConversation: (id) => set((state) => {
+  removeConversation: (id) => {
+    // Clean up external buffers before updating Zustand state
+    clearToolTimeoutsForConversations([id]);
+
+    return set((state) => {
     // Clean up orphaned state for the removed conversation
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _streaming, ...remainingStreamingState } = state.streamingState;
@@ -847,7 +872,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       contextUsage: remainingContextUsage,
       queuedMessage: remainingQueuedMessage,
     };
-  }),
+  });
+  },
   selectConversation: (id) => {
     const state = get();
     const conversation = id ? state.conversations.find(c => c.id === id) : undefined;
