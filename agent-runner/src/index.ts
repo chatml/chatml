@@ -221,6 +221,80 @@ function escapeXmlAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ---------------------------------------------------------------------------
+// Tool metadata extraction — lightweight structured data from tool results
+// ---------------------------------------------------------------------------
+
+/** Extract text content from a tool_result block.content (string or content array). */
+function extractTextFromToolResult(content: unknown): string | undefined {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const textBlock = content.find((c: { type: string }) => c.type === "text");
+    if (textBlock && "text" in textBlock) return (textBlock as { text: string }).text;
+  }
+  return undefined;
+}
+
+/** Extract structured metadata from tool result content based on tool type. */
+function extractToolMetadata(toolName: string, content: unknown, toolInput?: Record<string, unknown>): Record<string, unknown> | undefined {
+  const text = extractTextFromToolResult(content);
+
+  switch (toolName) {
+    case "Read": {
+      if (!text) return undefined;
+      // Result format: "     1→line1\n     2→line2..." — count non-empty lines
+      const lines = text.split("\n").filter(l => l.length > 0).length;
+      return lines > 0 ? { linesRead: lines } : undefined;
+    }
+    case "Write": {
+      if (!text) return undefined;
+      // Result contains byte count info, e.g. "Successfully wrote 1234 bytes to /path"
+      const match = text.match(/(\d+)\s*bytes/i);
+      return match ? { bytesWritten: parseInt(match[1]) } : undefined;
+    }
+    case "Edit": {
+      if (!text) return undefined;
+      // Result mentions replacement count, e.g. "1 replacement made" or "Replaced N occurrences"
+      const match = text.match(/(\d+)\s*replacement/i) || text.match(/replaced\s+(\d+)/i);
+      return match ? { replacements: parseInt(match[1]) } : undefined;
+    }
+    case "Grep": {
+      if (!text) return undefined;
+      // files_with_matches mode: lines are file paths, preceded by a count header
+      const lines = text.split("\n").filter(l => l.length > 0);
+      // Count mode: "N matches in M files" or similar
+      const countMatch = text.match(/(\d+)\s+match/i);
+      // File paths (non-header lines)
+      const fileLines = lines.filter(l => l.startsWith("/") || l.startsWith("./"));
+      if (fileLines.length > 0) {
+        return { matchCount: fileLines.length, fileCount: fileLines.length };
+      }
+      if (countMatch) {
+        return { matchCount: parseInt(countMatch[1]) };
+      }
+      return undefined;
+    }
+    case "Glob": {
+      if (!text) return undefined;
+      // Result is a list of file paths, one per line
+      const files = text.split("\n").filter(l => l.length > 0 && (l.startsWith("/") || l.startsWith("./")));
+      return files.length > 0 ? { matchCount: files.length } : undefined;
+    }
+    case "TodoWrite": {
+      // Extract metadata from tool input params (the todo list itself)
+      const todos = toolInput?.todos as Array<{status?: string}> | undefined;
+      if (!todos || !Array.isArray(todos)) return undefined;
+      return {
+        todosTotal: todos.length,
+        todosCompleted: todos.filter(t => t.status === "completed").length,
+        todosInProgress: todos.filter(t => t.status === "in_progress").length,
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
 // Module-level readline interface for proper cleanup
 let rl: readline.Interface | null = null;
 
@@ -683,7 +757,7 @@ function flushBlockBuffer(): void {
 }
 
 // Track active tool uses
-const activeTools = new Map<string, { tool: string; startTime: number }>();
+const activeTools = new Map<string, { tool: string; startTime: number; input?: Record<string, unknown> }>();
 // Retain tool names after completion so duplicate tool_end events during
 // session replay can still report the correct tool name instead of "Unknown".
 const completedToolNames = new Map<string, string>();
@@ -1605,6 +1679,7 @@ function handleMessage(message: SDKMessage): void {
             activeTools.set(block.id, {
               tool: block.name,
               startTime: Date.now(),
+              input: block.input as Record<string, unknown> | undefined,
             });
             trackToolStart(block.name);
             emit({
@@ -1733,6 +1808,9 @@ function handleMessage(message: SDKMessage): void {
             const SKIP_OUTPUT_TOOLS = new Set(["Read", "Write", "Edit", "Glob", "NotebookEdit"]);
             const shouldIncludeOutput = isError || !SKIP_OUTPUT_TOOLS.has(toolInfo?.tool ?? "");
 
+            // Extract lightweight structured metadata (line counts, match counts, etc.)
+            const metadata = toolInfo ? extractToolMetadata(toolInfo.tool, block.content, toolInfo.input) : undefined;
+
             if (toolInfo) {
               const duration = Date.now() - toolInfo.startTime;
               trackToolEnd(duration);
@@ -1745,6 +1823,7 @@ function handleMessage(message: SDKMessage): void {
                 summary,
                 duration,
                 ...(shouldIncludeOutput && stdout ? { stdout } : {}),
+                ...(metadata ? { metadata } : {}),
               });
               activeTools.delete(block.tool_use_id);
             } else if (completedToolNames.has(block.tool_use_id)) {

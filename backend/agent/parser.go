@@ -141,6 +141,9 @@ type AgentEvent struct {
 	// Input suggestion fields (Haiku-generated prompt suggestions)
 	GhostText string              `json:"ghostText,omitempty"`
 	Pills     []ai.SuggestionPill `json:"pills,omitempty"`
+
+	// Tool metadata (structured data extracted from tool results)
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // McpServerStatus represents MCP server connection status

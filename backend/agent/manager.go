@@ -604,6 +604,7 @@ outer:
 						DurationMs: durationMs,
 						Stdout:     truncateOutput(event.Stdout),
 						Stderr:     truncateOutput(event.Stderr),
+						Metadata:   event.Metadata,
 						StartTime:  toolStart,
 					})
 				}
