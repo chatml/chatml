@@ -8,12 +8,16 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Copy, Check, FileText, ClipboardCheck, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { Copy, Check, FileText, ClipboardCheck, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Message } from '@/lib/types';
+import type { Message, ToolUsage } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
 import { copyToClipboard } from '@/lib/tauri';
-import { ToolUsageHistory } from '@/components/conversation/ToolUsageHistory';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { VerificationBlock } from '@/components/conversation/VerificationBlock';
@@ -26,6 +30,47 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { MentionText } from '@/components/conversation/MentionText';
+
+// Collapsed tool summary with individual ToolUsageBlock instances when expanded
+const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath }: { tools: ToolUsage[]; worktreePath?: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  if (tools.length === 0) return null;
+
+  const successCount = tools.filter(t => t.success !== false).length;
+  const failCount = tools.filter(t => t.success === false).length;
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <Wrench className="w-3 h-3" />
+        <span>{tools.length} tool{tools.length !== 1 ? 's' : ''}</span>
+        {successCount > 0 && <span className="text-text-success">{successCount} passed</span>}
+        {failCount > 0 && <span className="text-destructive">{failCount} failed</span>}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-1 space-y-0.5">
+          {tools.map(tool => (
+            <ToolUsageBlock
+              key={tool.id}
+              id={tool.id}
+              tool={tool.tool}
+              params={tool.params}
+              worktreePath={worktreePath}
+              isActive={false}
+              success={tool.success}
+              summary={tool.summary}
+              duration={tool.durationMs}
+              stdout={tool.stdout}
+              stderr={tool.stderr}
+              metadata={tool.metadata}
+            />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+});
 
 export interface MessageBlockProps {
   message: Message;
@@ -165,6 +210,7 @@ export const MessageBlock = memo(function MessageBlock({
                         stdout={tool.stdout}
                         stderr={tool.stderr}
                         worktreePath={worktreePath}
+                        metadata={tool.metadata}
                       />
                     );
                   }
@@ -202,13 +248,13 @@ export const MessageBlock = memo(function MessageBlock({
               <ThinkingNode content={message.thinkingContent} />
             )}
 
-            {/* Legacy fallback: Tool Usage History (collapsed) + full content */}
+            {/* Legacy fallback: Tool Usage Summary (collapsed) + full content */}
             {message.toolUsage && message.toolUsage.length > 0 && (
               <ErrorBoundary
                 section="ToolUsage"
                 fallback={<InlineErrorFallback message="Unable to display tool usage" />}
               >
-                <ToolUsageHistory tools={message.toolUsage} worktreePath={worktreePath} />
+                <ToolUsageSummary tools={message.toolUsage} worktreePath={worktreePath} />
               </ErrorBoundary>
             )}
 

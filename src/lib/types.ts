@@ -115,6 +115,20 @@ export interface RunSummary {
   modelUsage?: Record<string, ModelUsageInfo>;
 }
 
+// Structured metadata extracted from tool results (tool-specific)
+export interface ToolMetadata {
+  linesRead?: number;        // Read: number of lines returned
+  bytesWritten?: number;     // Write: bytes written
+  replacements?: number;     // Edit: number of replacements made
+  matchCount?: number;       // Grep/Glob: number of matches or files found
+  fileCount?: number;        // Grep: number of files with matches
+  resultCount?: number;      // WebSearch: number of search results
+  sources?: { title: string; url: string }[];  // WebSearch: top result titles/URLs
+  todosTotal?: number;       // TodoWrite: total todos after update
+  todosCompleted?: number;   // TodoWrite: number of completed todos
+  todosInProgress?: number;  // TodoWrite: number of in-progress todos
+}
+
 // Tool usage record for message history
 export interface ToolUsage {
   id: string;
@@ -125,6 +139,7 @@ export interface ToolUsage {
   durationMs?: number;
   stdout?: string;
   stderr?: string;
+  metadata?: ToolMetadata;
 }
 
 // Timeline entry preserving interleaved text/tool ordering in finalized messages
@@ -144,6 +159,7 @@ export interface ActiveTool {
   summary?: string;
   stdout?: string;
   stderr?: string;
+  metadata?: ToolMetadata;
   untracked?: boolean; // Tool result arrived without matching tool_start (race condition recovery)
   elapsedSeconds?: number; // Updated from tool_progress events for long-running tools
   agentId?: string; // Sub-agent that owns this tool (undefined = parent agent)
@@ -331,6 +347,9 @@ export interface AgentEvent {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
+
+  // Tool metadata (structured data from tool results)
+  metadata?: ToolMetadata;
 
   // Tool progress fields
   toolName?: string;

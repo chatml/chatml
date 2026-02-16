@@ -340,11 +340,12 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'tool_end':
         // Complete active tool with success/summary info
-        // For Bash tools, also capture stdout/stderr
+        // For Bash tools, also capture stdout/stderr; for all tools, capture metadata
         if (event?.id) {
           const toolAgentId = event.agentId as string | undefined;
           const stdout = event.stdout as string | undefined;
           const stderr = event.stderr as string | undefined;
+          const metadata = event.metadata;
 
           if (toolAgentId) {
             // Sub-agent tool completion
@@ -355,7 +356,7 @@ export function useWebSocket(enabled: boolean = true) {
 
             if (activeTool) {
               // Normal path: tool exists in state
-              store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+              store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr, metadata);
             } else if (event.tool) {
               // Race condition recovery: tool_end arrived but tool wasn't in state.
               // Create a synthetic completed entry so the timeline shows it as finished.
@@ -366,7 +367,7 @@ export function useWebSocket(enabled: boolean = true) {
                 startTime: Date.now(),
                 untracked: true,
               }, { skipTimeout: true });
-              store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr);
+              store.completeActiveTool(conversationId, event.id, event.success, event.summary, stdout, stderr, metadata);
             }
             // If no tool name and not in state, silently skip - tool was never shown to user
           }

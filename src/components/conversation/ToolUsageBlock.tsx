@@ -15,20 +15,25 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
-  FileEdit,
+  FilePlus2,
+  Pencil,
   Terminal,
-  Search,
+  FileSearch,
+  FolderSearch2,
   Globe,
   FolderOpen,
   ClipboardCheck,
+  ListTodo,
   Circle,
   Plug,
   type LucideIcon,
 } from 'lucide-react';
 import { cn, toRelativePath } from '@/lib/utils';
-import { parseMcpToolName } from '@/lib/format';
+import { parseMcpToolName, formatToolDuration } from '@/lib/format';
+import { TOOL_TARGET_TRUNCATE, TOOL_COMMAND_TRUNCATE } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import type { ToolMetadata } from '@/lib/types';
 
 interface ToolUsageBlockProps {
   id: string;
@@ -45,11 +50,9 @@ interface ToolUsageBlockProps {
   stderr?: string;
   /** Elapsed seconds from tool_progress events (live update for active tools) */
   elapsedSeconds?: number;
+  /** Structured metadata extracted from tool results */
+  metadata?: ToolMetadata;
 }
-
-// Truncation limits
-const TARGET_TRUNCATE_LENGTH = 60;
-const COMMAND_TRUNCATE_LENGTH = 80;
 
 // Helper to calculate line stats for Edit tool
 function calculateEditStats(params?: Record<string, unknown>): { additions: number; deletions: number } | null {
@@ -88,6 +91,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   stdout,
   stderr,
   elapsedSeconds,
+  metadata,
 }: ToolUsageBlockProps) {
   const [isOpen, setIsOpen] = useState(success === false && !isActive);
   const mcpInfo = useMemo(() => parseMcpToolName(tool), [tool]);
@@ -98,24 +102,28 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       case 'read_file':
         return FileText;
       case 'Write':
-      case 'Edit':
       case 'write_file':
+        return FilePlus2;
+      case 'Edit':
       case 'edit_file':
-        return FileEdit;
+        return Pencil;
       case 'Bash':
       case 'bash':
       case 'execute_command':
         return Terminal;
       case 'Grep':
-      case 'Glob':
       case 'search':
-        return Search;
+        return FileSearch;
+      case 'Glob':
+        return FolderSearch2;
       case 'WebFetch':
       case 'WebSearch':
       case 'web':
         return Globe;
       case 'list_dir':
         return FolderOpen;
+      case 'TodoWrite':
+        return ListTodo;
       case 'ExitPlanMode':
         return ClipboardCheck;
       default:
@@ -150,6 +158,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         return 'Search web';
       case 'list_dir':
         return 'List';
+      case 'TodoWrite':
+        return 'Update tasks';
       case 'ExitPlanMode':
         return isActive ? 'Propose Plan' : 'Exiting Plan mode';
       default:
@@ -196,6 +206,15 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       return other;
     }
 
+    // MCP tool fallback: try first short non-empty string parameter value
+    if (tool.startsWith('mcp__')) {
+      for (const value of Object.values(params)) {
+        if (typeof value === 'string' && value.length > 0 && value.length < 200) {
+          return value;
+        }
+      }
+    }
+
     return null;
   };
 
@@ -205,7 +224,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   // Truncate target for display
   const truncatedTarget = useMemo(() => {
     if (!target) return null;
-    const limit = isBashTool ? COMMAND_TRUNCATE_LENGTH : TARGET_TRUNCATE_LENGTH;
+    const limit = isBashTool ? TOOL_COMMAND_TRUNCATE : TOOL_TARGET_TRUNCATE;
     if (target.length > limit) {
       return target.slice(0, limit - 3) + '...';
     }
@@ -213,6 +232,57 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   }, [target, isBashTool]);
 
   const isTargetTruncated = target && truncatedTarget && target !== truncatedTarget;
+
+  // File tools with clickable paths (Read/Write/Edit)
+  const isFileToolClickable = ['Read', 'Write', 'Edit', 'read_file', 'write_file', 'edit_file'].includes(tool);
+  const fullFilePath = useMemo(() => {
+    if (!isFileToolClickable || !params) return null;
+    const filePath = params.file_path || params.path || params.filepath || params.filename || params.file;
+    return typeof filePath === 'string' ? filePath : null;
+  }, [isFileToolClickable, params]);
+
+  const handleFileClick = useMemo(() => {
+    if (!fullFilePath) return undefined;
+    return (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const state = useAppStore.getState();
+      const workspaceId = state.selectedWorkspaceId;
+      const sessionId = state.selectedSessionId;
+      if (!workspaceId || !sessionId) return;
+      const filename = fullFilePath.split('/').pop() || fullFilePath;
+      const tabId = `${workspaceId}-${sessionId}-${fullFilePath}`;
+      state.openFileTab({
+        id: tabId,
+        workspaceId,
+        sessionId,
+        path: fullFilePath,
+        name: filename,
+        isLoading: true,
+      });
+    };
+  }, [fullFilePath]);
+
+  // Metadata summary text (inline after target)
+  const metadataSummary = useMemo(() => {
+    if (!metadata) return null;
+    if (metadata.linesRead) return `${metadata.linesRead} lines`;
+    if (metadata.bytesWritten) {
+      const kb = metadata.bytesWritten / 1024;
+      return kb >= 1 ? `${kb.toFixed(1)} KB` : `${metadata.bytesWritten} B`;
+    }
+    if (metadata.replacements) return `${metadata.replacements} replacement${metadata.replacements !== 1 ? 's' : ''}`;
+    if (metadata.matchCount !== undefined && metadata.fileCount !== undefined) return `${metadata.matchCount} file${metadata.matchCount !== 1 ? 's' : ''} matched`;
+    if (metadata.matchCount !== undefined) return `${metadata.matchCount} match${metadata.matchCount !== 1 ? 'es' : ''}`;
+    if (metadata.resultCount) return `${metadata.resultCount} result${metadata.resultCount !== 1 ? 's' : ''}`;
+    if (metadata.todosTotal !== undefined) {
+      const parts: string[] = [];
+      if (metadata.todosCompleted) parts.push(`${metadata.todosCompleted} done`);
+      if (metadata.todosInProgress) parts.push(`${metadata.todosInProgress} active`);
+      if (parts.length === 0) parts.push(`${metadata.todosTotal} total`);
+      return parts.join(', ');
+    }
+    return null;
+  }, [metadata]);
 
   const hasDetails = params && Object.keys(params).length > 0;
   const hasOutput = stdout || stderr;
@@ -290,7 +360,13 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <code className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px] cursor-help">
+                <code
+                  className={cn(
+                    'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]',
+                    handleFileClick ? 'cursor-pointer hover:underline hover:text-foreground' : 'cursor-help'
+                  )}
+                  onClick={handleFileClick}
+                >
                   {truncatedTarget}
                 </code>
               </TooltipTrigger>
@@ -302,7 +378,13 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               </TooltipContent>
             </Tooltip>
           ) : (
-            <code className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]">
+            <code
+              className={cn(
+                'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate max-w-[300px]',
+                handleFileClick && 'cursor-pointer hover:underline hover:text-foreground'
+              )}
+              onClick={handleFileClick}
+            >
               {truncatedTarget}
             </code>
           )
@@ -313,7 +395,13 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           isTargetTruncated ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <code className="text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px] cursor-help">
+                <code
+                  className={cn(
+                    'text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]',
+                    handleFileClick ? 'cursor-pointer hover:underline hover:text-foreground' : 'cursor-help'
+                  )}
+                  onClick={handleFileClick}
+                >
                   {truncatedTarget}
                 </code>
               </TooltipTrigger>
@@ -325,7 +413,13 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               </TooltipContent>
             </Tooltip>
           ) : (
-            <code className="text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]">
+            <code
+              className={cn(
+                'text-2xs px-1 py-0.5 rounded bg-muted/50 text-muted-foreground/70 font-mono truncate max-w-[200px]',
+                handleFileClick && 'cursor-pointer hover:underline hover:text-foreground'
+              )}
+              onClick={handleFileClick}
+            >
               {truncatedTarget}
             </code>
           )
@@ -339,6 +433,13 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           </span>
         )}
 
+        {/* Metadata summary (line counts, match counts, etc.) */}
+        {metadataSummary && !isActive && (
+          <span className="text-2xs text-muted-foreground/70 shrink-0">
+            {metadataSummary}
+          </span>
+        )}
+
         {/* Spacer */}
         <span className="flex-1" />
 
@@ -349,7 +450,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           </span>
         ) : duration && !isActive ? (
           <span className="text-2xs text-muted-foreground/70 shrink-0">
-            {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
+            {formatToolDuration(duration)}
           </span>
         ) : null}
 
@@ -400,7 +501,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               {stdout && (
                 <div className="rounded border bg-muted p-2">
                   <div className="text-2xs text-muted-foreground/60 mb-1">Output</div>
-                  <pre className="font-mono text-2xs text-foreground/80 whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                  <pre className="font-mono text-2xs text-foreground/80 whitespace-pre-wrap break-all max-h-[500px] overflow-y-auto">
                     {stdout}
                   </pre>
                 </div>
@@ -410,7 +511,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               {stderr && (
                 <div className="rounded border border-text-error/30 bg-text-error/10 p-2">
                   <div className="text-2xs text-text-error/60 mb-1">Error Output</div>
-                  <pre className="font-mono text-2xs text-text-error whitespace-pre-wrap break-all max-h-[150px] overflow-y-auto">
+                  <pre className="font-mono text-2xs text-text-error whitespace-pre-wrap break-all max-h-[500px] overflow-y-auto">
                     {stderr}
                   </pre>
                 </div>

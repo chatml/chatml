@@ -197,6 +197,7 @@ type ToolUsageRecord struct {
 	DurationMs int                    `json:"durationMs,omitempty"`
 	Stdout     string                 `json:"stdout,omitempty"`
 	Stderr     string                 `json:"stderr,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 	StartTime  time.Time              `json:"-"` // Not persisted; used for timeline ordering
 }
 

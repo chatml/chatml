@@ -15,7 +15,7 @@ import { PROSE_CLASSES } from '@/lib/constants';
 // Timeline item types for interleaved display
 type TimelineItem =
   | { type: 'text'; id: string; text: string; timestamp: number }
-  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number }
+  | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number; metadata?: import('@/lib/types').ToolMetadata }
   | { type: 'thinking'; id: string; text: string; isActive: boolean; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
@@ -216,6 +216,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
         stdout: tool.stdout,
         stderr: tool.stderr,
         elapsedSeconds: tool.elapsedSeconds,
+        metadata: tool.metadata,
       });
     }
 
@@ -343,6 +344,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   stdout={item.stdout}
                   stderr={item.stderr}
                   elapsedSeconds={item.elapsedSeconds}
+                  metadata={item.metadata}
                 />
               );
             }

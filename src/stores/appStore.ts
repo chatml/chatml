@@ -329,7 +329,7 @@ interface AppState {
   clearPendingPlanApproval: (conversationId: string) => void;
   setApprovedPlanContent: (conversationId: string, content: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
-  completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
+  completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string, metadata?: import('@/lib/types').ToolMetadata) => void;
   updateToolProgress: (conversationId: string, toolId: string, progress: { elapsedTimeSeconds?: number; toolName?: string }) => void;
   clearActiveTools: (conversationId: string) => void;
 
@@ -1298,7 +1298,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       }),
     }));
   },
-  completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr) => {
+  completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr, metadata) => {
     // Clear the timeout for this tool
     const timeoutKey = `${conversationId}:${toolId}`;
     const timeout = toolTimeouts.get(timeoutKey);
@@ -1317,7 +1317,7 @@ updateFileTabContent: (id, content) => set((state) => ({
           ...state.activeTools,
           [conversationId]: tools.map((t) =>
             t.id === toolId
-              ? { ...t, endTime: Date.now(), success, summary, stdout, stderr }
+              ? { ...t, endTime: Date.now(), success, summary, stdout, stderr, metadata }
               : t
           ),
         },
