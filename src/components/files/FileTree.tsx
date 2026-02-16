@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
@@ -31,11 +31,56 @@ interface FileTreeProps {
   workspaceName?: string;
 }
 
-export function FileTree({ files, onFileSelect }: FileTreeProps) {
+export interface FileTreeHandle {
+  collapseAll: () => void;
+  expandAll: () => void;
+}
+
+function collectAllDirPaths(nodes: FileNode[]): string[] {
+  const paths: string[] = [];
+  function walk(list: FileNode[]) {
+    for (const node of list) {
+      if (node.isDir) {
+        paths.push(node.path);
+        if (node.children) walk(node.children);
+      }
+    }
+  }
+  walk(nodes);
+  return paths;
+}
+
+export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({ files, onFileSelect }, ref) {
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [prevFiles, setPrevFiles] = useState(files);
+
   // Preload folder icons on first render
   useEffect(() => {
     ensureIconsPreloaded();
   }, []);
+
+  // Reset expanded state when files change (e.g., switching sessions)
+  if (prevFiles !== files) {
+    setPrevFiles(files);
+    setExpandedPaths(new Set());
+  }
+
+  const togglePath = useCallback((path: string) => {
+    setExpandedPaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    collapseAll: () => setExpandedPaths(new Set()),
+    expandAll: () => setExpandedPaths(new Set(collectAllDirPaths(files))),
+  }), [files]);
 
   return (
     <ScrollArea className="h-full w-full">
@@ -46,25 +91,29 @@ export function FileTree({ files, onFileSelect }: FileTreeProps) {
             node={node}
             depth={0}
             onFileSelect={onFileSelect}
+            expandedPaths={expandedPaths}
+            onToggle={togglePath}
           />
         ))}
       </div>
     </ScrollArea>
   );
-}
+});
 
 interface FileTreeNodeProps {
   node: FileNode;
   depth: number;
   onFileSelect?: (path: string) => void;
+  expandedPaths: Set<string>;
+  onToggle: (path: string) => void;
 }
 
-function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+function FileTreeNode({ node, depth, onFileSelect, expandedPaths, onToggle }: FileTreeNodeProps) {
+  const isExpanded = node.isDir && expandedPaths.has(node.path);
 
   const handleClick = () => {
     if (node.isDir) {
-      setIsExpanded(!isExpanded);
+      onToggle(node.path);
     } else {
       onFileSelect?.(node.path);
     }
@@ -122,6 +171,8 @@ function FileTreeNode({ node, depth, onFileSelect }: FileTreeNodeProps) {
                 node={child}
                 depth={depth + 1}
                 onFileSelect={onFileSelect}
+                expandedPaths={expandedPaths}
+                onToggle={onToggle}
               />
             </ErrorBoundary>
           ))}
