@@ -203,6 +203,17 @@ func createTestConversation(t *testing.T, s *store.SQLiteStore, id, sessionID st
 	return conv
 }
 
+// addTestMessage adds a message to a conversation so the session is not considered blank.
+func addTestMessage(t *testing.T, s *store.SQLiteStore, convID string) {
+	t.Helper()
+	require.NoError(t, s.AddMessageToConversation(context.Background(), convID, models.Message{
+		ID:        "msg-" + convID,
+		Role:      "user",
+		Content:   "test message",
+		Timestamp: time.Now(),
+	}))
+}
+
 // setupTestHandlersWithAIClient creates handlers with a mock AI client for testing
 // The aiServer URL is used as the Anthropic API endpoint.
 func setupTestHandlersWithAIClient(t *testing.T, aiServerURL string) (*Handlers, *store.SQLiteStore) {

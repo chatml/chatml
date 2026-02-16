@@ -1194,8 +1194,13 @@ export function useWebSocket(enabled: boolean = true) {
                   updateSessionApi(session.workspaceId, sid, {
                     archived: true,
                     ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
-                  }).then(() => {
-                    getStore().archiveSession(sid);
+                  }).then((result) => {
+                    if (result === null) {
+                      // Blank session was deleted by backend
+                      getStore().removeSession(sid);
+                    } else {
+                      getStore().archiveSession(sid);
+                    }
                   }).catch((err: unknown) => {
                     console.error('Failed to auto-archive on merge:', err);
                   });

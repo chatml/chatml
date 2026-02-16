@@ -277,6 +277,8 @@ func TestUpdateSession_Archive(t *testing.T) {
 
 	createTestRepo(t, s, "ws-1", "/path/to/repo")
 	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	addTestMessage(t, s, "conv-1")
 
 	// Archive the session
 	archived := true
@@ -362,6 +364,8 @@ func TestUpdateSession_ArchiveAndPin(t *testing.T) {
 
 	createTestRepo(t, s, "ws-1", "/path/to/repo")
 	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	addTestMessage(t, s, "conv-1")
 
 	// Set both archived and pinned in one request
 	archived := true
@@ -456,6 +460,8 @@ func TestUpdateSession_Archive_SetsSummaryGenerating(t *testing.T) {
 
 	createTestRepo(t, s, "ws-1", "/path/to/repo")
 	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	addTestMessage(t, s, "conv-1")
 
 	// Archive the session
 	archived := true
@@ -476,11 +482,39 @@ func TestUpdateSession_Archive_SetsSummaryGenerating(t *testing.T) {
 	assert.Equal(t, models.SummaryStatusGenerating, sess.ArchiveSummaryStatus)
 }
 
+func TestUpdateSession_Archive_BlankSession_Deletes(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+	createTestSession(t, s, "sess-1", "ws-1")
+	// No conversation or messages — blank session
+
+	// Archive the blank session
+	archived := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	// Blank session should be deleted, not archived
+	assert.Equal(t, http.StatusNoContent, w.Code)
+
+	// Verify session is deleted from DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Nil(t, sess)
+}
+
 func TestUpdateSession_Archive_NoAIClient_SkipsSummary(t *testing.T) {
 	h, s := setupTestHandlers(t) // No AI client
 
 	createTestRepo(t, s, "ws-1", "/path/to/repo")
 	createTestSession(t, s, "sess-1", "ws-1")
+	createTestConversation(t, s, "conv-1", "sess-1")
+	addTestMessage(t, s, "conv-1")
 
 	// Archive the session
 	archived := true

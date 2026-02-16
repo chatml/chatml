@@ -340,13 +340,22 @@ export async function updateSession(
   workspaceId: string,
   sessionId: string,
   updates: Partial<Omit<SessionDTO, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt'>> & { deleteBranch?: boolean }
-): Promise<SessionDTO> {
+): Promise<SessionDTO | null> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
+  // 204 No Content means the session was deleted (blank session archived)
+  if (res.status === 204) return null;
   return handleResponse<SessionDTO>(res);
+}
+
+export async function deleteSession(workspaceId: string, sessionId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+  await handleVoidResponse(res, 'Failed to delete session');
 }
 
 // Branch types

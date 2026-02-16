@@ -16,6 +16,7 @@ export function useArchiveSession(options?: {
   onError?: (error: unknown) => void;
 }) {
   const archiveSession = useAppStore((s) => s.archiveSession);
+  const removeSession = useAppStore((s) => s.removeSession);
   const confirmArchiveDirtySession = useSettingsStore(
     (s) => s.confirmArchiveDirtySession
   );
@@ -44,18 +45,25 @@ export function useArchiveSession(options?: {
 
       const { deleteBranchOnArchive } = useSettingsStore.getState();
       try {
-        await updateSessionApi(session.workspaceId, sessionId, {
+        const result = await updateSessionApi(session.workspaceId, sessionId, {
           archived: true,
           ...(deleteBranchOnArchive ? { deleteBranch: true } : {}),
         });
-        archiveSession(sessionId);
+
+        if (result === null) {
+          // Blank session was deleted by backend (no messages)
+          removeSession(sessionId);
+        } else {
+          // Session was archived normally
+          archiveSession(sessionId);
+        }
         onSuccessRef.current?.();
       } catch (error) {
         console.error('Failed to archive session:', error);
         onErrorRef.current?.(error);
       }
     },
-    [findSession, archiveSession]
+    [findSession, archiveSession, removeSession]
   );
 
   const requestArchive = useCallback(

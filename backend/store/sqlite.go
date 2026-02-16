@@ -1895,6 +1895,19 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 	}, nil
 }
 
+// SessionHasMessages returns true if any conversation in the session has at least one message.
+func (s *SQLiteStore) SessionHasMessages(ctx context.Context, sessionID string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM messages m
+		JOIN conversations c ON m.conversation_id = c.id
+		WHERE c.session_id = ?`, sessionID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("SessionHasMessages: %w", err)
+	}
+	return count > 0, nil
+}
+
 // GetConversationMessageCount returns the number of messages in a conversation.
 func (s *SQLiteStore) GetConversationMessageCount(ctx context.Context, convID string) (int, error) {
 	var count int
