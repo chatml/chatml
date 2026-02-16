@@ -177,7 +177,7 @@ export function TargetBranchSelector({
         const updated = await apiUpdateSession(workspaceId, sessionId, {
           targetBranch: newTarget,
         });
-        updateSession(sessionId, mapSessionDTO(updated));
+        if (updated) updateSession(sessionId, mapSessionDTO(updated));
       } catch {
         showError('Failed to update target branch');
       }

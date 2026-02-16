@@ -860,8 +860,8 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch all sessions across all workspaces in a single query
-	// Pass false to exclude archived sessions from dashboard data
-	allSessions, err := h.store.ListAllSessions(ctx, false)
+	// Include archived sessions so the Session Manager can display them
+	allSessions, err := h.store.ListAllSessions(ctx, true)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -891,6 +891,10 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 		var mu sync.Mutex
 
 		for _, session := range allSessions {
+			// Skip stats for archived sessions (no need to compute git diffs)
+			if session.Archived {
+				continue
+			}
 			// Check cache first
 			if cached, ok := h.statsCache.Get(session.ID); ok {
 				session.Stats = cached
@@ -1959,6 +1963,28 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	if req.TargetBranch != nil && *req.TargetBranch != "" {
 		if !strings.HasPrefix(*req.TargetBranch, "origin/") || strings.TrimPrefix(*req.TargetBranch, "origin/") == "" {
 			writeValidationError(w, "targetBranch must start with 'origin/' followed by a branch name (e.g. 'origin/develop')")
+			return
+		}
+	}
+
+	// If archiving, check if session has any messages. Delete blank sessions instead.
+	if req.Archived != nil && *req.Archived {
+		hasMessages, msgErr := h.store.SessionHasMessages(ctx, id)
+		if msgErr == nil && !hasMessages {
+			// Blank session — delete instead of archiving
+			if req.DeleteBranch != nil && *req.DeleteBranch && session.Branch != "" {
+				repo, repoErr := h.store.GetRepo(ctx, session.WorkspaceID)
+				if repoErr == nil && repo != nil {
+					if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
+						logger.Error.Errorf("Failed to delete branch %q for blank session: %v", session.Branch, delErr)
+					}
+				}
+			}
+			if delErr := h.store.DeleteSession(ctx, id); delErr != nil {
+				writeDBError(w, delErr)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 	}

@@ -542,6 +542,7 @@ export default function Home() {
     // Reset 'active' status to 'idle' on load - no agent is running when app starts
     status: conv.status === 'active' ? 'idle' : conv.status,
     messages: conv.messages.map(m => messageToMessage(m, conv.id)),
+    messageCount: conv.messageCount,
     toolSummary: conv.toolSummary.map(t => ({
       id: t.id,
       tool: t.tool,
