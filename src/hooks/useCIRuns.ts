@@ -7,12 +7,14 @@ import {
   getCIJobLogs,
   rerunCI,
   analyzeCIFailure,
+  ApiError,
   type WorkflowRunDTO,
   type WorkflowJobDTO,
   type CIAnalysisResult,
 } from '@/lib/api';
 
 const CI_POLL_INTERVAL_MS = 30000; // 30 seconds
+const AUTH_RETRY_DELAY_MS = 3000; // Retry delay when GitHub auth is pending
 
 interface UseCIRunsResult {
   runs: WorkflowRunDTO[];
@@ -73,10 +75,18 @@ export function useCIRuns(
         setError(null);
       }
     } catch (err) {
-      if (!signal?.aborted) {
-        console.error('Failed to fetch CI runs:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch CI runs');
+      if (signal?.aborted) return;
+
+      // GitHub auth not ready yet (startup race) — silently retry after a delay
+      if (err instanceof ApiError && err.status === 401) {
+        setTimeout(() => {
+          if (!signal?.aborted) fetchRuns(signal);
+        }, AUTH_RETRY_DELAY_MS);
+        return;
       }
+
+      console.error('Failed to fetch CI runs:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch CI runs');
     } finally {
       if (!signal?.aborted) {
         setLoading(false);
