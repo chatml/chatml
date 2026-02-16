@@ -352,6 +352,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	pendingSubAgentTools := make(map[string][]ActiveToolEntry)
 	var currentThinking string // Accumulated thinking for snapshot/backwards compat
 	var pendingPlanContent string
+	var pendingPlanTimestamp time.Time
 	var isThinking bool
 	var snapshotDirty bool
 
@@ -693,6 +694,7 @@ outer:
 
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
+				pendingPlanTimestamp = time.Now()
 
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
@@ -760,6 +762,23 @@ outer:
 							entry:     models.TimelineEntry{Type: "tool", ToolID: tool.ID},
 						})
 					}
+					// Only persist plan content if ExitPlanMode succeeded this turn
+					var planContent string
+					if pendingPlanContent != "" {
+						for _, tool := range completedTools {
+							if tool.Tool == "ExitPlanMode" && tool.Success != nil && *tool.Success {
+								planContent = pendingPlanContent
+								break
+							}
+						}
+					}
+					// Add approved plan content to timeline at its chronological position
+					if planContent != "" && !pendingPlanTimestamp.IsZero() {
+						items = append(items, timelineItem{
+							timestamp: pendingPlanTimestamp,
+							entry:     models.TimelineEntry{Type: "plan", Content: planContent},
+						})
+					}
 					sort.Slice(items, func(i, j int) bool {
 						return items[i].timestamp.Before(items[j].timestamp)
 					})
@@ -772,17 +791,6 @@ outer:
 					}
 
 					durationMs := int(time.Since(turnStartTime).Milliseconds())
-
-					// Only persist plan content if ExitPlanMode succeeded this turn
-					var planContent string
-					if pendingPlanContent != "" {
-						for _, tool := range completedTools {
-							if tool.Tool == "ExitPlanMode" && tool.Success != nil && *tool.Success {
-								planContent = pendingPlanContent
-								break
-							}
-						}
-					}
 
 					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 						ID:              uuid.New().String()[:8],
@@ -802,6 +810,7 @@ outer:
 				// Reset per-turn accumulation state
 				currentThinking = ""
 				pendingPlanContent = ""
+				pendingPlanTimestamp = time.Time{}
 				isThinking = false
 				thinkingBlocks = nil
 				currentThinkingText = ""
@@ -881,7 +890,18 @@ outer:
 
 		// Build timeline from text segments, thinking blocks, and completed tools
 		var timeline []models.TimelineEntry
-		if len(textSegments) > 0 || len(completedTools) > 0 || len(thinkingBlocks) > 0 {
+		// Only persist plan content if ExitPlanMode succeeded this turn
+		var finalPlanContent string
+		if pendingPlanContent != "" {
+			for _, tool := range completedTools {
+				if tool.Tool == "ExitPlanMode" && tool.Success != nil && *tool.Success {
+					finalPlanContent = pendingPlanContent
+					break
+				}
+			}
+		}
+
+		if len(textSegments) > 0 || len(completedTools) > 0 || len(thinkingBlocks) > 0 || finalPlanContent != "" {
 			type timelineItem struct {
 				timestamp time.Time
 				entry     models.TimelineEntry
@@ -900,6 +920,10 @@ outer:
 				}
 				items = append(items, timelineItem{timestamp: ts, entry: models.TimelineEntry{Type: "tool", ToolID: tool.ID}})
 			}
+			// Add approved plan content to timeline at its chronological position
+			if finalPlanContent != "" && !pendingPlanTimestamp.IsZero() {
+				items = append(items, timelineItem{timestamp: pendingPlanTimestamp, entry: models.TimelineEntry{Type: "plan", Content: finalPlanContent}})
+			}
 			sort.Slice(items, func(i, j int) bool { return items[i].timestamp.Before(items[j].timestamp) })
 			timeline = make([]models.TimelineEntry, len(items))
 			for i, item := range items {
@@ -908,17 +932,6 @@ outer:
 		}
 
 		durationMs := int(time.Since(turnStartTime).Milliseconds())
-
-		// Only persist plan content if ExitPlanMode succeeded this turn
-		var finalPlanContent string
-		if pendingPlanContent != "" {
-			for _, tool := range completedTools {
-				if tool.Tool == "ExitPlanMode" && tool.Success != nil && *tool.Success {
-					finalPlanContent = pendingPlanContent
-					break
-				}
-			}
-		}
 
 		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 			ID:              uuid.New().String()[:8],

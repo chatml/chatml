@@ -146,8 +146,8 @@ export const MessageBlock = memo(function MessageBlock({
   return (
     <div className="py-2">
       <div className="space-y-1.5">
-        {/* Approved Plan Content */}
-        {message.planContent && (
+        {/* Backward compat: show planContent at top for old messages without plan timeline entry */}
+        {message.planContent && !(message.timeline?.some(e => e.type === 'plan')) && (
           <div className="flex flex-col gap-1">
             <button
               onClick={() => setIsPlanExpanded(!isPlanExpanded)}
@@ -212,6 +212,28 @@ export const MessageBlock = memo(function MessageBlock({
                         worktreePath={worktreePath}
                         metadata={tool.metadata}
                       />
+                    );
+                  } else if (entry.type === 'plan') {
+                    return (
+                      <div key={`tl-plan-${idx}`} className="flex flex-col gap-1">
+                        <button
+                          onClick={() => setIsPlanExpanded(!isPlanExpanded)}
+                          className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                        >
+                          <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                          <span className="font-medium">Approved Plan</span>
+                          {isPlanExpanded ? (
+                            <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3" />
+                          )}
+                        </button>
+                        {isPlanExpanded && (
+                          <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
+                            <CachedMarkdown cacheKey={`plan:${message.id}:tl:${idx}`} content={entry.content} />
+                          </div>
+                        )}
+                      </div>
                     );
                   }
                   return null;

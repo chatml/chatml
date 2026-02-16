@@ -145,6 +145,7 @@ interface StreamingState {
   planModeActive: boolean; // Whether plan mode is active for this conversation
   pendingPlanApproval: { requestId: string; planContent?: string } | null; // Pending ExitPlanMode approval request
   approvedPlanContent?: string; // Plan content to persist after approval
+  approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
 }
 
 // ActiveTool is imported from @/lib/types
@@ -1299,6 +1300,7 @@ updateFileTabContent: (id, content) => set((state) => ({
   setApprovedPlanContent: (conversationId, content) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       approvedPlanContent: content,
+      approvedPlanTimestamp: Date.now(),
     }),
   })),
   addActiveTool: (conversationId, tool, opts) => {
@@ -1536,6 +1538,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         planModeActive: streaming?.planModeActive || false,
         pendingPlanApproval: null,
         approvedPlanContent: undefined,
+        approvedPlanTimestamp: undefined,
       };
 
       // If no streaming text, just clear the state
@@ -1570,6 +1573,10 @@ updateFileTabContent: (id, content) => set((state) => ({
           timelineItems.push({ timestamp: tool.startTime, entry: { type: 'tool', toolId: tool.id } });
         }
       }
+      // Add approved plan content at its chronological position
+      if (streaming.approvedPlanContent && streaming.approvedPlanTimestamp) {
+        timelineItems.push({ timestamp: streaming.approvedPlanTimestamp, entry: { type: 'plan', content: streaming.approvedPlanContent } });
+      }
       timelineItems.sort((a, b) => a.timestamp - b.timestamp);
       const timeline: TimelineEntry[] | undefined =
         timelineItems.length > 0 ? timelineItems.map(item => item.entry) : undefined;
@@ -1586,7 +1593,6 @@ updateFileTabContent: (id, content) => set((state) => ({
         runSummary: metadata.runSummary,
         ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
         ...(timeline ? { timeline } : {}),
-        ...(streaming.approvedPlanContent ? { planContent: streaming.approvedPlanContent } : {}),
       };
 
       // Atomically: add message AND clear streaming state
