@@ -231,11 +231,18 @@ interface AppState {
   // Session-scoped ChatInput toggle states (keyed by sessionId)
   sessionToggleState: Record<string, SessionToggleState>;
 
+  // Draft compose input per session (keyed by sessionId)
+  draftInputs: Record<string, { text: string; attachments: Attachment[] }>;
+
   // Script runs state (keyed by sessionId)
   scriptRuns: Record<string, ScriptRun[]>;
   setupProgress: Record<string, SetupProgress>;
   // Monotonic counter bumped on each output line to trigger re-renders
   scriptOutputVersion: number;
+
+  // Draft input actions
+  setDraftInput: (sessionId: string, draft: { text: string; attachments: Attachment[] }) => void;
+  clearDraftInput: (sessionId: string) => void;
 
   // Script actions
   addScriptRun: (sessionId: string, run: ScriptRun) => void;
@@ -480,10 +487,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   sessionToggleState: {},
 
+  // Draft input state
+  draftInputs: {},
+
   // Script state
   scriptRuns: {},
   setupProgress: {},
   scriptOutputVersion: 0,
+
+  // Draft input actions
+  setDraftInput: (sessionId, draft) => set((state) => ({
+    draftInputs: { ...state.draftInputs, [sessionId]: draft },
+  })),
+  clearDraftInput: (sessionId) => set((state) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [sessionId]: _, ...rest } = state.draftInputs;
+    return { draftInputs: rest };
+  }),
 
   // Script actions
   addScriptRun: (sessionId, run) => {
@@ -652,6 +672,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _lastActive, ...remainingLastActive } = state.lastActiveConversationPerSession;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _toggleState, ...remainingToggleState } = state.sessionToggleState;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _draft, ...remainingDraftInputs } = state.draftInputs;
 
     return {
       sessions: state.sessions.filter((s) => s.id !== id),
@@ -671,6 +693,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       reviewComments: remainingReviewComments,
       lastActiveConversationPerSession: remainingLastActive,
       sessionToggleState: remainingToggleState,
+      draftInputs: remainingDraftInputs,
       selectedFileTabId: null,
       fileTabs: [],
     };
