@@ -34,12 +34,12 @@ func TestExchangeCode(t *testing.T) {
 	client := NewClient("test_client_id", "test_client_secret")
 	client.baseURL = server.URL // Override for testing
 
-	token, err := client.ExchangeCode(context.Background(), "test_code", "")
+	tokenSet, err := client.ExchangeCode(context.Background(), "test_code", "")
 	if err != nil {
 		t.Fatalf("ExchangeCode failed: %v", err)
 	}
-	if token != "gho_test_token_123" {
-		t.Errorf("Expected token gho_test_token_123, got %s", token)
+	if tokenSet.AccessToken != "gho_test_token_123" {
+		t.Errorf("Expected token gho_test_token_123, got %s", tokenSet.AccessToken)
 	}
 }
 
@@ -648,6 +648,261 @@ func TestClient_CreatePullRequest_NonDraft(t *testing.T) {
 
 	require.NoError(t, err)
 	require.False(t, receivedDraft)
+}
+
+// ============================================================================
+// TokenSet Tests
+// ============================================================================
+
+func TestExchangeCode_WithRefreshToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"access_token":             "gho_access_token",
+				"refresh_token":            "ghr_refresh_token",
+				"token_type":               "bearer",
+				"scope":                    "repo,read:user",
+				"expires_in":               28800,
+				"refresh_token_expires_in": 15811200,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+
+	tokenSet, err := client.ExchangeCode(context.Background(), "test_code", "")
+	require.NoError(t, err)
+	require.NotNil(t, tokenSet)
+	require.Equal(t, "gho_access_token", tokenSet.AccessToken)
+	require.Equal(t, "ghr_refresh_token", tokenSet.RefreshToken)
+	require.Equal(t, "bearer", tokenSet.TokenType)
+	require.Equal(t, "repo,read:user", tokenSet.Scope)
+	require.False(t, tokenSet.ExpiresAt.IsZero())
+	// ExpiresAt should be roughly 8 hours from now
+	require.WithinDuration(t, time.Now().Add(28800*time.Second), tokenSet.ExpiresAt, 5*time.Second)
+}
+
+func TestExchangeCode_NoRefreshToken(t *testing.T) {
+	// Non-expiring OAuth App tokens don't include refresh_token or expires_in
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"access_token": "gho_plain_token",
+				"token_type":   "bearer",
+				"scope":        "repo",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+
+	tokenSet, err := client.ExchangeCode(context.Background(), "test_code", "")
+	require.NoError(t, err)
+	require.Equal(t, "gho_plain_token", tokenSet.AccessToken)
+	require.Empty(t, tokenSet.RefreshToken)
+	require.True(t, tokenSet.ExpiresAt.IsZero())
+}
+
+func TestClient_SetTokens_GetTokens(t *testing.T) {
+	client := NewClient("", "")
+
+	require.Nil(t, client.GetTokens())
+
+	tokens := &TokenSet{
+		AccessToken:  "access",
+		RefreshToken: "refresh",
+		TokenType:    "bearer",
+		ExpiresAt:    time.Now().Add(8 * time.Hour),
+	}
+	client.SetTokens(tokens)
+
+	got := client.GetTokens()
+	require.NotNil(t, got)
+	require.Equal(t, "access", got.AccessToken)
+	require.Equal(t, "refresh", got.RefreshToken)
+
+	// Verify it's a copy
+	tokens.AccessToken = "modified"
+	got2 := client.GetTokens()
+	require.Equal(t, "access", got2.AccessToken)
+
+	// SetTokens keeps plain token in sync
+	require.Equal(t, "access", client.GetToken())
+}
+
+func TestClient_SetTokens_Nil(t *testing.T) {
+	client := NewClient("", "")
+
+	client.SetTokens(&TokenSet{AccessToken: "test"})
+	require.NotNil(t, client.GetTokens())
+
+	client.SetTokens(nil)
+	require.Nil(t, client.GetTokens())
+	require.Empty(t, client.GetToken())
+}
+
+func TestClient_IsAuthenticated_WithTokenSet(t *testing.T) {
+	client := NewClient("", "")
+
+	require.False(t, client.IsAuthenticated())
+
+	client.SetTokens(&TokenSet{AccessToken: "test-access"})
+	require.True(t, client.IsAuthenticated())
+}
+
+func TestClient_ClearAuth_WithTokenSet(t *testing.T) {
+	client := NewClient("", "")
+
+	client.SetTokens(&TokenSet{AccessToken: "test", RefreshToken: "refresh"})
+	client.SetUser(&User{Login: "testuser"})
+
+	require.True(t, client.IsAuthenticated())
+	require.NotNil(t, client.GetTokens())
+
+	client.ClearAuth()
+
+	require.False(t, client.IsAuthenticated())
+	require.Nil(t, client.GetTokens())
+	require.Nil(t, client.GetStoredUser())
+}
+
+func TestClient_RefreshToken_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			body, _ := io.ReadAll(r.Body)
+			bodyStr := string(body)
+
+			require.Contains(t, bodyStr, "grant_type=refresh_token")
+			require.Contains(t, bodyStr, "refresh_token=old_refresh")
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"access_token":  "new_access",
+				"refresh_token": "new_refresh",
+				"token_type":    "bearer",
+				"scope":         "repo",
+				"expires_in":    28800,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+	client.SetTokens(&TokenSet{
+		AccessToken:  "old_access",
+		RefreshToken: "old_refresh",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour), // expired
+	})
+
+	var callbackCalled bool
+	client.SetOnTokenRefresh(func(ts *TokenSet) {
+		callbackCalled = true
+		require.Equal(t, "new_access", ts.AccessToken)
+		require.Equal(t, "new_refresh", ts.RefreshToken)
+	})
+
+	refreshed, err := client.RefreshToken(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "new_access", refreshed.AccessToken)
+	require.Equal(t, "new_refresh", refreshed.RefreshToken)
+	require.True(t, callbackCalled)
+
+	// Verify in-memory state was updated
+	require.Equal(t, "new_access", client.GetToken())
+	got := client.GetTokens()
+	require.Equal(t, "new_access", got.AccessToken)
+}
+
+func TestClient_RefreshToken_NoRefreshToken(t *testing.T) {
+	client := NewClient("test_client_id", "test_client_secret")
+	client.SetTokens(&TokenSet{AccessToken: "access"}) // no refresh token
+
+	_, err := client.RefreshToken(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no refresh token available")
+}
+
+func TestClient_getValidToken_PlainToken(t *testing.T) {
+	client := NewClient("", "")
+	client.SetToken("plain-token")
+
+	token, err := client.getValidToken(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "plain-token", token)
+}
+
+func TestClient_getValidToken_NonExpiringTokenSet(t *testing.T) {
+	client := NewClient("", "")
+	client.SetTokens(&TokenSet{
+		AccessToken: "non-expiring",
+		// ExpiresAt is zero — non-expiring
+	})
+
+	token, err := client.getValidToken(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "non-expiring", token)
+}
+
+func TestClient_getValidToken_ValidTokenSet(t *testing.T) {
+	client := NewClient("", "")
+	client.SetTokens(&TokenSet{
+		AccessToken: "still-valid",
+		ExpiresAt:   time.Now().Add(1 * time.Hour), // plenty of time
+	})
+
+	token, err := client.getValidToken(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "still-valid", token)
+}
+
+func TestClient_getValidToken_NotAuthenticated(t *testing.T) {
+	client := NewClient("", "")
+
+	_, err := client.getValidToken(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not authenticated")
+}
+
+func TestClient_getValidToken_AutoRefresh(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"access_token":  "refreshed_token",
+				"refresh_token": "new_refresh",
+				"token_type":    "bearer",
+				"expires_in":    28800,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := NewClient("test_client_id", "test_client_secret")
+	client.baseURL = server.URL
+	client.SetTokens(&TokenSet{
+		AccessToken:  "expiring_soon",
+		RefreshToken: "old_refresh",
+		ExpiresAt:    time.Now().Add(2 * time.Minute), // within 5 minute threshold
+	})
+
+	token, err := client.getValidToken(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "refreshed_token", token)
 }
 
 func TestClient_GetUser_Success_FullFields(t *testing.T) {

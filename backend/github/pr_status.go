@@ -73,9 +73,9 @@ type githubCheckRuns struct {
 
 // GetPRDetails fetches detailed information about a pull request including CI status
 func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, prNumber int) (*PRDetails, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// Fetch PR details
@@ -242,9 +242,9 @@ type githubPRFull struct {
 // GetPRFullDetails fetches extended pull request information including body, branch refs,
 // labels, reviewers, and diff stats. Used for the "create session from PR" flow.
 func (c *Client) GetPRFullDetails(ctx context.Context, owner, repo string, prNumber int) (*PRFullDetails, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	prURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", c.apiURL, owner, repo, prNumber)
@@ -404,9 +404,9 @@ func (c *Client) ListOpenPRs(ctx context.Context, owner, repo string) ([]PRListI
 // ListOpenPRsWithETag lists open PRs with ETag support for conditional requests.
 // If etag is non-empty, sends If-None-Match header. Returns ErrNotModified on 304.
 func (c *Client) ListOpenPRsWithETag(ctx context.Context, owner, repo, etag string) (*ListOpenPRsResult, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// Fetch open PRs (includes drafts)
@@ -482,9 +482,9 @@ type githubSearchResult struct {
 
 // FindPRForBranch finds an open PR for a given branch
 func (c *Client) FindPRForBranch(ctx context.Context, owner, repo, branch string) (int, error) {
-	token := c.GetToken()
-	if token == "" {
-		return 0, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return 0, err
 	}
 
 	// Search for PRs with the given head branch
@@ -528,9 +528,9 @@ func (c *Client) FindPRForBranch(ctx context.Context, owner, repo, branch string
 // IsPRMerged checks if a PR was merged using the dedicated GitHub merge endpoint.
 // Returns true if the PR has been merged (HTTP 204), false otherwise (HTTP 404).
 func (c *Client) IsPRMerged(ctx context.Context, owner, repo string, prNumber int) (bool, error) {
-	token := c.GetToken()
-	if token == "" {
-		return false, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return false, err
 	}
 
 	mergeURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/merge", c.apiURL, owner, repo, prNumber)

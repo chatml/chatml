@@ -22,7 +22,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient, scriptRunner)
-	auth := NewAuthHandlers(ghClient)
+	auth := NewAuthHandlers(ghClient, s)
 	linearAuth := NewLinearAuthHandlers(linearClient, s)
 
 	r.Use(middleware.Logger)

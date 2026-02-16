@@ -99,9 +99,9 @@ type githubStep struct {
 
 // ListWorkflowRuns lists workflow runs for a repository, optionally filtered by branch
 func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo, branch string) ([]WorkflowRun, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	reqURL := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=20", c.apiURL, owner, repo)
@@ -159,9 +159,9 @@ func (c *Client) ListWorkflowRuns(ctx context.Context, owner, repo, branch strin
 
 // GetWorkflowRun fetches a specific workflow run by ID
 func (c *Client) GetWorkflowRun(ctx context.Context, owner, repo string, runID int64) (*WorkflowRun, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d", c.apiURL, owner, repo, runID)
@@ -216,9 +216,9 @@ func (c *Client) GetWorkflowRun(ctx context.Context, owner, repo string, runID i
 
 // ListWorkflowJobs lists jobs for a workflow run
 func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]WorkflowJob, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/jobs?per_page=100", c.apiURL, owner, repo, runID)
@@ -302,9 +302,9 @@ func (c *Client) ListWorkflowJobs(ctx context.Context, owner, repo string, runID
 // GetJobLogs fetches logs for a specific job
 // The GitHub API returns a 302 redirect to a temporary URL containing the logs
 func (c *Client) GetJobLogs(ctx context.Context, owner, repo string, jobID int64) (string, error) {
-	token := c.GetToken()
-	if token == "" {
-		return "", fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return "", err
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/jobs/%d/logs", c.apiURL, owner, repo, jobID)
@@ -366,9 +366,9 @@ func (c *Client) GetJobLogs(ctx context.Context, owner, repo string, jobID int64
 
 // RerunWorkflow triggers a re-run of an entire workflow
 func (c *Client) RerunWorkflow(ctx context.Context, owner, repo string, runID int64) error {
-	token := c.GetToken()
-	if token == "" {
-		return fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return err
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/rerun", c.apiURL, owner, repo, runID)
@@ -398,9 +398,9 @@ func (c *Client) RerunWorkflow(ctx context.Context, owner, repo string, runID in
 
 // RerunFailedJobs re-runs only the failed jobs in a workflow
 func (c *Client) RerunFailedJobs(ctx context.Context, owner, repo string, runID int64) error {
-	token := c.GetToken()
-	if token == "" {
-		return fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return err
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/rerun-failed-jobs", c.apiURL, owner, repo, runID)

@@ -414,10 +414,27 @@ export async function initAuth(): Promise<AuthStatus> {
 
 /**
  * Validate stored token with backend after connection is established
- * Call this after backend is confirmed to be running
+ * Call this after backend is confirmed to be running.
+ *
+ * First checks if backend already has valid tokens (restored from SQLite on startup).
+ * If so, skips Stronghold access entirely. Otherwise falls back to sending the
+ * Stronghold token to backend for validation (migration path).
+ *
  * @returns User info if valid, null if invalid (will clear stored token)
  */
 export async function validateStoredToken(): Promise<GitHubUser | null> {
+  // Check if backend already has valid auth (restored from SQLite)
+  try {
+    const status = await getAuthStatus();
+    if (status.authenticated && status.user) {
+      console.log('[Auth] Backend already authenticated (restored from SQLite), skipping Stronghold');
+      return status.user;
+    }
+  } catch {
+    // Backend not reachable yet, fall through to Stronghold path
+  }
+
+  // Fallback: send Stronghold token to backend
   const token = await loadToken();
 
   if (!token) {

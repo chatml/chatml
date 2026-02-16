@@ -125,6 +125,16 @@ func main() {
 	ghConfig := server.LoadGitHubConfig()
 	ghClient := github.NewClient(ghConfig.ClientID, ghConfig.ClientSecret)
 
+	// Set up GitHub token refresh persistence callback
+	ghClient.SetOnTokenRefresh(func(tokens *github.TokenSet) {
+		if err := server.PersistGitHubTokens(ctx, s, tokens); err != nil {
+			logger.GitHub.Errorf("Failed to persist refreshed GitHub tokens: %v", err)
+		}
+	})
+
+	// Restore GitHub auth from persisted settings (uses a temporary AuthHandlers for RestoreFromStore)
+	server.NewAuthHandlers(ghClient, s).RestoreFromStore(ctx)
+
 	// Linear OAuth client
 	linearConfig := server.LoadLinearConfig()
 	linearClient := linear.NewClient(linearConfig.ClientID)

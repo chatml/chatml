@@ -131,9 +131,9 @@ func convertToIssueListItem(gh githubIssueListItem) IssueListItem {
 // If etag is non-empty, sends If-None-Match header. Returns ErrNotModified on 304.
 // Filters out pull requests (GitHub's issues endpoint returns both).
 func (c *Client) ListIssuesWithETag(ctx context.Context, owner, repo, state, labels, etag string) (*ListIssuesResult, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	if state == "" {
@@ -202,9 +202,9 @@ func (c *Client) ListIssuesWithETag(ctx context.Context, owner, repo, state, lab
 // SearchIssues searches for issues in a repository using the GitHub search API.
 // The query is appended to the repo scope: repo:{owner}/{repo} is:issue {query}
 func (c *Client) SearchIssues(ctx context.Context, owner, repo, query string) (*SearchIssuesResult, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// Build search query: repo:owner/repo is:issue <user query>
@@ -260,9 +260,9 @@ func (c *Client) SearchIssues(ctx context.Context, owner, repo, query string) (*
 // GetIssue fetches detailed information about a single issue.
 // Returns nil, nil if the issue is not found (404).
 func (c *Client) GetIssue(ctx context.Context, owner, repo string, number int) (*IssueDetails, error) {
-	token := c.GetToken()
-	if token == "" {
-		return nil, fmt.Errorf("not authenticated")
+	token, err := c.getValidToken(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	issueURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d", c.apiURL, owner, repo, number)
