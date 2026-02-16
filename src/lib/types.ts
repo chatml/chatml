@@ -718,3 +718,9 @@ export interface SetupProgress {
   total: number;
   status: 'running' | 'completed' | 'failed';
 }
+
+// Per-session toggle state for ChatInput (thinking level & plan mode)
+export interface SessionToggleState {
+  thinkingLevel: import('@/lib/thinkingLevels').ThinkingLevel;
+  planModeEnabled: boolean;
+}
