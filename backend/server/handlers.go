@@ -3367,6 +3367,7 @@ type SendConversationMessageRequest struct {
 	Content     string              `json:"content"`
 	Attachments []models.Attachment `json:"attachments"` // File attachments (optional)
 	Model       string              `json:"model"`       // Model override for this message (optional)
+	PlanMode    *bool               `json:"planMode"`    // Plan mode override for restart (optional)
 }
 
 func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Request) {
@@ -3408,7 +3409,7 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if err := h.agentManager.SendConversationMessage(ctx, convID, req.Content, req.Attachments); err != nil {
+	if err := h.agentManager.SendConversationMessage(ctx, convID, req.Content, req.Attachments, req.PlanMode); err != nil {
 		writeInternalError(w, "failed to send message", err)
 		return
 	}

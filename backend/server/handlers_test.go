@@ -741,7 +741,7 @@ func TestSetConversationPlanMode_ProcessNotRunning(t *testing.T) {
 	createTestSession(t, s, "sess-1", "ws-1")
 	createTestConversation(t, s, "conv-1", "sess-1")
 
-	// Conversation exists but no process is running
+	// Conversation exists but no process is running — should succeed gracefully
 	body := strings.NewReader(`{"enabled": true}`)
 	req := httptest.NewRequest("POST", "/api/conversations/conv-1/plan-mode", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -750,14 +750,13 @@ func TestSetConversationPlanMode_ProcessNotRunning(t *testing.T) {
 
 	h.SetConversationPlanMode(w, req)
 
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 
-	// Verify JSON error format
-	var apiErr APIError
-	err := json.Unmarshal(w.Body.Bytes(), &apiErr)
+	// Verify success response
+	var resp map[string]bool
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Equal(t, ErrCodeInternal, apiErr.Code)
-	assert.Equal(t, "failed to set plan mode", apiErr.Error)
+	assert.True(t, resp["enabled"])
 }
 
 // ============================================================================

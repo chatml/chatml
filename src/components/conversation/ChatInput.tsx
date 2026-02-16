@@ -895,7 +895,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           trimmedContent,
           loadedAttachments.length > 0 ? loadedAttachments : undefined,
           modelChanged ? selectedModel.id : undefined,
-          mentionedFiles.length > 0 ? mentionedFiles : undefined
+          mentionedFiles.length > 0 ? mentionedFiles : undefined,
+          planModeEnabled
         );
       }
 
