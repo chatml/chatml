@@ -392,6 +392,20 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setSessionToggleState(selectedSessionId, { thinkingLevel, planModeEnabled });
   }, [selectedSessionId, thinkingLevel, planModeEnabled, setSessionToggleState]);
 
+  // Keep streaming state planModeActive in sync with the local toggle.
+  // This ensures the ConversationArea banner is visible immediately when:
+  // - A new session starts with defaultPlanMode = true
+  // - Switching to a session that had planModeEnabled = true
+  // - A new conversation is created in a session with plan mode on
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    const current = useAppStore.getState().streamingState[selectedConversationId];
+    if (current?.isStreaming) return; // Don't fight with WebSocket handler
+    if ((current?.planModeActive ?? false) !== planModeEnabled) {
+      setPlanModeActive(selectedConversationId, planModeEnabled);
+    }
+  }, [selectedConversationId, planModeEnabled, setPlanModeActive]);
+
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
 
