@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getPRStatus, refreshPRStatus, type PRDetails } from '@/lib/api';
+import { getPRStatus, refreshPRStatus, ApiError, type PRDetails } from '@/lib/api';
 
 const PR_STATUS_FALLBACK_POLL_MS = 300000; // 5 minutes (fallback, WebSocket is primary)
 
@@ -49,7 +49,11 @@ export function usePRStatus(
       }
     } catch (err) {
       if (isMountedRef.current) {
-        console.error('Failed to fetch PR status:', err);
+        // Only log as error for unexpected failures, not transient network issues
+        const isTransientNetwork = err instanceof ApiError && err.status === 0;
+        if (!isTransientNetwork) {
+          console.error('Failed to fetch PR status:', err);
+        }
         setError(err instanceof Error ? err.message : 'Failed to fetch PR status');
       }
     } finally {
