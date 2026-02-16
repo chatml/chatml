@@ -309,10 +309,11 @@ type StreamingSnapshot struct {
 
 // ActiveToolEntry represents a tool currently in-flight during streaming.
 type ActiveToolEntry struct {
-	ID        string `json:"id"`
-	Tool      string `json:"tool"`
-	StartTime int64  `json:"startTime"`
-	AgentId   string `json:"agentId,omitempty"`
+	ID        string                 `json:"id"`
+	Tool      string                 `json:"tool"`
+	Params    map[string]interface{} `json:"params,omitempty"`
+	StartTime int64                  `json:"startTime"`
+	AgentId   string                 `json:"agentId,omitempty"`
 }
 
 // SubAgentEntry represents a sub-agent spawned during streaming.
