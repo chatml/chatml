@@ -210,12 +210,13 @@ export function navigate(params: NavigateParams): void {
     navStore.pushEntry(currentEntry, params.tabId);
   }
 
-  // Auto-clear unread when navigating into a workspace
+  // Auto-clear unread when navigating into a workspace or session
   if (params.sessionId) {
     const session = useAppStore.getState().sessions.find(s => s.id === params.sessionId);
     if (session) {
       useSettingsStore.getState().markWorkspaceRead(session.workspaceId);
     }
+    useSettingsStore.getState().markSessionRead(params.sessionId);
   } else if (params.workspaceId) {
     useSettingsStore.getState().markWorkspaceRead(params.workspaceId);
   }

@@ -97,6 +97,7 @@ interface SettingsState {
   // UI state
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   unreadWorkspaces: string[]; // Workspace IDs marked as unread
+  unreadSessions: string[]; // Session IDs with unread agent completions
   showBottomTerminal: boolean;
   zenMode: boolean; // Distraction-free mode that hides sidebars
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
@@ -170,6 +171,8 @@ interface SettingsState {
   expandWorkspace: (workspaceId: string) => void;
   markWorkspaceUnread: (workspaceId: string) => void;
   markWorkspaceRead: (workspaceId: string) => void;
+  markSessionUnread: (sessionId: string) => void;
+  markSessionRead: (sessionId: string) => void;
   toggleBottomTab: (tab: BottomPanelTab) => void;
   setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
   toggleTopTab: (tab: TopPanelTab) => void;
@@ -228,6 +231,7 @@ export const useSettingsStore = create<SettingsState>()(
       strictPrivacy: false,
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       unreadWorkspaces: [], // Workspace IDs marked as unread
+      unreadSessions: [], // Session IDs with unread agent completions
       showBottomTerminal: false,
       zenMode: false,
       hiddenBottomTabs: [], // All tabs visible by default
@@ -308,6 +312,16 @@ export const useSettingsStore = create<SettingsState>()(
       markWorkspaceRead: (workspaceId) =>
         set((state) => ({
           unreadWorkspaces: state.unreadWorkspaces.filter((id) => id !== workspaceId),
+        })),
+      markSessionUnread: (sessionId) =>
+        set((state) => ({
+          unreadSessions: state.unreadSessions.includes(sessionId)
+            ? state.unreadSessions
+            : [...state.unreadSessions, sessionId],
+        })),
+      markSessionRead: (sessionId) =>
+        set((state) => ({
+          unreadSessions: state.unreadSessions.filter((id) => id !== sessionId),
         })),
       toggleBottomTab: (tab) =>
         set((state) => ({

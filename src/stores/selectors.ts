@@ -15,12 +15,13 @@
  * if referential stability is needed for downstream dependencies.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
+import { useSettingsStore } from './settingsStore';
 import { useNavigationStore } from './navigationStore';
 import { useTabStore } from './tabStore';
-import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool, SubAgent, CheckpointInfo } from '@/lib/types';
+import type { Message, Conversation, AgentTodoItem, CustomTodoItem, TerminalInstance, ReviewComment, ActiveTool, SubAgent, CheckpointInfo, SessionActivityState } from '@/lib/types';
 
 // Stable empty arrays to avoid creating new references
 // Using readonly to prevent accidental mutations
@@ -130,6 +131,40 @@ export const useSessionConversations = (sessionId: string | null) =>
         : EMPTY_CONVERSATIONS
     )
   );
+
+/**
+ * Derive the activity state for a session's active conversation.
+ * Priority: awaiting_input > awaiting_approval > working > idle.
+ *
+ * Replaces the binary `isAgentActive` check in the sidebar.
+ * Returns a string primitive — Zustand's default `===` comparison
+ * prevents re-renders when the computed state hasn't changed.
+ * Use in: WorkspaceSidebar SessionRow
+ */
+export const useSessionActivityState = (sessionId: string): SessionActivityState =>
+  useAppStore(
+    useCallback(
+      (state) => {
+        const activeConv = state.conversations.find(
+          (c) => c.sessionId === sessionId && c.status === 'active'
+        );
+        if (!activeConv) return 'idle';
+        const convId = activeConv.id;
+        if (state.pendingUserQuestion[convId]) return 'awaiting_input';
+        if (state.streamingState[convId]?.pendingPlanApproval) return 'awaiting_approval';
+        if (state.streamingState[convId]?.isStreaming) return 'working';
+        return 'idle';
+      },
+      [sessionId]
+    )
+  );
+
+/**
+ * Whether a session has unread agent completions.
+ * Use in: WorkspaceSidebar SessionRow
+ */
+export const useIsSessionUnread = (sessionId: string): boolean =>
+  useSettingsStore((s) => s.unreadSessions.includes(sessionId));
 
 // ============================================================================
 // Streaming State

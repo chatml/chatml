@@ -29,6 +29,7 @@ import type {
   TimelineEntry,
   InputSuggestion,
 } from '@/lib/types';
+import { useSettingsStore } from './settingsStore';
 
 // Maximum number of file tabs before LRU eviction kicks in
 const MAX_FILE_TABS = 10;
@@ -679,6 +680,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newSelectedTabId = currentTabVisible
       ? state.selectedFileTabId
       : visibleTabs[0]?.id || null;
+
+    // Clear unread marker when navigating to a session
+    if (id) {
+      useSettingsStore.getState().markSessionRead(id);
+    }
 
     set({
       selectedSessionId: id,
