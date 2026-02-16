@@ -137,7 +137,7 @@ export function ChangesPanel() {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
 
-      // Update session stats in the store
+      // Update session stats in the store (only when changed to avoid re-render loop)
       if (data && data.length > 0) {
         const stats = data.reduce(
           (acc, change) => ({
@@ -146,10 +146,16 @@ export function ChangesPanel() {
           }),
           { additions: 0, deletions: 0 }
         );
-        updateSession(selectedSessionId, { stats });
+        const currentStats = useAppStore.getState().sessions.find(s => s.id === selectedSessionId)?.stats;
+        if (!currentStats || currentStats.additions !== stats.additions || currentStats.deletions !== stats.deletions) {
+          updateSession(selectedSessionId, { stats });
+        }
       } else {
-        // Clear stats if no changes
-        updateSession(selectedSessionId, { stats: undefined });
+        // Clear stats if no changes (only if currently set)
+        const currentStats = useAppStore.getState().sessions.find(s => s.id === selectedSessionId)?.stats;
+        if (currentStats !== undefined) {
+          updateSession(selectedSessionId, { stats: undefined });
+        }
       }
     } catch (error) {
       console.error('Failed to fetch changes:', error);
@@ -488,14 +494,19 @@ export function ChangesPanel() {
     debouncedFetchChanges();
   }, [sessionStats, selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
 
-  // Polling fallback — catch changes that event-driven paths might miss
+  // Polling fallback — catch changes that event-driven paths might miss (active sessions only)
+  const selectedSessionStatus = useAppStore((s) => {
+    if (!selectedSessionId) return undefined;
+    return s.sessions.find((sess) => sess.id === selectedSessionId)?.status;
+  });
   useEffect(() => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
+    if (selectedSessionStatus !== 'active') return;
     const interval = setInterval(() => {
       fetchChanges();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [selectedWorkspaceId, selectedSessionId, fetchChanges]);
+  }, [selectedWorkspaceId, selectedSessionId, selectedSessionStatus, fetchChanges]);
 
   const unresolvedCount = useMemo(
     () => reviewComments.filter((c) => !c.resolved).length,
