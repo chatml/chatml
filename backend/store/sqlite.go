@@ -98,6 +98,9 @@ func (s *SQLiteStore) initSchema() error {
 		name TEXT NOT NULL,
 		path TEXT NOT NULL UNIQUE,
 		branch TEXT NOT NULL DEFAULT '',
+		remote TEXT NOT NULL DEFAULT '',
+		branch_prefix TEXT NOT NULL DEFAULT '',
+		custom_prefix TEXT NOT NULL DEFAULT '',
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_repos_path ON repos(path);
@@ -109,6 +112,8 @@ func (s *SQLiteStore) initSchema() error {
 		name TEXT NOT NULL,
 		branch TEXT NOT NULL DEFAULT '',
 		worktree_path TEXT NOT NULL DEFAULT '',
+		base_commit_sha TEXT NOT NULL DEFAULT '',
+		target_branch TEXT DEFAULT NULL,
 		task TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'idle',
 		agent_id TEXT DEFAULT NULL,
@@ -119,13 +124,22 @@ func (s *SQLiteStore) initSchema() error {
 		has_check_failures INTEGER NOT NULL DEFAULT 0,
 		stats_additions INTEGER NOT NULL DEFAULT 0,
 		stats_deletions INTEGER NOT NULL DEFAULT 0,
+		pinned INTEGER NOT NULL DEFAULT 0,
+		archived INTEGER NOT NULL DEFAULT 0,
+		priority INTEGER NOT NULL DEFAULT 0,
+		task_status TEXT NOT NULL DEFAULT 'backlog',
+		archive_summary TEXT NOT NULL DEFAULT '',
+		archive_summary_status TEXT NOT NULL DEFAULT '',
+		auto_named INTEGER NOT NULL DEFAULT 0,
+		check_status TEXT NOT NULL DEFAULT 'none',
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (workspace_id) REFERENCES repos(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_sessions_workspace_id ON sessions(workspace_id);
+	CREATE INDEX IF NOT EXISTS idx_sessions_workspace_name ON sessions(workspace_id, name);
 
-	-- Agents (legacy)
+	-- Agents (legacy, still actively used by agent/manager.go)
 	CREATE TABLE IF NOT EXISTS agents (
 		id TEXT PRIMARY KEY,
 		repo_id TEXT NOT NULL,
@@ -145,19 +159,28 @@ func (s *SQLiteStore) initSchema() error {
 		type TEXT NOT NULL DEFAULT 'task',
 		name TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'active',
+		model TEXT NOT NULL DEFAULT '',
+		streaming_snapshot TEXT NOT NULL DEFAULT '',
+		agent_session_id TEXT NOT NULL DEFAULT '',
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id);
 
-	-- Messages (normalized from Conversation.Messages)
+	-- Messages
 	CREATE TABLE IF NOT EXISTS messages (
 		id TEXT PRIMARY KEY,
 		conversation_id TEXT NOT NULL,
 		role TEXT NOT NULL,
 		content TEXT NOT NULL,
 		setup_info TEXT DEFAULT NULL,
+		run_summary TEXT DEFAULT NULL,
+		tool_usage TEXT DEFAULT NULL,
+		thinking_content TEXT DEFAULT NULL,
+		duration_ms INTEGER DEFAULT NULL,
+		timeline TEXT DEFAULT NULL,
+		plan_content TEXT DEFAULT NULL,
 		timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		position INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -165,7 +188,7 @@ func (s *SQLiteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_position ON messages(conversation_id, position);
 
-	-- Tool Actions (normalized from Conversation.ToolSummary)
+	-- Tool Actions
 	CREATE TABLE IF NOT EXISTS tool_actions (
 		id TEXT PRIMARY KEY,
 		conversation_id TEXT NOT NULL,
@@ -178,12 +201,105 @@ func (s *SQLiteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_tool_actions_conversation_id ON tool_actions(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_tool_actions_conversation_position ON tool_actions(conversation_id, position);
 
-	-- Schema versioning
-	CREATE TABLE IF NOT EXISTS schema_version (
-		version INTEGER PRIMARY KEY,
-		applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	-- File Tabs
+	CREATE TABLE IF NOT EXISTS file_tabs (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		session_id TEXT,
+		path TEXT NOT NULL,
+		view_mode TEXT NOT NULL DEFAULT 'file',
+		is_pinned INTEGER NOT NULL DEFAULT 0,
+		position INTEGER NOT NULL DEFAULT 0,
+		opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		last_accessed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (workspace_id) REFERENCES repos(id) ON DELETE CASCADE,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 	);
-	INSERT OR IGNORE INTO schema_version (version) VALUES (1);
+	CREATE INDEX IF NOT EXISTS idx_file_tabs_workspace ON file_tabs(workspace_id);
+
+	-- Review Comments
+	CREATE TABLE IF NOT EXISTS review_comments (
+		id TEXT PRIMARY KEY,
+		session_id TEXT NOT NULL,
+		file_path TEXT NOT NULL,
+		line_number INTEGER NOT NULL,
+		title TEXT,
+		content TEXT NOT NULL,
+		source TEXT NOT NULL,
+		author TEXT NOT NULL,
+		severity TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		resolved INTEGER NOT NULL DEFAULT 0,
+		resolved_at DATETIME,
+		resolved_by TEXT,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_review_comments_session ON review_comments(session_id);
+	CREATE INDEX IF NOT EXISTS idx_review_comments_file ON review_comments(session_id, file_path);
+
+	-- Attachments
+	CREATE TABLE IF NOT EXISTS attachments (
+		id TEXT PRIMARY KEY,
+		message_id TEXT NOT NULL,
+		type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		path TEXT,
+		mime_type TEXT NOT NULL,
+		size INTEGER NOT NULL,
+		line_count INTEGER,
+		width INTEGER,
+		height INTEGER,
+		base64_data TEXT,
+		preview TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
+
+	-- Summaries
+	CREATE TABLE IF NOT EXISTS summaries (
+		id TEXT PRIMARY KEY,
+		conversation_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		content TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'generating',
+		error_message TEXT,
+		message_count INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_summaries_conversation ON summaries(conversation_id);
+	CREATE INDEX IF NOT EXISTS idx_summaries_session ON summaries(session_id);
+
+	-- Checkpoints (file state snapshots from Agent SDK)
+	CREATE TABLE IF NOT EXISTS checkpoints (
+		id TEXT PRIMARY KEY,
+		conversation_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		uuid TEXT NOT NULL,
+		message_index INTEGER NOT NULL DEFAULT 0,
+		is_result INTEGER NOT NULL DEFAULT 0,
+		timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_checkpoints_conversation ON checkpoints(conversation_id);
+
+	-- Settings (key-value store)
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	-- User Skill Preferences
+	CREATE TABLE IF NOT EXISTS user_skill_preferences (
+		id TEXT PRIMARY KEY,
+		skill_id TEXT NOT NULL UNIQUE,
+		installed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_user_skill_preferences_skill_id ON user_skill_preferences(skill_id);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -191,7 +307,7 @@ func (s *SQLiteStore) initSchema() error {
 		return err
 	}
 
-	// Run migrations
+	// Run migrations for existing databases
 	if err := s.runMigrations(); err != nil {
 		return err
 	}
@@ -200,513 +316,9 @@ func (s *SQLiteStore) initSchema() error {
 	return nil
 }
 
-// runMigrations applies any necessary schema migrations
+// runMigrations applies incremental schema changes for existing databases.
+// After the schema flattening, this is empty. Future post-launch migrations go here.
 func (s *SQLiteStore) runMigrations() error {
-	// Migration: Add setup_info column to messages if it doesn't exist
-	var count int
-	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'setup_info'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN setup_info TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added setup_info column to messages")
-	}
-
-	// Migration: Add pinned column to sessions if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'pinned'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added pinned column to sessions")
-	}
-
-	// Migration: Add archived column to sessions if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'archived'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added archived column to sessions")
-	}
-
-	// Migration: Add run_summary column to messages if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'run_summary'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN run_summary TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added run_summary column to messages")
-	}
-
-	// Migration: Add base_commit_sha column to sessions if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'base_commit_sha'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN base_commit_sha TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added base_commit_sha column to sessions")
-	}
-
-	// Migration: Add priority column to sessions if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'priority'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN priority INTEGER NOT NULL DEFAULT 0`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added priority column to sessions")
-	}
-
-	// Migration: Add task_status column to sessions if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'task_status'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN task_status TEXT NOT NULL DEFAULT 'backlog'`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added task_status column to sessions")
-	}
-
-	// Migration: Add archive_summary and archive_summary_status columns to sessions
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'archive_summary'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archive_summary TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN archive_summary_status TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added archive_summary columns to sessions")
-	}
-
-	// Migration: Create file_tabs table if it doesn't exist
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS file_tabs (
-			id TEXT PRIMARY KEY,
-			workspace_id TEXT NOT NULL,
-			session_id TEXT,
-			path TEXT NOT NULL,
-			view_mode TEXT NOT NULL DEFAULT 'file',
-			is_pinned INTEGER NOT NULL DEFAULT 0,
-			position INTEGER NOT NULL DEFAULT 0,
-			opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			last_accessed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (workspace_id) REFERENCES repos(id) ON DELETE CASCADE,
-			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-		)
-	`)
-	if err != nil {
-		return err
-	}
-
-	// Create index on workspace_id for efficient lookups
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_file_tabs_workspace ON file_tabs(workspace_id)`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: file_tabs table ready")
-
-	// Migration: Drop orphaned orchestrator tables (feature removed)
-	_, err = s.db.Exec(`DROP TABLE IF EXISTS agent_runs`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`DROP TABLE IF EXISTS orchestrator_agents`)
-	if err != nil {
-		return err
-	}
-
-	// Migration: Create review_comments table if it doesn't exist
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS review_comments (
-			id TEXT PRIMARY KEY,
-			session_id TEXT NOT NULL,
-			file_path TEXT NOT NULL,
-			line_number INTEGER NOT NULL,
-			content TEXT NOT NULL,
-			source TEXT NOT NULL,
-			author TEXT NOT NULL,
-			severity TEXT,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			resolved INTEGER NOT NULL DEFAULT 0,
-			resolved_at DATETIME,
-			resolved_by TEXT,
-			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-		)
-	`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_review_comments_session ON review_comments(session_id)`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_review_comments_file ON review_comments(session_id, file_path)`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: review_comments table ready")
-
-	// Migration: Add title column to review_comments if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('review_comments') WHERE name = 'title'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE review_comments ADD COLUMN title TEXT`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added title column to review_comments")
-	}
-
-	// Migration: Create attachments table if it doesn't exist
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS attachments (
-			id TEXT PRIMARY KEY,
-			message_id TEXT NOT NULL,
-			type TEXT NOT NULL,
-			name TEXT NOT NULL,
-			path TEXT,
-			mime_type TEXT NOT NULL,
-			size INTEGER NOT NULL,
-			line_count INTEGER,
-			width INTEGER,
-			height INTEGER,
-			base64_data TEXT,
-			preview TEXT,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
-		)
-	`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id)`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: attachments table ready")
-
-	// Migration: Create settings table if it doesn't exist
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: settings table ready")
-
-	// Migration: Add composite index on sessions(workspace_id, name) for fast name lookups
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_sessions_workspace_name ON sessions(workspace_id, name)`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: sessions workspace_name index ready")
-
-	// Migration: Create summaries table if it doesn't exist
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS summaries (
-			id TEXT PRIMARY KEY,
-			conversation_id TEXT NOT NULL,
-			session_id TEXT NOT NULL,
-			content TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL DEFAULT 'generating',
-			error_message TEXT,
-			message_count INTEGER NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-		)
-	`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_summaries_conversation ON summaries(conversation_id)`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_summaries_session ON summaries(session_id)`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: summaries table ready")
-
-	// Migration: Add target_branch column to sessions if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'target_branch'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN target_branch TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added target_branch column to sessions")
-	}
-
-	// Migration: Add model column to conversations if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('conversations') WHERE name = 'model'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE conversations ADD COLUMN model TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added model column to conversations")
-	}
-
-	// Migration: Add streaming_snapshot column to conversations if it doesn't exist
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('conversations') WHERE name = 'streaming_snapshot'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE conversations ADD COLUMN streaming_snapshot TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added streaming_snapshot column to conversations")
-	}
-
-	// Migration: Add agent_session_id column to conversations (for SDK session resume)
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pragma_table_info('conversations') WHERE name = 'agent_session_id'
-	`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE conversations ADD COLUMN agent_session_id TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added agent_session_id column to conversations")
-	}
-
-	// Migration: Convert 'todo' task_status to 'backlog' (todo status was removed)
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE task_status = 'todo'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		_, err = s.db.Exec(`UPDATE sessions SET task_status = 'backlog' WHERE task_status = 'todo'`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Converted %d sessions from 'todo' to 'backlog' task_status", count)
-	}
-
-	// Migration: Add remote, branch_prefix, custom_prefix columns to repos
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name = 'remote'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE repos ADD COLUMN remote TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		_, err = s.db.Exec(`ALTER TABLE repos ADD COLUMN branch_prefix TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		_, err = s.db.Exec(`ALTER TABLE repos ADD COLUMN custom_prefix TEXT NOT NULL DEFAULT ''`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added remote, branch_prefix, custom_prefix columns to repos")
-	}
-
-	// Migration: Create user_skill_preferences table if it doesn't exist
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_skill_preferences (
-			id TEXT PRIMARY KEY,
-			skill_id TEXT NOT NULL UNIQUE,
-			installed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_user_skill_preferences_skill_id ON user_skill_preferences(skill_id)`)
-	if err != nil {
-		return err
-	}
-	logger.SQLite.Infof("Migration: user_skill_preferences table ready")
-
-	// Migration: Add tool_usage column to messages (JSON blob for per-message tool usage)
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'tool_usage'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN tool_usage TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added tool_usage column to messages")
-	}
-
-	// Migration: Add thinking_content column to messages
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'thinking_content'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN thinking_content TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added thinking_content column to messages")
-	}
-
-	// Migration: Add duration_ms column to messages
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'duration_ms'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN duration_ms INTEGER DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added duration_ms column to messages")
-	}
-
-	// Migration: Add timeline column to messages (JSON blob for interleaved text/tool ordering)
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'timeline'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN timeline TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added timeline column to messages")
-	}
-
-	// Migration: Add plan_content column to messages (approved plan content from ExitPlanMode)
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'plan_content'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE messages ADD COLUMN plan_content TEXT DEFAULT NULL`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added plan_content column to messages")
-	}
-
-	// Migration: Add check_status column to sessions (granular check status: none/pending/success/failure)
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'check_status'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN check_status TEXT NOT NULL DEFAULT 'none'`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added check_status column to sessions")
-	}
-
-	// Migration: Create checkpoints table (file state snapshots from Agent SDK)
-	_, err = s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS checkpoints (
-			id TEXT PRIMARY KEY,
-			conversation_id TEXT NOT NULL,
-			session_id TEXT NOT NULL,
-			uuid TEXT NOT NULL,
-			message_index INTEGER NOT NULL DEFAULT 0,
-			is_result INTEGER NOT NULL DEFAULT 0,
-			timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-			FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-		)`)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_checkpoints_conversation ON checkpoints(conversation_id)`)
-	if err != nil {
-		return err
-	}
-
-	// Migration: Add auto_named column to sessions if it doesn't exist
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'auto_named'`).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		_, err = s.db.Exec(`ALTER TABLE sessions ADD COLUMN auto_named INTEGER NOT NULL DEFAULT 0`)
-		if err != nil {
-			return err
-		}
-		logger.SQLite.Infof("Migration: Added auto_named column to sessions")
-	}
-
 	return nil
 }
 

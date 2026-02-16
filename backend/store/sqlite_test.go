@@ -1320,15 +1320,16 @@ func TestAddToolActionToConversation_Ordering(t *testing.T) {
 // Migration Tests
 // ============================================================================
 
-func TestMigration_Idempotent(t *testing.T) {
+func TestInitSchema_Idempotent(t *testing.T) {
 	s := newTestStore(t)
 
-	// Run migrations again - should not error
-	err := s.runMigrations()
+	// Run initSchema again on an already-initialized database.
+	// All CREATE TABLE/INDEX IF NOT EXISTS statements should be no-ops.
+	err := s.initSchema()
 	assert.NoError(t, err)
 
-	// Run again - should still not error
-	err = s.runMigrations()
+	// Run yet again to verify idempotency.
+	err = s.initSchema()
 	assert.NoError(t, err)
 }
 
