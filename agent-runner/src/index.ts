@@ -1223,7 +1223,7 @@ const canUseTool = async (
   if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
     return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
   }
-  return { behavior: "allow" };
+  return { behavior: "allow", updatedInput: toolInput };
 };
 
 // Hooks configuration - all always enabled
