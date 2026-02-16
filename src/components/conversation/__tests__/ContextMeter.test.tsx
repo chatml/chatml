@@ -33,7 +33,7 @@ describe('ContextMeter', () => {
   });
 
   it('returns null when no contextUsage data for conversationId', () => {
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     expect(container.innerHTML).toBe('');
   });
 
@@ -41,7 +41,7 @@ describe('ContextMeter', () => {
     useAppStore.setState({
       contextUsage: { [CONV_ID]: makeContextUsage({ inputTokens: 0 }) },
     });
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     expect(container.innerHTML).toBe('');
   });
 
@@ -53,7 +53,7 @@ describe('ContextMeter', () => {
     useAppStore.setState({
       contextUsage: { [CONV_ID]: makeContextUsage() },
     });
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     expect(container.innerHTML).not.toBe('');
   });
 
@@ -70,7 +70,7 @@ describe('ContextMeter', () => {
     useAppStore.setState({
       contextUsage: { [CONV_ID]: makeContextUsage() },
     });
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     const svg = container.querySelector('svg');
     expect(svg).not.toBeNull();
     const circles = container.querySelectorAll('circle');
@@ -115,7 +115,7 @@ describe('ContextMeter', () => {
         [CONV_ID]: makeContextUsage({ inputTokens: 100000, contextWindow: 200000 }),
       },
     });
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     const button = container.querySelector('button');
     expect(button?.className).toContain('text-muted-foreground');
     expect(button?.className).not.toContain('text-amber');
@@ -128,7 +128,7 @@ describe('ContextMeter', () => {
         [CONV_ID]: makeContextUsage({ inputTokens: 160000, contextWindow: 200000 }),
       },
     });
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     const button = container.querySelector('button');
     expect(button?.className).toContain('text-amber-500');
   });
@@ -139,7 +139,7 @@ describe('ContextMeter', () => {
         [CONV_ID]: makeContextUsage({ inputTokens: 195000, contextWindow: 200000 }),
       },
     });
-    render(<ContextMeter conversationId={CONV_ID} />);
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     const button = container.querySelector('button');
     expect(button?.className).toContain('text-red-500');
   });
