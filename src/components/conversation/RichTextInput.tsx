@@ -324,7 +324,6 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
-          autoComplete="off"
           className={cn(
             'outline-none min-h-[100px] max-h-[200px] overflow-y-auto',
             'whitespace-pre-wrap break-words',
