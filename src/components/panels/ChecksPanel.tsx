@@ -32,6 +32,7 @@ import {
   RotateCcw,
   Sparkles,
   GitPullRequest,
+  GitMerge,
   ShieldCheck,
 } from 'lucide-react';
 
@@ -211,6 +212,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
         {/* Merge Readiness Banner */}
         <MergeReadinessBanner
           readiness={readiness}
+          prStatus={prStatus}
           isLoading={isLoading}
           onRefresh={handleRefreshAll}
         />
@@ -252,10 +254,12 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
 
 function MergeReadinessBanner({
   readiness,
+  prStatus,
   isLoading,
   onRefresh,
 }: {
   readiness: MergeReadiness;
+  prStatus: string | undefined;
   isLoading: boolean;
   onRefresh: () => void;
 }) {
@@ -266,7 +270,17 @@ function MergeReadinessBanner({
   let icon: React.ReactNode;
   let message: string;
 
-  if (hasNoPR) {
+  if (prStatus === 'merged') {
+    bgClass = 'bg-violet-500/8';
+    borderClass = 'border-violet-500/20';
+    icon = <GitMerge className="h-3.5 w-3.5 text-violet-500 shrink-0" />;
+    message = 'Merged';
+  } else if (prStatus === 'closed') {
+    bgClass = 'bg-muted/50';
+    borderClass = 'border-border';
+    icon = <GitPullRequest className="h-3.5 w-3.5 text-red-400 shrink-0" />;
+    message = 'PR closed';
+  } else if (hasNoPR) {
     bgClass = 'bg-muted/50';
     borderClass = 'border-border';
     icon = <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
