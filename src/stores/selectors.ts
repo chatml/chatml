@@ -145,15 +145,21 @@ export const useSessionActivityState = (sessionId: string): SessionActivityState
   useAppStore(
     useCallback(
       (state) => {
-        const activeConv = state.conversations.find(
-          (c) => c.sessionId === sessionId && c.status === 'active'
-        );
-        if (!activeConv) return 'idle';
-        const convId = activeConv.id;
-        if (state.pendingUserQuestion[convId]) return 'awaiting_input';
-        if (state.streamingState[convId]?.pendingPlanApproval) return 'awaiting_approval';
-        if (state.streamingState[convId]?.isStreaming) return 'working';
-        return 'idle';
+        let highestState: SessionActivityState = 'idle';
+
+        for (const c of state.conversations) {
+          if (c.sessionId !== sessionId || c.status !== 'active') continue;
+
+          const convId = c.id;
+          if (state.pendingUserQuestion[convId]) return 'awaiting_input';
+          if (state.streamingState[convId]?.pendingPlanApproval) {
+            highestState = 'awaiting_approval';
+          } else if (state.streamingState[convId]?.isStreaming && highestState === 'idle') {
+            highestState = 'working';
+          }
+        }
+
+        return highestState;
       },
       [sessionId]
     )
