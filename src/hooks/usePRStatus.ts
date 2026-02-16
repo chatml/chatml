@@ -23,7 +23,8 @@ interface UsePRStatusResult {
 export function usePRStatus(
   workspaceId: string | null,
   sessionId: string | null,
-  prStatus: string | undefined
+  prStatus: string | undefined,
+  active: boolean = true
 ): UsePRStatusResult {
   const [prDetails, setPRDetails] = useState<PRDetails | null>(null);
   const [loading, setLoading] = useState(false);
@@ -90,14 +91,14 @@ export function usePRStatus(
 
   // Slow fallback poll when PR is open (WebSocket is the primary update mechanism)
   useEffect(() => {
-    if (!workspaceId || !sessionId || prStatus !== 'open') return;
+    if (!active || !workspaceId || !sessionId || prStatus !== 'open') return;
 
     const interval = setInterval(() => {
       fetchStatus();
     }, PR_STATUS_FALLBACK_POLL_MS);
 
     return () => clearInterval(interval);
-  }, [workspaceId, sessionId, prStatus, fetchStatus]);
+  }, [active, workspaceId, sessionId, prStatus, fetchStatus]);
 
   return { prDetails, loading, error, refetch };
 }
