@@ -429,7 +429,9 @@ function CIChecksSection({
     });
   }, [checkDetails]);
 
-  const passedCount = checkDetails.filter((c) => c.conclusion === 'success').length;
+  const passedCount = checkDetails.filter(
+    (c) => c.conclusion === 'success' || c.conclusion === 'skipped' || c.conclusion === 'neutral'
+  ).length;
   const failedCount = checkDetails.filter(
     (c) => c.status === 'completed' && (c.conclusion === 'failure' || c.conclusion === 'timed_out' || c.conclusion === 'action_required')
   ).length;
