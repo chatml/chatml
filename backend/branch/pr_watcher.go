@@ -323,6 +323,11 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 
 // checkSessionPR checks and updates PR status for a single session
 func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, branchToPR map[string]*github.PRListItem) {
+	// Terminal states are final — don't re-evaluate
+	if entry.PRStatus == models.PRStatusMerged || entry.PRStatus == models.PRStatusClosed {
+		return
+	}
+
 	pr, hasPR := branchToPR[entry.Branch]
 
 	// Determine new status based on current state and PR existence
@@ -370,6 +375,14 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 				}
 				prNumber = entry.PRNumber
 				prUrl = details.HTMLURL
+			} else {
+				// PR not in open list but details say it's still open.
+				// This can happen due to GitHub API eventual consistency.
+				// Carry forward existing data to avoid wiping PR association.
+				newStatus = entry.PRStatus
+				prNumber = entry.PRNumber
+				prUrl = entry.PRUrl
+				checkStatus = entry.CheckStatus
 			}
 		} else {
 			// Couldn't fetch details - check merge endpoint directly
