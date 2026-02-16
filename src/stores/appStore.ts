@@ -28,6 +28,7 @@ import type {
   SetupProgress,
   TimelineEntry,
   InputSuggestion,
+  SessionToggleState,
 } from '@/lib/types';
 import { useSettingsStore } from './settingsStore';
 
@@ -226,6 +227,9 @@ interface AppState {
   supportedCommands: Array<{ name: string; description: string; argumentHint: string }>;
   accountInfo: Record<string, unknown> | null;
 
+  // Session-scoped ChatInput toggle states (keyed by sessionId)
+  sessionToggleState: Record<string, SessionToggleState>;
+
   // Script runs state (keyed by sessionId)
   scriptRuns: Record<string, ScriptRun[]>;
   setupProgress: Record<string, SetupProgress>;
@@ -254,6 +258,7 @@ interface AppState {
   selectSession: (id: string | null) => void;
   archiveSession: (id: string) => void;
   unarchiveSession: (id: string) => void;
+  setSessionToggleState: (sessionId: string, state: SessionToggleState) => void;
 
   // Conversation actions
   setConversations: (conversations: Conversation[]) => void;
@@ -472,6 +477,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   supportedCommands: [],
   accountInfo: null,
 
+  sessionToggleState: {},
+
   // Script state
   scriptRuns: {},
   setupProgress: {},
@@ -642,6 +649,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _comments, ...remainingReviewComments } = state.reviewComments;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _lastActive, ...remainingLastActive } = state.lastActiveConversationPerSession;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _toggleState, ...remainingToggleState } = state.sessionToggleState;
 
     return {
       sessions: state.sessions.filter((s) => s.id !== id),
@@ -660,6 +669,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessionOutputs: remainingSessionOutputs,
       reviewComments: remainingReviewComments,
       lastActiveConversationPerSession: remainingLastActive,
+      sessionToggleState: remainingToggleState,
       selectedFileTabId: null,
       fileTabs: [],
     };
@@ -696,6 +706,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedFileTabId: newSelectedTabId,
     });
   },
+  setSessionToggleState: (sessionId, toggleState) => set((state) => ({
+    sessionToggleState: {
+      ...state.sessionToggleState,
+      [sessionId]: toggleState,
+    },
+  })),
   archiveSession: (id) => set((state) => {
     const session = state.sessions.find((s) => s.id === id);
     if (!session) return state;

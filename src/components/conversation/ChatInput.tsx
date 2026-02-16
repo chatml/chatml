@@ -135,6 +135,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearActiveTools,
     setPlanModeActive,
     clearInputSuggestion,
+    setSessionToggleState,
   } = useAppStore();
   const hasQueuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
@@ -332,6 +333,30 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       setPlanModeEnabled(true);
     }
   }, [planModeActive, planModeEnabled]);
+
+  // Restore per-session toggle states when switching sessions
+  const prevSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedSessionId || selectedSessionId === prevSessionRef.current) return;
+    prevSessionRef.current = selectedSessionId;
+
+    const saved = useAppStore.getState().sessionToggleState[selectedSessionId];
+    if (saved) {
+      setThinkingLevel(saved.thinkingLevel);
+      setPlanModeEnabled(saved.planModeEnabled);
+    } else {
+      setThinkingLevel(defaultThinkingLevel);
+      setPlanModeEnabled(defaultPlanMode);
+    }
+  }, [selectedSessionId, defaultThinkingLevel, defaultPlanMode]);
+
+  // Persist toggle state changes to the store for the current session.
+  // Skip when the session just changed (prevSessionRef hasn't caught up yet)
+  // to avoid overwriting the old session's state with the new session's values.
+  useEffect(() => {
+    if (!selectedSessionId || selectedSessionId !== prevSessionRef.current) return;
+    setSessionToggleState(selectedSessionId, { thinkingLevel, planModeEnabled });
+  }, [selectedSessionId, thinkingLevel, planModeEnabled, setSessionToggleState]);
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
