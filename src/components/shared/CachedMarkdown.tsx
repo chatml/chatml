@@ -12,7 +12,7 @@ interface CachedMarkdownProps {
 
 export function CachedMarkdown({ cacheKey, content, skipCache }: CachedMarkdownProps) {
   if (!skipCache) {
-    const cached = getCachedMarkdown(cacheKey);
+    const cached = getCachedMarkdown(cacheKey, content);
     if (cached !== undefined) {
       return <>{cached}</>;
     }
@@ -29,7 +29,7 @@ export function CachedMarkdown({ cacheKey, content, skipCache }: CachedMarkdownP
   );
 
   if (!skipCache) {
-    setCachedMarkdown(cacheKey, rendered);
+    setCachedMarkdown(cacheKey, rendered, content);
   }
 
   return rendered;
