@@ -3,13 +3,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, ApiError, ErrorCode, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
-import { FileTree, FileIcon, type FileNode } from '@/components/files/FileTree';
+import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
-import { ChecksPanel } from '@/components/panels/ChecksPanel';
+import { ChecksPanel, type ChecksPanelHandle } from '@/components/panels/ChecksPanel';
 
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
@@ -25,7 +25,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, type TopPanelTab, type AllTopPanelTab } from '@/stores/settingsStore';
+import { useSettingsStore, type BottomPanelTab, type AllBottomPanelTab, type AllTopPanelTab } from '@/stores/settingsStore';
 import {
   DndContext,
   closestCenter,
@@ -53,11 +53,17 @@ import {
   FileText,
   FolderX,
   Search,
-  SplitSquareHorizontal,
   Loader2,
   MessageSquare,
   ChevronRight,
   GitCommitHorizontal,
+  RefreshCw,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ExternalLink,
+  CheckCheck,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -116,7 +122,11 @@ export function ChangesPanel() {
   const [commitsOpen, setCommitsOpen] = useState(true);
   const [expandedCommits, setExpandedCommits] = useState<Set<string>>(new Set());
   const [containerWidth, setContainerWidth] = useState(400);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [showResolved, setShowResolved] = useState(false);
   const changesContainerRef = useRef<HTMLDivElement>(null);
+  const fileTreeRef = useRef<FileTreeHandle>(null);
+  const checksPanelRef = useRef<ChecksPanelHandle>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch changes function (extracted for reuse)
@@ -352,6 +362,33 @@ export function ChangesPanel() {
     }
   }, [selectedWorkspaceId, selectedSessionId, reviewComments]);
 
+  // Resolve all unresolved review comments
+  const updateReviewComment = useAppStore((s) => s.updateReviewComment);
+  const handleResolveAll = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    // Read comments from store directly to avoid closing over the array (keeps callback stable)
+    const comments = useAppStore.getState().reviewComments[selectedSessionId] ?? [];
+    const unresolved = comments.filter((c) => !c.resolved);
+    if (unresolved.length === 0) return;
+
+    // Optimistically resolve all
+    for (const comment of unresolved) {
+      updateReviewComment(selectedSessionId, comment.id, {
+        resolved: true,
+        resolvedBy: 'user',
+      });
+    }
+
+    // Fire API calls (best-effort, no rollback for bulk)
+    for (const comment of unresolved) {
+      apiUpdateReviewComment(selectedWorkspaceId, selectedSessionId, comment.id, {
+        resolved: true,
+        resolvedBy: 'user',
+      }).catch(console.error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId, updateReviewComment]);
+
   // Fetch files from session's worktree when session changes or tab switches to files
   // Deferred via requestIdleCallback so it doesn't block the main conversation render on navigation
   useEffect(() => {
@@ -460,6 +497,24 @@ export function ChangesPanel() {
     return () => clearInterval(interval);
   }, [selectedWorkspaceId, selectedSessionId, fetchChanges]);
 
+  const unresolvedCount = useMemo(
+    () => reviewComments.filter((c) => !c.resolved).length,
+    [reviewComments]
+  );
+
+  const menuContext = useMemo<TopPanelMenuContext>(() => ({
+    onCollapseAllFiles: () => fileTreeRef.current?.collapseAll(),
+    onExpandAllFiles: () => fileTreeRef.current?.expandAll(),
+    onRefreshChanges: () => { fetchChanges(); fetchBranchCommits(); },
+    onCollapseAllCommits: () => setExpandedCommits(new Set()),
+    onRefreshChecks: () => checksPanelRef.current?.refreshAll(),
+    prUrl,
+    onResolveAll: handleResolveAll,
+    unresolvedCount,
+    showResolved,
+    onToggleShowResolved: () => setShowResolved((prev) => !prev),
+  }), [fetchChanges, fetchBranchCommits, handleResolveAll, prUrl, unresolvedCount, showResolved]);
+
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Tabs Row */}
@@ -467,6 +522,7 @@ export function ChangesPanel() {
         selectedTab={selectedTab}
         setSelectedTab={setSelectedTab}
         changesCount={changes?.length || 0}
+        menuContext={menuContext}
       />
 
       {/* Resizable content area */}
@@ -502,6 +558,7 @@ export function ChangesPanel() {
               <div className="h-full min-h-0 p-1 overflow-hidden">
                 <ErrorBoundary section="FileTree" fallback={<InlineErrorFallback message="Unable to display file tree" />}>
                   <FileTree
+                    ref={fileTreeRef}
                     files={files}
                     onFileSelect={handleFileSelect}
                     workspacePath={currentSession?.worktreePath}
@@ -612,11 +669,11 @@ export function ChangesPanel() {
             )
           ) : selectedTab === 'review' ? (
             <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
-              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} onSendFeedback={handleSendFeedback} />
+              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} onSendFeedback={handleSendFeedback} showResolved={showResolved} />
             </ErrorBoundary>
           ) : selectedTab === 'checks' ? (
             <ErrorBoundary section="ChecksPanel" fallback={<InlineErrorFallback message="Unable to display checks" />}>
-              <ChecksPanel onSendMessage={handleGitActionMessage} />
+              <ChecksPanel ref={checksPanelRef} onSendMessage={handleGitActionMessage} onPrUrlChange={setPrUrl} />
             </ErrorBoundary>
           ) : (
             <div className="h-full flex items-center justify-center">
@@ -679,12 +736,12 @@ export function ChangesPanel() {
   );
 }
 
-// Top panel tabs configuration
-const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; alwaysVisible?: boolean }> = {
-  changes: { label: 'Changes', alwaysVisible: true },
+// Top panel tabs configuration (all tabs always visible)
+const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string }> = {
+  changes: { label: 'Changes' },
   review: { label: 'Review' },
   checks: { label: 'Checks' },
-  files: { label: 'Files', alwaysVisible: true },
+  files: { label: 'Files' },
 };
 
 // Bottom panel tabs configuration
@@ -869,17 +926,30 @@ function BottomPanelTabs({
   );
 }
 
+interface TopPanelMenuContext {
+  onCollapseAllFiles?: () => void;
+  onExpandAllFiles?: () => void;
+  onRefreshChanges?: () => void;
+  onCollapseAllCommits?: () => void;
+  onRefreshChecks?: () => void;
+  prUrl?: string | null;
+  onResolveAll?: () => void;
+  unresolvedCount?: number;
+  showResolved?: boolean;
+  onToggleShowResolved?: () => void;
+}
+
 function TopPanelTabs({
   selectedTab,
   setSelectedTab,
   changesCount,
+  menuContext,
 }: {
   selectedTab: string;
   setSelectedTab: (tab: string) => void;
   changesCount: number;
+  menuContext: TopPanelMenuContext;
 }) {
-  const hiddenTopTabs = useSettingsStore((s) => s.hiddenTopTabs);
-  const toggleTopTab = useSettingsStore((s) => s.toggleTopTab);
   const topTabOrder = useSettingsStore((s) => s.topTabOrder);
   const setTopTabOrder = useSettingsStore((s) => s.setTopTabOrder);
 
@@ -894,12 +964,10 @@ function TopPanelTabs({
     })
   );
 
+  // All tabs are always visible — just filter out any that don't have config
   const visibleTabIds = useMemo(() =>
-    topTabOrder.filter((tabId) => {
-      const config = TOP_TABS_CONFIG[tabId];
-      return config && (config.alwaysVisible || !hiddenTopTabs.includes(tabId as TopPanelTab));
-    }),
-    [topTabOrder, hiddenTopTabs]
+    topTabOrder.filter((tabId) => TOP_TABS_CONFIG[tabId]),
+    [topTabOrder]
   );
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -941,7 +1009,7 @@ function TopPanelTabs({
         </DndContext>
       </div>
 
-      {/* Settings dropdown - always visible */}
+      {/* Context-aware dropdown menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -953,32 +1021,83 @@ function TopPanelTabs({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem>
-            <SplitSquareHorizontal className="size-4" />
-            Split View
-          </DropdownMenuItem>
+          {/* Search Files — available on all tabs */}
           <DropdownMenuItem onSelect={() => window.dispatchEvent(new CustomEvent('open-file-picker'))}>
             <Search className="size-4" />
             Search Files
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {topTabOrder.map((tabId) => {
-            const config = TOP_TABS_CONFIG[tabId];
-            return (
-              <DropdownMenuCheckboxItem
-                key={tabId}
-                checked={config.alwaysVisible || !hiddenTopTabs.includes(tabId as TopPanelTab)}
-                disabled={config.alwaysVisible}
-                onCheckedChange={() => {
-                  if (!config.alwaysVisible) {
-                    toggleTopTab(tabId as TopPanelTab);
-                  }
-                }}
+
+          {/* Files tab context menu */}
+          {selectedTab === 'files' && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={menuContext.onCollapseAllFiles}>
+                <ChevronsDownUp className="size-4" />
+                Collapse All
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={menuContext.onExpandAllFiles}>
+                <ChevronsUpDown className="size-4" />
+                Expand All
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {/* Changes tab context menu */}
+          {selectedTab === 'changes' && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={menuContext.onRefreshChanges}>
+                <RefreshCw className="size-4" />
+                Refresh
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={menuContext.onCollapseAllCommits}>
+                <ChevronsDownUp className="size-4" />
+                Collapse All
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {/* Checks tab context menu */}
+          {selectedTab === 'checks' && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={menuContext.onRefreshChecks}>
+                <RefreshCw className="size-4" />
+                Refresh
+              </DropdownMenuItem>
+              {menuContext.prUrl && (
+                <DropdownMenuItem onSelect={() => window.open(menuContext.prUrl!, '_blank')}>
+                  <ExternalLink className="size-4" />
+                  View PR on GitHub
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
+
+          {/* Review tab context menu */}
+          {selectedTab === 'review' && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={menuContext.onResolveAll}
+                disabled={!menuContext.unresolvedCount}
               >
-                {config.label}
+                <CheckCheck className="size-4" />
+                Resolve All
+              </DropdownMenuItem>
+              <DropdownMenuCheckboxItem
+                checked={menuContext.showResolved}
+                onCheckedChange={menuContext.onToggleShowResolved}
+              >
+                {menuContext.showResolved ? (
+                  <EyeOff className="size-4" />
+                ) : (
+                  <Eye className="size-4" />
+                )}
+                Show Resolved
               </DropdownMenuCheckboxItem>
-            );
-          })}
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

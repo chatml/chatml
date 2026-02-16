@@ -33,9 +33,10 @@ interface ReviewPanelProps {
   sessionId: string | null;
   onFileSelect?: (path: string, line?: number) => void;
   onSendFeedback?: () => void;
+  showResolved?: boolean;
 }
 
-export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedback }: ReviewPanelProps) {
+export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedback, showResolved }: ReviewPanelProps) {
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const [fetchSession, setFetchSession] = useState<string | null>(null);
@@ -76,9 +77,9 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     return () => { cancelled = true; };
   }, [workspaceId, sessionId, setReviewComments]);
 
-  // Filter comments by severity and only show unresolved
+  // Filter comments by severity and resolved state
   const filteredComments = comments.filter((c) => {
-    if (c.resolved) return false;
+    if (c.resolved && !showResolved) return false;
     if (filter === 'all') return true;
     return c.severity === filter;
   });
@@ -228,6 +229,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                 comment={comment}
                 onClick={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
                 onResolve={() => handleResolve(comment.id)}
+                isResolved={comment.resolved}
               />
             ))}
           </div>
@@ -241,10 +243,12 @@ function ReviewCommentCard({
   comment,
   onClick,
   onResolve,
+  isResolved,
 }: {
   comment: ReviewComment;
   onClick?: () => void;
   onResolve?: () => void;
+  isResolved?: boolean;
 }) {
   const fileName = comment.filePath.split('/').pop() || comment.filePath;
   const dirPath = comment.filePath.split('/').slice(0, -1).join('/');
@@ -288,15 +292,19 @@ function ReviewCommentCard({
     <div
       className={cn(
         'rounded-lg border p-2.5 cursor-pointer transition-colors hover:bg-surface-2',
-        severityColor
+        isResolved ? 'opacity-50 border-border bg-surface-1' : severityColor
       )}
       onClick={onClick}
     >
       {/* Header row */}
       <div className="flex items-start gap-2">
-        <SeverityIcon className="h-4 w-4 shrink-0 mt-0.5" />
+        {isResolved ? (
+          <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-green-500" />
+        ) : (
+          <SeverityIcon className="h-4 w-4 shrink-0 mt-0.5" />
+        )}
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm leading-tight">{title}</div>
+          <div className={cn('font-medium text-sm leading-tight', isResolved && 'line-through')}>{title}</div>
           {description && (
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
               {description}
@@ -304,18 +312,20 @@ function ReviewCommentCard({
           )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-5 w-5 p-0 hover:bg-green-500/20 hover:text-green-500"
-            onClick={(e) => {
-              e.stopPropagation();
-              onResolve?.();
-            }}
-            title="Resolve comment"
-          >
-            <Check className="h-3 w-3" />
-          </Button>
+          {!isResolved && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 w-5 p-0 hover:bg-green-500/20 hover:text-green-500"
+              onClick={(e) => {
+                e.stopPropagation();
+                onResolve?.();
+              }}
+              title="Resolve comment"
+            >
+              <Check className="h-3 w-3" />
+            </Button>
+          )}
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>

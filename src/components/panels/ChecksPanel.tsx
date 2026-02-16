@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useSelectedIds } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { usePRStatus } from '@/hooks/usePRStatus';
@@ -41,6 +41,11 @@ import {
 
 interface ChecksPanelProps {
   onSendMessage?: (content: string) => void;
+  onPrUrlChange?: (url: string | null) => void;
+}
+
+export interface ChecksPanelHandle {
+  refreshAll: () => void;
 }
 
 interface BlockingItem {
@@ -139,7 +144,7 @@ function computeMergeReadiness(
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ChecksPanel({ onSendMessage }: ChecksPanelProps) {
+export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(function ChecksPanel({ onSendMessage, onPrUrlChange }, ref) {
   const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
 
   // Get session's prStatus from store to pass to usePRStatus hook
@@ -177,11 +182,20 @@ export function ChecksPanel({ onSendMessage }: ChecksPanelProps) {
 
   const isLoading = prLoading || ciLoading || gitLoading;
 
-  const handleRefreshAll = () => {
+  const handleRefreshAll = useCallback(() => {
     refetchPR();
     refetchCI();
     refetchGit();
-  };
+  }, [refetchPR, refetchCI, refetchGit]);
+
+  useImperativeHandle(ref, () => ({
+    refreshAll: handleRefreshAll,
+  }), [handleRefreshAll]);
+
+  // Notify parent of PR URL changes
+  useEffect(() => {
+    onPrUrlChange?.(prDetails?.htmlUrl ?? null);
+  }, [prDetails?.htmlUrl, onPrUrlChange]);
 
   if (!selectedWorkspaceId || !selectedSessionId) {
     return (
@@ -230,7 +244,7 @@ export function ChecksPanel({ onSendMessage }: ChecksPanelProps) {
       </div>
     </ScrollArea>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // MergeReadinessBanner

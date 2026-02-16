@@ -102,7 +102,6 @@ interface SettingsState {
   zenMode: boolean; // Distraction-free mode that hides sidebars
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
   bottomTabOrder: AllBottomPanelTab[]; // Order of bottom panel tabs
-  hiddenTopTabs: TopPanelTab[]; // Top panel tabs that are hidden (Changes always visible)
   topTabOrder: AllTopPanelTab[]; // Order of top panel tabs
   // Full Content Area view state (not persisted - always starts in conversation view)
   contentView: ContentView;
@@ -175,7 +174,6 @@ interface SettingsState {
   markSessionRead: (sessionId: string) => void;
   toggleBottomTab: (tab: BottomPanelTab) => void;
   setBottomTabOrder: (order: AllBottomPanelTab[]) => void;
-  toggleTopTab: (tab: TopPanelTab) => void;
   setTopTabOrder: (order: AllTopPanelTab[]) => void;
   setContentView: (view: ContentView) => void;
   setLayoutOuter: (layout: PanelLayout) => void;
@@ -236,7 +234,6 @@ export const useSettingsStore = create<SettingsState>()(
       zenMode: false,
       hiddenBottomTabs: [], // All tabs visible by default
       bottomTabOrder: DEFAULT_BOTTOM_TAB_ORDER, // Default tab order
-      hiddenTopTabs: [], // All top tabs visible by default
       topTabOrder: DEFAULT_TOP_TAB_ORDER, // Default top tab order
       contentView: { type: 'conversation' }, // Always start in conversation view
       layoutOuter: undefined, // Use defaults until user resizes
@@ -330,12 +327,6 @@ export const useSettingsStore = create<SettingsState>()(
             : [...state.hiddenBottomTabs, tab],
         })),
       setBottomTabOrder: (order) => set({ bottomTabOrder: order }),
-      toggleTopTab: (tab) =>
-        set((state) => ({
-          hiddenTopTabs: state.hiddenTopTabs.includes(tab)
-            ? state.hiddenTopTabs.filter((t) => t !== tab)
-            : [...state.hiddenTopTabs, tab],
-        })),
       setTopTabOrder: (order) => set({ topTabOrder: order }),
       setContentView: (view) => set({ contentView: view }),
       setLayoutOuter: (layout) => set({ layoutOuter: layout }),
@@ -434,10 +425,9 @@ export const useSettingsStore = create<SettingsState>()(
           merged.topTabOrder = [...existingOrder, ...missingTabs];
         }
 
-        // Filter out stale hidden tab entries for removed tabs
-        if (persisted.hiddenTopTabs) {
-          const validTopTabs = DEFAULT_TOP_TAB_ORDER.filter((t) => t !== 'changes');
-          merged.hiddenTopTabs = persisted.hiddenTopTabs.filter((t) => validTopTabs.includes(t));
+        // Clean up legacy hiddenTopTabs from persisted state
+        if ('hiddenTopTabs' in merged) {
+          delete (merged as Record<string, unknown>).hiddenTopTabs;
         }
         if (persisted.hiddenBottomTabs) {
           const validBottomTabs = DEFAULT_BOTTOM_TAB_ORDER.filter((t) => t !== 'todos');
