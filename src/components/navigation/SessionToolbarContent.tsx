@@ -254,7 +254,7 @@ export function SessionToolbarContent() {
 
             <div className="w-1.5" />
 
-            {(() => {
+            {selectedSession.prStatus !== 'merged' && (() => {
               const reviewVariant =
                 (selectedSession.hasMergeConflict || selectedSession.hasCheckFailures)
                   ? 'destructive' as const
