@@ -115,6 +115,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
   const plateInputRef = useRef<PlateInputHandle>(null);
+  const attachmentsRef = useRef<Attachment[]>(attachments);
+  attachmentsRef.current = attachments;
 
   const {
     selectedConversationId,
@@ -136,6 +138,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setPlanModeActive,
     clearInputSuggestion,
     setSessionToggleState,
+    setDraftInput,
+    clearDraftInput,
   } = useAppStore();
   const hasQueuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
@@ -178,6 +182,40 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     };
     loadFiles();
   }, [selectedWorkspaceId, selectedSessionId]);
+
+  // Save/restore compose draft per session so switching sessions doesn't lose or leak input
+  const prevSessionIdRef = useRef<string | null>(selectedSessionId);
+  useEffect(() => {
+    const prevId = prevSessionIdRef.current;
+    if (prevId === selectedSessionId) return;
+
+    // Save draft for the previous session
+    if (prevId) {
+      const currentText = plateInputRef.current?.getText() ?? '';
+      const currentAttachments = attachmentsRef.current;
+      if (currentText || currentAttachments.length > 0) {
+        setDraftInput(prevId, { text: currentText, attachments: currentAttachments });
+      } else {
+        clearDraftInput(prevId);
+      }
+    }
+
+    // Restore draft for the new session (or clear)
+    const draft = selectedSessionId ? useAppStore.getState().draftInputs[selectedSessionId] : undefined;
+    if (draft) {
+      plateInputRef.current?.setText(draft.text);
+      setMessage(draft.text);
+      setAttachments(draft.attachments);
+      clearDraftInput(selectedSessionId!);
+    } else {
+      plateInputRef.current?.clear();
+      setMessage('');
+      setAttachments([]);
+    }
+
+    prevSessionIdRef.current = selectedSessionId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run on session switch
+  }, [selectedSessionId]);
 
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
