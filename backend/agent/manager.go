@@ -746,9 +746,16 @@ outer:
 					markSnapshotDirty()
 				}
 
+			case EventTypeUserQuestionRequest:
+				// Agent is waiting for user input — pause the watchdog so it
+				// doesn't fire while the user is answering.
+				activityWatchdog.Stop()
+
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
 				pendingPlanTimestamp = time.Now()
+				// Agent is waiting for plan approval — pause the watchdog.
+				activityWatchdog.Stop()
 
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
