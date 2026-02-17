@@ -228,7 +228,7 @@ describe('ReviewPanel', () => {
       expect(screen.queryByText('Resolved bug')).not.toBeInTheDocument();
     });
 
-    it('shows file path and line number', async () => {
+    it('shows file path in group header and line number in card', async () => {
       setupMswListComments([makeComment({ filePath: 'src/deep/nested/file.ts', lineNumber: 77 })]);
 
       render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
@@ -236,7 +236,7 @@ describe('ReviewPanel', () => {
       await waitFor(() => {
         expect(screen.getByText('file.ts')).toBeInTheDocument();
       });
-      expect(screen.getByText(':77')).toBeInTheDocument();
+      expect(screen.getByText('L77')).toBeInTheDocument();
       expect(screen.getByText('src/deep/nested/')).toBeInTheDocument();
     });
 
@@ -403,7 +403,7 @@ describe('ReviewPanel', () => {
   // ── onFileSelect callback ────────────────────────────────────────────
 
   describe('onFileSelect callback', () => {
-    it('calls onFileSelect with file path and line number when card is clicked', async () => {
+    it('calls onFileSelect with file path and line number when navigate button is clicked', async () => {
       const user = userEvent.setup();
       const onFileSelect = vi.fn();
 
@@ -423,8 +423,8 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Click me')).toBeInTheDocument();
       });
 
-      // Click the comment card
-      await user.click(screen.getByText('Click me'));
+      // Click the "Open in diff view" button
+      await user.click(screen.getByTitle('Open in diff view'));
 
       expect(onFileSelect).toHaveBeenCalledWith('src/index.ts', 33);
     });
@@ -432,8 +432,8 @@ describe('ReviewPanel', () => {
 
   // ── Send Feedback button ─────────────────────────────────────────────
 
-  describe('send feedback button', () => {
-    it('does not render Send Feedback when onSendFeedback is not provided', async () => {
+  describe('fix all button', () => {
+    it('does not render Fix all when onSendFeedback is not provided', async () => {
       setupMswListComments(mockComments);
 
       render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
@@ -442,10 +442,10 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Potential null pointer')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('Send Feedback')).not.toBeInTheDocument();
+      expect(screen.queryByText('Fix all')).not.toBeInTheDocument();
     });
 
-    it('renders Send Feedback button when onSendFeedback is provided', async () => {
+    it('renders Fix all button when onSendFeedback is provided', async () => {
       setupMswListComments(mockComments);
 
       render(
@@ -460,10 +460,10 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Potential null pointer')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('Send Feedback')).toBeInTheDocument();
+      expect(screen.getByText('Fix all')).toBeInTheDocument();
     });
 
-    it('disables Send Feedback when no unresolved comments exist', async () => {
+    it('hides Fix all when no unresolved comments exist', async () => {
       setupMswListComments([
         makeComment({ id: 'r-1', resolved: true }),
       ]);
@@ -480,11 +480,10 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('All comments resolved')).toBeInTheDocument();
       });
 
-      const sendButton = screen.getByText('Send Feedback').closest('button');
-      expect(sendButton).toBeDisabled();
+      expect(screen.queryByText('Fix all')).not.toBeInTheDocument();
     });
 
-    it('enables Send Feedback when unresolved comments exist', async () => {
+    it('shows Fix all when unresolved comments exist', async () => {
       setupMswListComments([
         makeComment({ id: 'c-1', resolved: false, title: 'Active comment' }),
       ]);
@@ -501,11 +500,11 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Active comment')).toBeInTheDocument();
       });
 
-      const sendButton = screen.getByText('Send Feedback').closest('button');
-      expect(sendButton).not.toBeDisabled();
+      const fixAllButton = screen.getByText('Fix all').closest('button');
+      expect(fixAllButton).not.toBeDisabled();
     });
 
-    it('calls onSendFeedback when button is clicked', async () => {
+    it('calls onSendFeedback when Fix all is clicked', async () => {
       const user = userEvent.setup();
       const onSendFeedback = vi.fn();
 
@@ -525,7 +524,7 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('A comment')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('Send Feedback'));
+      await user.click(screen.getByText('Fix all'));
 
       expect(onSendFeedback).toHaveBeenCalledOnce();
     });
