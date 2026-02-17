@@ -15,7 +15,6 @@ import {
   ChevronDown,
   Check,
   Loader2,
-  Send,
   ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -335,8 +334,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
             className="w-full h-7 text-xs"
             onClick={onSendFeedback}
           >
-            <Send className="h-3 w-3 mr-1.5" />
-            Send {counts.all} comment{counts.all !== 1 ? 's' : ''} as feedback
+            Fix all
           </Button>
         </div>
       )}
