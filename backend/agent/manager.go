@@ -358,8 +358,8 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	activeSubAgents := make(map[string]*SubAgentEntry)
 	// Teammate tracking: agentId → conversationId for routing events
 	teammateConvMap := make(map[string]string)
-	// Track whether team overview has been created
-	teamOverviewCreated := false
+	// Track team overview conversation ID (empty if not created)
+	teamOverviewConvID := ""
 	// Buffer tools that arrive before their sub-agent registers (race recovery)
 	pendingSubAgentTools := make(map[string][]ActiveToolEntry)
 	var currentThinking string // Accumulated thinking for snapshot/backwards compat
@@ -775,7 +775,7 @@ outer:
 					}
 
 					// Auto-create Team Overview (once, on first teammate)
-					if !teamOverviewCreated && len(teammateConvMap) == 0 {
+					if teamOverviewConvID == "" && len(teammateConvMap) == 0 {
 						overviewConvID := uuid.New().String()[:8]
 						now := time.Now()
 						overviewConv := &models.Conversation{
@@ -791,7 +791,7 @@ outer:
 						if err := m.store.AddConversation(ctx, overviewConv); err != nil {
 							logger.Process.Errorf("Failed to create team overview conversation: %v", err)
 						} else {
-							teamOverviewCreated = true
+							teamOverviewConvID = overviewConvID
 							if m.onConversationEvent != nil {
 								m.onConversationEvent(convID, &AgentEvent{
 									Type:           EventTypeTeamOverviewCreated,
@@ -1166,6 +1166,23 @@ outer:
 		}); err != nil {
 			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}
+	}
+
+	// Mark all teammate conversations as completed when lead stops
+	for agentId, teammateConvID := range teammateConvMap {
+		_ = m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted)
+		if m.onConversationEvent != nil {
+			m.onConversationEvent(teammateConvID, &AgentEvent{
+				Type:           EventTypeTeammateCompleted,
+				AgentId:        agentId,
+				ConversationID: teammateConvID,
+			})
+		}
+	}
+
+	// Mark team-overview conversation as completed if it was created
+	if teamOverviewConvID != "" {
+		_ = m.store.UpdateConversationStatus(ctx, teamOverviewConvID, models.ConversationStatusCompleted)
 	}
 
 	// Clear snapshot on process exit — but only if this process is still the current
