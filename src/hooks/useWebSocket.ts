@@ -15,6 +15,7 @@ import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
+import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 import { playSound } from '@/lib/sounds';
 
@@ -282,6 +283,10 @@ export function useWebSocket(enabled: boolean = true) {
           } else {
             store.setPlanModeActive(conversationId, isPlan);
           }
+        }
+        // Forward SDK-discovered slash commands to the slash command store
+        if (event?.slashCommands && Array.isArray(event.slashCommands)) {
+          useSlashCommandStore.getState().setSdkCommands(event.slashCommands as string[]);
         }
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {
