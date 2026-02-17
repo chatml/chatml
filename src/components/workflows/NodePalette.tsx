@@ -32,14 +32,27 @@ const CATEGORY_LABELS: Record<NodeCategory, string> = {
   data: 'Data',
 };
 
+// Module-level drag state: works around webviews (e.g. Tauri/WKWebView) that
+// don't reliably transfer custom MIME types via dataTransfer.
+let _draggedNodeKind: string | null = null;
+export function getDraggedNodeKind(): string | null {
+  const kind = _draggedNodeKind;
+  _draggedNodeKind = null;
+  return kind;
+}
+
 function PaletteItem({ kind }: { kind: NodeKindDefinition }) {
   const colors = CATEGORY_COLORS[kind.category];
   const Icon = NODE_ICONS[kind.kind] ?? Zap;
 
   const onDragStart = useCallback(
     (event: React.DragEvent) => {
+      // Store kind in dataTransfer and also in a module-level variable
+      // as a fallback for webviews that don't support custom MIME types.
       event.dataTransfer.setData('application/workflow-node-kind', kind.kind);
+      event.dataTransfer.setData('text/plain', kind.kind);
       event.dataTransfer.effectAllowed = 'move';
+      _draggedNodeKind = kind.kind;
     },
     [kind.kind],
   );

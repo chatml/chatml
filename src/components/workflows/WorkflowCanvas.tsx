@@ -22,6 +22,7 @@ import Dagre from '@dagrejs/dagre';
 import { WORKFLOW_NODE_TYPES } from './nodes/WorkflowNodes';
 import { DataFlowEdge } from './edges/DataFlowEdge';
 import { getNodeKind, type WorkflowNodeData } from './nodes/nodeRegistry';
+import { getDraggedNodeKind } from './NodePalette';
 
 export interface WorkflowCanvasHandle {
   autoLayout: () => void;
@@ -102,7 +103,11 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
-      const kind = event.dataTransfer.getData('application/workflow-node-kind');
+      // Try dataTransfer first, fall back to module-level state for webviews
+      // that don't support custom MIME types (e.g. Tauri/WKWebView).
+      const kind = event.dataTransfer.getData('application/workflow-node-kind')
+        || event.dataTransfer.getData('text/plain')
+        || getDraggedNodeKind();
       if (!kind || !reactFlowInstance.current) return;
 
       const kindDef = getNodeKind(kind);
@@ -164,6 +169,8 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
         onConnect={onConnect}
         onInit={onInit}
         onSelectionChange={onSelectionChange}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'dataflow' }}
