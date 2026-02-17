@@ -489,8 +489,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
                 </div>
               )}
 
-              {/* Summary */}
-              {summary && (
+              {/* Summary (hidden when stdout is present since the Output box already shows the full content) */}
+              {summary && !stdout && (
                 <div className={cn(
                   'text-2xs px-2 py-1 rounded',
                   success === false ? 'text-text-error bg-text-error/10' : 'text-muted-foreground bg-muted/30'
