@@ -111,8 +111,11 @@ type Conversation struct {
 	Name         string       `json:"name"`   // AI-updatable display name
 	Status       string       `json:"status"` // "active", "idle", "completed"
 	Model          string       `json:"model,omitempty"`
-	AgentSessionID string       `json:"agentSessionId,omitempty"` // Claude SDK session ID for resume
-	Messages       []Message    `json:"messages"`
+	AgentSessionID       string       `json:"agentSessionId,omitempty"` // Claude SDK session ID for resume
+	ParentConversationID string       `json:"parentConversationId,omitempty"` // links teammate → lead
+	TeamAgentId          string       `json:"teamAgentId,omitempty"`          // SDK agent_id for routing
+	TeammateName         string       `json:"teammateName,omitempty"`         // display name from description
+	Messages             []Message    `json:"messages"`
 	MessageCount int          `json:"messageCount,omitempty"`
 	ToolSummary  []ToolAction `json:"toolSummary"`
 	CreatedAt    time.Time    `json:"createdAt"`
@@ -221,7 +224,9 @@ type ToolAction struct {
 const (
 	ConversationTypeTask   = "task"
 	ConversationTypeReview = "review"
-	ConversationTypeChat   = "chat"
+	ConversationTypeChat         = "chat"
+	ConversationTypeTeammate     = "teammate"
+	ConversationTypeTeamOverview = "team-overview"
 )
 
 // ConversationStatus constants

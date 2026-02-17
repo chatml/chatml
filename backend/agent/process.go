@@ -102,6 +102,9 @@ type InputMessage struct {
 	// MCP server management fields (SDK v0.2.21+)
 	ServerName    string `json:"serverName,omitempty"`
 	ServerEnabled *bool  `json:"serverEnabled,omitempty"`
+	// Teammate routing fields (Agent SDK Teams)
+	TargetAgentId   string `json:"targetAgentId,omitempty"`
+	TargetAgentName string `json:"targetAgentName,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
