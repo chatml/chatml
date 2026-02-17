@@ -456,6 +456,8 @@ func (p *Process) SendMessageWithAttachments(content string, attachments []model
 	copy(processed, attachments)
 
 	for i := range processed {
+		logger.Process.Debugf("[%s] Attachment[%d]: type=%q mimeType=%q name=%q base64Len=%d path=%q",
+			p.ID, i, processed[i].Type, processed[i].MimeType, processed[i].Name, len(processed[i].Base64Data), processed[i].Path)
 		if processed[i].Type != "image" || processed[i].Base64Data == "" {
 			continue
 		}
