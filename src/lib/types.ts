@@ -718,3 +718,62 @@ export interface SessionToggleState {
   thinkingLevel: import('@/lib/thinkingLevels').ThinkingLevel;
   planModeEnabled: boolean;
 }
+
+// ============================================================================
+// Workflow Automation types
+// ============================================================================
+
+export type TriggerType = 'event' | 'webhook' | 'cron' | 'manual';
+export type WorkflowRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  graphJson: string;
+  toolPolicy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowTrigger {
+  id: string;
+  workflowId: string;
+  type: TriggerType;
+  config: string;
+  enabled: boolean;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflowId: string;
+  triggerId?: string;
+  triggerType: string;
+  status: WorkflowRunStatus;
+  inputData: string;
+  outputData: string;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface StepRun {
+  id: string;
+  runId: string;
+  nodeId: string;
+  nodeLabel: string;
+  status: string;
+  inputData: string;
+  outputData: string;
+  error?: string;
+  retryCount: number;
+  sessionId?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface WorkflowRunDetail extends WorkflowRun {
+  steps: StepRun[];
+}

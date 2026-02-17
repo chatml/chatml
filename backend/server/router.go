@@ -18,7 +18,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) (http.Handler, *Handlers) {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, aiClient, scriptRunner)
@@ -232,6 +232,27 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/content", h.GetSkillContent)
 	})
 
+	// Workflow automation endpoints
+	r.Route("/api/workflows", func(r chi.Router) {
+		r.Get("/", h.ListWorkflows)
+		r.Post("/", h.CreateWorkflow)
+		r.Get("/{workflowId}", h.GetWorkflow)
+		r.Put("/{workflowId}", h.UpdateWorkflow)
+		r.Delete("/{workflowId}", h.DeleteWorkflow)
+		r.Post("/{workflowId}/enable", h.EnableWorkflow)
+		r.Post("/{workflowId}/run", h.TriggerWorkflowRun)
+		r.Get("/{workflowId}/runs", h.ListWorkflowRuns)
+		r.Get("/{workflowId}/runs/{runId}", h.GetWorkflowRun)
+		r.Post("/{workflowId}/runs/{runId}/cancel", h.CancelWorkflowRun)
+		r.Get("/{workflowId}/triggers", h.ListTriggers)
+		r.Post("/{workflowId}/triggers", h.CreateTrigger)
+		r.Put("/{workflowId}/triggers/{triggerId}", h.UpdateTrigger)
+		r.Delete("/{workflowId}/triggers/{triggerId}", h.DeleteTrigger)
+	})
+
+	// External webhook receiver (triggers workflow runs from external services)
+	r.Post("/api/webhooks/{triggerId}", h.HandleExternalWebhook)
+
 	// Wire up agent manager callbacks (legacy)
 	agentMgr.SetOutputHandler(func(agentID, line string) {
 		hub.Broadcast(Event{
@@ -283,5 +304,5 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		AllowCredentials: false, // Not needed for this app
 	}).Handler(r)
 
-	return handler
+	return handler, h
 }

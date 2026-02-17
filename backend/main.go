@@ -12,9 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
+	"github.com/chatml/chatml-backend/appdir"
+	"github.com/chatml/chatml-backend/automation"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
@@ -418,10 +419,8 @@ func main() {
 		})
 	}
 
-	// Notify PRWatcher immediately when an agent creates or merges a PR via bash,
-	// bypassing the 30-second polling delay for instant UI updates.
-	agentMgr.SetOnPRCreated(prWatcher.ForceCheckSession)
-	agentMgr.SetOnPRMerged(prWatcher.ForceCheckSession)
+	// PR callbacks are set below after the automation engine is initialized,
+	// so they can also emit automation events alongside PRWatcher notifications.
 
 	// Issue cache for GitHub Issues API
 	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)
@@ -462,7 +461,38 @@ func main() {
 		},
 	)
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
+	router, handlers := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
+
+	// Automation engine: orchestrates workflow execution
+	autoEngine := automation.NewEngine(ctx, s, hub)
+	autoEngine.RegisterExecutor("action-webhook", automation.NewWebhookExecutor())
+	autoEngine.RegisterExecutor("action-script", automation.NewScriptExecutor())
+	autoEngine.RegisterExecutor("logic-conditional", automation.NewConditionalExecutor())
+	autoEngine.RegisterExecutor("logic-delay", automation.NewDelayExecutor())
+	autoEngine.RegisterExecutor("data-transform", automation.NewTransformExecutor())
+	autoEngine.RegisterExecutor("data-variable", automation.NewVariableExecutor())
+	autoEngine.Start()
+	handlers.SetAutomationEngine(autoEngine)
+	webhookHandler := automation.NewWebhookHandler(autoEngine, s)
+	handlers.SetWebhookHandler(webhookHandler.HandleWebhook)
+
+	// Automation event bus: routes internal events to matching workflow triggers
+	eventBus := automation.NewEventBus(ctx, autoEngine, s)
+
+	// Automation cron scheduler: fires workflow runs on schedule
+	cronScheduler := automation.NewScheduler(ctx, autoEngine, s)
+	cronScheduler.Start()
+	defer cronScheduler.Stop()
+
+	// Wire PR callbacks: PRWatcher for instant UI updates + EventBus for automation triggers
+	agentMgr.SetOnPRCreated(func(sessionID string) {
+		prWatcher.ForceCheckSession(sessionID)
+		eventBus.Emit(automation.EventPRCreated, map[string]interface{}{"sessionId": sessionID})
+	})
+	agentMgr.SetOnPRMerged(func(sessionID string) {
+		prWatcher.ForceCheckSession(sessionID)
+		eventBus.Emit(automation.EventPRMerged, map[string]interface{}{"sessionId": sessionID})
+	})
 
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{

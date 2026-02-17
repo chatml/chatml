@@ -2106,3 +2106,121 @@ export async function cloneRepo(url: string, path: string, dirName: string): Pro
   });
   return handleResponse<CloneRepoResponse>(res);
 }
+
+// ============================================================================
+// Workflow Automation API
+// ============================================================================
+
+import type { WorkflowDefinition, WorkflowTrigger, WorkflowRun, WorkflowRunDetail } from '@/lib/types';
+
+export async function listWorkflows(): Promise<WorkflowDefinition[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows`);
+  return handleResponse<WorkflowDefinition[]>(res);
+}
+
+export async function getWorkflow(id: string): Promise<WorkflowDefinition> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${id}`);
+  return handleResponse<WorkflowDefinition>(res);
+}
+
+export async function createWorkflow(data: { name: string; description?: string }): Promise<WorkflowDefinition> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<WorkflowDefinition>(res);
+}
+
+export async function updateWorkflow(id: string, data: {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  graphJson?: string;
+  toolPolicy?: string;
+}): Promise<WorkflowDefinition> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<WorkflowDefinition>(res);
+}
+
+export async function deleteWorkflow(id: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${id}`, { method: 'DELETE' });
+  await handleVoidResponse(res, 'Failed to delete workflow');
+}
+
+export async function enableWorkflow(id: string, enabled: boolean): Promise<WorkflowDefinition> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${id}/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  return handleResponse<WorkflowDefinition>(res);
+}
+
+export async function triggerWorkflowRun(workflowId: string, inputData?: string): Promise<WorkflowRun> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inputData: JSON.parse(inputData ?? '{}') }),
+  });
+  return handleResponse<WorkflowRun>(res);
+}
+
+export async function listWorkflowRuns(workflowId: string): Promise<WorkflowRun[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/runs`);
+  return handleResponse<WorkflowRun[]>(res);
+}
+
+export async function getWorkflowRun(workflowId: string, runId: string): Promise<WorkflowRunDetail> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/runs/${runId}`);
+  return handleResponse<WorkflowRunDetail>(res);
+}
+
+export async function cancelWorkflowRun(workflowId: string, runId: string): Promise<WorkflowRun> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/runs/${runId}/cancel`, {
+    method: 'POST',
+  });
+  return handleResponse<WorkflowRun>(res);
+}
+
+export async function listTriggers(workflowId: string): Promise<WorkflowTrigger[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/triggers`);
+  return handleResponse<WorkflowTrigger[]>(res);
+}
+
+export async function createTrigger(workflowId: string, data: {
+  type: string;
+  config?: string;
+  enabled?: boolean;
+}): Promise<WorkflowTrigger> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/triggers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<WorkflowTrigger>(res);
+}
+
+export async function updateTrigger(workflowId: string, triggerId: string, data: {
+  type?: string;
+  config?: string;
+  enabled?: boolean;
+}): Promise<WorkflowTrigger> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/triggers/${triggerId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<WorkflowTrigger>(res);
+}
+
+export async function deleteTrigger(workflowId: string, triggerId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/workflows/${workflowId}/triggers/${triggerId}`, {
+    method: 'DELETE',
+  });
+  await handleVoidResponse(res, 'Failed to delete trigger');
+}

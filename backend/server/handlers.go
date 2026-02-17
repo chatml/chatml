@@ -510,6 +510,12 @@ func (c *DirListingCache) Stats() (total int, expired int) {
 	return total, expired
 }
 
+// AutomationEngine is the interface used by handlers to trigger and cancel workflow runs.
+type AutomationEngine interface {
+	StartRun(ctx context.Context, workflowID, triggerID, triggerType string, inputData map[string]interface{}) (*models.WorkflowRun, error)
+	CancelRun(runID string) bool
+}
+
 type Handlers struct {
 	store            *store.SQLiteStore
 	repoManager      *git.RepoManager
@@ -530,6 +536,8 @@ type Handlers struct {
 	statsCache       *SessionStatsCache
 	aiClient         *ai.Client
 	scriptRunner     *scripts.Runner
+	automationEngine AutomationEngine
+	webhookHandler   http.HandlerFunc // External webhook trigger handler
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -599,6 +607,25 @@ func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirList
 		aiClient:         aiClient,
 		scriptRunner:     scriptRunner,
 	}
+}
+
+// SetAutomationEngine wires the automation engine into the handlers after initialization.
+func (h *Handlers) SetAutomationEngine(engine AutomationEngine) {
+	h.automationEngine = engine
+}
+
+// SetWebhookHandler registers the external webhook trigger handler.
+func (h *Handlers) SetWebhookHandler(handler http.HandlerFunc) {
+	h.webhookHandler = handler
+}
+
+// HandleExternalWebhook delegates to the registered webhook handler.
+func (h *Handlers) HandleExternalWebhook(w http.ResponseWriter, r *http.Request) {
+	if h.webhookHandler == nil {
+		http.Error(w, "webhook handler not configured", http.StatusServiceUnavailable)
+		return
+	}
+	h.webhookHandler(w, r)
 }
 
 // getSessionAndWorkspace fetches session and workspace data in a single query.

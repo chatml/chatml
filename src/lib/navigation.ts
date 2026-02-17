@@ -71,6 +71,12 @@ export function buildNavigationLabel(
       return 'Repositories';
     case 'session-manager':
       return 'Sessions';
+    case 'skills-store':
+      return 'Skills';
+    case 'workflows':
+      return 'Workflows';
+    case 'workflow-builder':
+      return 'Workflow Builder';
     default:
       return 'Unknown';
   }
@@ -144,6 +150,9 @@ function isEntryValid(entry: NavigationEntry): boolean {
       return true;
     case 'repositories':
     case 'session-manager':
+    case 'skills-store':
+    case 'workflows':
+    case 'workflow-builder':
       return true;
     case 'conversation':
     default:

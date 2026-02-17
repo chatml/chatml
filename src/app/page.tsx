@@ -68,6 +68,8 @@ import { BranchesDashboard } from '@/components/dashboards/BranchesDashboard';
 import { RepositoriesDashboard } from '@/components/dashboards/RepositoriesDashboard';
 import { SessionManager } from '@/components/session-manager';
 import { SkillsStore } from '@/components/skills/SkillsStore';
+import { WorkflowsDashboard } from '@/components/workflows/WorkflowsDashboard';
+import { WorkflowBuilder } from '@/components/workflows/WorkflowBuilder';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/toast';
 import { StreamingWarningHandler } from '@/components/shared/StreamingWarningHandler';
@@ -1483,6 +1485,12 @@ export default function Home() {
                 )}
                 {contentView.type === 'skills-store' && (
                   <SkillsStore />
+                )}
+                {contentView.type === 'workflows' && (
+                  <WorkflowsDashboard />
+                )}
+                {contentView.type === 'workflow-builder' && (
+                  <WorkflowBuilder workflowId={contentView.workflowId} />
                 )}
                 {!selectedSessionId && contentView.type === 'conversation' && (
                   <EmptyView

@@ -1,0 +1,89 @@
+'use client';
+
+import { useCallback } from 'react';
+import { getNodeKindsByCategory, CATEGORY_COLORS, type NodeKindDefinition, type NodeCategory } from './nodes/nodeRegistry';
+import { cn } from '@/lib/utils';
+import {
+  Hand, Clock, Webhook, Zap, Bot, Globe, Terminal,
+  GitBranch, Timer, Repeat, GitFork, Shuffle, Variable,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+const NODE_ICONS: Record<string, LucideIcon> = {
+  'trigger-manual': Hand,
+  'trigger-cron': Clock,
+  'trigger-webhook': Webhook,
+  'trigger-event': Zap,
+  'action-agent': Bot,
+  'action-webhook': Globe,
+  'action-script': Terminal,
+  'logic-conditional': GitBranch,
+  'logic-delay': Timer,
+  'logic-loop': Repeat,
+  'logic-parallel': GitFork,
+  'data-transform': Shuffle,
+  'data-variable': Variable,
+};
+
+const CATEGORY_LABELS: Record<NodeCategory, string> = {
+  trigger: 'Triggers',
+  action: 'Actions',
+  logic: 'Logic',
+  data: 'Data',
+};
+
+function PaletteItem({ kind }: { kind: NodeKindDefinition }) {
+  const colors = CATEGORY_COLORS[kind.category];
+  const Icon = NODE_ICONS[kind.kind] ?? Zap;
+
+  const onDragStart = useCallback(
+    (event: React.DragEvent) => {
+      event.dataTransfer.setData('application/workflow-node-kind', kind.kind);
+      event.dataTransfer.effectAllowed = 'move';
+    },
+    [kind.kind],
+  );
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-2 py-1.5 rounded-md cursor-grab hover:bg-muted/50 transition-colors',
+        'active:cursor-grabbing',
+      )}
+      draggable
+      onDragStart={onDragStart}
+    >
+      <div className={cn('flex items-center justify-center w-6 h-6 rounded shrink-0', colors.bg)}>
+        <Icon className={cn('h-3 w-3', colors.icon)} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs font-medium truncate">{kind.label}</div>
+        <div className="text-[10px] text-muted-foreground truncate">{kind.description}</div>
+      </div>
+    </div>
+  );
+}
+
+export function NodePalette() {
+  const grouped = getNodeKindsByCategory();
+
+  return (
+    <div className="p-2 space-y-3">
+      <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Nodes
+      </div>
+      {(Object.keys(grouped) as NodeCategory[]).map((category) => (
+        <div key={category}>
+          <div className="px-2 pb-1 text-[10px] font-medium text-muted-foreground">
+            {CATEGORY_LABELS[category]}
+          </div>
+          <div className="space-y-0.5">
+            {grouped[category].map((kind) => (
+              <PaletteItem key={kind.kind} kind={kind} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

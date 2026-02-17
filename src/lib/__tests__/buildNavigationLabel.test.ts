@@ -159,7 +159,7 @@ describe('buildNavigationLabel', () => {
 
   describe('unknown type', () => {
     it('returns "Unknown" for unrecognized content view type', () => {
-      expect(label({ type: 'something-new' } as ContentView)).toBe('Unknown');
+      expect(label({ type: 'something-new' } as unknown as ContentView)).toBe('Unknown');
     });
   });
 

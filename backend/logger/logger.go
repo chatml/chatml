@@ -36,6 +36,9 @@ var (
 	// Scripts
 	Scripts *log.Logger
 
+	// Automation engine
+	Automation *log.Logger
+
 	// Caching
 	DirCache *log.Logger
 
@@ -115,6 +118,9 @@ func init() {
 
 	// Scripts
 	Scripts = base.WithPrefix(colorAgent.Render("scripts"))
+
+	// Automation engine
+	Automation = base.WithPrefix(colorWatch.Render("automation"))
 
 	// Caching
 	DirCache = base.WithPrefix(colorWatch.Render("dir-cache"))

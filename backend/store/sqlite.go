@@ -300,6 +300,62 @@ func (s *SQLiteStore) initSchema() error {
 		installed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_user_skill_preferences_skill_id ON user_skill_preferences(skill_id);
+
+	-- Workflows (automation)
+	CREATE TABLE IF NOT EXISTS workflows (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		graph_json TEXT NOT NULL DEFAULT '{}',
+		tool_policy TEXT DEFAULT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	-- Triggers (automation)
+	CREATE TABLE IF NOT EXISTS triggers (
+		id TEXT PRIMARY KEY,
+		workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+		type TEXT NOT NULL,
+		config TEXT NOT NULL DEFAULT '{}',
+		enabled INTEGER NOT NULL DEFAULT 1
+	);
+	CREATE INDEX IF NOT EXISTS idx_triggers_workflow ON triggers(workflow_id);
+	CREATE INDEX IF NOT EXISTS idx_triggers_type ON triggers(type);
+
+	-- Workflow Runs (automation)
+	CREATE TABLE IF NOT EXISTS workflow_runs (
+		id TEXT PRIMARY KEY,
+		workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+		trigger_id TEXT DEFAULT NULL,
+		trigger_type TEXT NOT NULL DEFAULT 'manual',
+		status TEXT NOT NULL DEFAULT 'pending',
+		input_data TEXT NOT NULL DEFAULT '{}',
+		output_data TEXT NOT NULL DEFAULT '{}',
+		error TEXT NOT NULL DEFAULT '',
+		started_at DATETIME,
+		completed_at DATETIME,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow ON workflow_runs(workflow_id);
+
+	-- Step Runs (automation)
+	CREATE TABLE IF NOT EXISTS step_runs (
+		id TEXT PRIMARY KEY,
+		run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+		node_id TEXT NOT NULL,
+		node_label TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		input_data TEXT NOT NULL DEFAULT '{}',
+		output_data TEXT NOT NULL DEFAULT '{}',
+		error TEXT NOT NULL DEFAULT '',
+		retry_count INTEGER NOT NULL DEFAULT 0,
+		session_id TEXT DEFAULT NULL,
+		started_at DATETIME,
+		completed_at DATETIME
+	);
+	CREATE INDEX IF NOT EXISTS idx_step_runs_run ON step_runs(run_id);
 	`
 
 	_, err := s.db.Exec(schema)

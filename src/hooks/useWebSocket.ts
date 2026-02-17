@@ -17,6 +17,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 import { playSound } from '@/lib/sounds';
+import { useWorkflowStore } from '@/stores/workflowStore';
 
 // Conversations that recently exited plan mode. Maps conversationId → exit timestamp.
 // Used to suppress stale SDK status messages that try to re-activate plan mode after
@@ -44,6 +45,36 @@ export function markPlanModeExited(conversationId: string) {
       recentlyExitedPlanMode.delete(conversationId);
     }
   }, PLAN_MODE_EXIT_COOLDOWN_MS + 100);
+}
+
+/** Dispatch workflow execution events to the workflow store. */
+function handleWorkflowEvent(eventType: string, payload: Record<string, unknown>) {
+  const wfStore = useWorkflowStore.getState();
+  switch (eventType) {
+    case 'workflow:run_started':
+      wfStore.onRunStarted(payload.workflowId as string, payload.runId as string);
+      break;
+    case 'workflow:node_started':
+      wfStore.onNodeStarted(payload.runId as string, payload.nodeId as string);
+      break;
+    case 'workflow:node_completed':
+      wfStore.onNodeCompleted(
+        payload.runId as string,
+        payload.nodeId as string,
+        payload.status as 'completed' | 'failed' | 'skipped',
+        payload.durationMs as number | undefined,
+        payload.error as string | undefined,
+      );
+      break;
+    case 'workflow:run_completed':
+      wfStore.onRunCompleted(
+        payload.workflowId as string,
+        payload.runId as string,
+        payload.status as string,
+        payload.durationMs as number | undefined,
+      );
+      break;
+  }
 }
 
 /**
@@ -1190,6 +1221,15 @@ export function useWebSocket(enabled: boolean = true) {
           const payload = data.payload as import('@/lib/types').SetupProgress | undefined;
           if (payload) {
             getStore().setSetupProgress(data.sessionId, payload);
+          }
+          return;
+        }
+
+        // Handle workflow execution events
+        if (data.type?.startsWith('workflow:')) {
+          const payload = data.payload as Record<string, unknown> | undefined;
+          if (payload) {
+            handleWorkflowEvent(data.type, payload);
           }
           return;
         }

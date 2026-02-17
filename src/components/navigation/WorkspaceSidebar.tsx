@@ -84,6 +84,7 @@ import {
   Check,
   MessageCircleQuestion,
   ClipboardCheck,
+  Workflow,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -581,6 +582,28 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
               : "text-muted-foreground group-hover:text-foreground"
           )}>
             Skills
+          </span>
+        </div>
+        <div
+          className={cn(
+            "group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer",
+            (contentView.type === 'workflows' || contentView.type === 'workflow-builder')
+              ? "bg-surface-2 text-foreground"
+              : "hover:bg-surface-1"
+          )}
+          onClick={() => navigate({ contentView: { type: 'workflows' } })}
+        >
+          <Workflow className={cn(
+            "w-4 h-4",
+            (contentView.type === 'workflows' || contentView.type === 'workflow-builder') ? "text-indigo-500" : "text-indigo-500/70"
+          )} />
+          <span className={cn(
+            "text-base font-medium",
+            (contentView.type === 'workflows' || contentView.type === 'workflow-builder')
+              ? "text-foreground"
+              : "text-muted-foreground group-hover:text-foreground"
+          )}>
+            Workflows
           </span>
         </div>
       </div>
