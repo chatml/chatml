@@ -919,7 +919,11 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'supported_commands':
         if (event?.commands) {
-          store.setSupportedCommands(event.commands as Array<{ name: string; description: string; argumentHint: string }>);
+          const cmds = event.commands as Array<{ name: string; description: string; argumentHint: string }>;
+          store.setSupportedCommands(cmds);
+          // Also feed into the slash command store so SDK-discovered
+          // commands appear in the slash menu with rich descriptions.
+          useSlashCommandStore.getState().setSdkCommandsRich(cmds);
         }
         break;
 
