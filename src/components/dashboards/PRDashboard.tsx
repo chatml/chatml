@@ -8,6 +8,7 @@ import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig } from '@/components/data-table';
 import { getPRs, sendSessionMessage, type PRDashboardItem } from '@/lib/api';
+import { computePRStatus, STATUS_ORDER, STATUS_LABELS, type PRWithStatus, type PRStatusCategory } from '@/lib/pr-utils';
 import { Button } from '@/components/ui/button';
 import {
   HoverCard,
@@ -52,19 +53,6 @@ interface PRDashboardProps {
   initialWorkspaceId?: string;
 }
 
-// PR Status categories for grouping
-type PRStatusCategory = 'ready' | 'pending' | 'failures' | 'conflicts' | 'draft';
-
-const STATUS_ORDER: PRStatusCategory[] = ['ready', 'failures', 'conflicts', 'pending', 'draft'];
-
-const STATUS_LABELS: Record<PRStatusCategory, string> = {
-  ready: 'Ready to Merge',
-  pending: 'Checks Pending',
-  failures: 'Check Failures',
-  conflicts: 'Merge Conflicts',
-  draft: 'Draft',
-};
-
 // Helper to open URLs in browser
 async function openInBrowser(url: string) {
   if (isTauri()) {
@@ -73,46 +61,6 @@ async function openInBrowser(url: string) {
   } else {
     window.open(url, '_blank');
   }
-}
-
-// Extended PR item with computed status
-interface PRWithStatus extends PRDashboardItem {
-  statusCategory: PRStatusCategory;
-  pendingCount: number;
-  hasConflicts: boolean;
-  allPassed: boolean;
-}
-
-// Compute PR status category
-function computePRStatus(pr: PRDashboardItem): PRWithStatus {
-  const hasChecks = pr.checksTotal > 0;
-  const hasFailures = pr.checksFailed > 0;
-  const pendingCount = pr.checksTotal - pr.checksPassed - pr.checksFailed;
-  const hasPending = pendingCount > 0;
-  const allPassed = hasChecks && !hasFailures && !hasPending;
-  const hasConflicts = pr.mergeableState === 'dirty' || pr.mergeable === false;
-
-  let statusCategory: PRStatusCategory;
-
-  if (pr.isDraft) {
-    statusCategory = 'draft';
-  } else if (hasConflicts) {
-    statusCategory = 'conflicts';
-  } else if (hasFailures) {
-    statusCategory = 'failures';
-  } else if (hasPending) {
-    statusCategory = 'pending';
-  } else {
-    statusCategory = 'ready';
-  }
-
-  return {
-    ...pr,
-    statusCategory,
-    pendingCount,
-    hasConflicts,
-    allPassed,
-  };
 }
 
 // Status icon cell component
