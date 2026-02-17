@@ -184,6 +184,8 @@ export function CodeViewer({
             onResolveComment={onResolveComment}
             onDeleteComment={onDeleteComment}
             onCreateComment={onCreateComment}
+            initialCursorPosition={initialCursorPosition}
+            onStateChange={onStateChange}
           />
         </div>
       </div>

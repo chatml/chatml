@@ -102,7 +102,7 @@ const MAX_DIFF_SIZE = 2 * 1024 * 1024;
 export function ChangesPanel() {
   // Use optimized selectors to prevent unnecessary re-renders
   const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
-  const { openFileTab, updateFileTab } = useFileTabState();
+  const { fileTabs, openFileTab, updateFileTab, selectFileTab } = useFileTabState();
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
   const reviewComments = useReviewComments(selectedSessionId);
@@ -308,6 +308,81 @@ export function ChangesPanel() {
       updateFileTab(tabId, {
         diff: {
           // Ensure strings even if API returns undefined
+          oldContent: diffData.oldContent ?? '',
+          newContent: diffData.newContent ?? '',
+        },
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to load diff:', error);
+      updateFileTab(tabId, {
+        loadError: error instanceof Error ? error.message : 'Unknown error',
+        isLoading: false,
+      });
+    }
+  };
+
+  // Handle review comment click - opens diff view scrolled to the comment line
+  const handleReviewFileSelect = async (path: string, lineNumber?: number) => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+
+    const filename = path.split('/').pop() || path;
+    const tabId = `${selectedWorkspaceId}-${selectedSessionId}-diff-${path}`;
+
+    // If a diff tab for this file already exists, select it and update cursor position
+    const existingTab = fileTabs.find(
+      (t) => t.id === tabId
+    );
+    if (existingTab) {
+      selectFileTab(tabId);
+      if (lineNumber) {
+        updateFileTab(tabId, { cursorPosition: { line: lineNumber, column: 1 } });
+      }
+      return;
+    }
+
+    // Check if it's a binary file
+    if (isBinaryFile(filename)) {
+      const newTab: FileTab = {
+        id: tabId,
+        workspaceId: selectedWorkspaceId,
+        sessionId: selectedSessionId,
+        path,
+        name: filename,
+        isLoading: false,
+        viewMode: 'diff',
+        isBinary: true,
+      };
+      openFileTab(newTab);
+      return;
+    }
+
+    // Create tab with loading state
+    const newTab: FileTab = {
+      id: tabId,
+      workspaceId: selectedWorkspaceId,
+      sessionId: selectedSessionId,
+      path,
+      name: filename,
+      isLoading: true,
+      viewMode: 'diff',
+      cursorPosition: lineNumber ? { line: lineNumber, column: 1 } : undefined,
+    };
+
+    openFileTab(newTab);
+
+    // Fetch diff
+    try {
+      const diffData = await getSessionFileDiff(selectedWorkspaceId, selectedSessionId, path);
+
+      const totalSize = (diffData.oldContent?.length || 0) + (diffData.newContent?.length || 0);
+      if (totalSize > MAX_DIFF_SIZE) {
+        updateFileTab(tabId, { isLoading: false, isTooLarge: true });
+        return;
+      }
+
+      updateFileTab(tabId, {
+        diff: {
           oldContent: diffData.oldContent ?? '',
           newContent: diffData.newContent ?? '',
         },
@@ -688,7 +763,7 @@ export function ChangesPanel() {
           </div>
           <div className={cn("h-full", selectedTab !== 'review' && 'hidden')}>
             <ErrorBoundary section="ReviewPanel" fallback={<InlineErrorFallback message="Unable to display review" />}>
-              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleFileSelect} onSendFeedback={handleSendFeedback} showResolved={showResolved} />
+              <ReviewPanel workspaceId={selectedWorkspaceId} sessionId={selectedSessionId} onFileSelect={handleReviewFileSelect} onSendFeedback={handleSendFeedback} showResolved={showResolved} />
             </ErrorBoundary>
           </div>
           <div className={cn("h-full", selectedTab !== 'checks' && 'hidden')}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,9 +12,11 @@ import {
   Clock,
   FileCode,
   ChevronRight,
+  ChevronDown,
   Check,
   Loader2,
   Send,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
@@ -28,6 +30,14 @@ type CommentSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 
 const EMPTY: ReviewComment[] = [];
 
+// Severity priority for sorting (lower = more critical = shown first)
+const SEVERITY_PRIORITY: Record<string, number> = {
+  error: 0,
+  warning: 1,
+  suggestion: 2,
+  info: 3,
+};
+
 interface ReviewPanelProps {
   workspaceId: string | null;
   sessionId: string | null;
@@ -40,6 +50,8 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const [fetchSession, setFetchSession] = useState<string | null>(null);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -78,11 +90,38 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   }, [workspaceId, sessionId, setReviewComments]);
 
   // Filter comments by severity and resolved state
-  const filteredComments = comments.filter((c) => {
-    if (c.resolved && !showResolved) return false;
-    if (filter === 'all') return true;
-    return c.severity === filter;
-  });
+  const filteredComments = useMemo(() => {
+    const filtered = comments.filter((c) => {
+      if (c.resolved && !showResolved) return false;
+      if (filter === 'all') return true;
+      return c.severity === filter;
+    });
+
+    // Sort by severity priority (error > warning > suggestion > info), then by line number
+    return filtered.sort((a, b) => {
+      const aPriority = SEVERITY_PRIORITY[a.severity || 'info'] ?? 3;
+      const bPriority = SEVERITY_PRIORITY[b.severity || 'info'] ?? 3;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      // Within same severity, sort by file path then line number
+      const fileCompare = a.filePath.localeCompare(b.filePath);
+      if (fileCompare !== 0) return fileCompare;
+      return a.lineNumber - b.lineNumber;
+    });
+  }, [comments, filter, showResolved]);
+
+  // Group sorted comments by file path (preserves sort order within groups)
+  const groupedComments = useMemo(() => {
+    const groups = new Map<string, ReviewComment[]>();
+    for (const comment of filteredComments) {
+      const existing = groups.get(comment.filePath);
+      if (existing) {
+        existing.push(comment);
+      } else {
+        groups.set(comment.filePath, [comment]);
+      }
+    }
+    return groups;
+  }, [filteredComments]);
 
   // Count by severity for filter badges
   const unresolvedComments = comments.filter((c) => !c.resolved);
@@ -119,6 +158,30 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     },
     [workspaceId, sessionId, updateReviewComment]
   );
+
+  const toggleCardExpanded = useCallback((commentId: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) {
+        next.delete(commentId);
+      } else {
+        next.add(commentId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleFileCollapsed = useCallback((filePath: string) => {
+    setCollapsedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
+  }, []);
 
   if (!sessionId) {
     return (
@@ -182,19 +245,6 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
-        {onSendFeedback && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-5 text-xs px-1.5 ml-auto text-muted-foreground hover:text-foreground"
-            onClick={onSendFeedback}
-            disabled={counts.all === 0}
-            title="Send unresolved comments as feedback to AI"
-          >
-            <Send className="h-3 w-3 mr-0.5" />
-            Send Feedback
-          </Button>
-        )}
       </div>
 
       {/* Comments list */}
@@ -222,18 +272,73 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
         </div>
       ) : (
         <ScrollArea className="flex-1 min-h-0">
-          <div className="p-2 space-y-2">
-            {filteredComments.map((comment) => (
-              <ReviewCommentCard
-                key={comment.id}
-                comment={comment}
-                onClick={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
-                onResolve={() => handleResolve(comment.id)}
-                isResolved={comment.resolved}
-              />
-            ))}
+          <div className="p-1.5 space-y-1">
+            {Array.from(groupedComments.entries()).map(([filePath, fileComments]) => {
+              const fileName = filePath.split('/').pop() || filePath;
+              const dirPath = filePath.split('/').slice(0, -1).join('/');
+              const unresolvedCount = fileComments.filter((c) => !c.resolved).length;
+              const isCollapsed = collapsedFiles.has(filePath);
+
+              return (
+                <div key={filePath}>
+                  {/* File group header */}
+                  <button
+                    className="flex items-center gap-1.5 w-full px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-2 rounded transition-colors"
+                    onClick={() => toggleFileCollapsed(filePath)}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="h-3 w-3 shrink-0" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3 shrink-0" />
+                    )}
+                    <FileCode className="h-3 w-3 shrink-0" />
+                    <span className="truncate text-left" title={filePath}>
+                      {dirPath && <span className="opacity-60">{dirPath}/</span>}
+                      <span className="text-foreground">{fileName}</span>
+                    </span>
+                    {unresolvedCount > 0 && (
+                      <span className="ml-auto shrink-0 bg-muted text-muted-foreground rounded-full px-1.5 py-0 text-2xs font-medium">
+                        {unresolvedCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* File comments */}
+                  {!isCollapsed && (
+                    <div className="ml-2 space-y-1 mt-0.5">
+                      {fileComments.map((comment) => (
+                        <ReviewCommentCard
+                          key={comment.id}
+                          comment={comment}
+                          isExpanded={expandedCards.has(comment.id)}
+                          onToggleExpand={() => toggleCardExpanded(comment.id)}
+                          onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
+                          onResolve={() => handleResolve(comment.id)}
+                          isResolved={comment.resolved}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </ScrollArea>
+      )}
+
+      {/* Send Feedback footer */}
+      {onSendFeedback && counts.all > 0 && !loading && (
+        <div className="px-2 py-1.5 border-t shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-7 text-xs"
+            onClick={onSendFeedback}
+          >
+            <Send className="h-3 w-3 mr-1.5" />
+            Send {counts.all} comment{counts.all !== 1 ? 's' : ''} as feedback
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -241,18 +346,19 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
 
 function ReviewCommentCard({
   comment,
-  onClick,
+  isExpanded,
+  onToggleExpand,
+  onNavigate,
   onResolve,
   isResolved,
 }: {
   comment: ReviewComment;
-  onClick?: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onNavigate: () => void;
   onResolve?: () => void;
   isResolved?: boolean;
 }) {
-  const fileName = comment.filePath.split('/').pop() || comment.filePath;
-  const dirPath = comment.filePath.split('/').slice(0, -1).join('/');
-
   // Use title field if available, otherwise extract first line of content
   const title = comment.title || comment.content.split('\n')[0];
   const description = comment.title
@@ -291,22 +397,24 @@ function ReviewCommentCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-2.5 cursor-pointer transition-colors hover:bg-surface-2',
+        'rounded-lg border p-2 transition-colors',
         isResolved ? 'opacity-50 border-border bg-surface-1' : severityColor
       )}
-      onClick={onClick}
     >
-      {/* Header row */}
-      <div className="flex items-start gap-2">
+      {/* Header row - click to expand/collapse */}
+      <div
+        className="flex items-start gap-2 cursor-pointer"
+        onClick={onToggleExpand}
+      >
         {isResolved ? (
-          <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-green-500" />
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-green-500" />
         ) : (
-          <SeverityIcon className="h-4 w-4 shrink-0 mt-0.5" />
+          <SeverityIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
         )}
         <div className="flex-1 min-w-0">
-          <div className={cn('font-medium text-sm leading-tight', isResolved && 'line-through')}>{title}</div>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+          <div className={cn('font-medium text-xs leading-tight', isResolved && 'line-through')}>{title}</div>
+          {description && !isExpanded && (
+            <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-1">
               {description}
             </p>
           )}
@@ -326,24 +434,37 @@ function ReviewCommentCard({
               <Check className="h-3 w-3" />
             </Button>
           )}
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 w-5 p-0 hover:bg-accent"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigate();
+            }}
+            title="Open in diff view"
+          >
+            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+          </Button>
         </div>
       </div>
 
-      {/* Footer row */}
-      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1 min-w-0">
-          <FileCode className="h-3 w-3 shrink-0" />
-          <span className="truncate" title={comment.filePath}>
-            {dirPath && <span className="opacity-60">{dirPath}/</span>}
-            {fileName}
-            {comment.lineNumber && <span className="opacity-60">:{comment.lineNumber}</span>}
-          </span>
+      {/* Expanded content */}
+      {isExpanded && description && (
+        <div className="mt-1.5 ml-5.5 text-xs text-foreground/80 whitespace-pre-wrap break-words border-t border-border/50 pt-1.5">
+          {description}
         </div>
-        <div className="flex items-center gap-1 shrink-0 ml-auto">
-          <Clock className="h-3 w-3" />
-          <span>{formatTimeAgo(comment.createdAt)}</span>
-        </div>
+      )}
+
+      {/* Footer row - line number and time */}
+      <div className="flex items-center gap-2 mt-1 ml-5.5 text-2xs text-muted-foreground">
+        {comment.lineNumber > 0 && (
+          <span>L{comment.lineNumber}</span>
+        )}
+        <span className="ml-auto flex items-center gap-0.5">
+          <Clock className="h-2.5 w-2.5" />
+          {formatTimeAgo(comment.createdAt)}
+        </span>
       </div>
     </div>
   );

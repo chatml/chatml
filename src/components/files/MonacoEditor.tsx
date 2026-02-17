@@ -207,6 +207,9 @@ interface MonacoDiffEditorProps {
   onResolveComment?: (id: string, resolved: boolean) => void;
   onDeleteComment?: (id: string) => void;
   onCreateComment?: (lineNumber: number, content: string) => void;
+  // Scroll-to-line on mount (e.g. when navigating from a review comment)
+  initialCursorPosition?: { line: number; column: number };
+  onStateChange?: (state: EditorState) => void;
 }
 
 export function MonacoDiffEditor({
@@ -220,6 +223,8 @@ export function MonacoDiffEditor({
   onResolveComment,
   onDeleteComment,
   onCreateComment,
+  initialCursorPosition,
+  onStateChange,
 }: MonacoDiffEditorProps) {
   const language = getMonacoLanguage(filename);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
@@ -276,6 +281,9 @@ export function MonacoDiffEditor({
   useEffect(() => {
     onCreateCommentRef.current = onCreateComment;
   }, [onCreateComment]);
+
+  // Track whether we've scrolled to the requested initial position
+  const didScrollToTargetRef = useRef(false);
 
   const handleMount = useCallback((editor: editor.IStandaloneDiffEditor) => {
     editorRef.current = editor;
@@ -351,15 +359,18 @@ export function MonacoDiffEditor({
         modifiedEditor.createDecorationsCollection(decorations);
       }
 
-      // Scroll to the first change
-      if (lineChanges && lineChanges.length > 0) {
+      // Scroll to requested line (from review comment click) or first change
+      if (initialCursorPosition && !didScrollToTargetRef.current) {
+        didScrollToTargetRef.current = true;
+        modifiedEditor.revealLineInCenter(initialCursorPosition.line);
+      } else if (lineChanges && lineChanges.length > 0 && !didScrollToTargetRef.current) {
         const firstChange = lineChanges[0];
         const targetLine = firstChange.modifiedStartLineNumber || firstChange.originalStartLineNumber || 1;
         modifiedEditor.revealLineInCenter(targetLine);
       }
     });
     disposablesRef.current.push(diffDisposable);
-  }, [comments, onResolveComment, onDeleteComment]);
+  }, [comments, onResolveComment, onDeleteComment, initialCursorPosition]);
 
   // Update comments when they change
   useEffect(() => {
@@ -389,6 +400,28 @@ export function MonacoDiffEditor({
       manager.hideCommentInput();
     }
   }, [activeCommentLine, onCreateComment]);
+
+  // Save editor state before unmount
+  useEffect(() => {
+    return () => {
+      if (editorRef.current && onStateChange) {
+        try {
+          const modifiedEditor = editorRef.current.getModifiedEditor();
+          const position = modifiedEditor.getPosition();
+          const scrollTop = modifiedEditor.getScrollTop();
+          const scrollLeft = modifiedEditor.getScrollLeft();
+          onStateChange({
+            cursorPosition: position
+              ? { line: position.lineNumber, column: position.column }
+              : undefined,
+            scrollPosition: { top: scrollTop, left: scrollLeft },
+          });
+        } catch {
+          // Editor may be disposed during StrictMode double-mount
+        }
+      }
+    };
+  }, [onStateChange]);
 
   // Dispose comment manager, event handlers, and clear refs on unmount
   // (editor disposal is handled by @monaco-editor/react)
