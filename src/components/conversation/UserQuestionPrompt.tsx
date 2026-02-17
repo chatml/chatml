@@ -5,7 +5,7 @@ import { usePendingUserQuestion, useUserQuestionActions } from '@/stores/selecto
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { X, ChevronLeft, ChevronRight, ArrowUp, Check, Loader2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ArrowUp, Check, Loader2, Circle } from 'lucide-react';
 import { answerConversationQuestion } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import type { UserQuestion } from '@/lib/types';
@@ -35,7 +35,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
   }, [pending, currentQuestion]);
 
   const handleOptionToggle = useCallback((label: string) => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || isSubmitting) return;
 
     if (currentQuestion.multiSelect) {
       // Read current answer directly from store to avoid stale closure
@@ -48,10 +48,33 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
       }
       updateUserQuestionAnswer(conversationId, currentQuestion.header, [...currentSet].join(','));
     } else {
-      // Single select - replace
+      // Single select - replace and auto-submit/advance
       updateUserQuestionAnswer(conversationId, currentQuestion.header, label);
+
+      // Check if all other questions already have answers
+      const pendingState = useAppStore.getState().pendingUserQuestion[conversationId];
+      if (!pendingState) return;
+
+      const allAnswered = pendingState.questions.every((q) => {
+        if (q.header === currentQuestion.header) return true; // this one is now answered
+        const answer = pendingState.answers[q.header];
+        return answer && answer.length > 0;
+      });
+
+      if (allAnswered && totalQuestions <= 1) {
+        // Only question — auto-submit with the updated answers
+        const answers = { ...pendingState.answers, [currentQuestion.header]: label };
+        setIsSubmitting(true);
+        answerConversationQuestion(conversationId, pendingState.requestId, answers)
+          .then(() => clearPendingUserQuestion(conversationId))
+          .catch((error) => showError(error instanceof Error ? error.message : 'Failed to submit answer'))
+          .finally(() => setIsSubmitting(false));
+      } else if (currentIndex < totalQuestions - 1) {
+        // More questions in wizard — advance to next
+        nextUserQuestion(conversationId);
+      }
     }
-  }, [conversationId, currentQuestion, updateUserQuestionAnswer]);
+  }, [conversationId, currentQuestion, isSubmitting, updateUserQuestionAnswer, totalQuestions, currentIndex, nextUserQuestion, clearPendingUserQuestion, showError]);
 
   const handleDismiss = useCallback(async () => {
     if (!pending || isSubmitting) return;
@@ -111,7 +134,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
       <div className="relative rounded-lg border border-border bg-card dark:bg-input">
         {/* Question Header */}
         <div className="flex items-start justify-between px-4 pt-4 pb-2">
-          <p className="text-sm text-foreground leading-relaxed pr-8">{currentQuestion.question}</p>
+          <p className="text-sm font-medium text-foreground leading-relaxed pr-8">{currentQuestion.question}</p>
           <Button
             variant="ghost"
             size="icon"
@@ -137,25 +160,36 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition-colors',
                     isSelected
-                      ? 'bg-primary/10 text-foreground'
-                      : 'text-muted-foreground hover:bg-surface-1/60 hover:text-foreground'
+                      ? 'bg-primary/15 text-foreground'
+                      : 'text-foreground/80 hover:bg-surface-1/60 hover:text-foreground'
                   )}
                 >
-                  <span className="text-xs font-mono text-muted-foreground/70 w-4">{index + 1}</span>
+                  <span className="text-xs font-mono text-muted-foreground w-4">{index + 1}</span>
                   <div className="flex-1 min-w-0">
                     <span className="text-sm block">{option.label}</span>
                     {option.description && (
-                      <span className="text-xs text-muted-foreground/70 block truncate">{option.description}</span>
+                      <span className="text-xs text-muted-foreground block truncate">{option.description}</span>
                     )}
                   </div>
-                  <div className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0',
-                    isSelected
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-muted-foreground/40'
-                  )}>
-                    {isSelected && <Check className="h-3 w-3" />}
-                  </div>
+                  {currentQuestion.multiSelect ? (
+                    <div className={cn(
+                      'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0',
+                      isSelected
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-muted-foreground/60'
+                    )}>
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </div>
+                  ) : (
+                    <div className={cn(
+                      'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0',
+                      isSelected
+                        ? 'border-primary bg-primary'
+                        : 'border-muted-foreground/60'
+                    )}>
+                      {isSelected && <Circle className="h-2.5 w-2.5 fill-primary-foreground text-primary-foreground" />}
+                    </div>
+                  )}
                 </button>
               );
             })
