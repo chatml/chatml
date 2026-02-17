@@ -780,6 +780,12 @@ outer:
 				// Turn or session completed — store accumulated message and reset
 				// streaming state. turn_complete means the process stays alive;
 				// complete/result means it will exit shortly.
+				if event.Type == EventTypeTurnComplete {
+					// Pause the watchdog while idle between turns so it doesn't
+					// fire when the user hasn't sent a message yet. It resets
+					// automatically when the next output event arrives.
+					activityWatchdog.Stop()
+				}
 				if currentAssistantMessage != "" {
 					// Seal final text segment
 					if currentSegmentStart != nil && currentSegmentText != "" {
