@@ -1,44 +1,46 @@
 'use client';
 
-import { Folder, Globe, SquarePlus, Sparkles } from 'lucide-react';
+import { useMemo } from 'react';
+import { useWorkspaceSelection } from '@/stores/selectors';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
+import { QuickActions } from './smart-launcher/QuickActions';
+import { RecentSessions } from './smart-launcher/RecentSessions';
+import { PRSummary } from './smart-launcher/PRSummary';
+import { ShortcutsGrid } from './smart-launcher/ShortcutsGrid';
+import { useLauncherPRSummary } from './smart-launcher/useLauncherPRSummary';
 
 interface EmptyViewProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
-  onQuickStart: () => void;
+  onNewSession: () => void;
+  onCreateFromPR: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   showLeftSidebar?: boolean;
 }
 
-const ACTION_CARDS = [
-  { icon: Folder, label: 'Open project', key: 'open' },
-  { icon: Globe, label: 'Clone from URL', key: 'clone' },
-  { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
-] as const;
-
 export function EmptyView({
   onOpenProject,
   onCloneFromUrl,
-  onQuickStart,
+  onNewSession,
+  onCreateFromPR,
   onOpenSettings,
   onOpenShortcuts,
   showLeftSidebar = true,
 }: EmptyViewProps) {
-  const handleCardClick = (key: string) => {
-    switch (key) {
-      case 'open':
-        onOpenProject();
-        break;
-      case 'clone':
-        onCloneFromUrl();
-        break;
-      case 'quickstart':
-        onQuickStart();
-        break;
-    }
-  };
+  const { workspaces, sessions, selectedWorkspaceId } = useWorkspaceSelection();
+  const workspaceColors = useSettingsStore((s) => s.workspaceColors);
+  const prSummary = useLauncherPRSummary();
+
+  const recentSessions = useMemo(() => {
+    return [...sessions]
+      .filter((s) => !s.archived)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 5);
+  }, [sessions]);
+
+  const hasWorkspace = !!selectedWorkspaceId;
 
   return (
     <FullContentLayout
@@ -47,35 +49,42 @@ export function EmptyView({
       onOpenShortcuts={onOpenShortcuts}
       showLeftSidebar={showLeftSidebar}
     >
-      <div className="h-full flex flex-col items-center justify-center bg-content-background">
-      {/* Logo */}
-      <div className="mb-12">
-        <div className="relative">
-          {/* Glow effect */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary to-purple-500 rounded-2xl blur-xl opacity-30" />
-          {/* Logo */}
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-purple-500 shadow-lg">
-            <Sparkles className="h-10 w-10 text-white" />
+      <div className="h-full overflow-y-auto bg-content-background">
+        <div className="max-w-2xl mx-auto px-6 py-12 stagger-children">
+          {/* Quick Actions */}
+          <div>
+            <QuickActions
+              onOpenProject={onOpenProject}
+              onCloneFromUrl={onCloneFromUrl}
+              onNewSession={onNewSession}
+              onCreateFromPR={onCreateFromPR}
+              hasWorkspace={hasWorkspace}
+            />
+          </div>
+
+          {/* Recent Sessions */}
+          <div className="mt-10">
+            <RecentSessions
+              sessions={recentSessions}
+              workspaces={workspaces}
+              workspaceColors={workspaceColors}
+            />
+          </div>
+
+          {/* Pull Requests Summary */}
+          <div className="mt-10">
+            <PRSummary
+              summary={prSummary.summary}
+              loading={prSummary.loading}
+              error={prSummary.error}
+            />
+          </div>
+
+          {/* Keyboard Shortcuts */}
+          <div className="mt-10">
+            <ShortcutsGrid onOpenShortcuts={onOpenShortcuts} />
           </div>
         </div>
-      </div>
-
-      {/* Action Cards */}
-      <div className="flex gap-4">
-        {ACTION_CARDS.map(({ icon: Icon, label, key }) => (
-          <button
-            key={key}
-            onClick={() => handleCardClick(key)}
-            className="group flex flex-col w-40 h-28 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border transition-all duration-200"
-            {...(key === 'open' ? { 'data-tour-target': 'add-workspace' } : {})}
-          >
-            <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
-            <span className="mt-auto text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-              {label}
-            </span>
-          </button>
-        ))}
-      </div>
       </div>
     </FullContentLayout>
   );
