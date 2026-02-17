@@ -54,7 +54,7 @@ export interface WorktreeSession {
 export interface Conversation {
   id: string;
   sessionId: string;
-  type: 'task' | 'review' | 'chat';
+  type: 'task' | 'review' | 'chat' | 'teammate' | 'team-overview';
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
   model?: string; // Last-used model (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-20250514")
@@ -63,6 +63,9 @@ export interface Conversation {
   messages: Message[];
   messageCount?: number; // Total messages (set when messages are loaded lazily)
   toolSummary: ToolAction[];
+  parentConversationId?: string;  // links to lead conversation
+  teamAgentId?: string;           // SDK agent_id for routing
+  teammateName?: string;          // display name
   createdAt: string;
   updatedAt: string;
 }

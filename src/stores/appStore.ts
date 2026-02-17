@@ -277,6 +277,11 @@ interface AppState {
   unarchiveSession: (id: string) => void;
   setSessionToggleState: (sessionId: string, state: SessionToggleState) => void;
 
+  // Team selectors
+  hasActiveTeam: (sessionId: string) => boolean;
+  getTeammateConversations: (parentConvId: string) => Conversation[];
+  getTeamOverviewConversation: (parentConvId: string) => Conversation | undefined;
+
   // Conversation actions
   setConversations: (conversations: Conversation[]) => void;
   addConversation: (conversation: Conversation) => void;
@@ -796,6 +801,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     return { sessions: updatedSessions };
   }),
+
+  // Team selectors
+  hasActiveTeam: (sessionId: string) => {
+    return get().conversations.some(
+      c => c.sessionId === sessionId && c.type === 'teammate'
+    );
+  },
+  getTeammateConversations: (parentConvId: string) => {
+    return get().conversations.filter(
+      c => c.parentConversationId === parentConvId && c.type === 'teammate'
+    );
+  },
+  getTeamOverviewConversation: (parentConvId: string) => {
+    return get().conversations.find(
+      c => c.parentConversationId === parentConvId && c.type === 'team-overview'
+    );
+  },
 
   // Conversation actions
   setConversations: (conversations) => set({
