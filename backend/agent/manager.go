@@ -1524,40 +1524,154 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	m.tryAutoNameSession(ctx, sessionID, title)
 }
 
+// detectPhase determines the current development lifecycle phase from session and git state.
+// The phase string is the primary dispatch key for the suggestion prompt.
+func detectPhase(sess *models.Session, gitStatus *git.GitStatus) string {
+	// Highest priority: in-progress git operations
+	if gitStatus != nil && gitStatus.InProgress.Type != "none" {
+		return "resolving-" + gitStatus.InProgress.Type // resolving-rebase, resolving-merge, resolving-cherry-pick
+	}
+
+	// Conflicts (from git or session flag)
+	if gitStatus != nil && gitStatus.Conflicts.HasConflicts {
+		return "conflict-resolution"
+	}
+	if sess.HasMergeConflict {
+		return "conflict-resolution"
+	}
+
+	// PR-based phases
+	switch sess.PRStatus {
+	case models.PRStatusOpen:
+		if sess.HasCheckFailures {
+			return "pr-fixing-ci"
+		}
+		return "pr-review"
+	case models.PRStatusMerged:
+		return "post-merge"
+	case models.PRStatusClosed:
+		return "pr-closed"
+	}
+
+	// Git working directory phases
+	if gitStatus != nil {
+		hasUncommitted := gitStatus.WorkingDirectory.HasChanges
+		// Use UnpushedCommits only — AheadBy measures distance from the base branch,
+		// not the remote tracking branch, so it stays >0 even after pushing.
+		hasUnpushed := gitStatus.Sync.UnpushedCommits > 0
+
+		if !hasUncommitted && hasUnpushed {
+			return "ready-for-pr"
+		}
+		// Check staged before general hasUncommitted: staged files are a subset of
+		// uncommitted changes, and "ready-to-commit" is more specific than "development".
+		if gitStatus.WorkingDirectory.StagedCount > 0 {
+			return "ready-to-commit"
+		}
+		if hasUncommitted {
+			return "development"
+		}
+	}
+
+	return "exploration"
+}
+
 // buildSessionContext builds a context string describing the session's current state
-// (PR status, git state) for use in suggestion generation.
+// (phase, git state, PR status, conversation type) for use in suggestion generation.
 func (m *Manager) buildSessionContext(ctx context.Context, convID string) string {
 	conv, err := m.store.GetConversationMeta(ctx, convID)
 	if err != nil || conv == nil {
 		return ""
 	}
 
-	sess, err := m.store.GetSession(ctx, conv.SessionID)
-	if err != nil || sess == nil {
+	sessWithWs, err := m.store.GetSessionWithWorkspace(ctx, conv.SessionID)
+	if err != nil || sessWithWs == nil {
 		return ""
 	}
+	sess := &sessWithWs.Session
 
-	var parts []string
+	var lines []string
 
+	// Get git status (graceful degradation on error)
+	var gitStatus *git.GitStatus
+	if sess.WorktreePath != "" {
+		baseBranch := sessWithWs.DefaultBranch()
+		status, err := git.NewRepoManager().GetStatus(ctx, sess.WorktreePath, baseBranch)
+		if err != nil {
+			logger.Manager.Debugf("Failed to get git status for suggestions (conv %s): %v", convID, err)
+		} else {
+			gitStatus = status
+		}
+	}
+
+	// Phase detection (primary dispatch key for the prompt)
+	phase := detectPhase(sess, gitStatus)
+	lines = append(lines, fmt.Sprintf("Phase: %s", phase))
+
+	// Conversation metadata
+	lines = append(lines, fmt.Sprintf("Conv: %s, %d messages", conv.Type, conv.MessageCount))
+
+	// Git working directory state
+	if gitStatus != nil {
+		wd := gitStatus.WorkingDirectory
+		lines = append(lines, fmt.Sprintf("Git: %d staged, %d unstaged, %d untracked", wd.StagedCount, wd.UnstagedCount, wd.UntrackedCount))
+
+		sync := gitStatus.Sync
+		syncLine := fmt.Sprintf("Sync: %d unpushed, %d behind", sync.UnpushedCommits, sync.BehindBy)
+		if sync.Diverged {
+			syncLine += " (diverged)"
+		}
+		lines = append(lines, syncLine)
+
+		// In-progress operations
+		if gitStatus.InProgress.Type != "none" {
+			if gitStatus.InProgress.Total > 0 {
+				lines = append(lines, fmt.Sprintf("In-progress: %s (%d/%d)", gitStatus.InProgress.Type, gitStatus.InProgress.Current, gitStatus.InProgress.Total))
+			} else {
+				lines = append(lines, fmt.Sprintf("In-progress: %s", gitStatus.InProgress.Type))
+			}
+		}
+
+		// Conflicts
+		if gitStatus.Conflicts.HasConflicts {
+			lines = append(lines, fmt.Sprintf("Conflicts: %d files", gitStatus.Conflicts.Count))
+		}
+	}
+
+	// PR status
 	switch sess.PRStatus {
 	case models.PRStatusOpen:
-		part := fmt.Sprintf("PR #%d is open", sess.PRNumber)
+		prLine := fmt.Sprintf("PR: #%d open", sess.PRNumber)
 		if sess.HasCheckFailures {
-			part += "; CI checks are failing"
-		} else if sess.HasMergeConflict {
-			part += "; has merge conflicts"
+			prLine += ", CI failing"
+		} else if sess.CheckStatus == models.CheckStatusPending {
+			prLine += ", CI pending"
+		} else if sess.CheckStatus == models.CheckStatusSuccess {
+			prLine += ", CI passing"
 		}
-		parts = append(parts, part)
+		if sess.HasMergeConflict {
+			prLine += ", has merge conflicts"
+		}
+		lines = append(lines, prLine)
 	case models.PRStatusMerged:
-		parts = append(parts, fmt.Sprintf("PR #%d has been merged", sess.PRNumber))
+		lines = append(lines, fmt.Sprintf("PR: #%d merged", sess.PRNumber))
 	case models.PRStatusClosed:
-		parts = append(parts, fmt.Sprintf("PR #%d was closed", sess.PRNumber))
+		lines = append(lines, fmt.Sprintf("PR: #%d closed", sess.PRNumber))
+	default:
+		lines = append(lines, "PR: none")
 	}
 
-	if len(parts) == 0 {
-		return ""
+	// Session stats
+	if sess.Stats != nil && (sess.Stats.Additions > 0 || sess.Stats.Deletions > 0) {
+		lines = append(lines, fmt.Sprintf("Stats: +%d/-%d", sess.Stats.Additions, sess.Stats.Deletions))
 	}
-	return strings.Join(parts, "; ")
+
+	// Task status
+	if sess.TaskStatus != "" && sess.TaskStatus != "backlog" {
+		lines = append(lines, fmt.Sprintf("Task: %s", sess.TaskStatus))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // generateInputSuggestion uses the AI client to generate a suggested next prompt
