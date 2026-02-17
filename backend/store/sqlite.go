@@ -330,7 +330,7 @@ func (s *SQLiteStore) runMigrations() error {
 	}
 	for _, stmt := range alterStatements {
 		_, err := s.db.Exec(stmt)
-		if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return fmt.Errorf("migration failed: %w", err)
 		}
 	}
@@ -933,7 +933,7 @@ func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversa
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			conv.ID, conv.SessionID, conv.Type, conv.Name,
 			conv.Status, conv.Model, conv.AgentSessionID,
-			conv.ParentConversationID, conv.TeamAgentId, conv.TeammateName,
+			conv.ParentConversationID, conv.TeamAgentID, conv.TeammateName,
 			conv.CreatedAt, conv.UpdatedAt)
 		return err
 	})
@@ -948,7 +948,7 @@ func (s *SQLiteStore) GetConversationMeta(ctx context.Context, id string) (*mode
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
 		&conv.Status, &conv.Model, &conv.AgentSessionID,
-		&conv.ParentConversationID, &conv.TeamAgentId, &conv.TeammateName,
+		&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
 		&conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -966,7 +966,7 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
 		&conv.Status, &conv.Model, &conv.AgentSessionID,
-		&conv.ParentConversationID, &conv.TeamAgentId, &conv.TeammateName,
+		&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
 		&conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1030,7 +1030,7 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
 			&conv.Status, &conv.Model, &conv.AgentSessionID,
-			&conv.ParentConversationID, &conv.TeamAgentId, &conv.TeammateName,
+			&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
 			&conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("ListConversations scan: %w", err)
@@ -1105,7 +1105,7 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
 			&conv.Status, &conv.Model, &conv.AgentSessionID,
-			&conv.ParentConversationID, &conv.TeamAgentId, &conv.TeammateName,
+			&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
 			&conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("ListConversationsForSessions scan: %w", err)
@@ -1157,7 +1157,7 @@ func (s *SQLiteStore) GetTeammateConversations(ctx context.Context, parentConvID
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
 			&conv.Status, &conv.Model, &conv.AgentSessionID,
-			&conv.ParentConversationID, &conv.TeamAgentId, &conv.TeammateName,
+			&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
 			&conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("GetTeammateConversations scan: %w", err)
 		}
@@ -1171,8 +1171,8 @@ func (s *SQLiteStore) GetTeammateConversations(ctx context.Context, parentConvID
 	return convs, nil
 }
 
-// GetConversationByTeamAgentId finds a teammate conversation by its SDK agent ID.
-func (s *SQLiteStore) GetConversationByTeamAgentId(ctx context.Context, parentConvID, agentId string) (*models.Conversation, error) {
+// GetConversationByTeamAgentID finds a teammate conversation by its SDK agent ID.
+func (s *SQLiteStore) GetConversationByTeamAgentID(ctx context.Context, parentConvID, agentId string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
@@ -1180,13 +1180,13 @@ func (s *SQLiteStore) GetConversationByTeamAgentId(ctx context.Context, parentCo
 		WHERE parent_conversation_id = ? AND team_agent_id = ?`, parentConvID, agentId).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
 		&conv.Status, &conv.Model, &conv.AgentSessionID,
-		&conv.ParentConversationID, &conv.TeamAgentId, &conv.TeammateName,
+		&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
 		&conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("GetConversationByTeamAgentId: %w", err)
+		return nil, fmt.Errorf("GetConversationByTeamAgentID: %w", err)
 	}
 	return &conv, nil
 }

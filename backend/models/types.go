@@ -107,13 +107,13 @@ const (
 type Conversation struct {
 	ID           string       `json:"id"`
 	SessionID    string       `json:"sessionId"`
-	Type         string       `json:"type"`   // "task", "review", "chat"
+	Type         string       `json:"type"`   // "task", "review", "chat", "teammate", "team-overview"
 	Name         string       `json:"name"`   // AI-updatable display name
 	Status       string       `json:"status"` // "active", "idle", "completed"
 	Model          string       `json:"model,omitempty"`
 	AgentSessionID       string       `json:"agentSessionId,omitempty"` // Claude SDK session ID for resume
 	ParentConversationID string       `json:"parentConversationId,omitempty"` // links teammate → lead
-	TeamAgentId          string       `json:"teamAgentId,omitempty"`          // SDK agent_id for routing
+	TeamAgentID          string       `json:"teamAgentId,omitempty"`          // SDK agent_id for routing
 	TeammateName         string       `json:"teammateName,omitempty"`         // display name from description
 	Messages             []Message    `json:"messages"`
 	MessageCount int          `json:"messageCount,omitempty"`
