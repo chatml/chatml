@@ -377,6 +377,13 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	var currentSegmentStart *time.Time
 	turnStartTime := time.Now()
 
+	// Track PR-related tool activity for deferred re-check at turn end.
+	// The initial ForceCheckSession at tool_end often races with GitHub's
+	// eventual consistency; a second check after the turn gives GitHub
+	// time to propagate the change.
+	var prDeferredRecheck func(sessionID string)
+	var prActivitySessionID string
+
 	// maxOutputSize limits stdout/stderr stored per tool to prevent DB bloat
 	const maxOutputSize = 100 * 1024
 	truncateOutput := func(s string) string {
@@ -645,6 +652,8 @@ outer:
 						conv, _ := m.store.GetConversationMeta(ctx, convID)
 						if conv != nil {
 							go m.onPRCreated(conv.SessionID)
+							prDeferredRecheck = m.onPRCreated
+							prActivitySessionID = conv.SessionID
 						}
 					}
 				}
@@ -655,6 +664,8 @@ outer:
 						conv, _ := m.store.GetConversationMeta(ctx, convID)
 						if conv != nil {
 							go m.onPRMerged(conv.SessionID)
+							prDeferredRecheck = m.onPRMerged
+							prActivitySessionID = conv.SessionID
 						}
 					}
 				}
@@ -830,6 +841,22 @@ outer:
 
 				if err := m.store.ClearStreamingSnapshot(ctx, convID); err != nil {
 					logger.Manager.Errorf("Failed to clear streaming snapshot for conv %s: %v", convID, err)
+				}
+
+				// Deferred PR re-check: if PR activity was detected during this turn,
+				// schedule a second ForceCheckSession after a short delay. The initial
+				// check at tool_end often races with GitHub's eventual consistency;
+				// by turn_complete the agent has spent a few more seconds generating
+				// its response, and the additional 2-second delay provides further margin.
+				if prDeferredRecheck != nil && prActivitySessionID != "" {
+					recheck := prDeferredRecheck
+					sessionID := prActivitySessionID
+					go func() {
+						time.Sleep(2 * time.Second)
+						recheck(sessionID)
+					}()
+					prDeferredRecheck = nil
+					prActivitySessionID = ""
 				}
 			}
 
