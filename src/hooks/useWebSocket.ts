@@ -555,12 +555,9 @@ export function useWebSocket(enabled: boolean = true) {
         // Complete event signals the entire conversation ended (stdin closed)
         // Commit any queued message so it appears in history
         store.commitQueuedMessage(conversationId);
-        // Clear any remaining state
-        store.clearStreamingText(conversationId);
+        // Finalize any remaining streaming content into a committed message
+        store.finalizeStreamingMessage(conversationId, {});
         store.setStreaming(conversationId, false);
-        store.clearThinking(conversationId);
-        store.clearActiveTools(conversationId);
-        store.clearSubAgents(conversationId);
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);
         // Update conversation status to idle (ready for new input)
@@ -839,11 +836,16 @@ export function useWebSocket(enabled: boolean = true) {
       case 'interrupted':
         // Commit any queued message so it appears in history
         store.commitQueuedMessage(conversationId);
-        store.clearStreamingText(conversationId);
+        // Finalize streaming content into a committed message so it persists
+        store.finalizeStreamingMessage(conversationId, {});
+        store.addMessage({
+          id: `msg-stopped-${Date.now()}`,
+          conversationId,
+          role: 'system',
+          content: 'Agent was stopped by user.',
+          timestamp: new Date().toISOString(),
+        });
         store.setStreaming(conversationId, false);
-        store.clearActiveTools(conversationId);
-        store.clearThinking(conversationId);
-        store.clearSubAgents(conversationId);
         store.clearPendingUserQuestion(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });
         break;
