@@ -1485,6 +1485,25 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	return nil
 }
 
+// SendTeammateMessage routes a user message to a teammate via the lead process.
+func (m *Manager) SendTeammateMessage(ctx context.Context, leadConvID, targetAgentId, targetAgentName, content string, attachments []models.Attachment) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[leadConvID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("lead process not running for conversation %s", leadConvID)
+	}
+
+	return proc.sendInput(InputMessage{
+		Type:            "teammate_message",
+		Content:         content,
+		Attachments:     attachments,
+		TargetAgentId:   targetAgentId,
+		TargetAgentName: targetAgentName,
+	})
+}
+
 // RewindConversationFiles rewinds file changes in a conversation to a checkpoint
 func (m *Manager) RewindConversationFiles(convID, checkpointUuid string) error {
 	m.mu.RLock()

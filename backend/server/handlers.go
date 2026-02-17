@@ -5585,3 +5585,77 @@ func (h *Handlers) SetMcpServers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, servers)
 }
 
+// SendTeammateMessage routes a user message to a specific teammate.
+func (h *Handlers) SendTeammateMessage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+
+	var req struct {
+		Content     string              `json:"content"`
+		Attachments []models.Attachment `json:"attachments"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch teammate conversation to get parent and agent ID
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+	if conv.Type != models.ConversationTypeTeammate {
+		http.Error(w, "not a teammate conversation", http.StatusBadRequest)
+		return
+	}
+
+	// Store user message in teammate's conversation for history
+	msg := models.Message{
+		ID:          uuid.New().String()[:8],
+		Role:        "user",
+		Content:     req.Content,
+		Attachments: req.Attachments,
+		Timestamp:   time.Now(),
+	}
+	if err := h.store.AddMessageToConversation(ctx, convID, msg); err != nil {
+		logger.Handlers.Errorf("Failed to store teammate user message: %v", err)
+	}
+
+	// Route through the lead's process
+	if err := h.agentManager.SendTeammateMessage(
+		ctx,
+		conv.ParentConversationID,
+		conv.TeamAgentID,
+		conv.TeammateName,
+		req.Content,
+		req.Attachments,
+	); err != nil {
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSONStatus(w, http.StatusAccepted, map[string]string{"status": "sent"})
+}
+
+// GetTeammateConversations returns all teammate conversations for a lead.
+func (h *Handlers) GetTeammateConversations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+
+	convs, err := h.store.GetTeammateConversations(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, convs)
+}
+
