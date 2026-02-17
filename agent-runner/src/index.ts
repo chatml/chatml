@@ -161,7 +161,7 @@ const sdkDebug = hasFlag("--sdk-debug");
 const sdkDebugFile = getArg("--sdk-debug-file");
 
 // Instructions (e.g., from conversation summaries)
-import { readFileSync } from "fs";
+import { readFileSync, unlinkSync } from "fs";
 let instructions: string | undefined;
 {
   const instructionsFilePath = getArg("--instructions-file");
@@ -363,6 +363,12 @@ function debug(msg: string, ...args: unknown[]): void {
   console.error(`[DEBUG ${ts}] ${msg}`, ...args);
 }
 
+// Always-on lifecycle logging for sidecar visibility.
+// These log at key milestones so hangs can be diagnosed without CHATML_DEBUG.
+function lifecycle(msg: string): void {
+  console.error(`[lifecycle] ${msg}`);
+}
+
 // Close readline interface if it exists
 function closeReadline(): void {
   if (rl) {
@@ -410,6 +416,8 @@ function setupInputQueue(): void {
 
     try {
       const input: InputMessage = JSON.parse(line);
+      const attachCount = input.attachments?.length ?? 0;
+      lifecycle(`stdin: type=${input.type} len=${line.length} attachments=${attachCount}`);
       debug(`Input received: type=${input.type}, content=${(input.content || "").slice(0, 50)}`);
 
       if (input.type === "stop") {
@@ -690,17 +698,48 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
     contentBlocks.push({ type: "text", text: msg.content });
   }
 
-  for (const attachment of msg.attachments) {
-    if (!attachment.base64Data) {
-      // Attachment arrived without content data — warn so the issue is visible
-      emit({
-        type: "warning",
-        message: `Attachment "${attachment.name}" (${attachment.type}) has no base64Data and was skipped`,
-      });
-      continue;
-    }
+  // Track temp files for cleanup after message is built
+  const tempFilesToClean: string[] = [];
 
+  for (const attachment of msg.attachments) {
     if (attachment.type === "image") {
+      // Image attachment — prefer file-based delivery to avoid pipe buffer saturation
+      // in the SDK → cli.js chain. The Go backend offloads images to temp files.
+      if (attachment.path && !attachment.base64Data) {
+        // File-based path: image was offloaded to a temp file by Go backend.
+        // Instruct Claude to read the image file directly via the Read tool,
+        // bypassing the stdin pipe entirely.
+        lifecycle(`image "${attachment.name}" via file: ${attachment.path}`);
+        tempFilesToClean.push(attachment.path);
+        contentBlocks.push({
+          type: "text",
+          text: `[The user attached an image: "${attachment.name}" (${attachment.mimeType}). ` +
+                `IMPORTANT: Read it now with the Read tool at path: ${attachment.path}]`,
+        });
+        continue;
+      }
+
+      if (!attachment.base64Data) {
+        emit({
+          type: "warning",
+          message: `Image "${attachment.name}" has no data and was skipped`,
+        });
+        continue;
+      }
+
+      // Inline base64 path (fallback if temp file offload failed)
+      // Validate image size — Anthropic API limit is 5MB per image.
+      const rawSizeBytes = Math.ceil(attachment.base64Data.length * 3 / 4);
+      const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
+      if (rawSizeBytes > MAX_IMAGE_BYTES) {
+        const sizeMB = (rawSizeBytes / (1024 * 1024)).toFixed(1);
+        lifecycle(`image "${attachment.name}" too large: ${sizeMB}MB (limit 5MB)`);
+        emit({
+          type: "error",
+          message: `Image "${attachment.name}" is ${sizeMB}MB which exceeds the 5MB API limit. Please use a smaller image.`,
+        });
+        continue;
+      }
       contentBlocks.push({
         type: "image",
         source: {
@@ -709,6 +748,12 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
           data: attachment.base64Data,
         }
       });
+    } else if (!attachment.base64Data) {
+      emit({
+        type: "warning",
+        message: `Attachment "${attachment.name}" (${attachment.type}) has no base64Data and was skipped`,
+      });
+      continue;
     } else {
       let content = Buffer.from(attachment.base64Data, "base64").toString("utf-8");
       content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
@@ -719,6 +764,21 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         text: `<attached_file name="${escapeXmlAttr(attachment.name)}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
       });
     }
+  }
+
+  // Schedule deferred cleanup of temp image files.
+  // Delay allows Claude to read the files during the turn.
+  if (tempFilesToClean.length > 0) {
+    setTimeout(() => {
+      for (const filePath of tempFilesToClean) {
+        try {
+          unlinkSync(filePath);
+          debug(`Cleaned up temp image: ${filePath}`);
+        } catch {
+          // File may already be gone — that's fine
+        }
+      }
+    }, 5 * 60 * 1000); // 5 minutes
   }
 
   return {
@@ -1354,6 +1414,7 @@ const hooks = {
 // ============================================================================
 
 async function main(): Promise<void> {
+  lifecycle("main() entered");
   emit({
     type: "ready",
     conversationId,
@@ -1362,10 +1423,12 @@ async function main(): Promise<void> {
     forking: forkSession,
     model: model || "(default)",
   });
+  lifecycle("ready emitted");
 
   // Set up the event-driven input queue
   setupInputQueue();
   mainLoopRunning = true;
+  lifecycle("input queue ready");
 
   let turnCount = 0;
 
@@ -1508,6 +1571,8 @@ async function main(): Promise<void> {
 
           turnCount++;
           currentTurnStartTime = Date.now();
+          const attachInfo = msg.attachments?.map(a => `${a.type}:${a.name}:${Math.round((a.base64Data?.length ?? 0) / 1024)}KB`).join(", ") || "none";
+          lifecycle(`turn ${turnCount}: content=${msg.content.length} chars, attachments=[${attachInfo}]`);
           debug(`Turn ${turnCount} starting: content="${msg.content.slice(0, 80)}"`);
 
           // Reset per-turn state
@@ -1522,7 +1587,9 @@ async function main(): Promise<void> {
             workspaceContext.updateSessionId(currentSessionId);
           }
 
-          yield buildUserMessage(msg);
+          const sdkMessage = buildUserMessage(msg);
+          lifecycle(`buildUserMessage done: ${JSON.stringify(sdkMessage).length} bytes`);
+          yield sdkMessage;
         }
       }
       return messageStream();
@@ -1544,6 +1611,7 @@ async function main(): Promise<void> {
         const sessionAbortController = new AbortController();
         abortControllerRef = sessionAbortController;
 
+        lifecycle("calling query()");
         const result = query({
           prompt: createMessageStream(),
           options: {
@@ -1555,12 +1623,18 @@ async function main(): Promise<void> {
         });
 
         queryRef = result;
+        lifecycle("query() returned, entering message loop");
 
         // ====================================================================
         // Process ALL messages from ALL turns in a single loop.
         // Result messages mark turn boundaries but don't end the session.
         // ====================================================================
+        let sdkMessageCount = 0;
         for await (const message of result) {
+          sdkMessageCount++;
+          if (sdkMessageCount === 1) {
+            lifecycle(`first SDK message: type=${message.type}`);
+          }
           handleMessage(message);
 
           // Result messages mark the end of a turn — but only for parent-agent results.
@@ -1601,12 +1675,14 @@ async function main(): Promise<void> {
         // Normal exit — session ended (generator returned or CLI exited cleanly)
         queryRef = null;
         flushBlockBuffer();
+        lifecycle(`session ended after ${turnCount} turns, ${sdkMessageCount} SDK messages`);
         emit({ type: "complete", sessionId: currentSessionId });
         debug(`Session ended after ${turnCount} turns`);
         break; // Exit retry loop
 
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
+        lifecycle(`query error: ${errMsg.slice(0, 200)}`);
 
         // Non-retriable errors — throw to top-level handler
         if (detectAuthError(errMsg) || !mainLoopRunning) throw err;

@@ -1488,7 +1488,8 @@ export default function Home() {
                   <EmptyView
                     onOpenProject={handleOpenProject}
                     onCloneFromUrl={() => setShowCloneFromUrl(true)}
-                    onGitHubRepos={() => setShowGitHubRepos(true)}
+                    onNewSession={handleNewSession}
+                    onCreateFromPR={() => setShowCreateFromPR(true)}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenShortcuts={() => setShowShortcuts(true)}
                     showLeftSidebar={!leftSidebarCollapsed}
