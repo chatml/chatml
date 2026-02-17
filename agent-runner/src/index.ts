@@ -900,6 +900,9 @@ const completedToolNames = new Map<string, string>();
 
 // Track sub-agent session → agentId mapping for correlating hook events
 const sessionToAgentId = new Map<string, string>();
+// Track parent_tool_use_id → agentId for robust session discovery
+// (SubagentStart hook's session_id may not match stream_event session_ids)
+const parentToolToAgent = new Map<string, string>();
 // Track which agentIds are teammates (vs regular subagents)
 const teammateAgentIds = new Set<string>();
 // Track active team name — when set, new subagents are treated as teammates
@@ -1147,7 +1150,11 @@ const notificationHook: HookCallback = async (input) => {
 
 const sessionStartHook: HookCallback = async (input) => {
   const hookInput = input as SessionStartHookInput;
-  currentSessionId = hookInput.session_id;
+  debug(`[team_mapping] SessionStart: session_id=${hookInput.session_id}, agent_type=${hookInput.agent_type}, source=${hookInput.source}`);
+  // Only update currentSessionId for the lead's session, not sub-agents
+  if (!sessionToAgentId.has(hookInput.session_id)) {
+    currentSessionId = hookInput.session_id;
+  }
   emit({
     type: "session_started",
     sessionId: hookInput.session_id,
@@ -1193,6 +1200,8 @@ const subagentStartHook: HookCallback = async (input) => {
   // Register session → agentId mapping for correlating sub-agent tool events
   sessionToAgentId.set(hookInput.session_id, hookInput.agent_id);
 
+  debug(`[team_mapping] SubagentStart: session_id=${hookInput.session_id}, agent_id=${hookInput.agent_id}, agent_type=${hookInput.agent_type}, sessionToAgentId=${JSON.stringify([...sessionToAgentId.entries()])}`);
+
   // Detect teammate agents: when a team is active (TeamCreate was called),
   // all new subagents are teammates. The SDK sends custom agent names
   // (e.g., "readme-reader") as agent_type, not the literal "teammate".
@@ -1204,14 +1213,25 @@ const subagentStartHook: HookCallback = async (input) => {
     teammateAgentIds.add(hookInput.agent_id);
   }
 
-  // Find the parent "Task" tool_use that spawned this sub-agent.
-  // Map iteration is in insertion order, so we keep overwriting to get the
-  // most recently inserted (i.e. most recent) active Task tool.
+  // Find the parent tool_use that spawned this sub-agent.
+  // For Task subagents, look for "Task" tools. For teammates, any active tool
+  // could be the spawner (e.g., SendMessage). Take the last active tool.
   let parentToolUseId: string | undefined;
   for (const [toolId, info] of activeTools) {
     if (info.tool === "Task") {
       parentToolUseId = toolId;
     }
+  }
+  // Fallback: if no Task tool found, use the last active tool (for teammates)
+  if (!parentToolUseId) {
+    for (const [toolId] of activeTools) {
+      parentToolUseId = toolId;
+    }
+  }
+  // Record parent_tool_use_id → agent_id for robust session discovery
+  if (parentToolUseId) {
+    parentToolToAgent.set(parentToolUseId, hookInput.agent_id);
+    debug(`[team_mapping] Mapped parent_tool_use_id ${parentToolUseId} → agent ${hookInput.agent_id}`);
   }
 
   // Look up the Task tool description for this sub-agent (Issue 3)
@@ -1236,8 +1256,21 @@ const subagentStopHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStopHookInput;
   const isTeammate = teammateAgentIds.has(hookInput.agent_id);
 
-  // Clean up session → agentId mapping
+  // Clean up session → agentId mapping (delete ALL sessions that map to this agent,
+  // since the hook's session_id may differ from the actual message session_id)
   sessionToAgentId.delete(hookInput.session_id);
+  for (const [sid, aid] of sessionToAgentId) {
+    if (aid === hookInput.agent_id) {
+      sessionToAgentId.delete(sid);
+    }
+  }
+  // Clean up parent_tool_use_id → agentId mapping
+  for (const [toolId, agentId] of parentToolToAgent) {
+    if (agentId === hookInput.agent_id) {
+      parentToolToAgent.delete(toolId);
+      break;
+    }
+  }
   // Clean up any lingering sub-agent tools
   for (const [toolId, info] of subagentActiveTools) {
     if (info.agentId === hookInput.agent_id) {
@@ -1844,18 +1877,40 @@ function detectAuthError(text: string): boolean {
 }
 
 function handleMessage(message: SDKMessage): void {
-  // Extract session_id from any message that has it
+  const msgSessionId = "session_id" in message ? (message as { session_id?: string }).session_id : undefined;
+
+  // Lazy session_id → agent_id discovery via parent_tool_use_id.
+  // The SubagentStart hook's session_id may not match the session_id on actual
+  // stream_event messages (SDK uses different sessions for hooks vs messages).
+  // parent_tool_use_id is a reliable link: each sub-agent's messages reference
+  // the tool_use_id that spawned them, which we mapped to agent_id in the hook.
+  if (msgSessionId && !sessionToAgentId.has(msgSessionId)) {
+    const parentTuId = "parent_tool_use_id" in message
+      ? (message as { parent_tool_use_id?: string | null }).parent_tool_use_id
+      : null;
+    if (parentTuId) {
+      const agentId = parentToolToAgent.get(parentTuId);
+      if (agentId) {
+        sessionToAgentId.set(msgSessionId, agentId);
+        debug(`[team_mapping] Discovered session ${msgSessionId} → agent ${agentId} via parent_tool_use_id ${parentTuId}`);
+      }
+    }
+  }
+
+  // Extract session_id from any message that has it — only for the lead's session
   if ("session_id" in message && message.session_id) {
-    if (!currentSessionId || currentSessionId !== message.session_id) {
-      currentSessionId = message.session_id;
-      emit({ type: "session_id_update", sessionId: currentSessionId });
+    // Only update currentSessionId for lead messages, not sub-agent messages
+    if (!sessionToAgentId.has(message.session_id)) {
+      if (!currentSessionId || currentSessionId !== message.session_id) {
+        currentSessionId = message.session_id;
+        emit({ type: "session_id_update", sessionId: currentSessionId });
+      }
     }
   }
 
   // Skip messages from sub-agent sessions — their tools are already tracked via hooks
   // (preToolUseHook / postToolUseHook emit tool_start/tool_end with agentId).
   // Processing them here would duplicate tool events at the parent level without agentId.
-  const msgSessionId = "session_id" in message ? (message as { session_id?: string }).session_id : undefined;
   const isSubAgentMessage = msgSessionId ? sessionToAgentId.has(msgSessionId) : false;
 
   switch (message.type) {
@@ -1931,6 +1986,7 @@ function handleMessage(message: SDKMessage): void {
       if (isSubAgentMessage) {
         // For teammates, forward streaming text to backend for routing
         const agentId = sessionToAgentId.get(msgSessionId!);
+        debug(`[team_mapping] stream_event: msgSessionId=${msgSessionId}, isSubAgent=true, agentId=${agentId}, isTeammate=${agentId ? teammateAgentIds.has(agentId) : false}`);
         if (agentId && teammateAgentIds.has(agentId)) {
           const event = message.event;
           if (event.type === "content_block_delta") {
