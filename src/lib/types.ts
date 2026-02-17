@@ -42,6 +42,7 @@ export interface WorktreeSession {
   prStatus?: 'none' | 'open' | 'merged' | 'closed';
   prUrl?: string;
   prNumber?: number;
+  prTitle?: string;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';

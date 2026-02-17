@@ -19,6 +19,7 @@ type PRWatchEntry struct {
 	PRStatus    string // "none", "open", "merged", "closed"
 	PRNumber    int
 	PRUrl       string
+	PRTitle     string
 	CheckStatus string
 	Mergeable   *bool
 	LastChecked time.Time
@@ -30,6 +31,7 @@ type PRChangeEvent struct {
 	PRStatus    string
 	PRNumber    int
 	PRUrl       string
+	PRTitle     string
 	CheckStatus string
 	Mergeable   *bool
 }
@@ -334,6 +336,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 	var newStatus string
 	var prNumber int
 	var prUrl string
+	var prTitle string
 	var checkStatus string
 	var mergeable *bool
 
@@ -342,6 +345,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 		newStatus = models.PRStatusOpen
 		prNumber = pr.Number
 		prUrl = pr.HTMLURL
+		prTitle = pr.Title
 
 		// Try cached details first, then fetch from GitHub
 		var details *github.PRDetails
@@ -375,6 +379,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 				}
 				prNumber = entry.PRNumber
 				prUrl = details.HTMLURL
+				prTitle = details.Title
 			} else {
 				// PR not in open list but details say it's still open.
 				// This can happen due to GitHub API eventual consistency.
@@ -382,6 +387,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 				newStatus = entry.PRStatus
 				prNumber = entry.PRNumber
 				prUrl = entry.PRUrl
+				prTitle = entry.PRTitle
 				checkStatus = entry.CheckStatus
 			}
 		} else {
@@ -407,6 +413,9 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 	if prNumber != entry.PRNumber {
 		changed = true
 	}
+	if prTitle != entry.PRTitle {
+		changed = true
+	}
 	if checkStatus != entry.CheckStatus {
 		changed = true
 	}
@@ -427,6 +436,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 	entry.PRStatus = newStatus
 	entry.PRNumber = prNumber
 	entry.PRUrl = prUrl
+	entry.PRTitle = prTitle
 	entry.CheckStatus = checkStatus
 	entry.Mergeable = mergeable
 	entry.LastChecked = time.Now()
@@ -441,6 +451,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 			sess.PRStatus = newStatus
 			sess.PRNumber = prNumber
 			sess.PRUrl = prUrl
+			sess.PRTitle = prTitle
 			sess.HasCheckFailures = checkStatus == string(github.CheckStatusFailure)
 			sess.CheckStatus = checkStatus
 			if sess.CheckStatus == "" {
@@ -471,6 +482,7 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 			PRStatus:    newStatus,
 			PRNumber:    prNumber,
 			PRUrl:       prUrl,
+			PRTitle:     prTitle,
 			CheckStatus: checkStatus,
 			Mergeable:   mergeable,
 		})

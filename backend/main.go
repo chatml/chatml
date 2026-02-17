@@ -362,6 +362,7 @@ func main() {
 				"prStatus":    event.PRStatus,
 				"prNumber":    event.PRNumber,
 				"prUrl":       event.PRUrl,
+				"prTitle":     event.PRTitle,
 				"checkStatus": event.CheckStatus,
 				"mergeable":   event.Mergeable,
 			}

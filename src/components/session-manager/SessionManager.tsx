@@ -56,8 +56,19 @@ export function SessionManager() {
   useMainToolbarContent(toolbarConfig);
 
   // Handle session selection - navigate to conversation view
+  // If the session is archived, silently unarchive it first
   const handleSelectSession = useCallback(
-    (workspaceId: string, sessionId: string) => {
+    async (workspaceId: string, sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      if (session?.archived) {
+        try {
+          await updateSessionApi(workspaceId, sessionId, { archived: false });
+          unarchiveSession(sessionId);
+        } catch (error) {
+          console.error('Failed to unarchive session:', error);
+          return;
+        }
+      }
       expandWorkspace(workspaceId);
       navigate({
         workspaceId,
@@ -65,7 +76,7 @@ export function SessionManager() {
         contentView: { type: 'conversation' },
       });
     },
-    [expandWorkspace]
+    [sessions, expandWorkspace, unarchiveSession]
   );
 
   // Handle archive session

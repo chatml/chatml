@@ -1239,6 +1239,7 @@ export function useWebSocket(enabled: boolean = true) {
               prStatus?: PRStatus;
               prNumber?: number;
               prUrl?: string;
+              prTitle?: string;
               hasCheckFailures?: boolean;
               hasMergeConflict?: boolean;
               checkStatus?: 'none' | 'pending' | 'success' | 'failure';
@@ -1253,6 +1254,9 @@ export function useWebSocket(enabled: boolean = true) {
             }
             if (typeof payload.prUrl === 'string') {
               updates.prUrl = payload.prUrl;
+            }
+            if (typeof payload.prTitle === 'string') {
+              updates.prTitle = payload.prTitle;
             }
             // Map checkStatus to hasCheckFailures AND preserve full checkStatus
             if (typeof payload.checkStatus === 'string') {

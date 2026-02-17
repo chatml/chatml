@@ -29,6 +29,7 @@ type Session struct {
 	PRStatus         string        `json:"prStatus,omitempty"` // none, open, merged, closed
 	PRUrl            string        `json:"prUrl,omitempty"`
 	PRNumber         int           `json:"prNumber,omitempty"`
+	PRTitle          string        `json:"prTitle,omitempty"`
 	HasMergeConflict bool          `json:"hasMergeConflict,omitempty"`
 	HasCheckFailures bool          `json:"hasCheckFailures,omitempty"`
 	CheckStatus      string        `json:"checkStatus,omitempty"` // none, pending, success, failure

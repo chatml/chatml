@@ -129,7 +129,6 @@ export function SessionsDataTable({
       {
         id: 'name',
         header: 'Branch',
-        width: '220px',
         sortable: true,
         accessorKey: (row) => row.session.branch || row.session.name,
         cell: (row) => <SessionNameCell session={row.session} />,
@@ -311,7 +310,7 @@ export function SessionsDataTable({
   );
 
   return (
-    <div className="h-full p-4">
+    <div className="h-full">
       <DataTable
         data={tableData}
         columns={columns}
