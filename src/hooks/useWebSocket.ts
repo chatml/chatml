@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import type { WSEvent, AgentEvent, AgentTodoItem, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus } from '@/lib/types';
+import type { WSEvent, AgentEvent, AgentTodoItem, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus, Conversation } from '@/lib/types';
 
 import {
   WEBSOCKET_RECONNECT_BASE_DELAY_MS,
@@ -958,6 +958,54 @@ export function useWebSocket(enabled: boolean = true) {
           store.setSubAgentOutput(conversationId, event.agentId as string, event.agentOutput || '');
         }
         break;
+
+      // ====================================================================
+      // Teammate lifecycle events
+      // ====================================================================
+      case 'teammate_created': {
+        const parentConv = store.conversations.find(c => c.id === conversationId);
+        const teammateConv: Conversation = {
+          id: event.conversationId as string,
+          sessionId: parentConv?.sessionId ?? '',
+          type: 'teammate',
+          name: (event.description as string) || 'Teammate',
+          status: 'active',
+          parentConversationId: conversationId,
+          teamAgentId: event.agentId as string,
+          teammateName: (event.description as string) || 'Teammate',
+          messages: [],
+          toolSummary: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        store.addConversation(teammateConv);
+        break;
+      }
+
+      case 'teammate_completed': {
+        if (event.conversationId) {
+          store.updateConversation(event.conversationId as string, { status: 'completed' });
+        }
+        break;
+      }
+
+      case 'team_overview_created': {
+        const parentConv = store.conversations.find(c => c.id === conversationId);
+        const overviewConv: Conversation = {
+          id: event.conversationId as string,
+          sessionId: parentConv?.sessionId ?? '',
+          type: 'team-overview',
+          name: 'Team',
+          status: 'active',
+          parentConversationId: conversationId,
+          messages: [],
+          toolSummary: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        store.addConversation(overviewConv);
+        break;
+      }
 
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
