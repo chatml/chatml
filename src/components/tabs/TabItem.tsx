@@ -75,7 +75,7 @@ export const TabItem = memo(function TabItem({
           data-tab-id={tab.id}
           className={cn(
             // Base styles - full height, no vertical padding
-            'group relative flex items-center gap-1.5 px-2 h-[33px] cursor-pointer select-none',
+            'group relative flex items-center gap-1.5 px-3 h-[33px] cursor-pointer select-none',
             'text-xs font-medium shrink-0',
             // Minimal transition - colors only, no layout shifts
             'transition-[background-color,color] duration-150',
