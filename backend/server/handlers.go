@@ -4706,6 +4706,48 @@ func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Requ
 	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
 }
 
+// GetCustomInstructions returns the global custom instructions for agent system prompts
+func (h *Handlers) GetCustomInstructions(w http.ResponseWriter, r *http.Request) {
+	value, found, err := h.store.GetSetting(r.Context(), "custom-instructions")
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]string{"instructions": ""})
+		return
+	}
+	writeJSON(w, map[string]string{"instructions": value})
+}
+
+// SetCustomInstructions updates the global custom instructions for agent system prompts
+func (h *Handlers) SetCustomInstructions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Instructions string `json:"instructions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	trimmed := strings.TrimSpace(req.Instructions)
+	if trimmed == "" {
+		if err := h.store.DeleteSetting(ctx, "custom-instructions"); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		if err := h.store.SetSetting(ctx, "custom-instructions", trimmed); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
 // GetSessionBranchSyncStatus returns how far behind the session is from the target branch
 func (h *Handlers) GetSessionBranchSyncStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

@@ -1844,6 +1844,25 @@ export async function setWorkspaceReviewPrompts(
   await handleVoidResponse(res, 'Failed to save workspace review prompts');
 }
 
+// ---------------------------------------------------------------------------
+// Custom Instructions
+// ---------------------------------------------------------------------------
+
+export async function getCustomInstructions(): Promise<string> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/custom-instructions`);
+  const data = await handleResponse<{ instructions: string }>(res);
+  return data.instructions;
+}
+
+export async function setCustomInstructions(instructions: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/custom-instructions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instructions }),
+  });
+  await handleVoidResponse(res, 'Failed to save custom instructions');
+}
+
 // ==================== Scripts API ====================
 
 import type { ChatMLConfig, ScriptRun } from '@/lib/types';

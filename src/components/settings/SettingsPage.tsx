@@ -13,6 +13,7 @@ import {
   User,
   Wrench,
   Info,
+  ScrollText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
@@ -24,6 +25,7 @@ import { ReviewSettings } from './sections/ReviewSettings';
 import { AccountSettings } from './sections/AccountSettings';
 import { AdvancedSettings } from './sections/AdvancedSettings';
 import { AboutSettings } from './sections/AboutSettings';
+import { InstructionsSettings } from './sections/InstructionsSettings';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -34,6 +36,7 @@ type SettingsCategory =
   | 'general'
   | 'appearance'
   | 'ai-models'
+  | 'instructions'
   | 'git'
   | 'review'
   | 'account'
@@ -50,6 +53,7 @@ const mainNavItems: NavItem[] = [
   { id: 'general', label: 'General', icon: <Settings2 className="w-3.5 h-3.5" /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette className="w-3.5 h-3.5" /> },
   { id: 'ai-models', label: 'AI & Models', icon: <Bot className="w-3.5 h-3.5" /> },
+  { id: 'instructions', label: 'Instructions', icon: <ScrollText className="w-3.5 h-3.5" /> },
   { id: 'git', label: 'Git', icon: <GitBranch className="w-3.5 h-3.5" /> },
   { id: 'review', label: 'Review & PRs', icon: <Eye className="w-3.5 h-3.5" /> },
   { id: 'account', label: 'Account', icon: <User className="w-3.5 h-3.5" /> },
@@ -147,6 +151,7 @@ export function SettingsPage({ onBack, initialCategory = 'general' }: SettingsPa
             {selectedCategory === 'general' && <GeneralSettings />}
             {selectedCategory === 'appearance' && <AppearanceSettings />}
             {selectedCategory === 'ai-models' && <AIModelSettings />}
+            {selectedCategory === 'instructions' && <InstructionsSettings />}
             {selectedCategory === 'git' && <GitSettings />}
             {selectedCategory === 'review' && <ReviewSettings />}
             {selectedCategory === 'account' && <AccountSettings />}
