@@ -5,13 +5,15 @@ import { LayoutGrid, Users, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
 import type { Conversation, AgentTodoItem } from '@/lib/types';
 
+const EMPTY_TODOS: AgentTodoItem[] = [];
+
 interface TeamOverviewDashboardProps {
   conversation: Conversation;
 }
 
 function TeammateStatusCard({ conversation }: { conversation: Conversation }) {
   const selectConversation = useAppStore(s => s.selectConversation);
-  const agentTodos = useAppStore(s => s.agentTodos[conversation.id] || []);
+  const agentTodos = useAppStore(s => s.agentTodos[conversation.id]) ?? EMPTY_TODOS;
 
   const activeTodos = agentTodos.filter((t: AgentTodoItem) => t.status === 'in_progress');
   const completedTodos = agentTodos.filter((t: AgentTodoItem) => t.status === 'completed');
