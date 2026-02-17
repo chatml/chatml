@@ -361,6 +361,10 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	teammateConvMap := make(map[string]string)
 	// Teammate text accumulation: agentId → accumulated assistant text for persistence
 	teammateText := make(map[string]string)
+	// Two-phase teammate completion: track whether each teammate's stop hook has fired.
+	// A teammate is only completed when BOTH subagent_output and teammate_stopped arrive,
+	// regardless of order (fixes race condition where stop fires before output).
+	teammateStopped := make(map[string]bool)
 	// Track team overview conversation ID (empty if not created)
 	teamOverviewConvID := ""
 	// Buffer tools that arrive before their sub-agent registers (race recovery)
@@ -485,6 +489,42 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 		snapshotTimer.Reset(snapshotDebounceInterval)
 	}
 
+	// completeTeammate persists the teammate's accumulated text and broadcasts teammate_completed.
+	// Called when both subagent_output and teammate_stopped have arrived (in either order).
+	completeTeammate := func(agentId string) {
+		teammateConvID, ok := teammateConvMap[agentId]
+		if !ok {
+			return
+		}
+		persistedText := teammateText[agentId]
+		if persistedText != "" {
+			if err := m.store.AddMessageToConversation(ctx, teammateConvID, models.Message{
+				ID:        uuid.New().String()[:8],
+				Role:      "assistant",
+				Content:   persistedText,
+				Timestamp: time.Now(),
+			}); err != nil {
+				logger.Manager.Errorf("Failed to store teammate message for conv %s: %v", teammateConvID, err)
+			}
+			delete(teammateText, agentId)
+		}
+		if err := m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted); err != nil {
+			logger.Process.Errorf("Failed to update teammate status: %v", err)
+		}
+		if sa, ok := activeSubAgents[agentId]; ok {
+			sa.Completed = true
+		}
+		if m.onConversationEvent != nil {
+			m.onConversationEvent(teammateConvID, &AgentEvent{
+				Type:           EventTypeTeammateCompleted,
+				AgentId:        agentId,
+				ConversationID: teammateConvID,
+				Content:        persistedText,
+			})
+		}
+		markSnapshotDirty()
+	}
+
 	// Periodically check for dropped messages and emit warnings out-of-band.
 	// This bypasses the process output channel, so warnings are delivered even
 	// when the output channel is congested (which is exactly when drops occur).
@@ -573,6 +613,8 @@ outer:
 							teammateEvent.ConversationID = teammateConvID
 							m.onConversationEvent(teammateConvID, &teammateEvent)
 						}
+						markSnapshotDirty()
+						continue // Don't also forward to lead via general forwarder
 					}
 				} else {
 					activeToolsMap[event.ID] = entry
@@ -647,6 +689,8 @@ outer:
 							teammateEvent.ConversationID = teammateConvID
 							m.onConversationEvent(teammateConvID, &teammateEvent)
 						}
+						markSnapshotDirty()
+						continue // Don't also forward to lead via general forwarder
 					}
 				} else {
 					// Skip duplicate tool_end events — during session replay the agent-runner
@@ -825,6 +869,7 @@ outer:
 						}
 					}
 					markSnapshotDirty()
+					continue // Don't forward raw teammate_started to lead via general forwarder
 				}
 
 			case EventTypeSubagentStopped:
@@ -834,39 +879,39 @@ outer:
 				}
 
 			case EventTypeTeammateStopped:
-				if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
-					// Persist accumulated teammate text as an assistant message
-					if text := teammateText[event.AgentId]; text != "" {
-						if err := m.store.AddMessageToConversation(ctx, teammateConvID, models.Message{
-							ID:        uuid.New().String()[:8],
-							Role:      "assistant",
-							Content:   text,
-							Timestamp: time.Now(),
-						}); err != nil {
-							logger.Manager.Errorf("Failed to store teammate message for conv %s: %v", teammateConvID, err)
-						}
-						delete(teammateText, event.AgentId)
+				// Two-phase completion: mark as stopped and complete only if output already arrived.
+				// If subagent_output hasn't arrived yet (race condition), defer completion
+				// to the subagent_output handler or the lead's result sweep.
+				if _, ok := teammateConvMap[event.AgentId]; ok {
+					teammateStopped[event.AgentId] = true
+					if teammateText[event.AgentId] != "" {
+						// Output already arrived — complete now
+						completeTeammate(event.AgentId)
 					}
-					if err := m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted); err != nil {
-						logger.Process.Errorf("Failed to update teammate status: %v", err)
-					}
-					if sa, ok := activeSubAgents[event.AgentId]; ok {
-						sa.Completed = true
-					}
-					if m.onConversationEvent != nil {
-						m.onConversationEvent(teammateConvID, &AgentEvent{
-							Type:           EventTypeTeammateCompleted,
-							AgentId:        event.AgentId,
-							ConversationID: teammateConvID,
-						})
-					}
+					// Otherwise: wait for subagent_output to trigger completion
+				}
+				if sa, ok := activeSubAgents[event.AgentId]; ok {
+					sa.Completed = true
 					markSnapshotDirty()
 				}
+				continue // Don't forward to lead via general forwarder
 
 			case EventTypeSubagentOutput:
 				if sa, ok := activeSubAgents[event.AgentId]; ok {
 					sa.Output = event.AgentOutput
 					markSnapshotDirty()
+				}
+				// Store subagent_output as authoritative teammate text and check
+				// if teammate already stopped (race: stop hook fired before output).
+				if _, ok := teammateConvMap[event.AgentId]; ok {
+					if event.AgentOutput != "" {
+						teammateText[event.AgentId] = event.AgentOutput
+					}
+					if teammateStopped[event.AgentId] {
+						// Stop already arrived — complete now
+						completeTeammate(event.AgentId)
+					}
+					continue // Don't forward to lead via general forwarder
 				}
 
 			case EventTypeTodoUpdate:
@@ -999,6 +1044,17 @@ outer:
 					}
 					currentAssistantMessage = ""
 				}
+				// Sweep for teammates that stopped but never received subagent_output.
+				// This handles the edge case where a teammate errors or produces no output.
+				for agentId, stopped := range teammateStopped {
+					if stopped {
+						if _, ok := teammateConvMap[agentId]; ok {
+							completeTeammate(agentId)
+						}
+					}
+				}
+				teammateStopped = make(map[string]bool)
+
 				// Reset per-turn accumulation state
 				currentThinking = ""
 				pendingPlanContent = ""

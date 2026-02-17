@@ -338,8 +338,11 @@ export function useWebSocket(enabled: boolean = true) {
         // Add active tool — route to sub-agent if agentId is present
         if (event?.id && event?.tool) {
           const agentId = event.agentId as string | undefined;
-          if (agentId) {
-            // Sub-agent tool — add to sub-agent's tool list
+          // For teammate conversations, tool events arrive with the teammate's own agentId.
+          // Treat them as parent tools since the teammate IS the agent, not a sub-agent of itself.
+          const convType = store.conversations.find(c => c.id === conversationId)?.type;
+          if (agentId && convType !== 'teammate') {
+            // Sub-agent tool on lead conversation
             store.addSubAgentTool(conversationId, agentId, {
               id: event.id,
               tool: event.tool,
@@ -348,14 +351,13 @@ export function useWebSocket(enabled: boolean = true) {
               agentId,
             });
           } else {
-            // Parent agent tool
+            // Parent agent tool (or teammate's own tool)
             store.addActiveTool(conversationId, {
               id: event.id,
               tool: event.tool,
               params: event.params,
               startTime: Date.now(),
             });
-
           }
         }
         break;
@@ -368,9 +370,11 @@ export function useWebSocket(enabled: boolean = true) {
           const stdout = event.stdout as string | undefined;
           const stderr = event.stderr as string | undefined;
           const metadata = event.metadata;
+          // For teammate conversations, treat as parent tool (teammate IS the agent)
+          const endConvType = store.conversations.find(c => c.id === conversationId)?.type;
 
-          if (toolAgentId) {
-            // Sub-agent tool completion
+          if (toolAgentId && endConvType !== 'teammate') {
+            // Sub-agent tool completion on lead conversation
             store.completeSubAgentTool(conversationId, toolAgentId, event.id, event.success, event.summary, stdout, stderr);
           } else {
             // Parent agent tool
@@ -505,6 +509,17 @@ export function useWebSocket(enabled: boolean = true) {
           event.success !== false ? 'Task completed' : 'Task finished with errors',
           getConversationLabel(conversationId),
         );
+        // Clean up any teammate conversations still marked as streaming/active.
+        // Teammates that didn't receive teammate_completed before the lead finished
+        // should have their streaming state cleared and status updated.
+        const teammateConvs = freshStore.conversations.filter(
+          (c) => c.parentConversationId === conversationId && c.type === 'teammate' && c.status === 'active'
+        );
+        for (const tc of teammateConvs) {
+          freshStore.clearStreamingText(tc.id);
+          freshStore.setStreaming(tc.id, false);
+          freshStore.updateConversation(tc.id, { status: 'completed' });
+        }
         break;
       }
 
@@ -1003,12 +1018,29 @@ export function useWebSocket(enabled: boolean = true) {
           updatedAt: new Date().toISOString(),
         };
         store.addConversation(teammateConv);
+        // Mark as streaming so the UI shows a working indicator
+        // (background teammates don't emit stream_event messages)
+        store.setStreaming(teammateConv.id, true);
         break;
       }
 
       case 'teammate_completed': {
-        // Finalize streaming text into a message so it persists in the UI
-        store.finalizeStreamingMessage(conversationId, {});
+        // Clear any streaming state (may be empty or stale — teammates often
+        // run as background tasks without streaming events)
+        store.clearStreamingText(conversationId);
+        store.setStreaming(conversationId, false);
+        // Add the result message directly from the event content
+        // (persisted by backend from subagent_output)
+        const teammateContent = event.content as string;
+        if (teammateContent) {
+          store.addMessage({
+            id: `msg-teammate-${Date.now()}`,
+            conversationId,
+            role: 'assistant' as const,
+            content: teammateContent,
+            timestamp: new Date().toISOString(),
+          });
+        }
         store.updateConversation(conversationId, { status: 'completed' });
         break;
       }

@@ -22,6 +22,7 @@ import {
   type StopHookInput,
   type PreCompactHookInput,
   type McpServerConfig,
+  type SDKTaskNotificationMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
@@ -1039,17 +1040,14 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
         : hookInput.tool_response;
       if (response?.team_name) {
         activeTeamName = response.team_name;
-        console.error(`[DEBUG] TeamCreate completed: team_name=${activeTeamName}`);
       }
     } catch {
-      // If we can't parse the response, check if it contains a team_name
-      console.error(`[DEBUG] TeamCreate completed but couldn't parse response: ${typeof hookInput.tool_response === "string" ? hookInput.tool_response.slice(0, 200) : "non-string"}`);
+      // Couldn't parse response — team name tracking may be incomplete
     }
   }
 
   // Track team deletion
   if (hookInput.tool_name === "TeamDelete") {
-    console.error(`[DEBUG] TeamDelete completed: clearing activeTeamName`);
     activeTeamName = null;
   }
 
@@ -1192,8 +1190,6 @@ const preCompactHook: HookCallback = async (input) => {
 
 const subagentStartHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStartHookInput;
-  // DEBUG: Log the actual hook input to see what agent_type the SDK sends
-  console.error(`[DEBUG] SubagentStart hook fired: agent_id=${hookInput.agent_id}, agent_type=${hookInput.agent_type}, session_id=${hookInput.session_id}, all_keys=${Object.keys(hookInput).join(',')}`);
   // Register session → agentId mapping for correlating sub-agent tool events
   sessionToAgentId.set(hookInput.session_id, hookInput.agent_id);
 
@@ -1225,7 +1221,6 @@ const subagentStartHook: HookCallback = async (input) => {
   const description = isTeammate ? (hookInput.agent_type || taskDescription) : taskDescription;
 
   const emitType = isTeammate ? "teammate_started" : "subagent_started";
-  console.error(`[DEBUG] SubagentStart emitting: type=${emitType}, isTeammate=${isTeammate}, agentType=${hookInput.agent_type}, description=${description}`);
   emit({
     type: emitType,
     agentId: hookInput.agent_id,
@@ -2096,11 +2091,12 @@ function handleMessage(message: SDKMessage): void {
       if (isSubAgentMessage) {
         const agentId = sessionToAgentId.get(msgSessionId!);
         const resultMsg = message as SDKResultMessage;
+        const outputText = resultMsg.subtype === "success" ? resultMsg.result : "";
         if (agentId) {
           emit({
             type: "subagent_output",
             agentId,
-            agentOutput: resultMsg.subtype === "success" ? resultMsg.result : "",
+            agentOutput: outputText,
           });
         }
         break;
@@ -2220,7 +2216,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -2292,6 +2288,17 @@ function handleMessage(message: SDKMessage): void {
           stderr: hookMsg.stderr,
           exitCode: hookMsg.exit_code,
           sessionId: hookMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "task_notification") {
+        // Background teammate task completed — forward to backend
+        const taskMsg = message as SDKTaskNotificationMessage;
+        emit({
+          type: "task_notification",
+          taskId: taskMsg.task_id,
+          status: taskMsg.status,
+          summary: taskMsg.summary,
+          outputFile: taskMsg.output_file,
+          sessionId: taskMsg.session_id,
         });
       }
       break;

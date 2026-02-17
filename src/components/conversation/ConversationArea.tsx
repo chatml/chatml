@@ -180,6 +180,38 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     return () => { cancelled = true; };
   }, [selectedConversationId, setMessagePage]);
 
+  // Reload teammate messages when status changes to completed with no local messages.
+  // This catches the case where teammate_completed had empty content but the backend
+  // persisted the message (from subagent_output arriving after teammate_stopped).
+  const selectedConv = useMemo(
+    () => conversations.find(c => c.id === selectedConversationId),
+    [conversations, selectedConversationId]
+  );
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    if (selectedConv?.type !== 'teammate' || selectedConv.status !== 'completed') return;
+
+    const state = useAppStore.getState();
+    const hasMessages = state.messages.some(m => m.conversationId === selectedConversationId);
+    const hasPagination = !!state.messagePagination[selectedConversationId];
+    if (hasMessages || hasPagination) return;
+
+    // Teammate completed but no messages locally — load from API
+    let cancelled = false;
+    async function reloadTeammateMessages() {
+      try {
+        const page = await getConversationMessages(selectedConversationId!, { limit: 50 });
+        if (cancelled) return;
+        const msgs = page.messages.map(m => toStoreMessage(m, selectedConversationId!));
+        setMessagePage(selectedConversationId!, msgs, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+      } catch (err) {
+        console.error('Failed to load teammate messages:', err);
+      }
+    }
+    reloadTeammateMessages();
+    return () => { cancelled = true; };
+  }, [selectedConversationId, selectedConv?.type, selectedConv?.status, setMessagePage]);
+
   // Branch sync for updating from origin/main
   const {
     status: branchSyncStatus,
