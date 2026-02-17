@@ -777,9 +777,12 @@ outer:
 				}
 
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
-				// Turn or session completed — store accumulated message and reset
-				// streaming state. turn_complete means the process stays alive;
-				// complete/result means it will exit shortly.
+				// Turn or session completed — stop the watchdog. For turn_complete
+				// the process stays alive idle; for complete/result it exits shortly.
+				// Either way, silence is expected and not a hang signal.
+				activityWatchdog.Stop()
+
+				// Store accumulated message and reset streaming state.
 				if currentAssistantMessage != "" {
 					// Seal final text segment
 					if currentSegmentStart != nil && currentSegmentText != "" {
