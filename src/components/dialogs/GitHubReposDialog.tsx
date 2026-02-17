@@ -318,7 +318,7 @@ export function GitHubReposDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Github className="h-5 w-5" />
@@ -378,7 +378,7 @@ export function GitHubReposDialog({
             </div>
 
             {/* Repo list */}
-            <ScrollArea className="flex-1 min-h-0 max-h-[340px]">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="space-y-2 pr-3">
                 {isLoadingRepos && repos.length === 0 ? (
                   // Loading skeletons
