@@ -303,6 +303,7 @@ export interface SessionDTO {
   prStatus?: 'none' | 'open' | 'merged' | 'closed';
   prUrl?: string;
   prNumber?: number;
+  prTitle?: string;
   hasMergeConflict?: boolean;
   hasCheckFailures?: boolean;
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
@@ -331,6 +332,7 @@ export function mapSessionDTO(session: SessionDTO): import('@/lib/types').Worktr
     prStatus: session.prStatus,
     prUrl: session.prUrl,
     prNumber: session.prNumber,
+    prTitle: session.prTitle,
     hasMergeConflict: session.hasMergeConflict,
     hasCheckFailures: session.hasCheckFailures,
     checkStatus: session.checkStatus as import('@/lib/types').WorktreeSession['checkStatus'],

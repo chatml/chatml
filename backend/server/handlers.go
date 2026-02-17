@@ -919,6 +919,11 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Trigger one-time PR title backfill for sessions missing titles
+	if h.prWatcher != nil {
+		h.prWatcher.TriggerBackfillPRTitles()
+	}
+
 	// Early return if no sessions
 	if len(allSessions) == 0 {
 		writeJSON(w, DashboardData{
@@ -4546,6 +4551,7 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 		sess.PRStatus = models.PRStatusOpen
 		sess.PRNumber = prResult.Number
 		sess.PRUrl = prResult.HTMLURL
+		sess.PRTitle = req.Title
 		sess.UpdatedAt = now
 	}); err != nil {
 		// PR was created but we failed to update local state - log but don't fail
@@ -4567,6 +4573,7 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 			"prStatus":  models.PRStatusOpen,
 			"prNumber":  prResult.Number,
 			"prUrl":     prResult.HTMLURL,
+			"prTitle":   req.Title,
 		},
 	})
 
