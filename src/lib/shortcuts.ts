@@ -137,6 +137,34 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Previous tab',
     category: 'Navigation',
   },
+  {
+    id: 'sidebarFilesTab',
+    key: 'f',
+    modifiers: ['alt'],
+    label: 'Switch to Files tab',
+    category: 'Navigation',
+  },
+  {
+    id: 'sidebarChangesTab',
+    key: 'c',
+    modifiers: ['alt'],
+    label: 'Switch to Changes tab',
+    category: 'Navigation',
+  },
+  {
+    id: 'sidebarChecksTab',
+    key: 'c',
+    modifiers: ['alt', 'shift'],
+    label: 'Switch to Checks tab',
+    category: 'Navigation',
+  },
+  {
+    id: 'sidebarReviewTab',
+    key: 'r',
+    modifiers: ['alt'],
+    label: 'Switch to Review tab',
+    category: 'Navigation',
+  },
 
   // Chat
   {
@@ -314,6 +342,13 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: Shortcut): boole
   }
   if (shortcut.key === 'Enter') {
     return event.key === 'Enter';
+  }
+
+  // On macOS, Alt+letter produces special characters (e.g., Alt+F → 'ƒ'),
+  // so event.key won't match the expected letter. Use event.code instead,
+  // which always returns 'Key' + letter.toUpperCase() regardless of modifiers.
+  if (needsAlt && shortcut.key.length === 1 && /^[a-z]$/i.test(shortcut.key)) {
+    return event.code === `Key${shortcut.key.toUpperCase()}`;
   }
 
   return eventKey === shortcutKey;
