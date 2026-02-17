@@ -369,6 +369,9 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                 </div>
               );
             } else if (item.type === 'subagent_group') {
+              // Teammates have their own dedicated tabs — skip them in the timeline
+              const isTeammateGroup = item.agents[0]?.agentType === 'teammate' || item.agents[0]?.agentType === 'team_member';
+              if (isTeammateGroup) return null;
               return (
                 <SubAgentGroupedRow
                   key={item.agents.map(a => a.agentId).join(',')}
@@ -377,6 +380,9 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                 />
               );
             } else if (item.type === 'subagent') {
+              // Teammates have their own dedicated tabs — skip them in the timeline
+              const isTeammate = item.agent.agentType === 'teammate' || item.agent.agentType === 'team_member';
+              if (isTeammate) return null;
               return (
                 <SubAgentRow
                   key={item.agent.agentId}
