@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds } from '@/stores/selectors';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -8,12 +9,20 @@ import { Circle, CheckCircle2, Loader2, ListTodo } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AgentTodoItem } from '@/lib/types';
 
+const STATUS_ORDER: Record<AgentTodoItem['status'], number> = {
+  in_progress: 0,
+  pending: 1,
+  completed: 2,
+};
+
 export function TodoPanel() {
   const { selectedConversationId } = useSelectedIds();
   const agentTodos = useAppStore((s) => s.agentTodos);
 
-  // Get todos for current conversation
-  const currentAgentTodos = selectedConversationId ? agentTodos[selectedConversationId] || [] : [];
+  const currentAgentTodos = useMemo(() => {
+    const todos = selectedConversationId ? agentTodos[selectedConversationId] || [] : [];
+    return [...todos].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
+  }, [selectedConversationId, agentTodos]);
 
   if (currentAgentTodos.length === 0) {
     return (
@@ -56,14 +65,14 @@ function AgentTodoRow({ todo }: { todo: AgentTodoItem }) {
   return (
     <div
       className={cn(
-        'flex items-start gap-2 py-1 pl-3 pr-2 rounded-sm',
-        todo.status === 'completed' && 'opacity-60'
+        'flex items-start gap-2 py-1 px-1 rounded-sm transition-all duration-300',
+        todo.status === 'completed' && 'opacity-50'
       )}
     >
       {getStatusIcon()}
       <span
         className={cn(
-          'text-xs leading-tight',
+          'text-xs leading-tight transition-all duration-300',
           todo.status === 'completed' && 'line-through text-muted-foreground'
         )}
       >
