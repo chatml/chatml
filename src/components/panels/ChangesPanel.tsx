@@ -409,6 +409,8 @@ export function ChangesPanel() {
 
   // Watch for branch sync completion to refresh changes
   const branchSyncCompletedAt = useAppStore((s) => selectedSessionId ? s.branchSyncCompletedAt[selectedSessionId] : undefined);
+  // Watch for agent turn completion to refresh changes
+  const lastTurnCompletedAt = useAppStore((s) => selectedSessionId ? s.lastTurnCompletedAt[selectedSessionId] : undefined);
 
   // Track branch for refetching changes when branch is renamed
   const currentBranch = currentSession?.branch;
@@ -537,6 +539,14 @@ export function ChangesPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchSyncCompletedAt]);
 
+  // Refetch changes when an agent turn completes in this session
+  useEffect(() => {
+    if (lastTurnCompletedAt && selectedWorkspaceId && selectedSessionId) {
+      debouncedFetchChanges();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastTurnCompletedAt]);
+
   // React to file change events from centralized store
   // Note: session registration is handled at creation/dashboard load time (page.tsx, WorkspaceSidebar)
   const lastFileChange = useAppStore((s) => s.lastFileChange);
@@ -592,13 +602,22 @@ export function ChangesPanel() {
     onToggleShowResolved: () => setShowResolved((prev) => !prev),
   }), [fetchChanges, fetchBranchCommits, handleResolveAll, prUrl, unresolvedCount, showResolved]);
 
+  // Wrap tab selection to trigger changes refresh when switching to the changes tab
+  const handleTabSelect = useCallback((tabId: string) => {
+    setSelectedTab(tabId);
+    if (tabId === 'changes') {
+      fetchChanges();
+      fetchBranchCommits();
+    }
+  }, [fetchChanges, fetchBranchCommits]);
+
   // Keyboard shortcuts for switching sidebar tabs
   const tabShortcuts = useMemo(() => ({
-    sidebarFilesTab: () => setSelectedTab('files'),
-    sidebarChangesTab: () => setSelectedTab('changes'),
-    sidebarChecksTab: () => setSelectedTab('checks'),
-    sidebarReviewTab: () => setSelectedTab('review'),
-  }), []);
+    sidebarFilesTab: () => handleTabSelect('files'),
+    sidebarChangesTab: () => handleTabSelect('changes'),
+    sidebarChecksTab: () => handleTabSelect('checks'),
+    sidebarReviewTab: () => handleTabSelect('review'),
+  }), [handleTabSelect]);
   useShortcuts(tabShortcuts);
 
   return (
@@ -606,7 +625,7 @@ export function ChangesPanel() {
       {/* Tabs Row */}
       <TopPanelTabs
         selectedTab={selectedTab}
-        setSelectedTab={setSelectedTab}
+        setSelectedTab={handleTabSelect}
         changesCount={branchStats?.totalFiles || changes?.length || 0}
         menuContext={menuContext}
       />

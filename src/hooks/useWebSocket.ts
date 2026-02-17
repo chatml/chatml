@@ -491,6 +491,11 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.clearAgentTodos(conversationId);
         // Clear any stale pending question — the turn is over
         freshStore.clearPendingUserQuestion(conversationId);
+        // Trigger changes panel refresh for this session
+        const resultConv = freshStore.conversations.find((c) => c.id === conversationId);
+        if (resultConv) {
+          freshStore.setLastTurnCompletedAt(resultConv.sessionId, Date.now());
+        }
         // Notify background session (unread dot + in-app sound when focused)
         notifyBackgroundSession(conversationId);
         // Desktop notification for task completion.
@@ -536,6 +541,11 @@ export function useWebSocket(enabled: boolean = true) {
         turnStore.updateConversation(conversationId, { status: 'active' });
         // Clear agent todos — tasks are no longer relevant after turn ends
         turnStore.clearAgentTodos(conversationId);
+        // Trigger changes panel refresh for this session
+        const turnConv = turnStore.conversations.find((c) => c.id === conversationId);
+        if (turnConv) {
+          turnStore.setLastTurnCompletedAt(turnConv.sessionId, Date.now());
+        }
         // Notify background session (unread dot + in-app sound when focused)
         notifyBackgroundSession(conversationId);
         break;
@@ -555,6 +565,11 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearPendingUserQuestion(conversationId);
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
+        // Trigger changes panel refresh for this session
+        const completeConv = store.conversations.find((c) => c.id === conversationId);
+        if (completeConv) {
+          store.setLastTurnCompletedAt(completeConv.sessionId, Date.now());
+        }
         break;
       }
 
