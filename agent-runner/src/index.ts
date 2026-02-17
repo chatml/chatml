@@ -363,6 +363,12 @@ function debug(msg: string, ...args: unknown[]): void {
   console.error(`[DEBUG ${ts}] ${msg}`, ...args);
 }
 
+// Always-on lifecycle logging for sidecar visibility.
+// These log at key milestones so hangs can be diagnosed without CHATML_DEBUG.
+function lifecycle(msg: string): void {
+  console.error(`[lifecycle] ${msg}`);
+}
+
 // Close readline interface if it exists
 function closeReadline(): void {
   if (rl) {
@@ -410,6 +416,8 @@ function setupInputQueue(): void {
 
     try {
       const input: InputMessage = JSON.parse(line);
+      const attachCount = input.attachments?.length ?? 0;
+      lifecycle(`stdin: type=${input.type} len=${line.length} attachments=${attachCount}`);
       debug(`Input received: type=${input.type}, content=${(input.content || "").slice(0, 50)}`);
 
       if (input.type === "stop") {
@@ -701,6 +709,19 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
     }
 
     if (attachment.type === "image") {
+      // Validate image size — Anthropic API limit is 5MB per image.
+      // base64 encodes 3 bytes per 4 chars, so raw size ≈ base64Length * 3/4.
+      const rawSizeBytes = Math.ceil(attachment.base64Data.length * 3 / 4);
+      const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
+      if (rawSizeBytes > MAX_IMAGE_BYTES) {
+        const sizeMB = (rawSizeBytes / (1024 * 1024)).toFixed(1);
+        lifecycle(`image "${attachment.name}" too large: ${sizeMB}MB (limit 5MB)`);
+        emit({
+          type: "error",
+          message: `Image "${attachment.name}" is ${sizeMB}MB which exceeds the 5MB API limit. Please use a smaller image.`,
+        });
+        continue;
+      }
       contentBlocks.push({
         type: "image",
         source: {
@@ -1354,6 +1375,7 @@ const hooks = {
 // ============================================================================
 
 async function main(): Promise<void> {
+  lifecycle("main() entered");
   emit({
     type: "ready",
     conversationId,
@@ -1362,10 +1384,12 @@ async function main(): Promise<void> {
     forking: forkSession,
     model: model || "(default)",
   });
+  lifecycle("ready emitted");
 
   // Set up the event-driven input queue
   setupInputQueue();
   mainLoopRunning = true;
+  lifecycle("input queue ready");
 
   let turnCount = 0;
 
@@ -1508,6 +1532,8 @@ async function main(): Promise<void> {
 
           turnCount++;
           currentTurnStartTime = Date.now();
+          const attachInfo = msg.attachments?.map(a => `${a.type}:${a.name}:${Math.round((a.base64Data?.length ?? 0) / 1024)}KB`).join(", ") || "none";
+          lifecycle(`turn ${turnCount}: content=${msg.content.length} chars, attachments=[${attachInfo}]`);
           debug(`Turn ${turnCount} starting: content="${msg.content.slice(0, 80)}"`);
 
           // Reset per-turn state
@@ -1522,7 +1548,9 @@ async function main(): Promise<void> {
             workspaceContext.updateSessionId(currentSessionId);
           }
 
-          yield buildUserMessage(msg);
+          const sdkMessage = buildUserMessage(msg);
+          lifecycle(`buildUserMessage done: ${JSON.stringify(sdkMessage).length} bytes`);
+          yield sdkMessage;
         }
       }
       return messageStream();
@@ -1544,6 +1572,7 @@ async function main(): Promise<void> {
         const sessionAbortController = new AbortController();
         abortControllerRef = sessionAbortController;
 
+        lifecycle("calling query()");
         const result = query({
           prompt: createMessageStream(),
           options: {
@@ -1555,12 +1584,18 @@ async function main(): Promise<void> {
         });
 
         queryRef = result;
+        lifecycle("query() returned, entering message loop");
 
         // ====================================================================
         // Process ALL messages from ALL turns in a single loop.
         // Result messages mark turn boundaries but don't end the session.
         // ====================================================================
+        let sdkMessageCount = 0;
         for await (const message of result) {
+          sdkMessageCount++;
+          if (sdkMessageCount === 1) {
+            lifecycle(`first SDK message: type=${message.type}`);
+          }
           handleMessage(message);
 
           // Result messages mark the end of a turn — but only for parent-agent results.
@@ -1601,12 +1636,14 @@ async function main(): Promise<void> {
         // Normal exit — session ended (generator returned or CLI exited cleanly)
         queryRef = null;
         flushBlockBuffer();
+        lifecycle(`session ended after ${turnCount} turns, ${sdkMessageCount} SDK messages`);
         emit({ type: "complete", sessionId: currentSessionId });
         debug(`Session ended after ${turnCount} turns`);
         break; // Exit retry loop
 
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
+        lifecycle(`query error: ${errMsg.slice(0, 200)}`);
 
         // Non-retriable errors — throw to top-level handler
         if (detectAuthError(errMsg) || !mainLoopRunning) throw err;

@@ -595,11 +595,20 @@ func (p *Process) sendInput(msg InputMessage) error {
 	}
 
 	// Write JSON line to stdin
-	logger.Process.Debugf("Writing %s to stdin (%d bytes)", msg.Type, len(data))
+	payloadKB := len(data) / 1024
+	if payloadKB > 100 {
+		// Log at Info level for large payloads (>100KB) — these are likely image attachments
+		logger.Process.Infof("[%s] Writing %s to stdin (%d KB)", p.ID, msg.Type, payloadKB)
+	} else {
+		logger.Process.Debugf("Writing %s to stdin (%d bytes)", msg.Type, len(data))
+	}
 	_, err = p.stdin.Write(append(data, '\n'))
 	if err != nil {
 		logger.Process.Errorf("Failed to write %s to stdin: %v", msg.Type, err)
 		return fmt.Errorf("write to stdin: %w", err)
+	}
+	if payloadKB > 100 {
+		logger.Process.Infof("[%s] Stdin write complete for %s (%d KB)", p.ID, msg.Type, payloadKB)
 	}
 
 	return nil
