@@ -79,6 +79,7 @@ type Process struct {
 	opts               ProcessOptions // Original options for restart
 	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
 	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
+	producedOutput     bool          // Whether any assistant text was emitted during this process lifetime
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -701,6 +702,20 @@ func (p *Process) SawErrorEvent() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.sawErrorEvent
+}
+
+// SetProducedOutput marks that the agent emitted assistant text during this process lifetime.
+func (p *Process) SetProducedOutput() {
+	p.mu.Lock()
+	p.producedOutput = true
+	p.mu.Unlock()
+}
+
+// ProducedOutput returns whether any assistant text was emitted during this process lifetime.
+func (p *Process) ProducedOutput() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.producedOutput
 }
 
 // SetRunningForTest sets the running flag. Intended for testing only.

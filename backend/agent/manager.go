@@ -508,6 +508,8 @@ outer:
 				}
 				isThinking = false
 
+				// Track that the process produced user-visible output (for zero-output detection)
+				proc.SetProducedOutput()
 				currentAssistantMessage += event.Content
 				// Track text segments for timeline persistence
 				if currentSegmentStart == nil {
@@ -997,24 +999,55 @@ func (m *Manager) handleConversationCompletion(convID string, proc *Process) {
 	}
 
 	exitErr := proc.ExitError()
+	var synthesizedError string
+
 	if exitErr != nil {
 		logger.Manager.Warnf("Conversation %s process exited with error: %v", convID, exitErr)
 
 		// If the agent-runner didn't emit its own error event, synthesize one
 		// so the frontend shows a useful message instead of silently going idle.
-		if !proc.SawErrorEvent() && m.onConversationEvent != nil {
+		if !proc.SawErrorEvent() {
 			stderrLines := proc.LastStderrLines()
-			errMsg := fmt.Sprintf("Claude Code process exited with code 1")
+			synthesizedError = "Claude Code process exited with code 1"
 			if len(stderrLines) > 0 {
-				errMsg += ": " + strings.Join(stderrLines, "\n")
+				synthesizedError += ": " + strings.Join(stderrLines, "\n")
 			}
-			m.onConversationEvent(convID, &AgentEvent{
-				Type:    EventTypeError,
-				Message: errMsg,
-			})
 		}
 	} else {
 		logger.Manager.Infof("Conversation %s process exited cleanly", convID)
+	}
+
+	// Safety net: if the process exited (cleanly or not) without producing any
+	// assistant output AND without an error event, synthesize a user-visible error.
+	// This prevents the conversation from going silently idle with zero feedback.
+	// Only fires if the crash fallback above didn't already synthesize an error.
+	if synthesizedError == "" && !proc.ProducedOutput() && !proc.SawErrorEvent() {
+		stderrLines := proc.LastStderrLines()
+		synthesizedError = "The agent process exited without producing any response"
+		if len(stderrLines) > 0 {
+			synthesizedError += ": " + strings.Join(stderrLines, "\n")
+		}
+		logger.Manager.Warnf("Conversation %s zero-output safety net triggered", convID)
+	}
+
+	// Persist the synthesized error as an assistant message so it survives app
+	// restarts, and broadcast it via WebSocket for immediate display.
+	if synthesizedError != "" {
+		if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
+			ID:        uuid.New().String()[:8],
+			Role:      "assistant",
+			Content:   synthesizedError,
+			Timeline:  []models.TimelineEntry{{Type: "text", Content: synthesizedError}},
+			Timestamp: time.Now(),
+		}); err != nil {
+			logger.Manager.Errorf("Failed to persist synthesized error for conv %s: %v", convID, err)
+		}
+		if m.onConversationEvent != nil {
+			m.onConversationEvent(convID, &AgentEvent{
+				Type:    EventTypeError,
+				Message: synthesizedError,
+			})
+		}
 	}
 
 	// Remove completed process from map to prevent unbounded growth.

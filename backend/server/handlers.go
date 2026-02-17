@@ -3424,6 +3424,14 @@ func (h *Handlers) SendConversationMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Validate that image attachments have base64 data
+	for _, att := range req.Attachments {
+		if att.Type == "image" && att.Base64Data == "" {
+			writeValidationError(w, fmt.Sprintf("image attachment %q is missing base64Data", att.Name))
+			return
+		}
+	}
+
 	// Switch model if specified
 	if req.Model != "" {
 		// Always persist model to DB first - this ensures auto-restart will use the correct model
