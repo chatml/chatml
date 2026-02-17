@@ -713,6 +713,7 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         // bypassing the stdin pipe entirely.
         lifecycle(`image "${attachment.name}" via file: ${attachment.path}`);
         tempFilesToClean.push(attachment.path);
+        pendingTempFiles.add(attachment.path);
         contentBlocks.push({
           type: "text",
           text: `[The user attached an image: "${attachment.name}" (${attachment.mimeType}). ` +
@@ -759,6 +760,7 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         writeFileSync(tempPath, raw);
         lifecycle(`image "${attachment.name}" saved to temp file: ${tempPath} (${Math.round(raw.length / 1024)}KB)`);
         tempFilesToClean.push(tempPath);
+        pendingTempFiles.add(tempPath);
         contentBlocks.push({
           type: "text",
           text: `[The user attached an image: "${attachment.name}" (${attachment.mimeType}). ` +
@@ -796,8 +798,10 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
       for (const filePath of tempFilesToClean) {
         try {
           unlinkSync(filePath);
+          pendingTempFiles.delete(filePath);
           debug(`Cleaned up temp image: ${filePath}`);
         } catch {
+          pendingTempFiles.delete(filePath);
           // File may already be gone — that's fine
         }
       }
@@ -852,6 +856,9 @@ function flushBlockBuffer(): void {
     blockBuffer = "";
   }
 }
+
+// Track temp image files for cleanup on exit (module-level so cleanup() can access them)
+const pendingTempFiles = new Set<string>();
 
 // Track active tool uses
 const activeTools = new Map<string, { tool: string; startTime: number; input?: Record<string, unknown> }>();
@@ -2275,6 +2282,17 @@ async function cleanup(reason: string): Promise<void> {
 
   // 5. Flush any remaining buffered text
   flushBlockBuffer();
+
+  // 5b. Clean up any temp image files that haven't been cleaned by their deferred timers
+  for (const filePath of pendingTempFiles) {
+    try {
+      unlinkSync(filePath);
+      debug(`Cleanup: removed temp image: ${filePath}`);
+    } catch {
+      // File may already be gone — that's fine
+    }
+  }
+  pendingTempFiles.clear();
 
   // 6. Interrupt the query if active (may be null between turns).
   // Note: MCP servers (chatmlMcp and user-configured servers) are managed by the SDK
