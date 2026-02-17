@@ -2,6 +2,10 @@ package branch
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"regexp"
 	"testing"
 	"time"
 
@@ -273,6 +277,217 @@ func TestBoolPtrEqual_BothFalseSame(t *testing.T) {
 
 func TestBoolPtrEqual_Different(t *testing.T) {
 	assert.False(t, boolPtrEqual(boolPtr(true), boolPtr(false)))
+}
+
+// ---------------------------------------------------------------------------
+// HasMergeConflict flag tests
+// ---------------------------------------------------------------------------
+
+func TestPRWatcher_CheckSessionPR_MergedPR_ClearsMergeConflict(t *testing.T) {
+	// Simulate a PR that was open with a merge conflict, then gets merged.
+	// The HasMergeConflict flag should be cleared when the PR transitions to merged.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:               "sess-1",
+		HasMergeConflict: true, // was conflicting while open
+		PRStatus:         models.PRStatusOpen,
+		PRNumber:         42,
+		TaskStatus:       models.TaskStatusInReview,
+	}
+
+	var capturedEvent *PRChangeEvent
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {
+		capturedEvent = &evt
+	}
+	defer w.Close()
+
+	// Set up a mock GitHub API server that returns the PR as merged
+	ts := newMockGitHubServer(t, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "closed", merged: true, mergeable: nil},
+		prMerged:  boolPtr(true),
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	// Manually set up the watch entry as if PR was previously open
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusOpen,
+		PRNumber:  42,
+		PRUrl:     "https://github.com/org/myrepo/pull/42",
+	}
+	w.mu.Unlock()
+
+	// PR is no longer in the open list (it's merged), so pass empty branchToPR
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], map[string]*github.PRListItem{})
+
+	// Verify store was updated
+	sess := store.sessions["sess-1"]
+	assert.False(t, sess.HasMergeConflict, "HasMergeConflict should be cleared for merged PR")
+	assert.Equal(t, models.PRStatusMerged, sess.PRStatus)
+	require.NotNil(t, capturedEvent, "should have emitted a change event")
+}
+
+func TestPRWatcher_CheckSessionPR_OpenPR_SetsMergeConflict(t *testing.T) {
+	// When a PR is open and mergeable is false, HasMergeConflict should be true.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:         "sess-1",
+		PRStatus:   "none",
+		TaskStatus: models.TaskStatusInProgress,
+	}
+
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {}
+	defer w.Close()
+
+	mergeable := false
+	ts := newMockGitHubServer(t, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "open", merged: false, mergeable: &mergeable},
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  "none",
+	}
+	w.mu.Unlock()
+
+	// PR is in the open list
+	branchToPR := map[string]*github.PRListItem{
+		"feature/foo": {Number: 42, Branch: "feature/foo", HTMLURL: "https://github.com/org/myrepo/pull/42"},
+	}
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], branchToPR)
+
+	sess := store.sessions["sess-1"]
+	assert.True(t, sess.HasMergeConflict, "HasMergeConflict should be true for open non-mergeable PR")
+	assert.Equal(t, models.PRStatusOpen, sess.PRStatus)
+}
+
+func TestPRWatcher_CheckSessionPR_ClosedPR_ClearsMergeConflict(t *testing.T) {
+	// When a PR is closed (not merged), HasMergeConflict should be cleared.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:               "sess-1",
+		HasMergeConflict: true,
+		PRStatus:         models.PRStatusOpen,
+		PRNumber:         42,
+	}
+
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {}
+	defer w.Close()
+
+	ts := newMockGitHubServer(t, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "closed", merged: false, mergeable: nil},
+		prMerged:  boolPtr(false),
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusOpen,
+		PRNumber:  42,
+		PRUrl:     "https://github.com/org/myrepo/pull/42",
+	}
+	w.mu.Unlock()
+
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], map[string]*github.PRListItem{})
+
+	sess := store.sessions["sess-1"]
+	assert.False(t, sess.HasMergeConflict, "HasMergeConflict should be cleared for closed PR")
+	assert.Equal(t, models.PRStatusClosed, sess.PRStatus)
+}
+
+// ---------------------------------------------------------------------------
+// Mock GitHub server helpers
+// ---------------------------------------------------------------------------
+
+type mockPRDetails struct {
+	state     string
+	merged    bool
+	mergeable *bool
+}
+
+type mockGitHubResponses struct {
+	prDetails *mockPRDetails
+	prMerged  *bool // response for /pulls/:number/merge endpoint
+}
+
+func newMockGitHubServer(t *testing.T, responses mockGitHubResponses) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Match /repos/:owner/:repo/pulls/:number/merge
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/pulls/\d+/merge$`, r.URL.Path); matched {
+			if responses.prMerged != nil && *responses.prMerged {
+				w.WriteHeader(http.StatusNoContent) // 204 = merged
+			} else {
+				w.WriteHeader(http.StatusNotFound) // 404 = not merged
+			}
+			return
+		}
+
+		// Match /repos/:owner/:repo/pulls/:number (PR details)
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/pulls/\d+$`, r.URL.Path); matched {
+			if responses.prDetails == nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			pr := map[string]interface{}{
+				"number":          42,
+				"state":           responses.prDetails.state,
+				"title":           "Test PR",
+				"body":            "",
+				"html_url":        "https://github.com/org/myrepo/pull/42",
+				"merged":          responses.prDetails.merged,
+				"mergeable":       responses.prDetails.mergeable,
+				"mergeable_state": "unknown",
+				"head":            map[string]string{"sha": "abc123"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(pr)
+			return
+		}
+
+		// Match /repos/:owner/:repo/commits/:ref/check-runs
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/commits/.+/check-runs$`, r.URL.Path); matched {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 0,
+				"check_runs":  []interface{}{},
+			})
+			return
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
 }
 
 // ---------------------------------------------------------------------------

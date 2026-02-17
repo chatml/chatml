@@ -446,8 +446,10 @@ func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, bran
 			if sess.CheckStatus == "" {
 				sess.CheckStatus = models.CheckStatusNone
 			}
-			if mergeable != nil {
+			if newStatus == models.PRStatusOpen && mergeable != nil {
 				sess.HasMergeConflict = !*mergeable
+			} else if newStatus == models.PRStatusMerged || newStatus == models.PRStatusClosed {
+				sess.HasMergeConflict = false
 			}
 
 			// Auto-update taskStatus based on PR lifecycle
