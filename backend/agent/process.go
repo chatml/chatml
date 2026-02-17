@@ -58,6 +58,7 @@ type ProcessOptions struct {
 	TargetBranch        string // Target branch for PR base and sync (e.g. "origin/develop")
 	EnvVars             map[string]string // Custom environment variables to inject
 	McpServersJSON      string            // JSON array of MCP server configs
+	DisableAgentTeams   bool              // Opt-out flag to disable Agent Teams feature
 }
 
 type Process struct {
@@ -102,6 +103,9 @@ type InputMessage struct {
 	// MCP server management fields (SDK v0.2.21+)
 	ServerName    string `json:"serverName,omitempty"`
 	ServerEnabled *bool  `json:"serverEnabled,omitempty"`
+	// Teammate routing fields (Agent SDK Teams)
+	TargetAgentId   string `json:"targetAgentId,omitempty"`
+	TargetAgentName string `json:"targetAgentName,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -277,6 +281,14 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	logger.Process.Debugf("Starting agent with args: %v", args)
 	cmd := exec.CommandContext(ctx, "node", args...)
 	cmd.Dir = opts.Workdir
+
+	// Enable Agent Teams unless explicitly disabled
+	if !opts.DisableAgentTeams {
+		if opts.EnvVars == nil {
+			opts.EnvVars = make(map[string]string)
+		}
+		opts.EnvVars["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
+	}
 
 	// Inject custom environment variables if provided
 	if len(opts.EnvVars) > 0 {

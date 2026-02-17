@@ -22,6 +22,7 @@ import {
   type StopHookInput,
   type PreCompactHookInput,
   type McpServerConfig,
+  type SDKTaskNotificationMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
@@ -204,7 +205,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server";
+  type: "message" | "teammate_message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -221,6 +222,9 @@ interface InputMessage {
   // MCP server management fields (SDK v0.2.21+)
   serverName?: string;
   serverEnabled?: boolean;
+  // Teammate message fields
+  targetAgentId?: string;
+  targetAgentName?: string;
 }
 
 // Escape a string for use in XML attribute values
@@ -627,6 +631,34 @@ function setupInputQueue(): void {
         return;
       }
 
+      // Handle teammate_message: relay to lead agent for SendMessage dispatch
+      if (input.type === "teammate_message" && input.content && input.targetAgentId) {
+        const relayContent = [
+          `The user wants to send a direct message to teammate "${input.targetAgentName || input.targetAgentId}".`,
+          `Please relay this message using the SendMessage tool:`,
+          ``,
+          `---`,
+          input.content,
+          `---`,
+          ``,
+          `Important: Relay this message exactly as written. Do not interpret, summarize, or modify it.`,
+        ].join('\n');
+
+        const queued: QueuedMessage = {
+          content: relayContent,
+          attachments: input.attachments,
+        };
+
+        if (messageWaiter) {
+          const waiter = messageWaiter;
+          messageWaiter = null;
+          waiter(queued);
+        } else {
+          messageQueue.push(queued);
+        }
+        return;
+      }
+
       // Queue "message" type inputs for the next turn
       if (input.type === "message" && input.content) {
         const queued: QueuedMessage = {
@@ -868,6 +900,13 @@ const completedToolNames = new Map<string, string>();
 
 // Track sub-agent session → agentId mapping for correlating hook events
 const sessionToAgentId = new Map<string, string>();
+// Track parent_tool_use_id → agentId for robust session discovery
+// (SubagentStart hook's session_id may not match stream_event session_ids)
+const parentToolToAgent = new Map<string, string>();
+// Track which agentIds are teammates (vs regular subagents)
+const teammateAgentIds = new Set<string>();
+// Track active team name — when set, new subagents are treated as teammates
+let activeTeamName: string | null = null;
 // Track sub-agent active tools (keyed by toolUseId)
 const subagentActiveTools = new Map<string, { agentId: string; tool: string; startTime: number }>();
 // Track Task tool descriptions by tool_use_id for sub-agent description plumbing (Issue 3)
@@ -996,6 +1035,25 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     sessionId: hookInput.session_id,
   });
 
+  // Track team creation — when TeamCreate succeeds, all subsequent subagents are teammates
+  if (hookInput.tool_name === "TeamCreate") {
+    try {
+      const response = typeof hookInput.tool_response === "string"
+        ? JSON.parse(hookInput.tool_response)
+        : hookInput.tool_response;
+      if (response?.team_name) {
+        activeTeamName = response.team_name;
+      }
+    } catch {
+      // Couldn't parse response — team name tracking may be incomplete
+    }
+  }
+
+  // Track team deletion
+  if (hookInput.tool_name === "TeamDelete") {
+    activeTeamName = null;
+  }
+
   // When ExitPlanMode completes, the SDK internally changes the permission mode
   // from "plan" to the pre-plan mode. Explicitly restore the mode and emit
   // permission_mode_changed to sync Go backend and frontend. This works around
@@ -1092,7 +1150,11 @@ const notificationHook: HookCallback = async (input) => {
 
 const sessionStartHook: HookCallback = async (input) => {
   const hookInput = input as SessionStartHookInput;
-  currentSessionId = hookInput.session_id;
+  debug(`[team_mapping] SessionStart: session_id=${hookInput.session_id}, agent_type=${hookInput.agent_type}, source=${hookInput.source}`);
+  // Only update currentSessionId for the lead's session, not sub-agents
+  if (!sessionToAgentId.has(hookInput.session_id)) {
+    currentSessionId = hookInput.session_id;
+  }
   emit({
     type: "session_started",
     sessionId: hookInput.session_id,
@@ -1138,21 +1200,49 @@ const subagentStartHook: HookCallback = async (input) => {
   // Register session → agentId mapping for correlating sub-agent tool events
   sessionToAgentId.set(hookInput.session_id, hookInput.agent_id);
 
-  // Find the parent "Task" tool_use that spawned this sub-agent.
-  // Map iteration is in insertion order, so we keep overwriting to get the
-  // most recently inserted (i.e. most recent) active Task tool.
+  debug(`[team_mapping] SubagentStart: session_id=${hookInput.session_id}, agent_id=${hookInput.agent_id}, agent_type=${hookInput.agent_type}, sessionToAgentId=${JSON.stringify([...sessionToAgentId.entries()])}`);
+
+  // Detect teammate agents: when a team is active (TeamCreate was called),
+  // all new subagents are teammates. The SDK sends custom agent names
+  // (e.g., "readme-reader") as agent_type, not the literal "teammate".
+  const isTeammate = activeTeamName !== null ||
+                     hookInput.agent_type === "teammate" ||
+                     hookInput.agent_type === "team_member";
+
+  if (isTeammate) {
+    teammateAgentIds.add(hookInput.agent_id);
+  }
+
+  // Find the parent tool_use that spawned this sub-agent.
+  // For Task subagents, look for "Task" tools. For teammates, any active tool
+  // could be the spawner (e.g., SendMessage). Take the last active tool.
   let parentToolUseId: string | undefined;
   for (const [toolId, info] of activeTools) {
     if (info.tool === "Task") {
       parentToolUseId = toolId;
     }
   }
+  // Fallback: if no Task tool found, use the last active tool (for teammates)
+  if (!parentToolUseId) {
+    for (const [toolId] of activeTools) {
+      parentToolUseId = toolId;
+    }
+  }
+  // Record parent_tool_use_id → agent_id for robust session discovery
+  if (parentToolUseId) {
+    parentToolToAgent.set(parentToolUseId, hookInput.agent_id);
+    debug(`[team_mapping] Mapped parent_tool_use_id ${parentToolUseId} → agent ${hookInput.agent_id}`);
+  }
 
   // Look up the Task tool description for this sub-agent (Issue 3)
-  const description = parentToolUseId ? taskToolDescriptions.get(parentToolUseId) : undefined;
+  // For teammates, use the agent_type (custom name like "readme-reader") as the description
+  // since they're spawned via SendMessage, not Task, so taskToolDescriptions won't have an entry.
+  const taskDescription = parentToolUseId ? taskToolDescriptions.get(parentToolUseId) : undefined;
+  const description = isTeammate ? (hookInput.agent_type || taskDescription) : taskDescription;
 
+  const emitType = isTeammate ? "teammate_started" : "subagent_started";
   emit({
-    type: "subagent_started",
+    type: emitType,
     agentId: hookInput.agent_id,
     agentType: hookInput.agent_type,
     sessionId: hookInput.session_id,
@@ -1164,16 +1254,36 @@ const subagentStartHook: HookCallback = async (input) => {
 
 const subagentStopHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStopHookInput;
-  // Clean up session → agentId mapping
+  const isTeammate = teammateAgentIds.has(hookInput.agent_id);
+
+  // Clean up session → agentId mapping (delete ALL sessions that map to this agent,
+  // since the hook's session_id may differ from the actual message session_id)
   sessionToAgentId.delete(hookInput.session_id);
+  for (const [sid, aid] of sessionToAgentId) {
+    if (aid === hookInput.agent_id) {
+      sessionToAgentId.delete(sid);
+    }
+  }
+  // Clean up parent_tool_use_id → agentId mapping
+  for (const [toolId, agentId] of parentToolToAgent) {
+    if (agentId === hookInput.agent_id) {
+      parentToolToAgent.delete(toolId);
+      break;
+    }
+  }
   // Clean up any lingering sub-agent tools
   for (const [toolId, info] of subagentActiveTools) {
     if (info.agentId === hookInput.agent_id) {
       subagentActiveTools.delete(toolId);
     }
   }
+
+  if (isTeammate) {
+    teammateAgentIds.delete(hookInput.agent_id);
+  }
+
   emit({
-    type: "subagent_stopped",
+    type: isTeammate ? "teammate_stopped" : "subagent_stopped",
     agentId: hookInput.agent_id,
     stopHookActive: hookInput.stop_hook_active,
     transcriptPath: hookInput.agent_transcript_path,
@@ -1767,18 +1877,40 @@ function detectAuthError(text: string): boolean {
 }
 
 function handleMessage(message: SDKMessage): void {
-  // Extract session_id from any message that has it
+  const msgSessionId = "session_id" in message ? (message as { session_id?: string }).session_id : undefined;
+
+  // Lazy session_id → agent_id discovery via parent_tool_use_id.
+  // The SubagentStart hook's session_id may not match the session_id on actual
+  // stream_event messages (SDK uses different sessions for hooks vs messages).
+  // parent_tool_use_id is a reliable link: each sub-agent's messages reference
+  // the tool_use_id that spawned them, which we mapped to agent_id in the hook.
+  if (msgSessionId && !sessionToAgentId.has(msgSessionId)) {
+    const parentTuId = "parent_tool_use_id" in message
+      ? (message as { parent_tool_use_id?: string | null }).parent_tool_use_id
+      : null;
+    if (parentTuId) {
+      const agentId = parentToolToAgent.get(parentTuId);
+      if (agentId) {
+        sessionToAgentId.set(msgSessionId, agentId);
+        debug(`[team_mapping] Discovered session ${msgSessionId} → agent ${agentId} via parent_tool_use_id ${parentTuId}`);
+      }
+    }
+  }
+
+  // Extract session_id from any message that has it — only for the lead's session
   if ("session_id" in message && message.session_id) {
-    if (!currentSessionId || currentSessionId !== message.session_id) {
-      currentSessionId = message.session_id;
-      emit({ type: "session_id_update", sessionId: currentSessionId });
+    // Only update currentSessionId for lead messages, not sub-agent messages
+    if (!sessionToAgentId.has(message.session_id)) {
+      if (!currentSessionId || currentSessionId !== message.session_id) {
+        currentSessionId = message.session_id;
+        emit({ type: "session_id_update", sessionId: currentSessionId });
+      }
     }
   }
 
   // Skip messages from sub-agent sessions — their tools are already tracked via hooks
   // (preToolUseHook / postToolUseHook emit tool_start/tool_end with agentId).
   // Processing them here would duplicate tool events at the parent level without agentId.
-  const msgSessionId = "session_id" in message ? (message as { session_id?: string }).session_id : undefined;
   const isSubAgentMessage = msgSessionId ? sessionToAgentId.has(msgSessionId) : false;
 
   switch (message.type) {
@@ -1851,7 +1983,25 @@ function handleMessage(message: SDKMessage): void {
     case "stream_event": {
       // Partial streaming message — skip sub-agent stream events to avoid
       // duplicating their text/thinking into the parent's output.
-      if (isSubAgentMessage) break;
+      if (isSubAgentMessage) {
+        // For teammates, forward streaming text to backend for routing
+        const agentId = sessionToAgentId.get(msgSessionId!);
+        debug(`[team_mapping] stream_event: msgSessionId=${msgSessionId}, isSubAgent=true, agentId=${agentId}, isTeammate=${agentId ? teammateAgentIds.has(agentId) : false}`);
+        if (agentId && teammateAgentIds.has(agentId)) {
+          const event = message.event;
+          if (event.type === "content_block_delta") {
+            const delta = event.delta as Record<string, unknown>;
+            if (delta?.type === "text_delta" && delta.text) {
+              emit({
+                type: "assistant_text",
+                content: delta.text as string,
+                agentId,
+              });
+            }
+          }
+        }
+        break;
+      }
 
       const event = message.event;
       if (event.type === "content_block_delta") {
@@ -1997,11 +2147,12 @@ function handleMessage(message: SDKMessage): void {
       if (isSubAgentMessage) {
         const agentId = sessionToAgentId.get(msgSessionId!);
         const resultMsg = message as SDKResultMessage;
+        const outputText = resultMsg.subtype === "success" ? resultMsg.result : "";
         if (agentId) {
           emit({
             type: "subagent_output",
             agentId,
-            agentOutput: resultMsg.subtype === "success" ? resultMsg.result : "",
+            agentOutput: outputText,
           });
         }
         break;
@@ -2121,7 +2272,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -2193,6 +2344,17 @@ function handleMessage(message: SDKMessage): void {
           stderr: hookMsg.stderr,
           exitCode: hookMsg.exit_code,
           sessionId: hookMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "task_notification") {
+        // Background teammate task completed — forward to backend
+        const taskMsg = message as SDKTaskNotificationMessage;
+        emit({
+          type: "task_notification",
+          taskId: taskMsg.task_id,
+          status: taskMsg.status,
+          summary: taskMsg.summary,
+          outputFile: taskMsg.output_file,
+          sessionId: taskMsg.session_id,
         });
       }
       break;

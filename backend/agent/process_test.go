@@ -720,9 +720,16 @@ func TestNewProcessWithOptions_NoEnvVars(t *testing.T) {
 	}
 	p := NewProcessWithOptions(opts)
 
-	// When no custom env vars are provided, cmd.Env should be nil
-	// (process will inherit parent environment)
-	assert.Nil(t, p.cmd.Env, "cmd.Env should be nil when no custom env vars provided")
+	// Agent Teams env var is always injected by default, so cmd.Env should be set
+	assert.NotNil(t, p.cmd.Env, "cmd.Env should be set due to Agent Teams injection")
+	found := false
+	for _, e := range p.cmd.Env {
+		if e == "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 should be injected by default")
 }
 
 func TestNewProcessWithOptions_EmptyEnvVars(t *testing.T) {
@@ -734,8 +741,29 @@ func TestNewProcessWithOptions_EmptyEnvVars(t *testing.T) {
 	}
 	p := NewProcessWithOptions(opts)
 
-	// When empty env vars map is provided, cmd.Env should be nil
-	assert.Nil(t, p.cmd.Env, "cmd.Env should be nil when empty env vars map provided")
+	// Agent Teams env var is always injected by default, so cmd.Env should be set
+	assert.NotNil(t, p.cmd.Env, "cmd.Env should be set due to Agent Teams injection")
+	found := false
+	for _, e := range p.cmd.Env {
+		if e == "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 should be injected by default")
+}
+
+func TestNewProcessWithOptions_DisableAgentTeams(t *testing.T) {
+	opts := ProcessOptions{
+		ID:                "test-disable-teams",
+		Workdir:           "/tmp",
+		ConversationID:    "conv-disable-teams",
+		DisableAgentTeams: true,
+	}
+	p := NewProcessWithOptions(opts)
+
+	// When DisableAgentTeams is true and no other env vars, cmd.Env should be nil
+	assert.Nil(t, p.cmd.Env, "cmd.Env should be nil when DisableAgentTeams=true and no other env vars")
 }
 
 // ============================================================================

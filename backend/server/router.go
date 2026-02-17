@@ -191,6 +191,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
 		r.Delete("/{convId}", h.DeleteConversation)
+		// Teammate endpoints
+		r.With(messageRateLimiter).Post("/{convId}/teammate-message", h.SendTeammateMessage)
+		r.Get("/{convId}/teammates", h.GetTeammateConversations)
 		// Summary endpoints
 		r.With(conversationRateLimiter).Post("/{convId}/summary", h.GenerateConversationSummary)
 		r.Get("/{convId}/summary", h.GetConversationSummary)

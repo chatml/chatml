@@ -162,6 +162,9 @@ func (s *SQLiteStore) initSchema() error {
 		model TEXT NOT NULL DEFAULT '',
 		streaming_snapshot TEXT NOT NULL DEFAULT '',
 		agent_session_id TEXT NOT NULL DEFAULT '',
+		parent_conversation_id TEXT DEFAULT '',
+		team_agent_id TEXT DEFAULT '',
+		teammate_name TEXT DEFAULT '',
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -319,6 +322,18 @@ func (s *SQLiteStore) initSchema() error {
 // runMigrations applies incremental schema changes for existing databases.
 // After the schema flattening, this is empty. Future post-launch migrations go here.
 func (s *SQLiteStore) runMigrations() error {
+	// Add teammate-related columns to conversations table
+	alterStatements := []string{
+		"ALTER TABLE conversations ADD COLUMN parent_conversation_id TEXT DEFAULT ''",
+		"ALTER TABLE conversations ADD COLUMN team_agent_id TEXT DEFAULT ''",
+		"ALTER TABLE conversations ADD COLUMN teammate_name TEXT DEFAULT ''",
+	}
+	for _, stmt := range alterStatements {
+		_, err := s.db.Exec(stmt)
+		if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migration failed: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -914,10 +929,12 @@ func (s *SQLiteStore) DeleteAgent(ctx context.Context, id string) error {
 func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversation) error {
 	return RetryDBExec(ctx, "AddConversation", DefaultRetryConfig(), func(ctx context.Context) error {
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO conversations (id, session_id, type, name, status, model, agent_session_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			INSERT INTO conversations (id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			conv.ID, conv.SessionID, conv.Type, conv.Name,
-			conv.Status, conv.Model, conv.AgentSessionID, conv.CreatedAt, conv.UpdatedAt)
+			conv.Status, conv.Model, conv.AgentSessionID,
+			conv.ParentConversationID, conv.TeamAgentID, conv.TeammateName,
+			conv.CreatedAt, conv.UpdatedAt)
 		return err
 	})
 }
@@ -927,10 +944,12 @@ func (s *SQLiteStore) AddConversation(ctx context.Context, conv *models.Conversa
 func (s *SQLiteStore) GetConversationMeta(ctx context.Context, id string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-		&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt)
+		&conv.Status, &conv.Model, &conv.AgentSessionID,
+		&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
+		&conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -943,10 +962,12 @@ func (s *SQLiteStore) GetConversationMeta(ctx context.Context, id string) (*mode
 func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.Conversation, error) {
 	var conv models.Conversation
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
 		FROM conversations WHERE id = ?`, id).Scan(
 		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-		&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt)
+		&conv.Status, &conv.Model, &conv.AgentSessionID,
+		&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
+		&conv.CreatedAt, &conv.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -995,7 +1016,7 @@ func (s *SQLiteStore) GetConversation(ctx context.Context, id string) (*models.C
 // Uses 3 queries total regardless of conversation count (1 for conversations + 1 for all messages + 1 for all tool actions).
 func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) ([]*models.Conversation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
 		FROM conversations WHERE session_id = ?`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("ListConversations: %w", err)
@@ -1008,7 +1029,9 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 	for rows.Next() {
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-			&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			&conv.Status, &conv.Model, &conv.AgentSessionID,
+			&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
+			&conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("ListConversations scan: %w", err)
 		}
@@ -1067,7 +1090,7 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 
 	// Query all conversations for all sessions in one query
 	query := fmt.Sprintf(`
-		SELECT id, session_id, type, name, status, model, agent_session_id, created_at, updated_at
+		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
 		FROM conversations WHERE session_id IN (%s)`, strings.Join(placeholders, ","))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1081,7 +1104,9 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 	for rows.Next() {
 		var conv models.Conversation
 		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
-			&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			&conv.Status, &conv.Model, &conv.AgentSessionID,
+			&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
+			&conv.CreatedAt, &conv.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("ListConversationsForSessions scan: %w", err)
 		}
@@ -1113,6 +1138,67 @@ func (s *SQLiteStore) ListConversationsForSessions(ctx context.Context, sessionI
 	}
 
 	return result, nil
+}
+
+// GetTeammateConversations returns all teammate conversations for a parent conversation.
+func (s *SQLiteStore) GetTeammateConversations(ctx context.Context, parentConvID string) ([]*models.Conversation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
+		FROM conversations
+		WHERE parent_conversation_id = ? AND type IN ('teammate', 'team-overview')
+		ORDER BY created_at`, parentConvID)
+	if err != nil {
+		return nil, fmt.Errorf("GetTeammateConversations: %w", err)
+	}
+	defer rows.Close()
+
+	var convs []*models.Conversation
+	for rows.Next() {
+		var conv models.Conversation
+		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
+			&conv.Status, &conv.Model, &conv.AgentSessionID,
+			&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
+			&conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("GetTeammateConversations scan: %w", err)
+		}
+		conv.Messages = []models.Message{}
+		conv.ToolSummary = []models.ToolAction{}
+		convs = append(convs, &conv)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetTeammateConversations rows: %w", err)
+	}
+	return convs, nil
+}
+
+// GetConversationByTeamAgentID finds a teammate conversation by its SDK agent ID.
+func (s *SQLiteStore) GetConversationByTeamAgentID(ctx context.Context, parentConvID, agentId string) (*models.Conversation, error) {
+	var conv models.Conversation
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, session_id, type, name, status, model, agent_session_id, parent_conversation_id, team_agent_id, teammate_name, created_at, updated_at
+		FROM conversations
+		WHERE parent_conversation_id = ? AND team_agent_id = ?`, parentConvID, agentId).Scan(
+		&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
+		&conv.Status, &conv.Model, &conv.AgentSessionID,
+		&conv.ParentConversationID, &conv.TeamAgentID, &conv.TeammateName,
+		&conv.CreatedAt, &conv.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetConversationByTeamAgentID: %w", err)
+	}
+	return &conv, nil
+}
+
+// UpdateConversationStatus updates the status of a conversation.
+func (s *SQLiteStore) UpdateConversationStatus(ctx context.Context, convID, status string) error {
+	return RetryDBExec(ctx, "UpdateConversationStatus", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx, `
+			UPDATE conversations SET status = ?, updated_at = ? WHERE id = ?`,
+			status, time.Now(), convID)
+		return err
+	})
 }
 
 // loadMessageCountsForConversations loads message counts for multiple conversations in a single query.

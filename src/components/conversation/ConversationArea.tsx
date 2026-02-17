@@ -34,6 +34,8 @@ import {
   CheckCircle2,
   Terminal,
   FileCode,
+  Users,
+  LayoutGrid,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileTab, Conversation } from '@/lib/types';
@@ -46,6 +48,8 @@ import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/com
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary } from '@/lib/api';
+import { TeammateHeader } from '@/components/conversation/TeammateHeader';
+import { TeamOverviewDashboard } from '@/components/conversation/TeamOverviewDashboard';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -175,6 +179,38 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     loadMessages();
     return () => { cancelled = true; };
   }, [selectedConversationId, setMessagePage]);
+
+  // Reload teammate messages when status changes to completed with no local messages.
+  // This catches the case where teammate_completed had empty content but the backend
+  // persisted the message (from subagent_output arriving after teammate_stopped).
+  const selectedConv = useMemo(
+    () => conversations.find(c => c.id === selectedConversationId),
+    [conversations, selectedConversationId]
+  );
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    if (selectedConv?.type !== 'teammate' || selectedConv.status !== 'completed') return;
+
+    const state = useAppStore.getState();
+    const hasMessages = state.messages.some(m => m.conversationId === selectedConversationId);
+    const hasPagination = !!state.messagePagination[selectedConversationId];
+    if (hasMessages || hasPagination) return;
+
+    // Teammate completed but no messages locally — load from API
+    let cancelled = false;
+    async function reloadTeammateMessages() {
+      try {
+        const page = await getConversationMessages(selectedConversationId!, { limit: 50 });
+        if (cancelled) return;
+        const msgs = page.messages.map(m => toStoreMessage(m, selectedConversationId!));
+        setMessagePage(selectedConversationId!, msgs, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+      } catch (err) {
+        console.error('Failed to load teammate messages:', err);
+      }
+    }
+    reloadTeammateMessages();
+    return () => { cancelled = true; };
+  }, [selectedConversationId, selectedConv?.type, selectedConv?.status, setMessagePage]);
 
   // Branch sync for updating from origin/main
   const {
@@ -457,6 +493,23 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     (conv: Conversation) => {
       const isConvStreaming = sessionStreamingFlat[`${conv.id}:s`];
       const convError = sessionStreamingFlat[`${conv.id}:e`];
+
+      // Team overview icon
+      if (conv.type === 'team-overview') {
+        return <LayoutGrid className="w-2.5 h-2.5 text-muted-foreground" />;
+      }
+
+      // Teammate icon with status
+      if (conv.type === 'teammate') {
+        if (isConvStreaming) {
+          return <Loader2 className="w-2.5 h-2.5 animate-spin text-primary" />;
+        }
+        if (conv.status === 'completed') {
+          return <CheckCircle2 className="w-2.5 h-2.5 text-text-success" />;
+        }
+        return <Users className="w-2.5 h-2.5 text-muted-foreground" />;
+      }
+
       if (isConvStreaming) {
         return (
           <div className="flex items-end gap-[1.5px] h-2.5 w-2.5">
@@ -611,6 +664,12 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
   // Get current file tab from visible tabs
   const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);
+
+  // Get current conversation object
+  const conversation = useMemo(
+    () => conversations.find((c) => c.id === selectedConversationId),
+    [conversations, selectedConversationId]
+  );
 
   // Determine what's currently active (conversation or file)
   // File is active only if selected tab is visible
@@ -1092,8 +1151,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           </div>
           {/* No chat input when viewing files */}
         </>
+      ) : conversation?.type === 'team-overview' ? (
+        <TeamOverviewDashboard conversation={conversation} />
       ) : (
         <>
+          {/* Teammate header */}
+          {conversation?.type === 'teammate' && (
+            <TeammateHeader conversation={conversation} />
+          )}
           {/* Messages */}
           <div className="relative flex-1 min-h-0">
             {/* Chat Search Bar */}

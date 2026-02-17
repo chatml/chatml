@@ -357,6 +357,16 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	// Streaming snapshot state for reconnection recovery
 	activeToolsMap := make(map[string]ActiveToolEntry)
 	activeSubAgents := make(map[string]*SubAgentEntry)
+	// Teammate tracking: agentId → conversationId for routing events
+	teammateConvMap := make(map[string]string)
+	// Teammate text accumulation: agentId → accumulated assistant text for persistence
+	teammateText := make(map[string]string)
+	// Two-phase teammate completion: track whether each teammate's stop hook has fired.
+	// A teammate is only completed when BOTH subagent_output and teammate_stopped arrive,
+	// regardless of order (fixes race condition where stop fires before output).
+	teammateStopped := make(map[string]bool)
+	// Track team overview conversation ID (empty if not created)
+	teamOverviewConvID := ""
 	// Buffer tools that arrive before their sub-agent registers (race recovery)
 	pendingSubAgentTools := make(map[string][]ActiveToolEntry)
 	var currentThinking string // Accumulated thinking for snapshot/backwards compat
@@ -479,6 +489,42 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 		snapshotTimer.Reset(snapshotDebounceInterval)
 	}
 
+	// completeTeammate persists the teammate's accumulated text and broadcasts teammate_completed.
+	// Called when both subagent_output and teammate_stopped have arrived (in either order).
+	completeTeammate := func(agentId string) {
+		teammateConvID, ok := teammateConvMap[agentId]
+		if !ok {
+			return
+		}
+		persistedText := teammateText[agentId]
+		if persistedText != "" {
+			if err := m.store.AddMessageToConversation(ctx, teammateConvID, models.Message{
+				ID:        uuid.New().String()[:8],
+				Role:      "assistant",
+				Content:   persistedText,
+				Timestamp: time.Now(),
+			}); err != nil {
+				logger.Manager.Errorf("Failed to store teammate message for conv %s: %v", teammateConvID, err)
+			}
+			delete(teammateText, agentId)
+		}
+		if err := m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted); err != nil {
+			logger.Process.Errorf("Failed to update teammate status: %v", err)
+		}
+		if sa, ok := activeSubAgents[agentId]; ok {
+			sa.Completed = true
+		}
+		if m.onConversationEvent != nil {
+			m.onConversationEvent(teammateConvID, &AgentEvent{
+				Type:           EventTypeTeammateCompleted,
+				AgentId:        agentId,
+				ConversationID: teammateConvID,
+				Content:        persistedText,
+			})
+		}
+		markSnapshotDirty()
+	}
+
 	// Periodically check for dropped messages and emit warnings out-of-band.
 	// This bypasses the process output channel, so warnings are delivered even
 	// when the output channel is congested (which is exactly when drops occur).
@@ -512,6 +558,19 @@ outer:
 				logger.Manager.Infof("Conversation %s: agent ready", convID)
 
 			case EventTypeAssistantText:
+				// Route teammate text to their conversation
+				if event.AgentId != "" {
+					if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
+						teammateText[event.AgentId] += event.Content
+						if m.onConversationEvent != nil {
+							teammateEvent := *event
+							teammateEvent.ConversationID = teammateConvID
+							m.onConversationEvent(teammateConvID, &teammateEvent)
+						}
+						markSnapshotDirty()
+						continue // Don't add to lead's text
+					}
+				}
 				// Seal thinking block when text starts
 				if thinkingBlockStart != nil && currentThinkingText != "" {
 					thinkingBlocks = append(thinkingBlocks, thinkingBlock{content: currentThinkingText, timestamp: *thinkingBlockStart})
@@ -546,6 +605,16 @@ outer:
 					} else {
 						// Sub-agent not registered yet — buffer until subagent_started arrives
 						pendingSubAgentTools[event.AgentId] = append(pendingSubAgentTools[event.AgentId], entry)
+					}
+					// Broadcast to teammate conversation if applicable
+					if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
+						if m.onConversationEvent != nil {
+							teammateEvent := *event
+							teammateEvent.ConversationID = teammateConvID
+							m.onConversationEvent(teammateConvID, &teammateEvent)
+						}
+						markSnapshotDirty()
+						continue // Don't also forward to lead via general forwarder
 					}
 				} else {
 					activeToolsMap[event.ID] = entry
@@ -612,6 +681,16 @@ outer:
 							}
 						}
 						sa.ActiveTools = filtered
+					}
+					// Broadcast to teammate conversation if applicable
+					if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
+						if m.onConversationEvent != nil {
+							teammateEvent := *event
+							teammateEvent.ConversationID = teammateConvID
+							m.onConversationEvent(teammateConvID, &teammateEvent)
+						}
+						markSnapshotDirty()
+						continue // Don't also forward to lead via general forwarder
 					}
 				} else {
 					// Skip duplicate tool_end events — during session replay the agent-runner
@@ -706,16 +785,147 @@ outer:
 					markSnapshotDirty()
 				}
 
+			case EventTypeTeammateStarted:
+				if event.AgentId != "" {
+					// Look up session ID from lead conversation
+					sessionID := ""
+					if conv, err := m.store.GetConversationMeta(ctx, convID); err == nil && conv != nil {
+						sessionID = conv.SessionID
+					}
+
+					// Auto-create Team Overview (once, on first teammate)
+					if teamOverviewConvID == "" && len(teammateConvMap) == 0 {
+						overviewConvID := uuid.New().String()[:8]
+						now := time.Now()
+						overviewConv := &models.Conversation{
+							ID:                   overviewConvID,
+							SessionID:            sessionID,
+							Type:                 models.ConversationTypeTeamOverview,
+							Name:                 "Team",
+							Status:               models.ConversationStatusActive,
+							ParentConversationID: convID,
+							CreatedAt:            now,
+							UpdatedAt:            now,
+						}
+						if err := m.store.AddConversation(ctx, overviewConv); err != nil {
+							logger.Process.Errorf("Failed to create team overview conversation: %v", err)
+						} else {
+							teamOverviewConvID = overviewConvID
+							if m.onConversationEvent != nil {
+								m.onConversationEvent(convID, &AgentEvent{
+									Type:           EventTypeTeamOverviewCreated,
+									ConversationID: overviewConvID,
+								})
+							}
+						}
+					}
+
+					// Create teammate conversation
+					teammateConvID := uuid.New().String()[:8]
+					teammateName := event.AgentDescription
+					if teammateName == "" {
+						teammateName = fmt.Sprintf("Teammate %d", len(teammateConvMap)+1)
+					}
+					now := time.Now()
+					teammateConv := &models.Conversation{
+						ID:                   teammateConvID,
+						SessionID:            sessionID,
+						Type:                 models.ConversationTypeTeammate,
+						Name:                 teammateName,
+						Status:               models.ConversationStatusActive,
+						ParentConversationID: convID,
+						TeamAgentID:          event.AgentId,
+						TeammateName:         teammateName,
+						CreatedAt:            now,
+						UpdatedAt:            now,
+					}
+					if err := m.store.AddConversation(ctx, teammateConv); err != nil {
+						logger.Process.Errorf("Failed to create teammate conversation: %v", err)
+					} else {
+						teammateConvMap[event.AgentId] = teammateConvID
+
+						// Register in activeSubAgents for snapshot tracking
+						sa := &SubAgentEntry{
+							AgentId:     event.AgentId,
+							AgentType:   event.AgentType,
+							Description: event.AgentDescription,
+							StartTime:   time.Now().Unix(),
+						}
+						if pending, ok := pendingSubAgentTools[event.AgentId]; ok {
+							sa.ActiveTools = append(sa.ActiveTools, pending...)
+							delete(pendingSubAgentTools, event.AgentId)
+						}
+						activeSubAgents[event.AgentId] = sa
+
+						// Broadcast to WebSocket
+						if m.onConversationEvent != nil {
+							m.onConversationEvent(convID, &AgentEvent{
+								Type:             EventTypeTeammateCreated,
+								AgentId:          event.AgentId,
+								ConversationID:   teammateConvID,
+								AgentDescription: teammateName,
+								AgentType:        event.AgentType,
+							})
+						}
+					}
+					markSnapshotDirty()
+					continue // Don't forward raw teammate_started to lead via general forwarder
+				}
+
 			case EventTypeSubagentStopped:
 				if sa, ok := activeSubAgents[event.AgentId]; ok {
 					sa.Completed = true
 					markSnapshotDirty()
 				}
 
+			case EventTypeTeammateStopped:
+				// Two-phase completion: mark as stopped and complete only if output already arrived.
+				// If subagent_output hasn't arrived yet (race condition), defer completion
+				// to the subagent_output handler or the lead's result sweep.
+				if _, ok := teammateConvMap[event.AgentId]; ok {
+					teammateStopped[event.AgentId] = true
+					if teammateText[event.AgentId] != "" {
+						// Output already arrived — complete now
+						completeTeammate(event.AgentId)
+					}
+					// Otherwise: wait for subagent_output to trigger completion
+				}
+				if sa, ok := activeSubAgents[event.AgentId]; ok {
+					sa.Completed = true
+					markSnapshotDirty()
+				}
+				continue // Don't forward to lead via general forwarder
+
 			case EventTypeSubagentOutput:
 				if sa, ok := activeSubAgents[event.AgentId]; ok {
 					sa.Output = event.AgentOutput
 					markSnapshotDirty()
+				}
+				// Store subagent_output as authoritative teammate text and check
+				// if teammate already stopped (race: stop hook fired before output).
+				if _, ok := teammateConvMap[event.AgentId]; ok {
+					if event.AgentOutput != "" {
+						teammateText[event.AgentId] = event.AgentOutput
+					}
+					if teammateStopped[event.AgentId] {
+						// Stop already arrived — complete now
+						completeTeammate(event.AgentId)
+					}
+					continue // Don't forward to lead via general forwarder
+				}
+
+			case EventTypeTodoUpdate:
+				// Route teammate todos to their conversation
+				if event.AgentId != "" {
+					if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
+						if m.onConversationEvent != nil {
+							teammateEvent := *event
+							teammateEvent.ConversationID = teammateConvID
+							m.onConversationEvent(teammateConvID, &teammateEvent)
+						}
+						markSnapshotDirty()
+						continue
+					}
 				}
 
 			case EventTypeUserQuestionRequest:
@@ -834,6 +1044,17 @@ outer:
 					}
 					currentAssistantMessage = ""
 				}
+				// Sweep for teammates that stopped but never received subagent_output.
+				// This handles the edge case where a teammate errors or produces no output.
+				for agentId, stopped := range teammateStopped {
+					if stopped {
+						if _, ok := teammateConvMap[agentId]; ok {
+							completeTeammate(agentId)
+						}
+					}
+				}
+				teammateStopped = make(map[string]bool)
+
 				// Reset per-turn accumulation state
 				currentThinking = ""
 				pendingPlanContent = ""
@@ -999,6 +1220,34 @@ outer:
 		}); err != nil {
 			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}
+	}
+
+	// Mark all teammate conversations as completed when lead stops
+	for agentId, teammateConvID := range teammateConvMap {
+		// Persist any remaining teammate text
+		if text := teammateText[agentId]; text != "" {
+			if err := m.store.AddMessageToConversation(ctx, teammateConvID, models.Message{
+				ID:        uuid.New().String()[:8],
+				Role:      "assistant",
+				Content:   text,
+				Timestamp: time.Now(),
+			}); err != nil {
+				logger.Manager.Errorf("Failed to store teammate message for conv %s: %v", teammateConvID, err)
+			}
+		}
+		_ = m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted)
+		if m.onConversationEvent != nil {
+			m.onConversationEvent(teammateConvID, &AgentEvent{
+				Type:           EventTypeTeammateCompleted,
+				AgentId:        agentId,
+				ConversationID: teammateConvID,
+			})
+		}
+	}
+
+	// Mark team-overview conversation as completed if it was created
+	if teamOverviewConvID != "" {
+		_ = m.store.UpdateConversationStatus(ctx, teamOverviewConvID, models.ConversationStatusCompleted)
 	}
 
 	// Clear snapshot on process exit — but only if this process is still the current
@@ -1316,6 +1565,25 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	}
 
 	return nil
+}
+
+// SendTeammateMessage routes a user message to a teammate via the lead process.
+func (m *Manager) SendTeammateMessage(ctx context.Context, leadConvID, targetAgentId, targetAgentName, content string, attachments []models.Attachment) error {
+	m.mu.RLock()
+	proc, ok := m.convProcesses[leadConvID]
+	m.mu.RUnlock()
+
+	if !ok || !proc.IsRunning() {
+		return fmt.Errorf("lead process not running for conversation %s", leadConvID)
+	}
+
+	return proc.sendInput(InputMessage{
+		Type:            "teammate_message",
+		Content:         content,
+		Attachments:     attachments,
+		TargetAgentId:   targetAgentId,
+		TargetAgentName: targetAgentName,
+	})
 }
 
 // RewindConversationFiles rewinds file changes in a conversation to a checkpoint

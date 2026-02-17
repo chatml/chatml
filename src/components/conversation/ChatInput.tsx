@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
+import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan, sendTeammateMessage } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
 import { Button } from '@/components/ui/button';
 import {
@@ -222,6 +222,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Get current conversation
   const currentConversation = conversations.find((c) => c.id === selectedConversationId);
+  const isTeammateConversation = currentConversation?.type === 'teammate';
+  const isTeamOverview = currentConversation?.type === 'team-overview';
 
   // Restore per-conversation model when switching conversations
   const currentConversationModel = currentConversation?.model;
@@ -792,6 +794,32 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     const hasAttachments = attachments.length > 0;
     if ((!hasContent && !hasAttachments) || !selectedWorkspaceId || !selectedSessionId || isSending || hasQueuedMessage) return;
 
+    // Teammate conversations route through the lead agent relay
+    if (isTeammateConversation && currentConversation) {
+      setIsSending(true);
+      try {
+        const trimmedContent = content.trim();
+        addMessage({
+          id: crypto.randomUUID(),
+          conversationId: currentConversation.id,
+          role: 'user',
+          content: trimmedContent,
+          timestamp: new Date().toISOString(),
+        });
+        await sendTeammateMessage(currentConversation.id, trimmedContent, attachments);
+        plateInputRef.current?.clear();
+        setMessage('');
+        setAttachments([]);
+        onMessageSubmit?.();
+        window.dispatchEvent(new CustomEvent('chat-message-submitted'));
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Failed to send teammate message');
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     // Can't queue a message to a conversation that doesn't exist yet — check before clearing input
     const conversationMessagesEarly = currentConversation
       ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
@@ -1024,6 +1052,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     return <UserQuestionPrompt conversationId={selectedConversationId} />;
   }
 
+  // Team overview has no compose input
+  if (isTeamOverview) {
+    return null;
+  }
+
   return (
     <div className="pt-1 px-3 pb-3">
       {/* Pill Suggestions */}
@@ -1191,9 +1224,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         <div className="relative px-3 py-2">
           <PlateInput
             ref={plateInputRef}
-            placeholder={conversationHasMessages && suggestionsEnabled
-              ? undefined
-              : "Describe your task, @ to reference files, / for skills and commands"
+            placeholder={isTeammateConversation
+              ? "Message this teammate..."
+              : conversationHasMessages && suggestionsEnabled
+                ? undefined
+                : "Describe your task, @ to reference files, / for skills and commands"
             }
             className="bg-transparent dark:bg-transparent relative z-10"
             mentionItems={mentionItems}
@@ -1231,87 +1266,92 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
         {/* Toolbar inside input */}
         <div className="flex items-center gap-1 px-2 pb-2">
-          {/* Model Selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs">
-                <selectedModel.icon className="h-3.5 w-3.5" />
-                {selectedModel.name}
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {MODELS.map((model) => (
-                <DropdownMenuItem
-                  key={model.id}
-                  onClick={() => setSelectedModel(model)}
-                >
-                  <model.icon className="size-3.5" />
-                  {model.name}
-                  {'badge' in model && model.badge && (
-                    <span className="ml-1.5 rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
-                      {model.badge}
-                    </span>
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Model Selector, Thinking, Plan Mode — hidden for teammate conversations */}
+          {!isTeammateConversation && (
+            <>
+              {/* Model Selector */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs">
+                    <selectedModel.icon className="h-3.5 w-3.5" />
+                    {selectedModel.name}
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {MODELS.map((model) => (
+                    <DropdownMenuItem
+                      key={model.id}
+                      onClick={() => setSelectedModel(model)}
+                    >
+                      <model.icon className="size-3.5" />
+                      {model.name}
+                      {'badge' in model && model.badge && (
+                        <span className="ml-1.5 rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
+                          {model.badge}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          {/* Unified Thinking Level Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+              {/* Unified Thinking Level Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'h-7 gap-1.5 px-2 text-xs',
+                      thinkingLevel !== 'high' && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+                    )}
+                    title={`Thinking: ${thinkingLevel} (⌥T to cycle)`}
+                    aria-label={`Thinking: ${thinkingLevel}`}
+                  >
+                    <Brain className="h-4 w-4" />
+                    <span className="font-medium capitalize">{thinkingLevel}</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {THINKING_LEVELS.map((level) => (
+                    <DropdownMenuItem
+                      key={level.id}
+                      disabled={level.id === 'off' && !canDisableThinking(selectedModel)}
+                      onClick={() => setThinkingLevel(level.id)}
+                    >
+                      {level.label}
+                      {level.id === 'high' && (
+                        <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
+                      )}
+                      {level.id === 'off' && !canDisableThinking(selectedModel) && (
+                        <span className="ml-1.5 text-xs text-muted-foreground">(Opus always thinks)</span>
+                      )}
+                      {level.id === thinkingLevel && <Check className="ml-auto h-3.5 w-3.5" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Plan Mode Toggle */}
               <Button
                 variant="ghost"
-                size="sm"
+                size={planModeEnabled ? 'sm' : 'icon'}
                 className={cn(
-                  'h-7 gap-1.5 px-2 text-xs',
-                  thinkingLevel !== 'high' && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+                  planModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
+                  planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
                 )}
-                title={`Thinking: ${thinkingLevel} (⌥T to cycle)`}
-                aria-label={`Thinking: ${thinkingLevel}`}
+                onClick={handlePlanModeToggle}
+                title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
+                aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
+                aria-pressed={planModeEnabled}
               >
-                <Brain className="h-4 w-4" />
-                <span className="font-medium capitalize">{thinkingLevel}</span>
-                <ChevronDown className="h-3 w-3" />
+                <BookOpen className="h-4 w-4" />
+                {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {THINKING_LEVELS.map((level) => (
-                <DropdownMenuItem
-                  key={level.id}
-                  disabled={level.id === 'off' && !canDisableThinking(selectedModel)}
-                  onClick={() => setThinkingLevel(level.id)}
-                >
-                  {level.label}
-                  {level.id === 'high' && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
-                  )}
-                  {level.id === 'off' && !canDisableThinking(selectedModel) && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">(Opus always thinks)</span>
-                  )}
-                  {level.id === thinkingLevel && <Check className="ml-auto h-3.5 w-3.5" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Plan Mode Toggle */}
-          <Button
-            variant="ghost"
-            size={planModeEnabled ? 'sm' : 'icon'}
-            className={cn(
-              planModeEnabled ? 'h-7 gap-1.5 px-2' : 'h-7 w-7',
-              planModeEnabled && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
-            )}
-            onClick={handlePlanModeToggle}
-            title={`Plan mode ${planModeEnabled ? 'on' : 'off'} (⇧Tab)`}
-            aria-label={`Plan mode ${planModeEnabled ? 'on' : 'off'}`}
-            aria-pressed={planModeEnabled}
-          >
-            <BookOpen className="h-4 w-4" />
-            {planModeEnabled && <span className="text-xs font-medium">Plan</span>}
-          </Button>
+            </>
+          )}
 
           {/* Spacer */}
           <div className="flex-1" />

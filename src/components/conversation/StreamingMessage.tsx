@@ -173,6 +173,12 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
 
   const [isApprovedPlanExpanded, setIsApprovedPlanExpanded] = useState(true);
 
+  // Get teammate agent IDs from teammate conversations in the store
+  const teammateAgentIds = useMemo(() => {
+    const teammateConvs = useAppStore.getState().getTeammateConversations(conversationId);
+    return new Set(teammateConvs.map(c => c.teamAgentId).filter(Boolean) as string[]);
+  }, [conversationId, subAgents]); // Re-derive when subAgents change (new teammates may have started)
+
   // Build interleaved timeline from segments, tools, and thinking
   const timeline = useMemo((): TimelineItem[] => {
     const items: TimelineItem[] = [];
@@ -369,6 +375,9 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                 </div>
               );
             } else if (item.type === 'subagent_group') {
+              // Teammates have their own dedicated tabs — skip them in the timeline
+              const isTeammateGroup = item.agents[0] && teammateAgentIds.has(item.agents[0].agentId);
+              if (isTeammateGroup) return null;
               return (
                 <SubAgentGroupedRow
                   key={item.agents.map(a => a.agentId).join(',')}
@@ -377,6 +386,9 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                 />
               );
             } else if (item.type === 'subagent') {
+              // Teammates have their own dedicated tabs — skip them in the timeline
+              const isTeammate = teammateAgentIds.has(item.agent.agentId);
+              if (isTeammate) return null;
               return (
                 <SubAgentRow
                   key={item.agent.agentId}

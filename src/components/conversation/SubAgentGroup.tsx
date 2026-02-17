@@ -10,8 +10,13 @@ import {
   ChevronRight,
   ChevronDown,
   Circle,
+  CheckCircle2,
+  Loader2,
+  Users,
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/stores/appStore';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import type { SubAgent } from '@/lib/types';
@@ -29,6 +34,9 @@ function getAgentLabel(agentType: string): string {
       return 'Plan';
     case 'superpowers:code-reviewer':
       return 'Code Review';
+    case 'teammate':
+    case 'team_member':
+      return 'Teammate';
     default:
       return agentType;
   }
@@ -387,17 +395,114 @@ export const SubAgentGroupedRow = memo(function SubAgentGroupedRow({ agents, wor
   );
 });
 
+// Clickable card for teammate sub-agents — navigates to their conversation tab
+const TeammateCard = memo(function TeammateCard({ agent }: { agent: SubAgent }) {
+  const conversations = useAppStore(s => s.conversations);
+  const selectConversation = useAppStore(s => s.selectConversation);
+
+  const teammateConv = useMemo(
+    () => conversations.find(c => c.teamAgentId === agent.agentId),
+    [conversations, agent.agentId]
+  );
+
+  const displayDescription = useMemo(() => {
+    if (!agent.description) return 'Teammate';
+    return stripAgentPrefix(agent.description, agent.agentType);
+  }, [agent.description, agent.agentType]);
+
+  const handleNavigate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (teammateConv) {
+      selectConversation(teammateConv.id);
+    }
+  };
+
+  const completedTools = agent.tools.filter(t => t.endTime).length;
+  const totalTools = agent.tools.length;
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-2 py-1.5 rounded-md border transition-colors',
+        'bg-surface-1 hover:bg-surface-2 cursor-pointer',
+        !agent.completed && 'border-primary/20',
+        agent.completed && 'border-border/50',
+      )}
+      onClick={handleNavigate}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNavigate(e as unknown as React.MouseEvent); } }}
+      role="button"
+      tabIndex={0}
+    >
+      <span className="flex items-center justify-center w-4 h-4 shrink-0">
+        {agent.completed ? (
+          <CheckCircle2 className="w-3.5 h-3.5 text-text-success" />
+        ) : (
+          <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+        )}
+      </span>
+      <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+      <span className="text-sm font-medium text-foreground truncate flex-1 min-w-0">
+        {displayDescription}
+      </span>
+      {totalTools > 0 && (
+        <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono shrink-0">
+          {completedTools}/{totalTools}
+        </span>
+      )}
+      {agent.completed && agent.endTime ? (
+        <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
+          {((agent.endTime - agent.startTime) / 1000).toFixed(1)}s
+        </span>
+      ) : !agent.completed ? (
+        <AgentElapsedTime startTime={agent.startTime} />
+      ) : null}
+      <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+    </div>
+  );
+});
+
+function TeammateGroup({ teammates }: { teammates: readonly SubAgent[] }) {
+  return (
+    <div className="space-y-1 my-1">
+      <div className="flex items-center gap-1.5 px-1.5">
+        <Users className="w-3 h-3 text-muted-foreground" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Team ({teammates.length} teammate{teammates.length !== 1 ? 's' : ''})
+        </span>
+      </div>
+      <div className="space-y-1 ml-1">
+        {teammates.map(agent => (
+          <TeammateCard key={agent.agentId} agent={agent} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface SubAgentGroupProps {
   subAgents: readonly SubAgent[];
   worktreePath?: string;
 }
 
 export const SubAgentGroup = memo(function SubAgentGroup({ subAgents, worktreePath }: SubAgentGroupProps) {
+  // Get teammate agent IDs from teammate conversations in the store
+  const teammateConvs = useAppStore(s => s.conversations.filter(c => c.type === 'teammate'));
+  const teammateAgentIds = useMemo(
+    () => new Set(teammateConvs.map(c => c.teamAgentId).filter(Boolean) as string[]),
+    [teammateConvs]
+  );
+
   if (subAgents.length === 0) return null;
+
+  const teammates = subAgents.filter(a => teammateAgentIds.has(a.agentId));
+  const regularAgents = subAgents.filter(a => !teammateAgentIds.has(a.agentId));
 
   return (
     <div className="space-y-0.5">
-      {subAgents.map((agent) => (
+      {teammates.length > 0 && (
+        <TeammateGroup teammates={teammates} />
+      )}
+      {regularAgents.map((agent) => (
         <SubAgentRow key={agent.agentId} agent={agent} worktreePath={worktreePath} />
       ))}
     </div>

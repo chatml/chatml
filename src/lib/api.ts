@@ -854,13 +854,16 @@ export async function checkHealthWithRetry(
 export interface ConversationDTO {
   id: string;
   sessionId: string;
-  type: 'task' | 'review' | 'chat';
+  type: 'task' | 'review' | 'chat' | 'teammate' | 'team-overview';
   name: string;
   status: 'active' | 'idle' | 'completed';
   model?: string;
   messages: MessageDTO[];
   messageCount?: number;
   toolSummary: ToolActionDTO[];
+  parentConversationId?: string;
+  teamAgentId?: string;
+  teammateName?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -969,6 +972,9 @@ export function toStoreConversation(dto: ConversationDTO): import('@/lib/types')
       target: t.target,
       success: t.success,
     })),
+    parentConversationId: dto.parentConversationId,
+    teamAgentId: dto.teamAgentId,
+    teammateName: dto.teammateName,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
   };
@@ -1007,7 +1013,7 @@ export async function createConversation(
   workspaceId: string,
   sessionId: string,
   data: {
-    type?: 'task' | 'review' | 'chat';
+    type?: 'task' | 'review' | 'chat' | 'teammate' | 'team-overview';
     message?: string;
     model?: string;
     planMode?: boolean;
@@ -1097,6 +1103,28 @@ export async function getStreamingSnapshot(convId: string): Promise<StreamingSna
 export async function deleteConversation(convId: string): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete conversation');
+}
+
+export async function sendTeammateMessage(
+  conversationId: string,
+  content: string,
+  attachments?: Attachment[]
+): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${conversationId}/teammate-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, attachments: attachments || [] }),
+  });
+  await handleVoidResponse(res, 'Failed to send teammate message');
+}
+
+export async function getTeammateConversations(
+  conversationId: string
+): Promise<Conversation[]> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/conversations/${conversationId}/teammates`
+  );
+  return handleResponse<Conversation[]>(res);
 }
 
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
@@ -1865,7 +1893,7 @@ export async function setCustomInstructions(instructions: string): Promise<void>
 
 // ==================== Scripts API ====================
 
-import type { ChatMLConfig, ScriptRun } from '@/lib/types';
+import type { Attachment, ChatMLConfig, Conversation, ScriptRun } from '@/lib/types';
 
 export async function getWorkspaceConfig(workspaceId: string): Promise<ChatMLConfig> {
   const res = await fetchWithAuth(

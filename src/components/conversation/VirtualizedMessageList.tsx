@@ -134,8 +134,8 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       };
     }, [isLoadingOlder]);
 
-    // Empty state when no messages
-    if (messages.length === 0 && emptyState) {
+    // Empty state when no messages (skip if streaming — footer has StreamingMessage)
+    if (messages.length === 0 && emptyState && !isStreaming) {
       return (
         <div className="h-full overflow-auto">
           <div className="pt-3 pl-5 pr-12 pb-10">
