@@ -919,6 +919,11 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Trigger one-time PR title backfill for sessions missing titles
+	if h.prWatcher != nil {
+		h.prWatcher.TriggerBackfillPRTitles()
+	}
+
 	// Early return if no sessions
 	if len(allSessions) == 0 {
 		writeJSON(w, DashboardData{

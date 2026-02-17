@@ -50,15 +50,16 @@ type PRWatcherRepoManager interface {
 
 // PRWatcher monitors GitHub for PR status changes on session branches
 type PRWatcher struct {
-	mu          sync.RWMutex
-	sessions    map[string]*PRWatchEntry // sessionID -> entry
-	ghClient    *github.Client
-	repoManager PRWatcherRepoManager
-	store       PRWatcherStore
-	prCache     *github.PRCache // Shared cache with ListPRs handler
-	onChange    func(PRChangeEvent)
-	ctx         context.Context
-	cancel      context.CancelFunc
+	mu            sync.RWMutex
+	sessions      map[string]*PRWatchEntry // sessionID -> entry
+	ghClient      *github.Client
+	repoManager   PRWatcherRepoManager
+	store         PRWatcherStore
+	prCache       *github.PRCache // Shared cache with ListPRs handler
+	onChange      func(PRChangeEvent)
+	ctx           context.Context
+	cancel        context.CancelFunc
+	backfillOnce  sync.Once
 }
 
 // NewPRWatcher creates a new PR watcher
@@ -203,10 +204,6 @@ func (w *PRWatcher) run() {
 	w.checkSessionsWithPR()
 	w.checkSessionsWithoutPR()
 
-	// One-time backfill: populate prTitle for sessions that have a PR number
-	// but no title (e.g., sessions created before prTitle was added).
-	w.backfillMissingPRTitles()
-
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -299,6 +296,14 @@ func (w *PRWatcher) backfillMissingPRTitles() {
 			logger.PRWatcher.Infof("Backfilled PR title for session %s: %q", entry.SessionID, details.Title)
 		}
 	}
+}
+
+// TriggerBackfillPRTitles runs the PR title backfill at most once per process
+// lifetime. Safe to call from HTTP handlers — runs async in a goroutine.
+func (w *PRWatcher) TriggerBackfillPRTitles() {
+	w.backfillOnce.Do(func() {
+		go w.backfillMissingPRTitles()
+	})
 }
 
 // repoKey uniquely identifies a repository
