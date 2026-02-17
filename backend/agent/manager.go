@@ -359,6 +359,8 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	activeSubAgents := make(map[string]*SubAgentEntry)
 	// Teammate tracking: agentId → conversationId for routing events
 	teammateConvMap := make(map[string]string)
+	// Teammate text accumulation: agentId → accumulated assistant text for persistence
+	teammateText := make(map[string]string)
 	// Track team overview conversation ID (empty if not created)
 	teamOverviewConvID := ""
 	// Buffer tools that arrive before their sub-agent registers (race recovery)
@@ -519,6 +521,7 @@ outer:
 				// Route teammate text to their conversation
 				if event.AgentId != "" {
 					if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
+						teammateText[event.AgentId] += event.Content
 						if m.onConversationEvent != nil {
 							teammateEvent := *event
 							teammateEvent.ConversationID = teammateConvID
@@ -832,6 +835,18 @@ outer:
 
 			case EventTypeTeammateStopped:
 				if teammateConvID, ok := teammateConvMap[event.AgentId]; ok {
+					// Persist accumulated teammate text as an assistant message
+					if text := teammateText[event.AgentId]; text != "" {
+						if err := m.store.AddMessageToConversation(ctx, teammateConvID, models.Message{
+							ID:        uuid.New().String()[:8],
+							Role:      "assistant",
+							Content:   text,
+							Timestamp: time.Now(),
+						}); err != nil {
+							logger.Manager.Errorf("Failed to store teammate message for conv %s: %v", teammateConvID, err)
+						}
+						delete(teammateText, event.AgentId)
+					}
 					if err := m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted); err != nil {
 						logger.Process.Errorf("Failed to update teammate status: %v", err)
 					}
@@ -1153,6 +1168,17 @@ outer:
 
 	// Mark all teammate conversations as completed when lead stops
 	for agentId, teammateConvID := range teammateConvMap {
+		// Persist any remaining teammate text
+		if text := teammateText[agentId]; text != "" {
+			if err := m.store.AddMessageToConversation(ctx, teammateConvID, models.Message{
+				ID:        uuid.New().String()[:8],
+				Role:      "assistant",
+				Content:   text,
+				Timestamp: time.Now(),
+			}); err != nil {
+				logger.Manager.Errorf("Failed to store teammate message for conv %s: %v", teammateConvID, err)
+			}
+		}
 		_ = m.store.UpdateConversationStatus(ctx, teammateConvID, models.ConversationStatusCompleted)
 		if m.onConversationEvent != nil {
 			m.onConversationEvent(teammateConvID, &AgentEvent{
