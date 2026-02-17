@@ -485,14 +485,14 @@ interface SubAgentGroupProps {
 }
 
 export const SubAgentGroup = memo(function SubAgentGroup({ subAgents, worktreePath }: SubAgentGroupProps) {
-  if (subAgents.length === 0) return null;
-
   // Get teammate agent IDs from teammate conversations in the store
   const teammateConvs = useAppStore(s => s.conversations.filter(c => c.type === 'teammate'));
   const teammateAgentIds = useMemo(
     () => new Set(teammateConvs.map(c => c.teamAgentId).filter(Boolean) as string[]),
     [teammateConvs]
   );
+
+  if (subAgents.length === 0) return null;
 
   const teammates = subAgents.filter(a => teammateAgentIds.has(a.agentId));
   const regularAgents = subAgents.filter(a => !teammateAgentIds.has(a.agentId));

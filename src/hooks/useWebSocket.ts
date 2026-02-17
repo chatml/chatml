@@ -1007,9 +1007,9 @@ export function useWebSocket(enabled: boolean = true) {
       }
 
       case 'teammate_completed': {
-        if (event.conversationId) {
-          store.updateConversation(event.conversationId as string, { status: 'completed' });
-        }
+        // Finalize streaming text into a message so it persists in the UI
+        store.finalizeStreamingMessage(conversationId, {});
+        store.updateConversation(conversationId, { status: 'completed' });
         break;
       }
 
