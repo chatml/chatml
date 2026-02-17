@@ -102,7 +102,7 @@ export interface TabScrollState {
 /**
  * Constants for tab sizing
  */
-export const TAB_MIN_WIDTH = 120;
-export const TAB_MAX_WIDTH = 200;
+export const TAB_MIN_WIDTH = 160;
+export const TAB_MAX_WIDTH = 280;
 export const SCROLL_AMOUNT = 200;
 export const ANIMATION_DURATION = 150;
