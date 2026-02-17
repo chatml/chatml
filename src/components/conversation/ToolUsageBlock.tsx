@@ -342,7 +342,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
         {/* Description (if available, shows instead of/before target) */}
         {description && (
-          <span className={cn('italic truncate max-w-[200px]', success === false ? 'text-text-error/70' : 'text-muted-foreground')}>
+          <span className={cn('italic truncate shrink-0', success === false ? 'text-text-error/70' : 'text-muted-foreground')}>
             {description}
           </span>
         )}
@@ -350,7 +350,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         {/* Summary fallback when no target/description (e.g., params missing from DB) */}
         {!truncatedTarget && !description && summary && (
           <span className={cn(
-            'text-2xs truncate max-w-[350px]',
+            'text-2xs truncate shrink-0',
             success === false ? 'text-text-error/80' : 'text-muted-foreground'
           )}>
             {summary}
