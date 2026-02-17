@@ -235,9 +235,15 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.MaxThinkingTokens = opts.MaxThinkingTokens
 		procOpts.Effort = opts.Effort
 		procOpts.PlanMode = opts.PlanMode
-		procOpts.Instructions = opts.Instructions
 		procOpts.Model = opts.Model
 	}
+
+	// Build combined system instructions: app context + custom instructions + conversation summaries
+	var existingInstructions string
+	if opts != nil {
+		existingInstructions = opts.Instructions
+	}
+	procOpts.Instructions = m.buildSystemInstructions(ctx, session, sessionWithWs, existingInstructions)
 
 	// Load custom environment variables from settings
 	envVars, err := m.loadEnvVars(ctx)
@@ -1933,4 +1939,81 @@ func (m *Manager) loadMcpServers(ctx context.Context, workspaceID string) (strin
 		return "", nil
 	}
 	return raw, nil
+}
+
+// buildAppPrompt constructs the app-level system prompt with session context
+// and behavioral rules for the git worktree environment.
+func buildAppPrompt(session *models.Session, sessionWithWs *models.SessionWithWorkspace) string {
+	targetBranch := sessionWithWs.EffectiveTargetBranch()
+	targetBranchShort := strings.TrimPrefix(targetBranch, sessionWithWs.EffectiveRemote()+"/")
+
+	return fmt.Sprintf(`You are running inside ChatML, a desktop app for AI-assisted development. Each session runs in an isolated git worktree with its own dedicated branch.
+
+## Session
+- Session: %s
+- Branch: %s
+- Target branch: %s
+- Worktree: %s
+
+## Git Worktree Rules
+
+This session uses a git worktree — an isolated working directory with a dedicated branch. The worktree shares the git object store with the main repository but has its own HEAD and index.
+
+**NEVER switch branches.** Do not run `+"`"+`git checkout`+"`"+`, `+"`"+`git switch`+"`"+`, or any command that changes the checked-out branch. The worktree is locked to its branch — switching would corrupt the session state. If the user asks you to switch to main, master, or any other branch, explain that this session is locked to its worktree branch and they should create a new session instead.
+
+**NEVER use `+"`"+`git stash`+"`"+`.** Stash is shared across ALL worktrees in the repository. A stash created here is visible to every other session. Use commits instead — commit work-in-progress to the session branch.
+
+**Stay in the worktree directory.** Do not `+"`"+`cd`+"`"+` outside of %s. All your file operations should be within this directory.
+
+**No destructive git operations:**
+- No `+"`"+`git push --force`+"`"+` (rewrites remote history)
+- No `+"`"+`git reset --hard`+"`"+` (destroys uncommitted work)
+- No `+"`"+`git clean -fd`+"`"+` (deletes untracked files)
+- No `+"`"+`git branch -D`+"`"+` on the session branch (destroys the session)
+
+**After a PR is merged, stay on this branch.** Do not attempt to switch to main or clean up. The session remains active on its branch.
+
+**Branch name may change.** ChatML auto-renames the branch after the first message. Always use `+"`"+`git branch --show-current`+"`"+` rather than hardcoding the branch name.
+
+**PRs target %s.** When creating PRs with `+"`"+`gh pr create`+"`"+`, use `+"`"+`--base %s`+"`"+`.
+
+## ChatML Tools
+
+You have access to ChatML MCP tools:
+- `+"`"+`mcp__chatml__get_session_status`+"`"+` — git state, branch info, Linear issue
+- `+"`"+`mcp__chatml__get_workspace_diff`+"`"+` — diff vs target branch (use detailed: true for full diff)
+- `+"`"+`mcp__chatml__get_recent_activity`+"`"+` — recent git log
+- `+"`"+`mcp__chatml__add_review_comment`+"`"+` — leave inline code review comments visible in the ChatML UI
+- `+"`"+`mcp__chatml__list_review_comments`+"`"+` / `+"`"+`mcp__chatml__get_review_comment_stats`+"`"+` — read review comments
+
+Do NOT use `+"`"+`mcp__chatml__start_linear_issue`+"`"+` — it creates git branches inside the worktree, which conflicts with the session model. Use the Linear MCP server directly for Linear operations.`,
+		session.Name,
+		session.Branch,
+		targetBranch,
+		session.WorktreePath,
+		session.WorktreePath,
+		targetBranchShort,
+		targetBranchShort,
+	)
+}
+
+// buildSystemInstructions combines app-level prompt, user custom instructions,
+// and conversation summaries into the full instructions string for the agent.
+func (m *Manager) buildSystemInstructions(ctx context.Context, session *models.Session, sessionWithWs *models.SessionWithWorkspace, existingInstructions string) string {
+	var parts []string
+
+	// 1. App-level context + rules
+	parts = append(parts, buildAppPrompt(session, sessionWithWs))
+
+	// 2. User's global custom instructions (from settings)
+	if custom, found, err := m.store.GetSetting(ctx, "custom-instructions"); err == nil && found && custom != "" {
+		parts = append(parts, "## Custom Instructions\n\n"+custom)
+	}
+
+	// 3. Conversation summaries (existing, passed from handler)
+	if existingInstructions != "" {
+		parts = append(parts, existingInstructions)
+	}
+
+	return strings.Join(parts, "\n\n")
 }
