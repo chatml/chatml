@@ -925,7 +925,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             attachments: messageAttachments,
             timestamp: messageTimestamp,
           });
-          // Mark as streaming
+          // Mark as streaming and ensure conversation is active (status may be
+          // 'idle' after interrupts, errors, or app reload — without this the
+          // sidebar spinner selector skips the conversation).
+          updateConversation(selectedConversationId, { status: 'active' });
           setStreaming(selectedConversationId, true);
         }
 

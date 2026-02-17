@@ -1031,6 +1031,46 @@ export function useWebSocket(enabled: boolean = true) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // After the first WebSocket connection, discover conversations that are actively
+  // streaming on the backend. Unlike reconnection reconciliation (which starts from
+  // locally-known streaming state), this queries the backend for the source of truth
+  // since the frontend resets all conversation statuses to 'idle' on a fresh load.
+  const reconcileInitialStreamingState = useCallback(async () => {
+    const store = getStore();
+
+    try {
+      const { conversationIds: serverActive } = await getActiveStreamingConversations();
+      if (serverActive.length === 0) return;
+
+      for (const convId of serverActive) {
+        // Skip if conversation isn't loaded yet (dashboard data may still be loading)
+        const conv = store.conversations.find(c => c.id === convId);
+        if (!conv) continue;
+
+        // Restore conversation status (was reset to 'idle' during load)
+        store.updateConversation(convId, { status: 'active' });
+
+        // Try to restore streaming content from snapshot
+        try {
+          const snapshot = await getStreamingSnapshot(convId);
+          if (snapshot && snapshot.text) {
+            store.restoreStreamingFromSnapshot(convId, snapshot);
+          } else {
+            // No snapshot yet — just mark streaming so the spinner shows
+            store.setStreaming(convId, true);
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch initial streaming snapshot for ${convId}:`, err);
+          store.setStreaming(convId, true);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to reconcile initial streaming state:', err);
+    }
+  // getStore is a stable reference (useAppStore.getState), no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const connect = useCallback(async () => {
     // Cancel any pending reconnect to prevent race condition
     if (reconnectTimeoutRef.current) {
@@ -1062,6 +1102,10 @@ export function useWebSocket(enabled: boolean = true) {
         // Intentionally not awaited — we don't want to block the WebSocket onopen handler.
         // The UI may briefly show stale streaming state until reconciliation completes.
         reconcileStreamingState();
+      } else {
+        // First connection: discover any agents already running on the backend.
+        // Intentionally not awaited — same reasoning as reconnect reconciliation.
+        reconcileInitialStreamingState();
       }
     };
 
