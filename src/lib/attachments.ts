@@ -36,6 +36,9 @@ const ALL_SUPPORTED_EXTENSIONS = new Set(
   Object.values(SUPPORTED_EXTENSIONS).flat().map(ext => ext.toLowerCase())
 );
 
+// Categories where counting lines is meaningful (text-based content)
+const TEXT_BASED_CATEGORIES = new Set(['text', 'code', 'config', 'shell', 'markup', 'data']);
+
 // MIME type mapping
 const MIME_TYPES: Record<string, string> = {
   // Images
@@ -271,8 +274,9 @@ async function processSingleFile(path: string): Promise<{ attachment?: Attachmen
         attachment.width = dimensions.width;
         attachment.height = dimensions.height;
       }
-    } else {
-      // Count lines for text files
+    } else if (TEXT_BASED_CATEGORIES.has(getFileCategory(path))) {
+      // Only count lines for text-based files (code, config, etc.)
+      // Binary files like PDFs will show file size instead
       const lines = await countFileLines(path);
       if (lines !== null) {
         attachment.lineCount = lines;
@@ -350,10 +354,10 @@ export async function loadAllAttachmentContents(attachments: Attachment[]): Prom
  */
 export function getAttachmentSubtitle(attachment: Attachment): string {
   if (attachment.type === 'image' && attachment.width && attachment.height) {
-    return `${attachment.width}x${attachment.height}`;
+    return `${attachment.width}\u00D7${attachment.height}`;
   }
   if (attachment.lineCount !== undefined && attachment.lineCount > 0) {
-    return `+${attachment.lineCount} lines`;
+    return `${attachment.lineCount} ${attachment.lineCount === 1 ? 'line' : 'lines'}`;
   }
   return formatFileSize(attachment.size);
 }
