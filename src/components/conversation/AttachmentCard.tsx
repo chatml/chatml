@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, FileText, FileCode, Image, FileJson, Terminal, FileType, type LucideIcon } from 'lucide-react';
+import { X, File, FileText, FileCode, Image, FileJson, Terminal, FileType, type LucideIcon } from 'lucide-react';
 import type { Attachment } from '@/lib/types';
 import { getFileCategory, getAttachmentSubtitle } from '@/lib/attachments';
 import { cn } from '@/lib/utils';
@@ -21,7 +21,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   text: FileText,
   markup: FileText,
   data: FileText,
-  documents: FileText,
+  documents: File,
   unknown: FileType,
 };
 
@@ -37,10 +37,8 @@ export function AttachmentCard({ attachment, onRemove, readOnly = false }: Attac
   const Icon = CATEGORY_ICONS[category] || FileType;
   const subtitle = getAttachmentSubtitle(attachment);
 
-  // Truncate filename if too long
-  const displayName = attachment.name.length > 28
-    ? attachment.name.slice(0, 25) + '...'
-    : attachment.name;
+  // CSS truncate on the span handles ellipsis; full name shown via title tooltip
+  const displayName = attachment.name;
 
   return (
     <div
