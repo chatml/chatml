@@ -224,6 +224,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		WorkspaceID:         session.WorkspaceID, // Backend workspace ID for MCP tools
 		BackendSessionID:    sessionID,           // Backend session ID for MCP tools
 		EnableCheckpointing: true,
+		SettingSources:      "project,user,local", // Load all settings scopes so SDK discovers user plugins/skills
 	}
 
 	// Always pass the effective target branch to the agent-runner so it doesn't
@@ -490,43 +491,14 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 
 	outputCh := proc.Output()
 
-	// Activity watchdog: if no output events arrive within this period,
-	// emit a visible warning so the user isn't stuck watching a spinner.
-	const processActivityTimeout = 90 * time.Second
-	activityWatchdog := time.NewTimer(processActivityTimeout)
-	defer activityWatchdog.Stop()
-	watchdogFired := false
-
 outer:
 	for {
 		select {
-		case <-activityWatchdog.C:
-			if !watchdogFired {
-				watchdogFired = true
-				logger.Manager.Warnf("Conversation %s: no agent output for %v — process may be hung", convID, processActivityTimeout)
-				if m.onConversationEvent != nil {
-					m.onConversationEvent(convID, &AgentEvent{
-						Type:    EventTypeError,
-						Message: "The agent has not responded for over 90 seconds. It may be stuck. Try sending another message or restarting the session.",
-					})
-				}
-			}
-
 		case line, ok := <-outputCh:
 			if !ok {
 				// Channel closed - process ended
 				break outer
 			}
-
-			// Reset watchdog on any activity
-			if !activityWatchdog.Stop() {
-				select {
-				case <-activityWatchdog.C:
-				default:
-				}
-			}
-			activityWatchdog.Reset(processActivityTimeout)
-			watchdogFired = false
 
 			event := ParseAgentLine(line)
 			if event == nil {
@@ -896,6 +868,9 @@ outer:
 					}
 				}
 
+			case EventTypeUserQuestionRequest:
+				// No-op: handled by frontend
+
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
 				pendingPlanTimestamp = time.Now()
@@ -920,9 +895,7 @@ outer:
 				}
 
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
-				// Turn or session completed — store accumulated message and reset
-				// streaming state. turn_complete means the process stays alive;
-				// complete/result means it will exit shortly.
+				// Store accumulated message and reset streaming state.
 				if currentAssistantMessage != "" {
 					// Seal final text segment
 					if currentSegmentStart != nil && currentSegmentText != "" {
@@ -1054,6 +1027,16 @@ outer:
 			// Forward event to handler
 			if m.onConversationEvent != nil {
 				m.onConversationEvent(convID, event)
+			}
+
+			// After init, request the full slash command list from the SDK.
+			// The init event may have slash_commands but it can be empty if
+			// skills haven't been discovered yet. The supported_commands
+			// response provides the authoritative, enriched command list.
+			if event.Type == EventTypeInit {
+				if err := proc.GetSupportedCommands(); err != nil {
+					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
+				}
 			}
 
 			// Generate input suggestion after turn completes (async, fire-and-forget)

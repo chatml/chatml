@@ -15,6 +15,7 @@ import { useConnectionStore } from '@/stores/connectionStore';
 import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
+import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 import { playSound } from '@/lib/sounds';
 
@@ -283,6 +284,10 @@ export function useWebSocket(enabled: boolean = true) {
             store.setPlanModeActive(conversationId, isPlan);
           }
         }
+        // Forward SDK-discovered slash commands to the slash command store
+        if (event?.slashCommands && Array.isArray(event.slashCommands)) {
+          useSlashCommandStore.getState().setSdkCommands(event.slashCommands as string[]);
+        }
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {
           const toolsByServer: Record<string, string[]> = {};
@@ -486,6 +491,11 @@ export function useWebSocket(enabled: boolean = true) {
         freshStore.clearAgentTodos(conversationId);
         // Clear any stale pending question — the turn is over
         freshStore.clearPendingUserQuestion(conversationId);
+        // Trigger changes panel refresh for this session
+        const resultConv = freshStore.conversations.find((c) => c.id === conversationId);
+        if (resultConv) {
+          freshStore.setLastTurnCompletedAt(resultConv.sessionId, Date.now());
+        }
         // Notify background session (unread dot + in-app sound when focused)
         notifyBackgroundSession(conversationId);
         // Desktop notification for task completion.
@@ -531,6 +541,11 @@ export function useWebSocket(enabled: boolean = true) {
         turnStore.updateConversation(conversationId, { status: 'active' });
         // Clear agent todos — tasks are no longer relevant after turn ends
         turnStore.clearAgentTodos(conversationId);
+        // Trigger changes panel refresh for this session
+        const turnConv = turnStore.conversations.find((c) => c.id === conversationId);
+        if (turnConv) {
+          turnStore.setLastTurnCompletedAt(turnConv.sessionId, Date.now());
+        }
         // Notify background session (unread dot + in-app sound when focused)
         notifyBackgroundSession(conversationId);
         break;
@@ -550,6 +565,11 @@ export function useWebSocket(enabled: boolean = true) {
         store.clearPendingUserQuestion(conversationId);
         // Update conversation status to idle (ready for new input)
         store.updateConversation(conversationId, { status: 'idle' });
+        // Trigger changes panel refresh for this session
+        const completeConv = store.conversations.find((c) => c.id === conversationId);
+        if (completeConv) {
+          store.setLastTurnCompletedAt(completeConv.sessionId, Date.now());
+        }
         break;
       }
 
@@ -914,7 +934,11 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'supported_commands':
         if (event?.commands) {
-          store.setSupportedCommands(event.commands as Array<{ name: string; description: string; argumentHint: string }>);
+          const cmds = event.commands as Array<{ name: string; description: string; argumentHint: string }>;
+          store.setSupportedCommands(cmds);
+          // Also feed into the slash command store so SDK-discovered
+          // commands appear in the slash menu with rich descriptions.
+          useSlashCommandStore.getState().setSdkCommandsRich(cmds);
         }
         break;
 

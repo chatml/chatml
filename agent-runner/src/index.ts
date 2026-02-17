@@ -161,7 +161,9 @@ const sdkDebug = hasFlag("--sdk-debug");
 const sdkDebugFile = getArg("--sdk-debug-file");
 
 // Instructions (e.g., from conversation summaries)
-import { readFileSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 let instructions: string | undefined;
 {
   const instructionsFilePath = getArg("--instructions-file");
@@ -742,6 +744,7 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         // bypassing the stdin pipe entirely.
         lifecycle(`image "${attachment.name}" via file: ${attachment.path}`);
         tempFilesToClean.push(attachment.path);
+        pendingTempFiles.add(attachment.path);
         contentBlocks.push({
           type: "text",
           text: `[The user attached an image: "${attachment.name}" (${attachment.mimeType}). ` +
@@ -758,8 +761,11 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         continue;
       }
 
-      // Inline base64 path (fallback if temp file offload failed)
-      // Validate image size — Anthropic API limit is 5MB per image.
+      // Inline base64 fallback: Go backend should have offloaded to temp file,
+      // but if it didn't, save to temp file here. Sending image content blocks
+      // directly through the SDK causes hangs (pipe buffer saturation in the
+      // SDK → CLI child process chain). Instead, write to a temp file and use
+      // the same text-instruction approach as the file-based path.
       const rawSizeBytes = Math.ceil(attachment.base64Data.length * 3 / 4);
       const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
       if (rawSizeBytes > MAX_IMAGE_BYTES) {
@@ -771,14 +777,33 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         });
         continue;
       }
-      contentBlocks.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: attachment.mimeType,
-          data: attachment.base64Data,
-        }
-      });
+
+      // Determine extension from MIME type
+      let ext = ".png";
+      if (attachment.mimeType === "image/jpeg") ext = ".jpg";
+      else if (attachment.mimeType === "image/gif") ext = ".gif";
+      else if (attachment.mimeType === "image/webp") ext = ".webp";
+
+      // Write decoded image to temp file
+      try {
+        const tempPath = join(tmpdir(), `chatml-img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+        const raw = Buffer.from(attachment.base64Data, "base64");
+        writeFileSync(tempPath, raw);
+        lifecycle(`image "${attachment.name}" saved to temp file: ${tempPath} (${Math.round(raw.length / 1024)}KB)`);
+        tempFilesToClean.push(tempPath);
+        pendingTempFiles.add(tempPath);
+        contentBlocks.push({
+          type: "text",
+          text: `[The user attached an image: "${attachment.name}" (${attachment.mimeType}). ` +
+                `IMPORTANT: Read it now with the Read tool at path: ${tempPath}]`,
+        });
+      } catch (err) {
+        lifecycle(`Failed to save image "${attachment.name}" to temp file: ${err}`);
+        emit({
+          type: "warning",
+          message: `Image "${attachment.name}" could not be processed and was skipped`,
+        });
+      }
     } else if (!attachment.base64Data) {
       emit({
         type: "warning",
@@ -804,8 +829,10 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
       for (const filePath of tempFilesToClean) {
         try {
           unlinkSync(filePath);
+          pendingTempFiles.delete(filePath);
           debug(`Cleaned up temp image: ${filePath}`);
         } catch {
+          pendingTempFiles.delete(filePath);
           // File may already be gone — that's fine
         }
       }
@@ -860,6 +887,9 @@ function flushBlockBuffer(): void {
     blockBuffer = "";
   }
 }
+
+// Track temp image files for cleanup on exit (module-level so cleanup() can access them)
+const pendingTempFiles = new Set<string>();
 
 // Track active tool uses
 const activeTools = new Map<string, { tool: string; startTime: number; input?: Record<string, unknown> }>();
@@ -2160,6 +2190,7 @@ function handleMessage(message: SDKMessage): void {
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
+        lifecycle(`SDK init: slash_commands=${JSON.stringify(initMsg.slash_commands)}, skills=${JSON.stringify(initMsg.skills)}, plugins=${JSON.stringify(initMsg.plugins)}`);
         emit({
           type: "init",
           model: initMsg.model,
@@ -2317,6 +2348,17 @@ async function cleanup(reason: string): Promise<void> {
 
   // 5. Flush any remaining buffered text
   flushBlockBuffer();
+
+  // 5b. Clean up any temp image files that haven't been cleaned by their deferred timers
+  for (const filePath of pendingTempFiles) {
+    try {
+      unlinkSync(filePath);
+      debug(`Cleanup: removed temp image: ${filePath}`);
+    } catch {
+      // File may already be gone — that's fine
+    }
+  }
+  pendingTempFiles.clear();
 
   // 6. Interrupt the query if active (may be null between turns).
   // Note: MCP servers (chatmlMcp and user-configured servers) are managed by the SDK

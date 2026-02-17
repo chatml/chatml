@@ -127,29 +127,45 @@ describe('UserQuestionPrompt', () => {
   // ==========================================================================
 
   describe('single select', () => {
-    it('selects an option on click', async () => {
+    it('auto-submits on single-select click for single question', async () => {
       const user = userEvent.setup();
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('Vue'));
 
+      // Auto-submit should have fired
+      expect(answerConversationQuestion).toHaveBeenCalledWith(
+        CONV_ID,
+        'req-1',
+        { Framework: 'Vue' },
+      );
+      // Pending should be cleared
       const state = useAppStore.getState();
-      const pending = state.pendingUserQuestion[CONV_ID];
-      expect(pending?.answers['Framework']).toBe('Vue');
+      expect(state.pendingUserQuestion[CONV_ID]).toBeNull();
     });
 
-    it('replaces selection on single-select (not appends)', async () => {
+    it('auto-advances to next question in wizard on single-select click', async () => {
       const user = userEvent.setup();
-      setPending(makePending());
+      const q1 = makeQuestion({ question: 'Pick a framework', header: 'Framework' });
+      const q2 = makeQuestion({
+        question: 'Pick a database',
+        header: 'Database',
+        options: [
+          { label: 'PostgreSQL', description: 'Relational' },
+          { label: 'MongoDB', description: 'Document' },
+        ],
+      });
+      setPending(makePending({ questions: [q1, q2] }));
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('React'));
-      await user.click(screen.getByText('Vue'));
 
+      // Should advance to Q2 without submitting
+      expect(answerConversationQuestion).not.toHaveBeenCalled();
       const state = useAppStore.getState();
-      const pending = state.pendingUserQuestion[CONV_ID];
-      expect(pending?.answers['Framework']).toBe('Vue');
+      expect(state.pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
+      expect(state.pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('React');
     });
   });
 
@@ -199,16 +215,16 @@ describe('UserQuestionPrompt', () => {
   // ==========================================================================
 
   describe('submit', () => {
-    it('submit button is disabled when no answer selected', () => {
-      setPending(makePending());
+    it('submit button is disabled when no answer selected (multi-select)', () => {
+      setPending(makePending({ questions: [makeQuestion({ multiSelect: true })] }));
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       expect(screen.getByTestId('submit-question')).toBeDisabled();
     });
 
-    it('submit button becomes enabled after selecting an answer', async () => {
+    it('submit button becomes enabled after selecting an answer (multi-select)', async () => {
       const user = userEvent.setup();
-      setPending(makePending());
+      setPending(makePending({ questions: [makeQuestion({ multiSelect: true })] }));
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('React'));
@@ -216,9 +232,9 @@ describe('UserQuestionPrompt', () => {
       expect(screen.getByTestId('submit-question')).not.toBeDisabled();
     });
 
-    it('calls answerConversationQuestion with correct args on submit', async () => {
+    it('calls answerConversationQuestion with correct args on submit (multi-select)', async () => {
       const user = userEvent.setup();
-      setPending(makePending());
+      setPending(makePending({ questions: [makeQuestion({ multiSelect: true })] }));
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('Vue'));
@@ -232,9 +248,9 @@ describe('UserQuestionPrompt', () => {
       );
     });
 
-    it('clears pending question after successful submit', async () => {
+    it('clears pending question after successful submit (multi-select)', async () => {
       const user = userEvent.setup();
-      setPending(makePending());
+      setPending(makePending({ questions: [makeQuestion({ multiSelect: true })] }));
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('React'));
@@ -337,18 +353,13 @@ describe('UserQuestionPrompt', () => {
       expect(screen.queryByText(/of/)).not.toBeInTheDocument();
     });
 
-    it('navigates to next question', async () => {
+    it('auto-advances to next question on single-select click', async () => {
       const user = userEvent.setup();
       setPending(makeMultiPending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      // Answer Q1 first
+      // Click an option on Q1 — should auto-advance to Q2
       await user.click(screen.getByText('React'));
-
-      // Navigate via store (simulates clicking next)
-      act(() => {
-        useAppStore.getState().nextUserQuestion(CONV_ID);
-      });
 
       const state = useAppStore.getState();
       expect(state.pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
@@ -392,23 +403,19 @@ describe('UserQuestionPrompt', () => {
       expect(screen.getByTestId('submit-question')).not.toBeDisabled();
     });
 
-    it('allows clicking options after navigating to a different question', async () => {
+    it('allows clicking options after auto-advancing to next question', async () => {
       const user = userEvent.setup();
       setPending(makeMultiPending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      // Answer Q1
+      // Answer Q1 — auto-advances to Q2
       await user.click(screen.getByText('React'));
-
-      // Navigate to Q2 via store
-      act(() => {
-        useAppStore.getState().nextUserQuestion(CONV_ID);
-      });
 
       // Q2 options should now be visible and clickable
       expect(screen.getByText('Pick a database')).toBeInTheDocument();
       await user.click(screen.getByText('PostgreSQL'));
 
+      // Should auto-advance to Q3
       const state = useAppStore.getState();
       const pending = state.pendingUserQuestion[CONV_ID];
       expect(pending?.answers['Database']).toBe('PostgreSQL');

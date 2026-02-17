@@ -164,8 +164,10 @@ export class CommentZoneManager {
       accessor.removeZone(zone.zoneId);
     });
 
-    // Cleanup React root
-    zone.root.unmount();
+    // Defer unmount to avoid "synchronously unmount a root while React was
+    // already rendering" warning in React 19 when called from useEffect.
+    const root = zone.root;
+    setTimeout(() => root.unmount(), 0);
 
     // Cleanup ResizeObserver
     const observer = this.observers.get(commentId);
@@ -325,9 +327,11 @@ export class CommentZoneManager {
       }
     });
 
-    // Cleanup React roots
+    // Defer unmount to avoid "synchronously unmount a root while React was
+    // already rendering" warning in React 19 when called from useEffect.
     for (const zone of this.zones.values()) {
-      zone.root.unmount();
+      const root = zone.root;
+      setTimeout(() => root.unmount(), 0);
     }
 
     // Cleanup observers

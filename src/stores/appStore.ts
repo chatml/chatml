@@ -219,6 +219,8 @@ interface AppState {
   branchSyncDismissed: { [sessionId: string]: boolean };
   // Timestamp of last successful sync (triggers changes panel refresh)
   branchSyncCompletedAt: { [sessionId: string]: number };
+  // Timestamp of last agent turn completion per session (triggers changes panel refresh)
+  lastTurnCompletedAt: { [sessionId: string]: number };
 
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
@@ -437,6 +439,7 @@ interface AppState {
   setBranchSyncLoading: (sessionId: string, loading: boolean) => void;
   setBranchSyncDismissed: (sessionId: string, dismissed: boolean) => void;
   setBranchSyncCompletedAt: (sessionId: string, timestamp: number) => void;
+  setLastTurnCompletedAt: (sessionId: string, timestamp: number) => void;
   clearBranchSyncStatus: (sessionId: string) => void;
 
   // User question actions (AskUserQuestion tool)
@@ -486,6 +489,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncLoading: {},
   branchSyncDismissed: {},
   branchSyncCompletedAt: {},
+  lastTurnCompletedAt: {},
   pendingUserQuestion: {},
   inputSuggestions: {},
   summaries: {},
@@ -1948,6 +1952,12 @@ updateFileTabContent: (id, content) => set((state) => ({
   setBranchSyncCompletedAt: (sessionId, timestamp) => set((state) => ({
     branchSyncCompletedAt: {
       ...state.branchSyncCompletedAt,
+      [sessionId]: timestamp,
+    },
+  })),
+  setLastTurnCompletedAt: (sessionId, timestamp) => set((state) => ({
+    lastTurnCompletedAt: {
+      ...state.lastTurnCompletedAt,
       [sessionId]: timestamp,
     },
   })),
