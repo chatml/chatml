@@ -203,6 +203,10 @@ func (w *PRWatcher) run() {
 	w.checkSessionsWithPR()
 	w.checkSessionsWithoutPR()
 
+	// One-time backfill: populate prTitle for sessions that have a PR number
+	// but no title (e.g., sessions created before prTitle was added).
+	w.backfillMissingPRTitles()
+
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -241,6 +245,60 @@ func (w *PRWatcher) checkSessionsWithPR() {
 	})
 
 	w.checkRepoSessions(repoSessions)
+}
+
+// backfillMissingPRTitles is a one-time startup pass that fetches PR titles
+// for sessions that have a PR number but empty title (e.g., sessions created
+// before prTitle was added to the data model).
+func (w *PRWatcher) backfillMissingPRTitles() {
+	if !w.ghClient.IsAuthenticated() {
+		return
+	}
+
+	repoSessions := w.groupSessionsByRepo(func(e *PRWatchEntry) bool {
+		return e.PRTitle == "" && e.PRNumber > 0
+	})
+
+	for key, entries := range repoSessions {
+		if w.ctx.Err() != nil {
+			return
+		}
+
+		for _, entry := range entries {
+			if w.ctx.Err() != nil {
+				return
+			}
+
+			details, err := w.ghClient.GetPRDetails(w.ctx, key.owner, key.repo, entry.PRNumber)
+			if err != nil || details == nil || details.Title == "" {
+				continue
+			}
+
+			w.mu.Lock()
+			entry.PRTitle = details.Title
+			entry.LastChecked = time.Now()
+			w.mu.Unlock()
+
+			if w.store != nil {
+				_ = w.store.UpdateSession(w.ctx, entry.SessionID, func(sess *models.Session) {
+					sess.PRTitle = details.Title
+				})
+			}
+			if w.onChange != nil {
+				w.onChange(PRChangeEvent{
+					SessionID:   entry.SessionID,
+					PRStatus:    entry.PRStatus,
+					PRNumber:    entry.PRNumber,
+					PRUrl:       entry.PRUrl,
+					PRTitle:     details.Title,
+					CheckStatus: entry.CheckStatus,
+					Mergeable:   entry.Mergeable,
+				})
+			}
+
+			logger.PRWatcher.Infof("Backfilled PR title for session %s: %q", entry.SessionID, details.Title)
+		}
+	}
 }
 
 // repoKey uniquely identifies a repository
