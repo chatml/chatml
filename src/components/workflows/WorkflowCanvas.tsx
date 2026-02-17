@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { useCallback, useRef, useMemo, useImperativeHandle, forwardRef, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -22,10 +22,11 @@ import Dagre from '@dagrejs/dagre';
 import { WORKFLOW_NODE_TYPES } from './nodes/WorkflowNodes';
 import { DataFlowEdge } from './edges/DataFlowEdge';
 import { getNodeKind, type WorkflowNodeData } from './nodes/nodeRegistry';
-import { getDraggedNodeKind } from './NodePalette';
+import { getDraggedNodeKind, setLastDragOverPosition } from './NodePalette';
 
 export interface WorkflowCanvasHandle {
   autoLayout: () => void;
+  updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => void;
 }
 
 const edgeTypes = { dataflow: DataFlowEdge };
@@ -49,6 +50,13 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
   const reactFlowInstance = useRef<ReactFlowInstance<Node<WorkflowNodeData>, Edge> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Refs that always point to current state — used to avoid stale closures in deferred callbacks.
+  // Updated via useEffect (runs after commit, before setTimeout callbacks).
+  const latestNodesRef = useRef(nodes);
+  const latestEdgesRef = useRef(edges);
+  useEffect(() => { latestNodesRef.current = nodes; }, [nodes]);
+  useEffect(() => { latestEdgesRef.current = edges; }, [edges]);
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -85,7 +93,13 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
     setTimeout(() => reactFlowInstance.current?.fitView({ padding: 0.2 }), 50);
   }, [nodes, edges, setNodes]);
 
-  useImperativeHandle(ref, () => ({ autoLayout }), [autoLayout]);
+  const updateNodeData = useCallback((nodeId: string, data: Partial<WorkflowNodeData>) => {
+    setNodes((nds) =>
+      nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n)
+    );
+  }, [setNodes]);
+
+  useImperativeHandle(ref, () => ({ autoLayout, updateNodeData }), [autoLayout, updateNodeData]);
 
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
@@ -94,28 +108,16 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
     [onNodeSelect],
   );
 
-  // Handle drop from palette
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      // Try dataTransfer first, fall back to module-level state for webviews
-      // that don't support custom MIME types (e.g. Tauri/WKWebView).
-      const kind = event.dataTransfer.getData('application/workflow-node-kind')
-        || event.dataTransfer.getData('text/plain')
-        || getDraggedNodeKind();
-      if (!kind || !reactFlowInstance.current) return;
-
+  // Shared helper: create a new workflow node at the given screen position
+  const createNodeAtPosition = useCallback(
+    (kind: string, clientX: number, clientY: number) => {
+      if (!reactFlowInstance.current) return;
       const kindDef = getNodeKind(kind);
       if (!kindDef) return;
 
       const position = reactFlowInstance.current.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
+        x: clientX,
+        y: clientY,
       });
 
       const newNode: Node<WorkflowNodeData> = {
@@ -134,26 +136,61 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
     [setNodes],
   );
 
+  // Handle drop from palette
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    // Track position for dragend fallback (Safari/WKWebView may report 0,0 in dragend)
+    setLastDragOverPosition(event.clientX, event.clientY);
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      // Try dataTransfer first, fall back to module-level state for webviews
+      // that don't support custom MIME types (e.g. Tauri/WKWebView).
+      const kind = event.dataTransfer.getData('application/workflow-node-kind')
+        || event.dataTransfer.getData('text/plain')
+        || getDraggedNodeKind();
+      if (!kind) return;
+
+      createNodeAtPosition(kind, event.clientX, event.clientY);
+    },
+    [createNodeAtPosition],
+  );
+
+  // Fallback: listen for dragend-based custom event (Tauri/WKWebView where drop doesn't fire)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { kind, clientX, clientY } = (e as CustomEvent).detail;
+      if (kind) {
+        createNodeAtPosition(kind, clientX, clientY);
+      }
+    };
+    window.addEventListener('workflow-node-drop-fallback', handler);
+    return () => window.removeEventListener('workflow-node-drop-fallback', handler);
+  }, [createNodeAtPosition]);
+
   // Sync changes back to parent
   const handleNodesChange: typeof onNodesChange = useCallback(
     (changes) => {
       onNodesChange(changes);
-      // Defer callback to next tick so state is updated
+      // Defer callback to next tick so state is updated; read from ref to avoid stale closure
       setTimeout(() => {
-        onNodesChangeCallback?.(nodes);
+        onNodesChangeCallback?.(latestNodesRef.current);
       }, 0);
     },
-    [onNodesChange, onNodesChangeCallback, nodes],
+    [onNodesChange, onNodesChangeCallback],
   );
 
   const handleEdgesChange: typeof onEdgesChange = useCallback(
     (changes) => {
       onEdgesChange(changes);
       setTimeout(() => {
-        onEdgesChangeCallback?.(edges);
+        onEdgesChangeCallback?.(latestEdgesRef.current);
       }, 0);
     },
-    [onEdgesChange, onEdgesChangeCallback, edges],
+    [onEdgesChange, onEdgesChangeCallback],
   );
 
   // Stable nodeTypes reference (React Flow re-renders if this changes)
@@ -169,8 +206,6 @@ export const WorkflowCanvas = forwardRef<WorkflowCanvasHandle, WorkflowCanvasPro
         onConnect={onConnect}
         onInit={onInit}
         onSelectionChange={onSelectionChange}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'dataflow' }}

@@ -33,12 +33,18 @@ const CATEGORY_LABELS: Record<NodeCategory, string> = {
 };
 
 // Module-level drag state: works around webviews (e.g. Tauri/WKWebView) that
-// don't reliably transfer custom MIME types via dataTransfer.
+// don't reliably transfer custom MIME types via dataTransfer or fire drop events.
 let _draggedNodeKind: string | null = null;
+let _lastDragOverClientPos: { x: number; y: number } | null = null;
+
 export function getDraggedNodeKind(): string | null {
   const kind = _draggedNodeKind;
   _draggedNodeKind = null;
   return kind;
+}
+
+export function setLastDragOverPosition(x: number, y: number): void {
+  _lastDragOverClientPos = { x, y };
 }
 
 function PaletteItem({ kind }: { kind: NodeKindDefinition }) {
@@ -57,6 +63,30 @@ function PaletteItem({ kind }: { kind: NodeKindDefinition }) {
     [kind.kind],
   );
 
+  const onDragEnd = useCallback(
+    (event: React.DragEvent) => {
+      // Fallback for Tauri/WKWebView where the `drop` event may not fire.
+      // If _draggedNodeKind is still set, the drop handler never consumed it.
+      if (!_draggedNodeKind) return;
+      const nodeKind = _draggedNodeKind;
+      _draggedNodeKind = null;
+      // Use the last known dragover position (more reliable than dragend coords
+      // which Safari/WKWebView sometimes reports as 0,0).
+      const pos = _lastDragOverClientPos ?? (
+        event.clientX !== 0 || event.clientY !== 0
+          ? { x: event.clientX, y: event.clientY }
+          : null
+      );
+      _lastDragOverClientPos = null;
+      // Last resort: use center of window if no position is available
+      const finalPos = pos ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      window.dispatchEvent(new CustomEvent('workflow-node-drop-fallback', {
+        detail: { kind: nodeKind, clientX: finalPos.x, clientY: finalPos.y },
+      }));
+    },
+    [],
+  );
+
   return (
     <div
       className={cn(
@@ -65,6 +95,7 @@ function PaletteItem({ kind }: { kind: NodeKindDefinition }) {
       )}
       draggable
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
     >
       <div className={cn('flex items-center justify-center w-6 h-6 rounded shrink-0', colors.bg)}>
         <Icon className={cn('h-3 w-3', colors.icon)} />

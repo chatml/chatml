@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, useReducer } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
@@ -54,6 +54,8 @@ export function WorkflowBuilder({ workflowId }: WorkflowBuilderProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showPalette, setShowPalette] = useState(true);
+  // Counter that always increments — guarantees re-render even when isDirty is already true
+  const [, forceRender] = useReducer((x: number) => x + 1, 0);
 
   // Graph state refs for save (avoid re-render on every node move)
   const nodesRef = useRef<Node<WorkflowNodeData>[]>([]);
@@ -121,7 +123,10 @@ export function WorkflowBuilder({ workflowId }: WorkflowBuilderProps) {
     nodesRef.current = nodesRef.current.map((n) =>
       n.id === nodeId ? { ...n, data: { ...n.data, config } } : n
     );
+    // Also push config into ReactFlow's internal state so canvas node previews update
+    canvasRef.current?.updateNodeData(nodeId, { config } as Partial<WorkflowNodeData>);
     setIsDirty(true);
+    forceRender(); // setIsDirty(true) is a no-op when already dirty — counter always re-renders
   }, []);
 
   // Initial graph from workflow
