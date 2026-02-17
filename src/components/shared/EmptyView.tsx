@@ -1,12 +1,12 @@
 'use client';
 
-import { Folder, Globe, SquarePlus, Sparkles } from 'lucide-react';
+import { Folder, Globe, Github, Sparkles } from 'lucide-react';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 
 interface EmptyViewProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
-  onQuickStart: () => void;
+  onGitHubRepos: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   showLeftSidebar?: boolean;
@@ -15,13 +15,13 @@ interface EmptyViewProps {
 const ACTION_CARDS = [
   { icon: Folder, label: 'Open project', key: 'open' },
   { icon: Globe, label: 'Clone from URL', key: 'clone' },
-  { icon: SquarePlus, label: 'Quick start', key: 'quickstart' },
+  { icon: Github, label: 'GitHub Repos', key: 'github' },
 ] as const;
 
 export function EmptyView({
   onOpenProject,
   onCloneFromUrl,
-  onQuickStart,
+  onGitHubRepos,
   onOpenSettings,
   onOpenShortcuts,
   showLeftSidebar = true,
@@ -34,8 +34,8 @@ export function EmptyView({
       case 'clone':
         onCloneFromUrl();
         break;
-      case 'quickstart':
-        onQuickStart();
+      case 'github':
+        onGitHubRepos();
         break;
     }
   };

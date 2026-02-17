@@ -66,6 +66,16 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// Rate limiter for GitHub search operations (GitHub search API has 30 req/min limit)
 	searchRateLimiter := httprate.LimitByIP(20, 1*time.Minute) // 20 searches per minute
 
+	// Clone endpoint
+	r.Post("/api/clone", h.CloneRepo)
+
+	// GitHub integration endpoints
+	r.Route("/api/github", func(r chi.Router) {
+		r.With(searchRateLimiter).Get("/repos", h.ListGitHubRepos)
+		r.Get("/orgs", h.ListGitHubOrgs)
+		r.Post("/resolve-repo", h.ResolveGitHubRepo)
+	})
+
 	// PR Dashboard endpoint
 	r.Get("/api/prs", h.ListPRs)
 

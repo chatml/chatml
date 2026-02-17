@@ -71,7 +71,7 @@ import {
   AlertTriangle,
   Folder,
   Globe,
-  SquarePlus,
+  Github,
   Search,
   X,
   Filter,
@@ -115,7 +115,7 @@ import { CardErrorFallback } from '@/components/shared/ErrorFallbacks';
 interface WorkspaceSidebarProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
-  onQuickStart: () => void;
+  onGitHubRepos: () => void;
   onSessionSelected?: () => void;
   onOpenWorkspaceSettings?: (workspaceId: string) => void;
 }
@@ -124,10 +124,10 @@ interface WorkspaceSidebarProps {
 const PROJECT_MENU_ITEMS = [
   { icon: Folder, label: 'Open Project', key: 'open' },
   { icon: Globe, label: 'Clone from URL', key: 'clone' },
-  { icon: SquarePlus, label: 'Quick Start', key: 'quickstart' },
+  { icon: Github, label: 'GitHub Repos', key: 'github' },
 ] as const;
 
-export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, onSessionSelected, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos, onSessionSelected, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [taskStatusFilters, setTaskStatusFilters] = useState<Set<SessionTaskStatus>>(new Set());
@@ -140,7 +140,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
   const menuHandlers = {
     open: onOpenProject,
     clone: onCloneFromUrl,
-    quickstart: onQuickStart,
+    github: onGitHubRepos,
   };
 
   const {
@@ -951,9 +951,9 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onQuickStart, 
                           <Globe className="h-4 w-4" />
                           Clone from URL
                         </ContextMenuItem>
-                        <ContextMenuItem onClick={onQuickStart}>
-                          <SquarePlus className="h-4 w-4" />
-                          Quick Start
+                        <ContextMenuItem onClick={onGitHubRepos}>
+                          <Github className="h-4 w-4" />
+                          GitHub Repos
                         </ContextMenuItem>
                       </ContextMenuSubContent>
                     </ContextMenuSub>
