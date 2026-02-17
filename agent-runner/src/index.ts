@@ -202,7 +202,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server";
+  type: "message" | "teammate_message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -219,6 +219,9 @@ interface InputMessage {
   // MCP server management fields (SDK v0.2.21+)
   serverName?: string;
   serverEnabled?: boolean;
+  // Teammate message fields
+  targetAgentId?: string;
+  targetAgentName?: string;
 }
 
 // Escape a string for use in XML attribute values
@@ -625,6 +628,34 @@ function setupInputQueue(): void {
         return;
       }
 
+      // Handle teammate_message: relay to lead agent for SendMessage dispatch
+      if (input.type === "teammate_message" && input.content && input.targetAgentId) {
+        const relayContent = [
+          `The user wants to send a direct message to teammate "${input.targetAgentName || input.targetAgentId}".`,
+          `Please relay this message using the SendMessage tool:`,
+          ``,
+          `---`,
+          input.content,
+          `---`,
+          ``,
+          `Important: Relay this message exactly as written. Do not interpret, summarize, or modify it.`,
+        ].join('\n');
+
+        const queued: QueuedMessage = {
+          content: relayContent,
+          attachments: input.attachments,
+        };
+
+        if (messageWaiter) {
+          const waiter = messageWaiter;
+          messageWaiter = null;
+          waiter(queued);
+        } else {
+          messageQueue.push(queued);
+        }
+        return;
+      }
+
       // Queue "message" type inputs for the next turn
       if (input.type === "message" && input.content) {
         const queued: QueuedMessage = {
@@ -838,6 +869,8 @@ const completedToolNames = new Map<string, string>();
 
 // Track sub-agent session → agentId mapping for correlating hook events
 const sessionToAgentId = new Map<string, string>();
+// Track which agentIds are teammates (vs regular subagents)
+const teammateAgentIds = new Set<string>();
 // Track sub-agent active tools (keyed by toolUseId)
 const subagentActiveTools = new Map<string, { agentId: string; tool: string; startTime: number }>();
 // Track Task tool descriptions by tool_use_id for sub-agent description plumbing (Issue 3)
@@ -1108,6 +1141,14 @@ const subagentStartHook: HookCallback = async (input) => {
   // Register session → agentId mapping for correlating sub-agent tool events
   sessionToAgentId.set(hookInput.session_id, hookInput.agent_id);
 
+  // Detect teammate agents
+  const isTeammate = hookInput.agent_type === "teammate" ||
+                     hookInput.agent_type === "team_member";
+
+  if (isTeammate) {
+    teammateAgentIds.add(hookInput.agent_id);
+  }
+
   // Find the parent "Task" tool_use that spawned this sub-agent.
   // Map iteration is in insertion order, so we keep overwriting to get the
   // most recently inserted (i.e. most recent) active Task tool.
@@ -1122,7 +1163,7 @@ const subagentStartHook: HookCallback = async (input) => {
   const description = parentToolUseId ? taskToolDescriptions.get(parentToolUseId) : undefined;
 
   emit({
-    type: "subagent_started",
+    type: isTeammate ? "teammate_started" : "subagent_started",
     agentId: hookInput.agent_id,
     agentType: hookInput.agent_type,
     sessionId: hookInput.session_id,
@@ -1134,6 +1175,8 @@ const subagentStartHook: HookCallback = async (input) => {
 
 const subagentStopHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStopHookInput;
+  const isTeammate = teammateAgentIds.has(hookInput.agent_id);
+
   // Clean up session → agentId mapping
   sessionToAgentId.delete(hookInput.session_id);
   // Clean up any lingering sub-agent tools
@@ -1142,8 +1185,13 @@ const subagentStopHook: HookCallback = async (input) => {
       subagentActiveTools.delete(toolId);
     }
   }
+
+  if (isTeammate) {
+    teammateAgentIds.delete(hookInput.agent_id);
+  }
+
   emit({
-    type: "subagent_stopped",
+    type: isTeammate ? "teammate_stopped" : "subagent_stopped",
     agentId: hookInput.agent_id,
     stopHookActive: hookInput.stop_hook_active,
     transcriptPath: hookInput.agent_transcript_path,
@@ -1821,7 +1869,24 @@ function handleMessage(message: SDKMessage): void {
     case "stream_event": {
       // Partial streaming message — skip sub-agent stream events to avoid
       // duplicating their text/thinking into the parent's output.
-      if (isSubAgentMessage) break;
+      if (isSubAgentMessage) {
+        // For teammates, forward streaming text to backend for routing
+        const agentId = sessionToAgentId.get(msgSessionId!);
+        if (agentId && teammateAgentIds.has(agentId)) {
+          const event = message.event;
+          if (event.type === "content_block_delta") {
+            const delta = event.delta as Record<string, unknown>;
+            if (delta?.type === "text_delta" && delta.text) {
+              emit({
+                type: "assistant_text",
+                content: delta.text as string,
+                agentId,
+              });
+            }
+          }
+        }
+        break;
+      }
 
       const event = message.event;
       if (event.type === "content_block_delta") {
