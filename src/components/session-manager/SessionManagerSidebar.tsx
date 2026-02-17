@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { WorkspaceTreeItem } from './WorkspaceTreeItem';
-import { Plus, Folder, Globe, SquarePlus, Layers } from 'lucide-react';
+import { Plus, Folder, Globe, Github, Layers } from 'lucide-react';
 
 interface SessionManagerSidebarProps {
   workspaces: Workspace[];
@@ -103,8 +103,8 @@ export function SessionManagerSidebar({
               Clone from URL
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <SquarePlus className="h-4 w-4" />
-              Quick start
+              <Github className="h-4 w-4" />
+              GitHub Repos
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

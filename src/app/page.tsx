@@ -57,7 +57,7 @@ import { SidebarToolbar } from '@/components/layout/SidebarToolbar';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
 import { CreateFromPRModal } from '@/components/dialogs/CreateFromPRModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
-import { QuickStartDialog } from '@/components/dialogs/QuickStartDialog';
+import { GitHubReposDialog } from '@/components/dialogs/GitHubReposDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
 import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
@@ -179,7 +179,7 @@ export default function Home() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingCloseConvId, setPendingCloseConvId] = useState<string | null>(null);
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
-  const [showQuickStart, setShowQuickStart] = useState(false);
+  const [showGitHubRepos, setShowGitHubRepos] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Theme from next-themes (resolvedTheme handles 'system' → actual theme)
@@ -815,77 +815,87 @@ export default function Home() {
     }
   }, [pendingCloseConvId, doCloseTab]);
 
-// Handle opening a project - directly opens folder dialog and adds the workspace
+  // Shared helper: register a RepoDTO as a workspace, create a session, and navigate to it.
+  const registerAndNavigateWorkspace = useCallback(async (repo: RepoDTO) => {
+    const workspace = {
+      id: repo.id,
+      name: repo.name,
+      path: repo.path,
+      defaultBranch: repo.branch,
+      remote: repo.remote || 'origin',
+      branchPrefix: repo.branchPrefix || '',
+      customPrefix: repo.customPrefix || '',
+      createdAt: repo.createdAt,
+    };
+    useAppStore.getState().addWorkspace(workspace);
+
+    // Prefetch branches for new workspace
+    useBranchCacheStore.getState().fetchBranches(workspace.id).catch(() => {});
+
+    // Auto-create first session for the new workspace (backend generates city-based name)
+    const prefix = workspace.branchPrefix
+      ? getWorkspaceBranchPrefix(workspace)
+      : getBranchPrefix();
+    const session = await createSession(workspace.id, {
+      ...(prefix !== undefined && { branchPrefix: prefix }),
+    });
+
+    addSession(mapSessionDTO(session));
+
+    // Fetch conversations created by backend (includes "Untitled" with setup info)
+    const convs = await listConversations(workspace.id, session.id);
+    convs.forEach((conv) => {
+      addConversation({
+        id: conv.id,
+        sessionId: conv.sessionId,
+        type: conv.type,
+        name: conv.name,
+        status: conv.status,
+        messages: conv.messages.map((m) => ({
+          id: m.id,
+          conversationId: conv.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
+          timestamp: m.timestamp,
+        })),
+        toolSummary: conv.toolSummary,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+      });
+    });
+
+    expandWorkspace(workspace.id);
+    navigate({
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      conversationId: convs.length > 0 ? convs[0].id : undefined,
+      contentView: { type: 'conversation' },
+    });
+  }, [addSession, addConversation, expandWorkspace]);
+
+  // Handle opening a project - directly opens folder dialog and adds the workspace
   const handleOpenProject = useCallback(async () => {
     const selectedPath = await openFolderDialog('Select Repository');
     if (!selectedPath) return;
 
     try {
-      // Call backend API to validate and add repo
       const repo = await addRepo(selectedPath);
-
-      // Map to workspace and add to store
-      const workspace = {
-        id: repo.id,
-        name: repo.name,
-        path: repo.path,
-        defaultBranch: repo.branch,
-        remote: repo.remote || 'origin',
-        branchPrefix: repo.branchPrefix || '',
-        customPrefix: repo.customPrefix || '',
-        createdAt: repo.createdAt,
-      };
-      useAppStore.getState().addWorkspace(workspace);
-
-      // Prefetch branches for new workspace
-      useBranchCacheStore.getState().fetchBranches(workspace.id).catch(() => {});
-
-      // Auto-create first session for the new workspace (backend generates city-based name)
-      const prefix = workspace.branchPrefix
-        ? getWorkspaceBranchPrefix(workspace)
-        : getBranchPrefix();
-      const session = await createSession(workspace.id, {
-        ...(prefix !== undefined && { branchPrefix: prefix }),
-      });
-
-      addSession(mapSessionDTO(session));
-
-      // Fetch conversations created by backend (includes "Untitled" with setup info)
-      const convs = await listConversations(workspace.id, session.id);
-      convs.forEach((conv) => {
-        addConversation({
-          id: conv.id,
-          sessionId: conv.sessionId,
-          type: conv.type,
-          name: conv.name,
-          status: conv.status,
-          messages: conv.messages.map((m) => ({
-            id: m.id,
-            conversationId: conv.id,
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: m.content,
-            setupInfo: (m as { setupInfo?: SetupInfo }).setupInfo,
-            timestamp: m.timestamp,
-          })),
-          toolSummary: conv.toolSummary,
-          createdAt: conv.createdAt,
-          updatedAt: conv.updatedAt,
-        });
-      });
-
-      expandWorkspace(workspace.id);
-      navigate({
-        workspaceId: workspace.id,
-        sessionId: session.id,
-        conversationId: convs.length > 0 ? convs[0].id : undefined,
-        contentView: { type: 'conversation' },
-      });
+      await registerAndNavigateWorkspace(repo);
     } catch (error) {
-      // If it fails, fall back to showing the modal where user can see the error
       console.error('Failed to add workspace directly:', error);
       setShowAddWorkspace(true);
     }
-  }, [addSession, addConversation, expandWorkspace]);
+  }, [registerAndNavigateWorkspace]);
+
+  // Handle successful clone from either Clone from URL or GitHub Repos dialog
+  const handleCloned = useCallback(async (repo: RepoDTO) => {
+    try {
+      await registerAndNavigateWorkspace(repo);
+    } catch (error) {
+      console.error('Failed to register cloned workspace:', error);
+    }
+  }, [registerAndNavigateWorkspace]);
 
   // Handle closing a file tab (with dirty check)
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -1396,7 +1406,7 @@ export default function Home() {
                 <WorkspaceSidebar
                   onOpenProject={handleOpenProject}
                   onCloneFromUrl={() => setShowCloneFromUrl(true)}
-                  onQuickStart={() => setShowQuickStart(true)}
+                  onGitHubRepos={() => setShowGitHubRepos(true)}
                   onOpenWorkspaceSettings={(workspaceId) => {
                     expandWorkspace(workspaceId);
                     setShowWorkspaceSettings(workspaceId);
@@ -1461,7 +1471,7 @@ export default function Home() {
                   <RepositoriesDashboard
                     onOpenProject={handleOpenProject}
                     onCloneFromUrl={() => setShowCloneFromUrl(true)}
-                    onQuickStart={() => setShowQuickStart(true)}
+                    onGitHubRepos={() => setShowGitHubRepos(true)}
                     onOpenSettings={() => setShowSettings(true)}
                     onOpenShortcuts={() => setShowShortcuts(true)}
                     onOpenWorkspaceSettings={(workspaceId) => setShowWorkspaceSettings(workspaceId)}
@@ -1632,12 +1642,14 @@ export default function Home() {
         <CloneFromUrlDialog
           isOpen={showCloneFromUrl}
           onClose={() => setShowCloneFromUrl(false)}
+          onCloned={(repo) => handleCloned(repo)}
         />
 
-        {/* Quick Start Dialog */}
-        <QuickStartDialog
-          isOpen={showQuickStart}
-          onClose={() => setShowQuickStart(false)}
+        {/* GitHub Repos Dialog */}
+        <GitHubReposDialog
+          isOpen={showGitHubRepos}
+          onClose={() => setShowGitHubRepos(false)}
+          onCloned={(repo) => handleCloned(repo)}
         />
 
         {/* Close Tab Confirmation Dialog */}

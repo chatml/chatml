@@ -2024,3 +2024,85 @@ export async function setMcpServers(workspaceId: string, servers: McpServerConfi
   );
   return handleResponse<McpServerConfig[]>(res);
 }
+
+// =========================================================================
+// GitHub Repos
+// =========================================================================
+
+export interface GitHubRepoDTO {
+  fullName: string;
+  name: string;
+  owner: string;
+  description: string;
+  language: string;
+  private: boolean;
+  fork: boolean;
+  stargazersCount: number;
+  cloneUrl: string;
+  sshUrl: string;
+  updatedAt: string;
+  defaultBranch: string;
+}
+
+export interface GitHubOrgDTO {
+  login: string;
+  avatarUrl: string;
+}
+
+export interface ListGitHubReposResponse {
+  repos: GitHubRepoDTO[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
+export interface CloneRepoResponse {
+  path: string;
+  repo: RepoDTO;
+}
+
+export async function listGitHubRepos(params: {
+  page?: number;
+  perPage?: number;
+  sort?: string;
+  search?: string;
+  org?: string;
+  type?: string;
+  signal?: AbortSignal;
+} = {}): Promise<ListGitHubReposResponse> {
+  const queryParams = new URLSearchParams();
+  if (params.page) queryParams.set('page', String(params.page));
+  if (params.perPage) queryParams.set('per_page', String(params.perPage));
+  if (params.sort) queryParams.set('sort', params.sort);
+  if (params.search) queryParams.set('search', params.search);
+  if (params.org) queryParams.set('org', params.org);
+  if (params.type) queryParams.set('type', params.type);
+  const qs = queryParams.toString();
+  const res = await fetchWithAuth(`${getApiBase()}/api/github/repos${qs ? `?${qs}` : ''}`, {
+    ...(params.signal && { signal: params.signal }),
+  });
+  return handleResponse<ListGitHubReposResponse>(res);
+}
+
+export async function listGitHubOrgs(): Promise<GitHubOrgDTO[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/github/orgs`);
+  return handleResponse<GitHubOrgDTO[]>(res);
+}
+
+export async function resolveGitHubRepo(url: string, signal?: AbortSignal): Promise<GitHubRepoDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/github/resolve-repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+    ...(signal && { signal }),
+  });
+  return handleResponse<GitHubRepoDTO>(res);
+}
+
+export async function cloneRepo(url: string, path: string, dirName: string): Promise<CloneRepoResponse> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, path, dirName }),
+  });
+  return handleResponse<CloneRepoResponse>(res);
+}

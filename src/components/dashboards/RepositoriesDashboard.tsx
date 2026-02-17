@@ -10,7 +10,7 @@ import {
   FolderPlus,
   Folder,
   Globe,
-  SquarePlus,
+  Github,
   Copy,
   Terminal,
   FolderOpen,
@@ -27,7 +27,7 @@ import { useToast } from '@/components/ui/toast';
 interface RepositoriesDashboardProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
-  onQuickStart: () => void;
+  onGitHubRepos: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
   onOpenWorkspaceSettings?: (workspaceId: string) => void;
@@ -111,7 +111,7 @@ function AddedCell({ workspace }: { workspace: Workspace }) {
 export function RepositoriesDashboard({
   onOpenProject,
   onCloneFromUrl,
-  onQuickStart,
+  onGitHubRepos,
   onOpenSettings,
   onOpenShortcuts,
   onOpenWorkspaceSettings,
@@ -295,10 +295,10 @@ export function RepositoriesDashboard({
             variant="outline"
             size="sm"
             className="h-7 text-xs gap-1.5"
-            onClick={onQuickStart}
+            onClick={onGitHubRepos}
           >
-            <SquarePlus className="h-3.5 w-3.5" />
-            Quick Start
+            <Github className="h-3.5 w-3.5" />
+            GitHub Repos
           </Button>
         </div>
       }
