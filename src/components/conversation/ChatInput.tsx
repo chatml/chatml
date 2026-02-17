@@ -135,6 +135,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     clearPendingPlanApproval,
     setApprovedPlanContent,
     clearActiveTools,
+    finalizeStreamingMessage,
     setPlanModeActive,
     clearInputSuggestion,
     setSessionToggleState,
@@ -698,6 +699,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     try {
       // Commit any queued message to history before stopping
       commitQueuedMessage(selectedConversationId);
+      // Finalize streaming content into a committed message before stopping
+      // so it persists in the message list (same as normal turn completion)
+      finalizeStreamingMessage(selectedConversationId, {});
+      // Add system message indicating the agent was stopped
+      addMessage({
+        id: `msg-stopped-${Date.now()}`,
+        conversationId: selectedConversationId,
+        role: 'system',
+        content: 'Agent was stopped by user.',
+        timestamp: new Date().toISOString(),
+      });
       await stopConversation(selectedConversationId);
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
@@ -706,7 +718,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to stop conversation:', error);
       showError('Failed to stop conversation. Please try again.');
     }
-  }, [selectedConversationId, isStreaming, commitQueuedMessage, setStreaming, updateConversation, clearActiveTools, showError]);
+  }, [selectedConversationId, isStreaming, commitQueuedMessage, finalizeStreamingMessage, addMessage, setStreaming, updateConversation, clearActiveTools, showError]);
 
   // Global keyboard shortcuts
 
