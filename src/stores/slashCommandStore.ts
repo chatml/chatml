@@ -53,6 +53,13 @@ export interface UserCommandFile {
   content: string;
 }
 
+/** Rich command metadata returned by the SDK's supportedCommands() API. */
+export interface SdkCommandInfo {
+  name: string;
+  description: string;
+  argumentHint?: string;
+}
+
 // ============================================================================
 // Built-in Commands
 // ============================================================================
@@ -179,11 +186,15 @@ interface SlashCommandStoreState {
   installedSkills: SkillDTO[];
   userCommands: UserCommandFile[];
   sdkCommands: string[];
+  /** Rich metadata for SDK commands, keyed by command name. */
+  sdkCommandMeta: Record<string, SdkCommandInfo>;
 
   // Actions
   setInstalledSkills: (skills: SkillDTO[]) => void;
   setUserCommands: (commands: UserCommandFile[]) => void;
   setSdkCommands: (commands: string[]) => void;
+  /** Set SDK commands from the enriched supported_commands response. */
+  setSdkCommandsRich: (commands: SdkCommandInfo[]) => void;
   fetchUserCommands: (workspaceId: string, sessionId: string) => Promise<void>;
 
   // Computed
@@ -238,8 +249,9 @@ function userCommandToCommand(cmd: UserCommandFile): UnifiedSlashCommand {
 /**
  * Convert an SDK-reported slash command name into a UnifiedSlashCommand.
  * SDK commands are strings like "commit", "review-pr", or "superpowers:brainstorming".
+ * If rich metadata is available, uses its description instead of the generic fallback.
  */
-function sdkCommandToSlashCommand(name: string): UnifiedSlashCommand {
+function sdkCommandToSlashCommand(name: string, meta?: SdkCommandInfo): UnifiedSlashCommand {
   const label = name
     .replace(/:/g, ': ')
     .replace(/-/g, ' ')
@@ -249,7 +261,7 @@ function sdkCommandToSlashCommand(name: string): UnifiedSlashCommand {
     id: `sdk:${name}`,
     trigger: name,
     label,
-    description: `Plugin command: ${name}`,
+    description: meta?.description || `Plugin command: ${name}`,
     icon: Plug,
     source: 'sdk',
     executionType: 'skill',
@@ -262,10 +274,20 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
   installedSkills: [],
   userCommands: [],
   sdkCommands: [],
+  sdkCommandMeta: {},
 
   setInstalledSkills: (skills) => { _commandCache = null; set({ installedSkills: skills }); },
   setUserCommands: (commands) => { _commandCache = null; set({ userCommands: commands }); },
   setSdkCommands: (commands) => { _commandCache = null; set({ sdkCommands: commands }); },
+  setSdkCommandsRich: (commands) => {
+    const names = commands.map((c) => c.name);
+    const meta: Record<string, SdkCommandInfo> = {};
+    for (const c of commands) {
+      meta[c.name] = c;
+    }
+    _commandCache = null;
+    set({ sdkCommands: names, sdkCommandMeta: meta });
+  },
 
   fetchUserCommands: async (workspaceId, sessionId) => {
     try {
@@ -286,7 +308,7 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
   },
 
   getAllCommands: (availability) => {
-    const { installedSkills, userCommands, sdkCommands } = get();
+    const { installedSkills, userCommands, sdkCommands, sdkCommandMeta } = get();
 
     // Return cached result if sources haven't changed (reference equality)
     if (
@@ -331,7 +353,7 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
     for (const sdkCmd of sdkCommands) {
       const exists = commands.some((c) => c.trigger === sdkCmd);
       if (!exists) {
-        const cmd = sdkCommandToSlashCommand(sdkCmd);
+        const cmd = sdkCommandToSlashCommand(sdkCmd, sdkCommandMeta[sdkCmd]);
         if (cmd.available?.(availability) ?? true) {
           commands.push(cmd);
         }

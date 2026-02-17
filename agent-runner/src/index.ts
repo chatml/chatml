@@ -2125,6 +2125,7 @@ function handleMessage(message: SDKMessage): void {
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
+        lifecycle(`SDK init: slash_commands=${JSON.stringify(initMsg.slash_commands)}, skills=${JSON.stringify(initMsg.skills)}, plugins=${JSON.stringify(initMsg.plugins)}`);
         emit({
           type: "init",
           model: initMsg.model,

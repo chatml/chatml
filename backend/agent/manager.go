@@ -879,6 +879,16 @@ outer:
 				m.onConversationEvent(convID, event)
 			}
 
+			// After init, request the full slash command list from the SDK.
+			// The init event may have slash_commands but it can be empty if
+			// skills haven't been discovered yet. The supported_commands
+			// response provides the authoritative, enriched command list.
+			if event.Type == EventTypeInit {
+				if err := proc.GetSupportedCommands(); err != nil {
+					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
+				}
+			}
+
 			// Generate input suggestion after turn completes (async, fire-and-forget)
 			if event.Type == EventTypeResult {
 				go m.generateInputSuggestion(convID)
