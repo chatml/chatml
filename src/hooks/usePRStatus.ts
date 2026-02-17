@@ -49,10 +49,16 @@ export function usePRStatus(
       }
     } catch (err) {
       if (isMountedRef.current) {
-        // Only log as error for unexpected failures, not transient network issues
+        // Silently handle expected non-error cases
         const isTransientNetwork = err instanceof ApiError && err.status === 0;
-        if (!isTransientNetwork) {
+        const isAuthMissing = err instanceof ApiError && err.status === 401;
+        if (!isTransientNetwork && !isAuthMissing) {
           console.error('Failed to fetch PR status:', err);
+        }
+        // Treat auth errors as "no data" — PR details require GitHub auth
+        if (isAuthMissing) {
+          setPRDetails(null);
+          return;
         }
         setError(err instanceof Error ? err.message : 'Failed to fetch PR status');
       }
