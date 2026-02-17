@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -445,12 +446,62 @@ func (p *Process) SendMessage(content string) error {
 	})
 }
 
-// SendMessageWithAttachments sends a user message with file attachments to the running agent process
+// SendMessageWithAttachments sends a user message with file attachments to the running agent process.
+// For image attachments, the base64 data is offloaded to a temp file so only the path
+// travels through stdin — avoiding pipe buffer saturation in the SDK → cli.js chain.
 func (p *Process) SendMessageWithAttachments(content string, attachments []models.Attachment) error {
+	// Offload image base64 data to temp files to keep stdin payloads small.
+	// The agent-runner reads the temp file and instructs Claude to use the Read tool.
+	processed := make([]models.Attachment, len(attachments))
+	copy(processed, attachments)
+
+	for i := range processed {
+		if processed[i].Type != "image" || processed[i].Base64Data == "" {
+			continue
+		}
+
+		// Decode base64 → raw bytes → temp file
+		raw, err := base64.StdEncoding.DecodeString(processed[i].Base64Data)
+		if err != nil {
+			logger.Process.Errorf("[%s] Failed to decode base64 for image %q: %v", p.ID, processed[i].Name, err)
+			continue // Fall back to inline base64
+		}
+
+		ext := ".png"
+		switch processed[i].MimeType {
+		case "image/jpeg":
+			ext = ".jpg"
+		case "image/gif":
+			ext = ".gif"
+		case "image/webp":
+			ext = ".webp"
+		}
+
+		tmpFile, err := os.CreateTemp("", "chatml-img-*"+ext)
+		if err != nil {
+			logger.Process.Errorf("[%s] Failed to create temp file for image: %v", p.ID, err)
+			continue // Fall back to inline base64
+		}
+
+		if _, err := tmpFile.Write(raw); err != nil {
+			tmpFile.Close()
+			_ = os.Remove(tmpFile.Name())
+			logger.Process.Errorf("[%s] Failed to write image to temp file: %v", p.ID, err)
+			continue // Fall back to inline base64
+		}
+		tmpFile.Close()
+
+		logger.Process.Infof("[%s] Offloaded image %q (%d KB) to %s", p.ID, processed[i].Name, len(raw)/1024, tmpFile.Name())
+
+		// Replace base64 with file path — agent-runner will use the Read tool approach
+		processed[i].Base64Data = ""
+		processed[i].Path = tmpFile.Name()
+	}
+
 	return p.sendInput(InputMessage{
 		Type:        "message",
 		Content:     content,
-		Attachments: attachments,
+		Attachments: processed,
 	})
 }
 

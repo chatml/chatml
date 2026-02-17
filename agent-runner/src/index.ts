@@ -161,7 +161,7 @@ const sdkDebug = hasFlag("--sdk-debug");
 const sdkDebugFile = getArg("--sdk-debug-file");
 
 // Instructions (e.g., from conversation summaries)
-import { readFileSync } from "fs";
+import { readFileSync, unlinkSync } from "fs";
 let instructions: string | undefined;
 {
   const instructionsFilePath = getArg("--instructions-file");
@@ -698,19 +698,37 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
     contentBlocks.push({ type: "text", text: msg.content });
   }
 
-  for (const attachment of msg.attachments) {
-    if (!attachment.base64Data) {
-      // Attachment arrived without content data — warn so the issue is visible
-      emit({
-        type: "warning",
-        message: `Attachment "${attachment.name}" (${attachment.type}) has no base64Data and was skipped`,
-      });
-      continue;
-    }
+  // Track temp files for cleanup after message is built
+  const tempFilesToClean: string[] = [];
 
+  for (const attachment of msg.attachments) {
     if (attachment.type === "image") {
+      // Image attachment — prefer file-based delivery to avoid pipe buffer saturation
+      // in the SDK → cli.js chain. The Go backend offloads images to temp files.
+      if (attachment.path && !attachment.base64Data) {
+        // File-based path: image was offloaded to a temp file by Go backend.
+        // Instruct Claude to read the image file directly via the Read tool,
+        // bypassing the stdin pipe entirely.
+        lifecycle(`image "${attachment.name}" via file: ${attachment.path}`);
+        tempFilesToClean.push(attachment.path);
+        contentBlocks.push({
+          type: "text",
+          text: `[The user attached an image: "${attachment.name}" (${attachment.mimeType}). ` +
+                `IMPORTANT: Read it now with the Read tool at path: ${attachment.path}]`,
+        });
+        continue;
+      }
+
+      if (!attachment.base64Data) {
+        emit({
+          type: "warning",
+          message: `Image "${attachment.name}" has no data and was skipped`,
+        });
+        continue;
+      }
+
+      // Inline base64 path (fallback if temp file offload failed)
       // Validate image size — Anthropic API limit is 5MB per image.
-      // base64 encodes 3 bytes per 4 chars, so raw size ≈ base64Length * 3/4.
       const rawSizeBytes = Math.ceil(attachment.base64Data.length * 3 / 4);
       const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
       if (rawSizeBytes > MAX_IMAGE_BYTES) {
@@ -730,6 +748,12 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
           data: attachment.base64Data,
         }
       });
+    } else if (!attachment.base64Data) {
+      emit({
+        type: "warning",
+        message: `Attachment "${attachment.name}" (${attachment.type}) has no base64Data and was skipped`,
+      });
+      continue;
     } else {
       let content = Buffer.from(attachment.base64Data, "base64").toString("utf-8");
       content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
@@ -740,6 +764,21 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
         text: `<attached_file name="${escapeXmlAttr(attachment.name)}"${pathInfo}${lineInfo}>\n${content}\n</attached_file>`
       });
     }
+  }
+
+  // Schedule deferred cleanup of temp image files.
+  // Delay allows Claude to read the files during the turn.
+  if (tempFilesToClean.length > 0) {
+    setTimeout(() => {
+      for (const filePath of tempFilesToClean) {
+        try {
+          unlinkSync(filePath);
+          debug(`Cleaned up temp image: ${filePath}`);
+        } catch {
+          // File may already be gone — that's fine
+        }
+      }
+    }, 5 * 60 * 1000); // 5 minutes
   }
 
   return {
