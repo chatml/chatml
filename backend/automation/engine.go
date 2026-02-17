@@ -89,6 +89,9 @@ func (e *Engine) StartRun(ctx context.Context, workflowID, triggerID, triggerTyp
 
 	e.broadcastRunEvent("workflow:run_started", run, nil)
 
+	// Return a snapshot to the caller so the goroutine can safely mutate run.
+	snapshot := *run
+
 	select {
 	case e.runQueue <- runRequest{run: run, workflow: workflow}:
 	default:
@@ -102,7 +105,7 @@ func (e *Engine) StartRun(ctx context.Context, workflowID, triggerID, triggerTyp
 		return run, fmt.Errorf("run queue full")
 	}
 
-	return run, nil
+	return &snapshot, nil
 }
 
 // CancelRun cancels a running workflow. Returns true if the run was active and
