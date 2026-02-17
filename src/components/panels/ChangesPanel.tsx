@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchCommitDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchCommitDTO, type BranchStatsDTO } from '@/lib/api';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
@@ -118,6 +118,7 @@ export function ChangesPanel() {
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
   const [branchCommits, setBranchCommits] = useState<BranchCommitDTO[]>([]);
+  const [branchStats, setBranchStats] = useState<BranchStatsDTO | null>(null);
   const [uncommittedOpen, setUncommittedOpen] = useState(true);
   const [commitsOpen, setCommitsOpen] = useState(true);
   const [expandedCommits, setExpandedCommits] = useState<Set<string>>(new Set());
@@ -129,49 +130,43 @@ export function ChangesPanel() {
   const checksPanelRef = useRef<ChecksPanelHandle>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch changes function (extracted for reuse)
+  // Fetch working changes (truly uncommitted files only — diff against HEAD)
   const fetchChanges = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
+    } catch (error) {
+      console.error('Failed to fetch changes:', error);
+    }
+  }, [selectedWorkspaceId, selectedSessionId]);
 
-      // Update session stats in the store (only when changed to avoid re-render loop)
-      if (data && data.length > 0) {
-        const stats = data.reduce(
-          (acc, change) => ({
-            additions: acc.additions + change.additions,
-            deletions: acc.deletions + change.deletions,
-          }),
-          { additions: 0, deletions: 0 }
-        );
+  // Fetch branch commits and overall branch stats
+  const fetchBranchCommits = useCallback(async () => {
+    if (!selectedWorkspaceId || !selectedSessionId) return;
+    try {
+      const data = await getSessionBranchCommits(selectedWorkspaceId, selectedSessionId);
+      setBranchCommits(data?.commits || []);
+      setBranchStats(data?.branchStats || null);
+
+      // Update session stats from branch-level totals (used by session list sidebar)
+      if (data?.branchStats) {
+        const { totalAdditions, totalDeletions } = data.branchStats;
         const currentStats = useAppStore.getState().sessions.find(s => s.id === selectedSessionId)?.stats;
-        if (!currentStats || currentStats.additions !== stats.additions || currentStats.deletions !== stats.deletions) {
-          updateSession(selectedSessionId, { stats });
+        if (!currentStats || currentStats.additions !== totalAdditions || currentStats.deletions !== totalDeletions) {
+          updateSession(selectedSessionId, { stats: { additions: totalAdditions, deletions: totalDeletions } });
         }
       } else {
-        // Clear stats if no changes (only if currently set)
         const currentStats = useAppStore.getState().sessions.find(s => s.id === selectedSessionId)?.stats;
         if (currentStats !== undefined) {
           updateSession(selectedSessionId, { stats: undefined });
         }
       }
     } catch (error) {
-      console.error('Failed to fetch changes:', error);
-    }
-  }, [selectedWorkspaceId, selectedSessionId, updateSession]);
-
-  // Fetch branch commits (extracted for reuse)
-  const fetchBranchCommits = useCallback(async () => {
-    if (!selectedWorkspaceId || !selectedSessionId) return;
-    try {
-      const data = await getSessionBranchCommits(selectedWorkspaceId, selectedSessionId);
-      setBranchCommits(data || []);
-    } catch (error) {
       console.error('Failed to fetch branch commits:', error);
     }
-  }, [selectedWorkspaceId, selectedSessionId]);
+  }, [selectedWorkspaceId, selectedSessionId, updateSession]);
 
   // Toggle a commit's expanded state
   const toggleCommitExpanded = useCallback((sha: string) => {
@@ -439,7 +434,8 @@ export function ChangesPanel() {
           .then(([changesData, commitsData]) => {
             if (!cancelled) {
               setChanges(changesData || []);
-              setBranchCommits(commitsData || []);
+              setBranchCommits(commitsData?.commits || []);
+              setBranchStats(commitsData?.branchStats || null);
             }
           })
           .catch(console.error)
@@ -520,7 +516,7 @@ export function ChangesPanel() {
       <TopPanelTabs
         selectedTab={selectedTab}
         setSelectedTab={setSelectedTab}
-        changesCount={changes?.length || 0}
+        changesCount={branchStats?.totalFiles || changes?.length || 0}
         menuContext={menuContext}
       />
 
@@ -583,10 +579,21 @@ export function ChangesPanel() {
             ) : (
               <ScrollArea className="h-full [&>div>div]:!block">
                 <div ref={changesContainerRef} className="p-1 pr-2 overflow-hidden">
-                  {/* Uncommitted Changes Section */}
+                  {/* Branch Summary Header */}
+                  {branchStats && (
+                    <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                      <span className="font-mono tabular-nums">
+                        <span className="text-green-500">+{branchStats.totalAdditions}</span>
+                        <span className="text-red-500 ml-1">-{branchStats.totalDeletions}</span>
+                      </span>
+                      <span>across {branchStats.totalFiles} file{branchStats.totalFiles !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+
+                  {/* Working Changes Section (truly uncommitted only) */}
                   {changes.length > 0 && (
                     <CollapsibleSection
-                      title="Uncommitted Changes"
+                      title="Working Changes"
                       count={changes.length}
                       open={uncommittedOpen}
                       onToggle={() => setUncommittedOpen(!uncommittedOpen)}
@@ -644,10 +651,10 @@ export function ChangesPanel() {
                     </CollapsibleSection>
                   )}
 
-                  {/* Recent Commits Section */}
+                  {/* Branch Commits Section */}
                   {branchCommits.length > 0 && (
                     <CollapsibleSection
-                      title="Recent Commits"
+                      title="Branch Commits"
                       count={branchCommits.length}
                       open={commitsOpen}
                       onToggle={() => setCommitsOpen(!commitsOpen)}
