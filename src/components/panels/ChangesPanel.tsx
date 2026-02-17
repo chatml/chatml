@@ -70,6 +70,12 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { FileTab } from '@/lib/types';
 import { useShortcuts } from '@/hooks/useShortcut';
+import { getShortcutById, formatShortcutKeys } from '@/lib/shortcuts';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 // Common binary file extensions
 const BINARY_EXTENSIONS = new Set([
@@ -750,11 +756,11 @@ export function ChangesPanel() {
 }
 
 // Top panel tabs configuration (all tabs always visible)
-const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string }> = {
-  changes: { label: 'Changes' },
-  review: { label: 'Review' },
-  checks: { label: 'Checks' },
-  files: { label: 'Files' },
+const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; shortcutId?: string }> = {
+  changes: { label: 'Changes', shortcutId: 'sidebarChangesTab' },
+  review: { label: 'Review', shortcutId: 'sidebarReviewTab' },
+  checks: { label: 'Checks', shortcutId: 'sidebarChecksTab' },
+  files: { label: 'Files', shortcutId: 'sidebarFilesTab' },
 };
 
 // Bottom panel tabs configuration
@@ -774,12 +780,14 @@ const SortableTabButton = memo(function SortableTabButton({
   isActive,
   onClick,
   badge,
+  shortcutId,
 }: {
   id: string;
   label: string;
   isActive: boolean;
   onClick: () => void;
   badge?: number;
+  shortcutId?: string;
 }) {
   const {
     attributes,
@@ -803,7 +811,14 @@ const SortableTabButton = memo(function SortableTabButton({
     }
   }, [isDragging, onClick]);
 
-  return (
+  const shortcutDisplay = useMemo(() => {
+    if (!shortcutId) return null;
+    const shortcut = getShortcutById(shortcutId);
+    if (!shortcut) return null;
+    return formatShortcutKeys(shortcut).join(' ');
+  }, [shortcutId]);
+
+  const button = (
     <Button
       ref={setNodeRef}
       style={style}
@@ -827,6 +842,19 @@ const SortableTabButton = memo(function SortableTabButton({
         </span>
       )}
     </Button>
+  );
+
+  if (!shortcutDisplay) return button;
+
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        {button}
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        {label} <span className="ml-2 px-1.5 py-0.5 bg-background/20 rounded text-sm">{shortcutDisplay}</span>
+      </TooltipContent>
+    </Tooltip>
   );
 });
 
@@ -1015,6 +1043,7 @@ function TopPanelTabs({
                   isActive={selectedTab === tabId}
                   onClick={() => setSelectedTab(tabId)}
                   badge={tabId === 'changes' && changesCount > 0 ? changesCount : undefined}
+                  shortcutId={TOP_TABS_CONFIG[tabId].shortcutId}
                 />
               ))}
             </div>
