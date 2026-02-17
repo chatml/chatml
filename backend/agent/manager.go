@@ -224,6 +224,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		WorkspaceID:         session.WorkspaceID, // Backend workspace ID for MCP tools
 		BackendSessionID:    sessionID,           // Backend session ID for MCP tools
 		EnableCheckpointing: true,
+		SettingSources:      "project,user,local", // Load all settings scopes so SDK discovers user plugins/skills
 	}
 
 	// Always pass the effective target branch to the agent-runner so it doesn't
