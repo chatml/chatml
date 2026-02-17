@@ -691,7 +691,16 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
   }
 
   for (const attachment of msg.attachments) {
-    if (attachment.type === "image" && attachment.base64Data) {
+    if (!attachment.base64Data) {
+      // Attachment arrived without content data — warn so the issue is visible
+      emit({
+        type: "warning",
+        message: `Attachment "${attachment.name}" (${attachment.type}) has no base64Data and was skipped`,
+      });
+      continue;
+    }
+
+    if (attachment.type === "image") {
       contentBlocks.push({
         type: "image",
         source: {
@@ -700,7 +709,7 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
           data: attachment.base64Data,
         }
       });
-    } else if (attachment.base64Data) {
+    } else {
       let content = Buffer.from(attachment.base64Data, "base64").toString("utf-8");
       content = content.replace(/<\/attached_file>/g, "&lt;/attached_file&gt;");
       const lineInfo = attachment.lineCount ? ` lines="${attachment.lineCount}"` : "";
@@ -2200,17 +2209,36 @@ async function cleanup(reason: string): Promise<void> {
   emit({ type: "shutdown", reason });
 }
 
+// Drain stdout before exiting to ensure all emitted events reach the Go backend.
+// console.log uses buffered I/O when stdout is a pipe; process.exit() would
+// terminate before the buffer is flushed, silently dropping error events.
+function drainAndExit(code: number): void {
+  // If stdout is already destroyed or not writable, exit immediately
+  if (!process.stdout.writable) {
+    process.exit(code);
+    return;
+  }
+  // Write an empty string and wait for the callback — this ensures all
+  // previously buffered data has been flushed to the OS pipe.
+  process.stdout.write("", () => {
+    process.exit(code);
+  });
+  // Safety net: if the drain callback never fires (broken pipe, etc.),
+  // force-exit after a short timeout so we don't hang forever.
+  setTimeout(() => process.exit(code), 500).unref();
+}
+
 // Handle graceful shutdown
 process.on("SIGTERM", () => {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  cleanup("SIGTERM").finally(() => process.exit(0));
+  cleanup("SIGTERM").finally(() => drainAndExit(0));
 });
 
 process.on("SIGINT", () => {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  cleanup("SIGINT").finally(() => process.exit(0));
+  cleanup("SIGINT").finally(() => drainAndExit(0));
 });
 
 process.on("unhandledRejection", async (reason) => {
@@ -2222,7 +2250,7 @@ process.on("unhandledRejection", async (reason) => {
       ? `${reason.message}\n${reason.stack || ""}`
       : String(reason);
   emit({ type: "error", message: `Unhandled rejection: ${errorMessage}` });
-  process.exit(1);
+  drainAndExit(1);
 });
 
 main().catch(async (err) => {
@@ -2241,5 +2269,5 @@ main().catch(async (err) => {
   }
 
   emit({ type: "error", message: `Unhandled error: ${errorMessage}` });
-  process.exit(1);
+  drainAndExit(1);
 });
