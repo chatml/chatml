@@ -41,7 +41,7 @@ func TestNewProcessWithOptions(t *testing.T) {
 		SettingSources:      "project,user",
 		Betas:               "feature1,feature2",
 		Model:               "claude-opus-4-5-20251101",
-		FallbackModel:       "claude-sonnet-4-20250514",
+		FallbackModel:       "claude-sonnet-4-6",
 	}
 
 	p := NewProcessWithOptions(opts)

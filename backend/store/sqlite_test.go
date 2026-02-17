@@ -1033,7 +1033,7 @@ func TestAddConversation_WithModel(t *testing.T) {
 		Type:      models.ConversationTypeTask,
 		Name:      "Model Test",
 		Status:    models.ConversationStatusActive,
-		Model:     "claude-sonnet-4-20250514",
+		Model:     "claude-sonnet-4-6",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -1042,7 +1042,7 @@ func TestAddConversation_WithModel(t *testing.T) {
 	got, err := s.GetConversation(ctx, "conv-1")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "claude-sonnet-4-20250514", got.Model)
+	assert.Equal(t, "claude-sonnet-4-6", got.Model)
 }
 
 func TestAddConversation_ModelDefaultsToEmpty(t *testing.T) {
@@ -1092,7 +1092,7 @@ func TestListConversations_IncludesModel(t *testing.T) {
 
 	for _, tc := range []struct{ id, model string }{
 		{"c1", "claude-opus-4-5-20251101"},
-		{"c2", "claude-sonnet-4-20250514"},
+		{"c2", "claude-sonnet-4-6"},
 		{"c3", ""},
 	} {
 		conv := &models.Conversation{
@@ -1117,7 +1117,7 @@ func TestListConversations_IncludesModel(t *testing.T) {
 		modelsByID[c.ID] = c.Model
 	}
 	assert.Equal(t, "claude-opus-4-5-20251101", modelsByID["c1"])
-	assert.Equal(t, "claude-sonnet-4-20250514", modelsByID["c2"])
+	assert.Equal(t, "claude-sonnet-4-6", modelsByID["c2"])
 	assert.Equal(t, "", modelsByID["c3"])
 }
 
@@ -1168,13 +1168,13 @@ func TestUpdateConversation_ModelChange(t *testing.T) {
 	require.NoError(t, s.AddConversation(ctx, conv))
 
 	require.NoError(t, s.UpdateConversation(ctx, "conv-1", func(c *models.Conversation) {
-		c.Model = "claude-sonnet-4-20250514"
+		c.Model = "claude-sonnet-4-6"
 	}))
 
 	got, err := s.GetConversation(ctx, "conv-1")
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, "claude-sonnet-4-20250514", got.Model)
+	assert.Equal(t, "claude-sonnet-4-6", got.Model)
 }
 
 // ============================================================================

@@ -31,7 +31,7 @@ node agent-runner/dist/index.js \
   --enable-checkpointing \
   --max-budget-usd 10.0 \
   --max-turns 100 \
-  --model claude-sonnet-4-20250514
+  --model claude-sonnet-4-6
 ```
 
 ### CLI Arguments

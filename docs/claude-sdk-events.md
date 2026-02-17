@@ -211,7 +211,7 @@ interface OutputEvent {
 ```typescript
 {
   type: "init",
-  model: "claude-sonnet-4-20250514",
+  model: "claude-sonnet-4-6",
   tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", ...],
   mcpServers: [
     { name: "chatml", status: "connected", tools: [...] }
@@ -280,7 +280,7 @@ interface OutputEvent {
     cache_creation_input_tokens: 0
   },
   modelUsage: {
-    "claude-sonnet-4-20250514": { ... }
+    "claude-sonnet-4-6": { ... }
   },
   structuredOutput: null,         // If outputFormat specified
   sessionId: "abc123",

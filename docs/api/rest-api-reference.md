@@ -513,7 +513,7 @@ Create a new conversation and optionally send the first message.
 {
   "type": "task",
   "message": "Implement the login form component",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-4-6",
   "toolPreset": "full",
   "enableCheckpointing": true,
   "maxBudgetUsd": 5.0,

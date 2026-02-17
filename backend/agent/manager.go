@@ -116,7 +116,7 @@ type StartConversationOptions struct {
 	Attachments       []models.Attachment // File attachments for the initial message
 	PlanMode          bool                // Start agent in plan mode
 	Instructions      string              // Additional instructions (e.g., from conversation summaries)
-	Model             string              // Model name override (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-20250514")
+	Model             string              // Model name override (e.g., "claude-opus-4-6", "claude-sonnet-4-6")
 }
 
 // StartConversation creates and starts a new conversation within a session

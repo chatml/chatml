@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	defaultModel  = "claude-sonnet-4-20250514"
+	defaultModel  = "claude-sonnet-4-6"
 	haikuModel    = "claude-haiku-4-5-20251001"
 	anthropicURL  = "https://api.anthropic.com/v1/messages"
 	apiVersion    = "2023-06-01"

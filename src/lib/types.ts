@@ -57,7 +57,7 @@ export interface Conversation {
   type: 'task' | 'review' | 'chat';
   name: string; // AI-updatable display name
   status: 'active' | 'idle' | 'completed';
-  model?: string; // Last-used model (e.g., "claude-opus-4-5-20251101", "claude-sonnet-4-20250514")
+  model?: string; // Last-used model (e.g., "claude-opus-4-6", "claude-sonnet-4-6")
   budgetConfig?: { maxBudgetUsd?: number; maxTurns?: number };
   thinkingConfig?: { effort?: string; maxThinkingTokens?: number };
   messages: Message[];

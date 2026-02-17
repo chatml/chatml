@@ -75,7 +75,7 @@ Frontend settings are managed through the `settingsStore` Zustand store and pers
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Model | `claude-sonnet-4-20250514` | Claude model to use |
+| Model | `claude-sonnet-4-6` | Claude model to use |
 | Extended thinking | false | Enable extended thinking |
 | Max thinking tokens | 50000 | Token budget for thinking |
 | Fallback model | — | Model when primary fails |
