@@ -486,43 +486,14 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 
 	outputCh := proc.Output()
 
-	// Activity watchdog: if no output events arrive within this period,
-	// emit a visible warning so the user isn't stuck watching a spinner.
-	const processActivityTimeout = 90 * time.Second
-	activityWatchdog := time.NewTimer(processActivityTimeout)
-	defer activityWatchdog.Stop()
-	watchdogFired := false
-
 outer:
 	for {
 		select {
-		case <-activityWatchdog.C:
-			if !watchdogFired {
-				watchdogFired = true
-				logger.Manager.Warnf("Conversation %s: no agent output for %v — process may be hung", convID, processActivityTimeout)
-				if m.onConversationEvent != nil {
-					m.onConversationEvent(convID, &AgentEvent{
-						Type:    EventTypeError,
-						Message: "The agent has not responded for over 90 seconds. It may be stuck. Try sending another message or restarting the session.",
-					})
-				}
-			}
-
 		case line, ok := <-outputCh:
 			if !ok {
 				// Channel closed - process ended
 				break outer
 			}
-
-			// Reset watchdog on any activity
-			if !activityWatchdog.Stop() {
-				select {
-				case <-activityWatchdog.C:
-				default:
-				}
-			}
-			activityWatchdog.Reset(processActivityTimeout)
-			watchdogFired = false
 
 			event := ParseAgentLine(line)
 			if event == nil {
@@ -747,15 +718,11 @@ outer:
 				}
 
 			case EventTypeUserQuestionRequest:
-				// Agent is waiting for user input — pause the watchdog so it
-				// doesn't fire while the user is answering.
-				activityWatchdog.Stop()
+				// No-op: handled by frontend
 
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
 				pendingPlanTimestamp = time.Now()
-				// Agent is waiting for plan approval — pause the watchdog.
-				activityWatchdog.Stop()
 
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
@@ -777,11 +744,6 @@ outer:
 				}
 
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
-				// Turn or session completed — stop the watchdog. For turn_complete
-				// the process stays alive idle; for complete/result it exits shortly.
-				// Either way, silence is expected and not a hang signal.
-				activityWatchdog.Stop()
-
 				// Store accumulated message and reset streaming state.
 				if currentAssistantMessage != "" {
 					// Seal final text segment
