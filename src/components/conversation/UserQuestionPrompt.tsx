@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { usePendingUserQuestion, useUserQuestionActions } from '@/stores/selectors';
+import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { X, ChevronLeft, ChevronRight, ArrowUp, Check, Loader2 } from 'lucide-react';
@@ -37,19 +38,20 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
     if (!currentQuestion) return;
 
     if (currentQuestion.multiSelect) {
-      // Toggle in set
-      const newSet = new Set(selectedValues);
-      if (newSet.has(label)) {
-        newSet.delete(label);
+      // Read current answer directly from store to avoid stale closure
+      const currentAnswer = useAppStore.getState().pendingUserQuestion[conversationId]?.answers[currentQuestion.header] || '';
+      const currentSet = new Set(currentAnswer.split(',').filter(Boolean));
+      if (currentSet.has(label)) {
+        currentSet.delete(label);
       } else {
-        newSet.add(label);
+        currentSet.add(label);
       }
-      updateUserQuestionAnswer(conversationId, currentQuestion.header, [...newSet].join(','));
+      updateUserQuestionAnswer(conversationId, currentQuestion.header, [...currentSet].join(','));
     } else {
       // Single select - replace
       updateUserQuestionAnswer(conversationId, currentQuestion.header, label);
     }
-  }, [conversationId, currentQuestion, selectedValues, updateUserQuestionAnswer]);
+  }, [conversationId, currentQuestion, updateUserQuestionAnswer]);
 
   const handleDismiss = useCallback(async () => {
     if (!pending || isSubmitting) return;
@@ -122,8 +124,8 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
           </Button>
         </div>
 
-        {/* Options List or Free-text Input */}
-        <div className="px-2 pb-2">
+        {/* Options List or Free-text Input — key forces remount when question changes */}
+        <div key={currentQuestion.header} className="px-2 pb-2">
           {currentQuestion.options.length > 0 ? (
             currentQuestion.options.map((option, index) => {
               const isSelected = selectedValues.has(option.label);

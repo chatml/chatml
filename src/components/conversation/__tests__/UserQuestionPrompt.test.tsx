@@ -392,6 +392,30 @@ describe('UserQuestionPrompt', () => {
       expect(screen.getByTestId('submit-question')).not.toBeDisabled();
     });
 
+    it('allows clicking options after navigating to a different question', async () => {
+      const user = userEvent.setup();
+      setPending(makeMultiPending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      // Answer Q1
+      await user.click(screen.getByText('React'));
+
+      // Navigate to Q2 via store
+      act(() => {
+        useAppStore.getState().nextUserQuestion(CONV_ID);
+      });
+
+      // Q2 options should now be visible and clickable
+      expect(screen.getByText('Pick a database')).toBeInTheDocument();
+      await user.click(screen.getByText('PostgreSQL'));
+
+      const state = useAppStore.getState();
+      const pending = state.pendingUserQuestion[CONV_ID];
+      expect(pending?.answers['Database']).toBe('PostgreSQL');
+      // Q1 answer should still be preserved
+      expect(pending?.answers['Framework']).toBe('React');
+    });
+
     it('sends all answers in a single submit call', async () => {
       const user = userEvent.setup();
       setPending(makeMultiPending());
