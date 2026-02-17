@@ -901,6 +901,8 @@ const completedToolNames = new Map<string, string>();
 const sessionToAgentId = new Map<string, string>();
 // Track which agentIds are teammates (vs regular subagents)
 const teammateAgentIds = new Set<string>();
+// Track active team name — when set, new subagents are treated as teammates
+let activeTeamName: string | null = null;
 // Track sub-agent active tools (keyed by toolUseId)
 const subagentActiveTools = new Map<string, { agentId: string; tool: string; startTime: number }>();
 // Track Task tool descriptions by tool_use_id for sub-agent description plumbing (Issue 3)
@@ -1028,6 +1030,28 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     response: responseSummary,
     sessionId: hookInput.session_id,
   });
+
+  // Track team creation — when TeamCreate succeeds, all subsequent subagents are teammates
+  if (hookInput.tool_name === "TeamCreate") {
+    try {
+      const response = typeof hookInput.tool_response === "string"
+        ? JSON.parse(hookInput.tool_response)
+        : hookInput.tool_response;
+      if (response?.team_name) {
+        activeTeamName = response.team_name;
+        console.error(`[DEBUG] TeamCreate completed: team_name=${activeTeamName}`);
+      }
+    } catch {
+      // If we can't parse the response, check if it contains a team_name
+      console.error(`[DEBUG] TeamCreate completed but couldn't parse response: ${typeof hookInput.tool_response === "string" ? hookInput.tool_response.slice(0, 200) : "non-string"}`);
+    }
+  }
+
+  // Track team deletion
+  if (hookInput.tool_name === "TeamDelete") {
+    console.error(`[DEBUG] TeamDelete completed: clearing activeTeamName`);
+    activeTeamName = null;
+  }
 
   // When ExitPlanMode completes, the SDK internally changes the permission mode
   // from "plan" to the pre-plan mode. Explicitly restore the mode and emit
@@ -1168,11 +1192,16 @@ const preCompactHook: HookCallback = async (input) => {
 
 const subagentStartHook: HookCallback = async (input) => {
   const hookInput = input as SubagentStartHookInput;
+  // DEBUG: Log the actual hook input to see what agent_type the SDK sends
+  console.error(`[DEBUG] SubagentStart hook fired: agent_id=${hookInput.agent_id}, agent_type=${hookInput.agent_type}, session_id=${hookInput.session_id}, all_keys=${Object.keys(hookInput).join(',')}`);
   // Register session → agentId mapping for correlating sub-agent tool events
   sessionToAgentId.set(hookInput.session_id, hookInput.agent_id);
 
-  // Detect teammate agents
-  const isTeammate = hookInput.agent_type === "teammate" ||
+  // Detect teammate agents: when a team is active (TeamCreate was called),
+  // all new subagents are teammates. The SDK sends custom agent names
+  // (e.g., "readme-reader") as agent_type, not the literal "teammate".
+  const isTeammate = activeTeamName !== null ||
+                     hookInput.agent_type === "teammate" ||
                      hookInput.agent_type === "team_member";
 
   if (isTeammate) {
@@ -1190,10 +1219,15 @@ const subagentStartHook: HookCallback = async (input) => {
   }
 
   // Look up the Task tool description for this sub-agent (Issue 3)
-  const description = parentToolUseId ? taskToolDescriptions.get(parentToolUseId) : undefined;
+  // For teammates, use the agent_type (custom name like "readme-reader") as the description
+  // since they're spawned via SendMessage, not Task, so taskToolDescriptions won't have an entry.
+  const taskDescription = parentToolUseId ? taskToolDescriptions.get(parentToolUseId) : undefined;
+  const description = isTeammate ? (hookInput.agent_type || taskDescription) : taskDescription;
 
+  const emitType = isTeammate ? "teammate_started" : "subagent_started";
+  console.error(`[DEBUG] SubagentStart emitting: type=${emitType}, isTeammate=${isTeammate}, agentType=${hookInput.agent_type}, description=${description}`);
   emit({
-    type: isTeammate ? "teammate_started" : "subagent_started",
+    type: emitType,
     agentId: hookInput.agent_id,
     agentType: hookInput.agent_type,
     sessionId: hookInput.session_id,
