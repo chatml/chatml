@@ -4321,9 +4321,13 @@ func (h *Handlers) GetSessionPRStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if GitHub client is available
+	// Check if GitHub client is available and authenticated
 	if h.ghClient == nil {
 		writeInternalError(w, "GitHub client not configured", nil)
+		return
+	}
+	if !h.ghClient.IsAuthenticated() {
+		writeUnauthorized(w, "GitHub authentication required to fetch PR details")
 		return
 	}
 
