@@ -327,10 +327,16 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Check if currently streaming
   const isStreaming = streaming?.isStreaming ?? false;
 
+  // Check if there's a pending plan approval request
+  const pendingPlanApproval = streaming?.pendingPlanApproval ?? null;
+
   // Derive compose button mode from streaming + text + queue state
   const hasText = message.trim().length > 0;
   const buttonMode: 'send' | 'stop' | 'queue' | 'queue-disabled' | 'send-disabled' = (() => {
     if (!isStreaming) return hasText ? 'send' : 'send-disabled';
+    // When plan approval is pending, show "send" instead of "queue" —
+    // the message will deny the plan and be treated as a new turn, not queued.
+    if (pendingPlanApproval) return hasText ? 'send' : 'stop';
     if (hasQueuedMessage) return hasText ? 'queue-disabled' : 'stop';
     return hasText ? 'queue' : 'stop';
   })();
@@ -356,9 +362,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     && !!inputSuggestion?.ghostText
     && conversationHasMessages
     && !isSuggestionStale;
-
-  // Check if there's a pending plan approval request
-  const pendingPlanApproval = streaming?.pendingPlanApproval ?? null;
 
   // Sync toggle ON when agent enters plan mode (e.g. EnterPlanMode tool).
   // Only syncs activation — deactivation is handled by handleApprovePlan.
@@ -882,7 +885,29 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const messageTimestamp = new Date().toISOString();
         const messageAttachments = currentAttachments.length > 0 ? currentAttachments : undefined;
 
-        if (isStreaming) {
+        if (pendingPlanApproval && selectedConversationId) {
+          // User typed feedback while plan approval is pending — deny the plan first,
+          // then send the message. The deny MUST complete before the message send to
+          // guarantee stdin ordering in the agent-runner.
+          try {
+            await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
+          } catch (err) {
+            console.error('Failed to deny plan during message submit:', err);
+          }
+          clearPendingPlanApproval(selectedConversationId);
+          setApprovalError(null);
+
+          // Add message directly (not queued) — after the denial resolves the hook,
+          // the agent finishes its turn and picks up this message as the next turn.
+          addMessage({
+            id: messageId,
+            conversationId: selectedConversationId,
+            role: 'user',
+            content: trimmedContent,
+            attachments: messageAttachments,
+            timestamp: messageTimestamp,
+          });
+        } else if (isStreaming) {
           // Queue the message — don't add to messages[] yet (it renders in the footer)
           setQueuedMessage(selectedConversationId, {
             id: messageId,
