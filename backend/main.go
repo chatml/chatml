@@ -464,6 +464,69 @@ func main() {
 
 	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
 
+	// Pre-warm session stats cache in background so the first getDashboardData
+	// returns stats from cache instead of computing them on-the-fly.
+	go func() {
+		repos, err := s.ListRepos(ctx)
+		if err != nil {
+			logger.Main.Warnf("Stats pre-warm: failed to list repos: %v", err)
+			return
+		}
+		for _, repo := range repos {
+			sessions, err := s.ListSessions(ctx, repo.ID, false)
+			if err != nil {
+				continue
+			}
+			for _, sess := range sessions {
+				if sess.WorktreePath == "" || sess.Archived {
+					continue
+				}
+				// Skip if already cached (e.g. branch watcher beat us)
+				if _, ok := statsCache.Get(sess.ID); ok {
+					continue
+				}
+				effectiveTarget := sess.TargetBranch
+				if effectiveTarget == "" {
+					remote := "origin"
+					branch := "main"
+					if repo.Remote != "" {
+						remote = repo.Remote
+					}
+					if repo.Branch != "" {
+						branch = repo.Branch
+					}
+					effectiveTarget = remote + "/" + branch
+				}
+				baseRef, mbErr := repoManager.GetMergeBase(ctx, sess.WorktreePath, effectiveTarget, "HEAD")
+				if mbErr != nil || baseRef == "" {
+					baseRef = sess.BaseCommitSHA
+					if baseRef == "" {
+						baseRef = effectiveTarget
+					}
+				}
+				changes, err := repoManager.GetChangedFilesWithStats(ctx, sess.WorktreePath, baseRef)
+				if err != nil {
+					continue
+				}
+				untracked, _ := repoManager.GetUntrackedFiles(ctx, sess.WorktreePath)
+				var additions, deletions int
+				for _, c := range changes {
+					additions += c.Additions
+					deletions += c.Deletions
+				}
+				for _, u := range untracked {
+					additions += u.Additions
+				}
+				var stats *models.SessionStats
+				if additions > 0 || deletions > 0 {
+					stats = &models.SessionStats{Additions: additions, Deletions: deletions}
+				}
+				statsCache.Set(sess.ID, stats)
+			}
+		}
+		logger.Main.Info("Stats cache pre-warm complete")
+	}()
+
 	// Create HTTP server with graceful shutdown support
 	srv := &http.Server{
 		Handler:     router,
