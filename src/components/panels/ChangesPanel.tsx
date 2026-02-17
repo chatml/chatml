@@ -69,6 +69,7 @@ import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { FileTab } from '@/lib/types';
+import { useShortcuts } from '@/hooks/useShortcut';
 
 // Common binary file extensions
 const BINARY_EXTENSIONS = new Set([
@@ -509,6 +510,15 @@ export function ChangesPanel() {
     showResolved,
     onToggleShowResolved: () => setShowResolved((prev) => !prev),
   }), [fetchChanges, fetchBranchCommits, handleResolveAll, prUrl, unresolvedCount, showResolved]);
+
+  // Keyboard shortcuts for switching sidebar tabs
+  const tabShortcuts = useMemo(() => ({
+    sidebarFilesTab: () => setSelectedTab('files'),
+    sidebarChangesTab: () => setSelectedTab('changes'),
+    sidebarChecksTab: () => setSelectedTab('checks'),
+    sidebarReviewTab: () => setSelectedTab('review'),
+  }), []);
+  useShortcuts(tabShortcuts);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
