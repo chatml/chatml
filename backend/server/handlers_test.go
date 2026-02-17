@@ -2249,8 +2249,8 @@ func TestCreateConversation_RequestParsing_WithModel(t *testing.T) {
 	}{
 		{
 			name:     "model specified",
-			body:     `{"type": "task", "message": "hello", "model": "claude-sonnet-4-20250514"}`,
-			expected: "claude-sonnet-4-20250514",
+			body:     `{"type": "task", "message": "hello", "model": "claude-sonnet-4-6"}`,
+			expected: "claude-sonnet-4-6",
 		},
 		{
 			name:     "model omitted defaults to empty",
@@ -2292,8 +2292,8 @@ func TestSendConversationMessage_RequestParsing_WithModel(t *testing.T) {
 		},
 		{
 			name:     "model with attachments",
-			body:     `{"content": "check this", "model": "claude-sonnet-4-20250514", "attachments": []}`,
-			expected: "claude-sonnet-4-20250514",
+			body:     `{"content": "check this", "model": "claude-sonnet-4-6", "attachments": []}`,
+			expected: "claude-sonnet-4-6",
 		},
 	}
 
@@ -2354,7 +2354,7 @@ func TestListConversations_IncludesModel(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct{ id, model string }{
 		{"c1", "claude-opus-4-5-20251101"},
-		{"c2", "claude-sonnet-4-20250514"},
+		{"c2", "claude-sonnet-4-6"},
 	} {
 		conv := &models.Conversation{
 			ID: tc.id, SessionID: "sess-1", Type: "task",
@@ -2382,7 +2382,7 @@ func TestListConversations_IncludesModel(t *testing.T) {
 		modelsByID[c.ID] = c.Model
 	}
 	assert.Equal(t, "claude-opus-4-5-20251101", modelsByID["c1"])
-	assert.Equal(t, "claude-sonnet-4-20250514", modelsByID["c2"])
+	assert.Equal(t, "claude-sonnet-4-6", modelsByID["c2"])
 }
 
 // ============================================================================

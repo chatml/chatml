@@ -233,7 +233,7 @@ If custom MCP servers aren't working:
 If API calls are failing:
 
 1. Check the API key is valid: Settings > Account > Anthropic API Key
-2. Verify the model name is correct: `claude-sonnet-4-20250514`, `claude-opus-4-5-20251101`, etc.
+2. Verify the model name is correct: `claude-sonnet-4-6`, `claude-opus-4-6`, etc.
 3. Check for rate limiting from the Claude API (different from ChatML's internal rate limits)
 4. Look for `error` events in the WebSocket stream with API-specific error codes
 

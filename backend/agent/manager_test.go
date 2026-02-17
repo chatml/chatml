@@ -1316,7 +1316,7 @@ func TestManager_IsConversationInPlanMode_PlanInactive(t *testing.T) {
 
 func TestManager_SetConversationModel_NoProcess(t *testing.T) {
 	m, _ := setupTestManager(t)
-	err := m.SetConversationModel("nonexistent", "claude-sonnet-4-5-20250929")
+	err := m.SetConversationModel("nonexistent", "claude-sonnet-4-6")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no active process")
 }

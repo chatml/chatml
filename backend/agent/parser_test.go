@@ -905,11 +905,11 @@ func TestParseAgentLine_ThinkingDelta(t *testing.T) {
 }
 
 func TestParseAgentLine_ModelChanged(t *testing.T) {
-	line := `{"type":"model_changed","model":"claude-sonnet-4-5-20250929"}`
+	line := `{"type":"model_changed","model":"claude-sonnet-4-6"}`
 	event := ParseAgentLine(line)
 	require.NotNil(t, event)
 	assert.Equal(t, EventTypeModelChanged, event.Type)
-	assert.Equal(t, "claude-sonnet-4-5-20250929", event.Model)
+	assert.Equal(t, "claude-sonnet-4-6", event.Model)
 }
 
 func TestParseAgentLine_HookResponse(t *testing.T) {

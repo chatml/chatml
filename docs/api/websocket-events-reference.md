@@ -145,7 +145,7 @@ Agent SDK initialized with model and capability information.
   conversationId: string;
   payload: {
     type: "init";
-    model: string;              // e.g., "claude-sonnet-4-20250514"
+    model: string;              // e.g., "claude-sonnet-4-6"
     tools: string[];            // Available tool names
     system: string;             // System prompt (truncated)
     permissionMode: string;     // "default" | "plan" | "bypassPermissions" | etc.
