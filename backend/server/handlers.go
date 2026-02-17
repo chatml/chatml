@@ -706,6 +706,58 @@ func (h *Handlers) computeSessionStats(ctx context.Context, session *models.Sess
 	return &models.SessionStats{Additions: additions, Deletions: deletions}
 }
 
+// uncachedSession pairs a session with its workspace for background stats computation.
+type uncachedSession struct {
+	session   *models.Session
+	workspace *models.Repo
+}
+
+// computeAndBroadcastStats computes stats for sessions not in cache and pushes
+// results via WebSocket. Runs as a background goroutine so getDashboardData
+// returns immediately.
+func (h *Handlers) computeAndBroadcastStats(sessions []uncachedSession) {
+	sem := make(chan struct{}, 10)
+	var wg sync.WaitGroup
+	ctx := context.Background()
+
+	for _, us := range sessions {
+		wg.Add(1)
+		go func(s *models.Session, ws *models.Repo) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			effectiveTarget := s.TargetBranch
+			if effectiveTarget == "" {
+				remote := "origin"
+				branch := "main"
+				if ws != nil {
+					if ws.Remote != "" {
+						remote = ws.Remote
+					}
+					if ws.Branch != "" {
+						branch = ws.Branch
+					}
+				}
+				effectiveTarget = remote + "/" + branch
+			}
+
+			stats := h.computeSessionStats(ctx, s, effectiveTarget)
+			h.statsCache.Set(s.ID, stats)
+
+			h.hub.Broadcast(Event{
+				Type:      "session_stats_update",
+				SessionID: s.ID,
+				Payload: map[string]interface{}{
+					"sessionId": s.ID,
+					"stats":     stats,
+				},
+			})
+		}(us.session, us.workspace)
+	}
+	wg.Wait()
+}
+
 // validatePath ensures the requested path stays within the base directory
 // Returns the cleaned path if valid, or an error if the path escapes the base
 func validatePath(basePath, requestedPath string) (string, error) {
@@ -883,57 +935,30 @@ func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
 		workspaceByID[repo.ID] = repo
 	}
 
-	// Compute stats in parallel (bounded to 5 concurrent)
-	// Only compute stats if cache is available
-	if h.statsCache != nil {
-		sem := make(chan struct{}, 5)
-		var wg sync.WaitGroup
-		var mu sync.Mutex
+	// Serve cached stats immediately; compute uncached ones in background.
+	// This prevents cold-start blocking where getDashboardData would stall
+	// while computing git stats for every session.
+	var uncached []uncachedSession
 
+	if h.statsCache != nil {
 		for _, session := range allSessions {
-			// Skip stats for archived sessions (no need to compute git diffs)
 			if session.Archived {
 				continue
 			}
-			// Check cache first
 			if cached, ok := h.statsCache.Get(session.ID); ok {
 				session.Stats = cached
-				continue
+			} else {
+				uncached = append(uncached, uncachedSession{
+					session:   session,
+					workspace: workspaceByID[session.WorkspaceID],
+				})
 			}
-
-			wg.Add(1)
-			go func(s *models.Session) {
-				defer wg.Done()
-				sem <- struct{}{}        // Acquire
-				defer func() { <-sem }() // Release
-
-				workspace := workspaceByID[s.WorkspaceID]
-				// Compute effective target branch, matching EffectiveTargetBranch() logic
-				effectiveTarget := s.TargetBranch
-				if effectiveTarget == "" {
-					remote := "origin"
-					branch := "main"
-					if workspace != nil {
-						if workspace.Remote != "" {
-							remote = workspace.Remote
-						}
-						if workspace.Branch != "" {
-							branch = workspace.Branch
-						}
-					}
-					effectiveTarget = remote + "/" + branch
-				}
-
-				stats := h.computeSessionStats(ctx, s, effectiveTarget)
-
-				mu.Lock()
-				s.Stats = stats
-				mu.Unlock()
-
-				h.statsCache.Set(s.ID, stats)
-			}(session)
 		}
-		wg.Wait()
+	}
+
+	// Fire-and-forget: compute uncached stats in background and push via WebSocket
+	if len(uncached) > 0 && h.hub != nil {
+		go h.computeAndBroadcastStats(uncached)
 	}
 
 	// Get all session IDs for batch conversation fetch

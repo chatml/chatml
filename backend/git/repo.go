@@ -181,7 +181,45 @@ func (rm *RepoManager) GetChangedFilesWithStats(ctx context.Context, repoPath, b
 	if err := ValidateGitRef(baseRef); err != nil {
 		return nil, fmt.Errorf("invalid base ref: %w", err)
 	}
-	// First get the diff stats
+
+	// Get file statuses (A/M/D/R) in a single git command instead of per-file ls-tree
+	statusCmd, statusCancel := gitCmdWithContext(ctx, repoPath, "diff", "--name-status", baseRef)
+	statusOut, err := statusCmd.Output()
+	statusCancel()
+	if err != nil {
+		return nil, err
+	}
+	fileStatus := make(map[string]string)
+	for _, line := range strings.Split(strings.TrimSpace(string(statusOut)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		code := parts[0]
+		path := parts[1]
+		// Handle renames (R100\told\tnew) — use the new path
+		if strings.HasPrefix(code, "R") {
+			renameParts := strings.SplitN(path, "\t", 2)
+			if len(renameParts) == 2 {
+				path = renameParts[1]
+			}
+		}
+		switch {
+		case code == "A":
+			fileStatus[path] = "added"
+		case code == "D":
+			fileStatus[path] = "deleted"
+		case strings.HasPrefix(code, "R"):
+			fileStatus[path] = "added"
+		default:
+			fileStatus[path] = "modified"
+		}
+	}
+
+	// Get diff stats (additions/deletions per file)
 	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", "--numstat", baseRef)
 	defer cancel()
 	out, err := cmd.Output()
@@ -213,20 +251,9 @@ func (rm *RepoManager) GetChangedFilesWithStats(ctx context.Context, repoPath, b
 		// Reconstruct file path (may contain spaces)
 		filePath := strings.Join(parts[2:], " ")
 
-		status := "modified"
-		if additions > 0 && deletions == 0 {
-			// Check if it's a new file
-			checkCmd, checkCancel := gitCmdWithContext(ctx, repoPath, "ls-tree", baseRef, "--", filePath)
-			checkOut, _ := checkCmd.Output()
-			checkCancel()
-			if len(checkOut) == 0 {
-				status = "added"
-			}
-		} else if deletions > 0 && additions == 0 {
-			// Check if file still exists
-			if _, err := os.Stat(filepath.Join(repoPath, filePath)); os.IsNotExist(err) {
-				status = "deleted"
-			}
+		status := fileStatus[filePath]
+		if status == "" {
+			status = "modified"
 		}
 
 		changes = append(changes, FileChange{
