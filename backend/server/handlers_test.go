@@ -1888,10 +1888,10 @@ func TestGetSessionBranchCommits_NoCommitsAhead(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var commits []git.BranchCommit
-	err := json.Unmarshal(w.Body.Bytes(), &commits)
+	var resp BranchChangesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Empty(t, commits)
+	assert.Empty(t, resp.Commits)
 }
 
 func TestGetSessionBranchCommits_WithCommits(t *testing.T) {
@@ -1910,20 +1910,26 @@ func TestGetSessionBranchCommits_WithCommits(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var commits []git.BranchCommit
-	err := json.Unmarshal(w.Body.Bytes(), &commits)
+	var resp BranchChangesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	require.Len(t, commits, 2)
+	require.Len(t, resp.Commits, 2)
 
 	// Newest first
-	assert.Equal(t, "Add tests", commits[0].Message)
-	assert.Equal(t, "Add feature", commits[1].Message)
+	assert.Equal(t, "Add tests", resp.Commits[0].Message)
+	assert.Equal(t, "Add feature", resp.Commits[1].Message)
 
 	// Each commit should have files
-	require.Len(t, commits[0].Files, 1)
-	assert.Equal(t, "test.go", commits[0].Files[0].Path)
-	require.Len(t, commits[1].Files, 1)
-	assert.Equal(t, "feature.go", commits[1].Files[0].Path)
+	require.Len(t, resp.Commits[0].Files, 1)
+	assert.Equal(t, "test.go", resp.Commits[0].Files[0].Path)
+	require.Len(t, resp.Commits[1].Files, 1)
+	assert.Equal(t, "feature.go", resp.Commits[1].Files[0].Path)
+
+	// Branch stats should reflect total changes
+	require.NotNil(t, resp.BranchStats)
+	assert.Equal(t, 2, resp.BranchStats.TotalFiles)
+	assert.Equal(t, 2, resp.BranchStats.TotalAdditions) // 1 line each
+	assert.Equal(t, 0, resp.BranchStats.TotalDeletions)
 }
 
 func TestGetSessionBranchCommits_SessionNotFound(t *testing.T) {
@@ -1970,13 +1976,13 @@ func TestGetSessionBranchCommits_ReturnsEmptyArrayOnError(t *testing.T) {
 
 	h.GetSessionBranchCommits(w, req)
 
-	// Should still return 200 with empty array (graceful degradation)
+	// Should still return 200 with empty commits (graceful degradation)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var commits []git.BranchCommit
-	err := json.Unmarshal(w.Body.Bytes(), &commits)
+	var resp BranchChangesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.Empty(t, commits)
+	assert.Empty(t, resp.Commits)
 }
 
 func TestGetSessionBranchCommits_CommitFilesHaveStats(t *testing.T) {
@@ -1996,15 +2002,21 @@ func TestGetSessionBranchCommits_CommitFilesHaveStats(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var commits []git.BranchCommit
-	err := json.Unmarshal(w.Body.Bytes(), &commits)
+	var resp BranchChangesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	require.Len(t, commits, 1)
-	require.Len(t, commits[0].Files, 1)
+	require.Len(t, resp.Commits, 1)
+	require.Len(t, resp.Commits[0].Files, 1)
 
-	assert.Equal(t, "stats.txt", commits[0].Files[0].Path)
-	assert.Equal(t, 3, commits[0].Files[0].Additions)
-	assert.Equal(t, 0, commits[0].Files[0].Deletions)
+	assert.Equal(t, "stats.txt", resp.Commits[0].Files[0].Path)
+	assert.Equal(t, 3, resp.Commits[0].Files[0].Additions)
+	assert.Equal(t, 0, resp.Commits[0].Files[0].Deletions)
+
+	// Branch stats should match the commit
+	require.NotNil(t, resp.BranchStats)
+	assert.Equal(t, 1, resp.BranchStats.TotalFiles)
+	assert.Equal(t, 3, resp.BranchStats.TotalAdditions)
+	assert.Equal(t, 0, resp.BranchStats.TotalDeletions)
 }
 
 // ============================================================================

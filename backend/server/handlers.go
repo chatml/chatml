@@ -2266,13 +2266,14 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status)
 }
 
-// GetSessionChanges returns the list of changed files in a session's worktree
+// GetSessionChanges returns the list of truly uncommitted files in a session's worktree.
+// It diffs against HEAD (not the base branch), so only staged/unstaged/untracked changes appear.
 func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
 
 	// Use single JOIN query to get session + workspace data
-	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
+	session, workingPath, _, err := h.getSessionAndWorkspace(ctx, sessionID)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -2282,8 +2283,8 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get changed files in the session's worktree compared to base ref
-	changes, err := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
+	// Get changed files in the working tree compared to HEAD (truly uncommitted only)
+	changes, err := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, "HEAD")
 	if err != nil {
 		// If there's no diff (e.g., new worktree with no changes), return empty list
 		changes = []git.FileChange{}
@@ -2305,7 +2306,21 @@ func (h *Handlers) GetSessionChanges(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, allChanges)
 }
 
-// GetSessionBranchCommits returns commits on the session's branch that are ahead of the base ref.
+// BranchStats holds total diff statistics for an entire branch vs its base.
+type BranchStats struct {
+	TotalFiles     int `json:"totalFiles"`
+	TotalAdditions int `json:"totalAdditions"`
+	TotalDeletions int `json:"totalDeletions"`
+}
+
+// BranchChangesResponse wraps commits and overall branch stats.
+type BranchChangesResponse struct {
+	Commits     []git.BranchCommit `json:"commits"`
+	BranchStats *BranchStats       `json:"branchStats,omitempty"`
+}
+
+// GetSessionBranchCommits returns commits on the session's branch that are ahead of the base ref,
+// along with total branch diff statistics.
 func (h *Handlers) GetSessionBranchCommits(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")
@@ -2326,7 +2341,22 @@ func (h *Handlers) GetSessionBranchCommits(w http.ResponseWriter, r *http.Reques
 		commits = []git.BranchCommit{}
 	}
 
-	writeJSON(w, commits)
+	// Compute total branch stats (all changes vs base, including working dir)
+	var branchStats *BranchStats
+	allChanges, statsErr := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
+	if statsErr == nil && len(allChanges) > 0 {
+		bs := BranchStats{TotalFiles: len(allChanges)}
+		for _, c := range allChanges {
+			bs.TotalAdditions += c.Additions
+			bs.TotalDeletions += c.Deletions
+		}
+		branchStats = &bs
+	}
+
+	writeJSON(w, BranchChangesResponse{
+		Commits:     commits,
+		BranchStats: branchStats,
+	})
 }
 
 // GetSessionFileDiff returns the diff for a specific file in a session's worktree

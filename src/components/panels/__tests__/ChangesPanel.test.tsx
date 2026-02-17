@@ -60,12 +60,12 @@ describe('formatCommitTime', () => {
 describe('CollapsibleSection', () => {
   it('renders title and count', () => {
     render(
-      <CollapsibleSection title="Uncommitted Changes" count={5} open={true} onToggle={() => {}}>
+      <CollapsibleSection title="Working Changes" count={5} open={true} onToggle={() => {}}>
         <div>child content</div>
       </CollapsibleSection>
     );
 
-    expect(screen.getByText('Uncommitted Changes')).toBeInTheDocument();
+    expect(screen.getByText('Working Changes')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 

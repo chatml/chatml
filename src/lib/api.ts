@@ -580,9 +580,20 @@ export interface BranchCommitDTO {
   files: FileChangeDTO[];
 }
 
-export async function getSessionBranchCommits(workspaceId: string, sessionId: string): Promise<BranchCommitDTO[]> {
+export interface BranchStatsDTO {
+  totalFiles: number;
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
+export interface BranchChangesResponseDTO {
+  commits: BranchCommitDTO[];
+  branchStats?: BranchStatsDTO;
+}
+
+export async function getSessionBranchCommits(workspaceId: string, sessionId: string): Promise<BranchChangesResponseDTO> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/branch-commits`);
-  return handleResponse<BranchCommitDTO[]>(res);
+  return handleResponse<BranchChangesResponseDTO>(res);
 }
 
 // Git status types matching backend response
