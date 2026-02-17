@@ -1110,11 +1110,12 @@ export async function sendTeammateMessage(
   content: string,
   attachments?: Attachment[]
 ): Promise<void> {
-  await fetchWithAuth(`${getApiBase()}/api/conversations/${conversationId}/teammate-message`, {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${conversationId}/teammate-message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, attachments: attachments || [] }),
   });
+  await handleVoidResponse(res, 'Failed to send teammate message');
 }
 
 export async function getTeammateConversations(

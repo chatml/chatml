@@ -800,6 +800,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         setAttachments([]);
         onMessageSubmit?.();
         window.dispatchEvent(new CustomEvent('chat-message-submitted'));
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Failed to send teammate message');
       } finally {
         setIsSending(false);
       }

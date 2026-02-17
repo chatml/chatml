@@ -20,6 +20,7 @@ function TeammateStatusCard({ conversation }: { conversation: Conversation }) {
     <div
       className="border rounded-lg p-3 hover:bg-surface-2 cursor-pointer transition-colors"
       onClick={() => selectConversation(conversation.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectConversation(conversation.id); } }}
       role="button"
       tabIndex={0}
     >

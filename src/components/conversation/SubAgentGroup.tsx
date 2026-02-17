@@ -429,6 +429,7 @@ const TeammateCard = memo(function TeammateCard({ agent }: { agent: SubAgent }) 
         agent.completed && 'border-border/50',
       )}
       onClick={handleNavigate}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNavigate(e as unknown as React.MouseEvent); } }}
       role="button"
       tabIndex={0}
     >
