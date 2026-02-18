@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchCommitDTO, type BranchStatsDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
@@ -56,7 +56,6 @@ import {
   Loader2,
   MessageSquare,
   ChevronRight,
-  GitCommitHorizontal,
   RefreshCw,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -124,11 +123,9 @@ export function ChangesPanel() {
   const [filesError, setFilesError] = useState<string | null>(null);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
   const [changesLoading, setChangesLoading] = useState(false);
-  const [branchCommits, setBranchCommits] = useState<BranchCommitDTO[]>([]);
+  const [allChanges, setAllChanges] = useState<FileChangeDTO[]>([]);
   const [branchStats, setBranchStats] = useState<BranchStatsDTO | null>(null);
-  const [uncommittedOpen, setUncommittedOpen] = useState(true);
-  const [commitsOpen, setCommitsOpen] = useState(true);
-  const [expandedCommits, setExpandedCommits] = useState<Set<string>>(new Set());
+  const [changesView, setChangesView] = useState<'all' | 'uncommitted'>('all');
   const [containerWidth, setContainerWidth] = useState(400);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
@@ -149,13 +146,13 @@ export function ChangesPanel() {
     }
   }, [selectedWorkspaceId, selectedSessionId]);
 
-  // Fetch branch commits and overall branch stats
-  const fetchBranchCommits = useCallback(async () => {
+  // Fetch branch-level data (all changes + stats)
+  const fetchBranchData = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
     try {
       const data = await getSessionBranchCommits(selectedWorkspaceId, selectedSessionId);
-      setBranchCommits(data?.commits || []);
       setBranchStats(data?.branchStats || null);
+      setAllChanges(data?.allChanges || []);
 
       // Update session stats from branch-level totals (used by session list sidebar)
       if (data?.branchStats) {
@@ -171,22 +168,9 @@ export function ChangesPanel() {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch branch commits:', error);
+      console.error('Failed to fetch branch data:', error);
     }
   }, [selectedWorkspaceId, selectedSessionId, updateSession]);
-
-  // Toggle a commit's expanded state
-  const toggleCommitExpanded = useCallback((sha: string) => {
-    setExpandedCommits((prev) => {
-      const next = new Set(prev);
-      if (next.has(sha)) {
-        next.delete(sha);
-      } else {
-        next.add(sha);
-      }
-      return next;
-    });
-  }, []);
 
   // Debounced refetch for file change events
   const debouncedFetchChanges = useCallback(() => {
@@ -195,9 +179,9 @@ export function ChangesPanel() {
     }
     debounceTimeoutRef.current = setTimeout(() => {
       fetchChanges();
-      fetchBranchCommits();
+      fetchBranchData();
     }, 500); // 500ms debounce for rapid file changes
-  }, [fetchChanges, fetchBranchCommits]);
+  }, [fetchChanges, fetchBranchData]);
 
   // Track container width for dynamic truncation
   useEffect(() => {
@@ -518,8 +502,8 @@ export function ChangesPanel() {
           .then(([changesData, commitsData]) => {
             if (!cancelled) {
               setChanges(changesData || []);
-              setBranchCommits(commitsData?.commits || []);
               setBranchStats(commitsData?.branchStats || null);
+              setAllChanges(commitsData?.allChanges || []);
             }
           })
           .catch(console.error)
@@ -534,7 +518,7 @@ export function ChangesPanel() {
     if (branchSyncCompletedAt && selectedWorkspaceId && selectedSessionId) {
       // Refetch changes after sync - the BaseCommitSHA has been updated
       fetchChanges();
-      fetchBranchCommits();
+      fetchBranchData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchSyncCompletedAt]);
@@ -592,24 +576,23 @@ export function ChangesPanel() {
   const menuContext = useMemo<TopPanelMenuContext>(() => ({
     onCollapseAllFiles: () => fileTreeRef.current?.collapseAll(),
     onExpandAllFiles: () => fileTreeRef.current?.expandAll(),
-    onRefreshChanges: () => { fetchChanges(); fetchBranchCommits(); },
-    onCollapseAllCommits: () => setExpandedCommits(new Set()),
+    onRefreshChanges: () => { fetchChanges(); fetchBranchData(); },
     onRefreshChecks: () => checksPanelRef.current?.refreshAll(),
     prUrl,
     onResolveAll: handleResolveAll,
     unresolvedCount,
     showResolved,
     onToggleShowResolved: () => setShowResolved((prev) => !prev),
-  }), [fetchChanges, fetchBranchCommits, handleResolveAll, prUrl, unresolvedCount, showResolved]);
+  }), [fetchChanges, fetchBranchData, handleResolveAll, prUrl, unresolvedCount, showResolved]);
 
   // Wrap tab selection to trigger changes refresh when switching to the changes tab
   const handleTabSelect = useCallback((tabId: string) => {
     setSelectedTab(tabId);
     if (tabId === 'changes') {
       fetchChanges();
-      fetchBranchCommits();
+      fetchBranchData();
     }
-  }, [fetchChanges, fetchBranchCommits]);
+  }, [fetchChanges, fetchBranchData]);
 
   // Keyboard shortcuts for switching sidebar tabs
   const tabShortcuts = useMemo(() => ({
@@ -675,11 +658,11 @@ export function ChangesPanel() {
             )}
           </div>
           <div className={cn("h-full", selectedTab !== 'changes' && 'hidden')}>
-            {changesLoading && !changes?.length && !branchCommits?.length ? (
+            {changesLoading && !changes?.length && !allChanges?.length ? (
               <div className="h-full flex items-center justify-center">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-            ) : !changes?.length && !branchCommits?.length ? (
+            ) : !changes?.length && !allChanges?.length ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center text-muted-foreground">
                   <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -689,99 +672,17 @@ export function ChangesPanel() {
             ) : (
               <ScrollArea className="h-full [&>div>div]:!block">
                 <div ref={changesContainerRef} className="p-1 pr-2 overflow-hidden">
-                  {/* Branch Summary Header */}
-                  {branchStats && (
-                    <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-                      <span className="font-mono tabular-nums">
-                        <span className="text-green-500">+{branchStats.totalAdditions}</span>
-                        <span className="text-red-500 ml-1">-{branchStats.totalDeletions}</span>
-                      </span>
-                      <span>across {branchStats.totalFiles} file{branchStats.totalFiles !== 1 ? 's' : ''}</span>
-                    </div>
-                  )}
-
-                  {/* Working Changes Section (truly uncommitted only) */}
-                  {changes.length > 0 && (
-                    <CollapsibleSection
-                      title="Working Changes"
-                      count={changes.length}
-                      open={uncommittedOpen}
-                      onToggle={() => setUncommittedOpen(!uncommittedOpen)}
-                    >
-                      {(() => {
-                        const sortByPath = (a: FileChangeDTO, b: FileChangeDTO) => {
-                          const aIsRoot = !a.path.includes('/');
-                          const bIsRoot = !b.path.includes('/');
-                          if (aIsRoot && !bIsRoot) return -1;
-                          if (!aIsRoot && bIsRoot) return 1;
-                          return a.path.localeCompare(b.path);
-                        };
-                        const untracked = changes.filter(c => c.status === 'untracked').sort(sortByPath);
-                        const tracked = changes.filter(c => c.status !== 'untracked').sort(sortByPath);
-
-                        return (
-                          <>
-                            {untracked.length > 0 && (
-                              <>
-                                <div className="px-2 py-1 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
-                                  UNTRACKED
-                                </div>
-                                {untracked.map((change) => (
-                                  <FileChangeRow
-                                    key={change.path}
-                                    change={change}
-                                    onSelect={() => handleFileSelect(change.path)}
-                                    containerWidth={containerWidth}
-                                    commentStats={commentStats.get(change.path)}
-                                  />
-                                ))}
-                              </>
-                            )}
-                            {tracked.length > 0 && (
-                              <>
-                                {untracked.length > 0 && (
-                                  <div className="px-2 py-1 mt-2 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
-                                    CHANGED
-                                  </div>
-                                )}
-                                {tracked.map((change) => (
-                                  <FileChangeRow
-                                    key={change.path}
-                                    change={change}
-                                    onSelect={() => handleChangedFileSelect(change.path)}
-                                    containerWidth={containerWidth}
-                                    commentStats={commentStats.get(change.path)}
-                                  />
-                                ))}
-                              </>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </CollapsibleSection>
-                  )}
-
-                  {/* Branch Commits Section */}
-                  {branchCommits.length > 0 && (
-                    <CollapsibleSection
-                      title="Branch Commits"
-                      count={branchCommits.length}
-                      open={commitsOpen}
-                      onToggle={() => setCommitsOpen(!commitsOpen)}
-                    >
-                      {branchCommits.map((commit) => (
-                        <CommitRow
-                          key={commit.sha}
-                          commit={commit}
-                          expanded={expandedCommits.has(commit.sha)}
-                          onToggle={() => toggleCommitExpanded(commit.sha)}
-                          onFileSelect={handleChangedFileSelect}
-                          containerWidth={containerWidth}
-                          commentStats={commentStats}
-                        />
-                      ))}
-                    </CollapsibleSection>
-                  )}
+                  <ChangesFileList
+                    changes={changes}
+                    allChanges={allChanges}
+                    branchStats={branchStats}
+                    changesView={changesView}
+                    onChangesViewChange={setChangesView}
+                    onFileSelect={handleFileSelect}
+                    onChangedFileSelect={handleChangedFileSelect}
+                    containerWidth={containerWidth}
+                    commentStats={commentStats}
+                  />
                 </div>
               </ScrollArea>
             )}
@@ -1065,7 +966,6 @@ interface TopPanelMenuContext {
   onCollapseAllFiles?: () => void;
   onExpandAllFiles?: () => void;
   onRefreshChanges?: () => void;
-  onCollapseAllCommits?: () => void;
   onRefreshChecks?: () => void;
   prUrl?: string | null;
   onResolveAll?: () => void;
@@ -1185,10 +1085,6 @@ function TopPanelTabs({
               <DropdownMenuItem onSelect={menuContext.onRefreshChanges}>
                 <RefreshCw className="size-4" />
                 Refresh
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={menuContext.onCollapseAllCommits}>
-                <ChevronsDownUp className="size-4" />
-                Collapse All
               </DropdownMenuItem>
             </>
           )}
@@ -1319,6 +1215,137 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
   );
 }
 
+const KNOWN_STATUSES = ['added', 'modified', 'deleted', 'untracked'] as const;
+const CHANGES_GROUP_ORDER_ALL = ['added', 'modified', 'deleted', 'untracked'] as const;
+const CHANGES_GROUP_ORDER_UNCOMMITTED = ['untracked', 'added', 'modified', 'deleted'] as const;
+const CHANGES_GROUP_LABELS: Record<string, string> = {
+  added: 'ADDED',
+  modified: 'MODIFIED',
+  deleted: 'DELETED',
+  untracked: 'UNTRACKED',
+};
+
+export function ChangesFileList({
+  changes,
+  allChanges,
+  branchStats,
+  changesView,
+  onChangesViewChange,
+  onFileSelect,
+  onChangedFileSelect,
+  containerWidth,
+  commentStats,
+}: {
+  changes: FileChangeDTO[];
+  allChanges: FileChangeDTO[];
+  branchStats: BranchStatsDTO | null;
+  changesView: 'all' | 'uncommitted';
+  onChangesViewChange: (view: 'all' | 'uncommitted') => void;
+  onFileSelect: (path: string) => void;
+  onChangedFileSelect: (path: string) => void;
+  containerWidth: number;
+  commentStats: Map<string, { total: number; unresolved: number }>;
+}) {
+  const displayFiles = changesView === 'all' ? allChanges : changes;
+
+  const displayStats = useMemo(() => {
+    if (changesView === 'all') {
+      return branchStats ?? { totalFiles: 0, totalAdditions: 0, totalDeletions: 0 };
+    }
+    // Compute stats from uncommitted changes
+    let totalAdditions = 0;
+    let totalDeletions = 0;
+    for (const c of changes) {
+      totalAdditions += c.additions;
+      totalDeletions += c.deletions;
+    }
+    return { totalFiles: changes.length, totalAdditions, totalDeletions };
+  }, [changesView, branchStats, changes]);
+
+  const grouped = useMemo(() => {
+    const groups: Record<string, FileChangeDTO[]> = {};
+    const sortByPath = (a: FileChangeDTO, b: FileChangeDTO) => a.path.localeCompare(b.path);
+
+    for (const file of displayFiles) {
+      // Map unknown statuses to 'modified' so they still appear
+      const key = (KNOWN_STATUSES as readonly string[]).includes(file.status) ? file.status : 'modified';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(file);
+    }
+
+    for (const key of Object.keys(groups)) {
+      groups[key].sort(sortByPath);
+    }
+
+    return groups;
+  }, [displayFiles]);
+
+  const groupOrder = changesView === 'all' ? CHANGES_GROUP_ORDER_ALL : CHANGES_GROUP_ORDER_UNCOMMITTED;
+
+  return (
+    <>
+      {/* Stats + Toggle Header */}
+      <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+        {displayStats.totalFiles > 0 && (
+          <>
+            <span className="font-mono tabular-nums">
+              <span className="text-green-500">+{displayStats.totalAdditions}</span>
+              <span className="text-red-500 ml-1">-{displayStats.totalDeletions}</span>
+            </span>
+            <span>across {displayStats.totalFiles} file{displayStats.totalFiles !== 1 ? 's' : ''}</span>
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-0.5 bg-surface-2 rounded-sm p-0.5">
+          <button
+            onClick={() => onChangesViewChange('all')}
+            className={cn(
+              "px-1.5 py-0.5 rounded-sm text-2xs transition-colors",
+              changesView === 'all' ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            All
+          </button>
+          <button
+            onClick={() => onChangesViewChange('uncommitted')}
+            className={cn(
+              "px-1.5 py-0.5 rounded-sm text-2xs transition-colors",
+              changesView === 'uncommitted' ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Uncommitted
+          </button>
+        </div>
+      </div>
+
+      {/* Grouped file list */}
+      {groupOrder.map(status => {
+        const files = grouped[status];
+        if (!files?.length) return null;
+        return (
+          <div key={status}>
+            <div className="px-2 py-1 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
+              {CHANGES_GROUP_LABELS[status]}
+            </div>
+            {files.map(file => (
+              <FileChangeRow
+                key={file.path}
+                change={file}
+                onSelect={() =>
+                  file.status === 'untracked'
+                    ? onFileSelect(file.path)
+                    : onChangedFileSelect(file.path)
+                }
+                containerWidth={containerWidth}
+                commentStats={commentStats.get(file.path)}
+              />
+            ))}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function CollapsibleSection({ title, count, open, onToggle, children }: {
   title: string;
   count: number;
@@ -1343,54 +1370,3 @@ export function CollapsibleSection({ title, count, open, onToggle, children }: {
   );
 }
 
-export function formatCommitTime(isoTimestamp: string): string {
-  const date = new Date(isoTimestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
-
-export function CommitRow({ commit, expanded, onToggle, onFileSelect, containerWidth, commentStats }: {
-  commit: BranchCommitDTO;
-  expanded: boolean;
-  onToggle: () => void;
-  onFileSelect: (path: string) => void;
-  containerWidth: number;
-  commentStats: Map<string, { total: number; unresolved: number }>;
-}) {
-  return (
-    <div>
-      <div
-        onClick={onToggle}
-        className="flex items-center gap-1.5 px-2 py-1 hover:bg-surface-2 cursor-pointer rounded-sm transition-colors"
-      >
-        <ChevronRight className={cn('size-3 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')} />
-        <GitCommitHorizontal className="size-3 shrink-0 text-muted-foreground" />
-        <span className="text-2xs font-mono text-muted-foreground shrink-0">{commit.shortSha}</span>
-        <span className="text-xs truncate flex-1 min-w-0">{commit.message}</span>
-        <span className="text-2xs text-muted-foreground shrink-0">{formatCommitTime(commit.timestamp)}</span>
-      </div>
-      {expanded && commit.files.length > 0 && (
-        <div className="pl-4">
-          {commit.files.map((file) => (
-            <FileChangeRow
-              key={file.path}
-              change={file}
-              onSelect={() => onFileSelect(file.path)}
-              containerWidth={containerWidth}
-              commentStats={commentStats.get(file.path)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

@@ -1,57 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { CollapsibleSection, CommitRow, formatCommitTime } from '../ChangesPanel';
-import type { BranchCommitDTO } from '@/lib/api';
-
-// ============================================================================
-// formatCommitTime Tests
-// ============================================================================
-
-describe('formatCommitTime', () => {
-  it('returns "just now" for timestamps less than 1 minute ago', () => {
-    const now = new Date().toISOString();
-    expect(formatCommitTime(now)).toBe('just now');
-  });
-
-  it('returns minutes ago for timestamps less than 1 hour ago', () => {
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    expect(formatCommitTime(fiveMinAgo)).toBe('5m ago');
-  });
-
-  it('returns hours ago for timestamps less than 1 day ago', () => {
-    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
-    expect(formatCommitTime(threeHoursAgo)).toBe('3h ago');
-  });
-
-  it('returns days ago for timestamps less than 30 days ago', () => {
-    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
-    expect(formatCommitTime(fiveDaysAgo)).toBe('5d ago');
-  });
-
-  it('returns localized date string for timestamps older than 30 days', () => {
-    const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    const result = formatCommitTime(oldDate);
-    // Should be a date string, not "Xd ago"
-    expect(result).not.toContain('ago');
-    expect(result).toMatch(/\d/); // Should contain at least a digit
-  });
-
-  it('handles edge case at exactly 1 minute', () => {
-    const oneMinAgo = new Date(Date.now() - 60 * 1000).toISOString();
-    expect(formatCommitTime(oneMinAgo)).toBe('1m ago');
-  });
-
-  it('handles edge case at exactly 1 hour', () => {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    expect(formatCommitTime(oneHourAgo)).toBe('1h ago');
-  });
-
-  it('handles edge case at exactly 1 day', () => {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    expect(formatCommitTime(oneDayAgo)).toBe('1d ago');
-  });
-});
+import { CollapsibleSection, ChangesFileList } from '../ChangesPanel';
+import type { FileChangeDTO, BranchStatsDTO } from '@/lib/api';
 
 // ============================================================================
 // CollapsibleSection Tests
@@ -125,215 +76,191 @@ describe('CollapsibleSection', () => {
 });
 
 // ============================================================================
-// CommitRow Tests
+// ChangesFileList Tests
 // ============================================================================
 
-describe('CommitRow', () => {
-  const mockCommit: BranchCommitDTO = {
-    sha: 'abc123def456789012345678901234567890abcd',
-    shortSha: 'abc123d',
-    message: 'Add new feature for user authentication',
-    author: 'Jane Doe',
-    email: 'jane@example.com',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-    files: [
-      { path: 'src/auth.ts', additions: 50, deletions: 10, status: 'modified' as const },
-      { path: 'src/login.tsx', additions: 120, deletions: 0, status: 'added' as const },
-      { path: 'src/old-auth.ts', additions: 0, deletions: 80, status: 'deleted' as const },
-    ],
-  };
+const makeFile = (path: string, status: FileChangeDTO['status'], additions = 10, deletions = 5): FileChangeDTO => ({
+  path,
+  additions,
+  deletions,
+  status,
+});
 
-  const emptyCommentStats = new Map<string, { total: number; unresolved: number }>();
+const defaultProps = {
+  changes: [] as FileChangeDTO[],
+  allChanges: [] as FileChangeDTO[],
+  branchStats: null as BranchStatsDTO | null,
+  changesView: 'all' as const,
+  onChangesViewChange: vi.fn(),
+  onFileSelect: vi.fn(),
+  onChangedFileSelect: vi.fn(),
+  containerWidth: 400,
+  commentStats: new Map<string, { total: number; unresolved: number }>(),
+};
 
-  it('renders commit short SHA', () => {
+describe('ChangesFileList', () => {
+  it('renders files grouped by status in "all" view', () => {
+    const allChanges = [
+      makeFile('src/new.ts', 'added'),
+      makeFile('src/app.ts', 'modified'),
+      makeFile('old.ts', 'deleted'),
+    ];
+
     render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={false}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
+      <ChangesFileList
+        {...defaultProps}
+        allChanges={allChanges}
+        branchStats={{ totalFiles: 3, totalAdditions: 30, totalDeletions: 15 }}
       />
     );
 
-    expect(screen.getByText('abc123d')).toBeInTheDocument();
+    expect(screen.getByText('ADDED')).toBeInTheDocument();
+    expect(screen.getByText('MODIFIED')).toBeInTheDocument();
+    expect(screen.getByText('DELETED')).toBeInTheDocument();
   });
 
-  it('renders commit message', () => {
+  it('shows branch stats in "all" view', () => {
     render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={false}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
+      <ChangesFileList
+        {...defaultProps}
+        allChanges={[makeFile('a.ts', 'added', 10, 5)]}
+        branchStats={{ totalFiles: 5, totalAdditions: 200, totalDeletions: 80 }}
       />
     );
 
-    expect(screen.getByText('Add new feature for user authentication')).toBeInTheDocument();
-  });
-
-  it('renders relative time', () => {
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={false}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    expect(screen.getByText('2h ago')).toBeInTheDocument();
-  });
-
-  it('does not show files when collapsed', () => {
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={false}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    expect(screen.queryByText('auth.ts')).not.toBeInTheDocument();
-    expect(screen.queryByText('login.tsx')).not.toBeInTheDocument();
-  });
-
-  it('shows files when expanded', () => {
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={true}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    expect(screen.getByText('auth.ts')).toBeInTheDocument();
-    expect(screen.getByText('login.tsx')).toBeInTheDocument();
-    expect(screen.getByText('old-auth.ts')).toBeInTheDocument();
-  });
-
-  it('calls onToggle when commit row is clicked', async () => {
-    const onToggle = vi.fn();
-    const user = userEvent.setup();
-
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={false}
-        onToggle={onToggle}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    await user.click(screen.getByText('abc123d'));
-    expect(onToggle).toHaveBeenCalledTimes(1);
-  });
-
-  it('calls onFileSelect when a file is clicked', async () => {
-    const onFileSelect = vi.fn();
-    const user = userEvent.setup();
-
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={true}
-        onToggle={() => {}}
-        onFileSelect={onFileSelect}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    await user.click(screen.getByText('auth.ts'));
-    expect(onFileSelect).toHaveBeenCalledWith('src/auth.ts');
-  });
-
-  it('shows file stats when expanded', () => {
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={true}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    // Check for additions (from the first file: +50)
-    expect(screen.getByText('+50')).toBeInTheDocument();
-    expect(screen.getByText('-10')).toBeInTheDocument();
-  });
-
-  it('handles commit with no files', () => {
-    const emptyCommit: BranchCommitDTO = {
-      ...mockCommit,
-      files: [],
-    };
-
-    render(
-      <CommitRow
-        commit={emptyCommit}
-        expanded={true}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    // Should render the commit row without crashing
-    expect(screen.getByText('abc123d')).toBeInTheDocument();
-  });
-
-  it('handles commit with long message by truncating', () => {
-    const longMessageCommit: BranchCommitDTO = {
-      ...mockCommit,
-      message: 'This is a very long commit message that should be truncated by CSS in the actual UI rendering',
-    };
-
-    render(
-      <CommitRow
-        commit={longMessageCommit}
-        expanded={false}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    expect(screen.getByText(longMessageCommit.message)).toBeInTheDocument();
-  });
-
-  it('renders multiple files with correct stats when expanded', () => {
-    render(
-      <CommitRow
-        commit={mockCommit}
-        expanded={true}
-        onToggle={() => {}}
-        onFileSelect={() => {}}
-        containerWidth={400}
-        commentStats={emptyCommentStats}
-      />
-    );
-
-    // File 2: +120 additions only
-    expect(screen.getByText('+120')).toBeInTheDocument();
-    // File 3: -80 deletions only
+    // Stats header shows branchStats, not per-file stats
+    expect(screen.getByText('+200')).toBeInTheDocument();
     expect(screen.getByText('-80')).toBeInTheDocument();
+    expect(screen.getByText('across 5 files')).toBeInTheDocument();
+  });
+
+  it('computes stats from uncommitted changes in "uncommitted" view', () => {
+    const changes = [
+      makeFile('a.ts', 'modified', 10, 3),
+      makeFile('b.ts', 'modified', 5, 2),
+    ];
+
+    render(
+      <ChangesFileList
+        {...defaultProps}
+        changes={changes}
+        changesView="uncommitted"
+        branchStats={{ totalFiles: 10, totalAdditions: 500, totalDeletions: 200 }}
+      />
+    );
+
+    // Should show computed stats from uncommitted, not branch stats
+    expect(screen.getByText('+15')).toBeInTheDocument();
+    expect(screen.getByText('-5')).toBeInTheDocument();
+    expect(screen.getByText('across 2 files')).toBeInTheDocument();
+  });
+
+  it('shows zeros when "all" view has no branchStats', () => {
+    render(
+      <ChangesFileList
+        {...defaultProps}
+        changesView="all"
+        branchStats={null}
+        changes={[makeFile('a.ts', 'modified', 10, 3)]}
+      />
+    );
+
+    // Should NOT fall back to uncommitted stats — should show nothing (0 files)
+    expect(screen.queryByText('+10')).not.toBeInTheDocument();
+    expect(screen.queryByText('across')).not.toBeInTheDocument();
+  });
+
+  it('calls onFileSelect for untracked files (not diff view)', async () => {
+    const onFileSelect = vi.fn();
+    const onChangedFileSelect = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ChangesFileList
+        {...defaultProps}
+        allChanges={[makeFile('new-file.txt', 'untracked')]}
+        branchStats={{ totalFiles: 1, totalAdditions: 10, totalDeletions: 5 }}
+        onFileSelect={onFileSelect}
+        onChangedFileSelect={onChangedFileSelect}
+      />
+    );
+
+    await user.click(screen.getByText('new-file.txt'));
+    expect(onFileSelect).toHaveBeenCalledWith('new-file.txt');
+    expect(onChangedFileSelect).not.toHaveBeenCalled();
+  });
+
+  it('calls onChangedFileSelect for non-untracked files', async () => {
+    const onFileSelect = vi.fn();
+    const onChangedFileSelect = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ChangesFileList
+        {...defaultProps}
+        allChanges={[makeFile('src/app.ts', 'modified')]}
+        branchStats={{ totalFiles: 1, totalAdditions: 10, totalDeletions: 5 }}
+        onFileSelect={onFileSelect}
+        onChangedFileSelect={onChangedFileSelect}
+      />
+    );
+
+    await user.click(screen.getByText('app.ts'));
+    expect(onChangedFileSelect).toHaveBeenCalledWith('src/app.ts');
+    expect(onFileSelect).not.toHaveBeenCalled();
+  });
+
+  it('calls onChangesViewChange when toggling views', async () => {
+    const onChangesViewChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ChangesFileList
+        {...defaultProps}
+        onChangesViewChange={onChangesViewChange}
+      />
+    );
+
+    await user.click(screen.getByText('Uncommitted'));
+    expect(onChangesViewChange).toHaveBeenCalledWith('uncommitted');
+  });
+
+  it('maps unknown file statuses to the modified group', () => {
+    // Force an unknown status via type assertion to simulate unexpected backend data
+    const files = [makeFile('renamed.ts', 'renamed' as FileChangeDTO['status'])];
+
+    render(
+      <ChangesFileList
+        {...defaultProps}
+        allChanges={files}
+        branchStats={{ totalFiles: 1, totalAdditions: 10, totalDeletions: 5 }}
+      />
+    );
+
+    // Should appear under MODIFIED group
+    expect(screen.getByText('MODIFIED')).toBeInTheDocument();
+    expect(screen.getByText('renamed.ts')).toBeInTheDocument();
+  });
+
+  it('sorts files alphabetically within each group', () => {
+    const allChanges = [
+      makeFile('src/z-file.ts', 'modified'),
+      makeFile('src/a-file.ts', 'modified'),
+      makeFile('src/m-file.ts', 'modified'),
+    ];
+
+    const { container } = render(
+      <ChangesFileList
+        {...defaultProps}
+        allChanges={allChanges}
+        branchStats={{ totalFiles: 3, totalAdditions: 30, totalDeletions: 15 }}
+      />
+    );
+
+    const fileNames = Array.from(container.querySelectorAll('[class*="truncate"]'))
+      .map(el => el.textContent)
+      .filter(t => t && ['a-file.ts', 'm-file.ts', 'z-file.ts'].includes(t));
+
+    expect(fileNames).toEqual(['a-file.ts', 'm-file.ts', 'z-file.ts']);
   });
 });

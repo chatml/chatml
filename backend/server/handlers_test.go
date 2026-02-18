@@ -1930,6 +1930,12 @@ func TestGetSessionBranchCommits_WithCommits(t *testing.T) {
 	assert.Equal(t, 2, resp.BranchStats.TotalFiles)
 	assert.Equal(t, 2, resp.BranchStats.TotalAdditions) // 1 line each
 	assert.Equal(t, 0, resp.BranchStats.TotalDeletions)
+
+	// AllChanges should contain the flat file list
+	require.Len(t, resp.AllChanges, 2)
+	paths := []string{resp.AllChanges[0].Path, resp.AllChanges[1].Path}
+	assert.Contains(t, paths, "feature.go")
+	assert.Contains(t, paths, "test.go")
 }
 
 func TestGetSessionBranchCommits_SessionNotFound(t *testing.T) {
