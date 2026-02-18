@@ -29,7 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn, toRelativePath } from '@/lib/utils';
-import { parseMcpToolName, formatToolDuration } from '@/lib/format';
+import { parseMcpToolName, formatToolDuration, stripCdPrefix } from '@/lib/format';
 import { TOOL_TARGET_TRUNCATE, TOOL_COMMAND_TRUNCATE } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -219,8 +219,9 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
     return null;
   };
 
-  const target = getTarget();
-  const fullTarget = target;
+  const rawTarget = getTarget();
+  const fullTarget = rawTarget;
+  const target = isBashTool && rawTarget ? stripCdPrefix(rawTarget) : rawTarget;
 
   // Truncate target for display
   const truncatedTarget = useMemo(() => {
