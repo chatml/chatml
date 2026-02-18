@@ -31,6 +31,7 @@ import {
   Loader2,
   RotateCcw,
   Sparkles,
+  GitBranch,
   GitPullRequest,
   GitMerge,
   ShieldCheck,
@@ -171,7 +172,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
     rerunWorkflow,
     analyzeFailure,
   } = useCIRuns(selectedWorkspaceId, selectedSessionId, active);
-  const { status: gitStatus, loading: gitLoading, refetch: refetchGit } = useGitStatus(
+  const { status: gitStatus, loading: gitLoading, error: gitError, errorCode: gitErrorCode, refetch: refetchGit } = useGitStatus(
     selectedWorkspaceId,
     selectedSessionId,
     active
@@ -209,43 +210,89 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
     );
   }
 
+  const branchName = session?.branch;
+
   return (
     <ScrollArea className="h-full">
       <div className="flex flex-col min-w-0">
-        {/* Merge Readiness Banner */}
-        <MergeReadinessBanner
-          readiness={readiness}
-          prStatus={prStatus}
-          isLoading={isLoading}
-          onRefresh={handleRefreshAll}
-        />
+        {/* Merge Readiness Banner - only when PR exists */}
+        {!readiness.hasNoPR && (
+          <MergeReadinessBanner
+            readiness={readiness}
+            prStatus={prStatus}
+            isLoading={isLoading}
+            onRefresh={handleRefreshAll}
+          />
+        )}
 
-        {/* PR Header */}
-        <PRHeaderSection pr={prDetails} prStatus={prStatus} />
+        {/* PR Header - only when PR exists */}
+        {(prDetails || prStatus === 'open') && (
+          <PRHeaderSection pr={prDetails} prStatus={prStatus} />
+        )}
 
-        {/* CI Checks */}
+        {/* Git Status - first section */}
+        <div className="border-b">
+          <div className="flex items-center px-3 py-2">
+            <span className="text-2xs font-medium text-foreground/60 uppercase tracking-wider flex-1">
+              Git Status
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0"
+              onClick={refetchGit}
+              disabled={gitLoading}
+            >
+              <RefreshCw className={cn('h-3 w-3', gitLoading && 'animate-spin')} />
+            </Button>
+          </div>
+          <div className="px-1.5 pb-2">
+            {/* Branch name */}
+            {branchName && (
+              <div className="flex items-center gap-2 py-1 px-2 min-w-0">
+                <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="text-xs truncate flex-1" title={branchName}>{branchName}</span>
+              </div>
+            )}
+            {/* "No pull request" line item with Create PR action */}
+            {readiness.hasNoPR && !prLoading && (
+              <div className="flex items-center gap-2 py-1 px-2 min-w-0">
+                <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="text-xs flex-1 text-muted-foreground">No pull request</span>
+                {onSendMessage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    onClick={() => onSendMessage('Create a pull request')}
+                  >
+                    Create PR
+                  </Button>
+                )}
+              </div>
+            )}
+            <GitStatusSection
+              onSendMessage={onSendMessage}
+              status={gitStatus}
+              loading={gitLoading}
+              error={gitError}
+              errorCode={gitErrorCode}
+              onRefresh={refetchGit}
+            />
+          </div>
+        </div>
+
+        {/* CI Checks - second section */}
         <CIChecksSection
           checkDetails={checkDetails}
           runs={runs}
           workspaceId={selectedWorkspaceId}
           sessionId={selectedSessionId}
-          hasNoPR={readiness.hasNoPR}
+          hasNoPR={readiness.hasNoPR && !prLoading}
           onGetJobs={getJobs}
           onRerun={rerunWorkflow}
           onAnalyzeFailure={analyzeFailure}
         />
-
-        {/* Git Status */}
-        <div className="border-b">
-          <div className="px-3 py-2">
-            <span className="text-2xs font-medium text-foreground/60 uppercase tracking-wider">
-              Git Status
-            </span>
-          </div>
-          <div className="px-1.5 pb-2">
-            <GitStatusSection onSendMessage={onSendMessage} active={active} />
-          </div>
-        </div>
       </div>
     </ScrollArea>
   );
@@ -266,7 +313,7 @@ function MergeReadinessBanner({
   isLoading: boolean;
   onRefresh: () => void;
 }) {
-  const { ready, blockers, pendingCount, hasNoPR } = readiness;
+  const { ready, blockers, pendingCount } = readiness;
 
   let bgClass: string;
   let borderClass: string;
@@ -283,11 +330,6 @@ function MergeReadinessBanner({
     borderClass = 'border-border';
     icon = <GitPullRequest className="h-3.5 w-3.5 text-red-400 shrink-0" />;
     message = 'PR closed';
-  } else if (hasNoPR) {
-    bgClass = 'bg-muted/50';
-    borderClass = 'border-border';
-    icon = <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
-    message = 'No pull request';
   } else if (blockers.some((b) => b.severity === 'error')) {
     const errorCount = blockers.filter((b) => b.severity === 'error').length;
     bgClass = 'bg-red-500/8';
@@ -345,15 +387,6 @@ function PRHeaderSection({
   pr: PRDetails | null;
   prStatus: string | undefined;
 }) {
-  if (!pr && prStatus !== 'open') {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b min-w-0">
-        <GitPullRequest className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs text-muted-foreground">No pull request yet</span>
-      </div>
-    );
-  }
-
   if (!pr) {
     return (
       <div className="flex items-center gap-2 px-3 py-2.5 border-b min-w-0">
