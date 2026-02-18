@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
-  Snowflake,
+  Bot,
   ChevronDown,
   Paperclip,
   ArrowUp,
@@ -78,9 +78,9 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 const MODELS = [
-  { ...SHARED_MODELS[0], icon: Snowflake, badge: 'NEW' as const },
-  { ...SHARED_MODELS[1], icon: Snowflake, badge: 'NEW' as const },
-  { ...SHARED_MODELS[2], icon: Snowflake },
+  { ...SHARED_MODELS[0], icon: Bot, badge: 'NEW' as const },
+  { ...SHARED_MODELS[1], icon: Bot, badge: 'NEW' as const },
+  { ...SHARED_MODELS[2], icon: Bot },
 ];
 
 
@@ -1255,10 +1255,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                   key={model.id}
                   onClick={() => setSelectedModel(model)}
                 >
-                  <model.icon className="size-3.5" />
                   {model.name}
                   {'badge' in model && model.badge && (
-                    <span className="ml-1.5 rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
+                    <span className="ml-auto rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
                       {model.badge}
                     </span>
                   )}
