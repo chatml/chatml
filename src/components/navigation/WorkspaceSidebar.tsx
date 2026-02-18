@@ -74,8 +74,6 @@ import {
   Github,
   Search,
   X,
-  Filter,
-
   Layers,
   Bot,
   Circle,
@@ -130,9 +128,6 @@ const PROJECT_MENU_ITEMS = [
 export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos, onSessionSelected, onOpenWorkspaceSettings }: WorkspaceSidebarProps) {
   const [workspaceToRemove, setWorkspaceToRemove] = useState<{ id: string; name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [taskStatusFilters, setTaskStatusFilters] = useState<Set<SessionTaskStatus>>(new Set());
-  const [prStatusFilters, setPrStatusFilters] = useState<Set<'none' | 'open' | 'merged' | 'closed'>>(new Set());
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false);
   const { error: showError } = useToast();
@@ -193,43 +188,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     sortBy: sidebarSortBy,
     filters: {
       searchTerm,
-      taskStatusFilters,
-      prStatusFilters,
     },
     workspaceColors,
     getWorkspaceColor,
   });
-
-  const activeFilterCount = taskStatusFilters.size + prStatusFilters.size;
-
-  const toggleTaskStatusFilter = (status: SessionTaskStatus) => {
-    setTaskStatusFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
-  };
-
-  const togglePrStatusFilter = (status: 'none' | 'open' | 'merged' | 'closed') => {
-    setPrStatusFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(status)) {
-        next.delete(status);
-      } else {
-        next.add(status);
-      }
-      return next;
-    });
-  };
-
-  const clearAllFilters = () => {
-    setTaskStatusFilters(new Set());
-    setPrStatusFilters(new Set());
-  };
 
   const formatTimeAgo = (date: string) => {
     const now = new Date();
@@ -1084,96 +1046,6 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
             </button>
           )}
         </div>
-        <DropdownMenu open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-          <Tooltip open={isFilterOpen ? false : undefined}>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'h-8 w-8 shrink-0 relative',
-                    activeFilterCount > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-                  )}
-                  aria-label="Filter sessions"
-                >
-                  <Filter className="w-4 h-4" />
-                  {activeFilterCount > 0 && (
-                    <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 text-[9px] font-medium bg-primary text-primary-foreground rounded-full flex items-center justify-center">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="top">Filter sessions</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end" side="top" className="w-48">
-            <DropdownMenuLabel>Filter Sessions</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {/* Task Status Sub-Menu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                Task
-                {taskStatusFilters.size > 0 && (
-                  <span className="ml-auto text-xs text-primary">{taskStatusFilters.size}</span>
-                )}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-44">
-                {TASK_STATUS_OPTIONS.map((option) => (
-                  <DropdownMenuCheckboxItem
-                    key={option.value}
-                    checked={taskStatusFilters.has(option.value)}
-                    onCheckedChange={() => toggleTaskStatusFilter(option.value)}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <TaskStatusIcon status={option.value} className="w-3.5 h-3.5" />
-                    {option.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
-            {/* PR Status Sub-Menu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                Pull Request
-                {prStatusFilters.size > 0 && (
-                  <span className="ml-auto text-xs text-primary">{prStatusFilters.size}</span>
-                )}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-44">
-                {[
-                  { value: 'none' as const, label: 'No PR', icon: Circle, color: 'text-muted-foreground' },
-                  { value: 'open' as const, label: 'Open', icon: GitPullRequest, color: 'text-text-success' },
-                  { value: 'merged' as const, label: 'Merged', icon: GitPullRequest, color: 'text-nav-icon-prs' },
-                  { value: 'closed' as const, label: 'Closed', icon: GitPullRequest, color: 'text-text-error' },
-                ].map((option) => (
-                  <DropdownMenuCheckboxItem
-                    key={option.value}
-                    checked={prStatusFilters.has(option.value)}
-                    onCheckedChange={() => togglePrStatusFilter(option.value)}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <option.icon className={cn('w-3.5 h-3.5', option.color)} />
-                    {option.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
-            {/* Clear all */}
-            {activeFilterCount > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={clearAllFilters}>
-                  <X className="size-4" />
-                  Clear All
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {/* Remove workspace confirmation dialog */}

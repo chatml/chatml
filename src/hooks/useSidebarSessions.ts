@@ -70,18 +70,11 @@ function sortSessions(sessions: WorktreeSession[], sortBy: SidebarSortBy): Workt
 
 interface FilterOptions {
   searchTerm: string;
-  taskStatusFilters: Set<SessionTaskStatus>;
-  prStatusFilters: Set<'none' | 'open' | 'merged' | 'closed'>;
 }
 
 function filterSessions(sessions: WorktreeSession[], filters: FilterOptions): WorktreeSession[] {
   return sessions.filter((s) => {
     if (s.archived) return false;
-    if (filters.taskStatusFilters.size > 0 && !filters.taskStatusFilters.has(s.taskStatus)) return false;
-    if (filters.prStatusFilters.size > 0) {
-      const prStatus = s.prStatus || 'none';
-      if (!filters.prStatusFilters.has(prStatus)) return false;
-    }
     if (filters.searchTerm) {
       const term = filters.searchTerm.toLowerCase();
       return (
