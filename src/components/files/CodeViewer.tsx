@@ -131,7 +131,7 @@ export const CodeViewer = memo(function CodeViewer({
         <div className="flex-1 overflow-hidden min-h-0">
           <div className="h-full overflow-auto overscroll-contain">
             <div className={cn(PROSE_CLASSES, 'px-6 py-5')}>
-              <CachedMarkdown cacheKey={`file-preview:${filename}`} content={content} skipCache />
+              <CachedMarkdown cacheKey={`file-preview:${filename}`} content={content} />
             </div>
           </div>
         </div>

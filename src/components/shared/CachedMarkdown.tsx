@@ -7,15 +7,12 @@ import { getCachedMarkdown, setCachedMarkdown } from '@/lib/markdownCache';
 interface CachedMarkdownProps {
   cacheKey: string;
   content: string;
-  skipCache?: boolean;
 }
 
-export function CachedMarkdown({ cacheKey, content, skipCache }: CachedMarkdownProps) {
-  if (!skipCache) {
-    const cached = getCachedMarkdown(cacheKey, content);
-    if (cached !== undefined) {
-      return <>{cached}</>;
-    }
+export function CachedMarkdown({ cacheKey, content }: CachedMarkdownProps) {
+  const cached = getCachedMarkdown(cacheKey, content);
+  if (cached !== undefined) {
+    return <>{cached}</>;
   }
 
   const rendered = (
@@ -28,9 +25,6 @@ export function CachedMarkdown({ cacheKey, content, skipCache }: CachedMarkdownP
     </ReactMarkdown>
   );
 
-  if (!skipCache) {
-    setCachedMarkdown(cacheKey, rendered, content);
-  }
-
+  setCachedMarkdown(cacheKey, rendered, content);
   return rendered;
 }

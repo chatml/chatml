@@ -70,6 +70,7 @@
     "react-zoom-pan-pinch": "^3.7.0",
     "recharts": "^3.7.0",
     "rehype-highlight": "^7.0.2",
+    "rehype-slug": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "shiki": "^3.21.0",
     "tailwind-merge": "^3.4.0",
