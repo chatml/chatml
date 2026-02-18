@@ -2347,6 +2347,7 @@ type BranchStats struct {
 type BranchChangesResponse struct {
 	Commits     []git.BranchCommit `json:"commits"`
 	BranchStats *BranchStats       `json:"branchStats,omitempty"`
+	AllChanges  []git.FileChange   `json:"allChanges,omitempty"`
 }
 
 // GetSessionBranchCommits returns commits on the session's branch that are ahead of the base ref,
@@ -2371,10 +2372,33 @@ func (h *Handlers) GetSessionBranchCommits(w http.ResponseWriter, r *http.Reques
 		commits = []git.BranchCommit{}
 	}
 
-	// Compute total branch stats (all changes vs base, including working dir)
+	// Compute all changes vs base (committed + uncommitted) for the flat file list
 	var branchStats *BranchStats
 	allChanges, statsErr := h.repoManager.GetChangedFilesWithStats(ctx, workingPath, baseRef)
-	if statsErr == nil && len(allChanges) > 0 {
+	if statsErr != nil {
+		allChanges = []git.FileChange{}
+	}
+
+	// Include untracked files so new files appear in the "All Changes" view
+	untracked, untErr := h.repoManager.GetUntrackedFiles(ctx, workingPath)
+	if untErr == nil {
+		// Deduplicate: untracked files should not overlap with diff-based changes,
+		// but guard against edge cases where both sources report the same path.
+		seen := make(map[string]bool, len(allChanges))
+		for _, c := range allChanges {
+			seen[c.Path] = true
+		}
+		for _, u := range untracked {
+			if !seen[u.Path] {
+				allChanges = append(allChanges, u)
+			}
+		}
+	}
+
+	// Filter out gitignored files (matches GetSessionChanges behavior)
+	allChanges = h.repoManager.FilterGitIgnored(ctx, workingPath, allChanges)
+
+	if len(allChanges) > 0 {
 		bs := BranchStats{TotalFiles: len(allChanges)}
 		for _, c := range allChanges {
 			bs.TotalAdditions += c.Additions
@@ -2386,6 +2410,7 @@ func (h *Handlers) GetSessionBranchCommits(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, BranchChangesResponse{
 		Commits:     commits,
 		BranchStats: branchStats,
+		AllChanges:  allChanges,
 	})
 }
 

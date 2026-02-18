@@ -591,6 +591,7 @@ export interface BranchStatsDTO {
 export interface BranchChangesResponseDTO {
   commits: BranchCommitDTO[];
   branchStats?: BranchStatsDTO;
+  allChanges?: FileChangeDTO[];
 }
 
 export async function getSessionBranchCommits(workspaceId: string, sessionId: string): Promise<BranchChangesResponseDTO> {
