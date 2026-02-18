@@ -20,7 +20,7 @@ interface CreatePRDialogProps {
   onOpenChange: (open: boolean) => void;
   workspaceId: string;
   sessionId: string;
-  onSuccess: (prUrl: string) => void;
+  onSuccess: (prNumber: number, prUrl: string) => void;
 }
 
 type DialogState = 'generating' | 'ready' | 'creating' | 'error';
@@ -90,7 +90,7 @@ export function CreatePRDialog({
         draft,
       });
       handleOpenChange(false);
-      onSuccess(result.htmlUrl);
+      onSuccess(result.number, result.htmlUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create pull request');
       setState('ready');

@@ -27,14 +27,29 @@ const snapshotDebounceInterval = 500 * time.Millisecond
 // Capture group 1 = PR number.
 var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/(\d+)`)
 
+// prJSONPattern matches GitHub API JSON responses that contain a PR URL.
+// e.g., {"html_url": "https://github.com/owner/repo/pull/123", ...}
+// Capture group 1 = full URL, capture group 2 = PR number.
+var prJSONPattern = regexp.MustCompile(`"html_url"\s*:\s*"(https://github\.com/[^/]+/[^/]+/pull/(\d+))"`)
+
+// prCreationCommandPattern matches Bash commands that are likely to create a PR.
+// This prevents false positives from commands that merely display PR URLs (e.g., gh pr view, gh pr list).
+var prCreationCommandPattern = regexp.MustCompile(`(?:gh\s+pr\s+create|curl\s+.*api\.github\.com.*/pulls)`)
+
 // prMergedPattern matches merge confirmation messages in Bash stdout (e.g., "Merged pull request", "successfully merged")
 var prMergedPattern = regexp.MustCompile(`(?i)(merged\s+pull\s+request|pull\s+request\s+.+\s+was\s+already\s+merged|successfully\s+merged)`)
 
 // gitPushPattern matches successful git push output in stderr.
 // Git writes push confirmation to stderr with patterns like:
 //   "* [new branch]      feature -> feature"
-//   "   abc1234..def5678  feature -> feature"
-var gitPushPattern = regexp.MustCompile(`(\[new branch\]|[a-f0-9]+\.\.[a-f0-9]+)\s+.+\s+->\s+`)
+//   "   abc1234..def5678  feature -> feature"       (normal push)
+//   " + abc1234...def5678 feature -> feature"       (force push)
+var gitPushPattern = regexp.MustCompile(`(\[new branch\]|[a-f0-9]+\.\.\.?[a-f0-9]+)\s+.+\s+->\s+`)
+
+// gitPushCommandPattern matches commands that are actually git push (not fetch/pull
+// which produce identical stderr patterns). Without this guard, git fetch/pull
+// would falsely trigger PR detection.
+var gitPushCommandPattern = regexp.MustCompile(`git\s+push\b`)
 
 // dangerousSuggestionPattern matches destructive operations that should never appear in suggestions.
 // These operations could break the worktree-based session model or destroy work.
@@ -614,6 +629,13 @@ outer:
 				markSnapshotDirty()
 
 			case EventTypeToolEnd:
+				// Capture tool params before they're removed from the active map.
+				// Needed by PR detection logic below, which runs outside the if/else.
+				var toolParams map[string]interface{}
+				if te, ok := activeToolsMap[event.ID]; ok {
+					toolParams = te.Params
+				}
+
 				if event.AgentId != "" {
 					// Remove from sub-agent's active tools
 					if sa, ok := activeSubAgents[event.AgentId]; ok {
@@ -671,17 +693,47 @@ outer:
 					logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
 				}
 
-				// Detect PR creation from Bash tool stdout (e.g., gh pr create).
-				// Extract the PR number directly from the URL so the session can
-				// be updated immediately instead of relying on a GitHub API round-trip.
+				// Extract bash command for use in PR creation and git push detection below.
+				var bashCmd string
+				if event.Tool == "Bash" {
+					bashCmd, _ = toolParams["command"].(string)
+				}
+
+				// Detect PR creation from Bash tool output (e.g., gh pr create, curl).
+				// Only trigger for commands that actually create PRs to avoid false
+				// positives from commands that merely display PR URLs (gh pr view, etc.).
 				if event.Tool == "Bash" && event.Success {
-					if match := prURLPattern.FindStringSubmatch(event.Stdout); match != nil {
-						prNum, err := strconv.Atoi(match[1])
-						if err != nil {
-							logger.Manager.Warnf("Failed to parse PR number from URL match %q: %v", match[1], err)
+					// Check if the command looks like a PR creation command
+					if prCreationCommandPattern.MatchString(bashCmd) {
+						var prNum int
+						var prURL string
+
+						// Check stdout first (most common: gh pr create prints URL to stdout)
+						if match := prURLPattern.FindStringSubmatch(event.Stdout); match != nil {
+							num, err := strconv.Atoi(match[1])
+							if err != nil {
+								logger.Manager.Warnf("Failed to parse PR number from URL match %q: %v", match[1], err)
+							} else {
+								prNum = num
+								prURL = "https://" + match[0]
+							}
+						} else if match := prURLPattern.FindStringSubmatch(event.Stderr); match != nil {
+							// Fallback: check stderr (some tools write there)
+							num, err := strconv.Atoi(match[1])
+							if err == nil {
+								prNum = num
+								prURL = "https://" + match[0]
+							}
+						} else if jsonMatch := prJSONPattern.FindStringSubmatch(event.Stdout); jsonMatch != nil {
+							// Fallback: detect PR from GitHub API JSON response (e.g., curl)
+							num, err := strconv.Atoi(jsonMatch[2])
+							if err == nil {
+								prNum = num
+								prURL = jsonMatch[1]
+							}
 						}
-						prURL := "https://" + match[0]
-						if m.onPRCreated != nil {
+
+						if prNum > 0 && m.onPRCreated != nil {
 							conv, _ := m.store.GetConversationMeta(ctx, convID)
 							if conv != nil {
 								go m.onPRCreated(conv.SessionID, prNum, prURL)
@@ -712,9 +764,11 @@ outer:
 				// Detect successful git push from Bash tool stderr.
 				// Git writes push confirmation to stderr (not stdout) with patterns like
 				// "* [new branch] feature -> feature" or "abc123..def456 feature -> feature".
+				// IMPORTANT: git fetch and git pull produce identical stderr patterns, so we
+				// also check the command string to avoid false positives.
 				// When a push is detected and the session has no PR linked yet,
 				// trigger an immediate PR check to pick up externally-created PRs.
-				if event.Tool == "Bash" && event.Success && gitPushPattern.MatchString(event.Stderr) {
+				if event.Tool == "Bash" && event.Success && gitPushCommandPattern.MatchString(bashCmd) && gitPushPattern.MatchString(event.Stderr) {
 					if m.onPRCreated != nil {
 						conv, _ := m.store.GetConversationMeta(ctx, convID)
 						if conv != nil {
