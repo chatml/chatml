@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useStreamingState, useActiveTools, useSubAgents } from '@/stores/selectors';
-import { AlertCircle, Brain, ChevronDown, ChevronRight, ClipboardCheck, Clock } from 'lucide-react';
+import { AlertCircle, Brain, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { SubAgentRow, SubAgentGroupedRow } from '@/components/conversation/SubAgentGroup';
+import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
 import { cn } from '@/lib/utils';
@@ -170,8 +171,6 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
   // Check if extended thinking is enabled based on model capabilities
   const conversationModel = useAppStore((s) => s.conversations.find(c => c.id === conversationId)?.model);
   const isExtendedThinkingEnabled = conversationModel ? (getModelInfo(conversationModel)?.supportsThinking ?? false) : false;
-
-  const [isApprovedPlanExpanded, setIsApprovedPlanExpanded] = useState(true);
 
   // Build interleaved timeline from segments, tools, and thinking
   const timeline = useMemo((): TimelineItem[] => {
@@ -345,28 +344,11 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   />
                 </div>
               ) : (
-                <div key={item.id} className="flex flex-col gap-1">
-                  <button
-                    onClick={() => setIsApprovedPlanExpanded(!isApprovedPlanExpanded)}
-                    className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                    <span className="font-medium">Approved Plan</span>
-                    {isApprovedPlanExpanded ? (
-                      <ChevronDown className="w-3 h-3" />
-                    ) : (
-                      <ChevronRight className="w-3 h-3" />
-                    )}
-                  </button>
-                  {isApprovedPlanExpanded && (
-                    <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
-                      <CachedMarkdown
-                        cacheKey={`approved-plan:${conversationId}`}
-                        content={item.content}
-                      />
-                    </div>
-                  )}
-                </div>
+                <ApprovedPlanBlock
+                  key={item.id}
+                  cacheKey={`approved-plan:${conversationId}`}
+                  content={item.content}
+                />
               );
             } else if (item.type === 'subagent_group') {
               return (
