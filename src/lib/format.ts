@@ -4,7 +4,7 @@
 
 /** Strip a leading `cd "..." &&` or `cd ... &&` prefix from a shell command for display. */
 export function stripCdPrefix(command: string): string {
-  const match = command.match(/^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*&&\s*(.+)$/s);
+  const match = command.match(/^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*&&\s*([\s\S]+)$/);
   return match ? match[1] : command;
 }
 
