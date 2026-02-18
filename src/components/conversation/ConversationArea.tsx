@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -839,9 +839,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           setPendingCloseFileTabId(id);
           return;
         }
-        closeFileTab(id);
+        // startTransition defers Pierre's heavy Shadow DOM cleanup so the tab disappears instantly
+        startTransition(() => closeFileTab(id));
       } else {
-        removeConversation(id);
+        startTransition(() => removeConversation(id));
       }
     },
     [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId]
@@ -851,11 +852,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const handleCloseOthers = useCallback(
     (id: string, type: 'file' | 'conversation') => {
       if (type === 'file') {
-        closeOtherTabs(id);
+        startTransition(() => closeOtherTabs(id));
       } else {
-        sessionConversations
-          .filter((c) => c.id !== id)
-          .forEach((c) => removeConversation(c.id));
+        startTransition(() => {
+          sessionConversations
+            .filter((c) => c.id !== id)
+            .forEach((c) => removeConversation(c.id));
+        });
       }
     },
     [closeOtherTabs, sessionConversations, removeConversation]
