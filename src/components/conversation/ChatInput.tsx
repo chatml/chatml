@@ -79,7 +79,7 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 
 const MODELS = [
   { ...SHARED_MODELS[0], icon: Snowflake, badge: 'NEW' as const },
-  { ...SHARED_MODELS[1], icon: Snowflake },
+  { ...SHARED_MODELS[1], icon: Snowflake, badge: 'NEW' as const },
   { ...SHARED_MODELS[2], icon: Snowflake },
 ];
 
