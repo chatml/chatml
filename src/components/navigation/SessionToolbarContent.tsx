@@ -11,6 +11,7 @@ import {
   createConversation,
   toStoreConversation,
   getCIFailureContext,
+  refreshPRStatus,
 } from '@/lib/api';
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
@@ -429,6 +430,18 @@ export function SessionToolbarContent() {
                 <DropdownMenuItem onSelect={() => setShowCreatePRDialog(true)}>
                   <GitMerge /> Create Pull Request
                 </DropdownMenuItem>
+                {!selectedSession?.prNumber && selectedWorkspaceId && selectedSessionId && (
+                  <DropdownMenuItem onSelect={async () => {
+                    try {
+                      await refreshPRStatus(selectedWorkspaceId, selectedSessionId);
+                      showSuccess('Checking for pull request...');
+                    } catch {
+                      showWarning('Failed to check for pull request');
+                    }
+                  }}>
+                    <Search /> Check for Pull Request
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onSelect={() => handleGitActionMessage('Rebase this branch on origin/main, resolving any conflicts.')}>
                   <RefreshCw /> Sync with Main
                 </DropdownMenuItem>
@@ -442,7 +455,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning]);
 
   useMainToolbarContent(toolbarConfig);
 
@@ -455,7 +468,16 @@ export function SessionToolbarContent() {
           onOpenChange={setShowCreatePRDialog}
           workspaceId={selectedWorkspaceId}
           sessionId={selectedSessionId}
-          onSuccess={(prUrl) => {
+          onSuccess={(prNumber, prUrl) => {
+            // Optimistically update the session store so the UI reflects the PR
+            // immediately, without waiting for the WebSocket event from the backend.
+            if (selectedSessionId) {
+              storeUpdateSession(selectedSessionId, {
+                prStatus: 'open' as const,
+                prNumber,
+                prUrl,
+              });
+            }
             showSuccess('Pull request created');
             openUrlInBrowser(prUrl);
           }}

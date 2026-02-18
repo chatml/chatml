@@ -3,6 +3,7 @@ package branch
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -133,12 +134,13 @@ func TestPRWatcher_WatchSession_WithPRNumber(t *testing.T) {
 	assert.Equal(t, "open", entry.PRStatus)
 }
 
-func TestPRWatcher_WatchSession_Idempotent(t *testing.T) {
+func TestPRWatcher_WatchSession_Idempotent_NoPRData(t *testing.T) {
 	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
 	defer w.Close()
 
 	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
-	w.WatchSession("sess-1", "ws-1", "feature/bar", "/other/path", "open", 1, "")
+	// Re-register with no PR data and same branch — should not change anything.
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
 
 	w.mu.RLock()
 	defer w.mu.RUnlock()
@@ -146,10 +148,48 @@ func TestPRWatcher_WatchSession_Idempotent(t *testing.T) {
 	require.Len(t, w.sessions, 1, "should still have exactly one entry")
 
 	entry := w.sessions["sess-1"]
-	// The original entry should be unchanged because the second call returns early.
 	assert.Equal(t, "feature/foo", entry.Branch)
 	assert.Equal(t, "/repo/path", entry.RepoPath)
 	assert.Equal(t, "none", entry.PRStatus)
+	assert.Equal(t, 0, entry.PRNumber)
+}
+
+func TestPRWatcher_WatchSession_MergesNewPRData(t *testing.T) {
+	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
+	defer w.Close()
+
+	// First registration: no PR
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
+
+	// Second registration: with PR data (e.g., from CreatePR handler)
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "open", 42, "https://github.com/org/repo/pull/42")
+
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	require.Len(t, w.sessions, 1, "should still have exactly one entry")
+
+	entry := w.sessions["sess-1"]
+	assert.Equal(t, 42, entry.PRNumber, "PRNumber should be updated")
+	assert.Equal(t, "https://github.com/org/repo/pull/42", entry.PRUrl, "PRUrl should be updated")
+	assert.Equal(t, "open", entry.PRStatus, "PRStatus should be updated")
+	assert.True(t, entry.LastChecked.IsZero(), "LastChecked should be reset to force re-check")
+}
+
+func TestPRWatcher_WatchSession_MergesNewBranch(t *testing.T) {
+	w := newTestPRWatcher(newMockStore(), &mockPRWatcherRepoManager{}, nil)
+	defer w.Close()
+
+	w.WatchSession("sess-1", "ws-1", "feature/old", "/repo/path", "none", 0, "")
+
+	// Re-register with different branch
+	w.WatchSession("sess-1", "ws-1", "feature/new", "/repo/path", "none", 0, "")
+
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	entry := w.sessions["sess-1"]
+	assert.Equal(t, "feature/new", entry.Branch, "Branch should be updated")
 }
 
 // ---------------------------------------------------------------------------
@@ -551,4 +591,288 @@ func TestPRWatcher_GroupSessionsByRepo(t *testing.T) {
 	require.True(t, ok)
 	assert.Len(t, alphaFiltered, 1, "alpha group should have 1 session after filtering")
 	assert.Equal(t, "sess-2", alphaFiltered[0].SessionID)
+}
+
+// ---------------------------------------------------------------------------
+// checkSessionPR: new PR after merge/close (Fix 3)
+// ---------------------------------------------------------------------------
+
+func TestPRWatcher_CheckSessionPR_NewPRAfterMerge(t *testing.T) {
+	// After PR #42 is merged, a new PR #43 is created for the same branch.
+	// The watcher should detect the new PR and update the session.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:       "sess-1",
+		PRStatus: models.PRStatusMerged,
+		PRNumber: 42,
+	}
+
+	var capturedEvent *PRChangeEvent
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {
+		capturedEvent = &evt
+	}
+	defer w.Close()
+
+	// Set up mock GitHub server for the new PR #43
+	ts := newMockGitHubServerWithPRNumber(t, 43, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "open", merged: false, mergeable: boolPtr(true)},
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusMerged,
+		PRNumber:  42,
+		PRUrl:     "https://github.com/org/myrepo/pull/42",
+	}
+	w.mu.Unlock()
+
+	// A new PR #43 exists for the same branch
+	branchToPR := map[string]*github.PRListItem{
+		"feature/foo": {Number: 43, Branch: "feature/foo", HTMLURL: "https://github.com/org/myrepo/pull/43", Title: "New PR"},
+	}
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], branchToPR)
+
+	sess := store.sessions["sess-1"]
+	assert.Equal(t, models.PRStatusOpen, sess.PRStatus, "should transition to open")
+	assert.Equal(t, 43, sess.PRNumber, "should update to new PR number")
+	require.NotNil(t, capturedEvent, "should have emitted a change event")
+	assert.Equal(t, 43, capturedEvent.PRNumber)
+}
+
+func TestPRWatcher_CheckSessionPR_SamePRAfterMerge_NoChange(t *testing.T) {
+	// A merged PR's number is the same as what's in the open list (shouldn't happen
+	// in practice but verifies we don't re-process the same PR).
+	store := newMockStore()
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	defer w.Close()
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusMerged,
+		PRNumber:  42,
+	}
+	w.mu.Unlock()
+
+	// Same PR #42 appears in open list (shouldn't happen but test defensive behavior)
+	branchToPR := map[string]*github.PRListItem{
+		"feature/foo": {Number: 42, Branch: "feature/foo"},
+	}
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], branchToPR)
+
+	// Status should remain merged (no change)
+	assert.Equal(t, models.PRStatusMerged, w.sessions["sess-1"].PRStatus)
+}
+
+func TestPRWatcher_CheckSessionPR_NoPRAfterMerge_NoChange(t *testing.T) {
+	// After merge with no new PR, status should remain merged.
+	store := newMockStore()
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	defer w.Close()
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusMerged,
+		PRNumber:  42,
+	}
+	w.mu.Unlock()
+
+	// No PR for this branch
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], map[string]*github.PRListItem{})
+
+	assert.Equal(t, models.PRStatusMerged, w.sessions["sess-1"].PRStatus)
+}
+
+func TestPRWatcher_CheckSessionPR_NewPRAfterClose(t *testing.T) {
+	// Similar to merge case: closed PR, then new PR created.
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{
+		ID:       "sess-1",
+		PRStatus: models.PRStatusClosed,
+		PRNumber: 42,
+	}
+
+	var capturedEvent *PRChangeEvent
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {
+		capturedEvent = &evt
+	}
+	defer w.Close()
+
+	ts := newMockGitHubServerWithPRNumber(t, 50, mockGitHubResponses{
+		prDetails: &mockPRDetails{state: "open", merged: false, mergeable: boolPtr(true)},
+	})
+	defer ts.Close()
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	w.mu.Lock()
+	w.sessions["sess-1"] = &PRWatchEntry{
+		SessionID: "sess-1",
+		Branch:    "feature/foo",
+		RepoPath:  "/repo/path",
+		PRStatus:  models.PRStatusClosed,
+		PRNumber:  42,
+	}
+	w.mu.Unlock()
+
+	branchToPR := map[string]*github.PRListItem{
+		"feature/foo": {Number: 50, Branch: "feature/foo", HTMLURL: "https://github.com/org/myrepo/pull/50", Title: "Reopened"},
+	}
+	w.checkSessionPR("org", "myrepo", w.sessions["sess-1"], branchToPR)
+
+	sess := store.sessions["sess-1"]
+	assert.Equal(t, models.PRStatusOpen, sess.PRStatus)
+	assert.Equal(t, 50, sess.PRNumber)
+	require.NotNil(t, capturedEvent)
+	assert.Equal(t, 50, capturedEvent.PRNumber)
+}
+
+// ---------------------------------------------------------------------------
+// RegisterPRFromAgent tests (Fix 4)
+// ---------------------------------------------------------------------------
+
+func TestPRWatcher_RegisterPRFromAgent_WithPRNumber(t *testing.T) {
+	store := newMockStore()
+	store.sessions["sess-1"] = &models.Session{ID: "sess-1"}
+
+	var capturedEvent *PRChangeEvent
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	w.onChange = func(evt PRChangeEvent) {
+		capturedEvent = &evt
+	}
+	defer w.Close()
+
+	// Pre-register the session
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
+
+	// Register PR from agent
+	w.RegisterPRFromAgent("sess-1", 42, "https://github.com/org/myrepo/pull/42")
+
+	// Verify immediate in-memory update
+	w.mu.RLock()
+	entry := w.sessions["sess-1"]
+	assert.Equal(t, 42, entry.PRNumber)
+	assert.Equal(t, models.PRStatusOpen, entry.PRStatus)
+	assert.Equal(t, "https://github.com/org/myrepo/pull/42", entry.PRUrl)
+	w.mu.RUnlock()
+
+	// Verify database update
+	sess := store.sessions["sess-1"]
+	assert.Equal(t, 42, sess.PRNumber)
+	assert.Equal(t, models.PRStatusOpen, sess.PRStatus)
+
+	// Verify WebSocket event was emitted
+	require.NotNil(t, capturedEvent)
+	assert.Equal(t, 42, capturedEvent.PRNumber)
+	assert.Equal(t, models.PRStatusOpen, capturedEvent.PRStatus)
+}
+
+func TestPRWatcher_RegisterPRFromAgent_NoPRNumber_ForcesCheck(t *testing.T) {
+	// When prNumber is 0 (git push detection), should fall through to ForceCheckSession.
+	// We provide a GitHub client that returns no PRs to verify ForceCheckSession is called
+	// without panicking, and the session entry is NOT prematurely updated.
+	store := newMockStore()
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	w := newTestPRWatcher(store, repoMgr, nil)
+	defer w.Close()
+
+	// Provide a ghClient that returns empty PR list (no open PRs)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{}) // empty PR list
+	}))
+	defer ts.Close()
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
+
+	// Register with no PR number (git push detection)
+	w.RegisterPRFromAgent("sess-1", 0, "")
+
+	// Verify entry was NOT updated (ForceCheckSession found no PRs)
+	w.mu.RLock()
+	entry := w.sessions["sess-1"]
+	assert.Equal(t, 0, entry.PRNumber, "should not update PR number when prNumber is 0")
+	assert.Equal(t, "none", entry.PRStatus, "should not update status when no PR found")
+	w.mu.RUnlock()
+}
+
+// ---------------------------------------------------------------------------
+// Mock GitHub server with configurable PR number
+// ---------------------------------------------------------------------------
+
+func newMockGitHubServerWithPRNumber(t *testing.T, prNumber int, responses mockGitHubResponses) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Match /repos/:owner/:repo/pulls/:number/merge
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/pulls/\d+/merge$`, r.URL.Path); matched {
+			if responses.prMerged != nil && *responses.prMerged {
+				w.WriteHeader(http.StatusNoContent)
+			} else {
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
+
+		// Match /repos/:owner/:repo/pulls/:number
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/pulls/\d+$`, r.URL.Path); matched {
+			if responses.prDetails == nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			pr := map[string]interface{}{
+				"number":          prNumber,
+				"state":           responses.prDetails.state,
+				"title":           "Test PR",
+				"body":            "",
+				"html_url":        fmt.Sprintf("https://github.com/org/myrepo/pull/%d", prNumber),
+				"merged":          responses.prDetails.merged,
+				"mergeable":       responses.prDetails.mergeable,
+				"mergeable_state": "unknown",
+				"head":            map[string]string{"sha": "abc123"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(pr)
+			return
+		}
+
+		// Match /repos/:owner/:repo/commits/:ref/check-runs
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/commits/.+/check-runs$`, r.URL.Path); matched {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 0,
+				"check_runs":  []interface{}{},
+			})
+			return
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
 }

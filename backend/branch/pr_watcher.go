@@ -86,13 +86,30 @@ func NewPRWatcher(
 	return w
 }
 
-// WatchSession starts watching a session for PR status changes
+// WatchSession starts watching a session for PR status changes.
+// If the session is already watched, new PR data is merged in (e.g., when the
+// CreatePR handler registers a PR for a session that was already watched at startup).
 func (w *PRWatcher) WatchSession(sessionID, workspaceID, branch, repoPath, currentPRStatus string, prNumber int, prUrl string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	// Check if already watching
-	if _, exists := w.sessions[sessionID]; exists {
+	if existing, exists := w.sessions[sessionID]; exists {
+		// Merge new data into existing entry
+		updated := false
+		if prNumber > 0 && existing.PRNumber != prNumber {
+			existing.PRNumber = prNumber
+			existing.PRUrl = prUrl
+			existing.PRStatus = currentPRStatus
+			existing.LastChecked = time.Time{} // Force re-check
+			updated = true
+		}
+		if branch != "" && existing.Branch != branch {
+			existing.Branch = branch
+			updated = true
+		}
+		if updated {
+			logger.PRWatcher.Infof("Updated watch for session %s (branch: %s, pr: %d)", sessionID, existing.Branch, existing.PRNumber)
+		}
 		return
 	}
 
@@ -178,8 +195,8 @@ func (w *PRWatcher) ForceCheckSession(sessionID string) {
 // RegisterPRFromAgent is called when the agent creates a PR via bash (gh pr create).
 // If prNumber > 0, the session is updated immediately with the PR info extracted from
 // the command output, providing instant UI feedback without a GitHub API round-trip.
-// It always follows up with ForceCheckSession to fetch additional metadata (checks,
-// mergeable status, PR title).
+// A targeted metadata fetch runs after a short delay to fill in title, checks, and
+// mergeable status without racing with GitHub's eventual consistency.
 func (w *PRWatcher) RegisterPRFromAgent(sessionID string, prNumber int, prURL string) {
 	if prNumber > 0 {
 		w.mu.Lock()
@@ -196,10 +213,9 @@ func (w *PRWatcher) RegisterPRFromAgent(sessionID string, prNumber int, prURL st
 		w.mu.Unlock()
 
 		if exists {
-
 			// Update database
 			if w.store != nil {
-				if err := w.store.UpdateSession(w.ctx, entry.SessionID, func(sess *models.Session) {
+				if err := w.store.UpdateSession(w.ctx, sessionID, func(sess *models.Session) {
 					sess.PRStatus = models.PRStatusOpen
 					sess.PRNumber = prNumber
 					sess.PRUrl = prURL
@@ -219,11 +235,112 @@ func (w *PRWatcher) RegisterPRFromAgent(sessionID string, prNumber int, prURL st
 				})
 			}
 		}
+
+		// Schedule a targeted metadata fetch (title, checks, mergeable) after
+		// a short delay. This avoids ForceCheckSession which uses ListOpenPRs
+		// and can race with GitHub's eventual consistency right after creation.
+		go func() {
+			select {
+			case <-time.After(3 * time.Second):
+			case <-w.ctx.Done():
+				return
+			}
+			w.enrichPRMetadata(sessionID, prNumber)
+		}()
+		return
 	}
 
-	// Always follow up with ForceCheckSession to fetch metadata
-	// (check status, mergeable, PR title, etc.)
+	// No PR number extracted (e.g., git push detection) — do a full force check
+	// to discover the PR via the open PR list.
 	w.ForceCheckSession(sessionID)
+}
+
+// enrichPRMetadata fetches PR title, check status, and mergeable for a known PR
+// and updates the session. Unlike ForceCheckSession, this uses GetPRDetails (a
+// single-PR endpoint) instead of ListOpenPRs, avoiding eventual-consistency races.
+func (w *PRWatcher) enrichPRMetadata(sessionID string, prNumber int) {
+	w.mu.RLock()
+	entry, exists := w.sessions[sessionID]
+	if !exists {
+		w.mu.RUnlock()
+		return
+	}
+	repoPath := entry.RepoPath
+	w.mu.RUnlock()
+
+	owner, repo, err := w.repoManager.GetGitHubRemote(w.ctx, repoPath)
+	if err != nil {
+		logger.PRWatcher.Warnf("enrichPRMetadata: failed to get remote for session %s: %v", sessionID, err)
+		return
+	}
+
+	details, err := w.ghClient.GetPRDetails(w.ctx, owner, repo, prNumber)
+	if err != nil || details == nil {
+		logger.PRWatcher.Warnf("enrichPRMetadata: failed to get PR #%d details for session %s: %v", prNumber, sessionID, err)
+		return
+	}
+
+	w.mu.Lock()
+	// Re-check entry still exists and matches the same PR
+	entry, exists = w.sessions[sessionID]
+	if !exists || entry.PRNumber != prNumber {
+		w.mu.Unlock()
+		return
+	}
+
+	changed := false
+	if details.Title != "" && details.Title != entry.PRTitle {
+		entry.PRTitle = details.Title
+		changed = true
+	}
+	checkStatus := string(details.CheckStatus)
+	if checkStatus != entry.CheckStatus {
+		entry.CheckStatus = checkStatus
+		changed = true
+	}
+	if !boolPtrEqual(details.Mergeable, entry.Mergeable) {
+		entry.Mergeable = details.Mergeable
+		changed = true
+	}
+	entry.LastChecked = time.Now()
+	w.mu.Unlock()
+
+	if !changed {
+		return
+	}
+
+	logger.PRWatcher.Infof("Enriched PR #%d metadata for session %s: title=%q, checks=%s",
+		prNumber, sessionID, details.Title, checkStatus)
+
+	// Update database
+	if w.store != nil {
+		if err := w.store.UpdateSession(w.ctx, sessionID, func(sess *models.Session) {
+			sess.PRTitle = details.Title
+			sess.CheckStatus = checkStatus
+			if checkStatus == "" {
+				sess.CheckStatus = models.CheckStatusNone
+			}
+			sess.HasCheckFailures = checkStatus == string(github.CheckStatusFailure)
+			if details.Mergeable != nil {
+				sess.HasMergeConflict = !*details.Mergeable
+			}
+		}); err != nil {
+			logger.PRWatcher.Errorf("enrichPRMetadata: failed to update session %s: %v", sessionID, err)
+		}
+	}
+
+	// Emit update event
+	if w.onChange != nil {
+		w.onChange(PRChangeEvent{
+			SessionID:   sessionID,
+			PRStatus:    entry.PRStatus,
+			PRNumber:    prNumber,
+			PRUrl:       entry.PRUrl,
+			PRTitle:     details.Title,
+			CheckStatus: checkStatus,
+			Mergeable:   details.Mergeable,
+		})
+	}
 }
 
 // Close stops the PR watcher
@@ -281,18 +398,33 @@ func (w *PRWatcher) checkSessionsWithoutPR() {
 	w.checkRepoSessions(repoSessions)
 }
 
-// checkSessionsWithPR checks sessions that have an open PR for lifecycle changes
+// checkSessionsWithPR checks sessions that have an associated PR for lifecycle changes.
+// Terminal (merged/closed) sessions are piggybacked onto repos that already have open
+// sessions, so they don't trigger extra GitHub API calls. This avoids O(n) overhead
+// for workspaces with many finished sessions.
 func (w *PRWatcher) checkSessionsWithPR() {
 	if !w.ghClient.IsAuthenticated() {
 		return
 	}
 
-	// Group sessions by repo for efficient API calls
-	repoSessions := w.groupSessionsByRepo(func(e *PRWatchEntry) bool {
+	// Primary: sessions with open PRs (these drive the API fetches).
+	openSessions := w.groupSessionsByRepo(func(e *PRWatchEntry) bool {
 		return e.PRStatus == models.PRStatusOpen
 	})
 
-	w.checkRepoSessions(repoSessions)
+	// Secondary: terminal sessions only for repos that already have open sessions.
+	// This detects new PRs created for branches whose previous PR was merged/closed,
+	// without adding API calls for repos that have no open sessions.
+	terminalSessions := w.groupSessionsByRepo(func(e *PRWatchEntry) bool {
+		return e.PRStatus == models.PRStatusMerged || e.PRStatus == models.PRStatusClosed
+	})
+	for key, entries := range terminalSessions {
+		if _, hasOpen := openSessions[key]; hasOpen {
+			openSessions[key] = append(openSessions[key], entries...)
+		}
+	}
+
+	w.checkRepoSessions(openSessions)
 }
 
 // backfillMissingPRTitles is a one-time startup pass that fetches PR titles
@@ -439,12 +571,18 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 
 // checkSessionPR checks and updates PR status for a single session
 func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, branchToPR map[string]*github.PRListItem) {
-	// Terminal states are final — don't re-evaluate
-	if entry.PRStatus == models.PRStatusMerged || entry.PRStatus == models.PRStatusClosed {
-		return
-	}
-
 	pr, hasPR := branchToPR[entry.Branch]
+
+	// For terminal states (merged/closed), only continue if there's a NEW PR
+	// for this branch (different number). This handles the workflow where a PR
+	// is merged, development continues, and a new PR is created.
+	if entry.PRStatus == models.PRStatusMerged || entry.PRStatus == models.PRStatusClosed {
+		if !hasPR || pr.Number == entry.PRNumber {
+			return // Same old PR or no PR — nothing to do
+		}
+		logger.PRWatcher.Infof("Detected new PR #%d for session %s (previous PR #%d was %s)",
+			pr.Number, entry.SessionID, entry.PRNumber, entry.PRStatus)
+	}
 
 	// Determine new status based on current state and PR existence
 	var newStatus string
