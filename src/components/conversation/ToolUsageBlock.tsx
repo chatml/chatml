@@ -94,7 +94,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   elapsedSeconds,
   metadata,
 }: ToolUsageBlockProps) {
-  const [isOpen, setIsOpen] = useState(success === false && !isActive);
+  const [isOpen, setIsOpen] = useState(false);
   const mcpInfo = useMemo(() => parseMcpToolName(tool), [tool]);
 
   const ToolIcon = useMemo((): LucideIcon => {
