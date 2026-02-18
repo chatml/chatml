@@ -55,7 +55,7 @@ export const ApprovedPlanBlock = memo(function ApprovedPlanBlock({
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className={cn(PROSE_CLASSES, 'mt-0.5 ml-4 space-y-1.5')}>
+        <div className={cn(PROSE_CLASSES, 'mt-0.5 ml-4 space-y-1.5 border-l-2 border-primary/20 pl-3')}>
           <CachedMarkdown cacheKey={cacheKey} content={content} />
         </div>
       </CollapsibleContent>
