@@ -638,7 +638,8 @@ function CIChecksSection({
                   const jobStatus = getCheckStatusInfo(job.status, job.conclusion);
                   const JobIcon = jobStatus.icon;
                   const isFailed = job.conclusion === 'failure' || job.conclusion === 'timed_out';
-                  const duration = job.startedAt && job.completedAt
+                  const isSkippedOrCancelled = job.conclusion === 'skipped' || job.conclusion === 'cancelled';
+                  const duration = !isSkippedOrCancelled && job.startedAt && job.completedAt
                     ? computeJobDuration(job)
                     : undefined;
 
@@ -698,7 +699,7 @@ function CIChecksSection({
                   <div key={check.name} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
                     <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
                     <span className="text-xs truncate flex-1" title={check.name}>{check.name}</span>
-                    {check.durationSeconds !== undefined && (
+                    {check.durationSeconds !== undefined && check.conclusion !== 'skipped' && check.conclusion !== 'cancelled' && (
                       <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
                         {formatDuration(check.durationSeconds)}
                       </span>

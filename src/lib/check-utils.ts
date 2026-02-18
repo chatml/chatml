@@ -73,7 +73,7 @@ export function computeJobDuration(job: { startedAt: string; completedAt: string
   const start = new Date(job.startedAt).getTime();
   const end = new Date(job.completedAt).getTime();
   if (isNaN(start) || isNaN(end)) return undefined;
-  return Math.round((end - start) / 1000);
+  return Math.max(0, Math.round((end - start) / 1000));
 }
 
 /**
