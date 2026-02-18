@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,7 +24,8 @@ import (
 const snapshotDebounceInterval = 500 * time.Millisecond
 
 // prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
-var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/\d+`)
+// Capture group 1 = PR number.
+var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/(\d+)`)
 
 // prMergedPattern matches merge confirmation messages in Bash stdout (e.g., "Merged pull request", "successfully merged")
 var prMergedPattern = regexp.MustCompile(`(?i)(merged\s+pull\s+request|pull\s+request\s+.+\s+was\s+already\s+merged|successfully\s+merged)`)
@@ -68,8 +70,10 @@ type Manager struct {
 	// Session event handler
 	onSessionEvent SessionEventHandler
 
-	// Callback fired when agent creates a PR via bash (sessionID)
-	onPRCreated func(sessionID string)
+	// Callback fired when agent creates a PR via bash.
+	// prNumber and prURL are extracted from the gh pr create stdout when available;
+	// they are zero/empty when triggered by git push detection.
+	onPRCreated func(sessionID string, prNumber int, prURL string)
 
 	// Callback fired when agent merges a PR via bash (sessionID)
 	onPRMerged func(sessionID string)
@@ -107,7 +111,7 @@ func (m *Manager) SetSessionEventHandler(handler SessionEventHandler) {
 	m.onSessionEvent = handler
 }
 
-func (m *Manager) SetOnPRCreated(handler func(sessionID string)) {
+func (m *Manager) SetOnPRCreated(handler func(sessionID string, prNumber int, prURL string)) {
 	m.onPRCreated = handler
 }
 
@@ -391,11 +395,13 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	turnStartTime := time.Now()
 
 	// Track PR-related tool activity for deferred re-check at turn end.
-	// The initial ForceCheckSession at tool_end often races with GitHub's
-	// eventual consistency; a second check after the turn gives GitHub
-	// time to propagate the change.
-	var prDeferredRecheck func(sessionID string)
+	// The initial check at tool_end often races with GitHub's eventual
+	// consistency; a second check after the turn gives GitHub time to
+	// propagate the change.
+	var prDeferredRecheck func(sessionID string, prNumber int, prURL string)
 	var prActivitySessionID string
+	var prActivityNumber int
+	var prActivityURL string
 
 	// maxOutputSize limits stdout/stderr stored per tool to prevent DB bloat
 	const maxOutputSize = 100 * 1024
@@ -665,14 +671,25 @@ outer:
 					logger.Manager.Errorf("Failed to store tool action for conv %s: %v", convID, err)
 				}
 
-				// Detect PR creation from Bash tool stdout (e.g., gh pr create)
-				if event.Tool == "Bash" && event.Success && prURLPattern.MatchString(event.Stdout) {
-					if m.onPRCreated != nil {
-						conv, _ := m.store.GetConversationMeta(ctx, convID)
-						if conv != nil {
-							go m.onPRCreated(conv.SessionID)
-							prDeferredRecheck = m.onPRCreated
-							prActivitySessionID = conv.SessionID
+				// Detect PR creation from Bash tool stdout (e.g., gh pr create).
+				// Extract the PR number directly from the URL so the session can
+				// be updated immediately instead of relying on a GitHub API round-trip.
+				if event.Tool == "Bash" && event.Success {
+					if match := prURLPattern.FindStringSubmatch(event.Stdout); match != nil {
+						prNum, err := strconv.Atoi(match[1])
+						if err != nil {
+							logger.Manager.Warnf("Failed to parse PR number from URL match %q: %v", match[1], err)
+						}
+						prURL := "https://" + match[0]
+						if m.onPRCreated != nil {
+							conv, _ := m.store.GetConversationMeta(ctx, convID)
+							if conv != nil {
+								go m.onPRCreated(conv.SessionID, prNum, prURL)
+								prDeferredRecheck = m.onPRCreated
+								prActivitySessionID = conv.SessionID
+								prActivityNumber = prNum
+								prActivityURL = prURL
+							}
 						}
 					}
 				}
@@ -683,8 +700,11 @@ outer:
 						conv, _ := m.store.GetConversationMeta(ctx, convID)
 						if conv != nil {
 							go m.onPRMerged(conv.SessionID)
-							prDeferredRecheck = m.onPRMerged
+							mergeHandler := m.onPRMerged
+							prDeferredRecheck = func(sid string, _ int, _ string) { mergeHandler(sid) }
 							prActivitySessionID = conv.SessionID
+							prActivityNumber = 0
+							prActivityURL = ""
 						}
 					}
 				}
@@ -701,9 +721,11 @@ outer:
 							sess, _ := m.store.GetSession(ctx, conv.SessionID)
 							if sess != nil && sess.PRNumber == 0 {
 								logger.Manager.Infof("Detected git push for session %s (no PR yet), triggering PR check", conv.SessionID)
-								go m.onPRCreated(conv.SessionID)
+								go m.onPRCreated(conv.SessionID, 0, "")
 								prDeferredRecheck = m.onPRCreated
 								prActivitySessionID = conv.SessionID
+								prActivityNumber = 0
+								prActivityURL = ""
 							}
 						}
 					}
@@ -884,19 +906,23 @@ outer:
 				}
 
 				// Deferred PR re-check: if PR activity was detected during this turn,
-				// schedule a second ForceCheckSession after a short delay. The initial
-				// check at tool_end often races with GitHub's eventual consistency;
-				// by turn_complete the agent has spent a few more seconds generating
+				// schedule a second check after a short delay. The initial check at
+				// tool_end often races with GitHub's eventual consistency; by
+				// turn_complete the agent has spent a few more seconds generating
 				// its response, and the additional 2-second delay provides further margin.
 				if prDeferredRecheck != nil && prActivitySessionID != "" {
 					recheck := prDeferredRecheck
 					sessionID := prActivitySessionID
+					prNum := prActivityNumber
+					prURL := prActivityURL
 					go func() {
 						time.Sleep(2 * time.Second)
-						recheck(sessionID)
+						recheck(sessionID, prNum, prURL)
 					}()
 					prDeferredRecheck = nil
 					prActivitySessionID = ""
+					prActivityNumber = 0
+					prActivityURL = ""
 				}
 			}
 
