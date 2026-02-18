@@ -17,7 +17,7 @@ export const ATTACHMENT_LIMITS = {
 };
 
 export const SUPPORTED_EXTENSIONS: Record<string, string[]> = {
-  images: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'],
+  image: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'],
   text: ['.txt', '.md', '.markdown', '.csv', '.log'],
   code: [
     '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
