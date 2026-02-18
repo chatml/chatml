@@ -358,7 +358,7 @@ func TestInputMessage_Marshal(t *testing.T) {
 func TestProcess_SendPlanApprovalResponse_NotRunning(t *testing.T) {
 	p := NewProcess("test-id", "/tmp", "conv-123")
 
-	err := p.SendPlanApprovalResponse("plan-1", true)
+	err := p.SendPlanApprovalResponse("plan-1", true, "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not running")
 }

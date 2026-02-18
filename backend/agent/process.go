@@ -97,6 +97,7 @@ type InputMessage struct {
 	// Plan approval response fields (for ExitPlanMode tool)
 	PlanApprovalRequestID string `json:"planApprovalRequestId,omitempty"`
 	PlanApproved          *bool  `json:"planApproved,omitempty"`
+	PlanApprovalReason    string `json:"planApprovalReason,omitempty"`
 	// Max thinking tokens override (for runtime adjustment)
 	MaxThinkingTokens int `json:"maxThinkingTokens,omitempty"`
 	// MCP server management fields (SDK v0.2.21+)
@@ -604,11 +605,12 @@ func (p *Process) SendUserQuestionResponse(requestId string, answers map[string]
 }
 
 // SendPlanApprovalResponse sends the user's approval/rejection to a pending ExitPlanMode
-func (p *Process) SendPlanApprovalResponse(requestId string, approved bool) error {
+func (p *Process) SendPlanApprovalResponse(requestId string, approved bool, reason string) error {
 	return p.sendInput(InputMessage{
 		Type:                  "plan_approval_response",
 		PlanApprovalRequestID: requestId,
 		PlanApproved:          &approved,
+		PlanApprovalReason:    reason,
 	})
 }
 

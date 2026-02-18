@@ -1125,11 +1125,11 @@ export async function setConversationMaxThinkingTokens(convId: string, maxThinki
   }
 }
 
-export async function approvePlan(convId: string, requestId: string, approved: boolean): Promise<void> {
+export async function approvePlan(convId: string, requestId: string, approved: boolean, reason?: string): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/approve-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requestId, approved }),
+    body: JSON.stringify({ requestId, approved, ...(reason && { reason }) }),
   });
   if (!res.ok) {
     const text = await res.text();
