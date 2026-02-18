@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { Clock } from 'lucide-react';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
+import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
 import { MentionText } from '@/components/conversation/MentionText';
 import type { QueuedMessage } from '@/stores/appStore';
 
@@ -10,11 +12,27 @@ interface QueuedMessageBubbleProps {
 }
 
 export function QueuedMessageBubble({ message }: QueuedMessageBubbleProps) {
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
   return (
     <div className="py-2 flex justify-end">
       <div className="bg-surface-2 dark:bg-[#090909] rounded-lg px-4 py-2.5 opacity-70">
         {message.attachments && message.attachments.length > 0 && (
-          <AttachmentGrid attachments={message.attachments} readOnly />
+          <>
+            <AttachmentGrid
+              attachments={message.attachments}
+              onPreview={(index) => setPreviewIndex(index)}
+              readOnly
+            />
+            {previewIndex !== null && (
+              <AttachmentPreviewModal
+                open
+                onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+                attachments={message.attachments}
+                initialIndex={previewIndex}
+              />
+            )}
+          </>
         )}
         <p className="text-base leading-relaxed whitespace-pre-wrap">
           <MentionText content={message.content} />

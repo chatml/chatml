@@ -39,6 +39,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDialog, copyToClipboard } from '@/lib/tauri';
 import type { Attachment, SuggestionPill } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion, useStreamingState } from '@/stores/selectors';
@@ -114,6 +115,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
   const plateInputRef = useRef<PlateInputHandle>(null);
   const attachmentsRef = useRef<Attachment[]>(attachments);
@@ -1166,6 +1168,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           <AttachmentGrid
             attachments={attachments}
             onRemove={handleRemoveAttachment}
+            onPreview={(index) => setPreviewIndex(index)}
           />
         )}
 
@@ -1412,6 +1415,16 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           sessionId={selectedSessionId}
           selectedIds={selectedSummaryIds}
           onSelectionChange={setSelectedSummaryIds}
+        />
+      )}
+
+      {/* Attachment Preview Modal */}
+      {previewIndex !== null && (
+        <AttachmentPreviewModal
+          open
+          onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+          attachments={attachments}
+          initialIndex={previewIndex}
         />
       )}
     </div>
