@@ -16,10 +16,10 @@ function mockGenerateSuccess(title = 'Add auth flow', body = '- Added login\n- A
   );
 }
 
-function mockCreateSuccess(htmlUrl = 'https://github.com/owner/repo/pull/42') {
+function mockCreateSuccess(number = 42, htmlUrl = 'https://github.com/owner/repo/pull/42') {
   server.use(
     http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/pr/create`, () => {
-      return HttpResponse.json({ number: 42, htmlUrl });
+      return HttpResponse.json({ number, htmlUrl });
     })
   );
 }
@@ -100,7 +100,7 @@ describe('CreatePRDialog', () => {
   it('creates PR when clicking Create button', async () => {
     const user = userEvent.setup();
     mockGenerateSuccess('Test PR', 'Test body');
-    mockCreateSuccess('https://github.com/owner/repo/pull/99');
+    mockCreateSuccess(99, 'https://github.com/owner/repo/pull/99');
 
     render(<CreatePRDialog {...defaultProps} />);
 
@@ -114,7 +114,7 @@ describe('CreatePRDialog', () => {
     await user.click(createButton);
 
     await waitFor(() => {
-      expect(defaultProps.onSuccess).toHaveBeenCalledWith('https://github.com/owner/repo/pull/99');
+      expect(defaultProps.onSuccess).toHaveBeenCalledWith(99, 'https://github.com/owner/repo/pull/99');
     });
   });
 
