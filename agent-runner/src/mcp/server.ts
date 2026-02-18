@@ -7,6 +7,13 @@ import { createCommentTools } from "./tools/comments.js";
 import { createScriptTools } from "./tools/scripts.js";
 
 const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://localhost:9876";
+const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
+
+function buildHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (AUTH_TOKEN) headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+  return headers;
+}
 
 function sessionApiUrl(context: WorkspaceContext, path: string): string {
   return `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}${path}`;
@@ -53,7 +60,11 @@ export function createChatMLMcpServer(options: McpServerOptions) {
           const issue = context.linearIssue;
 
           try {
-            const res = await fetch(sessionApiUrl(context, "/git-status"));
+            const res = await fetch(sessionApiUrl(context, "/git-status"), { headers: buildHeaders() });
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error(`Backend error ${res.status}: ${text}`);
+            }
             const gitStatus = await res.json();
 
             return {
@@ -114,7 +125,11 @@ export function createChatMLMcpServer(options: McpServerOptions) {
           try {
             // Single file diff
             if (file) {
-              const res = await fetch(sessionApiUrl(context, `/diff?path=${encodeURIComponent(file)}`));
+              const res = await fetch(sessionApiUrl(context, `/diff?path=${encodeURIComponent(file)}`), { headers: buildHeaders() });
+              if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`Backend error ${res.status}: ${text}`);
+              }
               const diff = await res.json();
               return {
                 content: [{ type: "text", text: JSON.stringify(diff, null, 2) }],
@@ -123,9 +138,18 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
             // Fetch uncommitted changes + branch commits in parallel
             const [changesRes, branchRes] = await Promise.all([
-              fetch(sessionApiUrl(context, "/changes")),
-              fetch(sessionApiUrl(context, "/branch-commits")),
+              fetch(sessionApiUrl(context, "/changes"), { headers: buildHeaders() }),
+              fetch(sessionApiUrl(context, "/branch-commits"), { headers: buildHeaders() }),
             ]);
+
+            if (!changesRes.ok) {
+              const text = await changesRes.text();
+              throw new Error(`Backend error ${changesRes.status}: ${text}`);
+            }
+            if (!branchRes.ok) {
+              const text = await branchRes.text();
+              throw new Error(`Backend error ${branchRes.status}: ${text}`);
+            }
 
             const uncommitted: FileChange[] = await changesRes.json();
             const branch: BranchChangesResponse = await branchRes.json();
@@ -153,7 +177,11 @@ export function createChatMLMcpServer(options: McpServerOptions) {
               const diffs = await Promise.all(
                 Array.from(filePaths).map(async (path) => {
                   try {
-                    const res = await fetch(sessionApiUrl(context, `/diff?path=${encodeURIComponent(path)}`));
+                    const res = await fetch(sessionApiUrl(context, `/diff?path=${encodeURIComponent(path)}`), { headers: buildHeaders() });
+                    if (!res.ok) {
+                      const text = await res.text();
+                      return { path, error: `Backend error ${res.status}: ${text}` };
+                    }
                     const diff = await res.json();
                     return { path, oldContent: diff.oldContent, newContent: diff.newContent };
                   } catch {
@@ -209,7 +237,11 @@ export function createChatMLMcpServer(options: McpServerOptions) {
         {},
         async () => {
           try {
-            const res = await fetch(sessionApiUrl(context, "/branch-commits"));
+            const res = await fetch(sessionApiUrl(context, "/branch-commits"), { headers: buildHeaders() });
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error(`Backend error ${res.status}: ${text}`);
+            }
             const branch: BranchChangesResponse = await res.json();
 
             if (!branch.commits || branch.commits.length === 0) {
