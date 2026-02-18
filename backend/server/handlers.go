@@ -85,10 +85,12 @@ func (m *SessionLockManager) Unlock(path string) {
 // BranchCache provides TTL-based caching for branch listing operations.
 // This reduces git operations for frequently accessed branch lists.
 type BranchCache struct {
-	mu      sync.RWMutex
-	entries map[string]*branchCacheEntry
-	ttl     time.Duration
-	done    chan struct{}
+	mu             sync.RWMutex
+	entries        map[string]*branchCacheEntry
+	ttl            time.Duration
+	done           chan struct{}
+	lastPruneTime  map[string]time.Time
+	pruneCooldown  time.Duration
 }
 
 type branchCacheEntry struct {
@@ -99,9 +101,11 @@ type branchCacheEntry struct {
 // NewBranchCache creates a new branch cache with the given TTL
 func NewBranchCache(ttl time.Duration) *BranchCache {
 	c := &BranchCache{
-		entries: make(map[string]*branchCacheEntry),
-		ttl:     ttl,
-		done:    make(chan struct{}),
+		entries:       make(map[string]*branchCacheEntry),
+		ttl:           ttl,
+		done:          make(chan struct{}),
+		lastPruneTime: make(map[string]time.Time),
+		pruneCooldown: 30 * time.Minute,
 	}
 	go c.cleanupLoop()
 	return c
@@ -152,6 +156,24 @@ func (c *BranchCache) InvalidateRepo(repoPath string) {
 			delete(c.entries, key)
 		}
 	}
+}
+
+// ShouldPrune returns true if enough time has passed since the last prune for this repo.
+func (c *BranchCache) ShouldPrune(repoPath string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	last, ok := c.lastPruneTime[repoPath]
+	if !ok {
+		return true
+	}
+	return time.Since(last) > c.pruneCooldown
+}
+
+// MarkPruned records that a prune was performed for a repo.
+func (c *BranchCache) MarkPruned(repoPath string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastPruneTime[repoPath] = time.Now()
 }
 
 // Close stops the cleanup goroutine. Safe to call multiple times.
@@ -1235,6 +1257,16 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	// Check cache first
 	branchResult, cacheHit := h.branchCache.Get(cacheKey)
 	if !cacheHit {
+		// Auto-prune stale remote-tracking refs to prevent inflated branch counts.
+		// Only prune when including remote branches and cooldown has elapsed.
+		if includeRemote && h.branchCache.ShouldPrune(repo.Path) {
+			if pruneErr := h.repoManager.PruneRemoteRefs(ctx, repo.Path); pruneErr != nil {
+				logger.Handlers.Warnf("Auto-prune failed for %s: %v", repo.Path, pruneErr)
+			} else {
+				h.branchCache.MarkPruned(repo.Path)
+			}
+		}
+
 		// Get branches from git
 		branchOpts := git.BranchListOptions{
 			IncludeRemote: includeRemote,
@@ -1405,6 +1437,17 @@ func (h *Handlers) AnalyzeBranchCleanup(w http.ResponseWriter, r *http.Request) 
 		req.StaleDaysThreshold = 90
 	}
 
+	// Prune stale remote-tracking refs before analysis so we don't suggest
+	// deleting branches that are already gone on the remote.
+	if req.IncludeRemote {
+		if pruneErr := h.repoManager.PruneRemoteRefs(ctx, repo.Path); pruneErr != nil {
+			logger.Handlers.Warnf("Pre-analysis prune failed for %s: %v", repo.Path, pruneErr)
+		} else {
+			h.branchCache.MarkPruned(repo.Path)
+			h.branchCache.InvalidateRepo(repo.Path)
+		}
+	}
+
 	// Get sessions for branch -> session mapping
 	sessionBranches, err := h.getSessionBranchMap(ctx, workspaceID)
 	if err != nil {
@@ -1480,6 +1523,42 @@ func (h *Handlers) ExecuteBranchCleanup(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, result)
+}
+
+// PruneStaleBranches runs git fetch --prune to clean up stale remote-tracking refs
+// POST /api/repos/{id}/branches/prune
+func (h *Handlers) PruneStaleBranches(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	repo, err := h.store.GetRepo(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if repo == nil {
+		writeNotFound(w, "workspace")
+		return
+	}
+
+	if err := h.repoManager.FetchAndPrune(ctx, repo.Path); err != nil {
+		writeInternalError(w, "failed to prune stale branches", err)
+		return
+	}
+
+	h.branchCache.MarkPruned(repo.Path)
+	h.branchCache.InvalidateRepo(repo.Path)
+
+	if h.hub != nil {
+		h.hub.Broadcast(Event{
+			Type: "branch_dashboard_update",
+			Payload: map[string]interface{}{
+				"reason": "prune_complete",
+			},
+		})
+	}
+
+	writeJSON(w, map[string]interface{}{"success": true})
 }
 
 // GetAvatars returns GitHub avatar URLs for a batch of email addresses
