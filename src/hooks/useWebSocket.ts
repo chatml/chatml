@@ -349,13 +349,15 @@ export function useWebSocket(enabled: boolean = true) {
             });
           } else {
             // Parent agent tool
+            // User-interactive tools wait for user input and have their own backend
+            // timeouts (24h). Skip the 5-min orphaned-tool timeout.
+            const isUserInteractiveTool = event.tool === 'ExitPlanMode' || event.tool === 'AskUserQuestion';
             store.addActiveTool(conversationId, {
               id: event.id,
               tool: event.tool,
               params: event.params,
               startTime: Date.now(),
-            });
-
+            }, isUserInteractiveTool ? { skipTimeout: true } : undefined);
           }
         }
         break;
