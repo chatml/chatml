@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useSelectedIds } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { usePRStatus } from '@/hooks/usePRStatus';
 import { useCIRuns } from '@/hooks/useCIRuns';
 import { useGitStatus } from '@/hooks/useGitStatus';
-import { getCheckStatusInfo, formatDuration } from '@/lib/check-utils';
+import { getCheckStatusInfo, formatDuration, computeJobDuration } from '@/lib/check-utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { CIFailureAnalysis } from '@/components/ci/CIFailureAnalysis';
@@ -25,7 +25,6 @@ import {
   Info,
   ExternalLink,
   RefreshCw,
-  ChevronDown,
   ChevronRight,
   CircleDot,
   Loader2,
@@ -442,13 +441,64 @@ function CIChecksSection({
   onAnalyzeFailure: (runId: number, jobId: number) => Promise<unknown>;
 }) {
   const [checksExpanded, setChecksExpanded] = useState(true);
-  const [runsExpanded, setRunsExpanded] = useState(false);
   const [analysisTarget, setAnalysisTarget] = useState<{
     runId: number;
     job: WorkflowJobDTO;
   } | null>(null);
 
-  // Sort checks: failures first, running, then passed
+  // Latest workflow run
+  const latestRun = runs.length > 0 ? runs[0] : null;
+
+  // Eagerly fetch jobs for the latest run
+  const [jobs, setJobs] = useState<WorkflowJobDTO[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [jobsError, setJobsError] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
+
+  // Ref to avoid re-triggering the effect when onGetJobs identity changes
+  const onGetJobsRef = useRef(onGetJobs);
+  onGetJobsRef.current = onGetJobs;
+
+  useEffect(() => {
+    if (!latestRun) {
+      setJobs([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingJobs(true);
+    setJobsError(false);
+
+    onGetJobsRef.current(latestRun.id)
+      .then((fetched) => {
+        if (!cancelled) setJobs(fetched);
+      })
+      .catch(() => {
+        if (!cancelled) setJobsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingJobs(false);
+      });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-fetch when run ID changes
+  }, [latestRun?.id]);
+
+  // Sort jobs: failures first, running, queued, then passed/skipped
+  const sortedJobs = useMemo(() => {
+    return [...jobs].sort((a, b) => {
+      const order = (j: WorkflowJobDTO) => {
+        if (j.status === 'completed' && (j.conclusion === 'failure' || j.conclusion === 'timed_out' || j.conclusion === 'action_required')) return 0;
+        if (j.status === 'in_progress') return 1;
+        if (j.status !== 'completed') return 2;
+        if (j.conclusion === 'success') return 4;
+        return 3;
+      };
+      return order(a) - order(b);
+    });
+  }, [jobs]);
+
+  // Fallback: sort checkDetails when no workflow data
   const sortedChecks = useMemo(() => {
     return [...checkDetails].sort((a, b) => {
       const order = (c: CheckDetail) => {
@@ -462,13 +512,29 @@ function CIChecksSection({
     });
   }, [checkDetails]);
 
-  const passedCount = checkDetails.filter(
-    (c) => c.conclusion === 'success' || c.conclusion === 'skipped' || c.conclusion === 'neutral'
-  ).length;
-  const failedCount = checkDetails.filter(
-    (c) => c.status === 'completed' && (c.conclusion === 'failure' || c.conclusion === 'timed_out' || c.conclusion === 'action_required')
-  ).length;
-  const totalCount = checkDetails.length;
+  // Derive summary counts from jobs when available, falling back to checkDetails
+  const { passedCount, failedCount, totalCount } = useMemo(() => {
+    if (latestRun && jobs.length > 0) {
+      return {
+        passedCount: jobs.filter(
+          (j) => j.conclusion === 'success' || j.conclusion === 'skipped' || j.conclusion === 'neutral'
+        ).length,
+        failedCount: jobs.filter(
+          (j) => j.status === 'completed' && (j.conclusion === 'failure' || j.conclusion === 'timed_out' || j.conclusion === 'action_required')
+        ).length,
+        totalCount: jobs.length,
+      };
+    }
+    return {
+      passedCount: checkDetails.filter(
+        (c) => c.conclusion === 'success' || c.conclusion === 'skipped' || c.conclusion === 'neutral'
+      ).length,
+      failedCount: checkDetails.filter(
+        (c) => c.status === 'completed' && (c.conclusion === 'failure' || c.conclusion === 'timed_out' || c.conclusion === 'action_required')
+      ).length,
+      totalCount: checkDetails.length,
+    };
+  }, [latestRun, jobs, checkDetails]);
 
   // Summary label
   let summaryLabel: string;
@@ -487,30 +553,133 @@ function CIChecksSection({
     summaryColor = 'text-yellow-500';
   }
 
+  const hasFailures = latestRun?.conclusion === 'failure' || latestRun?.conclusion === 'timed_out';
+
+  const handleRerun = async () => {
+    if (!latestRun) return;
+    setRerunning(true);
+    try {
+      await onRerun(latestRun.id, hasFailures);
+    } finally {
+      setRerunning(false);
+    }
+  };
+
   return (
     <div className="border-b">
       {/* CI Checks header */}
-      <button
-        onClick={() => setChecksExpanded(!checksExpanded)}
-        className="flex items-center gap-1 px-3 py-2 w-full hover:bg-surface-2 transition-colors"
-      >
-        <ChevronRight
-          className={cn(
-            'size-3 shrink-0 text-muted-foreground transition-transform',
-            checksExpanded && 'rotate-90'
-          )}
-        />
-        <span className="text-2xs font-medium text-foreground/60 uppercase tracking-wider">
-          CI Checks
-        </span>
-        <span className={cn('text-2xs ml-auto tabular-nums', summaryColor)}>
-          {summaryLabel}
-        </span>
-      </button>
+      <div className="flex items-center gap-1 px-3 py-2 w-full">
+        <button
+          onClick={() => setChecksExpanded(!checksExpanded)}
+          className="flex items-center gap-1 flex-1 min-w-0 hover:bg-surface-2 transition-colors rounded-sm py-0.5 -ml-1 pl-1"
+        >
+          <ChevronRight
+            className={cn(
+              'size-3 shrink-0 text-muted-foreground transition-transform',
+              checksExpanded && 'rotate-90'
+            )}
+          />
+          <span className="text-2xs font-medium text-foreground/60 uppercase tracking-wider">
+            CI Checks
+          </span>
+          <span className={cn('text-2xs ml-auto tabular-nums', summaryColor)}>
+            {summaryLabel}
+          </span>
+        </button>
+
+        {/* Header actions for latest run */}
+        {latestRun && (
+          <div className="flex items-center gap-0.5 shrink-0 ml-1">
+            {latestRun.status === 'completed' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={handleRerun}
+                disabled={rerunning}
+                title={hasFailures ? 'Rerun failed' : 'Rerun all'}
+              >
+                {rerunning ? (
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-2.5 w-2.5" />
+                )}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              onClick={() => window.open(latestRun.htmlUrl, '_blank')}
+              title="View on GitHub"
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+            </Button>
+          </div>
+        )}
+      </div>
 
       {checksExpanded && (
         <div className="px-2 pb-2">
-          {hasNoPR && totalCount === 0 ? (
+          {latestRun ? (
+            // Primary: flat list of jobs from latest workflow run
+            loadingJobs ? (
+              <div className="flex items-center justify-center py-2 text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                <span className="text-xs">Loading jobs...</span>
+              </div>
+            ) : jobsError ? (
+              <div className="flex items-center justify-center py-2 text-muted-foreground">
+                <span className="text-xs">Failed to load jobs</span>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {sortedJobs.map((job) => {
+                  const jobStatus = getCheckStatusInfo(job.status, job.conclusion);
+                  const JobIcon = jobStatus.icon;
+                  const isFailed = job.conclusion === 'failure' || job.conclusion === 'timed_out';
+                  const duration = job.startedAt && job.completedAt
+                    ? computeJobDuration(job)
+                    : undefined;
+
+                  return (
+                    <div key={job.id} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
+                      <JobIcon className={cn('h-3 w-3 shrink-0', jobStatus.color)} />
+                      <span className="text-xs truncate flex-1" title={job.name}>{job.name}</span>
+                      {duration !== undefined && (
+                        <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
+                          {formatDuration(duration)}
+                        </span>
+                      )}
+                      <span className={cn('text-2xs shrink-0', jobStatus.color)}>
+                        {jobStatus.label}
+                      </span>
+                      {isFailed && latestRun && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 shrink-0"
+                          onClick={() => setAnalysisTarget({ runId: latestRun.id, job })}
+                          title="Analyze failure"
+                        >
+                          <Sparkles className="h-2.5 w-2.5" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 shrink-0"
+                        onClick={() => window.open(job.htmlUrl, '_blank')}
+                        title="View on GitHub"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : hasNoPR && totalCount === 0 ? (
             <p className="text-xs text-muted-foreground px-1 py-2">
               Push and create a PR to see CI checks
             </p>
@@ -519,6 +688,7 @@ function CIChecksSection({
               No CI checks found
             </p>
           ) : (
+            // Fallback: flat list from checkDetails (no workflow data available)
             <div className="space-y-0.5">
               {sortedChecks.map((check) => {
                 const statusInfo = getCheckStatusInfo(check.status, check.conclusion);
@@ -541,45 +711,6 @@ function CIChecksSection({
               })}
             </div>
           )}
-
-          {/* Workflow Runs sub-section */}
-          {runs.length > 0 && (
-            <div className="mt-2">
-              <button
-                onClick={() => setRunsExpanded(!runsExpanded)}
-                className="flex items-center gap-1 px-1 py-1 w-full hover:bg-surface-2 rounded-sm transition-colors"
-              >
-                <ChevronRight
-                  className={cn(
-                    'size-3 shrink-0 text-muted-foreground transition-transform',
-                    runsExpanded && 'rotate-90'
-                  )}
-                />
-                <span className="text-2xs font-medium text-muted-foreground">
-                  Workflow Runs
-                </span>
-                <span className="text-2xs text-muted-foreground ml-auto tabular-nums">
-                  {runs.length}
-                </span>
-              </button>
-
-              {runsExpanded && (
-                <div className="mt-1 space-y-1.5">
-                  {runs.map((run) => (
-                    <WorkflowRunCard
-                      key={run.id}
-                      run={run}
-                      onGetJobs={onGetJobs}
-                      onRerun={onRerun}
-                      onSelectJobForAnalysis={(job) =>
-                        setAnalysisTarget({ runId: run.id, job })
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -593,158 +724,6 @@ function CIChecksSection({
           onClose={() => setAnalysisTarget(null)}
           onAnalyze={onAnalyzeFailure}
         />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// WorkflowRunCard (adapted from CIPanel)
-// ---------------------------------------------------------------------------
-
-function WorkflowRunCard({
-  run,
-  onGetJobs,
-  onRerun,
-  onSelectJobForAnalysis,
-}: {
-  run: WorkflowRunDTO;
-  onGetJobs: (runId: number) => Promise<WorkflowJobDTO[]>;
-  onRerun: (runId: number, failedOnly?: boolean) => Promise<void>;
-  onSelectJobForAnalysis: (job: WorkflowJobDTO) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [jobs, setJobs] = useState<WorkflowJobDTO[]>([]);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-  const [jobsError, setJobsError] = useState(false);
-  const [rerunning, setRerunning] = useState(false);
-
-  const statusInfo = getCheckStatusInfo(run.status, run.conclusion);
-  const StatusIcon = statusInfo.icon;
-  const hasFailures = run.conclusion === 'failure' || run.conclusion === 'timed_out';
-
-  const handleExpand = async () => {
-    if (!expanded && jobs.length === 0) {
-      setLoadingJobs(true);
-      setJobsError(false);
-      try {
-        const fetchedJobs = await onGetJobs(run.id);
-        setJobs(fetchedJobs);
-      } catch {
-        setJobsError(true);
-      } finally {
-        setLoadingJobs(false);
-      }
-    }
-    setExpanded(!expanded);
-  };
-
-  const handleRerun = async () => {
-    setRerunning(true);
-    try {
-      await onRerun(run.id, hasFailures);
-    } finally {
-      setRerunning(false);
-    }
-  };
-
-  return (
-    <div className="rounded-md border bg-surface-1/50">
-      <div className="flex items-center gap-2 px-2 py-1.5 min-w-0">
-        <button
-          className="p-0.5 hover:bg-surface-2 rounded shrink-0"
-          onClick={handleExpand}
-        >
-          {expanded ? (
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3 w-3 text-muted-foreground" />
-          )}
-        </button>
-        <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
-        <span className="text-xs truncate flex-1" title={run.name}>{run.name}</span>
-        <span className={cn('text-2xs shrink-0', statusInfo.color)}>
-          {statusInfo.label}
-        </span>
-
-        {run.status === 'completed' && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 shrink-0"
-            onClick={handleRerun}
-            disabled={rerunning}
-            title={hasFailures ? 'Rerun failed' : 'Rerun all'}
-          >
-            {rerunning ? (
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-            ) : (
-              <RotateCcw className="h-2.5 w-2.5" />
-            )}
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 shrink-0"
-          onClick={() => window.open(run.htmlUrl, '_blank')}
-          title="View on GitHub"
-        >
-          <ExternalLink className="h-2.5 w-2.5" />
-        </Button>
-      </div>
-
-      {expanded && (
-        <div className="border-t px-2 py-1.5">
-          {loadingJobs ? (
-            <div className="flex items-center justify-center py-2 text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin mr-2" />
-              <span className="text-xs">Loading jobs...</span>
-            </div>
-          ) : jobsError ? (
-            <div className="flex items-center justify-center py-2 text-muted-foreground">
-              <span className="text-xs">Failed to load jobs</span>
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {jobs.map((job) => {
-                const jobStatus = getCheckStatusInfo(job.status, job.conclusion);
-                const JobIcon = jobStatus.icon;
-                const isFailed = job.conclusion === 'failure' || job.conclusion === 'timed_out';
-
-                return (
-                  <div key={job.id} className="flex items-center gap-2 py-0.5 min-w-0">
-                    <JobIcon className={cn('h-2.5 w-2.5 shrink-0', jobStatus.color)} />
-                    <span className="text-xs truncate flex-1" title={job.name}>{job.name}</span>
-                    <span className={cn('text-2xs shrink-0', jobStatus.color)}>
-                      {jobStatus.label}
-                    </span>
-                    {isFailed && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 shrink-0"
-                        onClick={() => onSelectJobForAnalysis(job)}
-                        title="Analyze failure"
-                      >
-                        <Sparkles className="h-2.5 w-2.5" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5 shrink-0"
-                      onClick={() => window.open(job.htmlUrl, '_blank')}
-                      title="View on GitHub"
-                    >
-                      <ExternalLink className="h-2.5 w-2.5" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

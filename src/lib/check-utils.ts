@@ -67,6 +67,16 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
+ * Compute the duration of a workflow job in seconds from its start/completion timestamps.
+ */
+export function computeJobDuration(job: { startedAt: string; completedAt: string }): number | undefined {
+  const start = new Date(job.startedAt).getTime();
+  const end = new Date(job.completedAt).getTime();
+  if (isNaN(start) || isNaN(end)) return undefined;
+  return Math.round((end - start) / 1000);
+}
+
+/**
  * Format CI failure context into a structured message for the AI agent.
  */
 export function formatCIFailureMessage(context: CIFailureContextDTO): string {
