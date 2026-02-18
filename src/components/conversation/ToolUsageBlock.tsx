@@ -328,14 +328,14 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
 
         {/* Tool icon and label */}
         <ToolIcon className={cn('w-3 h-3 shrink-0', success === false ? 'text-text-error' : 'text-muted-foreground')} />
-        <span className={cn('font-medium', success === false ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
+        <span className={cn('font-medium shrink-0 whitespace-nowrap', success === false ? 'text-text-error' : 'text-foreground')}>{getToolLabel()}</span>
         {success === false && (
           <span className="text-2xs px-1 py-0.5 rounded bg-text-error/10 text-text-error font-medium shrink-0">
             Error
           </span>
         )}
         {mcpInfo && (
-          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground/70">
+          <span className="text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground/70 shrink-0">
             {mcpInfo.displayServer}
           </span>
         )}
