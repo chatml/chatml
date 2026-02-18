@@ -175,6 +175,57 @@ func (w *PRWatcher) ForceCheckSession(sessionID string) {
 	w.checkSessionsWithPR()
 }
 
+// RegisterPRFromAgent is called when the agent creates a PR via bash (gh pr create).
+// If prNumber > 0, the session is updated immediately with the PR info extracted from
+// the command output, providing instant UI feedback without a GitHub API round-trip.
+// It always follows up with ForceCheckSession to fetch additional metadata (checks,
+// mergeable status, PR title).
+func (w *PRWatcher) RegisterPRFromAgent(sessionID string, prNumber int, prURL string) {
+	if prNumber > 0 {
+		w.mu.Lock()
+		entry, exists := w.sessions[sessionID]
+		if exists {
+			logger.PRWatcher.Infof("Registering PR #%d from agent for session %s", prNumber, sessionID)
+
+			// Update the watch entry
+			entry.PRStatus = models.PRStatusOpen
+			entry.PRNumber = prNumber
+			entry.PRUrl = prURL
+			entry.LastChecked = time.Now()
+		}
+		w.mu.Unlock()
+
+		if exists {
+
+			// Update database
+			if w.store != nil {
+				if err := w.store.UpdateSession(w.ctx, entry.SessionID, func(sess *models.Session) {
+					sess.PRStatus = models.PRStatusOpen
+					sess.PRNumber = prNumber
+					sess.PRUrl = prURL
+					sess.UpdatedAt = time.Now()
+				}); err != nil {
+					logger.PRWatcher.Errorf("Failed to update session %s with PR info: %v", sessionID, err)
+				}
+			}
+
+			// Emit change event for immediate WebSocket broadcast
+			if w.onChange != nil {
+				w.onChange(PRChangeEvent{
+					SessionID: sessionID,
+					PRStatus:  models.PRStatusOpen,
+					PRNumber:  prNumber,
+					PRUrl:     prURL,
+				})
+			}
+		}
+	}
+
+	// Always follow up with ForceCheckSession to fetch metadata
+	// (check status, mergeable, PR title, etc.)
+	w.ForceCheckSession(sessionID)
+}
+
 // Close stops the PR watcher
 func (w *PRWatcher) Close() error {
 	w.cancel()
