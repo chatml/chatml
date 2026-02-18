@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -612,6 +612,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Get current file tab from visible tabs
   const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);
 
+  // Memoize filtered comments per file tab to prevent new array references
+  const currentFilePath = currentFileTab?.path;
+  const fileComments = useMemo(
+    () => currentFilePath ? reviewComments.filter((c) => c.filePath === currentFilePath) : [],
+    [reviewComments, currentFilePath],
+  );
+
   // Determine what's currently active (conversation or file)
   // File is active only if selected tab is visible
   const isFileActive = selectedFileTabId !== null && currentFileTab !== undefined;
@@ -767,19 +774,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [fileTabs, selectFileTab, updateFileTab]);
 
-  // Save editor state (cursor/scroll position) when switching tabs
-  const handleEditorStateChange = useCallback((state: {
-    cursorPosition?: { line: number; column: number };
-    scrollPosition?: { top: number; left: number };
-  }) => {
-    if (selectedFileTabId) {
-      updateFileTab(selectedFileTabId, {
-        cursorPosition: state.cursorPosition,
-        scrollPosition: state.scrollPosition,
-      });
-    }
-  }, [selectedFileTabId, updateFileTab]);
-
   // Handle resolving/unresolving a review comment
   const handleResolveComment = useCallback(async (commentId: string, resolved: boolean) => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -845,9 +839,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           setPendingCloseFileTabId(id);
           return;
         }
-        closeFileTab(id);
+        // startTransition defers Pierre's heavy Shadow DOM cleanup so the tab disappears instantly
+        startTransition(() => closeFileTab(id));
       } else {
-        removeConversation(id);
+        startTransition(() => removeConversation(id));
       }
     },
     [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId]
@@ -857,11 +852,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const handleCloseOthers = useCallback(
     (id: string, type: 'file' | 'conversation') => {
       if (type === 'file') {
-        closeOtherTabs(id);
+        startTransition(() => closeOtherTabs(id));
       } else {
-        sessionConversations
-          .filter((c) => c.id !== id)
-          .forEach((c) => removeConversation(c.id));
+        startTransition(() => {
+          sessionConversations
+            .filter((c) => c.id !== id)
+            .forEach((c) => removeConversation(c.id));
+        });
       }
     },
     [closeOtherTabs, sessionConversations, removeConversation]
@@ -986,178 +983,179 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         getSummaryStatus={getSummaryStatus}
       />
 
-      {/* Content Area - Either file viewer or messages */}
-      {isFileActive && currentFileTab ? (
-        <>
-          <div className="flex-1 min-h-0">
-            {currentFileTab.loadError ? (
-              // Error loading file
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center max-w-md">
-                  <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
-                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
-                  <p className="text-xs text-muted-foreground mb-2">Failed to load file</p>
-                  <p className="text-xs text-destructive/70 mb-3">{currentFileTab.loadError}</p>
-                  <button
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
-                    onClick={() => updateFileTab(currentFileTab.id, {
-                      loadError: undefined,
-                      content: undefined,
-                      diff: undefined,
-                    })}
-                  >
-                    Retry
-                  </button>
-                </div>
-              </div>
-            ) : currentFileTab.isBinary ? (
-              // Binary file placeholder
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
-                  <p className="text-xs text-muted-foreground">Binary file cannot be displayed</p>
-                </div>
-              </div>
-            ) : currentFileTab.isTooLarge ? (
-              // Large file placeholder
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
-                  <p className="text-xs text-muted-foreground">File is too large to display</p>
-                </div>
-              </div>
-            ) : currentFileTab.isEmpty ? (
-              // Empty file placeholder
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <File className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                  <p className="text-sm font-medium text-foreground mb-1">{currentFileTab.name}</p>
-                  <p className="text-xs text-muted-foreground">This file is empty</p>
-                </div>
-              </div>
-            ) : currentFileTab.viewMode === 'diff' && currentFileTab.diff ? (
-              // Diff view - uses CodeViewer with oldContent for diff mode
-              // key resets ErrorBoundary when switching files, clearing any previous error state
-              <ErrorBoundary
-                key={currentFileTab.id}
-                section="CodeViewer"
-                fallback={
-                  <BlockErrorFallback
-                    icon={FileCode}
-                    title="Unable to load diff"
-                    description="There was an error rendering the file diff"
-                  />
-                }
-              >
-                <CodeViewer
-                  content={currentFileTab.diff.newContent}
-                  oldContent={currentFileTab.diff.oldContent}
-                  filename={currentFileTab.name}
-                  isLoading={currentFileTab.isLoading}
-                  onStateChange={handleEditorStateChange}
-                  initialCursorPosition={currentFileTab.cursorPosition}
-                  initialScrollPosition={currentFileTab.scrollPosition}
-                  comments={reviewComments.filter((c) => c.filePath === currentFileTab.path)}
-                  onResolveComment={handleResolveComment}
-                  onDeleteComment={handleDeleteComment}
-                  onCreateComment={handleCreateComment}
-                />
-              </ErrorBoundary>
-            ) : (
-              // Regular file view
-              // key resets ErrorBoundary when switching files, clearing any previous error state
-              <ErrorBoundary
-                key={currentFileTab.id}
-                section="CodeViewer"
-                fallback={
-                  <BlockErrorFallback
-                    icon={FileCode}
-                    title="Unable to load file"
-                    description="There was an error rendering the file content"
-                  />
-                }
-              >
-                <CodeViewer
-                  content={currentFileTab.content || ''}
-                  filename={currentFileTab.name}
-                  isLoading={currentFileTab.isLoading}
-                  onStateChange={handleEditorStateChange}
-                  initialCursorPosition={currentFileTab.cursorPosition}
-                  initialScrollPosition={currentFileTab.scrollPosition}
-                />
-              </ErrorBoundary>
-            )}
-          </div>
-          {/* No chat input when viewing files */}
-        </>
-      ) : (
-        <>
-          {/* Messages */}
-          <div className="relative flex-1 min-h-0">
-            {/* Chat Search Bar */}
-            <ChatSearchBar
-              isOpen={searchOpen}
-              onClose={closeSearch}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              currentMatchIndex={clampedMatchIndex}
-              totalMatches={searchMatches.total}
-              onNextMatch={goToNextMatch}
-              onPrevMatch={goToPrevMatch}
-              partialResults={pagination?.hasMore}
-            />
-            <VirtualizedMessageList
-              key={selectedConversationId ?? 'none'}
-              ref={messageListRef}
-              messages={conversationMessages}
-              worktreePath={currentSession?.worktreePath}
-              searchQuery={searchQuery}
-              currentMatchIndex={clampedMatchIndex}
-              searchMatches={searchMatches}
-              messageHasMatches={messageHasMatches}
-              initialTopMostItemIndex={initialTopMostItemIndex}
-              onRangeChanged={handleRangeChanged}
-              onAtBottomStateChange={handleAtBottomStateChange}
-              onStartReached={pagination?.hasMore ? handleStartReached : undefined}
-              firstItemIndex={firstItemIndex}
-              isLoadingOlder={pagination?.isLoadingMore}
-              emptyState={
-                (!selectedConversationId || conversationMessages.length === 0) ? (
-                  sessionConversations.length === 0
-                    ? <SessionPreparingState sessionName={currentSession?.branch || currentSession?.name} />
-                    : <ConversationEmptyState sessionName={currentSession?.name} />
-                ) : undefined
-              }
-              footer={messageListFooter}
-              isStreaming={selectedStreaming?.isStreaming ?? false}
-            />
-            {/* Fade overlay at bottom of messages */}
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
-          </div>
+      {/* Content Area - File viewer and messages are BOTH rendered but only one is visible.
+           This keeps Pierre's Shadow DOM alive even when viewing a conversation,
+           avoiding expensive Shiki re-tokenization when switching back. */}
 
-          {/* Chat Input with floating scroll button */}
-          <div className="shrink-0 relative">
-            {/* Scroll to bottom button - floating */}
-            <div className={cn(
-              "absolute -top-7 right-4 z-10 transition-opacity duration-200",
-              showScrollButton ? "opacity-100" : "opacity-0 pointer-events-none"
-            )}>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-6 gap-1 pl-1 pr-2 text-xs rounded-full border border-border/50 bg-background/30 backdrop-blur-sm text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/50 transition-colors"
-                onClick={forceScrollToBottom}
+      {/* File viewer — always rendered when tabs exist, hidden when conversation is active */}
+      {visibleTabs.length > 0 && (
+        <div className={isFileActive ? 'flex-1 min-h-0 relative' : 'hidden'}>
+          {visibleTabs.map((tab) => {
+            const isActive = tab.id === selectedFileTabId;
+            const tabComments = tab.path === currentFilePath ? fileComments : [];
+
+            return (
+              <div
+                key={tab.id}
+                className={isActive ? 'h-full' : 'hidden'}
               >
-                <ChevronDown className="h-3 w-3" />
-                Scroll to bottom
-              </Button>
-            </div>
-            {children}
-          </div>
-        </>
+                {tab.loadError ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center max-w-md">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
+                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                      <p className="text-xs text-muted-foreground mb-2">Failed to load file</p>
+                      <p className="text-xs text-destructive/70 mb-3">{tab.loadError}</p>
+                      <button
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
+                        onClick={() => updateFileTab(tab.id, {
+                          loadError: undefined,
+                          content: undefined,
+                          diff: undefined,
+                        })}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                ) : tab.isBinary ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                      <p className="text-xs text-muted-foreground">Binary file cannot be displayed</p>
+                    </div>
+                  </div>
+                ) : tab.isTooLarge ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                      <p className="text-xs text-muted-foreground">File is too large to display</p>
+                    </div>
+                  </div>
+                ) : tab.isEmpty ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <File className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                      <p className="text-xs text-muted-foreground">This file is empty</p>
+                    </div>
+                  </div>
+                ) : tab.viewMode === 'diff' && tab.diff ? (
+                  <ErrorBoundary
+                    resetKeys={[tab.id]}
+                    section="CodeViewer"
+                    fallback={
+                      <BlockErrorFallback
+                        icon={FileCode}
+                        title="Unable to load diff"
+                        description="There was an error rendering the file diff"
+                      />
+                    }
+                  >
+                    <CodeViewer
+                      content={tab.diff.newContent}
+                      oldContent={tab.diff.oldContent}
+                      filename={tab.name}
+                      isLoading={tab.isLoading}
+                      comments={tabComments}
+                      onResolveComment={handleResolveComment}
+                      onDeleteComment={handleDeleteComment}
+                      onCreateComment={handleCreateComment}
+                      scrollToLine={tab.cursorPosition?.line}
+                    />
+                  </ErrorBoundary>
+                ) : (
+                  <ErrorBoundary
+                    resetKeys={[tab.id]}
+                    section="CodeViewer"
+                    fallback={
+                      <BlockErrorFallback
+                        icon={FileCode}
+                        title="Unable to load file"
+                        description="There was an error rendering the file content"
+                      />
+                    }
+                  >
+                    <CodeViewer
+                      content={tab.content || ''}
+                      filename={tab.name}
+                      isLoading={tab.isLoading}
+                    />
+                  </ErrorBoundary>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
+
+      {/* Conversation messages — hidden when file tab is active */}
+      <div className={isFileActive ? 'hidden' : 'contents'}>
+        {/* Messages */}
+        <div className="relative flex-1 min-h-0">
+          {/* Chat Search Bar */}
+          <ChatSearchBar
+            isOpen={searchOpen}
+            onClose={closeSearch}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            currentMatchIndex={clampedMatchIndex}
+            totalMatches={searchMatches.total}
+            onNextMatch={goToNextMatch}
+            onPrevMatch={goToPrevMatch}
+            partialResults={pagination?.hasMore}
+          />
+          <VirtualizedMessageList
+            key={selectedConversationId ?? 'none'}
+            ref={messageListRef}
+            messages={conversationMessages}
+            worktreePath={currentSession?.worktreePath}
+            searchQuery={searchQuery}
+            currentMatchIndex={clampedMatchIndex}
+            searchMatches={searchMatches}
+            messageHasMatches={messageHasMatches}
+            initialTopMostItemIndex={initialTopMostItemIndex}
+            onRangeChanged={handleRangeChanged}
+            onAtBottomStateChange={handleAtBottomStateChange}
+            onStartReached={pagination?.hasMore ? handleStartReached : undefined}
+            firstItemIndex={firstItemIndex}
+            isLoadingOlder={pagination?.isLoadingMore}
+            emptyState={
+              (!selectedConversationId || conversationMessages.length === 0) ? (
+                sessionConversations.length === 0
+                  ? <SessionPreparingState sessionName={currentSession?.branch || currentSession?.name} />
+                  : <ConversationEmptyState sessionName={currentSession?.name} />
+              ) : undefined
+            }
+            footer={messageListFooter}
+            isStreaming={selectedStreaming?.isStreaming ?? false}
+          />
+          {/* Fade overlay at bottom of messages */}
+          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
+        </div>
+
+        {/* Chat Input with floating scroll button */}
+        <div className="shrink-0 relative">
+          {/* Scroll to bottom button - floating */}
+          <div className={cn(
+            "absolute -top-7 right-4 z-10 transition-opacity duration-200",
+            showScrollButton ? "opacity-100" : "opacity-0 pointer-events-none"
+          )}>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-6 gap-1 pl-1 pr-2 text-xs rounded-full border border-border/50 bg-background/30 backdrop-blur-sm text-muted-foreground/70 hover:text-muted-foreground hover:bg-background/50 transition-colors"
+              onClick={forceScrollToBottom}
+            >
+              <ChevronDown className="h-3 w-3" />
+              Scroll to bottom
+            </Button>
+          </div>
+          {children}
+        </div>
+      </div>
 
       {/* Rename Conversation Dialog */}
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>

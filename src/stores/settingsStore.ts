@@ -83,7 +83,6 @@ interface SettingsState {
   minimizeToTray: boolean;
   // Appearance settings
   theme: ThemeOption; // App theme (system, light, dark)
-  editorTheme: string; // Monaco editor theme (e.g., 'vs-dark', 'monokai', 'dracula')
   fontSize: FontSize;
   // Git settings
   branchPrefixType: BranchPrefixType;
@@ -156,7 +155,6 @@ interface SettingsState {
   setShowChatCost: (value: boolean) => void;
   setMinimizeToTray: (value: boolean) => void;
   setTheme: (value: ThemeOption) => void;
-  setEditorTheme: (value: string) => void;
   setFontSize: (value: FontSize) => void;
   setBranchPrefixType: (value: BranchPrefixType) => void;
   setBranchPrefixCustom: (value: string) => void;
@@ -219,7 +217,6 @@ export const useSettingsStore = create<SettingsState>()(
       showChatCost: true,
       minimizeToTray: false,
       theme: 'system',
-      editorTheme: 'vs-dark',
       fontSize: 'medium',
       branchPrefixType: 'github',
       branchPrefixCustom: '',
@@ -272,7 +269,6 @@ export const useSettingsStore = create<SettingsState>()(
       setShowChatCost: (value) => set({ showChatCost: value }),
       setMinimizeToTray: (value) => set({ minimizeToTray: value }),
       setTheme: (value) => set({ theme: value }),
-      setEditorTheme: (value) => set({ editorTheme: value }),
       setFontSize: (value) => set({ fontSize: value }),
       setBranchPrefixType: (value) => set({ branchPrefixType: value }),
       setBranchPrefixCustom: (value) => set({ branchPrefixCustom: value }),

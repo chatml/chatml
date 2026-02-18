@@ -1,103 +1,64 @@
 /**
- * Shared language mapping for Monaco editor and Shiki syntax highlighting.
+ * Language mapping for Shiki syntax highlighting.
  * Provides consistent language detection across the codebase.
  */
 
-interface LanguageMapping {
-  monaco: string;
-  shiki: string;
-}
-
-// Extension to language mapping
-const extensionMap: Record<string, LanguageMapping> = {
+// Extension to Shiki language mapping
+const extensionMap: Record<string, string> = {
   // JavaScript/TypeScript
-  js: { monaco: 'javascript', shiki: 'javascript' },
-  jsx: { monaco: 'javascript', shiki: 'jsx' },
-  ts: { monaco: 'typescript', shiki: 'typescript' },
-  tsx: { monaco: 'typescript', shiki: 'tsx' },
-  mjs: { monaco: 'javascript', shiki: 'javascript' },
-  cjs: { monaco: 'javascript', shiki: 'javascript' },
+  js: 'javascript',
+  jsx: 'jsx',
+  ts: 'typescript',
+  tsx: 'tsx',
+  mjs: 'javascript',
+  cjs: 'javascript',
   // Web
-  html: { monaco: 'html', shiki: 'html' },
-  htm: { monaco: 'html', shiki: 'html' },
-  css: { monaco: 'css', shiki: 'css' },
-  scss: { monaco: 'scss', shiki: 'scss' },
-  sass: { monaco: 'scss', shiki: 'sass' },
-  less: { monaco: 'less', shiki: 'less' },
+  html: 'html',
+  htm: 'html',
+  css: 'css',
+  scss: 'scss',
+  sass: 'sass',
+  less: 'less',
   // Data/Config
-  json: { monaco: 'json', shiki: 'json' },
-  yaml: { monaco: 'yaml', shiki: 'yaml' },
-  yml: { monaco: 'yaml', shiki: 'yaml' },
-  toml: { monaco: 'plaintext', shiki: 'toml' },
-  xml: { monaco: 'xml', shiki: 'xml' },
+  json: 'json',
+  yaml: 'yaml',
+  yml: 'yaml',
+  toml: 'toml',
+  xml: 'xml',
   // Documentation
-  md: { monaco: 'markdown', shiki: 'markdown' },
-  mdx: { monaco: 'markdown', shiki: 'mdx' },
+  md: 'markdown',
+  mdx: 'mdx',
   // Programming languages
-  go: { monaco: 'go', shiki: 'go' },
-  py: { monaco: 'python', shiki: 'python' },
-  rb: { monaco: 'ruby', shiki: 'ruby' },
-  rs: { monaco: 'rust', shiki: 'rust' },
-  java: { monaco: 'java', shiki: 'java' },
-  kt: { monaco: 'kotlin', shiki: 'kotlin' },
-  kts: { monaco: 'kotlin', shiki: 'kotlin' },
-  swift: { monaco: 'swift', shiki: 'swift' },
-  c: { monaco: 'c', shiki: 'c' },
-  h: { monaco: 'c', shiki: 'c' },
-  cpp: { monaco: 'cpp', shiki: 'cpp' },
-  cc: { monaco: 'cpp', shiki: 'cpp' },
-  hpp: { monaco: 'cpp', shiki: 'cpp' },
-  cs: { monaco: 'csharp', shiki: 'csharp' },
-  php: { monaco: 'php', shiki: 'php' },
+  go: 'go',
+  py: 'python',
+  rb: 'ruby',
+  rs: 'rust',
+  java: 'java',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  swift: 'swift',
+  c: 'c',
+  h: 'c',
+  cpp: 'cpp',
+  cc: 'cpp',
+  hpp: 'cpp',
+  cs: 'csharp',
+  php: 'php',
   // Shell
-  sh: { monaco: 'shell', shiki: 'bash' },
-  bash: { monaco: 'shell', shiki: 'bash' },
-  zsh: { monaco: 'shell', shiki: 'zsh' },
-  ps1: { monaco: 'powershell', shiki: 'powershell' },
+  sh: 'bash',
+  bash: 'bash',
+  zsh: 'zsh',
+  ps1: 'powershell',
   // SQL
-  sql: { monaco: 'sql', shiki: 'sql' },
+  sql: 'sql',
   // Others
-  graphql: { monaco: 'graphql', shiki: 'graphql' },
-  gql: { monaco: 'graphql', shiki: 'graphql' },
-  prisma: { monaco: 'plaintext', shiki: 'prisma' },
-  env: { monaco: 'plaintext', shiki: 'dotenv' },
-  lock: { monaco: 'plaintext', shiki: 'text' },
-  txt: { monaco: 'plaintext', shiki: 'text' },
+  graphql: 'graphql',
+  gql: 'graphql',
+  prisma: 'prisma',
+  env: 'dotenv',
+  lock: 'text',
+  txt: 'text',
 };
-
-const defaultMapping: LanguageMapping = { monaco: 'plaintext', shiki: 'text' };
-
-/**
- * Get language identifiers for a given filename.
- * @param filename - The filename to detect language for
- * @returns Object with monaco and shiki language identifiers
- */
-export function getLanguageFromFilename(filename: string): LanguageMapping {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  const name = filename.toLowerCase();
-
-  // Special files
-  if (name === 'dockerfile' || name.endsWith('.dockerfile')) {
-    return { monaco: 'dockerfile', shiki: 'dockerfile' };
-  }
-  if (name === 'makefile') {
-    return { monaco: 'makefile', shiki: 'makefile' };
-  }
-  if (name === '.gitignore' || name === '.dockerignore') {
-    return { monaco: 'plaintext', shiki: 'ignore' };
-  }
-
-  return extensionMap[ext] || defaultMapping;
-}
-
-/**
- * Get Monaco editor language identifier for a filename.
- * @param filename - The filename to detect language for
- * @returns Monaco language identifier string
- */
-export function getMonacoLanguage(filename: string): string {
-  return getLanguageFromFilename(filename).monaco;
-}
 
 /**
  * Get Shiki syntax highlighter language identifier for a filename.
@@ -105,5 +66,19 @@ export function getMonacoLanguage(filename: string): string {
  * @returns Shiki language identifier string
  */
 export function getShikiLanguage(filename: string): string {
-  return getLanguageFromFilename(filename).shiki;
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const name = filename.toLowerCase();
+
+  // Special files
+  if (name === 'dockerfile' || name.endsWith('.dockerfile')) {
+    return 'dockerfile';
+  }
+  if (name === 'makefile') {
+    return 'makefile';
+  }
+  if (name === '.gitignore' || name === '.dockerignore') {
+    return 'ignore';
+  }
+
+  return extensionMap[ext] || 'text';
 }

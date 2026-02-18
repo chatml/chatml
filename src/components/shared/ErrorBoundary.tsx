@@ -15,6 +15,8 @@ interface Props {
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
   /** Name of the section for error reporting */
   section?: string;
+  /** When any of these values change, automatically reset the error state */
+  resetKeys?: unknown[];
 }
 
 interface State {
@@ -35,6 +37,16 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error(`ErrorBoundary [${this.props.section || 'unknown'}] caught:`, error, errorInfo);
     this.props.onError?.(error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && this.props.resetKeys) {
+      const prevKeys = prevProps.resetKeys ?? [];
+      const nextKeys = this.props.resetKeys;
+      if (nextKeys.some((key, i) => key !== prevKeys[i])) {
+        this.setState({ hasError: false, error: null });
+      }
+    }
   }
 
   handleRetry = () => {

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows, WrapText } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MonacoEditor, MonacoDiffEditor } from '@/components/files/MonacoEditor';
+import { PierreEditor } from '@/components/files/PierreEditor';
+import { PierreDiffEditor } from '@/components/files/PierreDiffEditor';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { copyToClipboard } from '@/lib/tauri';
@@ -12,23 +13,12 @@ import { useToast } from '@/components/ui/toast';
 import { getShikiLanguage } from '@/lib/languageMapping';
 import type { ReviewComment } from '@/lib/types';
 
-interface EditorState {
-  cursorPosition?: { line: number; column: number };
-  scrollPosition?: { top: number; left: number };
-}
-
 interface CodeViewerProps {
   content: string;
   filename: string;
   isLoading?: boolean;
   /** If provided, shows a diff view comparing oldContent to content */
   oldContent?: string;
-  /** Callback when editor state changes (cursor/scroll position) */
-  onStateChange?: (state: EditorState) => void;
-  /** Initial cursor position to restore */
-  initialCursorPosition?: { line: number; column: number };
-  /** Initial scroll position to restore */
-  initialScrollPosition?: { top: number; left: number };
   /** Review comments to display in diff view */
   comments?: ReviewComment[];
   /** Callback when a comment is resolved/unresolved */
@@ -37,6 +27,8 @@ interface CodeViewerProps {
   onDeleteComment?: (id: string) => void;
   /** Callback when a user creates a new comment on a diff line */
   onCreateComment?: (lineNumber: number, content: string) => void;
+  /** Line number to scroll to in diff view (e.g. from review comment click) */
+  scrollToLine?: number;
 }
 
 function isMarkdownFile(filename: string): boolean {
@@ -44,18 +36,16 @@ function isMarkdownFile(filename: string): boolean {
   return ext === 'md' || ext === 'mdx';
 }
 
-export function CodeViewer({
+export const CodeViewer = memo(function CodeViewer({
   content,
   filename,
   isLoading,
   oldContent,
-  onStateChange,
-  initialCursorPosition,
-  initialScrollPosition,
   comments,
   onResolveComment,
   onDeleteComment,
   onCreateComment,
+  scrollToLine,
 }: CodeViewerProps) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -75,7 +65,6 @@ export function CodeViewer({
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
   const language = getShikiLanguage(filename);
-
 
   const handleCopy = async () => {
     const success = await copyToClipboard(content);
@@ -171,21 +160,19 @@ export function CodeViewer({
           </div>
         </div>
 
-        {/* Diff content - Monaco for both split and unified views */}
+        {/* Diff content */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <MonacoDiffEditor
+          <PierreDiffEditor
             oldContent={oldContent || ''}
             newContent={content || ''}
             filename={filename}
-            readOnly={true}
             sideBySide={diffViewMode === 'split'}
             wordWrap={wordWrap}
             comments={comments}
             onResolveComment={onResolveComment}
             onDeleteComment={onDeleteComment}
             onCreateComment={onCreateComment}
-            initialCursorPosition={initialCursorPosition}
-            onStateChange={onStateChange}
+            scrollToLine={scrollToLine}
           />
         </div>
       </div>
@@ -251,32 +238,14 @@ export function CodeViewer({
               <CachedMarkdown cacheKey={`file-preview:${filename}`} content={content} skipCache />
             </div>
           </div>
-        ) : isMarkdown && viewMode === 'code' ? (
-          // For markdown in code view, use Monaco
-          <MonacoEditor
-            content={content}
-            filename={filename}
-            readOnly={true}
-            wordWrap={wordWrap}
-            onStateChange={onStateChange}
-            initialCursorPosition={initialCursorPosition}
-            initialScrollPosition={initialScrollPosition}
-          />
         ) : (
-          // For all other code files, use Monaco
-          <MonacoEditor
+          <PierreEditor
             content={content}
-            wordWrap={wordWrap}
             filename={filename}
-            readOnly={true}
-            onStateChange={onStateChange}
-            initialCursorPosition={initialCursorPosition}
-            initialScrollPosition={initialScrollPosition}
+            wordWrap={wordWrap}
           />
         )}
       </div>
     </div>
   );
-}
-
-
+});
