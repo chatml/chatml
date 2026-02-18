@@ -13,7 +13,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Copy, Check, FileText, ClipboardCheck, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
+import { Copy, Check, FileText, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Message, ToolUsage } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
@@ -30,6 +30,7 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { MentionText } from '@/components/conversation/MentionText';
+import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 
 // Collapsed tool summary with individual ToolUsageBlock instances when expanded
 const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath }: { tools: ToolUsage[]; worktreePath?: string }) {
@@ -93,7 +94,6 @@ export const MessageBlock = memo(function MessageBlock({
   // comparator below to skip re-renders for messages without search matches.
 }: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
-  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
 
   const copyContent = useCallback(async () => {
     const success = await copyToClipboard(message.content);
@@ -148,25 +148,10 @@ export const MessageBlock = memo(function MessageBlock({
       <div className="space-y-1.5">
         {/* Backward compat: show planContent at top for old messages without plan timeline entry */}
         {message.planContent && !(message.timeline?.some(e => e.type === 'plan')) && (
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={() => setIsPlanExpanded(!isPlanExpanded)}
-              className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
-            >
-              <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-              <span className="font-medium">Approved Plan</span>
-              {isPlanExpanded ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
-            </button>
-            {isPlanExpanded && (
-              <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
-                <CachedMarkdown cacheKey={`plan:${message.id}`} content={message.planContent} />
-              </div>
-            )}
-          </div>
+          <ApprovedPlanBlock
+            cacheKey={`plan:${message.id}`}
+            content={message.planContent}
+          />
         )}
 
         {/* Interleaved timeline rendering (preserves text/tool ordering from streaming) */}
@@ -215,25 +200,11 @@ export const MessageBlock = memo(function MessageBlock({
                     );
                   } else if (entry.type === 'plan') {
                     return (
-                      <div key={`tl-plan-${idx}`} className="flex flex-col gap-1">
-                        <button
-                          onClick={() => setIsPlanExpanded(!isPlanExpanded)}
-                          className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
-                        >
-                          <ClipboardCheck className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                          <span className="font-medium">Approved Plan</span>
-                          {isPlanExpanded ? (
-                            <ChevronDown className="w-3 h-3" />
-                          ) : (
-                            <ChevronRight className="w-3 h-3" />
-                          )}
-                        </button>
-                        {isPlanExpanded && (
-                          <div className={cn(PROSE_CLASSES, 'ml-5 border-l-2 border-primary/20 pl-3')}>
-                            <CachedMarkdown cacheKey={`plan:${message.id}:tl:${idx}`} content={entry.content} />
-                          </div>
-                        )}
-                      </div>
+                      <ApprovedPlanBlock
+                        key={`tl-plan-${idx}`}
+                        cacheKey={`plan:${message.id}:tl:${idx}`}
+                        content={entry.content}
+                      />
                     );
                   }
                   return null;
