@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { executeBranchCleanup } from '@/lib/api';
 import { useCleanupReducer } from './useCleanupReducer';
 import { CleanupStepAnalysis } from './CleanupStepAnalysis';
@@ -65,6 +65,7 @@ export function BranchCleanupDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showCloseButton={state.step !== 'execution'} className="sm:max-w-2xl">
+        <DialogTitle className="sr-only">Branch Cleanup</DialogTitle>
         {state.step === 'analysis' && (
           <CleanupStepAnalysis
             workspaceId={workspaceId}

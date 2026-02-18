@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogClose,
+  DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { CodeViewer } from '@/components/files/CodeViewer';
@@ -316,6 +317,7 @@ export function AttachmentPreviewModal({
         showCloseButton={false}
         className="sm:max-w-[90vw] max-h-[85vh] h-[85vh] p-0 gap-0 flex flex-col"
       >
+        <DialogTitle className="sr-only">{attachment.name}</DialogTitle>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
           <div className="flex items-center gap-2 min-w-0">

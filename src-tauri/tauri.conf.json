@@ -45,6 +45,9 @@
     }
   },
   "plugins": {
+    "shell": {
+      "open": "^((mailto:.+)|(tel:.+)|(https?://.+))"
+    },
     "deep-link": {
       "mobile": [],
       "desktop": {
