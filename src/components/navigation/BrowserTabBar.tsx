@@ -130,8 +130,6 @@ const SortableBrowserTab = memo(function SortableBrowserTab({
   richTitle,
   onActivate,
   onClose,
-  onCloseOthers,
-  onCloseToRight,
   onDuplicate,
 }: {
   tab: BrowserTab;
@@ -140,8 +138,6 @@ const SortableBrowserTab = memo(function SortableBrowserTab({
   richTitle?: ReactNode;
   onActivate: () => void;
   onClose: () => void;
-  onCloseOthers: () => void;
-  onCloseToRight: () => void;
   onDuplicate: () => void;
 }) {
   const {
@@ -230,12 +226,6 @@ const SortableBrowserTab = memo(function SortableBrowserTab({
         <ContextMenuItem onClick={onClose}>
           Close
         </ContextMenuItem>
-        <ContextMenuItem onClick={onCloseOthers}>
-          Close Others
-        </ContextMenuItem>
-        <ContextMenuItem onClick={onCloseToRight}>
-          Close to the Right
-        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -314,17 +304,6 @@ export const BrowserTabStrip = memo(function BrowserTabStrip() {
                 richTitle={tabTitles[tabId]}
                 onActivate={() => switchToTab(tabId)}
                 onClose={() => handleCloseTab(tabId)}
-                onCloseOthers={() => {
-                  const closedIds = tabOrder.filter((id) => id !== tabId);
-                  useTabStore.getState().closeOtherTabs(tabId);
-                  closedIds.forEach((id) => useUIStore.getState().removeTabTitle(id));
-                }}
-                onCloseToRight={() => {
-                  const idx = tabOrder.indexOf(tabId);
-                  const closedIds = tabOrder.slice(idx + 1);
-                  useTabStore.getState().closeTabsToRight(tabId);
-                  closedIds.forEach((id) => useUIStore.getState().removeTabTitle(id));
-                }}
                 onDuplicate={() => {
                   const newId = useTabStore.getState().duplicateTab(tabId);
                   switchToTab(newId);

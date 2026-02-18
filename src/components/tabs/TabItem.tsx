@@ -30,8 +30,6 @@ export const TabItem = memo(function TabItem({
   onSelect,
   onClose,
   onPin,
-  onCloseOthers,
-  onCloseToRight,
   onRename,
   onGenerateSummary,
   onViewSummary,
@@ -190,18 +188,6 @@ export const TabItem = memo(function TabItem({
           <X className="size-4" />
           Close
         </ContextMenuItem>
-
-        {onCloseOthers && (
-          <ContextMenuItem onClick={onCloseOthers}>
-            Close Others
-          </ContextMenuItem>
-        )}
-
-        {onCloseToRight && (
-          <ContextMenuItem onClick={onCloseToRight}>
-            Close to the Right
-          </ContextMenuItem>
-        )}
 
         {/* Pin/Unpin - only for file tabs */}
         {tab.type === 'file' && onPin && (
