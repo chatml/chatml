@@ -240,10 +240,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const getAllCommands = useSlashCommandStore((s) => s.getAllCommands);
   const installedSkills = useSlashCommandStore((s) => s.installedSkills);
   const userCommands = useSlashCommandStore((s) => s.userCommands);
+  const sdkCommands = useSlashCommandStore((s) => s.sdkCommands);
   const slashCommands = useMemo(
     () => getAllCommands({ hasSession: selectedSessionId !== null }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- need to recompute when skills/commands change
-    [getAllCommands, selectedSessionId, installedSkills, userCommands]
+    [getAllCommands, selectedSessionId, installedSkills, userCommands, sdkCommands]
   );
 
   // sendMessage: programmatically set text and trigger submit
@@ -303,7 +304,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Fetch user commands when session changes
   const fetchUserCommands = useSlashCommandStore((s) => s.fetchUserCommands);
   const setInstalledSkills = useSlashCommandStore((s) => s.setInstalledSkills);
-  // Note: installedSkills and userCommands are subscribed above for slashCommands derivation
+  // Note: installedSkills, userCommands, and sdkCommands are subscribed above for slashCommands derivation
   useEffect(() => {
     if (selectedWorkspaceId && selectedSessionId) {
       fetchUserCommands(selectedWorkspaceId, selectedSessionId);
