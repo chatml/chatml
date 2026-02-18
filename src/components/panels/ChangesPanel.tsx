@@ -852,7 +852,7 @@ export function ChangesPanel() {
 // Top panel tabs configuration (all tabs always visible)
 const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; shortcutId?: string }> = {
   changes: { label: 'Changes', shortcutId: 'sidebarChangesTab' },
-  review: { label: 'Review', shortcutId: 'sidebarReviewTab' },
+  review: { label: 'Code Review', shortcutId: 'sidebarReviewTab' },
   checks: { label: 'Checks', shortcutId: 'sidebarChecksTab' },
   files: { label: 'Files', shortcutId: 'sidebarFilesTab' },
 };
