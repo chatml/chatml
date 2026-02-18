@@ -28,6 +28,12 @@ var prURLPattern = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/\d+`)
 // prMergedPattern matches merge confirmation messages in Bash stdout (e.g., "Merged pull request", "successfully merged")
 var prMergedPattern = regexp.MustCompile(`(?i)(merged\s+pull\s+request|pull\s+request\s+.+\s+was\s+already\s+merged|successfully\s+merged)`)
 
+// gitPushPattern matches successful git push output in stderr.
+// Git writes push confirmation to stderr with patterns like:
+//   "* [new branch]      feature -> feature"
+//   "   abc1234..def5678  feature -> feature"
+var gitPushPattern = regexp.MustCompile(`(\[new branch\]|[a-f0-9]+\.\.[a-f0-9]+)\s+.+\s+->\s+`)
+
 // dangerousSuggestionPattern matches destructive operations that should never appear in suggestions.
 // These operations could break the worktree-based session model or destroy work.
 var dangerousSuggestionPattern = regexp.MustCompile(`(?i)(delete\s.*branch|git\s+branch\s+-[dD]|rm\s+-rf|git\s+push\s+--force|git\s+reset\s+--hard|git\s+clean\s+-[fd])`)
@@ -679,6 +685,26 @@ outer:
 							go m.onPRMerged(conv.SessionID)
 							prDeferredRecheck = m.onPRMerged
 							prActivitySessionID = conv.SessionID
+						}
+					}
+				}
+
+				// Detect successful git push from Bash tool stderr.
+				// Git writes push confirmation to stderr (not stdout) with patterns like
+				// "* [new branch] feature -> feature" or "abc123..def456 feature -> feature".
+				// When a push is detected and the session has no PR linked yet,
+				// trigger an immediate PR check to pick up externally-created PRs.
+				if event.Tool == "Bash" && event.Success && gitPushPattern.MatchString(event.Stderr) {
+					if m.onPRCreated != nil {
+						conv, _ := m.store.GetConversationMeta(ctx, convID)
+						if conv != nil {
+							sess, _ := m.store.GetSession(ctx, conv.SessionID)
+							if sess != nil && sess.PRNumber == 0 {
+								logger.Manager.Infof("Detected git push for session %s (no PR yet), triggering PR check", conv.SessionID)
+								go m.onPRCreated(conv.SessionID)
+								prDeferredRecheck = m.onPRCreated
+								prActivitySessionID = conv.SessionID
+							}
 						}
 					}
 				}
