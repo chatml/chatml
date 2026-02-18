@@ -4,9 +4,12 @@ import { memo, useState, useMemo, useCallback } from 'react';
 import { File as PierreFile } from '@pierre/diffs/react';
 import type { FileContents, FileOptions } from '@pierre/diffs/react';
 import { useTheme } from 'next-themes';
-import { FileCode } from 'lucide-react';
+import { FileCode, Eye, WrapText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { CopyButton } from '@/components/shared/CopyButton';
 import { getShikiLanguage } from '@/lib/languageMapping';
 
 const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
@@ -26,7 +29,7 @@ const MAX_LINES = 10000;
 interface PierreEditorProps {
   content: string;
   filename: string;
-  wordWrap?: boolean;
+  onToggleMarkdownView?: () => void;
 }
 
 function truncateContent(content: string): { text: string; truncated: boolean; totalLines: number } {
@@ -40,11 +43,14 @@ function truncateContent(content: string): { text: string; truncated: boolean; t
 export const PierreEditor = memo(function PierreEditor({
   content,
   filename,
-  wordWrap = false,
+  onToggleMarkdownView,
 }: PierreEditorProps) {
   const { resolvedTheme } = useTheme();
   const themeType = resolvedTheme === 'dark' ? 'dark' : 'light';
   const [showAll, setShowAll] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
+
+  const getContent = useCallback(() => content, [content]);
 
   // Reset showAll when file changes
   const [prevFilename, setPrevFilename] = useState(filename);
@@ -62,6 +68,32 @@ export const PierreEditor = memo(function PierreEditor({
 
   const handleShowAll = useCallback(() => setShowAll(true), []);
 
+  const renderHeaderMetadata = useCallback(() => (
+    <div className="flex items-center gap-1">
+      {onToggleMarkdownView && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 text-muted-foreground"
+          onClick={onToggleMarkdownView}
+          title="Show rendered"
+        >
+          <Eye className="w-2.5 h-2.5" />
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('h-5 w-5 text-muted-foreground', wordWrap && 'bg-muted')}
+        onClick={() => setWordWrap(w => !w)}
+        title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+      >
+        <WrapText className="w-2.5 h-2.5" />
+      </Button>
+      <CopyButton getText={getContent} />
+    </div>
+  ), [onToggleMarkdownView, wordWrap, getContent]);
+
   const file: FileContents = useMemo(() => ({
     name: filename,
     contents: displayContent,
@@ -73,7 +105,6 @@ export const PierreEditor = memo(function PierreEditor({
     theme: PIERRE_THEMES,
     themeType,
     overflow: wordWrap ? 'wrap' as const : 'scroll' as const,
-    disableFileHeader: true,
     tokenizeMaxLineLength: 500,
     unsafeCSS: SCROLL_PERF_CSS,
   }), [themeType, wordWrap]);
@@ -93,6 +124,7 @@ export const PierreEditor = memo(function PierreEditor({
         <PierreFile
           file={file}
           options={options}
+          renderHeaderMetadata={renderHeaderMetadata}
         />
         {truncated && (
           <div className="sticky bottom-0 flex items-center justify-center gap-2 px-4 py-2 bg-muted/80 backdrop-blur-sm border-t text-xs text-muted-foreground">
