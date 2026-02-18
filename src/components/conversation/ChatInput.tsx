@@ -29,7 +29,6 @@ import {
   Check,
   Copy,
   MessageSquarePlus,
-  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
@@ -1404,13 +1403,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  className="h-8 w-8 rounded-lg relative"
+                  className="h-8 w-8 rounded-lg"
                   onClick={handleSubmit}
                   disabled={!selectedSessionId || isSending || authDisabled}
                   aria-label="Queue message"
                 >
                   <ArrowUp className="h-4 w-4" />
-                  <Clock className="h-2.5 w-2.5 absolute -top-0.5 -right-0.5 text-amber-500" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top">Queue message — sent after current response</TooltipContent>
