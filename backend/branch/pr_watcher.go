@@ -395,7 +395,11 @@ func (w *PRWatcher) checkSessionsWithoutPR() {
 		return e.PRStatus == "" || e.PRStatus == models.PRStatusNone
 	})
 
-	w.checkRepoSessions(repoSessions)
+	// Skip the shared cache for sessions without a PR. The cache may contain
+	// a "fresh" entry populated before the PR was created (or kept alive by
+	// BumpTTL after a 304 Not-Modified background refresh), so we must always
+	// hit GitHub directly to discover newly created PRs.
+	w.checkRepoSessions(repoSessions, true)
 }
 
 // checkSessionsWithPR checks sessions that have an associated PR for lifecycle changes.
@@ -424,7 +428,7 @@ func (w *PRWatcher) checkSessionsWithPR() {
 		}
 	}
 
-	w.checkRepoSessions(openSessions)
+	w.checkRepoSessions(openSessions, false)
 }
 
 // backfillMissingPRTitles is a one-time startup pass that fetches PR titles
@@ -520,8 +524,11 @@ func (w *PRWatcher) groupSessionsByRepo(filter func(*PRWatchEntry) bool) map[rep
 }
 
 // checkRepoSessions checks PR status for sessions grouped by repo.
-// Uses the shared PR cache to avoid redundant GitHub API calls.
-func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) {
+// When skipCache is false, uses the shared PR cache to avoid redundant GitHub
+// API calls. When skipCache is true (used by checkSessionsWithoutPR), always
+// fetches from GitHub directly — the cache may contain stale data from before
+// a PR was created, and BumpTTL can keep it "fresh" indefinitely.
+func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry, skipCache bool) {
 	for key, entries := range repoSessions {
 		// Check context cancellation
 		if w.ctx.Err() != nil {
@@ -529,18 +536,20 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 		}
 
 		// Try the shared cache — only use fresh entries (within freshTTL).
-		// Stale entries are skipped so the PRWatcher fetches from GitHub directly,
-		// ensuring eager detection of newly created PRs within ~30 seconds.
+		// Skipped for sessions without a PR: the cache can be kept alive by
+		// BumpTTL (304 Not-Modified) long after a PR is created, so we must
+		// always hit GitHub to discover new PRs.
 		var openPRs []github.PRListItem
-		if w.prCache != nil {
+		if !skipCache && w.prCache != nil {
 			entry, freshness := w.prCache.GetWithStale(key.owner, key.repo)
 			if freshness == github.CacheFresh && entry != nil {
 				openPRs = make([]github.PRListItem, len(entry.PRs))
 				copy(openPRs, entry.PRs)
+				logger.PRWatcher.Debugf("checkRepoSessions %s/%s: using cached PR list (%d PRs)", key.owner, key.repo, len(openPRs))
 			}
 		}
 
-		// Cache miss -- fetch from GitHub and populate shared cache.
+		// Cache miss (or skipped) -- fetch from GitHub and populate shared cache.
 		// NOTE: This stores PRs without details or ETag. If the HTTP handler
 		// hits this entry while fresh, it will serve PRs with unknown check status
 		// until the next background refresh cycle populates details.
@@ -554,6 +563,7 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 			if w.prCache != nil {
 				w.prCache.Set(key.owner, key.repo, openPRs)
 			}
+			logger.PRWatcher.Debugf("checkRepoSessions %s/%s: fetched fresh PR list from GitHub (%d PRs)", key.owner, key.repo, len(openPRs))
 		}
 
 		// Build branch -> PR map for quick lookup
@@ -572,6 +582,10 @@ func (w *PRWatcher) checkRepoSessions(repoSessions map[repoKey][]*PRWatchEntry) 
 // checkSessionPR checks and updates PR status for a single session
 func (w *PRWatcher) checkSessionPR(owner, repo string, entry *PRWatchEntry, branchToPR map[string]*github.PRListItem) {
 	pr, hasPR := branchToPR[entry.Branch]
+
+	if !hasPR && (entry.PRStatus == "" || entry.PRStatus == models.PRStatusNone) {
+		logger.PRWatcher.Debugf("checkSessionPR session=%s: no PR found for branch=%q (%d open PRs in map)", entry.SessionID, entry.Branch, len(branchToPR))
+	}
 
 	// For terminal states (merged/closed), only continue if there's a NEW PR
 	// for this branch (different number). This handles the workflow where a PR

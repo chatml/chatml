@@ -876,3 +876,162 @@ func newMockGitHubServerWithPRNumber(t *testing.T, prNumber int, responses mockG
 		w.WriteHeader(http.StatusNotFound)
 	}))
 }
+
+// ---------------------------------------------------------------------------
+// checkSessionsWithoutPR cache-skip tests
+// ---------------------------------------------------------------------------
+
+func TestPRWatcher_CheckSessionsWithoutPR_SkipsCache(t *testing.T) {
+	// Scenario: the shared PRCache contains a "fresh" entry with an empty PR
+	// list (populated before the PR was created). checkSessionsWithoutPR must
+	// skip the cache and fetch from GitHub, where the new PR now exists.
+	store := newMockStore()
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute)
+	defer prCache.Close()
+
+	// Pre-populate the cache with NO open PRs (simulates cache set before PR creation).
+	prCache.Set("org", "myrepo", []github.PRListItem{})
+
+	// Verify the cache is fresh.
+	_, freshness := prCache.GetWithStale("org", "myrepo")
+	require.Equal(t, github.CacheFresh, freshness, "cache entry should be fresh")
+
+	// Set up a GitHub mock that returns a PR for the session's branch.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /repos/org/myrepo/pulls?state=open&per_page=100
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/pulls\?`, r.URL.RequestURI()); matched {
+			prs := []map[string]interface{}{
+				{
+					"number":   99,
+					"state":    "open",
+					"title":    "New PR",
+					"html_url": "https://github.com/org/myrepo/pull/99",
+					"draft":    false,
+					"head": map[string]interface{}{
+						"ref": "feature/foo",
+						"sha": "def456",
+					},
+					"labels": []interface{}{},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(prs)
+			return
+		}
+
+		// /repos/org/myrepo/pulls/99 (PR details for enrichment)
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/pulls/\d+$`, r.URL.Path); matched {
+			pr := map[string]interface{}{
+				"number":          99,
+				"state":           "open",
+				"title":           "New PR",
+				"body":            "",
+				"html_url":        "https://github.com/org/myrepo/pull/99",
+				"merged":          false,
+				"mergeable":       true,
+				"mergeable_state": "clean",
+				"head":            map[string]string{"sha": "def456"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(pr)
+			return
+		}
+
+		// /repos/org/myrepo/commits/:ref/check-runs
+		if matched, _ := regexp.MatchString(`/repos/.+/.+/commits/.+/check-runs$`, r.URL.Path); matched {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"total_count": 0,
+				"check_runs":  []interface{}{},
+			})
+			return
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	var capturedEvent *PRChangeEvent
+	w := newTestPRWatcher(store, repoMgr, prCache)
+	defer w.Close()
+	w.onChange = func(e PRChangeEvent) { capturedEvent = &e }
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	// Add a session without a PR on branch "feature/foo".
+	w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
+
+	// Run the check — should skip the fresh cache and discover the PR.
+	w.checkSessionsWithoutPR()
+
+	// Verify the PR was detected.
+	w.mu.RLock()
+	entry := w.sessions["sess-1"]
+	w.mu.RUnlock()
+
+	assert.Equal(t, 99, entry.PRNumber, "PR number should be detected")
+	assert.Equal(t, models.PRStatusOpen, entry.PRStatus, "PR status should be open")
+	assert.Equal(t, "https://github.com/org/myrepo/pull/99", entry.PRUrl)
+	assert.Equal(t, "New PR", entry.PRTitle)
+
+	// Verify the onChange event was emitted.
+	require.NotNil(t, capturedEvent, "onChange should have been called")
+	assert.Equal(t, 99, capturedEvent.PRNumber)
+	assert.Equal(t, models.PRStatusOpen, capturedEvent.PRStatus)
+
+	// Verify the database was updated.
+	sess := store.sessions["sess-1"]
+	assert.Equal(t, 99, sess.PRNumber)
+	assert.Equal(t, models.PRStatusOpen, sess.PRStatus)
+}
+
+func TestPRWatcher_CheckSessionsWithPR_UsesCache(t *testing.T) {
+	// Verify that checkSessionsWithPR (monitoring existing PRs) DOES use the
+	// cache for the PR list, unlike checkSessionsWithoutPR which skips it.
+	store := newMockStore()
+	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute)
+	defer prCache.Close()
+
+	// Pre-populate cache with an open PR on "feature/bar" including details,
+	// so no GitHub API calls are needed at all.
+	mergeable := true
+	prCache.SetFull("org", "myrepo",
+		[]github.PRListItem{
+			{Number: 50, Title: "Cached PR", HTMLURL: "https://github.com/org/myrepo/pull/50", Branch: "feature/bar", State: "open"},
+		},
+		map[int]*github.PRDetails{
+			50: {Number: 50, State: "open", Title: "Cached PR", HTMLURL: "https://github.com/org/myrepo/pull/50", Mergeable: &mergeable, CheckStatus: github.CheckStatusSuccess},
+		},
+		"",
+	)
+
+	// GitHub mock should NOT be called if cache is used for both list and details.
+	apiCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiCalled = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	w := newTestPRWatcher(store, repoMgr, prCache)
+	defer w.Close()
+	w.onChange = func(e PRChangeEvent) {}
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetToken("test-token")
+	ghClient.SetAPIURL(ts.URL)
+	w.ghClient = ghClient
+
+	// Add a session WITH an open PR (matching cache entry).
+	w.WatchSession("sess-1", "ws-1", "feature/bar", "/repo/path", "open", 50, "https://github.com/org/myrepo/pull/50")
+
+	// Run the "with PR" check — should use cache, not call GitHub API.
+	w.checkSessionsWithPR()
+
+	assert.False(t, apiCalled, "checkSessionsWithPR should use the cache and not call GitHub API")
+}
