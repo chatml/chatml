@@ -1,9 +1,6 @@
 'use client';
 
-import { useGitStatus } from '@/hooks/useGitStatus';
-import { useSelectedIds } from '@/stores/selectors';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Popover,
   PopoverTrigger,
@@ -292,44 +289,19 @@ function buildStatusItems(
     });
   }
 
-  // Priority 4: Stash
-  if (status.stash.count > 0) {
-    items.push({
-      type: 'neutral',
-      message: `${status.stash.count} stashed change${status.stash.count !== 1 ? 's' : ''}`,
-      action: {
-        label: 'Apply',
-        onClick: () => sendMessage('Apply the latest stash'),
-      },
-      dropdownActions: [
-        {
-          icon: RefreshCw,
-          label: 'Apply Stash',
-          description: 'Apply stashed changes and keep the stash entry',
-          onClick: () => sendMessage('Apply the latest stash'),
-        },
-        {
-          icon: AlertTriangle,
-          label: 'Pop Stash',
-          description: 'Apply stashed changes and remove the stash entry',
-          onClick: () => sendMessage('Pop the latest stash'),
-        },
-      ],
-    });
-  }
-
   return items;
 }
 
 interface GitStatusSectionProps {
   onSendMessage?: (content: string) => void;
-  active?: boolean;
+  status: GitStatusDTO | null;
+  loading: boolean;
+  error: string | null;
+  errorCode: string | null;
+  onRefresh: () => void;
 }
 
-export function GitStatusSection({ onSendMessage, active = true }: GitStatusSectionProps) {
-  const { selectedWorkspaceId, selectedSessionId } = useSelectedIds();
-  const { status, loading, error, errorCode, refetch } = useGitStatus(selectedWorkspaceId, selectedSessionId, active);
-
+export function GitStatusSection({ onSendMessage, status, loading, error, errorCode, onRefresh }: GitStatusSectionProps) {
   // Wrapper that handles missing callback
   const sendMessage = (content: string) => {
     if (!onSendMessage) {
@@ -341,8 +313,9 @@ export function GitStatusSection({ onSendMessage, active = true }: GitStatusSect
 
   if (loading && !status) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      <div className="flex items-center gap-2 py-2 px-2">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">Loading...</span>
       </div>
     );
   }
@@ -350,7 +323,7 @@ export function GitStatusSection({ onSendMessage, active = true }: GitStatusSect
   if (error) {
     if (errorCode === ErrorCode.WORKTREE_NOT_FOUND) {
       return (
-        <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
+        <div className="flex flex-col items-center gap-2 p-4">
           <FolderX className="h-5 w-5 text-muted-foreground" />
           <p className="text-xs text-muted-foreground text-center">
             Worktree directory no longer exists
@@ -360,10 +333,10 @@ export function GitStatusSection({ onSendMessage, active = true }: GitStatusSect
     }
 
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2 p-4">
+      <div className="flex flex-col items-center gap-2 p-4">
         <XCircle className="h-5 w-5 text-text-error" />
         <p className="text-xs text-muted-foreground text-center">{error}</p>
-        <Button variant="ghost" size="sm" onClick={refetch}>
+        <Button variant="ghost" size="sm" onClick={onRefresh}>
           <RefreshCw className="h-3 w-3 mr-1" />
           Retry
         </Button>
@@ -373,7 +346,7 @@ export function GitStatusSection({ onSendMessage, active = true }: GitStatusSect
 
   if (!status) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="flex items-center justify-center py-2">
         <p className="text-xs text-muted-foreground">No session selected</p>
       </div>
     );
@@ -382,24 +355,10 @@ export function GitStatusSection({ onSendMessage, active = true }: GitStatusSect
   const items = buildStatusItems(status, sendMessage);
 
   return (
-    <ScrollArea className="h-full">
-      <div>
-        <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-xs font-medium text-purple-500">Git status</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5"
-            onClick={refetch}
-            disabled={loading}
-          >
-            <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
-          </Button>
-        </div>
-        {items.map((item) => (
-          <GitStatusItem key={`${item.type}-${item.message}`} {...item} />
-        ))}
-      </div>
-    </ScrollArea>
+    <div>
+      {items.map((item) => (
+        <GitStatusItem key={`${item.type}-${item.message}`} {...item} />
+      ))}
+    </div>
   );
 }
