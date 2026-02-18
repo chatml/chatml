@@ -612,6 +612,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Get current file tab from visible tabs
   const currentFileTab = visibleTabs.find((t) => t.id === selectedFileTabId);
 
+  // Memoize filtered comments to prevent new array reference on every render
+  const currentFilePath = currentFileTab?.path;
+  const fileComments = useMemo(
+    () => currentFilePath ? reviewComments.filter((c) => c.filePath === currentFilePath) : [],
+    [reviewComments, currentFilePath],
+  );
+
   // Determine what's currently active (conversation or file)
   // File is active only if selected tab is visible
   const isFileActive = selectedFileTabId !== null && currentFileTab !== undefined;
@@ -766,19 +773,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       }
     }
   }, [fileTabs, selectFileTab, updateFileTab]);
-
-  // Save editor state (cursor/scroll position) when switching tabs
-  const handleEditorStateChange = useCallback((state: {
-    cursorPosition?: { line: number; column: number };
-    scrollPosition?: { top: number; left: number };
-  }) => {
-    if (selectedFileTabId) {
-      updateFileTab(selectedFileTabId, {
-        cursorPosition: state.cursorPosition,
-        scrollPosition: state.scrollPosition,
-      });
-    }
-  }, [selectedFileTabId, updateFileTab]);
 
   // Handle resolving/unresolving a review comment
   const handleResolveComment = useCallback(async (commentId: string, resolved: boolean) => {
@@ -1039,9 +1033,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               </div>
             ) : currentFileTab.viewMode === 'diff' && currentFileTab.diff ? (
               // Diff view - uses CodeViewer with oldContent for diff mode
-              // key resets ErrorBoundary when switching files, clearing any previous error state
+              // resetKeys clears error state when switching files without destroying the Pierre instance
               <ErrorBoundary
-                key={currentFileTab.id}
+                resetKeys={[currentFileTab.id]}
                 section="CodeViewer"
                 fallback={
                   <BlockErrorFallback
@@ -1056,20 +1050,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   oldContent={currentFileTab.diff.oldContent}
                   filename={currentFileTab.name}
                   isLoading={currentFileTab.isLoading}
-                  onStateChange={handleEditorStateChange}
-                  initialCursorPosition={currentFileTab.cursorPosition}
-                  initialScrollPosition={currentFileTab.scrollPosition}
-                  comments={reviewComments.filter((c) => c.filePath === currentFileTab.path)}
+                  comments={fileComments}
                   onResolveComment={handleResolveComment}
                   onDeleteComment={handleDeleteComment}
                   onCreateComment={handleCreateComment}
+                  scrollToLine={currentFileTab.cursorPosition?.line}
                 />
               </ErrorBoundary>
             ) : (
               // Regular file view
-              // key resets ErrorBoundary when switching files, clearing any previous error state
+              // resetKeys clears error state when switching files without destroying the Pierre instance
               <ErrorBoundary
-                key={currentFileTab.id}
+                resetKeys={[currentFileTab.id]}
                 section="CodeViewer"
                 fallback={
                   <BlockErrorFallback
@@ -1083,9 +1075,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                   content={currentFileTab.content || ''}
                   filename={currentFileTab.name}
                   isLoading={currentFileTab.isLoading}
-                  onStateChange={handleEditorStateChange}
-                  initialCursorPosition={currentFileTab.cursorPosition}
-                  initialScrollPosition={currentFileTab.scrollPosition}
                 />
               </ErrorBoundary>
             )}

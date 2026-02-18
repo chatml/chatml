@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  transpilePackages: ['monaco-themes'],
+  transpilePackages: [],
 };
 
 export default nextConfig;
