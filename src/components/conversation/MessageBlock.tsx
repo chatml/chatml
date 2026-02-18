@@ -29,6 +29,7 @@ import { highlightSearchMatches } from '@/components/conversation/ChatSearchBar'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
+import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
 import { MentionText } from '@/components/conversation/MentionText';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
 
@@ -94,6 +95,7 @@ export const MessageBlock = memo(function MessageBlock({
   // comparator below to skip re-renders for messages without search matches.
 }: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const copyContent = useCallback(async () => {
     const success = await copyToClipboard(message.content);
@@ -133,7 +135,21 @@ export const MessageBlock = memo(function MessageBlock({
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
         <div className="bg-surface-2 dark:bg-[#090909] rounded-lg px-4 py-2.5">
           {message.attachments && message.attachments.length > 0 && (
-            <AttachmentGrid attachments={message.attachments} readOnly />
+            <>
+              <AttachmentGrid
+                attachments={message.attachments}
+                onPreview={(index) => setPreviewIndex(index)}
+                readOnly
+              />
+              {previewIndex !== null && (
+                <AttachmentPreviewModal
+                  open
+                  onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+                  attachments={message.attachments}
+                  initialIndex={previewIndex}
+                />
+              )}
+            </>
           )}
           <p className="text-base leading-relaxed whitespace-pre-wrap">
             {highlightedContent || <MentionText content={message.content} />}

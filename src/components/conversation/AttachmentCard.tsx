@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 interface AttachmentCardProps {
   attachment: Attachment;
   onRemove?: () => void;
+  onClick?: () => void;
   readOnly?: boolean;
 }
 
@@ -28,7 +29,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 /**
  * Attachment card component for displaying file attachments in the compose area
  */
-export function AttachmentCard({ attachment, onRemove, readOnly = false }: AttachmentCardProps) {
+export function AttachmentCard({ attachment, onRemove, onClick, readOnly = false }: AttachmentCardProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   // Determine file path for category detection - use path if available, otherwise fall back to name
@@ -45,8 +46,10 @@ export function AttachmentCard({ attachment, onRemove, readOnly = false }: Attac
       className={cn(
         'group relative flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5',
         'hover:bg-muted/80 transition-colors',
-        'min-w-0 max-w-[220px]'
+        'min-w-0 max-w-[220px]',
+        onClick && 'cursor-pointer'
       )}
+      onClick={onClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
