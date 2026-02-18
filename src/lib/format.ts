@@ -2,6 +2,12 @@
  * Shared formatting utilities.
  */
 
+/** Strip a leading `cd "..." &&` or `cd ... &&` prefix from a shell command for display. */
+export function stripCdPrefix(command: string): string {
+  const match = command.match(/^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*&&\s*([\s\S]+)$/);
+  return match ? match[1] : command;
+}
+
 /** Format a token count as a compact string (e.g. 1.2M, 45.3K, 800). */
 export const formatTokens = (tokens: number) => {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
