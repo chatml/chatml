@@ -120,7 +120,7 @@ function CheckItem({ check, onAnalyze }: CheckItemProps) {
     <div className="flex items-center gap-2 text-xs py-0.5">
       <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
       <span className="truncate">{check.name}</span>
-      {check.durationSeconds !== undefined && (
+      {check.durationSeconds !== undefined && check.conclusion !== 'skipped' && check.conclusion !== 'cancelled' && (
         <span className="text-muted-foreground shrink-0">{formatDuration(check.durationSeconds)}</span>
       )}
       <span className="flex-1" />
