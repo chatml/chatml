@@ -6,9 +6,12 @@ import type { FileContents, DiffLineAnnotation } from '@pierre/diffs/react';
 import type { FileDiffOptions, FileDiffMetadata, OnDiffLineClickProps } from '@pierre/diffs';
 import { parseDiffFromFile } from '@pierre/diffs';
 import { useTheme } from 'next-themes';
-import { FileCode } from 'lucide-react';
+import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { CopyButton } from '@/components/shared/CopyButton';
 import { CommentThread } from '@/components/comments/CommentThread';
 import { InlineCommentInput } from '@/components/comments/InlineCommentInput';
 import { getShikiLanguage } from '@/lib/languageMapping';
@@ -20,8 +23,6 @@ interface PierreDiffEditorProps {
   oldContent: string;
   newContent: string;
   filename: string;
-  sideBySide?: boolean;
-  wordWrap?: boolean;
   comments?: ReviewComment[];
   onResolveComment?: (id: string, resolved: boolean) => void;
   onDeleteComment?: (id: string) => void;
@@ -40,8 +41,6 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
   oldContent,
   newContent,
   filename,
-  sideBySide = false,
-  wordWrap = false,
   comments,
   onResolveComment,
   onDeleteComment,
@@ -51,6 +50,10 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
   const { resolvedTheme } = useTheme();
   const themeType = resolvedTheme === 'dark' ? 'dark' : 'light';
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
+  const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
+  const [wordWrap, setWordWrap] = useState(false);
+
+  const getNewContent = useCallback(() => newContent, [newContent]);
 
   const language = getShikiLanguage(filename);
 
@@ -81,17 +84,49 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     }
   }, [onCreateComment]);
 
+  const renderHeaderMetadata = useCallback(() => (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('h-5 w-5 text-muted-foreground', diffViewMode === 'unified' && 'bg-muted')}
+        onClick={() => setDiffViewMode('unified')}
+        title="Unified view"
+      >
+        <Rows className="w-2.5 h-2.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('h-5 w-5 text-muted-foreground', diffViewMode === 'split' && 'bg-muted')}
+        onClick={() => setDiffViewMode('split')}
+        title="Split view"
+      >
+        <SplitSquareHorizontal className="w-2.5 h-2.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('h-5 w-5 text-muted-foreground', wordWrap && 'bg-muted')}
+        onClick={() => setWordWrap(w => !w)}
+        title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+      >
+        <WrapText className="w-2.5 h-2.5" />
+      </Button>
+      <CopyButton getText={getNewContent} />
+    </div>
+  ), [diffViewMode, wordWrap, getNewContent]);
+
   const options: FileDiffOptions<CommentAnnotationData> = useMemo(() => ({
     theme: PIERRE_THEMES,
     themeType,
-    diffStyle: sideBySide ? 'split' as const : 'unified' as const,
+    diffStyle: diffViewMode === 'split' ? 'split' as const : 'unified' as const,
     overflow: wordWrap ? 'wrap' as const : 'scroll' as const,
-    disableFileHeader: true,
     diffIndicators: 'bars' as const,
     lineDiffType: 'word' as const,
     tokenizeMaxLineLength: 500,
     onLineNumberClick: handleLineNumberClick,
-  }), [themeType, sideBySide, wordWrap, handleLineNumberClick]);
+  }), [themeType, diffViewMode, wordWrap, handleLineNumberClick]);
 
   // Build annotations from review comments + active input
   const lineAnnotations = useMemo(() => {
@@ -184,6 +219,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
           options={options}
           lineAnnotations={lineAnnotations}
           renderAnnotation={renderAnnotation}
+          renderHeaderMetadata={renderHeaderMetadata}
         />
       </div>
     </ErrorBoundary>

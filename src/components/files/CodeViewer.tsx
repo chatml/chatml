@@ -1,16 +1,14 @@
 'use client';
 
-import { memo, useState } from 'react';
+import { memo, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Loader2, Code, Eye, SplitSquareHorizontal, Rows, WrapText } from 'lucide-react';
+import { Loader2, Code } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PierreEditor } from '@/components/files/PierreEditor';
 import { PierreDiffEditor } from '@/components/files/PierreDiffEditor';
-import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
+import { PROSE_CLASSES } from '@/lib/constants';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
-import { copyToClipboard } from '@/lib/tauri';
-import { useToast } from '@/components/ui/toast';
-import { getShikiLanguage } from '@/lib/languageMapping';
+import { CopyButton } from '@/components/shared/CopyButton';
 import type { ReviewComment } from '@/lib/types';
 
 interface CodeViewerProps {
@@ -47,13 +45,9 @@ export const CodeViewer = memo(function CodeViewer({
   onCreateComment,
   scrollToLine,
 }: CodeViewerProps) {
-  const toast = useToast();
-  const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'code' | 'rendered'>(
     isMarkdownFile(filename) ? 'rendered' : 'code'
   );
-  const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
-  const [wordWrap, setWordWrap] = useState(false);
 
   // Reset view mode when switching files
   const [prevFilename, setPrevFilename] = useState(filename);
@@ -64,17 +58,7 @@ export const CodeViewer = memo(function CodeViewer({
 
   const isMarkdown = isMarkdownFile(filename);
   const isDiffMode = typeof oldContent === 'string';
-  const language = getShikiLanguage(filename);
-
-  const handleCopy = async () => {
-    const success = await copyToClipboard(content);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
-    } else {
-      toast.error('Failed to copy to clipboard');
-    }
-  };
+  const getContent = useCallback(() => content, [content]);
 
   if (isLoading) {
     return (
@@ -105,147 +89,64 @@ export const CodeViewer = memo(function CodeViewer({
     );
   }
 
-  // Render diff view (split or unified)
+  // Render diff view — Pierre's native header + our toggle buttons via renderHeaderMetadata
   if (isDiffMode) {
     return (
-      <div className="h-full flex flex-col">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
-          <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
-            <span className="font-mono shrink-0">{language}</span>
-            <span className="shrink-0">|</span>
-            <span className="font-mono truncate" title={filename}>{filename}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            {/* Diff view mode toggle */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-5 w-5 text-muted-foreground', diffViewMode === 'unified' && 'bg-muted')}
-              onClick={() => setDiffViewMode('unified')}
-              title="Unified view"
-            >
-              <Rows className="w-2.5 h-2.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-5 w-5 text-muted-foreground', diffViewMode === 'split' && 'bg-muted')}
-              onClick={() => setDiffViewMode('split')}
-              title="Split view"
-            >
-              <SplitSquareHorizontal className="w-2.5 h-2.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-5 w-5 text-muted-foreground', wordWrap && 'bg-muted')}
-              onClick={() => setWordWrap(!wordWrap)}
-              title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
-            >
-              <WrapText className="w-2.5 h-2.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 text-muted-foreground"
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <Check className="w-2.5 h-2.5 text-text-success" />
-              ) : (
-                <Copy className="w-2.5 h-2.5" />
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* Diff content */}
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <PierreDiffEditor
-            oldContent={oldContent || ''}
-            newContent={content || ''}
-            filename={filename}
-            sideBySide={diffViewMode === 'split'}
-            wordWrap={wordWrap}
-            comments={comments}
-            onResolveComment={onResolveComment}
-            onDeleteComment={onDeleteComment}
-            onCreateComment={onCreateComment}
-            scrollToLine={scrollToLine}
-          />
-        </div>
+      <div className="h-full">
+        <PierreDiffEditor
+          oldContent={oldContent || ''}
+          newContent={content || ''}
+          filename={filename}
+          comments={comments}
+          onResolveComment={onResolveComment}
+          onDeleteComment={onDeleteComment}
+          onCreateComment={onCreateComment}
+          scrollToLine={scrollToLine}
+        />
       </div>
     );
   }
 
-  return (
-    <div className="h-full flex flex-col">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
-          <span className="font-mono shrink-0">{content.split('\n').length} lines</span>
-          <span className="shrink-0">|</span>
-          <span className="font-mono shrink-0">{language}</span>
-          <span className="shrink-0">|</span>
-          <span className="font-mono truncate" title={filename}>{filename}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          {isMarkdown && (
+  // Render markdown rendered view with minimal fallback header
+  if (isMarkdown && viewMode === 'rendered') {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
+            <span className="font-mono truncate" title={filename}>{filename}</span>
+          </div>
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
-              className={cn('h-5 w-5 text-muted-foreground', viewMode === 'rendered' && 'bg-muted')}
-              onClick={() => setViewMode(viewMode === 'code' ? 'rendered' : 'code')}
-              title={viewMode === 'code' ? 'Show rendered' : 'Show code'}
+              className="h-5 w-5 text-muted-foreground"
+              onClick={() => setViewMode('code')}
+              title="Show code"
             >
-              {viewMode === 'code' ? (
-                <Eye className="w-2.5 h-2.5" />
-              ) : (
-                <Code className="w-2.5 h-2.5" />
-              )}
+              <Code className="w-2.5 h-2.5" />
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn('h-5 w-5 text-muted-foreground', wordWrap && 'bg-muted')}
-            onClick={() => setWordWrap(!wordWrap)}
-            title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
-          >
-            <WrapText className="w-2.5 h-2.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 text-muted-foreground"
-            onClick={handleCopy}
-          >
-            {copied ? (
-              <Check className="w-2.5 h-2.5 text-text-success" />
-            ) : (
-              <Copy className="w-2.5 h-2.5" />
-            )}
-          </Button>
+            <CopyButton getText={getContent} />
+          </div>
         </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-hidden min-h-0">
-        {isMarkdown && viewMode === 'rendered' ? (
+        <div className="flex-1 overflow-hidden min-h-0">
           <div className="h-full overflow-auto overscroll-contain">
             <div className={cn(PROSE_CLASSES, 'px-6 py-5')}>
               <CachedMarkdown cacheKey={`file-preview:${filename}`} content={content} skipCache />
             </div>
           </div>
-        ) : (
-          <PierreEditor
-            content={content}
-            filename={filename}
-            wordWrap={wordWrap}
-          />
-        )}
+        </div>
       </div>
+    );
+  }
+
+  // Render file view — Pierre's native header + our toggle buttons via renderHeaderMetadata
+  return (
+    <div className="h-full">
+      <PierreEditor
+        content={content}
+        filename={filename}
+        onToggleMarkdownView={isMarkdown ? () => setViewMode(v => v === 'code' ? 'rendered' : 'code') : undefined}
+      />
     </div>
   );
 });
