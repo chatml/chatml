@@ -2151,6 +2151,8 @@ This session uses a git worktree — an isolated working directory with a dedica
 
 **NEVER switch branches.** Do not run `+"`"+`git checkout`+"`"+`, `+"`"+`git switch`+"`"+`, or any command that changes the checked-out branch. The worktree is locked to its branch — switching would corrupt the session state. If the user asks you to switch to main, master, or any other branch, explain that this session is locked to its worktree branch and they should create a new session instead.
 
+**NEVER use --delete-branch with gh commands.** `+"`"+`gh pr merge --delete-branch`+"`"+` and `+"`"+`gh pr close --delete-branch`+"`"+` delete the local branch and silently switch the worktree to the default branch, corrupting the session. Always omit `+"`"+`--delete-branch`+"`"+`. After merging, the session stays on its branch.
+
 **NEVER use `+"`"+`git stash`+"`"+`.** Stash is shared across ALL worktrees in the repository. A stash created here is visible to every other session. Use commits instead — commit work-in-progress to the session branch.
 
 **Stay in the worktree directory.** Do not `+"`"+`cd`+"`"+` outside of %s. All your file operations should be within this directory.
@@ -2161,7 +2163,7 @@ This session uses a git worktree — an isolated working directory with a dedica
 - No `+"`"+`git clean -fd`+"`"+` (deletes untracked files)
 - No `+"`"+`git branch -D`+"`"+` on the session branch (destroys the session)
 
-**After a PR is merged, stay on this branch.** Do not attempt to switch to main or clean up. The session remains active on its branch.
+**After a PR is merged, stay on this branch.** Do not attempt to switch to main or clean up. Do not delete the branch. The session remains active on its branch.
 
 **Branch name may change.** ChatML auto-renames the branch after the first message. Always use `+"`"+`git branch --show-current`+"`"+` rather than hardcoding the branch name.
 
