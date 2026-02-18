@@ -421,7 +421,10 @@ func main() {
 
 	// Notify PRWatcher immediately when an agent creates or merges a PR via bash,
 	// bypassing the 30-second polling delay for instant UI updates.
-	agentMgr.SetOnPRCreated(prWatcher.ForceCheckSession)
+	// RegisterPRFromAgent updates the session directly with the PR number/URL
+	// extracted from the gh pr create stdout, then falls back to ForceCheckSession
+	// for additional metadata (checks, mergeable, title).
+	agentMgr.SetOnPRCreated(prWatcher.RegisterPRFromAgent)
 	agentMgr.SetOnPRMerged(prWatcher.ForceCheckSession)
 
 	// Issue cache for GitHub Issues API
