@@ -11,6 +11,14 @@ import { getShikiLanguage } from '@/lib/languageMapping';
 
 const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 
+// Injected into Pierre's Shadow DOM to improve scroll performance.
+// - Removes position:sticky from line numbers (avoids 1000s of sticky recalculations per scroll frame)
+// - Adds CSS containment to the code grid so the browser can optimize layout/paint
+const SCROLL_PERF_CSS = [
+  '[data-column-number] { position: relative !important; }',
+  'code { contain: layout style paint !important; }',
+].join('\n');
+
 // Pierre renders all lines eagerly into the DOM (no virtualization).
 // Truncate large files to keep the UI responsive.
 const MAX_LINES = 10000;
@@ -67,6 +75,7 @@ export const PierreEditor = memo(function PierreEditor({
     overflow: wordWrap ? 'wrap' as const : 'scroll' as const,
     disableFileHeader: true,
     tokenizeMaxLineLength: 500,
+    unsafeCSS: SCROLL_PERF_CSS,
   }), [themeType, wordWrap]);
 
   return (
