@@ -44,7 +44,7 @@ import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAll
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion, useStreamingState } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
+import { THINKING_LEVELS, THINKING_TOKEN_MAP, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
@@ -1269,7 +1269,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 size="sm"
                 className={cn(
                   'h-7 gap-1.5 px-2 text-xs',
-                  thinkingLevel !== 'high' && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
+                  thinkingLevel !== defaultThinkingLevel && 'text-amber-500 hover:text-amber-600 bg-amber-500/10 hover:bg-amber-500/20'
                 )}
                 title={`Thinking: ${thinkingLevel} (⌥T to cycle)`}
                 aria-label={`Thinking: ${thinkingLevel}`}
@@ -1279,23 +1279,48 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {THINKING_LEVELS.map((level) => (
-                <DropdownMenuItem
-                  key={level.id}
-                  disabled={level.id === 'off' && !canDisableThinking(selectedModel)}
-                  onClick={() => setThinkingLevel(level.id)}
-                >
-                  {level.label}
-                  {level.id === 'high' && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">(default)</span>
-                  )}
-                  {level.id === 'off' && !canDisableThinking(selectedModel) && (
-                    <span className="ml-1.5 text-xs text-muted-foreground">(Opus always thinks)</span>
-                  )}
-                  {level.id === thinkingLevel && <Check className="ml-auto h-3.5 w-3.5" />}
-                </DropdownMenuItem>
-              ))}
+            <DropdownMenuContent align="start" className="w-72">
+              {THINKING_LEVELS.map((level) => {
+                const isDisabled = level.id === 'off' && !canDisableThinking(selectedModel);
+                const isSelected = level.id === thinkingLevel;
+                const tokens = THINKING_TOKEN_MAP[level.id];
+                const budgetLabel = level.id === 'off'
+                  ? null
+                  : selectedModel.supportsEffort
+                    ? 'adaptive'
+                    : tokens != null
+                      ? `${(tokens / 1000).toFixed(0)}K tokens`
+                      : null;
+                return (
+                  <DropdownMenuItem
+                    key={level.id}
+                    disabled={isDisabled}
+                    onClick={() => setThinkingLevel(level.id)}
+                    className="flex-col items-start gap-0 py-2"
+                  >
+                    <div className="flex w-full items-center gap-1.5">
+                      <span className="font-medium">{level.label}</span>
+                      {level.id === defaultThinkingLevel && (
+                        <span className="text-xs text-muted-foreground">(default)</span>
+                      )}
+                      {isDisabled && (
+                        <span className="text-xs text-muted-foreground">(Opus always thinks)</span>
+                      )}
+                      <span className="ml-auto flex items-center gap-2">
+                        {budgetLabel && (
+                          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                            {budgetLabel}
+                          </span>
+                        )}
+                        {isSelected && <Check className="h-3.5 w-3.5" />}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-tight">
+                      {level.description}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 

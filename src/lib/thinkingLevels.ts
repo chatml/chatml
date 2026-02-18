@@ -8,16 +8,16 @@
 
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max';
 
-export const THINKING_LEVELS: { id: ThinkingLevel; label: string }[] = [
-  { id: 'off', label: 'Off' },
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
-  { id: 'max', label: 'Max' },
+export const THINKING_LEVELS: { id: ThinkingLevel; label: string; description: string }[] = [
+  { id: 'off', label: 'Off', description: 'Disable extended thinking' },
+  { id: 'low', label: 'Low', description: 'Minimal reasoning, may skip on simple tasks' },
+  { id: 'medium', label: 'Medium', description: 'Balanced reasoning for moderate tasks' },
+  { id: 'high', label: 'High', description: 'Strong reasoning for most problems' },
+  { id: 'max', label: 'Max', description: 'Maximum reasoning depth and capability' },
 ];
 
 /** Default thinking token budgets for non-effort models (Sonnet/Haiku). */
-const THINKING_TOKEN_MAP: Record<ThinkingLevel, number | undefined> = {
+export const THINKING_TOKEN_MAP: Record<ThinkingLevel, number | undefined> = {
   off: undefined,
   low: 8000,
   medium: 10000,
