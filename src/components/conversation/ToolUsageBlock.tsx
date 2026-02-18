@@ -260,7 +260,6 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         sessionId,
         path: relativePath,
         name: filename,
-        isLoading: true,
       });
     };
   }, [fullFilePath, worktreePath]);
