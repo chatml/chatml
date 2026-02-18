@@ -625,6 +625,13 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
+      case 'plan_mode_auto_exited':
+        // ExitPlanMode was auto-approved because there was no plan content to review.
+        // Clear plan mode state so the UI toggle turns off and stale events are suppressed.
+        store.setPlanModeActive(conversationId, false);
+        markPlanModeExited(conversationId);
+        break;
+
       case 'auth_error': {
         // Handle auth error with a clear, actionable message
         const authMessage = event?.message || 'Authentication failed. Check your API key in Settings > Claude Code.';

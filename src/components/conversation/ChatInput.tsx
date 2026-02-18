@@ -365,13 +365,19 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     && conversationHasMessages
     && !isSuggestionStale;
 
-  // Sync toggle ON when agent enters plan mode (e.g. EnterPlanMode tool).
-  // Only syncs activation — deactivation is handled by handleApprovePlan.
+  // Sync toggle with agent-driven plan mode changes:
+  // - ON when agent enters plan mode (e.g. EnterPlanMode tool)
+  // - OFF when agent exits plan mode without user interaction (auto-exit with no plan content)
+  // Explicit user deactivation is handled by handleApprovePlan.
   useEffect(() => {
     if (planModeActive && !planModeEnabled) {
       setPlanModeEnabled(true);
+    } else if (!planModeActive && planModeEnabled && isStreaming && !pendingPlanApproval) {
+      // Agent exited plan mode (auto-approved, no plan to review) — sync toggle off.
+      // Only syncs during streaming to avoid fighting with user's manual toggle.
+      setPlanModeEnabled(false);
     }
-  }, [planModeActive, planModeEnabled]);
+  }, [planModeActive, planModeEnabled, isStreaming, pendingPlanApproval]);
 
   // Restore per-session toggle states when switching sessions
   const prevSessionRef = useRef<string | null>(null);
@@ -901,9 +907,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         if (pendingPlanApproval && selectedConversationId) {
           // User typed feedback while plan approval is pending — deny the plan first,
           // then send the message. The deny MUST complete before the message send to
-          // guarantee stdin ordering in the agent-runner.
+          // guarantee stdin ordering in the agent-runner. Include the user's text as
+          // the denial reason so the agent gets the feedback in the tool result context.
           try {
-            await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
+            await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false, trimmedContent);
           } catch (err) {
             console.error('Failed to deny plan during message submit:', err);
           }

@@ -3728,6 +3728,7 @@ func (h *Handlers) SetConversationMaxThinkingTokens(w http.ResponseWriter, r *ht
 type PlanApprovalRequest struct {
 	RequestID string `json:"requestId"`
 	Approved  bool   `json:"approved"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
@@ -3752,7 +3753,7 @@ func (h *Handlers) ApprovePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send the approval/rejection to the agent process
-	if err := proc.SendPlanApprovalResponse(req.RequestID, req.Approved); err != nil {
+	if err := proc.SendPlanApprovalResponse(req.RequestID, req.Approved, req.Reason); err != nil {
 		writeInternalError(w, "failed to send plan approval", err)
 		return
 	}

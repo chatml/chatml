@@ -216,6 +216,7 @@ interface InputMessage {
   // Plan approval response fields
   planApprovalRequestId?: string;
   planApproved?: boolean;
+  planApprovalReason?: string;
   // Max thinking tokens override
   maxThinkingTokens?: number;
   // MCP server management fields (SDK v0.2.21+)
@@ -335,8 +336,12 @@ const PLAN_APPROVAL_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as l
 // mode restoration. This flag suppresses those stale messages.
 let suppressStalePlanMode = false;
 
+interface PlanApprovalResult {
+  approved: boolean;
+  reason?: string;
+}
 interface PendingPlanApprovalRequest {
-  resolve: (approved: boolean) => void;
+  resolve: (result: PlanApprovalResult) => void;
   reject: (error: Error) => void;
 }
 const pendingPlanApprovalRequests = new Map<string, PendingPlanApprovalRequest>();
@@ -617,7 +622,7 @@ function setupInputQueue(): void {
         const pending = pendingPlanApprovalRequests.get(input.planApprovalRequestId);
         if (pending) {
           pendingPlanApprovalRequests.delete(input.planApprovalRequestId);
-          pending.resolve(input.planApproved === true);
+          pending.resolve({ approved: input.planApproved === true, reason: input.planApprovalReason });
         } else {
           emit({
             type: "warning",
@@ -1323,17 +1328,34 @@ const exitPlanModeHook: HookCallback = async (_input) => {
     }
   }
 
-  // Emit the plan approval request to the Go backend (with plan content if available)
+  // No plan content means the agent is just exiting plan mode (not proposing a plan).
+  // Auto-approve to avoid showing an empty approval UI that requires user interaction.
+  if (!planContent) {
+    debug("Auto-approving ExitPlanMode — no plan content to review");
+    lastExitPlanApprovalTime = Date.now();
+    emit({
+      type: "plan_mode_auto_exited",
+      sessionId: currentSessionId,
+    });
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse" as const,
+        permissionDecision: "allow" as const,
+      },
+    };
+  }
+
+  // Emit the plan approval request to the Go backend (with plan content)
   emit({
     type: "plan_approval_request",
     requestId,
     sessionId: currentSessionId,
-    ...(planContent && { planContent }),
+    planContent,
   });
 
   // Wait for user response with a safety timeout matching the hook timeout
   try {
-    const approved = await new Promise<boolean>((resolve, reject) => {
+    const result = await new Promise<PlanApprovalResult>((resolve, reject) => {
       pendingPlanApprovalRequests.set(requestId, { resolve, reject });
       // Safety timeout to prevent infinite hang if Go backend crashes/restarts
       setTimeout(() => {
@@ -1344,7 +1366,7 @@ const exitPlanModeHook: HookCallback = async (_input) => {
       }, PLAN_APPROVAL_HOOK_TIMEOUT_S * 1000);
     });
 
-    if (approved) {
+    if (result.approved) {
       // Record approval time to auto-approve retries caused by SDK bug #15755
       lastExitPlanApprovalTime = Date.now();
       // Allow tool execution - SDK will exit plan mode naturally
@@ -1356,11 +1378,12 @@ const exitPlanModeHook: HookCallback = async (_input) => {
       };
     } else {
       // Deny tool execution - SDK stays in plan mode
+      const reason = result.reason || "User requested changes to the plan";
       return {
         hookSpecificOutput: {
           hookEventName: "PreToolUse" as const,
           permissionDecision: "deny" as const,
-          permissionDecisionReason: "User requested changes to the plan",
+          permissionDecisionReason: reason,
         },
       };
     }
