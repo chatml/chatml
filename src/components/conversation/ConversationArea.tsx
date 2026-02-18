@@ -80,8 +80,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectFileTab,
     closeFileTab,
     pinFileTab,
-    closeOtherTabs,
-    closeTabsToRight,
     reorderFileTabs,
     updateFileTab,
     setPendingCloseFileTabId,
@@ -848,32 +846,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId]
   );
 
-  // Close others handler for TabBar
-  const handleCloseOthers = useCallback(
-    (id: string, type: 'file' | 'conversation') => {
-      if (type === 'file') {
-        startTransition(() => closeOtherTabs(id));
-      } else {
-        startTransition(() => {
-          sessionConversations
-            .filter((c) => c.id !== id)
-            .forEach((c) => removeConversation(c.id));
-        });
-      }
-    },
-    [closeOtherTabs, sessionConversations, removeConversation]
-  );
-
-  // Close to right handler for TabBar (files only)
-  const handleCloseToRight = useCallback(
-    (id: string, type: 'file' | 'conversation') => {
-      if (type === 'file') {
-        closeTabsToRight(id);
-      }
-    },
-    [closeTabsToRight]
-  );
-
   // Rename conversation handler for TabBar
   const handleRenameConversation = useCallback(
     (id: string) => {
@@ -973,8 +945,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         onSelectTab={handleTabSelect}
         onCloseTab={handleTabClose}
         onPinTab={(id, pinned) => pinFileTab(id, pinned)}
-        onCloseOthers={handleCloseOthers}
-        onCloseToRight={handleCloseToRight}
         onReorder={reorderFileTabs}
         onNewSession={() => handleNewConversation('task')}
         onRenameConversation={handleRenameConversation}

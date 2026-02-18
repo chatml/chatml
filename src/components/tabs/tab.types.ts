@@ -33,8 +33,6 @@ export interface TabBarProps {
   onSelectTab: (id: string, type: 'file' | 'conversation') => void;
   onCloseTab: (id: string, type: 'file' | 'conversation', e?: MouseEvent) => void;
   onPinTab?: (id: string, pinned: boolean) => void;
-  onCloseOthers?: (id: string, type: 'file' | 'conversation') => void;
-  onCloseToRight?: (id: string, type: 'file' | 'conversation') => void;
   onReorder?: (activeId: string, overId: string) => void;
   onNewSession: () => void;
   onRenameConversation?: (id: string) => void;
@@ -53,8 +51,6 @@ export interface TabItemProps {
   onSelect: () => void;
   onClose: (e?: MouseEvent) => void;
   onPin?: (pinned: boolean) => void;
-  onCloseOthers?: () => void;
-  onCloseToRight?: () => void;
   onRename?: () => void;
   onGenerateSummary?: () => void;
   onViewSummary?: () => void;

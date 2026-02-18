@@ -36,8 +36,6 @@ function SortableTabItem({
   onSelect,
   onClose,
   onPin,
-  onCloseOthers,
-  onCloseToRight,
   onRename,
   onGenerateSummary,
   onViewSummary,
@@ -50,8 +48,6 @@ function SortableTabItem({
   onSelect: () => void;
   onClose: (e?: React.MouseEvent) => void;
   onPin?: (pinned: boolean) => void;
-  onCloseOthers?: () => void;
-  onCloseToRight?: () => void;
   onRename?: () => void;
   onGenerateSummary?: () => void;
   onViewSummary?: () => void;
@@ -83,8 +79,6 @@ function SortableTabItem({
         onSelect={onSelect}
         onClose={onClose}
         onPin={onPin}
-        onCloseOthers={onCloseOthers}
-        onCloseToRight={onCloseToRight}
         onRename={onRename}
         onGenerateSummary={onGenerateSummary}
         onViewSummary={onViewSummary}
@@ -114,8 +108,6 @@ export function TabBar({
   onSelectTab,
   onCloseTab,
   onPinTab,
-  onCloseOthers,
-  onCloseToRight,
   onReorder,
   onNewSession,
   onRenameConversation,
@@ -195,8 +187,6 @@ export function TabBar({
         onSelect={() => onSelectTab(tab.id, tab.type)}
         onClose={(e) => handleClose(tab.id, tab.type, e)}
         onPin={tab.type === 'file' && onPinTab ? (pinned) => onPinTab(tab.id, pinned) : undefined}
-        onCloseOthers={onCloseOthers ? () => onCloseOthers(tab.id, tab.type) : undefined}
-        onCloseToRight={onCloseToRight ? () => onCloseToRight(tab.id, tab.type) : undefined}
         onRename={
           tab.type === 'conversation' && onRenameConversation
             ? () => onRenameConversation(tab.id)
@@ -226,8 +216,6 @@ export function TabBar({
       onSelectTab,
       handleClose,
       onPinTab,
-      onCloseOthers,
-      onCloseToRight,
       onRenameConversation,
       onGenerateSummary,
       onViewSummary,
