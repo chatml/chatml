@@ -98,6 +98,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Delete("/{id}", h.DeleteRepo)
 		r.Get("/{id}/remotes", h.GetRepoRemotes)
 		r.Get("/{id}/branches", h.ListBranches)
+		r.Post("/{id}/branches/prune", h.PruneStaleBranches)
 		r.Post("/{id}/branches/analyze-cleanup", h.AnalyzeBranchCleanup)
 		r.Post("/{id}/branches/cleanup", h.ExecuteBranchCleanup)
 		r.Get("/{id}/files", h.ListRepoFiles)

@@ -7,7 +7,7 @@ import { navigate } from '@/lib/navigation';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { DataTable, type Column, type ContextMenuItem, type FilterOption, type DisplayOptionsConfig, type DisplayOptions } from '@/components/data-table';
-import { listBranches, type BranchDTO, type BranchListResponse } from '@/lib/api';
+import { listBranches, pruneStaleBranches, type BranchDTO, type BranchListResponse } from '@/lib/api';
 import { useAvatars } from '@/hooks/useAvatars';
 import { Button } from '@/components/ui/button';
 import { AuthorAvatar } from '@/components/ui/author-avatar';
@@ -28,6 +28,7 @@ import {
   Copy,
   Cloud,
   Wand2,
+  Scissors,
 } from 'lucide-react';
 import { BranchCleanupDialog } from '@/components/dialogs/branch-cleanup/BranchCleanupDialog';
 import { copyToClipboard } from '@/lib/tauri';
@@ -228,6 +229,7 @@ export function BranchesDashboard({
   const [searchTerm, setSearchTerm] = useState('');
   const [showRemote, setShowRemote] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [pruning, setPruning] = useState(false);
 
   const fetchBranchesRef = useRef<(isRefresh?: boolean) => void>(() => {});
   const hasFetchedRef = useRef(false);
@@ -242,6 +244,18 @@ export function BranchesDashboard({
     setLastRepoDashboardWorkspaceId(newWorkspaceId);
     navigate({ contentView: { type: 'branches', workspaceId: newWorkspaceId } });
   }, [setLastRepoDashboardWorkspaceId]);
+
+  const handlePrune = useCallback(async () => {
+    setPruning(true);
+    try {
+      await pruneStaleBranches(workspaceId);
+      toast.success('Stale remote branches pruned');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to prune branches');
+    } finally {
+      setPruning(false);
+    }
+  }, [workspaceId, toast]);
 
   // Set dynamic toolbar content (Flutter AppBar-style)
   const toolbarConfig = useMemo(() => ({
@@ -305,6 +319,17 @@ export function BranchesDashboard({
             variant="ghost"
             size="sm"
             className="h-6 gap-1 px-2 text-xs"
+            onClick={handlePrune}
+            disabled={pruning}
+            title="Remove stale remote-tracking references for branches deleted on GitHub"
+          >
+            <Scissors className={cn('h-3.5 w-3.5', pruning && 'animate-spin')} />
+            {pruning ? 'Pruning...' : 'Prune Stale'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2 text-xs"
             onClick={() => setCleanupOpen(true)}
           >
             <Wand2 className="h-3.5 w-3.5" />
@@ -323,7 +348,7 @@ export function BranchesDashboard({
         </>
       ),
     },
-  }), [workspace, workspaces, workspaceId, branchData, refreshing, handleWorkspaceChange, workspaceColors]);
+  }), [workspace, workspaces, workspaceId, branchData, refreshing, handleWorkspaceChange, handlePrune, pruning, workspaceColors]);
   useMainToolbarContent(toolbarConfig);
 
   const fetchBranches = useCallback(async (isRefresh = false) => {

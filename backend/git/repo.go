@@ -1040,6 +1040,29 @@ func (rm *RepoManager) ListBranches(ctx context.Context, repoPath string, opts B
 	}, nil
 }
 
+// PruneRemoteRefs removes stale remote-tracking references that no longer exist on the remote.
+// Uses "git remote prune origin" which is lightweight (only removes stale refs, no data fetch).
+func (rm *RepoManager) PruneRemoteRefs(ctx context.Context, repoPath string) error {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "remote", "prune", "origin")
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to prune remote refs: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// FetchAndPrune runs "git fetch --prune origin" to both update refs and remove stale ones.
+func (rm *RepoManager) FetchAndPrune(ctx context.Context, repoPath string) error {
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "fetch", "--prune", "origin")
+	defer cancel()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to fetch --prune: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 // sortBranches sorts branches by the specified field using O(n log n) sort
 func sortBranches(branches []BranchInfo, sortBy string, desc bool) {
 	sort.Slice(branches, func(i, j int) bool {

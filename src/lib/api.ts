@@ -544,6 +544,13 @@ export async function executeBranchCleanup(
   return handleResponse<CleanupResult>(res);
 }
 
+export async function pruneStaleBranches(workspaceId: string): Promise<{ success: boolean }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/branches/prune`, {
+    method: 'POST',
+  });
+  return handleResponse<{ success: boolean }>(res);
+}
+
 // Avatar types and API
 export interface AvatarResponse {
   avatars: Record<string, string>;
