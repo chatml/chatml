@@ -200,9 +200,17 @@ export function CIFailureAnalysis({
               {/* Raw logs (collapsible) */}
               {logs && (
                 <div className="border rounded-lg">
-                  <button
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-surface-1"
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-surface-1 cursor-pointer"
                     onClick={() => setLogsExpanded(!logsExpanded)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setLogsExpanded(!logsExpanded);
+                      }
+                    }}
                   >
                     {logsExpanded ? (
                       <ChevronDown className="h-4 w-4" />
@@ -235,7 +243,7 @@ export function CIFailureAnalysis({
                         </>
                       )}
                     </Button>
-                  </button>
+                  </div>
                   {logsExpanded && (
                     <div className="border-t">
                       <pre className="p-3 text-xs font-mono overflow-auto max-h-64 bg-surface-1">
