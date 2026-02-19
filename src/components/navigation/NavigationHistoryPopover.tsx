@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildNavigationLabel, goToBackEntry, goToForwardEntry } from '@/lib/navigation';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import {
   MessageSquare,
 
@@ -137,7 +137,7 @@ export function NavigationHistoryPopover({ onClose }: { onClose?: () => void }) 
   const reversedBack = [...backStack].reverse();
 
   return (
-    <ScrollArea className="max-h-80">
+    <div className="max-h-80 overflow-y-auto">
       <div className="py-1">
         {/* Forward entries (where you can go forward to) — oldest at top, newest near current */}
         {forwardStack.map((entry, i) => (
@@ -163,6 +163,6 @@ export function NavigationHistoryPopover({ onClose }: { onClose?: () => void }) 
           />
         ))}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
