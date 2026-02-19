@@ -76,8 +76,6 @@ The `restart_sidecar` command kills the existing process and spawns a new one, u
 |---------|---------|
 | `mark_app_ready` | Signals that the frontend has finished loading |
 | `restart_sidecar` | Kills and restarts the Go backend |
-| `set_minimize_to_tray` | Configures close button behavior |
-| `is_window_visible` | Checks if the main window is visible |
 
 ### File Watching
 
@@ -156,13 +154,6 @@ main_window.set_traffic_lights_inset(16.0, 16.0)
 ### Menu Bar
 
 A native macOS menu is constructed with standard Edit, View, and Help menus.
-
-### System Tray
-
-A system tray icon allows:
-- Show/hide the main window
-- Quick access to common actions
-- Configurable close-to-tray behavior
 
 ### Single Instance
 

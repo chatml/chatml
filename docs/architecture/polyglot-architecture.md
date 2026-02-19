@@ -26,7 +26,7 @@ The Rust layer is the outermost shell. It provides:
 - **IPC commands** — Exposes 15+ commands callable from the frontend: `mark_app_ready`, `restart_sidecar`, `start_file_watcher`, `register_session`, `get_auth_token`, `get_backend_port`, `read_file_metadata`, `read_file_as_base64`, `get_image_dimensions`, `count_file_lines`, `get_user_shell`, `detect_installed_apps`
 - **File watching** — Uses the `notify` crate to watch session worktrees for file changes, debouncing events and filtering git internals
 - **Credential storage** — Stronghold vault with Argon2id key derivation (4 MiB memory, 1 iteration, 32-byte output) for storing OAuth tokens and API keys
-- **macOS integration** — Traffic light positioning, menu bar construction, system tray with show/hide behavior
+- **macOS integration** — Traffic light positioning, menu bar construction
 
 ### Go Backend
 

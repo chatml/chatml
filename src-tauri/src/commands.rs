@@ -6,7 +6,7 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use tauri::menu::MenuItemKind;
-use tauri::{Manager, State};
+use tauri::State;
 
 use crate::error::AppResult;
 use crate::sidecar;
@@ -26,22 +26,6 @@ pub async fn restart_sidecar(
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<()> {
     sidecar::restart_sidecar_async(app, Arc::clone(&state)).await
-}
-
-/// Set minimize-to-tray preference
-#[tauri::command]
-pub fn set_minimize_to_tray(enabled: bool, state: State<'_, Arc<AppState>>) {
-    state.set_minimize_to_tray(enabled);
-}
-
-/// Check if window is visible
-#[tauri::command]
-pub fn is_window_visible(app: tauri::AppHandle) -> bool {
-    if let Some(window) = app.get_webview_window("main") {
-        window.is_visible().unwrap_or(false)
-    } else {
-        false
-    }
 }
 
 /// Start the global file watcher on the base worktrees directory.
@@ -376,16 +360,6 @@ mod tests {
         assert!(!state.is_ready());
         state.mark_ready();
         assert!(state.is_ready());
-    }
-
-    #[test]
-    fn test_set_minimize_to_tray_logic() {
-        let state = Arc::new(AppState::new());
-        assert!(!state.should_minimize_to_tray());
-        state.set_minimize_to_tray(true);
-        assert!(state.should_minimize_to_tray());
-        state.set_minimize_to_tray(false);
-        assert!(!state.should_minimize_to_tray());
     }
 
     #[test]

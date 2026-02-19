@@ -4,7 +4,6 @@ mod icons;
 mod menu;
 mod sidecar;
 mod state;
-mod tray;
 mod watcher;
 
 use std::sync::Arc;
@@ -134,8 +133,6 @@ pub fn run() {
             commands::update_menu_state,
             commands::mark_app_ready,
             commands::restart_sidecar,
-            commands::set_minimize_to_tray,
-            commands::is_window_visible,
             // Global file watcher commands
             commands::start_file_watcher,
             commands::stop_file_watcher,
@@ -179,11 +176,6 @@ pub fn run() {
                         .level(log::LevelFilter::Debug)
                         .build(),
                 )?;
-            }
-
-            // Create the system tray
-            if let Err(e) = tray::create_tray(app.handle()) {
-                log::error!("Failed to create system tray: {}", e);
             }
 
             // Spawn the Go backend sidecar with proper error handling
@@ -260,17 +252,6 @@ pub fn run() {
                 // If app is not ready (still in startup), allow immediate close
                 if !state_for_window_event.is_ready() {
                     log::info!("Window close during startup - allowing immediate close");
-                    return;
-                }
-
-                // If minimize-to-tray is enabled, hide the window instead of closing
-                if state_for_window_event.should_minimize_to_tray() {
-                    api.prevent_close();
-                    if let Err(e) = window.hide() {
-                        log::warn!("Failed to hide window: {}", e);
-                    } else {
-                        log::info!("Window hidden to tray");
-                    }
                     return;
                 }
 

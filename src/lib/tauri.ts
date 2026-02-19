@@ -127,33 +127,6 @@ export async function openFolderDialog(title?: string): Promise<string | null> {
 }
 
 /**
- * Set minimize-to-tray preference
- */
-export async function setMinimizeToTray(enabled: boolean): Promise<void> {
-  if (!isTauri()) return;
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('set_minimize_to_tray', { enabled });
-  } catch (e) {
-    console.error('Failed to set minimize to tray', e);
-  }
-}
-
-/**
- * Check if the main window is visible
- */
-export async function isWindowVisible(): Promise<boolean> {
-  if (!isTauri()) return true;
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<boolean>('is_window_visible');
-  } catch (e) {
-    console.error('Failed to check window visibility', e);
-    return true;
-  }
-}
-
-/**
  * Send a native notification
  */
 export async function sendNotification(title: string, body?: string): Promise<void> {

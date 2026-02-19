@@ -1,25 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { FolderOpen } from 'lucide-react';
-import { useSettingsStore } from '@/stores/settingsStore';
-import { openFolderDialog, setMinimizeToTray } from '@/lib/tauri';
+import { openFolderDialog } from '@/lib/tauri';
 import { getWorkspacesBasePath, setWorkspacesBasePath, getEnvSettings, setEnvSettings } from '@/lib/api';
 import { ExternalLink } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
 
 export function AdvancedSettings() {
-  const minimizeToTray = useSettingsStore((s) => s.minimizeToTray);
-  const setMinimizeToTraySetting = useSettingsStore((s) => s.setMinimizeToTray);
   const toasts = useToast();
-
-  const handleMinimizeToTrayChange = (enabled: boolean) => {
-    setMinimizeToTraySetting(enabled);
-    setMinimizeToTray(enabled);
-  };
 
   const handleClearCache = () => {
     try {
@@ -38,16 +29,6 @@ export function AdvancedSettings() {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Advanced</h2>
-
-      <SettingsRow
-        title="Minimize to tray"
-        description="Keep running in the system tray when closing the window"
-      >
-        <Switch
-          checked={minimizeToTray}
-          onCheckedChange={handleMinimizeToTrayChange}
-        />
-      </SettingsRow>
 
       {/* ChatML root directory */}
       <RootDirectorySection />

@@ -262,7 +262,6 @@ ChatML provides 30+ keyboard shortcuts for efficient navigation:
 
 As a native macOS application built with Tauri:
 
-- **System tray** — Minimize to system tray with configurable close behavior
 - **Native notifications** — Desktop notifications for agent completions and events
 - **Auto-update** — Automatic update detection and installation
 - **Single instance** — Prevents multiple app instances, focusing existing window

@@ -132,7 +132,6 @@ pangyo-v1/
 │   │   ├── commands.rs         # IPC commands
 │   │   ├── watcher.rs          # File system watcher
 │   │   ├── menu.rs             # Menu bar
-│   │   ├── tray.rs             # System tray
 │   │   └── state.rs            # App state
 │   ├── Cargo.toml
 │   └── tauri.conf.json
