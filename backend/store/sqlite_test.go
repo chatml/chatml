@@ -1121,34 +1121,6 @@ func TestListConversations_IncludesModel(t *testing.T) {
 	assert.Equal(t, "", modelsByID["c3"])
 }
 
-func TestListConversationsForSessions_IncludesModel(t *testing.T) {
-	ctx := context.Background()
-	s := newTestStore(t)
-	createTestRepo(t, s, "ws-1")
-	createTestSession(t, s, "sess-1", "ws-1")
-	createTestSession(t, s, "sess-2", "ws-1")
-
-	conv1 := &models.Conversation{
-		ID: "c1", SessionID: "sess-1", Type: models.ConversationTypeTask,
-		Name: "C1", Status: models.ConversationStatusActive, Model: "claude-opus-4-5-20251101",
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	conv2 := &models.Conversation{
-		ID: "c2", SessionID: "sess-2", Type: models.ConversationTypeTask,
-		Name: "C2", Status: models.ConversationStatusActive, Model: "claude-haiku-4-5-20251001",
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	require.NoError(t, s.AddConversation(ctx, conv1))
-	require.NoError(t, s.AddConversation(ctx, conv2))
-
-	result, err := s.ListConversationsForSessions(ctx, []string{"sess-1", "sess-2"})
-	require.NoError(t, err)
-	require.Len(t, result["sess-1"], 1)
-	require.Len(t, result["sess-2"], 1)
-	assert.Equal(t, "claude-opus-4-5-20251101", result["sess-1"][0].Model)
-	assert.Equal(t, "claude-haiku-4-5-20251001", result["sess-2"][0].Model)
-}
-
 func TestUpdateConversation_ModelChange(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -1639,43 +1611,6 @@ func TestGetAttachmentData_RoundTrip(t *testing.T) {
 	data, err := s.GetAttachmentData(ctx, "att-round")
 	require.NoError(t, err)
 	assert.Equal(t, largeBase64, data)
-}
-
-func TestListConversationsForSessions_AttachmentsExcludeBase64(t *testing.T) {
-	ctx := context.Background()
-	s := newTestStore(t)
-	createTestRepo(t, s, "ws-1")
-	createTestSession(t, s, "sess-1", "ws-1")
-	createTestConversation(t, s, "conv-1", "sess-1")
-
-	msg := createTestMessage("m1", "user", "Attached file")
-	require.NoError(t, s.AddMessageToConversation(ctx, "conv-1", msg))
-
-	att := models.Attachment{
-		ID:         "att-batch",
-		Type:       "image",
-		Name:       "batch.png",
-		MimeType:   "image/png",
-		Size:       1024,
-		Base64Data: "DDDD_BATCH_BASE64_DDDD",
-	}
-	require.NoError(t, s.SaveAttachments(ctx, "m1", []models.Attachment{att}))
-
-	convMap, err := s.ListConversationsForSessions(ctx, []string{"sess-1"})
-	require.NoError(t, err)
-	convs := convMap["sess-1"]
-	require.Len(t, convs, 1)
-	assert.Equal(t, 1, convs[0].MessageCount)
-
-	// Verify attachments via paginated messages endpoint
-	page, err := s.GetConversationMessages(ctx, "conv-1", nil, 50)
-	require.NoError(t, err)
-	require.Len(t, page.Messages, 1)
-	require.Len(t, page.Messages[0].Attachments, 1)
-
-	loadedAtt := page.Messages[0].Attachments[0]
-	assert.Equal(t, "att-batch", loadedAtt.ID)
-	assert.Empty(t, loadedAtt.Base64Data, "base64Data should not be loaded in paginated queries")
 }
 
 // ============================================================================
@@ -2268,34 +2203,6 @@ func TestListConversations_ReturnsMessageCount(t *testing.T) {
 	assert.Equal(t, 5, counts["conv-1"])
 	assert.Equal(t, 10, counts["conv-2"])
 }
-
-func TestListConversationsForSessions_ReturnsMessageCount(t *testing.T) {
-	ctx := context.Background()
-	s := newTestStore(t)
-	createTestRepo(t, s, "ws-1")
-	createTestSession(t, s, "sess-1", "ws-1")
-	createTestSession(t, s, "sess-2", "ws-1")
-	createTestConversation(t, s, "conv-1", "sess-1")
-	createTestConversation(t, s, "conv-2", "sess-2")
-
-	addNMessages(t, s, "conv-1", 3)
-	addNMessages(t, s, "conv-2", 8)
-
-	result, err := s.ListConversationsForSessions(ctx, []string{"sess-1", "sess-2"})
-	require.NoError(t, err)
-
-	// Flatten the map and check counts
-	counts := make(map[string]int)
-	for _, convs := range result {
-		for _, c := range convs {
-			counts[c.ID] = c.MessageCount
-			assert.Empty(t, c.Messages)
-		}
-	}
-	assert.Equal(t, 3, counts["conv-1"])
-	assert.Equal(t, 8, counts["conv-2"])
-}
-
 
 // ============================================================================
 // Summary Tests
@@ -3322,39 +3229,6 @@ func TestAddConversation_ForeignKeyViolation(t *testing.T) {
 
 	err := s.AddConversation(ctx, conv)
 	assert.Error(t, err, "should fail with foreign key violation for nonexistent session")
-}
-
-func TestListConversationsForSessions_MultipleIDs(t *testing.T) {
-	ctx := context.Background()
-	s := newTestStore(t)
-	repo := createTestRepo(t, s, "repo-multi-conv")
-
-	// Create two sessions
-	session1 := createTestSession(t, s, "sess-multi-1", repo.ID)
-	session2 := createTestSession(t, s, "sess-multi-2", repo.ID)
-
-	// Create conversations under each session
-	createTestConversation(t, s, "conv-s1-a", session1.ID)
-	createTestConversation(t, s, "conv-s1-b", session1.ID)
-	createTestConversation(t, s, "conv-s2-a", session2.ID)
-
-	result, err := s.ListConversationsForSessions(ctx, []string{session1.ID, session2.ID})
-	require.NoError(t, err)
-
-	// Check correct grouping
-	assert.Len(t, result[session1.ID], 2, "session1 should have 2 conversations")
-	assert.Len(t, result[session2.ID], 1, "session2 should have 1 conversation")
-
-	// Verify conversation IDs in session1 group
-	s1IDs := make(map[string]bool)
-	for _, c := range result[session1.ID] {
-		s1IDs[c.ID] = true
-	}
-	assert.True(t, s1IDs["conv-s1-a"])
-	assert.True(t, s1IDs["conv-s1-b"])
-
-	// Verify conversation IDs in session2 group
-	assert.Equal(t, "conv-s2-a", result[session2.ID][0].ID)
 }
 
 func TestUpdateConversation_NotExists(t *testing.T) {

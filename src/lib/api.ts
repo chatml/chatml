@@ -352,6 +352,16 @@ export async function listSessions(workspaceId: string, includeArchived?: boolea
   return handleResponse<SessionDTO[]>(res);
 }
 
+/**
+ * Fetches all sessions across all workspaces in a single request.
+ * Eliminates the N+1 pattern of fetching sessions per workspace.
+ */
+export async function listAllSessions(includeArchived?: boolean): Promise<SessionDTO[]> {
+  const params = includeArchived ? '?includeArchived=true' : '';
+  const res = await fetchWithAuth(`${getApiBase()}/api/sessions${params}`);
+  return handleResponse<SessionDTO[]>(res);
+}
+
 export async function createSession(
   workspaceId: string,
   data: { name?: string; branch?: string; branchPrefix?: string; worktreePath?: string; task?: string; checkoutExisting?: boolean; systemMessage?: string } = {}
@@ -1354,32 +1364,6 @@ export async function deleteReviewComment(
     const text = await res.text();
     throw new ApiError(text || 'Delete failed', res.status, text);
   }
-}
-
-// Dashboard data types - for efficient batch loading of initial data
-export interface SessionWithConversationsDTO extends SessionDTO {
-  conversations: ConversationDTO[];
-}
-
-export interface ArchivedSessionDirDTO {
-  dirName: string;
-  sessionId: string;
-}
-
-export interface DashboardDataDTO {
-  workspaces: RepoDTO[];
-  sessions: SessionWithConversationsDTO[];
-  archivedSessionDirs?: ArchivedSessionDirDTO[];
-}
-
-/**
- * Fetches all workspaces, sessions, and conversations in a single request.
- * This eliminates the N+1 pattern of fetching sessions per workspace and conversations per session.
- * Uses only 4 database queries regardless of data volume (1 for repos + 1 for sessions + 3 for conversations batch).
- */
-export async function getDashboardData(): Promise<DashboardDataDTO> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/dashboard/data`);
-  return handleResponse<DashboardDataDTO>(res);
 }
 
 // Branch sync DTOs and functions
