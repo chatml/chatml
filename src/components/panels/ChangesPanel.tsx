@@ -1297,7 +1297,7 @@ export function ChangesFileList({
             onClick={() => onChangesViewChange('all')}
             className={cn(
               "px-1.5 py-0.5 rounded-sm text-2xs transition-colors",
-              changesView === 'all' ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground"
+              changesView === 'all' ? "bg-accent/30 text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
             )}
           >
             All
@@ -1306,7 +1306,7 @@ export function ChangesFileList({
             onClick={() => onChangesViewChange('uncommitted')}
             className={cn(
               "px-1.5 py-0.5 rounded-sm text-2xs transition-colors",
-              changesView === 'uncommitted' ? "bg-surface-3 text-foreground" : "text-muted-foreground hover:text-foreground"
+              changesView === 'uncommitted' ? "bg-accent/30 text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
             )}
           >
             Uncommitted
