@@ -2114,6 +2114,7 @@ function handleMessage(message: SDKMessage): void {
       // so we do NOT emit it as context_usage — it would overwrite the correct
       // per-call data emitted per assistant message in the "assistant" case above.
       debug(`[context_usage] result usage (cumulative, not emitted): ${JSON.stringify(resultMsg.usage)}`);
+
       debug(`[context_usage] result modelUsage: ${JSON.stringify(resultMsg.modelUsage)}`);
 
       // Extract context window size from modelUsage for context meter

@@ -490,6 +490,8 @@ export function SessionToolbarContent() {
                 prStatus: 'open' as const,
                 prNumber,
                 prUrl,
+                // Mirror backend logic: only transition in_progress → in_review
+                ...(selectedSession?.taskStatus === 'in_progress' && { taskStatus: 'in_review' as const }),
               });
             }
             showSuccess('Pull request created');
