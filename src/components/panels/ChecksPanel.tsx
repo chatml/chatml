@@ -452,7 +452,7 @@ function PRHeaderSection({
       <Button
         variant="ghost"
         size="icon"
-        className="h-5 w-5 shrink-0"
+        className="h-5 w-5 shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
         onClick={() => window.open(pr.htmlUrl, '_blank')}
         title="View on GitHub"
       >
@@ -654,11 +654,11 @@ function CIChecksSection({
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-5"
+              className="h-4 w-4 text-muted-foreground/50 hover:text-muted-foreground"
               onClick={() => window.open(latestRun.htmlUrl, '_blank')}
               title="View on GitHub"
             >
-              <ExternalLink className="h-2.5 w-2.5" />
+              <ExternalLink className="h-2 w-2" />
             </Button>
           </div>
         )}
@@ -713,10 +713,10 @@ function CIChecksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 shrink-0"
+                        className="h-4 w-4 shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
                         onClick={() => window.open(job.htmlUrl, '_blank')}
                       >
-                        <ExternalLink className="h-2.5 w-2.5" />
+                        <ExternalLink className="h-2 w-2" />
                       </Button>
                     </div>
                   );
