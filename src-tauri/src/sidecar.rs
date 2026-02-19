@@ -133,7 +133,7 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
         .map_err(|e| AppError::Sidecar(format!("Failed to create sidecar command: {}", e)))?;
 
     // Tell the Go backend which port to prefer
-    sidecar_command = sidecar_command.env("PORT", &port.to_string());
+    sidecar_command = sidecar_command.env("PORT", port.to_string());
 
     // In dev builds, isolate the data directory so dev and production don't share state
     #[cfg(debug_assertions)]
