@@ -337,7 +337,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
             } else if (item.type === 'plan') {
               const isPending = item.id === 'pending-plan';
               return isPending ? (
-                <div key={item.id} className={PROSE_CLASSES}>
+                <div key={item.id} data-plan-id="pending-plan" className={PROSE_CLASSES}>
                   <CachedMarkdown
                     cacheKey={`plan:${item.id}`}
                     content={item.content}

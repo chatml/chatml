@@ -399,7 +399,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       hasScrolledForPlanApprovalRef.current = true;
 
       requestAnimationFrame(() => {
-        const el = document.querySelector('[data-tool-id="exit-plan-mode"]');
+        const el = document.querySelector('[data-plan-id="pending-plan"]');
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
