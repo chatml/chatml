@@ -37,12 +37,32 @@ describe('ContextMeter', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('returns null when inputTokens is 0', () => {
+  it('returns null when all input token types are zero', () => {
     useAppStore.setState({
-      contextUsage: { [CONV_ID]: makeContextUsage({ inputTokens: 0 }) },
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        }),
+      },
     });
     const { container } = render(<ContextMeter conversationId={CONV_ID} />);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('renders when inputTokens is 0 but cache tokens are nonzero', () => {
+    useAppStore.setState({
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 0,
+          cacheReadInputTokens: 100000,
+          cacheCreationInputTokens: 5000,
+        }),
+      },
+    });
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
+    expect(container.innerHTML).not.toBe('');
   });
 
   // ==========================================================================
@@ -183,10 +203,14 @@ describe('ContextMeter', () => {
     expect(bar).toBeDefined();
   });
 
-  it('shows input tokens with percentage in breakdown', () => {
+  it('shows input tokens in breakdown without percentage', () => {
     useAppStore.setState({
       contextUsage: {
-        [CONV_ID]: makeContextUsage({ inputTokens: 100000, contextWindow: 200000 }),
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 80000,
+          cacheReadInputTokens: 20000,
+          contextWindow: 200000,
+        }),
       },
     });
     render(<ContextMeter conversationId={CONV_ID} />);
@@ -194,8 +218,8 @@ describe('ContextMeter', () => {
     fireEvent.click(screen.getByRole('button'));
 
     expect(screen.getByText('Input tokens')).toBeInTheDocument();
-    // 100000/200000 = 50.0%
-    expect(screen.getByText('100.0k (50.0%)')).toBeInTheDocument();
+    // Should show raw input tokens (80.0k), not total (100.0k), and no percentage
+    expect(screen.getByText('80.0k')).toBeInTheDocument();
   });
 
   it('shows output tokens in breakdown', () => {
@@ -300,5 +324,90 @@ describe('ContextMeter', () => {
 
     // Falls back to 200000, so 50000/200000 = 25.0%
     expect(screen.getByText('50.0k / 200.0k')).toBeInTheDocument();
+  });
+
+  // ==========================================================================
+  // Cache-inclusive context utilization
+  // ==========================================================================
+
+  it('displays sum of all input token types', () => {
+    useAppStore.setState({
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 10,
+          cacheReadInputTokens: 800000,
+          cacheCreationInputTokens: 3000,
+        }),
+      },
+    });
+    render(<ContextMeter conversationId={CONV_ID} />);
+    // Total: 10 + 800000 + 3000 = 803010 -> 803.0k
+    expect(screen.getByText('803.0k')).toBeInTheDocument();
+  });
+
+  it('shows popover header with total input tokens including cache', () => {
+    useAppStore.setState({
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 400,
+          cacheReadInputTokens: 150000,
+          cacheCreationInputTokens: 10000,
+          contextWindow: 200000,
+        }),
+      },
+    });
+    render(<ContextMeter conversationId={CONV_ID} />);
+    fireEvent.click(screen.getByRole('button'));
+    // Total: 400 + 150000 + 10000 = 160400 -> 160.4k
+    expect(screen.getByText('160.4k / 200.0k')).toBeInTheDocument();
+  });
+
+  it('uses amber color when cache tokens push usage >= 80%', () => {
+    useAppStore.setState({
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 10,
+          cacheReadInputTokens: 160000,
+          contextWindow: 200000,
+        }),
+      },
+    });
+    const { container } = render(<ContextMeter conversationId={CONV_ID} />);
+    const button = container.querySelector('button');
+    expect(button?.className).toContain('text-amber-500');
+  });
+
+  it('aria-label reflects total input tokens including cache', () => {
+    useAppStore.setState({
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 10,
+          cacheReadInputTokens: 100000,
+          cacheCreationInputTokens: 5000,
+        }),
+      },
+    });
+    render(<ContextMeter conversationId={CONV_ID} />);
+    const button = screen.getByRole('button');
+    expect(button).toHaveAttribute('aria-label', 'Context usage: 105.0k of 200.0k tokens');
+  });
+
+  it('caps percentage at 100% when total tokens exceed contextWindow', () => {
+    useAppStore.setState({
+      contextUsage: {
+        [CONV_ID]: makeContextUsage({
+          inputTokens: 10,
+          cacheReadInputTokens: 250000,
+          contextWindow: 200000,
+        }),
+      },
+    });
+    render(<ContextMeter conversationId={CONV_ID} />);
+    fireEvent.click(screen.getByRole('button'));
+    const progressBars = document.body.querySelectorAll('[style*="width"]');
+    const bar = Array.from(progressBars).find(el =>
+      (el as HTMLElement).style.width === '100%'
+    );
+    expect(bar).toBeDefined();
   });
 });

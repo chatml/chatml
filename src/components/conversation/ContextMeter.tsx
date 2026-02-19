@@ -24,13 +24,16 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
     conversationId ? s.contextUsage[conversationId] : null
   );
 
-  if (!contextUsage || contextUsage.inputTokens === 0) {
+  const totalInputTokens = contextUsage
+    ? contextUsage.inputTokens + contextUsage.cacheReadInputTokens + contextUsage.cacheCreationInputTokens
+    : 0;
+
+  if (!contextUsage || totalInputTokens === 0) {
     return null;
   }
 
   const maxTokens = contextUsage.contextWindow || 200000;
-  // input_tokens from the API represents total context sent to the model
-  const used = contextUsage.inputTokens;
+  const used = totalInputTokens;
   const percentage = Math.min((used / maxTokens) * 100, 100);
 
   // SVG circle math: circumference = 2 * PI * radius
@@ -108,7 +111,6 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
           <BreakdownRow
             label="Input tokens"
             value={contextUsage.inputTokens}
-            total={maxTokens}
           />
           <BreakdownRow
             label="Output tokens"
@@ -135,20 +137,15 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
 function BreakdownRow({
   label,
   value,
-  total,
 }: {
   label: string;
   value: number;
-  total?: number;
 }) {
   if (value === 0) return null;
   return (
     <div className="flex items-center justify-between">
       <span>{label}</span>
-      <span className="tabular-nums">
-        {formatTokenCount(value)}
-        {total ? ` (${((value / total) * 100).toFixed(1)}%)` : ''}
-      </span>
+      <span className="tabular-nums">{formatTokenCount(value)}</span>
     </div>
   );
 }
