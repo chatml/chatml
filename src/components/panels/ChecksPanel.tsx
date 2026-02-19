@@ -155,6 +155,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
     return s.sessions.find((sess) => sess.id === selectedSessionId) ?? null;
   });
   const prStatus = session?.prStatus;
+  const updateSession = useAppStore((s) => s.updateSession);
 
   // Data hooks
   const { prDetails, loading: prLoading, refetch: refetchPR } = usePRStatus(
@@ -200,6 +201,45 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
   useEffect(() => {
     onPrUrlChange?.(prDetails?.htmlUrl ?? null);
   }, [prDetails?.htmlUrl, onPrUrlChange]);
+
+  // Sync fresh PR/check data back to the session store so sidebar/toolbar
+  // badges reflect the latest state without waiting for WebSocket polling.
+  useEffect(() => {
+    if (!selectedSessionId || !session || !prDetails) return;
+    if (!session.prNumber || prDetails.number !== session.prNumber) return;
+
+    const updates: Record<string, unknown> = {};
+
+    // Sync prStatus (merged/closed)
+    if (prDetails.merged && session.prStatus !== 'merged') {
+      updates.prStatus = 'merged';
+    } else if (prDetails.state === 'closed' && !prDetails.merged && session.prStatus !== 'closed') {
+      updates.prStatus = 'closed';
+    }
+
+    // Sync checkStatus
+    if (prDetails.checkStatus && prDetails.checkStatus !== session.checkStatus) {
+      updates.checkStatus = prDetails.checkStatus;
+    }
+
+    // Sync hasCheckFailures from detailed check data
+    const hasFailures = checkDetails.some(
+      (c) => c.status === 'completed' && (c.conclusion === 'failure' || c.conclusion === 'timed_out' || c.conclusion === 'action_required')
+    );
+    if (session.hasCheckFailures !== hasFailures) {
+      updates.hasCheckFailures = hasFailures;
+    }
+
+    // Sync hasMergeConflict from git status
+    const hasMergeConflict = gitStatus?.conflicts?.hasConflicts ?? false;
+    if (session.hasMergeConflict !== hasMergeConflict) {
+      updates.hasMergeConflict = hasMergeConflict;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updateSession(selectedSessionId, updates);
+    }
+  }, [selectedSessionId, session, prDetails, checkDetails, gitStatus, updateSession]);
 
   if (!selectedWorkspaceId || !selectedSessionId) {
     return (
@@ -250,7 +290,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
             {branchName && (
               <div className="flex items-center gap-2 py-1 px-2 min-w-0">
                 <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="text-xs truncate flex-1" title={branchName}>{branchName}</span>
+                <span className="text-xs truncate flex-1">{branchName}</span>
               </div>
             )}
             {/* "No pull request" line item with Create PR action */}
@@ -646,7 +686,7 @@ function CIChecksSection({
                   return (
                     <div key={job.id} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
                       <JobIcon className={cn('h-3 w-3 shrink-0', jobStatus.color)} />
-                      <span className="text-xs truncate flex-1" title={job.name}>{job.name}</span>
+                      <span className="text-xs truncate flex-1">{job.name}</span>
                       {duration !== undefined && (
                         <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
                           {formatDuration(duration)}
@@ -661,7 +701,6 @@ function CIChecksSection({
                           size="icon"
                           className="h-5 w-5 shrink-0"
                           onClick={() => setAnalysisTarget({ runId: latestRun.id, job })}
-                          title="Analyze failure"
                         >
                           <Sparkles className="h-2.5 w-2.5" />
                         </Button>
@@ -671,7 +710,6 @@ function CIChecksSection({
                         size="icon"
                         className="h-5 w-5 shrink-0"
                         onClick={() => window.open(job.htmlUrl, '_blank')}
-                        title="View on GitHub"
                       >
                         <ExternalLink className="h-2.5 w-2.5" />
                       </Button>
@@ -698,7 +736,7 @@ function CIChecksSection({
                 return (
                   <div key={check.name} className="flex items-center gap-2 py-0.5 px-1 min-w-0">
                     <StatusIcon className={cn('h-3 w-3 shrink-0', statusInfo.color)} />
-                    <span className="text-xs truncate flex-1" title={check.name}>{check.name}</span>
+                    <span className="text-xs truncate flex-1">{check.name}</span>
                     {check.durationSeconds !== undefined && check.conclusion !== 'skipped' && check.conclusion !== 'cancelled' && (
                       <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
                         {formatDuration(check.durationSeconds)}
