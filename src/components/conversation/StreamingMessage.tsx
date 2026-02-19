@@ -366,6 +366,25 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   worktreePath={worktreePath}
                 />
               );
+            } else if (item.tool === 'ExitPlanMode') {
+              return (
+                <div key={item.id} data-tool-id="exit-plan-mode">
+                  <ToolUsageBlock
+                    id={item.id}
+                    tool={item.tool}
+                    params={item.params}
+                    worktreePath={worktreePath}
+                    isActive={!item.endTime}
+                    success={item.success}
+                    summary={item.summary}
+                    duration={item.endTime ? item.endTime - item.startTime : undefined}
+                    stdout={item.stdout}
+                    stderr={item.stderr}
+                    elapsedSeconds={item.elapsedSeconds}
+                    metadata={item.metadata}
+                  />
+                </div>
+              );
             } else {
               return (
                 <ToolUsageBlock
