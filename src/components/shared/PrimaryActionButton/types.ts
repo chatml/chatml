@@ -13,8 +13,7 @@ export type PrimaryActionType =
   | 'update-pr'
   | 'view-pr'
   | 'create-pr'
-  | 'archive-session'
-  | 'disabled';
+  | 'archive-session';
 
 export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info' | 'purple' | 'secondary';
 
@@ -43,7 +42,6 @@ export interface PrimaryAction {
 export interface ActionButtonProps {
   action: PrimaryAction | null;
   isLoading: boolean;
-  disabled: boolean;
   onSendMessage: (content: string) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { useWorkspaceSelection } from '@/stores/selectors';
+import { useWorkspaceSelection, useSessionActivityState } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { PrimaryActionButton } from '@/components/shared/PrimaryActionButton';
@@ -110,6 +110,8 @@ export function SessionToolbarContent() {
 
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
+  const sessionActivityState = useSessionActivityState(selectedSessionId ?? '');
+  const isAgentWorking = sessionActivityState === 'working';
 
   const handleGitActionMessage = useCallback((content: string) => {
     if (!selectedConversationId) {
@@ -245,14 +247,25 @@ export function SessionToolbarContent() {
         ),
         actions: (
           <div className="flex items-center gap-0.5">
-            <PrimaryActionButton
-              workspaceId={selectedWorkspaceId}
-              session={selectedSession}
-              onSendMessage={handleGitActionMessage}
-              onFixIssues={handleFixIssues}
-              onArchiveSession={requestArchive}
-              onCreatePR={() => setShowCreatePRDialog(true)}
-            />
+            {isAgentWorking ? (
+              <div className="flex items-center gap-1.5 h-6 px-2">
+                <div className="flex items-end gap-[1.5px] h-3" aria-hidden="true">
+                  <div className="w-[2.5px] bg-ai-active rounded-full animate-agent-bar-1" />
+                  <div className="w-[2.5px] bg-ai-active rounded-full animate-agent-bar-2" />
+                  <div className="w-[2.5px] bg-ai-active rounded-full animate-agent-bar-3" />
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Agent is working</span>
+              </div>
+            ) : (
+              <PrimaryActionButton
+                workspaceId={selectedWorkspaceId}
+                session={selectedSession}
+                onSendMessage={handleGitActionMessage}
+                onFixIssues={handleFixIssues}
+                onArchiveSession={requestArchive}
+                onCreatePR={() => setShowCreatePRDialog(true)}
+              />
+            )}
 
             <div className="w-1.5" />
 
@@ -456,7 +469,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
 
   useMainToolbarContent(toolbarConfig);
 
