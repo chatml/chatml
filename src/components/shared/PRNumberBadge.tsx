@@ -10,6 +10,7 @@ interface PRNumberBadgeProps {
   prNumber: number;
   prStatus: 'open' | 'merged' | 'closed';
   checkStatus?: CheckStatus;
+  hasMergeConflict?: boolean;
   prUrl?: string;
   size?: 'sm' | 'md';
   className?: string;
@@ -25,6 +26,11 @@ const STATUS_STYLES = {
     text: 'text-amber-500',
     bg: 'bg-amber-500/10 hover:bg-amber-500/15',
     border: 'border-amber-500/20',
+  },
+  'open-conflict': {
+    text: 'text-orange-400',
+    bg: 'bg-orange-500/10 hover:bg-orange-500/15',
+    border: 'border-orange-500/20',
   },
   'open-failure': {
     text: 'text-text-error',
@@ -43,9 +49,12 @@ const STATUS_STYLES = {
   },
 };
 
-function getStyleKey(prStatus: 'open' | 'merged' | 'closed', checkStatus?: CheckStatus): keyof typeof STATUS_STYLES {
+function getStyleKey(prStatus: 'open' | 'merged' | 'closed', checkStatus?: CheckStatus, hasMergeConflict?: boolean): keyof typeof STATUS_STYLES {
   if (prStatus === 'open') {
+    // Priority: failure > conflict > pending > open
+    // Conflict is above pending because it's immediately actionable (rebase needed).
     if (checkStatus === 'failure') return 'open-failure';
+    if (hasMergeConflict) return 'open-conflict';
     if (checkStatus === 'pending') return 'open-pending';
     return 'open';
   }
@@ -56,11 +65,12 @@ export function PRNumberBadge({
   prNumber,
   prStatus,
   checkStatus,
+  hasMergeConflict,
   prUrl,
   size = 'sm',
   className,
 }: PRNumberBadgeProps) {
-  const styles = STATUS_STYLES[getStyleKey(prStatus, checkStatus)];
+  const styles = STATUS_STYLES[getStyleKey(prStatus, checkStatus, hasMergeConflict)];
   const iconSize = size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5';
   const badgeSize = size === 'sm' ? 'h-5 text-xs' : 'h-6 text-sm';
 

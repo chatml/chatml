@@ -224,6 +224,7 @@ export function SessionToolbarContent() {
                 prNumber={selectedSession.prNumber}
                 prStatus={selectedSession.prStatus as 'open' | 'merged' | 'closed'}
                 checkStatus={selectedSession.checkStatus}
+                hasMergeConflict={selectedSession.hasMergeConflict}
                 prUrl={selectedSession.prUrl}
                 size="sm"
               />

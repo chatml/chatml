@@ -1511,6 +1511,7 @@ function SessionRow({
                     prNumber={session.prNumber}
                     prStatus={session.prStatus as 'open' | 'merged' | 'closed'}
                     checkStatus={session.checkStatus}
+                    hasMergeConflict={session.hasMergeConflict}
                     prUrl={session.prUrl}
                     size="sm"
                   />

@@ -14,6 +14,7 @@ interface PRHoverCardProps {
   prNumber: number;
   prStatus: 'open' | 'merged' | 'closed';
   checkStatus?: 'none' | 'pending' | 'success' | 'failure';
+  hasMergeConflict?: boolean;
   prUrl?: string;
   size?: 'sm' | 'md';
 }
@@ -178,6 +179,7 @@ export function PRHoverCard({
   prNumber,
   prStatus,
   checkStatus,
+  hasMergeConflict,
   prUrl,
   size,
 }: PRHoverCardProps) {
@@ -185,6 +187,10 @@ export function PRHoverCard({
 
   // Use prDetails checkStatus if available (more accurate), otherwise fall back to session-level
   const effectiveCheckStatus = prDetails?.checkStatus ?? checkStatus;
+  // Use live prDetails mergeable state if available, otherwise fall back to session-level.
+  // When mergeable is null (GitHub hasn't computed yet), fall back to session-level.
+  // When mergeable is true/false, trust the live data over potentially stale session state.
+  const effectiveHasMergeConflict = prDetails?.mergeable != null ? !prDetails.mergeable : (hasMergeConflict ?? false);
 
   // If there's an error fetching details, just render the badge without hover
   if (error) {
@@ -193,6 +199,7 @@ export function PRHoverCard({
         prNumber={prNumber}
         prStatus={prStatus}
         checkStatus={effectiveCheckStatus}
+        hasMergeConflict={effectiveHasMergeConflict}
         prUrl={prUrl}
         size={size}
       />
@@ -207,6 +214,7 @@ export function PRHoverCard({
             prNumber={prNumber}
             prStatus={prStatus}
             checkStatus={effectiveCheckStatus}
+            hasMergeConflict={effectiveHasMergeConflict}
             prUrl={prUrl}
             size={size}
           />
