@@ -1396,13 +1396,15 @@ function SessionRow({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            'group flex flex-col px-2 py-2 rounded-md cursor-pointer my-0.5',
+            'group flex flex-row items-center px-2 py-2 rounded-md cursor-pointer my-0.5',
             isSessionSelected
               ? 'bg-surface-2 hover:bg-surface-3'
               : 'hover:bg-surface-1'
           )}
           onClick={(e) => onSelectSession(session.id, e)}
         >
+          {/* Content column */}
+          <div className="flex flex-col flex-1 min-w-0">
           {/* First line: status icon + branch name + stats/actions */}
           <div className="flex items-center gap-1">
             {/* Task status / active indicator */}
@@ -1531,6 +1533,7 @@ function SessionRow({
                   <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
                 </>
               )}
+          </div>
           </div>
         </div>
       </ContextMenuTrigger>

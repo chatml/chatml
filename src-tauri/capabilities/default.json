@@ -101,7 +101,6 @@
     "process:allow-restart",
     "window-state:default",
     "dialog:default",
-    "core:tray:default",
     "notification:default",
     "notification:allow-notify",
     "notification:allow-request-permission",

@@ -79,8 +79,6 @@ interface SettingsState {
   defaultPlanMode: boolean;
   autoConvertLongText: boolean;
   showChatCost: boolean;
-  // Window settings
-  minimizeToTray: boolean;
   // Appearance settings
   theme: ThemeOption; // App theme (system, light, dark)
   fontSize: FontSize;
@@ -153,7 +151,6 @@ interface SettingsState {
   setDefaultPlanMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
-  setMinimizeToTray: (value: boolean) => void;
   setTheme: (value: ThemeOption) => void;
   setFontSize: (value: FontSize) => void;
   setBranchPrefixType: (value: BranchPrefixType) => void;
@@ -215,7 +212,6 @@ export const useSettingsStore = create<SettingsState>()(
       defaultPlanMode: false,
       autoConvertLongText: true,
       showChatCost: true,
-      minimizeToTray: false,
       theme: 'system',
       fontSize: 'medium',
       branchPrefixType: 'github',
@@ -267,7 +263,6 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),
-      setMinimizeToTray: (value) => set({ minimizeToTray: value }),
       setTheme: (value) => set({ theme: value }),
       setFontSize: (value) => set({ fontSize: value }),
       setBranchPrefixType: (value) => set({ branchPrefixType: value }),

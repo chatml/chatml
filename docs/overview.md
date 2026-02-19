@@ -51,7 +51,6 @@ ChatML's architecture consists of four layers that communicate through well-defi
 graph TB
     subgraph Desktop["Tauri Desktop Shell (Rust)"]
         TW[Window Manager]
-        TS[System Tray]
         TF[File Watcher]
         TD[Deep Links]
         TP[PTY Terminal]
@@ -133,7 +132,6 @@ The agent runner uses a **persistent multi-turn architecture**: a single `query(
 Tauri 2 (Rust) provides the native desktop wrapper. It transforms the static Next.js output into a native macOS/Windows/Linux application with:
 
 - **Window management** — Native titlebar, traffic light positioning, window state persistence
-- **System tray** — Quick actions menu with Show/Hide, New Session, Quit
 - **File watcher** — Monitors the workspaces directory for external changes
 - **Deep links** — Handles `chatml://` protocol URLs for OAuth callbacks
 - **PTY terminal** — Pseudo-terminal support for xterm.js integration

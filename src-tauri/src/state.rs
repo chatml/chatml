@@ -5,8 +5,6 @@ use std::sync::Mutex;
 pub struct AppState {
     /// Whether the app frontend has initialized
     pub app_ready: AtomicBool,
-    /// Whether to minimize to tray instead of closing
-    pub minimize_to_tray: AtomicBool,
     /// PID of the backend sidecar process
     pub sidecar_pid: Mutex<Option<u32>>,
     /// Port the backend sidecar is running on
@@ -27,7 +25,6 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             app_ready: AtomicBool::new(false),
-            minimize_to_tray: AtomicBool::new(false),
             sidecar_pid: Mutex::new(None),
             sidecar_port: Mutex::new(None),
             auth_token: Mutex::new(None),
@@ -44,17 +41,6 @@ impl AppState {
     /// Check if app is ready
     pub fn is_ready(&self) -> bool {
         self.app_ready.load(Ordering::SeqCst)
-    }
-
-    /// Set minimize-to-tray preference
-    pub fn set_minimize_to_tray(&self, enabled: bool) {
-        self.minimize_to_tray.store(enabled, Ordering::SeqCst);
-        log::info!("Minimize to tray set to: {}", enabled);
-    }
-
-    /// Check if minimize-to-tray is enabled
-    pub fn should_minimize_to_tray(&self) -> bool {
-        self.minimize_to_tray.load(Ordering::SeqCst)
     }
 
     /// Store the sidecar PID
@@ -224,10 +210,6 @@ mod tests {
         assert_eq!(state1.get_auth_token(), state2.get_auth_token());
         assert_eq!(state1.get_sidecar_port(), state2.get_sidecar_port());
         assert_eq!(state1.is_ready(), state2.is_ready());
-        assert_eq!(
-            state1.should_minimize_to_tray(),
-            state2.should_minimize_to_tray()
-        );
     }
 
     #[test]
@@ -237,17 +219,6 @@ mod tests {
         assert!(!state.is_ready());
         state.mark_ready();
         assert!(state.is_ready());
-    }
-
-    #[test]
-    fn test_minimize_to_tray_state() {
-        let state = AppState::new();
-
-        assert!(!state.should_minimize_to_tray());
-        state.set_minimize_to_tray(true);
-        assert!(state.should_minimize_to_tray());
-        state.set_minimize_to_tray(false);
-        assert!(!state.should_minimize_to_tray());
     }
 
     #[test]
