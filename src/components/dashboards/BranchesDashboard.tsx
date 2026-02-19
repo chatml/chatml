@@ -248,10 +248,17 @@ export function BranchesDashboard({
   const handlePrune = useCallback(async () => {
     setPruning(true);
     try {
-      await pruneStaleBranches(workspaceId);
-      toast.success('Stale remote branches pruned');
+      const result = await pruneStaleBranches(workspaceId);
+      const deletedCount = result.deletedLocalBranches?.length ?? 0;
+      if (deletedCount > 0) {
+        toast.success(`Cleaned up ${deletedCount} merged local ${deletedCount === 1 ? 'branch' : 'branches'} and pruned stale refs`);
+      } else {
+        toast.success('Pruned stale remote refs (no merged local branches to clean)');
+      }
+      // Directly refresh instead of relying solely on WebSocket event
+      fetchBranchesRef.current(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to prune branches');
+      toast.error(err instanceof Error ? err.message : 'Failed to clean up branches');
     } finally {
       setPruning(false);
     }
@@ -309,7 +316,7 @@ export function BranchesDashboard({
     bottom: {
       title: branchData ? (
         <span className="text-sm text-muted-foreground">
-          {branchData.sessionBranches.length} {branchData.sessionBranches.length === 1 ? 'session' : 'sessions'} in {branchData.total} branches
+          {branchData.sessionBranches.length} {branchData.sessionBranches.length === 1 ? 'session' : 'sessions'} · {branchData.total} {branchData.total === 1 ? 'branch' : 'branches'}
         </span>
       ) : undefined,
       titlePosition: 'left' as const,
@@ -321,10 +328,10 @@ export function BranchesDashboard({
             className="h-6 gap-1 px-2 text-xs"
             onClick={handlePrune}
             disabled={pruning}
-            title="Remove stale remote-tracking references for branches deleted on GitHub"
+            title="Prune stale remote refs and delete merged local branches"
           >
             <Scissors className={cn('h-3.5 w-3.5', pruning && 'animate-spin')} />
-            {pruning ? 'Pruning...' : 'Prune Stale'}
+            {pruning ? 'Cleaning...' : 'Clean Up Branches'}
           </Button>
           <Button
             variant="ghost"

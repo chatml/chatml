@@ -544,11 +544,11 @@ export async function executeBranchCleanup(
   return handleResponse<CleanupResult>(res);
 }
 
-export async function pruneStaleBranches(workspaceId: string): Promise<{ success: boolean }> {
+export async function pruneStaleBranches(workspaceId: string): Promise<{ success: boolean; deletedLocalBranches?: string[] }> {
   const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/branches/prune`, {
     method: 'POST',
   });
-  return handleResponse<{ success: boolean }>(res);
+  return handleResponse<{ success: boolean; deletedLocalBranches?: string[] }>(res);
 }
 
 // Avatar types and API

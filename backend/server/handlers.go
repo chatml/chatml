@@ -1258,7 +1258,8 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	branchResult, cacheHit := h.branchCache.Get(cacheKey)
 	if !cacheHit {
 		// Auto-prune stale remote-tracking refs to prevent inflated branch counts.
-		// Only prune when including remote branches and cooldown has elapsed.
+		// Only prune when including remote branches — local-only listings aren't
+		// affected by stale remote-tracking refs and this avoids unnecessary work.
 		if includeRemote && h.branchCache.ShouldPrune(repo.Path) {
 			if pruneErr := h.repoManager.PruneRemoteRefs(ctx, repo.Path); pruneErr != nil {
 				logger.Handlers.Warnf("Auto-prune failed for %s: %v", repo.Path, pruneErr)
@@ -1299,6 +1300,28 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		filteredBranches = filtered
+	}
+
+	// Deduplicate: when remote branches are included, remove remote entries
+	// that have a matching local branch (e.g., skip "origin/feature" if "feature" exists locally).
+	if includeRemote {
+		localNames := make(map[string]bool)
+		for _, b := range filteredBranches {
+			if !b.IsRemote {
+				localNames[b.Name] = true
+			}
+		}
+		var deduped []git.BranchInfo
+		for _, b := range filteredBranches {
+			if b.IsRemote {
+				remoteName := strings.TrimPrefix(b.Name, "origin/")
+				if localNames[remoteName] {
+					continue // Skip remote duplicate — local copy is shown
+				}
+			}
+			deduped = append(deduped, b)
+		}
+		filteredBranches = deduped
 	}
 
 	// Apply pagination
@@ -1525,7 +1548,8 @@ func (h *Handlers) ExecuteBranchCleanup(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, result)
 }
 
-// PruneStaleBranches runs git fetch --prune to clean up stale remote-tracking refs
+// PruneStaleBranches cleans up branches: prunes stale remote-tracking refs
+// and deletes local branches that are fully merged into main.
 // POST /api/repos/{id}/branches/prune
 func (h *Handlers) PruneStaleBranches(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -1541,9 +1565,27 @@ func (h *Handlers) PruneStaleBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Step 1: Prune stale remote-tracking refs
 	if err := h.repoManager.FetchAndPrune(ctx, repo.Path); err != nil {
 		writeInternalError(w, "failed to prune stale branches", err)
 		return
+	}
+
+	// Step 2: Clean up merged local branches (protect session-linked branches)
+	sessionBranchMap, err := h.getSessionBranchMap(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	// Convert to simple set for CleanMergedLocalBranches
+	protectedBranches := make(map[string]bool)
+	for branchName := range sessionBranchMap {
+		protectedBranches[branchName] = true
+	}
+
+	deletedBranches, cleanErr := h.repoManager.CleanMergedLocalBranches(ctx, repo.Path, protectedBranches)
+	if cleanErr != nil {
+		logger.Handlers.Warnf("Merged branch cleanup failed for %s: %v", repo.Path, cleanErr)
 	}
 
 	h.branchCache.MarkPruned(repo.Path)
@@ -1558,7 +1600,10 @@ func (h *Handlers) PruneStaleBranches(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, map[string]interface{}{"success": true})
+	writeJSON(w, map[string]interface{}{
+		"success":              true,
+		"deletedLocalBranches": deletedBranches,
+	})
 }
 
 // GetAvatars returns GitHub avatar URLs for a batch of email addresses
@@ -2170,6 +2215,39 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 			if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
 				logger.Error.Errorf("Failed to delete branch %q on archive: %v", session.Branch, delErr)
 			}
+		}
+	}
+
+	// Restore worktree+branch on unarchive if they're missing (async to avoid blocking the response)
+	if req.Archived != nil && !*req.Archived && session.WorktreePath != "" && session.Branch != "" {
+		repo, repoErr := h.store.GetRepo(ctx, session.WorkspaceID)
+		if repoErr == nil && repo != nil {
+			repoPath := repo.Path
+			worktreePath := session.WorktreePath
+			branch := session.Branch
+			baseCommit := session.BaseCommitSHA
+			target := session.TargetBranch
+			sessionID := id
+			go func() {
+				restoreCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer cancel()
+				if restoreErr := h.worktreeManager.RestoreSessionWorktree(
+					restoreCtx, repoPath, worktreePath,
+					branch, baseCommit, target,
+				); restoreErr != nil {
+					logger.Error.Errorf("Failed to restore worktree for session %s: %v", sessionID, restoreErr)
+				}
+				// Notify frontend that worktree is ready
+				if h.hub != nil {
+					h.hub.Broadcast(Event{
+						Type: "session_updated",
+						Payload: map[string]interface{}{
+							"sessionId": sessionID,
+							"reason":    "worktree_restored",
+						},
+					})
+				}
+			}()
 		}
 	}
 

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
 // Default timeout for git commands
@@ -1061,6 +1063,73 @@ func (rm *RepoManager) FetchAndPrune(ctx context.Context, repoPath string) error
 		return fmt.Errorf("failed to fetch --prune: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+// CleanMergedLocalBranches deletes local branches that are fully merged into main.
+// It protects the current HEAD, protected branch names, branches checked out in
+// worktrees, and any branches in the sessionBranches map. Uses "git branch -d"
+// (safe delete) which only works on branches fully merged into their upstream or HEAD.
+// Returns the list of deleted branch names.
+func (rm *RepoManager) CleanMergedLocalBranches(ctx context.Context, repoPath string, sessionBranches map[string]bool) ([]string, error) {
+	// Get current HEAD branch
+	currentBranch, _ := rm.GetCurrentBranch(ctx, repoPath)
+
+	// Get branches checked out in worktrees so we skip them upfront
+	// (git branch -d would refuse anyway, but this avoids noisy error logs)
+	worktreeBranches := rm.getWorktreeBranches(ctx, repoPath)
+
+	// Get merged local branches
+	mergedLocal := rm.getMergedBranches(ctx, repoPath, false)
+
+	var deleted []string
+	for name := range mergedLocal {
+		// Skip protected branches
+		if ProtectedBranchNames[name] {
+			continue
+		}
+		// Skip HEAD
+		if name == currentBranch {
+			continue
+		}
+		// Skip branches checked out in worktrees
+		if worktreeBranches[name] {
+			continue
+		}
+		// Skip session-linked branches
+		if sessionBranches[name] {
+			continue
+		}
+
+		// Safe delete — only works if fully merged
+		cmd, cancel := gitCmdWithContext(ctx, repoPath, "branch", "-d", name)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			logger.Cleanup.Debugf("Failed to delete merged branch %s: %s", name, strings.TrimSpace(string(out)))
+			continue
+		}
+		deleted = append(deleted, name)
+	}
+
+	return deleted, nil
+}
+
+// getWorktreeBranches returns a set of branch names currently checked out in any worktree.
+func (rm *RepoManager) getWorktreeBranches(ctx context.Context, repoPath string) map[string]bool {
+	branches := make(map[string]bool)
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "list", "--porcelain")
+	out, err := cmd.Output()
+	cancel()
+	if err != nil {
+		return branches
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "branch refs/heads/") {
+			name := strings.TrimPrefix(line, "branch refs/heads/")
+			branches[name] = true
+		}
+	}
+	return branches
 }
 
 // sortBranches sorts branches by the specified field using O(n log n) sort
