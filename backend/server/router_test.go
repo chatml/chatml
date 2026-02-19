@@ -31,7 +31,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 
 	// Create worktree manager for agent manager
 	wm := gitpkg.NewWorktreeManager()
-	agentMgr := agent.NewManager(context.Background(), s, wm)
+	agentMgr := agent.NewManager(context.Background(), s, wm, 9876)
 	ghClient := github.NewClient("", "")
 	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
 	t.Cleanup(func() { prCache.Close() })

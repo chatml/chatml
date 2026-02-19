@@ -32,7 +32,7 @@ func setupTestManager(t *testing.T) (*Manager, *store.SQLiteStore) {
 		sqliteStore.Close()
 	})
 
-	manager := NewManager(context.Background(), sqliteStore, worktreeManager)
+	manager := NewManager(context.Background(), sqliteStore, worktreeManager, 9876)
 
 	return manager, sqliteStore
 }
@@ -562,7 +562,7 @@ func TestNewManager_AcceptsContext(t *testing.T) {
 	t.Cleanup(func() { sqliteStore.Close() })
 
 	worktreeManager := git.NewWorktreeManager()
-	manager := NewManager(ctx, sqliteStore, worktreeManager)
+	manager := NewManager(ctx, sqliteStore, worktreeManager, 9876)
 
 	assert.NotNil(t, manager)
 	assert.Equal(t, ctx, manager.ctx)
@@ -578,7 +578,7 @@ func TestNewManager_CancelledContext(t *testing.T) {
 	t.Cleanup(func() { sqliteStore.Close() })
 
 	worktreeManager := git.NewWorktreeManager()
-	manager := NewManager(ctx, sqliteStore, worktreeManager)
+	manager := NewManager(ctx, sqliteStore, worktreeManager, 9876)
 
 	assert.NotNil(t, manager)
 	assert.Error(t, manager.ctx.Err()) // Context is already cancelled
@@ -592,7 +592,7 @@ func TestHandleConversationCompletion_ExitsOnContextCancel(t *testing.T) {
 	t.Cleanup(func() { sqliteStore.Close() })
 
 	worktreeManager := git.NewWorktreeManager()
-	manager := NewManager(ctx, sqliteStore, worktreeManager)
+	manager := NewManager(ctx, sqliteStore, worktreeManager, 9876)
 
 	// Create a process that never completes
 	proc := NewProcess("test-id", "/tmp", "conv-never-done")
@@ -636,7 +636,7 @@ func TestHandleConversationCompletion_CompletesNormally(t *testing.T) {
 	}))
 
 	worktreeManager := git.NewWorktreeManager()
-	manager := NewManager(ctx, sqliteStore, worktreeManager)
+	manager := NewManager(ctx, sqliteStore, worktreeManager, 9876)
 
 	// Track status updates
 	var statusConvID, statusValue string

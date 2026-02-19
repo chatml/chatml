@@ -12,8 +12,20 @@ use tauri_plugin_shell::ShellExt;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-/// Default port used by the ChatML backend sidecar
+/// Default port used by the ChatML backend sidecar (production)
 pub const DEFAULT_SIDECAR_PORT: u16 = 9876;
+/// Dev port used when running alongside a production instance
+pub const DEV_SIDECAR_PORT: u16 = 9886;
+
+/// Returns the appropriate default port based on build type.
+/// Debug builds use DEV_SIDECAR_PORT to avoid conflicting with a production instance.
+pub fn default_port() -> u16 {
+    if cfg!(debug_assertions) {
+        DEV_SIDECAR_PORT
+    } else {
+        DEFAULT_SIDECAR_PORT
+    }
+}
 /// Protocol prefix for port announcement in backend stdout
 const PORT_LINE_PREFIX: &str = "CHATML_PORT=";
 
@@ -106,17 +118,35 @@ pub fn kill_stored_sidecar(state: &AppState) {
 
 /// Spawn the sidecar and set up monitoring
 pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult<CommandChild> {
+    let port = default_port();
+
     // Clean up any existing processes before spawning
     kill_stored_sidecar(state);
-    kill_process_on_port(DEFAULT_SIDECAR_PORT);
+    kill_process_on_port(port);
 
     // Wait for port to become available instead of fixed delay
-    wait_for_port_available(DEFAULT_SIDECAR_PORT)?;
+    wait_for_port_available(port)?;
 
     let mut sidecar_command = app
         .shell()
         .sidecar("chatml-backend")
         .map_err(|e| AppError::Sidecar(format!("Failed to create sidecar command: {}", e)))?;
+
+    // Tell the Go backend which port to prefer
+    sidecar_command = sidecar_command.env("PORT", port.to_string());
+
+    // In dev builds, isolate the data directory so dev and production don't share state
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let dev_data_dir = std::path::PathBuf::from(&home)
+                .join("Library")
+                .join("Application Support")
+                .join("ChatML-Dev");
+            sidecar_command =
+                sidecar_command.env("CHATML_DATA_DIR", dev_data_dir.to_string_lossy().as_ref());
+        }
+    }
 
     // Generate authentication token for backend API security
     let auth_token = generate_auth_token();
@@ -245,15 +275,17 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
 pub async fn restart_sidecar_async(app: tauri::AppHandle, state: Arc<AppState>) -> AppResult<()> {
     log::info!("Restarting sidecar...");
 
+    let port = default_port();
+
     // Clean up existing sidecar process
     kill_stored_sidecar(&state);
-    kill_process_on_port(DEFAULT_SIDECAR_PORT);
+    kill_process_on_port(port);
 
     // Wait for port in blocking context (can't use TcpListener in async directly).
     // Note: The double `?` below handles two error types:
     //   - First `?` propagates JoinError from spawn_blocking
     //   - Second `?` propagates AppError from wait_for_port_available
-    tauri::async_runtime::spawn_blocking(|| wait_for_port_available(DEFAULT_SIDECAR_PORT))
+    tauri::async_runtime::spawn_blocking(move || wait_for_port_available(port))
         .await
         .map_err(|e| AppError::Sidecar(format!("Failed during port wait: {}", e)))??;
 
