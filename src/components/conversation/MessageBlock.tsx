@@ -133,7 +133,7 @@ export const MessageBlock = memo(function MessageBlock({
   if (message.role === 'user') {
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
-        <div className="bg-surface-2 dark:bg-[#090909] rounded-lg px-4 py-2.5">
+        <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
           {message.attachments && message.attachments.length > 0 && (
             <>
               <AttachmentGrid

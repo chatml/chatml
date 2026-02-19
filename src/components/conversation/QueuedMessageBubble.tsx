@@ -16,7 +16,7 @@ export function QueuedMessageBubble({ message }: QueuedMessageBubbleProps) {
 
   return (
     <div className="py-2 flex justify-end">
-      <div className="bg-surface-2 dark:bg-[#090909] rounded-lg px-4 py-2.5 opacity-70">
+      <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5 opacity-70">
         {message.attachments && message.attachments.length > 0 && (
           <>
             <AttachmentGrid
