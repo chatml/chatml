@@ -183,6 +183,117 @@ func (wm *WorktreeManager) CheckoutExistingBranchInDir(ctx context.Context, repo
 	return worktreePath, remoteBranch, baseCommit, nil
 }
 
+// RestoreSessionWorktree ensures a worktree and branch exist for a session being unarchived.
+// It handles the case where the local branch and/or worktree directory were deleted
+// (e.g., by branch cleanup, manual deletion, or the deleteBranchOnArchive setting).
+//
+// Strategy:
+//  1. If worktree path is already a valid git worktree → no-op
+//  2. If local branch exists → create worktree from it
+//  3. If remote branch (origin/<branch>) exists → fetch and create worktree + tracking branch
+//  4. If baseCommitSHA is available → create worktree + branch from that commit
+//  5. If targetBranch is available → create worktree + branch from target (last resort)
+//  6. Otherwise → return error
+func (wm *WorktreeManager) RestoreSessionWorktree(ctx context.Context, repoPath, worktreePath, branchName, baseCommitSHA, targetBranch string) error {
+	// Step 1: Check if worktree already exists and is valid
+	if _, err := os.Stat(worktreePath); err == nil {
+		// Directory exists — check if it's a valid worktree
+		cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "list", "--porcelain")
+		out, listErr := cmd.Output()
+		cancel()
+		if listErr == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				if strings.TrimSpace(line) == "worktree "+worktreePath {
+					logger.Cleanup.Infof("Worktree already valid for restore: %s", worktreePath)
+					return nil // Already a valid worktree
+				}
+			}
+		}
+		// Directory exists but is not a valid worktree — remove it so we can recreate
+		if removeErr := os.RemoveAll(worktreePath); removeErr != nil {
+			return fmt.Errorf("failed to remove stale worktree directory %s: %w", worktreePath, removeErr)
+		}
+	}
+
+	// Prune stale worktree entries before trying to create a new one
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "worktree", "prune")
+	if pruneOut, pruneErr := cmd.CombinedOutput(); pruneErr != nil {
+		logger.Cleanup.Warnf("git worktree prune failed: %s", strings.TrimSpace(string(pruneOut)))
+	}
+	cancel()
+
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(worktreePath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("failed to create parent dir %s: %w", parentDir, err)
+	}
+
+	// Step 2: Check if local branch still exists
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-parse", "--verify", "refs/heads/"+branchName)
+	_, localErr := cmd.Output()
+	cancel()
+
+	if localErr == nil {
+		// Local branch exists — just create a worktree from it
+		logger.Cleanup.Infof("Restoring worktree from existing local branch %s", branchName)
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", worktreePath, branchName)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("failed to restore worktree from local branch: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+		return nil
+	}
+
+	// Step 3: Check if remote branch exists
+	remoteRef := "refs/remotes/origin/" + branchName
+	cmd, cancel = gitCmdWithContext(ctx, repoPath, "rev-parse", "--verify", remoteRef)
+	_, remoteErr := cmd.Output()
+	cancel()
+
+	if remoteErr == nil {
+		// Remote branch exists — fetch and create tracking worktree
+		logger.Cleanup.Infof("Restoring worktree from remote branch origin/%s", branchName)
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "fetch", "origin", branchName)
+		cmd.CombinedOutput()
+		cancel()
+
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, "--track", worktreePath, "origin/"+branchName)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("failed to restore worktree from remote branch: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+		return nil
+	}
+
+	// Step 4: Fall back to BaseCommitSHA
+	if baseCommitSHA != "" {
+		logger.Cleanup.Infof("Restoring worktree from base commit %s for branch %s", baseCommitSHA, branchName)
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, baseCommitSHA)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("failed to restore worktree from base commit: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+		return nil
+	}
+
+	// Step 5: Fall back to targetBranch (e.g. origin/main) as last resort
+	if targetBranch != "" {
+		logger.Cleanup.Infof("Restoring worktree from target branch %s for branch %s", targetBranch, branchName)
+		cmd, cancel = gitCmdWithContext(ctx, repoPath, "worktree", "add", "-b", branchName, worktreePath, targetBranch)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("failed to restore worktree from target branch: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("cannot restore worktree for branch %s: no local branch, no remote branch, no base commit, and no target branch", branchName)
+}
+
 func (wm *WorktreeManager) Remove(ctx context.Context, repoPath, agentID string) error {
 	branchName := fmt.Sprintf("agent/%s", agentID)
 	return wm.RemoveByPath(ctx, repoPath, agentID, branchName)
