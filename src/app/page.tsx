@@ -711,20 +711,44 @@ export default function Home() {
         }
       }
 
-      // Add to store and select
+      // Add to store
       addSession(mapSessionDTO(newSession));
-      // Note: no conversationId needed — navigate() calls selectSession() which
-      // auto-selects the first conversation for the session as a side effect.
+
+      // Fetch conversations created by backend so ConversationArea can render.
+      // Without this, selectSession() finds no conversations and leaves
+      // selectedConversationId null, showing the "Preparing session" spinner.
+      let firstConvId: string | null = null;
+      try {
+        const conversations = await listConversations(selectedWorkspaceId, newSession.id);
+        conversations.forEach((conv) => {
+          if (!firstConvId) firstConvId = conv.id;
+          addConversation({
+            id: conv.id,
+            sessionId: conv.sessionId,
+            type: conv.type,
+            name: conv.name,
+            status: conv.status,
+            messages: [],
+            toolSummary: conv.toolSummary,
+            createdAt: conv.createdAt,
+            updatedAt: conv.updatedAt,
+          });
+        });
+      } catch (error) {
+        console.error('Failed to load conversations for new session:', error);
+      }
+
       navigate({
         workspaceId: newSession.workspaceId,
         sessionId: newSession.id,
+        conversationId: firstConvId ?? undefined,
         contentView: { type: 'conversation' },
       });
     } catch (error) {
       console.error('Failed to create session:', error);
       showError(error instanceof Error ? error.message : 'Failed to create session. Please try again.', 'Session Error');
     }
-  }, [selectedWorkspaceId, workspaces, addSession, showError]);
+  }, [selectedWorkspaceId, workspaces, addSession, addConversation, showError]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
