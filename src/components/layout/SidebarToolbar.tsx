@@ -53,6 +53,9 @@ export function SidebarToolbar() {
       >
         <span className="text-muted-foreground">chat</span>
         <span className="text-purple-600">ml</span>
+        {process.env.NODE_ENV === 'development' && (
+          <span className="text-red-500 ml-1 text-[13px]">Dev</span>
+        )}
       </span>
       <div className="flex items-center gap-0.5 shrink-0">
         {/* Navigation Back */}

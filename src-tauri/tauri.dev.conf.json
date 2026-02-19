@@ -5,7 +5,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "ChatML (Dev)"
+        "title": "ChatML"
       }
     ],
     "security": {
