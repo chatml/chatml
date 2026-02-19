@@ -98,31 +98,34 @@ describe('ContextMeter', () => {
   });
 
   // ==========================================================================
-  // Token formatting
+  // Percentage display
   // ==========================================================================
 
-  it('formats large tokens with "k" notation', () => {
+  it('displays percentage for normal usage', () => {
     useAppStore.setState({
       contextUsage: { [CONV_ID]: makeContextUsage({ inputTokens: 70400 }) },
     });
     render(<ContextMeter conversationId={CONV_ID} />);
-    expect(screen.getByText('70.4k')).toBeInTheDocument();
+    // 70400/200000 = 35.2% → rounds to 35%
+    expect(screen.getByText('35%')).toBeInTheDocument();
   });
 
-  it('displays small token counts as raw numbers', () => {
+  it('displays 0% for very small usage', () => {
     useAppStore.setState({
       contextUsage: { [CONV_ID]: makeContextUsage({ inputTokens: 500 }) },
     });
     render(<ContextMeter conversationId={CONV_ID} />);
-    expect(screen.getByText('500')).toBeInTheDocument();
+    // 500/200000 = 0.25% → rounds to 0%
+    expect(screen.getByText('0%')).toBeInTheDocument();
   });
 
-  it('formats 1000 tokens as "1.0k"', () => {
+  it('rounds percentage correctly for small usage', () => {
     useAppStore.setState({
       contextUsage: { [CONV_ID]: makeContextUsage({ inputTokens: 1000 }) },
     });
     render(<ContextMeter conversationId={CONV_ID} />);
-    expect(screen.getByText('1.0k')).toBeInTheDocument();
+    // 1000/200000 = 0.5% → rounds to 1%
+    expect(screen.getByText('1%')).toBeInTheDocument();
   });
 
   // ==========================================================================
@@ -330,7 +333,7 @@ describe('ContextMeter', () => {
   // Cache-inclusive context utilization
   // ==========================================================================
 
-  it('displays sum of all input token types', () => {
+  it('caps percentage label at 100% when tokens exceed context window', () => {
     useAppStore.setState({
       contextUsage: {
         [CONV_ID]: makeContextUsage({
@@ -341,8 +344,8 @@ describe('ContextMeter', () => {
       },
     });
     render(<ContextMeter conversationId={CONV_ID} />);
-    // Total: 10 + 800000 + 3000 = 803010 -> 803.0k
-    expect(screen.getByText('803.0k')).toBeInTheDocument();
+    // Total: 10 + 800000 + 3000 = 803010, exceeds 200000 → capped at 100%
+    expect(screen.getByText('100%')).toBeInTheDocument();
   });
 
   it('shows popover header with total input tokens including cache', () => {
@@ -389,7 +392,8 @@ describe('ContextMeter', () => {
     });
     render(<ContextMeter conversationId={CONV_ID} />);
     const button = screen.getByRole('button');
-    expect(button).toHaveAttribute('aria-label', 'Context usage: 105.0k of 200.0k tokens');
+    // 105010/200000 = 52.505% → rounds to 53%
+    expect(button).toHaveAttribute('aria-label', 'Context usage: 53% (105.0k of 200.0k tokens)');
   });
 
   it('caps percentage at 100% when total tokens exceed contextWindow', () => {
