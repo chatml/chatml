@@ -85,8 +85,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// Avatar lookup endpoint
 	r.Get("/api/avatars", h.GetAvatars)
 
-	// Dashboard data endpoint - fetches all workspaces, sessions, and conversations in one request
-	r.Get("/api/dashboard/data", h.GetDashboardData)
+	// Sessions endpoint — returns all sessions across all workspaces in a single query
+	r.Get("/api/sessions", h.ListAllSessions)
 
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {

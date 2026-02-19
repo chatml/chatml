@@ -735,7 +735,7 @@ type uncachedSession struct {
 }
 
 // computeAndBroadcastStats computes stats for sessions not in cache and pushes
-// results via WebSocket. Runs as a background goroutine so getDashboardData
+// results via WebSocket. Runs as a background goroutine so ListSessions
 // returns immediately.
 func (h *Handlers) computeAndBroadcastStats(sessions []uncachedSession) {
 	sem := make(chan struct{}, 10)
@@ -885,141 +885,6 @@ func (h *Handlers) ListRepos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, repos)
 }
 
-// ArchivedSessionDirJSON is the JSON representation of an archived session's directory info.
-// Used by the frontend to register archived worktrees with the file watcher.
-type ArchivedSessionDirJSON struct {
-	DirName   string `json:"dirName"`
-	SessionID string `json:"sessionId"`
-}
-
-// DashboardData represents the combined data for initial dashboard load
-type DashboardData struct {
-	Workspaces          []*models.Repo              `json:"workspaces"`
-	Sessions            []*SessionWithConversations  `json:"sessions"`
-	ArchivedSessionDirs []ArchivedSessionDirJSON     `json:"archivedSessionDirs"`
-}
-
-// SessionWithConversations embeds session data with its conversations
-type SessionWithConversations struct {
-	*models.Session
-	Conversations []*models.Conversation `json:"conversations"`
-}
-
-// GetDashboardData returns all workspaces, sessions, and conversations in a single request.
-// This eliminates the N+1 pattern of fetching sessions per workspace and conversations per session.
-func (h *Handlers) GetDashboardData(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Fetch all repos in a single query
-	repos, err := h.store.ListRepos(ctx)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-
-	// Fetch archived session dirs for file watcher registration
-	archivedDirs, err := h.store.ListArchivedSessionDirs(ctx)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-	archivedSessionDirs := make([]ArchivedSessionDirJSON, 0, len(archivedDirs))
-	for _, d := range archivedDirs {
-		if d.WorktreePath != "" {
-			archivedSessionDirs = append(archivedSessionDirs, ArchivedSessionDirJSON{
-				DirName:   filepath.Base(d.WorktreePath),
-				SessionID: d.ID,
-			})
-		}
-	}
-
-	// Fetch all sessions across all workspaces in a single query
-	// Include archived sessions so the Session Manager can display them
-	allSessions, err := h.store.ListAllSessions(ctx, true)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-
-	// Trigger one-time PR title backfill for sessions missing titles
-	if h.prWatcher != nil {
-		h.prWatcher.TriggerBackfillPRTitles()
-	}
-
-	// Early return if no sessions
-	if len(allSessions) == 0 {
-		writeJSON(w, DashboardData{
-			Workspaces:          repos,
-			Sessions:            []*SessionWithConversations{},
-			ArchivedSessionDirs: archivedSessionDirs,
-		})
-		return
-	}
-
-	// Build workspace map for branch lookup
-	workspaceByID := make(map[string]*models.Repo)
-	for _, repo := range repos {
-		workspaceByID[repo.ID] = repo
-	}
-
-	// Serve cached stats immediately; compute uncached ones in background.
-	// This prevents cold-start blocking where getDashboardData would stall
-	// while computing git stats for every session.
-	var uncached []uncachedSession
-
-	if h.statsCache != nil {
-		for _, session := range allSessions {
-			if session.Archived {
-				continue
-			}
-			if cached, ok := h.statsCache.Get(session.ID); ok {
-				session.Stats = cached
-			} else {
-				uncached = append(uncached, uncachedSession{
-					session:   session,
-					workspace: workspaceByID[session.WorkspaceID],
-				})
-			}
-		}
-	}
-
-	// Fire-and-forget: compute uncached stats in background and push via WebSocket
-	if len(uncached) > 0 && h.hub != nil {
-		go h.computeAndBroadcastStats(uncached)
-	}
-
-	// Get all session IDs for batch conversation fetch
-	sessionIDs := make([]string, len(allSessions))
-	for i, s := range allSessions {
-		sessionIDs[i] = s.ID
-	}
-
-	// Batch fetch all conversations for all sessions (uses 3 queries internally)
-	convsBySession, err := h.store.ListConversationsForSessions(ctx, sessionIDs)
-	if err != nil {
-		writeDBError(w, err)
-		return
-	}
-
-	// Build response combining sessions with their conversations
-	sessionsWithConvs := make([]*SessionWithConversations, len(allSessions))
-	for i, session := range allSessions {
-		convs := convsBySession[session.ID]
-		if convs == nil {
-			convs = []*models.Conversation{}
-		}
-		sessionsWithConvs[i] = &SessionWithConversations{
-			Session:       session,
-			Conversations: convs,
-		}
-	}
-
-	writeJSON(w, DashboardData{
-		Workspaces:          repos,
-		Sessions:            sessionsWithConvs,
-		ArchivedSessionDirs: archivedSessionDirs,
-	})
-}
 
 func (h *Handlers) GetRepo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -1205,6 +1070,53 @@ func (h *Handlers) GetRepoRemotes(w http.ResponseWriter, r *http.Request) {
 
 // Session handlers
 
+// ListAllSessions returns all sessions across all workspaces in a single query.
+// GET /api/sessions?includeArchived=true
+func (h *Handlers) ListAllSessions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	includeArchived := r.URL.Query().Get("includeArchived") == "true"
+	sessions, err := h.store.ListAllSessions(ctx, includeArchived)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Trigger one-time PR title backfill for sessions missing titles
+	if h.prWatcher != nil {
+		h.prWatcher.TriggerBackfillPRTitles()
+	}
+
+	// Serve cached stats immediately; compute uncached ones in background via WebSocket.
+	if h.statsCache != nil {
+		// Build workspace map for branch lookup
+		repos, _ := h.store.ListRepos(ctx)
+		workspaceByID := make(map[string]*models.Repo)
+		for _, repo := range repos {
+			workspaceByID[repo.ID] = repo
+		}
+
+		var uncached []uncachedSession
+		for _, session := range sessions {
+			if session.Archived {
+				continue
+			}
+			if cached, ok := h.statsCache.Get(session.ID); ok {
+				session.Stats = cached
+			} else if ws := workspaceByID[session.WorkspaceID]; ws != nil {
+				uncached = append(uncached, uncachedSession{
+					session:   session,
+					workspace: ws,
+				})
+			}
+		}
+		if len(uncached) > 0 && h.hub != nil {
+			go h.computeAndBroadcastStats(uncached)
+		}
+	}
+
+	writeJSON(w, sessions)
+}
+
 func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	workspaceID := chi.URLParam(r, "id")
@@ -1214,6 +1126,37 @@ func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 		writeDBError(w, err)
 		return
 	}
+
+	// Trigger one-time PR title backfill for sessions missing titles
+	if h.prWatcher != nil {
+		h.prWatcher.TriggerBackfillPRTitles()
+	}
+
+	// Serve cached stats immediately; compute uncached ones in background via WebSocket.
+	if h.statsCache != nil {
+		workspace, err := h.store.GetRepo(ctx, workspaceID)
+		if err != nil {
+			logger.Error.Errorf("ListSessions: failed to get workspace %s for stats: %v", workspaceID, err)
+		}
+		var uncached []uncachedSession
+		for _, session := range sessions {
+			if session.Archived {
+				continue
+			}
+			if cached, ok := h.statsCache.Get(session.ID); ok {
+				session.Stats = cached
+			} else if workspace != nil {
+				uncached = append(uncached, uncachedSession{
+					session:   session,
+					workspace: workspace,
+				})
+			}
+		}
+		if len(uncached) > 0 && h.hub != nil {
+			go h.computeAndBroadcastStats(uncached)
+		}
+	}
+
 	writeJSON(w, sessions)
 }
 

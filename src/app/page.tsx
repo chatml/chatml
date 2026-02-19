@@ -42,7 +42,8 @@ import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useMenuState } from '@/hooks/useMenuState';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getDashboardData, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { listRepos, listAllSessions, listConversations, createSession, createConversation, deleteConversation, addRepo, mapSessionDTO, getConversationMessages, toStoreMessage, type RepoDTO, type ConversationDTO, type MessageDTO } from '@/lib/api';
+import { useMessagePrefetch } from '@/hooks/useMessagePrefetch';
 import type { SetupInfo } from '@/lib/types';
 import { WorkspaceSidebar } from '@/components/navigation/WorkspaceSidebar';
 import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
@@ -555,18 +556,16 @@ export default function Home() {
   }), [messageToMessage]);
 
   // Load data from backend (only when connected)
-  // Uses a single batch endpoint to fetch all workspaces, sessions, and conversations
+  // Uses separate API calls for workspaces, sessions, and conversations
   useEffect(() => {
     if (!backendConnected) return;
 
     async function loadData() {
       setIsLoadingData(true);
       try {
-        // Single API call to fetch all data (eliminates N+1 queries)
-        const dashboardData = await getDashboardData();
-
-        // Map workspaces
-        const mappedWorkspaces = dashboardData.workspaces.map(repoToWorkspace);
+        // Step 1: Fetch all workspaces
+        const repos = await listRepos();
+        const mappedWorkspaces = repos.map(repoToWorkspace);
         setWorkspaces(mappedWorkspaces);
 
         // Prefetch branch lists for all workspaces (fire-and-forget)
@@ -575,8 +574,9 @@ export default function Home() {
           prefetchBranches(ws.id).catch(() => {});
         }
 
-        // Map sessions (stats already come from backend if available)
-        const allSessions = dashboardData.sessions.map(s => mapSessionDTO(s));
+        // Step 2: Fetch all sessions across all workspaces in a single request
+        const sessionDTOs = await listAllSessions(true);
+        const allSessions = sessionDTOs.map(s => mapSessionDTO(s));
         setSessions(allSessions);
 
         // Register all sessions with the global file watcher for event routing
@@ -589,49 +589,48 @@ export default function Home() {
           }
         }
 
-        // Register archived sessions so the file watcher doesn't log noise for their worktrees
-        if (dashboardData.archivedSessionDirs) {
-          for (const entry of dashboardData.archivedSessionDirs) {
-            registerSession(entry.dirName, entry.sessionId);
-          }
-        }
-
-        // Map conversations (already included in the batch response)
-        const allConversations = dashboardData.sessions.flatMap(s =>
-          s.conversations.map(conversationToConversation)
-        );
-        setConversations(allConversations);
-
-        // Restore active tab state if persisted tabs exist, otherwise fall back to defaults
+        // Determine which workspace to select (needed to scope conversation fetching)
         const tabState = ENABLE_BROWSER_TABS ? useTabStore.getState() : null;
         const activeTab = tabState?.tabs[tabState.activeTabId];
         const hasPersistedTab = ENABLE_BROWSER_TABS && activeTab && tabState!.tabOrder.length > 0 &&
           (activeTab.selectedWorkspaceId || activeTab.contentView.type !== 'conversation');
 
-        // Validate persisted IDs against loaded data before restoring
         const workspaceValid = hasPersistedTab && activeTab.selectedWorkspaceId &&
           mappedWorkspaces.some(w => w.id === activeTab.selectedWorkspaceId);
+        const targetWorkspaceId = workspaceValid
+          ? activeTab.selectedWorkspaceId
+          : mappedWorkspaces[0]?.id ?? null;
+
+        // Step 3: Fetch conversations for the target workspace's non-archived sessions in parallel
+        const targetSessions = targetWorkspaceId
+          ? allSessions.filter(s => s.workspaceId === targetWorkspaceId && !s.archived)
+          : [];
+        const convsBySession = await Promise.all(
+          targetSessions.map(s =>
+            listConversations(targetWorkspaceId!, s.id).catch(() => [] as ConversationDTO[])
+          )
+        );
+        const allConversations = convsBySession.flat().map(conversationToConversation);
+        setConversations(allConversations);
+
+        // Step 4: Restore persisted state or select defaults
         const sessionValid = hasPersistedTab && activeTab.selectedSessionId &&
           allSessions.some(s => s.id === activeTab.selectedSessionId && !s.archived);
-        // Only validate conversation if its session is also valid
         const conversationValid = sessionValid && activeTab.selectedConversationId &&
           allConversations.some(c => c.id === activeTab.selectedConversationId);
-        // For non-conversation views that carry a workspaceId, validate it exists
         const contentViewWorkspaceId = activeTab?.contentView &&
           'workspaceId' in activeTab.contentView
           ? (activeTab.contentView as { workspaceId?: string }).workspaceId
           : undefined;
         const contentViewWorkspaceValid = contentViewWorkspaceId
           ? mappedWorkspaces.some(w => w.id === contentViewWorkspaceId)
-          : true; // views without workspaceId (repositories, session-manager, skills-store) are always valid
+          : true;
         const hasValidPersistedState = workspaceValid || sessionValid ||
           (hasPersistedTab && activeTab.contentView.type !== 'conversation' && contentViewWorkspaceValid);
 
         if (hasValidPersistedState) {
-          // Restore only IDs that still exist in backend data
           if (workspaceValid) {
             selectWorkspace(activeTab.selectedWorkspaceId);
-            // If workspace is valid but session is stale, select first available session in this workspace
             if (!sessionValid) {
               const fallbackSession = allSessions.find(s => s.workspaceId === activeTab.selectedWorkspaceId && !s.archived);
               if (fallbackSession) selectSession(fallbackSession.id);
@@ -642,11 +641,9 @@ export default function Home() {
           useSettingsStore.getState().setContentView(activeTab!.contentView);
           useNavigationStore.getState().setActiveTabId(tabState!.activeTabId);
         } else if (mappedWorkspaces.length > 0) {
-          // First launch — select first workspace and session
           selectWorkspace(mappedWorkspaces[0].id);
           const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id && !s.archived);
           if (firstSession) {
-            // Create a placeholder conversation if none exist for this session
             const sessionConvs = allConversations.filter(c => c.sessionId === firstSession.id);
             if (sessionConvs.length === 0) {
               const convId = `conv-${firstSession.id}`;
@@ -662,12 +659,11 @@ export default function Home() {
                 updatedAt: new Date().toISOString(),
               });
             }
-            // selectSession auto-selects the first conversation for the session
             selectSession(firstSession.id);
           }
         }
-        // Eagerly load messages for the initially-selected conversation so it's
-        // visible without waiting for ConversationArea's useEffect to fire.
+
+        // Step 5: Eagerly load messages for the initially-selected conversation
         const initialConvId = useAppStore.getState().selectedConversationId;
         if (initialConvId) {
           try {
@@ -688,6 +684,40 @@ export default function Home() {
 
     loadData();
   }, [backendConnected, repoToWorkspace, conversationToConversation, setWorkspaces, setSessions, setConversations, selectWorkspace, selectSession, selectConversation, addConversation, setMessagePage, showError]);
+
+  // Lazy-load conversations when switching to a workspace whose sessions don't have conversations loaded yet
+  useEffect(() => {
+    if (isLoadingData || !backendConnected || !selectedWorkspaceId) return;
+
+    const state = useAppStore.getState();
+    const workspaceSessions = state.sessions.filter(s => s.workspaceId === selectedWorkspaceId && !s.archived);
+    // Check if any session in this workspace already has conversations loaded
+    const hasConversations = workspaceSessions.some(s =>
+      state.conversations.some(c => c.sessionId === s.id)
+    );
+    if (hasConversations || workspaceSessions.length === 0) return;
+
+    // Fetch conversations for all non-archived sessions in the new workspace
+    Promise.all(
+      workspaceSessions.map(s =>
+        listConversations(selectedWorkspaceId, s.id).catch(() => [] as ConversationDTO[])
+      )
+    ).then(convsBySession => {
+      const newConvs = convsBySession.flat().map(conversationToConversation);
+      if (newConvs.length > 0) {
+        // Append to existing conversations (don't overwrite other workspaces)
+        const existing = useAppStore.getState().conversations;
+        const existingIds = new Set(existing.map(c => c.id));
+        const deduped = newConvs.filter(c => !existingIds.has(c.id));
+        if (deduped.length > 0) {
+          setConversations([...existing, ...deduped]);
+        }
+      }
+    }).catch(() => {});
+  }, [selectedWorkspaceId, isLoadingData, backendConnected, conversationToConversation, setConversations]);
+
+  // Background prefetch messages for all conversations after initial load
+  useMessagePrefetch(!isLoadingData && backendConnected);
 
   // Menu action handlers
   const handleNewSession = useCallback(async () => {
