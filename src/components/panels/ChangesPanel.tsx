@@ -15,7 +15,8 @@ import { ChecksPanel, type ChecksPanelHandle } from '@/components/panels/ChecksP
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
-import { ScriptsPanel } from '@/components/panels/ScriptsPanel';
+// TODO: Re-import ScriptsPanel when the Scripts tab is reintroduced
+// import { ScriptsPanel } from '@/components/panels/ScriptsPanel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -737,11 +738,7 @@ export function ChangesPanel() {
                   <FileHistoryPanel />
                 </ErrorBoundary>
               )}
-              {bottomTab === 'scripts' && (
-                <ErrorBoundary section="Scripts" fallback={<InlineErrorFallback message="Unable to display scripts" />}>
-                  <ScriptsPanel />
-                </ErrorBoundary>
-              )}
+              {/* TODO: Re-enable Scripts tab when the feature is reintroduced (see ScriptsPanel.tsx) */}
             </div>
           </div>
         </ResizablePanel>
@@ -765,7 +762,7 @@ const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisib
   'file-history': { label: 'File History' },
   budget: { label: 'Usage' },
   mcp: { label: 'MCP' },
-  scripts: { label: 'Scripts' },
+  // TODO: Re-add scripts tab when the feature is reintroduced: scripts: { label: 'Scripts' },
 };
 
 // Sortable tab button component
