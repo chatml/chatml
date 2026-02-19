@@ -2125,12 +2125,19 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	if req.Archived != nil && *req.Archived {
 		hasMessages, msgErr := h.store.SessionHasMessages(ctx, id)
 		if msgErr == nil && !hasMessages {
-			// Blank session — delete instead of archiving
-			if req.DeleteBranch != nil && *req.DeleteBranch && session.Branch != "" {
+			// Blank session — delete instead of archiving.
+			// Always clean up worktree and branch since the session had no activity.
+			if session.Branch != "" {
 				repo, repoErr := h.store.GetRepo(ctx, session.WorkspaceID)
 				if repoErr == nil && repo != nil {
-					if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
-						logger.Error.Errorf("Failed to delete branch %q for blank session: %v", session.Branch, delErr)
+					if session.WorktreePath != "" {
+						if delErr := h.worktreeManager.RemoveAtPath(context.Background(), repo.Path, session.WorktreePath, session.Branch); delErr != nil {
+							logger.Error.Errorf("Failed to remove worktree/branch for blank session %s: %v", id, delErr)
+						}
+					} else {
+						if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
+							logger.Error.Errorf("Failed to delete branch %q for blank session: %v", session.Branch, delErr)
+						}
 					}
 				}
 			}

@@ -508,6 +508,83 @@ func TestUpdateSession_Archive_BlankSession_Deletes(t *testing.T) {
 	assert.Nil(t, sess)
 }
 
+func TestUpdateSession_Archive_BlankSession_CleansUpBranch(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+
+	// Create a session with a branch set (simulates a real session that got a branch on creation)
+	ctx := context.Background()
+	session := &models.Session{
+		ID:          "sess-1",
+		WorkspaceID: "ws-1",
+		Name:        "Test Session",
+		Branch:      "test/empty-branch",
+		Status:      "idle",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+	// No conversation or messages — blank session
+
+	// Archive the blank session (without deleteBranch flag — cleanup should still happen)
+	archived := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	// Blank session should be deleted, not archived (branch cleanup error is logged but non-fatal)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+
+	// Verify session is deleted from DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Nil(t, sess)
+}
+
+func TestUpdateSession_Archive_BlankSession_CleansUpWorktree(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	createTestRepo(t, s, "ws-1", "/path/to/repo")
+
+	// Create a session with both branch and worktree path set
+	ctx := context.Background()
+	session := &models.Session{
+		ID:           "sess-1",
+		WorkspaceID:  "ws-1",
+		Name:         "Test Session",
+		Branch:       "test/empty-branch",
+		WorktreePath: "/path/to/worktree",
+		Status:       "idle",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, s.AddSession(ctx, session))
+	// No conversation or messages — blank session
+
+	// Archive the blank session — should attempt worktree removal (RemoveAtPath)
+	archived := true
+	body, _ := json.Marshal(UpdateSessionRequest{Archived: &archived})
+	req := httptest.NewRequest("PATCH", "/api/repos/ws-1/sessions/sess-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
+	w := httptest.NewRecorder()
+
+	h.UpdateSession(w, req)
+
+	// Blank session should be deleted (worktree cleanup error is logged but non-fatal)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+
+	// Verify session is deleted from DB
+	sess, err := s.GetSession(context.Background(), "sess-1")
+	require.NoError(t, err)
+	assert.Nil(t, sess)
+}
+
 func TestUpdateSession_Archive_NoAIClient_SkipsSummary(t *testing.T) {
 	h, s := setupTestHandlers(t) // No AI client
 
