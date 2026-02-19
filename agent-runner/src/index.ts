@@ -2110,23 +2110,12 @@ function handleMessage(message: SDKMessage): void {
         }
       }
 
-      // Emit final context_usage from the result's cumulative usage.
-      // This is cumulative across all API calls in the turn, which is the correct
-      // value for the context meter (total tokens in the context window).
-      // Per-assistant-message events provide live updates during streaming; this
-      // final emission ensures the meter is accurate when the turn completes.
-      const resultUsage = resultMsg.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined;
-      debug(`[context_usage] result usage: ${JSON.stringify(resultUsage)}`);
+      // NOTE: result.usage is cumulative across all API calls in the agentic loop,
+      // so we do NOT emit it as context_usage — it would overwrite the correct
+      // per-call data emitted per assistant message in the "assistant" case above.
+      debug(`[context_usage] result usage (cumulative, not emitted): ${JSON.stringify(resultMsg.usage)}`);
+
       debug(`[context_usage] result modelUsage: ${JSON.stringify(resultMsg.modelUsage)}`);
-      if (resultUsage?.input_tokens) {
-        emit({
-          type: "context_usage",
-          inputTokens: resultUsage.input_tokens,
-          outputTokens: resultUsage.output_tokens ?? 0,
-          cacheReadInputTokens: resultUsage.cache_read_input_tokens ?? 0,
-          cacheCreationInputTokens: resultUsage.cache_creation_input_tokens ?? 0,
-        });
-      }
 
       // Extract context window size from modelUsage for context meter
       const resultModelUsage = resultMsg.modelUsage as Record<string, { contextWindow?: number }> | undefined;

@@ -5,7 +5,7 @@ import { FileDiff } from '@pierre/diffs/react';
 import type { FileContents, DiffLineAnnotation } from '@pierre/diffs/react';
 import type { FileDiffOptions, FileDiffMetadata, OnDiffLineClickProps } from '@pierre/diffs';
 import { parseDiffFromFile } from '@pierre/diffs';
-import { useTheme } from 'next-themes';
+import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -47,8 +47,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
   onCreateComment,
   scrollToLine,
 }: PierreDiffEditorProps) {
-  const { resolvedTheme } = useTheme();
-  const themeType = resolvedTheme === 'dark' ? 'dark' : 'light';
+  const themeType = useResolvedThemeType();
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
   const [wordWrap, setWordWrap] = useState(false);

@@ -14,7 +14,6 @@ import type { ActionButtonProps } from './types';
 
 export function ActionButton({
   action,
-  disabled,
   onSendMessage,
   onFixIssues,
   onArchiveSession,
@@ -46,14 +45,11 @@ export function ActionButton({
   }
 
   const Icon = action.icon;
-  const isDisabled = disabled || action.type === 'disabled';
-  // Show spinner for 'disabled' type (agent working) or when pending action
-  const showSpinner = action.type === 'disabled' || pendingAction;
 
   // Handle click based on action type
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isDisabled || pendingAction) return;
+    if (pendingAction) return;
 
     // For actions that send a message to the agent, block subsequent clicks
     const isMessageAction = action.type === 'fix-issues' || (action.message != null);
@@ -114,9 +110,9 @@ export function ActionButton({
           size="sm"
           className="h-6 text-xs gap-1 px-2 rounded-r-none rounded-l-sm border-r-0 transition-none"
           onClick={handleClick}
-          disabled={isDisabled || pendingAction}
+          disabled={pendingAction}
         >
-          {showSpinner ? (
+          {pendingAction ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <Icon className="h-3.5 w-3.5" />
@@ -132,7 +128,7 @@ export function ActionButton({
                 'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l',
                 separatorColor
               )}
-              disabled={isDisabled || pendingAction}
+              disabled={pendingAction}
             >
               <ChevronDown className="size-2.5" />
             </Button>
@@ -176,9 +172,9 @@ export function ActionButton({
       size="sm"
       className={cn("h-6 text-xs gap-1 px-2 rounded-sm transition-none", className)}
       onClick={handleClick}
-      disabled={isDisabled || pendingAction}
+      disabled={pendingAction}
     >
-      {showSpinner ? (
+      {pendingAction ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : (
         <Icon className="h-3.5 w-3.5" />
