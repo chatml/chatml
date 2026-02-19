@@ -83,13 +83,20 @@ pub fn run() {
     // This is required for Next.js hydration scripts and CSS-in-JS.
     // Risk is mitigated by Tauri's isolation - no external content is loaded.
 
-    let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    let mut builder = tauri::Builder::default();
+
+    // Only enforce single-instance in release builds so dev and production can run side-by-side
+    #[cfg(not(debug_assertions))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance tries to launch
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
             }
-        }))
+        }));
+    }
+
+    builder = builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -206,7 +213,8 @@ pub fn run() {
                     println!("[DEEP-LINK] on_open_url called with {} URLs", urls.len());
                     for url in urls {
                         println!("[DEEP-LINK] URL: {}", url);
-                        if url.scheme() == "chatml" && url.host_str() == Some("oauth") {
+                        let expected_scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
+                        if url.scheme() == expected_scheme && url.host_str() == Some("oauth") {
                             println!("[DEEP-LINK] OAuth callback matched!");
                             log::info!("Received OAuth callback URL: {}", url);
                             let url_string = url.to_string();
@@ -234,7 +242,8 @@ pub fn run() {
                         }
                     }
                 });
-                log::info!("Deep link handler registered for chatml:// URLs");
+                let scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
+                log::info!("Deep link handler registered for {}:// URLs", scheme);
             }
 
             Ok(())

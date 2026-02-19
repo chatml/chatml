@@ -17,12 +17,17 @@ var (
 // Panics if the directories cannot be created.
 func Init() {
 	once.Do(func() {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			panic("appdir: failed to get home directory: " + err.Error())
+		// Allow overriding the data directory via env var (used by dev builds
+		// to isolate state from the production instance).
+		if override := os.Getenv("CHATML_DATA_DIR"); override != "" {
+			root = override
+		} else {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				panic("appdir: failed to get home directory: " + err.Error())
+			}
+			root = filepath.Join(homeDir, "Library", "Application Support", "ChatML")
 		}
-
-		root = filepath.Join(homeDir, "Library", "Application Support", "ChatML")
 
 		// Create the directory tree in a single call (MkdirAll is idempotent).
 		for _, dir := range []string{

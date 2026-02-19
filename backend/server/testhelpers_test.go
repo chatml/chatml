@@ -72,7 +72,7 @@ func setupTestHandlersWithAgentManager(t *testing.T) (*Handlers, *store.SQLiteSt
 	require.NoError(t, err)
 
 	worktreeManager := git.NewWorktreeManager()
-	agentManager := agent.NewManager(context.Background(), sqliteStore, worktreeManager)
+	agentManager := agent.NewManager(context.Background(), sqliteStore, worktreeManager, 9876)
 	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
 
 	t.Cleanup(func() {

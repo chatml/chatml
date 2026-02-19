@@ -70,6 +70,7 @@ type Manager struct {
 	ctx             context.Context // app-level context for background goroutines
 	store           *store.SQLiteStore
 	worktreeManager *git.WorktreeManager
+	backendPort     int             // port the Go backend is listening on
 	processes       map[string]*Process // keyed by agentID (legacy)
 	convProcesses   map[string]*Process // keyed by conversationID
 	mu              sync.RWMutex
@@ -94,11 +95,12 @@ type Manager struct {
 	onPRMerged func(sessionID string)
 }
 
-func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager) *Manager {
+func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager, backendPort int) *Manager {
 	return &Manager{
 		ctx:             ctx,
 		store:           s,
 		worktreeManager: wm,
+		backendPort:     backendPort,
 		processes:       make(map[string]*Process),
 		convProcesses:   make(map[string]*Process),
 	}
@@ -276,9 +278,12 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	if err != nil {
 		return nil, fmt.Errorf("failed to load env vars from settings: %w", err)
 	}
-	if envVars != nil {
-		procOpts.EnvVars = envVars
+	if envVars == nil {
+		envVars = make(map[string]string)
 	}
+	// Inject backend URL so agent-runner connects to the correct port
+	envVars["CHATML_BACKEND_URL"] = fmt.Sprintf("http://localhost:%d", m.backendPort)
+	procOpts.EnvVars = envVars
 
 	// Load workspace MCP server configs from settings
 	mcpJSON, err := m.loadMcpServers(ctx, session.WorkspaceID)

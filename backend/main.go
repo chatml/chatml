@@ -119,7 +119,7 @@ func main() {
 		}
 	}()
 
-	agentMgr := agent.NewManager(ctx, s, wm)
+	agentMgr := agent.NewManager(ctx, s, wm, actualPort)
 
 	// GitHub OAuth client
 	ghConfig := server.LoadGitHubConfig()
