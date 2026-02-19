@@ -1464,10 +1464,6 @@ function SessionRow({
                 {session.branch || session.name}
               </span>
             </div>
-            {/* Unread indicator */}
-            {isSessionUnread && !isSessionSelected && (
-              <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-            )}
             {/* Git line stats badge and actions container */}
             <div className="shrink-0 flex items-center">
               {/* Stats - hidden on hover, replaced by archive action */}
