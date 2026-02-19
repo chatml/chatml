@@ -105,7 +105,6 @@ export function PrimaryActionButton({
     <ActionButton
       action={action}
       isLoading={isLoading}
-      disabled={false}
       onSendMessage={onSendMessage}
       onFixIssues={onFixIssues}
       onArchiveSession={onArchiveSession}

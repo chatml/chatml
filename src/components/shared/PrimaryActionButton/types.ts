@@ -42,7 +42,6 @@ export interface PrimaryAction {
 export interface ActionButtonProps {
   action: PrimaryAction | null;
   isLoading: boolean;
-  disabled: boolean;
   onSendMessage: (content: string) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
