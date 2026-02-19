@@ -737,6 +737,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         plateInputRef.current?.focus();
       }
+      // Alt+M to cycle models
+      if (e.code === 'KeyM' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        setSelectedModel(prev => {
+          const idx = MODELS.findIndex(m => m.id === prev.id);
+          return MODELS[(idx + 1) % MODELS.length];
+        });
+      }
       // Alt+T to cycle thinking levels
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
@@ -1244,7 +1252,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           {/* Model Selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs">
+              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" title={`Model: ${selectedModel.name} (⌥M to cycle)`}>
                 <selectedModel.icon className="h-3.5 w-3.5" />
                 {selectedModel.name}
                 <ChevronDown className="h-3 w-3" />
