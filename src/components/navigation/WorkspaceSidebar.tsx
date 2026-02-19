@@ -1419,13 +1419,13 @@ function SessionRow({
             ) : activityState === 'awaiting_input' ? (
               <div className="w-4 shrink-0 flex items-center justify-center">
                 <div className="session-awaiting-input-indicator">
-                  <MessageCircleQuestion className="w-3.5 h-3.5 text-amber-400" />
+                  <MessageCircleQuestion className="w-3.5 h-3.5 text-purple-500" />
                 </div>
               </div>
             ) : activityState === 'awaiting_approval' ? (
               <div className="w-4 shrink-0 flex items-center justify-center">
                 <div className="session-awaiting-approval-indicator">
-                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-500" />
                 </div>
               </div>
             ) : (
