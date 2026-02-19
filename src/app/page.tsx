@@ -488,7 +488,7 @@ export default function Home() {
   const { saveCurrentTab, saveTab } = useAutoSave({ onError: handleSaveError });
 
   // Watch for external file changes
-  useFileWatcher();
+  useFileWatcher(backendConnected);
   useExternalLinkGuard();
   useDesktopNotifications();
   useFontSize();
