@@ -91,15 +91,11 @@ export function PrimaryActionButton({
     }
   }, [session?.id, session?.prNumber, session?.prStatus, session?.checkStatus, prDetails, updateSession]);
 
-  // Determine if agent is currently working
-  const isAgentWorking = session?.status === 'active';
-
   // Get the action based on current state
   const action = useActionState(
     gitStatus,
     session,
     prDetails,
-    isAgentWorking
   );
 
   // Determine loading state
@@ -109,7 +105,7 @@ export function PrimaryActionButton({
     <ActionButton
       action={action}
       isLoading={isLoading}
-      disabled={isAgentWorking}
+      disabled={false}
       onSendMessage={onSendMessage}
       onFixIssues={onFixIssues}
       onArchiveSession={onArchiveSession}

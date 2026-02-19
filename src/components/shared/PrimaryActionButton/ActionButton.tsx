@@ -46,9 +46,8 @@ export function ActionButton({
   }
 
   const Icon = action.icon;
-  const isDisabled = disabled || action.type === 'disabled';
-  // Show spinner for 'disabled' type (agent working) or when pending action
-  const showSpinner = action.type === 'disabled' || pendingAction;
+  const isDisabled = disabled;
+  const showSpinner = pendingAction;
 
   // Handle click based on action type
   const handleClick = (e: React.MouseEvent) => {

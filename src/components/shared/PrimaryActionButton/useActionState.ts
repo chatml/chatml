@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import {
   AlertTriangle,
   XCircle,
-  RefreshCw,
   GitBranch,
   GitCommit,
   Upload,
@@ -39,25 +38,13 @@ interface Session {
  * 7b. Open PR - "View PR" (success)
  * 8. Clean & ready - "Create PR" (success)
  * 9. PR merged - Hidden (null)
- * 10. Agent working - Disabled state
  */
 export function useActionState(
   gitStatus: GitStatusDTO | null,
   session: Session | null | undefined,
   prDetails: PRDetails | null,
-  isAgentWorking: boolean
 ): PrimaryAction | null {
   return useMemo(() => {
-    // Priority 10: Agent is working - return disabled state
-    if (isAgentWorking) {
-      return {
-        type: 'disabled',
-        label: 'Working...',
-        icon: RefreshCw,
-        variant: 'default',
-      };
-    }
-
     // Priority 9: PR is merged - show archive session button
     // Check both the session store (updated by PRWatcher) and live prDetails
     // (fetched from GitHub) to handle the case where the PR was just merged
@@ -243,5 +230,5 @@ export function useActionState(
 
     // Priority 9: Completely clean state - nothing to do, hide button
     return null;
-  }, [gitStatus, session, prDetails, isAgentWorking]);
+  }, [gitStatus, session, prDetails]);
 }

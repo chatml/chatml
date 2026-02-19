@@ -13,8 +13,7 @@ export type PrimaryActionType =
   | 'update-pr'
   | 'view-pr'
   | 'create-pr'
-  | 'archive-session'
-  | 'disabled';
+  | 'archive-session';
 
 export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info' | 'purple' | 'secondary';
 
