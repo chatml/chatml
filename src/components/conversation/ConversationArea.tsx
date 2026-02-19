@@ -390,6 +390,25 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [clampedMatchIndex, searchQuery, searchMatches.total]);
 
+  // Scroll to the "Propose Plan" (ExitPlanMode) block when plan approval activates
+  const hasScrolledForPlanApprovalRef = useRef(false);
+
+  useEffect(() => {
+    if (selectedStreaming?.pendingPlanApproval) {
+      if (hasScrolledForPlanApprovalRef.current) return;
+      hasScrolledForPlanApprovalRef.current = true;
+
+      requestAnimationFrame(() => {
+        const el = document.querySelector('[data-tool-id="exit-plan-mode"]');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    } else {
+      hasScrolledForPlanApprovalRef.current = false;
+    }
+  }, [selectedStreaming?.pendingPlanApproval]);
+
 // Filter tabs for current session only (strict session isolation)
   // All tabs are now session-scoped - no more workspace-level tabs
   const { visibleTabs, sessionTabs } = useMemo(() => {
