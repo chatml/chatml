@@ -182,6 +182,13 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'Chat',
   },
   {
+    id: 'cycleModel',
+    key: 'm',
+    modifiers: ['alt'],
+    label: 'Cycle model',
+    category: 'Chat',
+  },
+  {
     id: 'togglePlanMode',
     key: 'Tab',
     modifiers: ['shift'],
