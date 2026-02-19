@@ -842,7 +842,7 @@ const SortableTabButton = memo(function SortableTabButton({
   if (!shortcutDisplay) return button;
 
   return (
-    <Tooltip delayDuration={0}>
+    <Tooltip delayDuration={150}>
       <TooltipTrigger asChild>
         {button}
       </TooltipTrigger>
