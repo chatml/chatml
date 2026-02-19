@@ -3,7 +3,7 @@
 import { memo, useState, useMemo, useCallback } from 'react';
 import { File as PierreFile } from '@pierre/diffs/react';
 import type { FileContents, FileOptions } from '@pierre/diffs/react';
-import { useTheme } from 'next-themes';
+import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, Eye, WrapText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -45,8 +45,7 @@ export const PierreEditor = memo(function PierreEditor({
   filename,
   onToggleMarkdownView,
 }: PierreEditorProps) {
-  const { resolvedTheme } = useTheme();
-  const themeType = resolvedTheme === 'dark' ? 'dark' : 'light';
+  const themeType = useResolvedThemeType();
   const [showAll, setShowAll] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
 
