@@ -119,6 +119,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const plateInputRef = useRef<PlateInputHandle>(null);
   const attachmentsRef = useRef<Attachment[]>(attachments);
   attachmentsRef.current = attachments;
+  const messageRef = useRef(message);
+  messageRef.current = message;
+  const currentSessionIdRef = useRef<string | null>(null);
 
   const {
     selectedConversationId,
@@ -143,6 +146,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setDraftInput,
     clearDraftInput,
   } = useAppStore();
+  currentSessionIdRef.current = selectedSessionId;
   // Session-scoped streaming state — prevents cross-session plan/state leakage
   const streaming = useStreamingState(selectedConversationId);
   const hasQueuedMessage = useAppStore(
@@ -187,8 +191,29 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     loadFiles();
   }, [selectedWorkspaceId, selectedSessionId]);
 
-  // Save/restore compose draft per session so switching sessions doesn't lose or leak input
-  const prevSessionIdRef = useRef<string | null>(selectedSessionId);
+  // Save draft on unmount — catches navigation away (contentView changes),
+  // component teardown, and any other unmount scenario not covered by the
+  // session-switch effect below.
+  useEffect(() => {
+    return () => {
+      const sessionId = currentSessionIdRef.current;
+      if (!sessionId) return;
+      const currentText = plateInputRef.current?.getText() ?? messageRef.current ?? '';
+      const currentAttachments = attachmentsRef.current;
+      if (currentText || currentAttachments.length > 0) {
+        useAppStore.getState().setDraftInput(sessionId, {
+          text: currentText,
+          attachments: currentAttachments,
+        });
+      } else {
+        useAppStore.getState().clearDraftInput(sessionId);
+      }
+    };
+  }, []);
+
+  // Save/restore compose draft per session so switching sessions doesn't lose or leak input.
+  // Initialized to null (not selectedSessionId) so the first run restores any persisted draft.
+  const prevSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     const prevId = prevSessionIdRef.current;
     if (prevId === selectedSessionId) return;
