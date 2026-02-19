@@ -5,7 +5,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "ChatML (Dev)"
+        "title": "ChatML",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
