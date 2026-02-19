@@ -230,16 +230,20 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
       updates.hasCheckFailures = hasFailures;
     }
 
-    // Sync hasMergeConflict from git status
-    const hasMergeConflict = gitStatus?.conflicts?.hasConflicts ?? false;
-    if (session.hasMergeConflict !== hasMergeConflict) {
-      updates.hasMergeConflict = hasMergeConflict;
+    // Sync hasMergeConflict from PR mergeable state (GitHub API), not local git status.
+    // prDetails.mergeable === false means GitHub considers the PR to have conflicts.
+    // null means GitHub hasn't computed it yet — don't update in that case.
+    if (prDetails.mergeable !== null) {
+      const hasMergeConflict = !prDetails.mergeable;
+      if (session.hasMergeConflict !== hasMergeConflict) {
+        updates.hasMergeConflict = hasMergeConflict;
+      }
     }
 
     if (Object.keys(updates).length > 0) {
       updateSession(selectedSessionId, updates);
     }
-  }, [selectedSessionId, session, prDetails, checkDetails, gitStatus, updateSession]);
+  }, [selectedSessionId, session, prDetails, checkDetails, updateSession]);
 
   if (!selectedWorkspaceId || !selectedSessionId) {
     return (
@@ -317,6 +321,7 @@ export const ChecksPanel = forwardRef<ChecksPanelHandle, ChecksPanelProps>(funct
               error={gitError}
               errorCode={gitErrorCode}
               onRefresh={refetchGit}
+              hasMergeConflict={session?.hasMergeConflict}
             />
           </div>
         </div>

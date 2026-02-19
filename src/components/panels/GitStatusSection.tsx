@@ -115,7 +115,8 @@ function GitStatusItem({ type, message, action, dropdownActions }: GitStatusItem
 
 function buildStatusItems(
   status: GitStatusDTO,
-  sendMessage: (content: string) => void
+  sendMessage: (content: string) => void,
+  hasMergeConflict?: boolean,
 ): GitStatusItemProps[] {
   const items: GitStatusItemProps[] = [];
 
@@ -127,6 +128,16 @@ function buildStatusItems(
       action: {
         label: 'Resolve',
         onClick: () => sendMessage('Resolve the merge conflicts'),
+      },
+    });
+  } else if (hasMergeConflict) {
+    // PR has conflicts on GitHub but local worktree is clean
+    items.push({
+      type: 'warning',
+      message: 'PR has merge conflicts',
+      action: {
+        label: 'Rebase',
+        onClick: () => sendMessage(`Rebase my branch on ${status.sync.baseBranch}`),
       },
     });
   }
@@ -299,9 +310,10 @@ interface GitStatusSectionProps {
   error: string | null;
   errorCode: string | null;
   onRefresh: () => void;
+  hasMergeConflict?: boolean;
 }
 
-export function GitStatusSection({ onSendMessage, status, loading, error, errorCode, onRefresh }: GitStatusSectionProps) {
+export function GitStatusSection({ onSendMessage, status, loading, error, errorCode, onRefresh, hasMergeConflict }: GitStatusSectionProps) {
   // Wrapper that handles missing callback
   const sendMessage = (content: string) => {
     if (!onSendMessage) {
@@ -352,7 +364,7 @@ export function GitStatusSection({ onSendMessage, status, loading, error, errorC
     );
   }
 
-  const items = buildStatusItems(status, sendMessage);
+  const items = buildStatusItems(status, sendMessage, hasMergeConflict);
 
   return (
     <div>
