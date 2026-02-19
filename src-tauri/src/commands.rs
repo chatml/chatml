@@ -6,7 +6,7 @@ use std::sync::Arc;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use tauri::menu::MenuItemKind;
-use tauri::{Manager, State};
+use tauri::State;
 
 use crate::error::AppResult;
 use crate::sidecar;
