@@ -224,7 +224,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
       worktreePath: '',
       status: 'idle',
       priority: 0,
-      taskStatus: 'backlog',
+      taskStatus: 'in_progress',
       createdAt: now,
       updatedAt: now,
     });
