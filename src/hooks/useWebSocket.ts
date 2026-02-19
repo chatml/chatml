@@ -464,9 +464,10 @@ export function useWebSocket(enabled: boolean = true) {
                          : undefined,
           },
         });
-        // Update context meter from reliable result data.
-        // This ensures the meter is always updated at the end of each turn, even if
-        // the per-message context_usage events were unreliable during streaming.
+        // Update context meter from the result's cumulative usage data.
+        // The result usage is cumulative across all API calls in the turn, which is
+        // the correct value for the context meter. Per-message context_usage events
+        // provide live updates during streaming; this ensures accuracy at turn end.
         const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
         if (resultModelUsage) {
           for (const key of Object.keys(resultModelUsage)) {

@@ -2125,12 +2125,19 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	if req.Archived != nil && *req.Archived {
 		hasMessages, msgErr := h.store.SessionHasMessages(ctx, id)
 		if msgErr == nil && !hasMessages {
-			// Blank session — delete instead of archiving
-			if req.DeleteBranch != nil && *req.DeleteBranch && session.Branch != "" {
+			// Blank session — delete instead of archiving.
+			// Always clean up worktree and branch since the session had no activity.
+			if session.Branch != "" {
 				repo, repoErr := h.store.GetRepo(ctx, session.WorkspaceID)
 				if repoErr == nil && repo != nil {
-					if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
-						logger.Error.Errorf("Failed to delete branch %q for blank session: %v", session.Branch, delErr)
+					if session.WorktreePath != "" {
+						if delErr := h.worktreeManager.RemoveAtPath(context.Background(), repo.Path, session.WorktreePath, session.Branch); delErr != nil {
+							logger.Error.Errorf("Failed to remove worktree/branch for blank session %s: %v", id, delErr)
+						}
+					} else {
+						if delErr := h.repoManager.DeleteLocalBranch(ctx, repo.Path, session.Branch); delErr != nil {
+							logger.Error.Errorf("Failed to delete branch %q for blank session: %v", session.Branch, delErr)
+						}
 					}
 				}
 			}
@@ -4736,6 +4743,10 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 		sess.PRUrl = prResult.HTMLURL
 		sess.PRTitle = req.Title
 		sess.UpdatedAt = now
+		// Auto-update taskStatus: in_progress → in_review
+		if sess.TaskStatus == models.TaskStatusInProgress {
+			sess.TaskStatus = models.TaskStatusInReview
+		}
 	}); err != nil {
 		// PR was created but we failed to update local state - log but don't fail
 		logger.Handlers.Errorf("Failed to update session %s after PR creation: %v", sessionID, err)
@@ -4747,17 +4758,21 @@ func (h *Handlers) CreatePR(w http.ResponseWriter, r *http.Request) {
 		h.prWatcher.WatchSession(sessionID, session.WorkspaceID, session.Branch, repoPath, models.PRStatusOpen, prResult.Number, prResult.HTMLURL)
 	}
 
-	// Broadcast WebSocket event
+	// Broadcast WebSocket event (read back session to include updated taskStatus)
+	broadcastPayload := map[string]interface{}{
+		"sessionId": sessionID,
+		"prStatus":  models.PRStatusOpen,
+		"prNumber":  prResult.Number,
+		"prUrl":     prResult.HTMLURL,
+		"prTitle":   req.Title,
+	}
+	if updatedSess, err := h.store.GetSession(ctx, sessionID); err == nil && updatedSess != nil {
+		broadcastPayload["taskStatus"] = updatedSess.TaskStatus
+	}
 	h.hub.Broadcast(Event{
 		Type:      "session_pr_update",
 		SessionID: sessionID,
-		Payload: map[string]interface{}{
-			"sessionId": sessionID,
-			"prStatus":  models.PRStatusOpen,
-			"prNumber":  prResult.Number,
-			"prUrl":     prResult.HTMLURL,
-			"prTitle":   req.Title,
-		},
+		Payload:   broadcastPayload,
 	})
 
 	writeJSON(w, CreatePRResponse{

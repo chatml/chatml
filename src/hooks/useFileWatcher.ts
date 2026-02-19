@@ -27,12 +27,13 @@ import { useToast } from '@/components/ui/toast';
  * Other hooks (useGitStatus, ChangesPanel) subscribe to `lastFileChange` in the
  * store instead of registering their own Tauri listeners.
  */
-export function useFileWatcher() {
+export function useFileWatcher(enabled: boolean = true) {
   const setLastFileChange = useAppStore((s) => s.setLastFileChange);
   const { error: showError } = useToast();
 
-  // Track whether we've started the global watcher
-  const watcherStartedRef = useRef(false);
+  // Track watcher lifecycle: idle → starting → started
+  const watcherStateRef = useRef<'idle' | 'starting' | 'started'>('idle');
+  const prevEnabledRef = useRef(enabled);
 
   // Handle file change events — check open tabs for conflicts/reloads.
   // Reads fileTabs from the store directly to always get the latest state,
@@ -76,24 +77,33 @@ export function useFileWatcher() {
     }
   }, []);
 
-  // Start global watcher once on mount
+  // Start global watcher once on mount (only when enabled/backend is connected)
   useEffect(() => {
+    if (!enabled) return;
+
     let isMounted = true;
 
     async function initWatcher() {
-      if (watcherStartedRef.current) return;
+      if (watcherStateRef.current !== 'idle') return;
+      watcherStateRef.current = 'starting';
 
       try {
         const basePath = await getWorkspacesBasePath();
-        if (!isMounted) return;
+        if (!isMounted) {
+          watcherStateRef.current = 'idle';
+          return;
+        }
 
         // createIfNeeded=true: the default path may not exist yet on first launch
         const started = await startFileWatcher(basePath, true);
         if (started && isMounted) {
-          watcherStartedRef.current = true;
+          watcherStateRef.current = 'started';
           console.log('Global file watcher started on:', basePath);
+        } else {
+          watcherStateRef.current = 'idle';
         }
       } catch (err) {
+        watcherStateRef.current = 'idle';
         console.error('Failed to start global file watcher:', err);
       }
     }
@@ -102,17 +112,17 @@ export function useFileWatcher() {
 
     return () => {
       isMounted = false;
-      if (watcherStartedRef.current) {
+      if (watcherStateRef.current === 'started') {
         stopFileWatcher();
-        watcherStartedRef.current = false;
       }
+      watcherStateRef.current = 'idle';
     };
-  // Empty deps: the watcher lifecycle is app-scoped (start once on mount, stop on unmount).
-  // We intentionally don't re-run when basePath could change — SettingsPage handles that separately.
-  }, []);
+  }, [enabled]);
 
   // Register single Tauri event listener → store + tab conflict handling
   useEffect(() => {
+    if (!enabled) return;
+
     const cleanupRef = { current: null as (() => void) | null };
     let isMounted = true;
 
@@ -144,5 +154,33 @@ export function useFileWatcher() {
         // Ignore errors if listener cleanup fails
       }
     };
-  }, [handleFileChange, setLastFileChange, showError]);
+  }, [enabled, handleFileChange, setLastFileChange, showError]);
+
+  // Reload non-dirty open tabs when backend reconnects, since file changes
+  // during the disconnection window are not captured by the watcher.
+  useEffect(() => {
+    const wasDisabled = !prevEnabledRef.current;
+    prevEnabledRef.current = enabled;
+
+    if (!enabled || !wasDisabled) return;
+
+    const { fileTabs, updateFileTab } = useAppStore.getState();
+    for (const tab of fileTabs) {
+      if (tab.isDirty) continue;
+      getRepoFileContent(tab.workspaceId, tab.path)
+        .then((response) => {
+          if (response.content !== tab.content) {
+            updateFileTab(tab.id, {
+              content: response.content,
+              originalContent: response.content,
+              isLoading: false,
+            });
+            console.log(`File refreshed after reconnect: ${tab.name}`);
+          }
+        })
+        .catch((err) => {
+          console.error(`Failed to refresh ${tab.name} after reconnect:`, err);
+        });
+    }
+  }, [enabled]);
 }

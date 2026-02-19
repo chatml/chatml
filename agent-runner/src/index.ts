@@ -2110,9 +2110,11 @@ function handleMessage(message: SDKMessage): void {
         }
       }
 
-      // Emit reliable context_usage from the result's cumulative usage.
-      // The SDK's per-assistant-message usage may not be populated correctly
-      // during streaming, but the result's usage is always reliable.
+      // Emit final context_usage from the result's cumulative usage.
+      // This is cumulative across all API calls in the turn, which is the correct
+      // value for the context meter (total tokens in the context window).
+      // Per-assistant-message events provide live updates during streaming; this
+      // final emission ensures the meter is accurate when the turn completes.
       const resultUsage = resultMsg.usage as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined;
       debug(`[context_usage] result usage: ${JSON.stringify(resultUsage)}`);
       debug(`[context_usage] result modelUsage: ${JSON.stringify(resultMsg.modelUsage)}`);
