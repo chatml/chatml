@@ -1396,13 +1396,22 @@ function SessionRow({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            'group flex flex-col px-2 py-2 rounded-md cursor-pointer my-0.5',
+            'group flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
+            isSessionUnread && !isSessionSelected ? 'pl-1 pr-2' : 'px-2',
             isSessionSelected
               ? 'bg-surface-2 hover:bg-surface-3'
               : 'hover:bg-surface-1'
           )}
           onClick={(e) => onSelectSession(session.id, e)}
         >
+          {/* Unread indicator on the left edge */}
+          {isSessionUnread && !isSessionSelected && (
+            <div className="w-2 shrink-0 flex items-center justify-center mr-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+            </div>
+          )}
+          {/* Content column */}
+          <div className="flex flex-col flex-1 min-w-0">
           {/* First line: status icon + branch name + stats/actions */}
           <div className="flex items-center gap-1">
             {/* Task status / active indicator */}
@@ -1462,10 +1471,6 @@ function SessionRow({
                 {session.branch || session.name}
               </span>
             </div>
-            {/* Unread indicator */}
-            {isSessionUnread && !isSessionSelected && (
-              <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-            )}
             {/* Git line stats badge and actions container */}
             <div className="shrink-0 flex items-center">
               {/* Stats - hidden on hover, replaced by archive action */}
@@ -1531,6 +1536,7 @@ function SessionRow({
                   <span className="shrink-0">{formatTimeAgo(session.updatedAt)}</span>
                 </>
               )}
+          </div>
           </div>
         </div>
       </ContextMenuTrigger>
