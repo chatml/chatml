@@ -464,9 +464,7 @@ export function useWebSocket(enabled: boolean = true) {
                          : undefined,
           },
         });
-        // Update context meter from reliable result data.
-        // This ensures the meter is always updated at the end of each turn, even if
-        // the per-message context_usage events were unreliable during streaming.
+        // Extract context window size from the result's modelUsage.
         const resultModelUsage = event.modelUsage as Record<string, { contextWindow?: number }> | undefined;
         if (resultModelUsage) {
           for (const key of Object.keys(resultModelUsage)) {
@@ -478,15 +476,9 @@ export function useWebSocket(enabled: boolean = true) {
             }
           }
         }
-        const resultUsage = normalizeUsage(event.usage);
-        if (resultUsage && resultUsage.inputTokens > 0) {
-          freshStore.setContextUsage(conversationId, {
-            inputTokens: resultUsage.inputTokens,
-            outputTokens: resultUsage.outputTokens,
-            cacheReadInputTokens: resultUsage.cacheReadInputTokens ?? 0,
-            cacheCreationInputTokens: resultUsage.cacheCreationInputTokens ?? 0,
-          });
-        }
+        // NOTE: event.usage is cumulative across all API calls in the agentic loop,
+        // so we do NOT update context usage from it — it would overwrite the correct
+        // per-call data from context_usage events emitted per assistant message.
         // Update conversation status to completed
         freshStore.updateConversation(conversationId, { status: 'completed' });
         // Clear agent todos — tasks are no longer relevant after turn ends
