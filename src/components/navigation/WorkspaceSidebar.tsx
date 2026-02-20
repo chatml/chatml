@@ -1623,7 +1623,7 @@ function StatusGroupSection({
           {group.statusValue && (
             <TaskStatusIcon status={group.statusValue} className="w-3.5 h-3.5 shrink-0" />
           )}
-          <span className="text-sm font-medium text-muted-foreground">{group.label}</span>
+          <span className="text-sm font-semibold text-muted-foreground">{group.label}</span>
           <ChevronDown className={cn(
             'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 shrink-0',
             !isExpanded && '-rotate-90'
@@ -1866,7 +1866,7 @@ function SortableProjectStatusItem({
                           {subGroup.statusValue && (
                             <TaskStatusIcon status={subGroup.statusValue} className="w-3 h-3 shrink-0" />
                           )}
-                          <span className="text-xs font-medium text-muted-foreground">{subGroup.label}</span>
+                          <span className="text-xs font-semibold text-muted-foreground">{subGroup.label}</span>
                           <ChevronDown className={cn(
                             'h-3 w-3 text-muted-foreground transition-transform duration-200 shrink-0',
                             !isSubGroupExpanded(subGroup.key, subGroup.defaultCollapsed) && '-rotate-90'
