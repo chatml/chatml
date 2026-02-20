@@ -1384,36 +1384,45 @@ updateFileTabContent: (id, content) => set((state) => ({
     }),
   })),
   addActiveTool: (conversationId, tool, opts) => {
-    // Set up timeout to force-complete orphaned tools (skip for synthetic entries that will be completed immediately)
-    if (!opts?.skipTimeout) {
-      const timeoutKey = `${conversationId}:${tool.id}`;
-      const existing = toolTimeouts.get(timeoutKey);
-      if (existing) clearTimeout(existing);
+    return set((state) => {
+      const existing = state.activeTools[conversationId] || [];
+      // Dedup: skip if a tool with this id is already tracked (snapshot + live event race)
+      if (existing.some(t => t.id === tool.id)) {
+        return {};
+      }
 
-      const timeout = setTimeout(() => {
-        toolTimeouts.delete(timeoutKey);
-        const current = useAppStore.getState().activeTools[conversationId] || [];
-        const stillActive = current.find(t => t.id === tool.id && !t.endTime);
-        if (stillActive) {
-          console.warn(`[Store] Tool timeout: ${tool.tool} (${tool.id}) - forcing completion after ${TOOL_TIMEOUT_MS}ms`);
-          useAppStore.getState().completeActiveTool(
-            conversationId, tool.id, false, 'Tool timed out', undefined, undefined
-          );
-        }
-      }, TOOL_TIMEOUT_MS);
-      toolTimeouts.set(timeoutKey, timeout);
-    }
+      // Set up timeout to force-complete orphaned tools (skip for synthetic entries that will be completed immediately).
+      // Registered after dedup check so a duplicate call doesn't orphan the original tool's timeout.
+      if (!opts?.skipTimeout) {
+        const timeoutKey = `${conversationId}:${tool.id}`;
+        const existingTimeout = toolTimeouts.get(timeoutKey);
+        if (existingTimeout) clearTimeout(existingTimeout);
 
-    return set((state) => ({
-      activeTools: {
-        ...state.activeTools,
-        [conversationId]: [...(state.activeTools[conversationId] || []), tool],
-      },
-      // Seal current text segment so next text creates a new segment after this tool
-      streamingState: updateStreamingConv(state.streamingState, conversationId, {
-        currentSegmentId: null,
-      }),
-    }));
+        const timeout = setTimeout(() => {
+          toolTimeouts.delete(timeoutKey);
+          const current = useAppStore.getState().activeTools[conversationId] || [];
+          const stillActive = current.find(t => t.id === tool.id && !t.endTime);
+          if (stillActive) {
+            console.warn(`[Store] Tool timeout: ${tool.tool} (${tool.id}) - forcing completion after ${TOOL_TIMEOUT_MS}ms`);
+            useAppStore.getState().completeActiveTool(
+              conversationId, tool.id, false, 'Tool timed out', undefined, undefined
+            );
+          }
+        }, TOOL_TIMEOUT_MS);
+        toolTimeouts.set(timeoutKey, timeout);
+      }
+
+      return {
+        activeTools: {
+          ...state.activeTools,
+          [conversationId]: [...existing, tool],
+        },
+        // Seal current text segment so next text creates a new segment after this tool
+        streamingState: updateStreamingConv(state.streamingState, conversationId, {
+          currentSegmentId: null,
+        }),
+      };
+    });
   },
   completeActiveTool: (conversationId, toolId, success, summary, stdout, stderr, metadata) => {
     // Clear the timeout for this tool
@@ -1470,12 +1479,19 @@ updateFileTabContent: (id, content) => set((state) => ({
   },
 
   // Sub-agent actions
-  addSubAgent: (conversationId, agent) => set((state) => ({
-    subAgents: {
-      ...state.subAgents,
-      [conversationId]: [...(state.subAgents[conversationId] || []), agent],
-    },
-  })),
+  addSubAgent: (conversationId, agent) => set((state) => {
+    const existing = state.subAgents[conversationId] || [];
+    // Dedup: skip if a sub-agent with this id is already tracked (snapshot + live event race)
+    if (existing.some(a => a.agentId === agent.agentId)) {
+      return {};
+    }
+    return {
+      subAgents: {
+        ...state.subAgents,
+        [conversationId]: [...existing, agent],
+      },
+    };
+  }),
   completeSubAgent: (conversationId, agentId) => set((state) => ({
     subAgents: {
       ...state.subAgents,
@@ -1484,14 +1500,26 @@ updateFileTabContent: (id, content) => set((state) => ({
       ),
     },
   })),
-  addSubAgentTool: (conversationId, agentId, tool) => set((state) => ({
-    subAgents: {
-      ...state.subAgents,
-      [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
-        a.agentId === agentId ? { ...a, tools: [...a.tools, tool] } : a
-      ),
-    },
-  })),
+  addSubAgentTool: (conversationId, agentId, tool) => set((state) => {
+    const agents = state.subAgents[conversationId] || [];
+    const agent = agents.find(a => a.agentId === agentId);
+    if (!agent) {
+      console.warn(`[Store] addSubAgentTool: sub-agent ${agentId} not found for conversation ${conversationId}, dropping tool ${tool.id}`);
+      return {};
+    }
+    // Dedup: skip if tool already exists in sub-agent's tool list (snapshot + live event race)
+    if (agent.tools.some(t => t.id === tool.id)) {
+      return {};
+    }
+    return {
+      subAgents: {
+        ...state.subAgents,
+        [conversationId]: agents.map((a) =>
+          a.agentId === agentId ? { ...a, tools: [...a.tools, tool] } : a
+        ),
+      },
+    };
+  }),
   completeSubAgentTool: (conversationId, agentId, toolId, success, summary, stdout, stderr) => set((state) => ({
     subAgents: {
       ...state.subAgents,
