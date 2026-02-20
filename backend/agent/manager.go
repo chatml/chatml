@@ -74,6 +74,7 @@ type Manager struct {
 	processes       map[string]*Process // keyed by agentID (legacy)
 	convProcesses   map[string]*Process // keyed by conversationID
 	mu              sync.RWMutex
+	autoNameMu      sync.Mutex // serializes AutoNamed claim to prevent duplicate title generation
 
 	// Legacy handlers
 	onOutput OutputHandler
@@ -367,8 +368,10 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 			return conv, fmt.Errorf("failed to send initial message: %w", err)
 		}
 
-		// Generate session title from the user's first message
-		if !session.AutoNamed {
+		// Generate session title from the user's first message.
+		// claimAutoName atomically checks+sets AutoNamed to prevent concurrent
+		// conversations (e.g. review chats) from also triggering a rename.
+		if m.claimAutoName(ctx, sessionID) {
 			go m.generateAndApplySessionTitle(sessionID, convID, initialMessage)
 		}
 	}
@@ -1327,8 +1330,10 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 			restartOpts.PlanMode = *planMode
 		}
 
-		// Check if we should generate a title for this session
-		if !session.AutoNamed && message != "" {
+		// Check if we should generate a title for this session.
+		// claimAutoName atomically checks+sets AutoNamed to prevent concurrent
+		// conversations (e.g. review chats) from also triggering a rename.
+		if message != "" && m.claimAutoName(ctx, conv.SessionID) {
 			shouldGenerateTitle = true
 			titleSessionID = conv.SessionID
 			logger.Manager.Infof("Will generate title for session %s (conv %s)", conv.SessionID, convID)
@@ -1680,6 +1685,7 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	client := m.newAIClient()
 	if client == nil {
 		logger.Manager.Warnf("Skipping session title generation for %s: no API key configured", sessionID)
+		m.resetAutoNamed(sessionID)
 		return
 	}
 
@@ -1689,11 +1695,13 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	title, err := client.GenerateSessionTitle(ctx, userMessage)
 	if err != nil {
 		logger.Manager.Warnf("Failed to generate session title for session %s: %v", sessionID, err)
+		m.resetAutoNamed(sessionID)
 		return
 	}
 
 	if title == "" {
 		logger.Manager.Warnf("Empty title returned for session %s", sessionID)
+		m.resetAutoNamed(sessionID)
 		return
 	}
 
@@ -1705,6 +1713,7 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 		c.UpdatedAt = time.Now()
 	}); err != nil {
 		logger.Manager.Errorf("Failed to update conversation name for %s: %v", convID, err)
+		m.resetAutoNamed(sessionID)
 		return
 	}
 
@@ -2037,6 +2046,39 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 			"name":   formattedName,
 			"branch": newBranchName,
 		})
+	}
+}
+
+// claimAutoName atomically checks and sets AutoNamed=true for a session.
+// Returns true if the caller won the claim (and should generate the title).
+// Uses a mutex + DB write to close the TOCTOU race between concurrent conversations.
+func (m *Manager) claimAutoName(ctx context.Context, sessionID string) bool {
+	m.autoNameMu.Lock()
+	defer m.autoNameMu.Unlock()
+
+	sess, err := m.store.GetSession(ctx, sessionID)
+	if err != nil || sess == nil || sess.AutoNamed {
+		return false
+	}
+
+	if err := m.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+		s.AutoNamed = true
+	}); err != nil {
+		logger.Manager.Errorf("Failed to claim AutoNamed for session %s: %v", sessionID, err)
+		return false
+	}
+	return true
+}
+
+// resetAutoNamed clears the AutoNamed flag so a future conversation can retry title generation.
+// Called when generateAndApplySessionTitle fails (no API key, API error, empty title).
+func (m *Manager) resetAutoNamed(sessionID string) {
+	ctx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
+	defer cancel()
+	if err := m.store.UpdateSession(ctx, sessionID, func(s *models.Session) {
+		s.AutoNamed = false
+	}); err != nil {
+		logger.Manager.Errorf("Failed to reset AutoNamed for session %s: %v", sessionID, err)
 	}
 }
 
