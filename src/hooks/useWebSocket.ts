@@ -19,6 +19,38 @@ import { useSlashCommandStore } from '@/stores/slashCommandStore';
 import { notifyDesktop, getConversationLabel } from '@/hooks/useDesktopNotifications';
 import { playSound } from '@/lib/sounds';
 
+// Ref-counted map of conversations currently being reconciled from a streaming snapshot.
+// Content events for these conversations are dropped to prevent the snapshot + live event
+// race condition that causes duplicate tools and text.
+// Uses a counter (not a Set) so concurrent reconnects don't prematurely clear the flag
+// when the first reconciliation finishes while the second is still in-flight.
+const reconcilingConversations = new Map<string, number>();
+
+function startReconciling(convId: string) {
+  reconcilingConversations.set(convId, (reconcilingConversations.get(convId) ?? 0) + 1);
+}
+
+function stopReconciling(convId: string) {
+  const count = (reconcilingConversations.get(convId) ?? 1) - 1;
+  if (count <= 0) {
+    reconcilingConversations.delete(convId);
+  } else {
+    reconcilingConversations.set(convId, count);
+  }
+}
+
+function isReconciling(convId: string): boolean {
+  return (reconcilingConversations.get(convId) ?? 0) > 0;
+}
+
+// Content event types that should be suppressed during reconciliation.
+// Lifecycle events (result, turn_complete, complete, conversation_status) are NOT suppressed.
+const RECONCILIATION_SUPPRESSED_EVENTS = new Set([
+  'assistant_text', 'tool_start', 'tool_end', 'thinking_start', 'thinking_delta',
+  'thinking', 'subagent_started', 'subagent_stopped', 'subagent_output',
+  'ghost_text', 'todo_update', 'tool_progress',
+]);
+
 // Conversations that recently exited plan mode. Maps conversationId → exit timestamp.
 // Used to suppress stale SDK status messages that try to re-activate plan mode after
 // ExitPlanMode approval (SDK bug #15755). A timestamp-based cooldown ensures multiple
@@ -207,6 +239,14 @@ export function useWebSocket(enabled: boolean = true) {
   const handleConversationEvent = useCallback((data: WSEvent) => {
     const conversationId = data.conversationId;
     if (!conversationId) return;
+
+    // Drop content events for conversations being reconciled from a snapshot.
+    // This prevents the race where live events overlap with snapshot data, causing
+    // duplicate tools and text. Lifecycle events are always processed.
+    if (isReconciling(conversationId) && RECONCILIATION_SUPPRESSED_EVENTS.has(data.type)) {
+      return;
+    }
+
     const store = getStore();
 
     // Handle conversation_status separately - it uses a string payload
@@ -1027,10 +1067,8 @@ export function useWebSocket(enabled: boolean = true) {
           }
         } else {
           // Agent still active — restore streaming view from snapshot.
-          // Note: the snapshot may be up to 500ms stale (debounce interval). Text
-          // emitted between the last flush and the disconnect is lost. New WebSocket
-          // events after reconnect append from where the backend left off, so there's
-          // no duplication — just a small gap.
+          // Suppress live content events during snapshot fetch to prevent duplicates.
+          startReconciling(convId);
           try {
             const snapshot = await getStreamingSnapshot(convId);
             if (snapshot && snapshot.text) {
@@ -1048,6 +1086,8 @@ export function useWebSocket(enabled: boolean = true) {
             }
           } catch (err) {
             console.warn(`Failed to fetch streaming snapshot for ${convId}:`, err);
+          } finally {
+            stopReconciling(convId);
           }
         }
       }
@@ -1091,7 +1131,9 @@ export function useWebSocket(enabled: boolean = true) {
         // Restore conversation status (was reset to 'idle' during load)
         store.updateConversation(convId, { status: 'active' });
 
-        // Try to restore streaming content from snapshot
+        // Try to restore streaming content from snapshot.
+        // Suppress live content events during fetch to prevent duplicates.
+        startReconciling(convId);
         try {
           const snapshot = await getStreamingSnapshot(convId);
           if (snapshot && snapshot.text) {
@@ -1103,6 +1145,8 @@ export function useWebSocket(enabled: boolean = true) {
         } catch (err) {
           console.warn(`Failed to fetch initial streaming snapshot for ${convId}:`, err);
           store.setStreaming(convId, true);
+        } finally {
+          stopReconciling(convId);
         }
       }
     } catch (err) {

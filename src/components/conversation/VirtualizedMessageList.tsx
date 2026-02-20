@@ -170,6 +170,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
         data={messages}
         firstItemIndex={firstItemIndex ?? INITIAL_FIRST_ITEM_INDEX}
         initialTopMostItemIndex={resolvedInitialIndex}
+        computeItemKey={(index, message) => message.id}
         itemContent={itemContent}
         followOutput={followOutput}
         alignToBottom
