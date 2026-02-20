@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { PanelLeft, PanelRight, PanelBottom, Plus } from 'lucide-react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useUIStore, type ToolbarSlots } from '@/stores/uiStore';
 import { useTabStore } from '@/stores/tabStore';
@@ -104,18 +104,22 @@ export function MainToolbar({
   onOpenShortcuts,
 }: MainToolbarProps) {
   const toolbarConfig = useUIStore((s) => s.toolbarConfig);
-  const setTabTitle = useUIStore((s) => s.setTabTitle);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const tabCount = useTabStore((s) => s.tabOrder.length);
   const hasMultipleTabs = ENABLE_BROWSER_TABS && tabCount > 1;
 
-  // Cache the active tab's rich toolbar title whenever it changes
+  // Cache the active tab's rich toolbar title whenever toolbarConfig changes.
+  // Use a ref to track the title and only update the store when the config
+  // reference actually changes (driven by the caller's useMemo), avoiding
+  // cascading store updates from ReactNode reference instability.
   const toolbarTitle = toolbarConfig?.title;
+  const prevTitleRef = useRef<ReactNode>(null);
   useEffect(() => {
-    if (ENABLE_BROWSER_TABS && toolbarTitle && activeTabId) {
-      setTabTitle(activeTabId, toolbarTitle);
+    if (ENABLE_BROWSER_TABS && toolbarTitle && activeTabId && prevTitleRef.current !== toolbarTitle) {
+      prevTitleRef.current = toolbarTitle;
+      useUIStore.getState().setTabTitle(activeTabId, toolbarTitle);
     }
-  }, [toolbarTitle, activeTabId, setTabTitle]);
+  }, [toolbarTitle, activeTabId]);
 
   return (
     <div className="shrink-0">

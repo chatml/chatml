@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -77,8 +77,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [addToast]
   );
 
+  // Memoize the context value so consumers that only use the action functions
+  // (error, success, etc.) don't re-render when the toasts array changes.
+  const contextValue = useMemo(
+    () => ({ toasts, addToast, removeToast, error, success, info, warning }),
+    [toasts, addToast, removeToast, error, success, info, warning]
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast, error, success, info, warning }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       <Toaster />
     </ToastContext.Provider>
