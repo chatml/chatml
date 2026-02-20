@@ -611,6 +611,7 @@ export function ChangesPanel() {
         selectedTab={selectedTab}
         setSelectedTab={handleTabSelect}
         changesCount={branchStats?.totalFiles || changes?.length || 0}
+        reviewCount={unresolvedCount}
         menuContext={menuContext}
       />
 
@@ -975,11 +976,13 @@ function TopPanelTabs({
   selectedTab,
   setSelectedTab,
   changesCount,
+  reviewCount,
   menuContext,
 }: {
   selectedTab: string;
   setSelectedTab: (tab: string) => void;
   changesCount: number;
+  reviewCount: number;
   menuContext: TopPanelMenuContext;
 }) {
   const topTabOrder = useSettingsStore((s) => s.topTabOrder);
@@ -1033,7 +1036,11 @@ function TopPanelTabs({
                   label={TOP_TABS_CONFIG[tabId].label}
                   isActive={selectedTab === tabId}
                   onClick={() => setSelectedTab(tabId)}
-                  badge={tabId === 'changes' && changesCount > 0 ? changesCount : undefined}
+                  badge={
+                    tabId === 'changes' && changesCount > 0 ? changesCount
+                    : tabId === 'review' && reviewCount > 0 ? reviewCount
+                    : undefined
+                  }
                   shortcutId={TOP_TABS_CONFIG[tabId].shortcutId}
                 />
               ))}
