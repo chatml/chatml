@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -235,6 +236,29 @@ func setupTestHandlersWithAIClient(t *testing.T, aiServerURL string) (*Handlers,
 	})
 
 	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, nil, prCache, nil, nil, aiClient, nil)
+
+	return handlers, sqliteStore
+}
+
+// setupTestHandlersWithGitHub creates handlers with a mock GitHub client for testing
+func setupTestHandlersWithGitHub(t *testing.T, ghServer *httptest.Server) (*Handlers, *store.SQLiteStore) {
+	t.Helper()
+
+	sqliteStore, err := store.NewSQLiteStoreInMemory()
+	require.NoError(t, err)
+
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+
+	ghClient := github.NewClient("", "")
+	ghClient.SetAPIURL(ghServer.URL)
+	ghClient.SetToken("test_token")
+
+	t.Cleanup(func() {
+		sqliteStore.Close()
+		prCache.Close()
+	})
+
+	handlers := NewHandlers(sqliteStore, nil, DirListingCacheConfig{TTL: 30 * time.Second}, nil, nil, nil, ghClient, prCache, nil, nil, nil, nil)
 
 	return handlers, sqliteStore
 }
