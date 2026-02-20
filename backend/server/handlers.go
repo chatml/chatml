@@ -1289,8 +1289,9 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 	// Get current branch
 	currentBranch, _ := h.repoManager.GetCurrentBranch(ctx, repo.Path)
 
-	// Get all non-archived sessions for this workspace to build branch -> session lookup
-	sessions, err := h.store.ListSessions(ctx, workspaceID, false)
+	// Get all sessions (including archived) to build branch -> session lookup.
+	// Archived sessions may still have PR data for branches that exist in git.
+	sessions, err := h.store.ListSessions(ctx, workspaceID, true)
 	if err != nil {
 		writeDBError(w, err)
 		return
@@ -1330,6 +1331,11 @@ func (h *Handlers) ListBranches(w http.ResponseWriter, r *http.Request) {
 			bws.SessionID = sess.ID
 			bws.SessionName = sess.Name
 			bws.SessionStatus = sess.Status
+			bws.PRNumber = sess.PRNumber
+			bws.PRStatus = sess.PRStatus
+			bws.PRUrl = sess.PRUrl
+			bws.CheckStatus = sess.CheckStatus
+			bws.HasMergeConflict = sess.HasMergeConflict
 			sessionBranches = append(sessionBranches, bws)
 		} else {
 			otherBranches = append(otherBranches, bws)
@@ -5295,6 +5301,13 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			ghPRs = cacheEntry.PRs
 			prDetailsMap = cacheEntry.Details
 
+			// If details are missing (previous fetch failed), trigger background refresh
+			if len(prDetailsMap) == 0 && len(ghPRs) > 0 {
+				if h.prCache.TryStartRefresh(owner, repoName) {
+					go h.refreshPRCache(owner, repoName)
+				}
+			}
+
 		case github.CacheStale:
 			// Serve stale data immediately, trigger background refresh
 			ghPRs = cacheEntry.PRs
@@ -5319,8 +5332,11 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			}
 			prDetailsMap, _ = h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
 
-			// Store combined result in cache (including ETag for future conditional requests)
-			h.prCache.SetFull(owner, repoName, ghPRs, prDetailsMap, result.ETag)
+			// Only cache if we got details; otherwise cache the PR list without details
+			// so the next request retries the detail fetch instead of serving empty details
+			if prDetailsMap != nil && len(prDetailsMap) > 0 {
+				h.prCache.SetFull(owner, repoName, ghPRs, prDetailsMap, result.ETag)
+			}
 		}
 
 		// List sessions to match PRs with sessions by branch
@@ -5428,7 +5444,19 @@ func (h *Handlers) refreshPRCache(owner, repoName string) {
 	result, err := h.ghClient.ListOpenPRsWithETag(ctx, owner, repoName, etag)
 
 	if errors.Is(err, github.ErrNotModified) {
-		// Data unchanged -- atomically refresh the TTL on the existing entry
+		// Data unchanged -- but if details are missing, fetch them before bumping TTL
+		entry, _ := h.prCache.GetWithStale(owner, repoName)
+		if entry != nil && len(entry.Details) == 0 && len(entry.PRs) > 0 {
+			logger.Handlers.Debugf("Background PR refresh for %s/%s: ETag hit but details missing, fetching details", owner, repoName)
+			prNumbers := make([]int, len(entry.PRs))
+			for i, pr := range entry.PRs {
+				prNumbers[i] = pr.Number
+			}
+			detailsMap, _ := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+			if detailsMap != nil && len(detailsMap) > 0 {
+				h.prCache.SetDetails(owner, repoName, detailsMap)
+			}
+		}
 		h.prCache.BumpTTL(owner, repoName)
 		logger.Handlers.Debugf("Background PR refresh for %s/%s: not modified (ETag hit)", owner, repoName)
 		return
@@ -5443,12 +5471,15 @@ func (h *Handlers) refreshPRCache(owner, repoName string) {
 	for i, pr := range result.PRs {
 		prNumbers[i] = pr.Number
 	}
-	prDetailsMap, _ := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+	prDetailsMap, failedPRs := h.ghClient.GetPRDetailsBatch(ctx, owner, repoName, prNumbers, 5)
+	if len(failedPRs) > 0 {
+		logger.Handlers.Warnf("Background PR refresh for %s/%s: failed to fetch details for PRs %v", owner, repoName, failedPRs)
+	}
 
 	// Update the unified cache with new ETag
 	h.prCache.SetFull(owner, repoName, result.PRs, prDetailsMap, result.ETag)
 
-	logger.Handlers.Debugf("Background PR refresh complete for %s/%s: %d PRs", owner, repoName, len(result.PRs))
+	logger.Handlers.Debugf("Background PR refresh complete for %s/%s: %d PRs, %d details", owner, repoName, len(result.PRs), len(prDetailsMap))
 }
 
 // ============================================================================

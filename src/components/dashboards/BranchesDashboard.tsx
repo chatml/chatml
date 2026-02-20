@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 
 interface BranchesDashboardProps {
   workspaceId: string;
@@ -59,28 +60,9 @@ function formatTimeAgo(dateStr: string): string {
   return `${diffMonths}mo ago`;
 }
 
-// Branch icon cell component
-function BranchIconCell({ branch, currentBranch }: { branch: BranchDTO; currentBranch: string }) {
-  const isCurrentBranch = branch.name === currentBranch;
-  const hasSession = !!branch.sessionId;
-  const isRemote = branch.isRemote;
-
-  return (
-    <div className="flex items-center justify-center">
-      <GitBranch
-        className={cn(
-          'h-4 w-4',
-          hasSession ? 'text-purple-400' : isCurrentBranch ? 'text-green-400' : isRemote ? 'text-muted-foreground' : 'text-foreground/70'
-        )}
-      />
-    </div>
-  );
-}
-
 // Branch name cell component
 function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentBranch: string }) {
   const isCurrentBranch = branch.name === currentBranch;
-  const hasSession = !!branch.sessionId;
   const isRemote = branch.isRemote;
 
   // Get branch display name (strip origin/ prefix for display)
@@ -92,11 +74,14 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
     <div className="flex items-center gap-2 min-w-0">
       <span
         className={cn(
-          'font-medium truncate min-w-0 text-lg',
-          isRemote && 'text-muted-foreground'
+          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-xs truncate',
+          isRemote
+            ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300/70'
+            : 'bg-purple-500/10 text-purple-700 dark:text-purple-300/70'
         )}
         title={displayName}
       >
+        <GitBranch className="h-3.5 w-3.5 shrink-0" />
         {displayName}
       </span>
 
@@ -113,36 +98,7 @@ function BranchNameCell({ branch, currentBranch }: { branch: BranchDTO; currentB
           REMOTE
         </span>
       )}
-
-      {hasSession && branch.sessionName && (
-        <span className="text-sm text-purple-400 truncate whitespace-nowrap" title={branch.sessionName}>
-          {branch.sessionName}
-        </span>
-      )}
     </div>
-  );
-}
-
-// Status badge cell component
-function StatusBadgeCell({ branch }: { branch: BranchDTO }) {
-  if (!branch.sessionStatus) return null;
-
-  const statusStyles: Record<string, string> = {
-    active: 'bg-green-500/10 text-green-500 border-green-500/20',
-    idle: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-    done: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-    error: 'bg-red-500/10 text-red-500 border-red-500/20',
-  };
-
-  return (
-    <span
-      className={cn(
-        'px-1.5 py-0.5 text-sm rounded border capitalize whitespace-nowrap',
-        statusStyles[branch.sessionStatus] || 'bg-surface-2 text-muted-foreground'
-      )}
-    >
-      {branch.sessionStatus}
-    </span>
   );
 }
 
@@ -487,14 +443,27 @@ export function BranchesDashboard({
       accessorKey: 'name',
       cell: (branch) => (
         <ErrorBoundary section="BranchNameCell" fallback={<InlineErrorFallback message="Error" />}>
-          <div className="flex items-center gap-1.5">
-            <BranchIconCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
-            <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
-          </div>
+          <BranchNameCell branch={branch} currentBranch={branchData?.currentBranch ?? ''} />
         </ErrorBoundary>
       ),
       sortable: true,
       // No width = flexible, will truncate
+    },
+    {
+      id: 'pr',
+      header: 'PR #',
+      accessorKey: 'prNumber',
+      cell: (branch) => branch.prNumber ? (
+        <PRNumberBadge
+          prNumber={branch.prNumber}
+          prStatus={(branch.prStatus as 'open' | 'merged' | 'closed') || 'open'}
+          checkStatus={branch.checkStatus as 'none' | 'pending' | 'success' | 'failure' | undefined}
+          hasMergeConflict={branch.hasMergeConflict}
+          prUrl={branch.prUrl}
+          size="sm"
+        />
+      ) : null,
+      width: '80px',
     },
     {
       id: 'commit',
@@ -506,13 +475,6 @@ export function BranchesDashboard({
         </ErrorBoundary>
       ),
       // No width = flexible, will truncate
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      accessorKey: 'sessionStatus',
-      cell: (branch) => <StatusBadgeCell branch={branch} />,
-      width: '70px',
     },
     {
       id: 'updated',
@@ -540,17 +502,6 @@ export function BranchesDashboard({
   // Filter options
   const filterOptions: FilterOption[] = useMemo(() => [
     {
-      column: 'sessionStatus',
-      label: 'Status',
-      type: 'select',
-      options: [
-        { value: 'active', label: 'Active' },
-        { value: 'idle', label: 'Idle' },
-        { value: 'done', label: 'Done' },
-        { value: 'error', label: 'Error' },
-      ],
-    },
-    {
       column: 'location',
       label: 'Location',
       type: 'select',
@@ -576,8 +527,8 @@ export function BranchesDashboard({
       { value: 'lastAuthor', label: 'Author' },
     ],
     toggleableColumns: [
+      { id: 'pr', label: 'PR #' },
       { id: 'commit', label: 'Last Commit' },
-      { id: 'status', label: 'Status' },
       { id: 'author', label: 'Author' },
       { id: 'updated', label: 'Updated' },
       { id: 'diff', label: 'Diff' },
