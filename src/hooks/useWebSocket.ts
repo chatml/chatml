@@ -12,7 +12,7 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
@@ -1053,6 +1053,20 @@ export function useWebSocket(enabled: boolean = true) {
       }
     } catch (err) {
       console.warn('Failed to reconcile streaming state after reconnect:', err);
+    }
+
+    // Refresh PR status for the selected session to catch events missed during disconnect.
+    // Best-effort: the result arrives via WebSocket session_pr_update event.
+    try {
+      const { selectedSessionId, sessions } = getStore();
+      if (selectedSessionId) {
+        const session = sessions.find(s => s.id === selectedSessionId);
+        if (session) {
+          refreshPRStatus(session.workspaceId, selectedSessionId).catch(() => {});
+        }
+      }
+    } catch {
+      // Silently ignore — PR status will catch up on next poll cycle
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps

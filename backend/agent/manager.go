@@ -739,7 +739,10 @@ outer:
 						}
 
 						if prNum > 0 && m.onPRCreated != nil {
-							conv, _ := m.store.GetConversationMeta(ctx, convID)
+							conv, convErr := m.store.GetConversationMeta(ctx, convID)
+							if convErr != nil {
+								logger.Manager.Warnf("Failed to get conversation %s for PR creation detection: %v", convID, convErr)
+							}
 							if conv != nil {
 								go m.onPRCreated(conv.SessionID, prNum, prURL)
 								prDeferredRecheck = m.onPRCreated
@@ -754,7 +757,10 @@ outer:
 				// Detect PR merge from Bash tool stdout (e.g., gh pr merge)
 				if event.Tool == "Bash" && event.Success && prMergedPattern.MatchString(event.Stdout) {
 					if m.onPRMerged != nil {
-						conv, _ := m.store.GetConversationMeta(ctx, convID)
+						conv, convErr := m.store.GetConversationMeta(ctx, convID)
+						if convErr != nil {
+							logger.Manager.Warnf("Failed to get conversation %s for PR merge detection: %v", convID, convErr)
+						}
 						if conv != nil {
 							go m.onPRMerged(conv.SessionID)
 							mergeHandler := m.onPRMerged
@@ -775,7 +781,10 @@ outer:
 				// trigger an immediate PR check to pick up externally-created PRs.
 				if event.Tool == "Bash" && event.Success && gitPushCommandPattern.MatchString(bashCmd) && gitPushPattern.MatchString(event.Stderr) {
 					if m.onPRCreated != nil {
-						conv, _ := m.store.GetConversationMeta(ctx, convID)
+						conv, convErr := m.store.GetConversationMeta(ctx, convID)
+						if convErr != nil {
+							logger.Manager.Warnf("Failed to get conversation %s for git push detection: %v", convID, convErr)
+						}
 						if conv != nil {
 							sess, _ := m.store.GetSession(ctx, conv.SessionID)
 							if sess != nil && sess.PRNumber == 0 {
@@ -2288,6 +2297,12 @@ You have access to ChatML MCP tools:
 - `+"`"+`mcp__chatml__get_recent_activity`+"`"+` — recent git log
 - `+"`"+`mcp__chatml__add_review_comment`+"`"+` — leave inline code review comments visible in the ChatML UI
 - `+"`"+`mcp__chatml__list_review_comments`+"`"+` / `+"`"+`mcp__chatml__get_review_comment_stats`+"`"+` — read review comments
+- `+"`"+`mcp__chatml__report_pr_created`+"`"+` — report PR creation to update the ChatML sidebar
+- `+"`"+`mcp__chatml__report_pr_merged`+"`"+` — report PR merge to update session status
+
+**After creating a PR** (with `+"`"+`gh pr create`+"`"+` or any other method), ALWAYS call `+"`"+`mcp__chatml__report_pr_created`+"`"+` with the PR number and URL. This ensures the PR badge appears immediately in the sidebar.
+
+**After merging a PR** (with `+"`"+`gh pr merge`+"`"+` or any other method), ALWAYS call `+"`"+`mcp__chatml__report_pr_merged`+"`"+` to update the session status.
 
 Do NOT use `+"`"+`mcp__chatml__start_linear_issue`+"`"+` — it creates git branches inside the worktree, which conflicts with the session model. Use the Linear MCP server directly for Linear operations.`,
 		session.Name,

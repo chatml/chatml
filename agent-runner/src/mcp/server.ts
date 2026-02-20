@@ -4,6 +4,7 @@ import { z } from "zod";
 import { WorkspaceContext } from "./context.js";
 import { createLinearTools } from "./tools/linear.js";
 import { createCommentTools } from "./tools/comments.js";
+import { createPRTools } from "./tools/pr.js";
 import { createScriptTools } from "./tools/scripts.js";
 
 const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://localhost:9876";
@@ -275,6 +276,9 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
       // Review comment tools
       ...createCommentTools(context),
+
+      // PR lifecycle tools
+      ...createPRTools(context),
 
       // Script config tools
       ...createScriptTools(context),

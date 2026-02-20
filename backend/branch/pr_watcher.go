@@ -162,10 +162,45 @@ func (w *PRWatcher) UpdateSessionBranch(sessionID, newBranch string) {
 	}
 }
 
+// ensureSessionWatched checks whether a session is already in the watch map.
+// If not, it auto-registers it from the database. Returns true if the session
+// is (now) watched, false if it could not be registered.
+func (w *PRWatcher) ensureSessionWatched(sessionID, caller string) bool {
+	w.mu.RLock()
+	_, exists := w.sessions[sessionID]
+	w.mu.RUnlock()
+	if exists {
+		return true
+	}
+
+	if w.store == nil {
+		logger.PRWatcher.Warnf("%s: session %s not in watch map and no store available", caller, sessionID)
+		return false
+	}
+
+	sess, err := w.store.GetSession(w.ctx, sessionID)
+	if err != nil || sess == nil {
+		logger.PRWatcher.Warnf("%s: session %s not in watch map and DB lookup failed (err=%v)", caller, sessionID, err)
+		return false
+	}
+
+	repoPath := ""
+	if repo, repoErr := w.store.GetRepo(w.ctx, sess.WorkspaceID); repoErr == nil && repo != nil {
+		repoPath = repo.Path
+	}
+	logger.PRWatcher.Infof("Auto-registering session %s in PRWatcher (%s)", sessionID, caller)
+	w.WatchSession(sessionID, sess.WorkspaceID, sess.Branch, repoPath, models.PRStatusNone, 0, "")
+	return true
+}
+
 // ForceCheckSession invalidates the PR cache for a session's repo and immediately
 // checks for PRs. Used when the agent creates a PR via bash so the UI updates
 // within seconds instead of waiting for the next poll cycle.
 func (w *PRWatcher) ForceCheckSession(sessionID string) {
+	if !w.ensureSessionWatched(sessionID, "ForceCheckSession") {
+		return
+	}
+
 	w.mu.RLock()
 	entry, exists := w.sessions[sessionID]
 	if !exists {
@@ -199,6 +234,10 @@ func (w *PRWatcher) ForceCheckSession(sessionID string) {
 // mergeable status without racing with GitHub's eventual consistency.
 func (w *PRWatcher) RegisterPRFromAgent(sessionID string, prNumber int, prURL string) {
 	if prNumber > 0 {
+		// Ensure the session is in the watch map before taking the lock.
+		// This avoids the fragile unlock-call-relock pattern.
+		w.ensureSessionWatched(sessionID, "RegisterPRFromAgent")
+
 		w.mu.Lock()
 		entry, exists := w.sessions[sessionID]
 		if exists {
