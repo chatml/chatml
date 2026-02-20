@@ -259,6 +259,10 @@ func (w *PRWatcher) RegisterPRFromAgent(sessionID string, prNumber int, prURL st
 					sess.PRNumber = prNumber
 					sess.PRUrl = prURL
 					sess.UpdatedAt = time.Now()
+					// Auto-update taskStatus: in_progress → in_review
+					if sess.TaskStatus == models.TaskStatusInProgress {
+						sess.TaskStatus = models.TaskStatusInReview
+					}
 				}); err != nil {
 					logger.PRWatcher.Errorf("Failed to update session %s with PR info: %v", sessionID, err)
 				}
