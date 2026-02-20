@@ -4,14 +4,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -318,17 +315,18 @@ export function GitHubReposDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col h-[85vh]">
+        {/* Header */}
+        <div className="shrink-0 px-6 pt-6 pb-4">
           <DialogTitle className="flex items-center gap-2">
             <Github className="h-5 w-5" />
             GitHub Repositories
           </DialogTitle>
-        </DialogHeader>
+        </div>
 
         {!isAuthenticated ? (
           // Unauthenticated state
-          <div className="flex flex-col items-center justify-center py-10 space-y-4">
+          <div className="flex-1 flex flex-col items-center justify-center py-10 space-y-4 px-6">
             <Github className="h-12 w-12 text-muted-foreground" />
             <div className="text-center space-y-1">
               <p className="text-sm font-medium">Connect your GitHub account</p>
@@ -342,46 +340,47 @@ export function GitHubReposDialog({
             </Button>
           </div>
         ) : (
-          // Authenticated state
-          <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
+          // Authenticated state — sections are direct flex children
+          <>
             {/* Search + Org filter */}
-            <div className="flex gap-2 shrink-0">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder="Search repos..."
-                  className="pl-8 text-sm"
-                  disabled={isCloning}
-                />
+            <div className="shrink-0 px-6 pb-3">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    placeholder="Search repos..."
+                    className="pl-8 text-sm"
+                    disabled={isCloning}
+                  />
+                </div>
+                {orgs.length > 0 && (
+                  <Select
+                    value={selectedOrg}
+                    onValueChange={handleOrgChange}
+                    disabled={isCloning}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="All repos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All repos</SelectItem>
+                      {orgs.map((org) => (
+                        <SelectItem key={org.login} value={org.login}>
+                          {org.login}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
-              {orgs.length > 0 && (
-                <Select
-                  value={selectedOrg}
-                  onValueChange={handleOrgChange}
-                  disabled={isCloning}
-                >
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue placeholder="All repos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All repos</SelectItem>
-                    {orgs.map((org) => (
-                      <SelectItem key={org.login} value={org.login}>
-                        {org.login}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
             </div>
 
-            {/* Repo list */}
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="space-y-2 pr-3">
+            {/* Repo list — native scroll, no Radix ScrollArea */}
+            <div className="flex-1 min-h-0 overflow-y-auto border-y">
+              <div className="space-y-2 px-6 py-3">
                 {isLoadingRepos && repos.length === 0 ? (
-                  // Loading skeletons
                   <>
                     <RepoCardSkeleton />
                     <RepoCardSkeleton />
@@ -389,7 +388,6 @@ export function GitHubReposDialog({
                     <RepoCardSkeleton />
                   </>
                 ) : fetchError ? (
-                  // Error state
                   <div className="flex flex-col items-center justify-center py-8 space-y-2">
                     <p className="text-sm text-destructive">{fetchError}</p>
                     <Button
@@ -403,7 +401,6 @@ export function GitHubReposDialog({
                     </Button>
                   </div>
                 ) : repos.length === 0 ? (
-                  // Empty state
                   <div className="flex flex-col items-center justify-center py-8">
                     <p className="text-sm text-muted-foreground">
                       {search
@@ -412,7 +409,6 @@ export function GitHubReposDialog({
                     </p>
                   </div>
                 ) : (
-                  // Repo cards
                   <>
                     {repos.map((repo) => (
                       <RepoCard
@@ -449,10 +445,10 @@ export function GitHubReposDialog({
                   </>
                 )}
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Clone location */}
-            <div className="space-y-2 pt-1 shrink-0">
+            <div className="shrink-0 px-6 pt-3 pb-1 space-y-2">
               <label htmlFor="gh-clone-location" className="text-sm font-medium">
                 Clone to
               </label>
@@ -477,12 +473,13 @@ export function GitHubReposDialog({
             </div>
 
             {cloneError && (
-              <p className="text-sm text-destructive shrink-0">{cloneError}</p>
+              <p className="text-sm text-destructive shrink-0 px-6">{cloneError}</p>
             )}
-          </div>
+          </>
         )}
 
-        <DialogFooter>
+        {/* Footer */}
+        <div className="shrink-0 px-6 py-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
             variant="outline"
             onClick={handleClose}
@@ -507,7 +504,7 @@ export function GitHubReposDialog({
               )}
             </Button>
           )}
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
