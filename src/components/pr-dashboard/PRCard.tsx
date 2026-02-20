@@ -193,7 +193,7 @@ export function PRCard({ pr, onJumpToSession, onSendMessage, isSendingMessage }:
           <StatusIcon className={cn('h-4 w-4 mt-0.5 shrink-0', statusInfo.color)} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-base truncate">{pr.title}</span>
+              <span className="text-base truncate">{pr.title}</span>
               <span className="text-sm text-muted-foreground shrink-0">#{pr.number}</span>
               {pr.sessionName && (
                 <span className="text-xs bg-surface-2 px-1.5 py-0.5 rounded shrink-0">
