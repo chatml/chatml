@@ -756,7 +756,7 @@ func TestPRWatcher_CheckSessionPR_NewPRAfterClose(t *testing.T) {
 
 func TestPRWatcher_RegisterPRFromAgent_WithPRNumber(t *testing.T) {
 	store := newMockStore()
-	store.sessions["sess-1"] = &models.Session{ID: "sess-1"}
+	store.sessions["sess-1"] = &models.Session{ID: "sess-1", TaskStatus: models.TaskStatusInProgress}
 
 	var capturedEvent *PRChangeEvent
 	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
@@ -784,11 +784,37 @@ func TestPRWatcher_RegisterPRFromAgent_WithPRNumber(t *testing.T) {
 	sess := store.sessions["sess-1"]
 	assert.Equal(t, 42, sess.PRNumber)
 	assert.Equal(t, models.PRStatusOpen, sess.PRStatus)
+	assert.Equal(t, models.TaskStatusInReview, sess.TaskStatus, "taskStatus should auto-transition to in_review")
 
 	// Verify WebSocket event was emitted
 	require.NotNil(t, capturedEvent)
 	assert.Equal(t, 42, capturedEvent.PRNumber)
 	assert.Equal(t, models.PRStatusOpen, capturedEvent.PRStatus)
+}
+
+func TestPRWatcher_RegisterPRFromAgent_DoesNotOverwriteNonInProgressStatus(t *testing.T) {
+	for _, status := range []string{
+		models.TaskStatusBacklog,
+		models.TaskStatusInReview,
+		models.TaskStatusDone,
+		models.TaskStatusCancelled,
+	} {
+		t.Run(status, func(t *testing.T) {
+			store := newMockStore()
+			store.sessions["sess-1"] = &models.Session{ID: "sess-1", TaskStatus: status}
+
+			repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
+			w := newTestPRWatcher(store, repoMgr, nil)
+			w.onChange = func(evt PRChangeEvent) {}
+			defer w.Close()
+
+			w.WatchSession("sess-1", "ws-1", "feature/foo", "/repo/path", "none", 0, "")
+			w.RegisterPRFromAgent("sess-1", 42, "https://github.com/org/myrepo/pull/42")
+
+			sess := store.sessions["sess-1"]
+			assert.Equal(t, status, sess.TaskStatus, "taskStatus %q should not be changed", status)
+		})
+	}
 }
 
 func TestPRWatcher_RegisterPRFromAgent_NoPRNumber_ForcesCheck(t *testing.T) {
