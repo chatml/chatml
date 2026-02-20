@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
+import { PRNumberBadge } from '@/components/shared/PRNumberBadge';
 
 interface PRDashboardProps {
   initialWorkspaceId?: string;
@@ -63,42 +64,6 @@ async function openInBrowser(url: string) {
   }
 }
 
-// Status icon cell component
-function StatusIconCell({ pr }: { pr: PRWithStatus }) {
-  const getIconAndColor = () => {
-    if (pr.isDraft) {
-      return { Icon: GitPullRequestDraft, color: 'text-muted-foreground' };
-    }
-    if (pr.hasConflicts) {
-      return { Icon: AlertTriangle, color: 'text-yellow-500' };
-    }
-    if (pr.checksFailed > 0) {
-      return { Icon: GitPullRequest, color: 'text-red-500' };
-    }
-    if (pr.pendingCount > 0) {
-      return { Icon: GitPullRequest, color: 'text-yellow-500' };
-    }
-    return { Icon: GitPullRequest, color: 'text-green-500' };
-  };
-
-  const { Icon, color } = getIconAndColor();
-
-  return (
-    <div className="flex items-center justify-center">
-      <Icon className={cn('h-4 w-4', color)} />
-    </div>
-  );
-}
-
-// PR Number cell
-function PRNumberCell({ pr }: { pr: PRWithStatus }) {
-  return (
-    <span className="text-sm text-muted-foreground font-mono">
-      #{pr.number}
-    </span>
-  );
-}
-
 // Title cell component
 function TitleCell({ pr }: { pr: PRWithStatus }) {
   const { resolvedTheme } = useTheme();
@@ -106,7 +71,7 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="font-medium text-lg truncate" title={pr.title}>
+      <span className="font-medium text-base truncate" title={pr.title}>
         {pr.title}
       </span>
       {pr.labels?.map((label) => {
@@ -132,8 +97,8 @@ function TitleCell({ pr }: { pr: PRWithStatus }) {
 // Branch cell component
 function BranchCell({ pr }: { pr: PRWithStatus }) {
   return (
-    <div className="flex items-center gap-1.5 text-sm">
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300/70 font-mono truncate" title={pr.branch}>
+    <div className="flex items-center gap-1.5 text-xs">
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300/70 font-mono truncate" title={pr.branch}>
         <GitBranch className="h-3.5 w-3.5 shrink-0" />
         {pr.branch}
       </span>
@@ -450,10 +415,15 @@ export function PRDashboard({
       accessorKey: 'number',
       cell: (pr) => (
         <ErrorBoundary section="PRCell" fallback={<InlineErrorFallback message="Error" />}>
-          <div className="flex items-center gap-1.5">
-            <StatusIconCell pr={pr} />
-            <PRNumberCell pr={pr} />
-          </div>
+          <PRNumberBadge
+            prNumber={pr.number}
+            prStatus={pr.state as 'open' | 'merged' | 'closed'}
+            checkStatus={pr.checkStatus as 'none' | 'pending' | 'success' | 'failure' | undefined}
+            hasMergeConflict={pr.hasConflicts}
+            isDraft={pr.isDraft}
+            prUrl={pr.htmlUrl}
+            size="md"
+          />
         </ErrorBoundary>
       ),
       sortable: true,

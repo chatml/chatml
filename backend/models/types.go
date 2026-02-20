@@ -397,9 +397,14 @@ type BranchInfo struct {
 // BranchWithSession combines branch info with optional session linkage
 type BranchWithSession struct {
 	BranchInfo
-	SessionID     string `json:"sessionId,omitempty"`
-	SessionName   string `json:"sessionName,omitempty"`
-	SessionStatus string `json:"sessionStatus,omitempty"`
+	SessionID        string `json:"sessionId,omitempty"`
+	SessionName      string `json:"sessionName,omitempty"`
+	SessionStatus    string `json:"sessionStatus,omitempty"`
+	PRNumber         int    `json:"prNumber,omitempty"`
+	PRStatus         string `json:"prStatus,omitempty"`
+	PRUrl            string `json:"prUrl,omitempty"`
+	CheckStatus      string `json:"checkStatus,omitempty"`
+	HasMergeConflict bool   `json:"hasMergeConflict,omitempty"`
 }
 
 // BranchListResponse is the response structure for the branches endpoint

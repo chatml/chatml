@@ -413,6 +413,12 @@ export interface BranchDTO {
   sessionId?: string;
   sessionName?: string;
   sessionStatus?: string;
+  // PR data (from session)
+  prNumber?: number;
+  prStatus?: string;
+  prUrl?: string;
+  checkStatus?: string;
+  hasMergeConflict?: boolean;
 }
 
 export interface BranchListResponse {
