@@ -65,7 +65,7 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
             'hover:bg-accent/50 transition-colors cursor-default',
             colorClass
           )}
-          aria-label={`Context usage: ${formatTokenCount(used)} of ${formatTokenCount(maxTokens)} tokens`}
+          aria-label={`Context usage: ${Math.round(percentage)}% (${formatTokenCount(used)} of ${formatTokenCount(maxTokens)} tokens)`}
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 18 18">
             <circle
@@ -89,7 +89,7 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
               transform="rotate(-90 9 9)"
             />
           </svg>
-          <span className="tabular-nums">{formatTokenCount(used)}</span>
+          <span className="tabular-nums">{Math.round(percentage)}%</span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" side="top" className="w-64 p-3">
