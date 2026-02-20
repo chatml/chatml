@@ -1544,7 +1544,7 @@ func (rm *RepoManager) GetDiffSummary(ctx context.Context, repoPath, baseRef str
 	var result strings.Builder
 	result.WriteString("=== Diff Stats ===\n")
 	result.Write(statOut)
-	result.WriteString("\n=== Diff (truncated) ===\n")
+	result.WriteString("\n=== Diff ===\n")
 
 	diff := string(diffOut)
 	if len(diff) > maxBytes {
@@ -1553,4 +1553,26 @@ func (rm *RepoManager) GetDiffSummary(ctx context.Context, repoPath, baseRef str
 	result.WriteString(diff)
 
 	return result.String(), nil
+}
+
+// GetFileDiffUnified returns the unified diff for a single file compared to baseRef.
+// The diff output is capped at maxBytes.
+func (rm *RepoManager) GetFileDiffUnified(ctx context.Context, repoPath, baseRef, filePath string, maxBytes int) (string, error) {
+	if err := ValidateGitRef(baseRef); err != nil {
+		return "", fmt.Errorf("invalid base ref: %w", err)
+	}
+
+	cmd, cancel := gitCmdWithContext(ctx, repoPath, "diff", baseRef, "--", filePath)
+	defer cancel()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("diff failed for %s: %w", filePath, err)
+	}
+
+	diff := string(out)
+	if len(diff) > maxBytes {
+		diff = diff[:maxBytes] + "\n... (truncated)"
+	}
+
+	return diff, nil
 }

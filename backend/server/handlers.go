@@ -2591,6 +2591,60 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+// GetSessionDiffSummary returns a unified diff summary for the session's worktree.
+// Supports optional query parameters:
+//   - maxBytes: maximum diff size in bytes (default 120000)
+//   - path: if set, returns unified diff for a single file only
+func (h *Handlers) GetSessionDiffSummary(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	session, workingPath, baseRef, err := h.getSessionAndWorkspace(ctx, sessionID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+	if checkWorktreePath(w, workingPath) {
+		return
+	}
+
+	maxBytes := 120000
+	if mb := r.URL.Query().Get("maxBytes"); mb != "" {
+		if parsed, err := strconv.Atoi(mb); err == nil && parsed > 0 {
+			maxBytes = parsed
+		}
+	}
+
+	filePath := r.URL.Query().Get("path")
+
+	var result string
+	if filePath != "" {
+		cleanPath, err := validatePath(workingPath, filePath)
+		if err != nil {
+			writeValidationError(w, "invalid path")
+			return
+		}
+		result, err = h.repoManager.GetFileDiffUnified(ctx, workingPath, baseRef, cleanPath, maxBytes)
+		if err != nil {
+			writeInternalError(w, "failed to get file diff", err)
+			return
+		}
+	} else {
+		result, err = h.repoManager.GetDiffSummary(ctx, workingPath, baseRef, maxBytes)
+		if err != nil {
+			writeInternalError(w, "failed to get diff summary", err)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(result))
+}
+
 // FileHistoryResponse represents the commit history for a file
 type FileHistoryResponse struct {
 	Commits []git.FileCommit `json:"commits"`
