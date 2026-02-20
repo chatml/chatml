@@ -1396,19 +1396,17 @@ function SessionRow({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            'group flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
-            isSessionUnread && !isSessionSelected ? 'pl-1 pr-2' : 'px-2',
+            'group relative flex flex-row items-center py-2 rounded-md cursor-pointer my-0.5',
+            'px-2',
             isSessionSelected
               ? 'bg-surface-2 hover:bg-surface-3'
               : 'hover:bg-surface-1'
           )}
           onClick={(e) => onSelectSession(session.id, e)}
         >
-          {/* Unread indicator on the left edge */}
+          {/* Unread indicator dot — absolutely positioned in left padding area */}
           {isSessionUnread && !isSessionSelected && (
-            <div className="w-2 shrink-0 flex items-center justify-center mr-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-            </div>
+            <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary" />
           )}
           {/* Content column */}
           <div className="flex flex-col flex-1 min-w-0">
