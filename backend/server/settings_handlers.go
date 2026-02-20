@@ -1,0 +1,438 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/chatml/chatml-backend/ai"
+	"github.com/chatml/chatml-backend/crypto"
+	"github.com/chatml/chatml-backend/models"
+	"github.com/go-chi/chi/v5"
+)
+
+// getReviewPrompts reads review prompt overrides from the given settings key.
+func (h *Handlers) getReviewPrompts(w http.ResponseWriter, ctx context.Context, key string) {
+	value, found, err := h.store.GetSetting(ctx, key)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]any{"prompts": map[string]string{}})
+		return
+	}
+
+	var prompts map[string]string
+	if err := json.Unmarshal([]byte(value), &prompts); err != nil {
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "corrupted review prompts data", err)
+		return
+	}
+
+	writeJSON(w, map[string]any{"prompts": prompts})
+}
+
+// setReviewPrompts writes review prompt overrides to the given settings key.
+func (h *Handlers) setReviewPrompts(w http.ResponseWriter, r *http.Request, key string) {
+	ctx := r.Context()
+
+	var req struct {
+		Prompts map[string]string `json:"prompts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if len(req.Prompts) == 0 {
+		if err := h.store.DeleteSetting(ctx, key); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		data, err := json.Marshal(req.Prompts)
+		if err != nil {
+			writeValidationError(w, "failed to encode prompts")
+			return
+		}
+		if err := h.store.SetSetting(ctx, key, string(data)); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetReviewPrompts returns the global custom review prompt overrides
+func (h *Handlers) GetReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	h.getReviewPrompts(w, r.Context(), "review-prompts")
+}
+
+// SetReviewPrompts updates the global custom review prompt overrides
+func (h *Handlers) SetReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	h.setReviewPrompts(w, r, "review-prompts")
+}
+
+// GetWorkspaceReviewPrompts returns the per-workspace custom review prompt overrides
+func (h *Handlers) GetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.getReviewPrompts(w, r.Context(), fmt.Sprintf("review-prompts:%s", workspaceID))
+}
+
+// SetWorkspaceReviewPrompts updates the per-workspace custom review prompt overrides
+func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
+}
+
+// GetCustomInstructions returns the global custom instructions for agent system prompts
+func (h *Handlers) GetCustomInstructions(w http.ResponseWriter, r *http.Request) {
+	value, found, err := h.store.GetSetting(r.Context(), "custom-instructions")
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]string{"instructions": ""})
+		return
+	}
+	writeJSON(w, map[string]string{"instructions": value})
+}
+
+// SetCustomInstructions updates the global custom instructions for agent system prompts
+func (h *Handlers) SetCustomInstructions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Instructions string `json:"instructions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	trimmed := strings.TrimSpace(req.Instructions)
+	if trimmed == "" {
+		if err := h.store.DeleteSetting(ctx, "custom-instructions"); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		if err := h.store.SetSetting(ctx, "custom-instructions", trimmed); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// ============================================================================
+// Settings endpoints
+// ============================================================================
+
+// GetWorkspacesBaseDir returns the configured workspaces base directory
+func (h *Handlers) GetWorkspacesBaseDir(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	dir, err := h.getWorkspacesBaseDir(ctx)
+	if err != nil {
+		writeInternalError(w, "failed to get workspaces base dir", err)
+		return
+	}
+	writeJSON(w, map[string]string{"path": dir})
+}
+
+// SetWorkspacesBaseDir updates the configured workspaces base directory
+func (h *Handlers) SetWorkspacesBaseDir(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if req.Path == "" {
+		// Empty path means reset to default — delete the setting row entirely
+		if err := h.store.DeleteSetting(ctx, settingKeyWorkspacesBaseDir); err != nil {
+			writeInternalError(w, "failed to delete setting", err)
+			return
+		}
+	} else {
+		// Validate that path exists and is a directory
+		info, err := os.Stat(req.Path)
+		if err != nil {
+			writeValidationError(w, fmt.Sprintf("path does not exist: %s", req.Path))
+			return
+		}
+		if !info.IsDir() {
+			writeValidationError(w, fmt.Sprintf("path is not a directory: %s", req.Path))
+			return
+		}
+		// Verify the directory is writable by creating and removing a temp file
+		testFile, err := os.CreateTemp(req.Path, ".chatml-write-test-*")
+		if err != nil {
+			writeValidationError(w, fmt.Sprintf("directory is not writable: %s", req.Path))
+			return
+		}
+		testFile.Close()
+		os.Remove(testFile.Name())
+
+		if err := h.store.SetSetting(ctx, settingKeyWorkspacesBaseDir, req.Path); err != nil {
+			writeInternalError(w, "failed to save setting", err)
+			return
+		}
+	}
+
+	// Return the effective path after save
+	dir, err := h.getWorkspacesBaseDir(ctx)
+	if err != nil {
+		writeInternalError(w, "failed to get workspaces base dir", err)
+		return
+	}
+	writeJSON(w, map[string]string{"path": dir})
+}
+
+// GetEnvSettings returns the saved environment variables string
+func (h *Handlers) GetEnvSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	envVars, found, err := h.store.GetSetting(ctx, settingKeyEnvVars)
+	if err != nil {
+		writeInternalError(w, "failed to get env settings", err)
+		return
+	}
+	if !found {
+		envVars = ""
+	}
+	writeJSON(w, map[string]string{"envVars": envVars})
+}
+
+// SetEnvSettings saves environment variables to the settings store
+func (h *Handlers) SetEnvSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		EnvVars string `json:"envVars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyEnvVars, req.EnvVars); err != nil {
+		writeInternalError(w, "failed to save env settings", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"envVars": req.EnvVars})
+}
+
+// GetAnthropicApiKey returns whether an API key is configured and a masked version.
+func (h *Handlers) GetAnthropicApiKey(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	encrypted, found, err := h.store.GetSetting(ctx, settingKeyAnthropicAPIKey)
+	if err != nil {
+		writeInternalError(w, "failed to get API key setting", err)
+		return
+	}
+	if !found || encrypted == "" {
+		writeJSON(w, map[string]interface{}{"configured": false, "maskedKey": ""})
+		return
+	}
+
+	// Decrypt to produce a masked version
+	decrypted, err := crypto.Decrypt(encrypted)
+	if err != nil {
+		writeInternalError(w, "failed to decrypt API key", err)
+		return
+	}
+
+	masked := maskAPIKey(decrypted)
+	writeJSON(w, map[string]interface{}{"configured": true, "maskedKey": masked})
+}
+
+// SetAnthropicApiKey encrypts and stores (or removes) the Anthropic API key.
+func (h *Handlers) SetAnthropicApiKey(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Empty key = remove
+	if req.APIKey == "" {
+		if err := h.store.DeleteSetting(ctx, settingKeyAnthropicAPIKey); err != nil {
+			writeInternalError(w, "failed to remove API key", err)
+			return
+		}
+		writeJSON(w, map[string]interface{}{"configured": false, "maskedKey": ""})
+		return
+	}
+
+	encrypted, err := crypto.Encrypt(req.APIKey)
+	if err != nil {
+		writeInternalError(w, "failed to encrypt API key", err)
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyAnthropicAPIKey, encrypted); err != nil {
+		writeInternalError(w, "failed to save API key", err)
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{"configured": true, "maskedKey": maskAPIKey(req.APIKey)})
+}
+
+// maskAPIKey returns a masked version of an API key, showing a recognizable
+// prefix and the last 4 characters. The prefix is determined dynamically by
+// finding the boundary after the third hyphen (e.g. "sk-ant-api03-" → 13 chars)
+// or falling back to the first 7 characters.
+func maskAPIKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+
+	// Find prefix boundary: up to the 3rd hyphen (inclusive)
+	prefixEnd := 0
+	hyphens := 0
+	for i, ch := range key {
+		if ch == '-' {
+			hyphens++
+			if hyphens == 3 {
+				prefixEnd = i + 1 // include the hyphen
+				break
+			}
+		}
+	}
+	if prefixEnd == 0 || prefixEnd >= len(key)-4 {
+		prefixEnd = 7 // fallback for keys without hyphens
+		if prefixEnd >= len(key)-4 {
+			return "****"
+		}
+	}
+
+	suffix := key[len(key)-4:]
+	return key[:prefixEnd] + "..." + suffix
+}
+
+// GetClaudeAuthStatus checks all possible sources of Claude/Anthropic credentials
+// and returns which ones are available. Sources checked:
+//   - Settings-stored encrypted API key
+//   - ANTHROPIC_API_KEY environment variable
+//   - Claude Code CLI credentials (macOS Keychain or ~/.claude/.credentials.json)
+func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Check 1: Settings-stored API key
+	hasStoredKey := false
+	encrypted, found, err := h.store.GetSetting(ctx, settingKeyAnthropicAPIKey)
+	if err == nil && found && encrypted != "" {
+		if _, decErr := crypto.Decrypt(encrypted); decErr == nil {
+			hasStoredKey = true
+		}
+	}
+
+	// Check 2: ANTHROPIC_API_KEY environment variable
+	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
+
+	// Check 3: Claude Code CLI credentials (validates token contents + expiration)
+	_, cliErr := ai.ReadClaudeCodeOAuthToken()
+	hasCliCredentials := cliErr == nil
+
+	configured := hasStoredKey || hasEnvKey || hasCliCredentials
+
+	writeJSON(w, map[string]interface{}{
+		"configured":       configured,
+		"hasStoredKey":     hasStoredKey,
+		"hasEnvKey":        hasEnvKey,
+		"hasCliCredentials": hasCliCredentials,
+	})
+}
+
+// settingKeyMcpServers returns the settings key for MCP servers in a workspace
+func settingKeyMcpServers(workspaceID string) string {
+	return "mcp-servers:" + workspaceID
+}
+
+// GetMcpServers returns the configured MCP servers for a workspace
+func (h *Handlers) GetMcpServers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	raw, found, err := h.store.GetSetting(ctx, settingKeyMcpServers(repoID))
+	if err != nil {
+		writeInternalError(w, "failed to get MCP servers", err)
+		return
+	}
+
+	if !found || raw == "" {
+		writeJSON(w, []models.McpServerConfig{})
+		return
+	}
+
+	var servers []models.McpServerConfig
+	if err := json.Unmarshal([]byte(raw), &servers); err != nil {
+		writeInternalError(w, "failed to parse MCP server config", err)
+		return
+	}
+
+	writeJSON(w, servers)
+}
+
+// SetMcpServers saves the MCP server configuration for a workspace
+func (h *Handlers) SetMcpServers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	var servers []models.McpServerConfig
+	if err := json.NewDecoder(r.Body).Decode(&servers); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Validate each server config
+	for i, s := range servers {
+		if s.Name == "" {
+			writeValidationError(w, fmt.Sprintf("server at index %d is missing a name", i))
+			return
+		}
+		switch s.Type {
+		case "stdio":
+			if s.Command == "" {
+				writeValidationError(w, fmt.Sprintf("stdio server %q is missing a command", s.Name))
+				return
+			}
+		case "sse", "http":
+			if s.URL == "" {
+				writeValidationError(w, fmt.Sprintf("%s server %q is missing a URL", s.Type, s.Name))
+				return
+			}
+		default:
+			writeValidationError(w, fmt.Sprintf("server %q has invalid type %q (must be stdio, sse, or http)", s.Name, s.Type))
+			return
+		}
+	}
+
+	data, err := json.Marshal(servers)
+	if err != nil {
+		writeInternalError(w, "failed to serialize MCP server config", err)
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyMcpServers(repoID), string(data)); err != nil {
+		writeInternalError(w, "failed to save MCP servers", err)
+		return
+	}
+
+	writeJSON(w, servers)
+}
