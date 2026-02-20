@@ -43,6 +43,9 @@ export class ApiError extends Error {
         if (parsed.code) {
           this.code = parsed.code;
         }
+        if (parsed.error) {
+          this.message = parsed.error;
+        }
       } catch {
         // Response is not JSON, ignore
       }
