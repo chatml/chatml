@@ -30,6 +30,21 @@ import type {
   SessionToggleState,
 } from '@/lib/types';
 import { useSettingsStore } from './settingsStore';
+import { refreshPRStatus } from '@/lib/api';
+
+// Throttle on-select PR refresh to avoid excessive API calls.
+// Entries are pruned when the map exceeds MAX_PR_REFRESH_ENTRIES to prevent unbounded growth.
+const lastPRRefreshMap = new Map<string, number>();
+const PR_REFRESH_THROTTLE_MS = 30_000; // 30 seconds
+const MAX_PR_REFRESH_ENTRIES = 100;
+
+function pruneRefreshMap() {
+  if (lastPRRefreshMap.size <= MAX_PR_REFRESH_ENTRIES) return;
+  const now = Date.now();
+  for (const [key, ts] of lastPRRefreshMap) {
+    if (now - ts > PR_REFRESH_THROTTLE_MS) lastPRRefreshMap.delete(key);
+  }
+}
 
 // Maximum number of file tabs before LRU eviction kicks in
 const MAX_FILE_TABS = 10;
@@ -750,6 +765,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedConversationId: targetConversation?.id || null,
       selectedFileTabId: newSelectedTabId,
     });
+
+    // Background PR refresh: catches missed WebSocket events and externally-created PRs.
+    // Throttled to max once per 30s per session. Result arrives via WebSocket.
+    if (id) {
+      const session = state.sessions.find(s => s.id === id);
+      if (session) {
+        const lastRefresh = lastPRRefreshMap.get(id) ?? 0;
+        if (Date.now() - lastRefresh > PR_REFRESH_THROTTLE_MS) {
+          lastPRRefreshMap.set(id, Date.now());
+          pruneRefreshMap();
+          refreshPRStatus(session.workspaceId, id).catch(() => {
+            // Best-effort — silently ignore errors
+          });
+        }
+      }
+    }
   },
   setSessionToggleState: (sessionId, toggleState) => set((state) => ({
     sessionToggleState: {

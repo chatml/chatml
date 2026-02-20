@@ -4527,6 +4527,70 @@ func (h *Handlers) RefreshPRStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// ReportPRCreated is called by the MCP tool when an agent creates a PR.
+// This provides a guaranteed notification path independent of bash output regex parsing.
+func (h *Handlers) ReportPRCreated(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sessionID := chi.URLParam(r, "sessionId")
+
+	var req struct {
+		PRNumber int    `json:"prNumber"`
+		PRURL    string `json:"prUrl"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	if req.PRNumber <= 0 {
+		writeValidationError(w, "prNumber must be positive")
+		return
+	}
+
+	if h.prWatcher == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	// Verify session exists
+	session, err := h.store.GetSession(ctx, sessionID)
+	if err != nil || session == nil {
+		writeNotFound(w, "session")
+		return
+	}
+
+	// RegisterPRFromAgent handles auto-registration in the watch map (via
+	// ensureSessionWatched), DB update, and WebSocket broadcast in one call.
+	// Don't call WatchSession separately — it would set the PR number first,
+	// causing RegisterPRFromAgent to skip the DB update and broadcast.
+	h.prWatcher.RegisterPRFromAgent(sessionID, req.PRNumber, req.PRURL)
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// ReportPRMerged is called by the MCP tool when an agent merges a PR.
+// Triggers a force-check to verify the merge against GitHub.
+func (h *Handlers) ReportPRMerged(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+
+	if h.prWatcher == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	// Read optional prNumber from body for logging (best-effort)
+	var req struct {
+		PRNumber int `json:"prNumber"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	if req.PRNumber > 0 {
+		logger.Handlers.Infof("ReportPRMerged: session %s, PR #%d", sessionID, req.PRNumber)
+	}
+
+	h.prWatcher.ForceCheckSession(sessionID)
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // GeneratePRDescription uses AI to generate a PR title and body from session changes
 func (h *Handlers) GeneratePRDescription(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
