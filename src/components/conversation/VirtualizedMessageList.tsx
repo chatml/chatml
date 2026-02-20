@@ -13,6 +13,7 @@ const INITIAL_FIRST_ITEM_INDEX = 100_000;
 export interface VirtualizedMessageListHandle {
   scrollToIndex: (index: number, options?: { align?: 'start' | 'center' | 'end'; behavior?: 'smooth' | 'auto' }) => void;
   scrollToBottom: (behavior?: 'smooth' | 'auto') => void;
+  getScrollerElement: () => HTMLElement | null;
 }
 
 interface VirtualizedMessageListProps {
@@ -34,6 +35,8 @@ interface VirtualizedMessageListProps {
   initialTopMostItemIndex?: number | { index: number | 'LAST'; align?: 'start' | 'center' | 'end' };
   /** Called when the visible range changes — use to track scroll position for persistence */
   onRangeChanged?: (range: ListRange) => void;
+  /** When true, suppress followOutput to prevent auto-scroll-to-bottom from fighting plan scroll */
+  pendingPlanApproval?: boolean;
 }
 
 export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, VirtualizedMessageListProps>(
@@ -54,10 +57,16 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       isStreaming,
       initialTopMostItemIndex,
       onRangeChanged,
+      pendingPlanApproval,
     },
     ref
   ) {
     const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const scrollerElRef = useRef<HTMLElement | null>(null);
+
+    const scrollerRefCallback = useCallback((el: HTMLElement | Window | null) => {
+      scrollerElRef.current = el instanceof HTMLElement ? el : null;
+    }, []);
 
     useImperativeHandle(ref, () => ({
       scrollToIndex(index, options) {
@@ -73,6 +82,9 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
           align: 'end',
           behavior,
         });
+      },
+      getScrollerElement() {
+        return scrollerElRef.current;
       },
     }));
 
@@ -101,12 +113,15 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
     // Determine follow output behavior: auto-scroll when at bottom.
     // During streaming, use instant scroll to prevent bounce caused by
     // smooth scrolling + rapid dynamic height changes (react-virtuoso #317).
+    // When plan approval is pending, suppress auto-scroll so it doesn't fight
+    // the plan-top scroll position.
     const followOutput = useCallback(
       (isAtBottom: boolean) => {
+        if (pendingPlanApproval) return false as const;
         if (isAtBottom) return isStreaming ? true as const : 'smooth' as const;
         return false as const;
       },
-      [isStreaming]
+      [isStreaming, pendingPlanApproval]
     );
 
     // Footer component: streaming message + padding
@@ -151,6 +166,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
     return (
       <Virtuoso
         ref={virtuosoRef}
+        scrollerRef={scrollerRefCallback}
         data={messages}
         firstItemIndex={firstItemIndex ?? INITIAL_FIRST_ITEM_INDEX}
         initialTopMostItemIndex={resolvedInitialIndex}
