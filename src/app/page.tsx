@@ -12,6 +12,7 @@ import {
   useMessages,
 } from '@/stores/selectors';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
+import { useShallow } from 'zustand/react/shallow';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { useTabStore } from '@/stores/tabStore';
@@ -228,7 +229,19 @@ export default function Home() {
     layoutInner, setLayoutInner,
     layoutVertical, setLayoutVertical,
     resetLayouts,
-  } = useSettingsStore();
+  } = useSettingsStore(useShallow((s) => ({
+    showBottomTerminal: s.showBottomTerminal,
+    setShowBottomTerminal: s.setShowBottomTerminal,
+    zenMode: s.zenMode,
+    setZenMode: s.setZenMode,
+    layoutOuter: s.layoutOuter,
+    setLayoutOuter: s.setLayoutOuter,
+    layoutInner: s.layoutInner,
+    setLayoutInner: s.setLayoutInner,
+    layoutVertical: s.layoutVertical,
+    setLayoutVertical: s.setLayoutVertical,
+    resetLayouts: s.resetLayouts,
+  })));
 
   const toggleBottomTerminal = useCallback(() => {
     setShowBottomTerminal(!showBottomTerminal);
