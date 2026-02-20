@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useGitStatus } from '@/hooks/useGitStatus';
 import { usePRStatus } from '@/hooks/usePRStatus';
 import { useActionState } from './useActionState';
@@ -67,7 +67,10 @@ export function PrimaryActionButton({
   // Guard: only sync when the session actually has a PR and the prDetails
   // belongs to this session (matching PR number) to avoid cross-contamination
   // when switching between sessions.
+  // Uses a ref to track what was last synced, preventing cascading re-render loops
+  // where updateSession → sessions change → Home re-renders → new config → repeat.
   const updateSession = useAppStore((s) => s.updateSession);
+  const lastSyncedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!session?.id || !prDetails) return;
     if (!session.prNumber || prDetails.number !== session.prNumber) return;
@@ -87,6 +90,10 @@ export function PrimaryActionButton({
     }
 
     if (Object.keys(updates).length > 0) {
+      // Deduplicate: skip if we already synced this exact update for this session
+      const syncKey = `${session.id}:${JSON.stringify(updates)}`;
+      if (lastSyncedRef.current === syncKey) return;
+      lastSyncedRef.current = syncKey;
       updateSession(session.id, updates);
     }
   }, [session?.id, session?.prNumber, session?.prStatus, session?.checkStatus, prDetails, updateSession]);

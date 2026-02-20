@@ -442,7 +442,7 @@ export default function Home() {
   const selectNextTab = useAppStore((s) => s.selectNextTab);
   const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
 
-  const { expandWorkspace } = useSettingsStore();
+  const expandWorkspace = useSettingsStore((s) => s.expandWorkspace);
   const { showWizard, showGuidedTour, completeWizard, completeTour, skipAll } = useOnboarding();
 
   // Centralized window size management for onboarding ↔ app transitions.
