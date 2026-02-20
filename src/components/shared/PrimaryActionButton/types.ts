@@ -8,14 +8,13 @@ export type PrimaryActionType =
   | 'continue-cherry-pick'
   | 'continue-revert'
   | 'sync-branch'
-  | 'commit-changes'
-  | 'push-changes'
-  | 'update-pr'
-  | 'view-pr'
   | 'create-pr'
+  | 'view-pr'
   | 'archive-session';
 
-export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info' | 'purple' | 'secondary';
+export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning';
+
+export type ActionTier = 'alert' | 'action' | 'complete';
 
 export interface DropdownAction {
   label: string;
@@ -26,6 +25,7 @@ export interface DropdownAction {
 
 export interface PrimaryAction {
   type: PrimaryActionType;
+  tier: ActionTier;
   label: string;
   icon: LucideIcon;
   variant: ButtonVariant;

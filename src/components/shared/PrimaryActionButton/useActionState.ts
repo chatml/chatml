@@ -10,8 +10,6 @@ import {
   FileEdit,
   GitMerge,
   Rocket,
-  Package,
-  History,
   Download,
 } from 'lucide-react';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
@@ -27,17 +25,19 @@ interface Session {
 /**
  * Hook that determines the primary action based on git status, session state, and PR details.
  *
+ * Three-tier color system:
+ *   Alert (red)    — blockers that need fixing
+ *   Action (primary) — the natural next workflow step
+ *   Complete (green) — terminal/done state
+ *
  * Priority order:
- * 1. Conflicts - "Resolve Conflicts" (destructive)
- * 2. CI failures - "Fix Issues" (destructive)
- * 3. In-progress operation - "Continue {Op}" with Abort dropdown (warning)
- * 4. Diverged - "Sync Branch" (info)
- * 5. Has changes - "Commit Changes" (default)
- * 6. Unpushed commits - "Push Changes" (default)
- * 7a. Open PR with unpushed - "Update PR" (success)
- * 7b. Open PR - "View PR" (success)
- * 8. Clean & ready - "Create PR" (success)
- * 9. PR merged - Hidden (null)
+ * 1. Conflicts        → "Resolve Conflicts"   (alert)
+ * 2. CI failures      → "Fix Issues"          (alert)
+ * 3. In-progress op   → "Continue {Op}"       (action)
+ * 4. Diverged         → "Sync Branch"         (action)
+ * 5. Work to ship     → "New Pull Request"    (action) — collapses commit/push/create-pr
+ * 6. Open PR          → "Merge PR"            (action) — includes "Push Latest" when needed
+ * 7. PR merged        → "Archive Session"     (complete)
  */
 export function useActionState(
   gitStatus: GitStatusDTO | null,
@@ -45,17 +45,17 @@ export function useActionState(
   prDetails: PRDetails | null,
 ): PrimaryAction | null {
   return useMemo(() => {
-    // Priority 9: PR is merged - show archive session button
+    // Priority 7: PR is merged — show archive session button
     // Check both the session store (updated by PRWatcher) and live prDetails
     // (fetched from GitHub) to handle the case where the PR was just merged
     // but the store hasn't been updated yet.
     if (session?.prStatus === 'merged' || prDetails?.merged) {
       return {
         type: 'archive-session',
+        tier: 'complete',
         label: 'Archive Session',
-
         icon: Archive,
-        variant: 'default',
+        variant: 'success',
         sessionId: session?.id,
       };
     }
@@ -71,8 +71,8 @@ export function useActionState(
     if (conflicts.hasConflicts) {
       return {
         type: 'resolve-conflicts',
+        tier: 'alert',
         label: 'Resolve Conflicts',
-
         icon: XCircle,
         variant: 'destructive',
         message: 'Resolve the merge conflicts',
@@ -83,6 +83,7 @@ export function useActionState(
     if (prDetails?.checkStatus === 'failure') {
       return {
         type: 'fix-issues',
+        tier: 'alert',
         label: 'Fix Issues',
         icon: XCircle,
         variant: 'destructive',
@@ -97,6 +98,7 @@ export function useActionState(
 
       return {
         type: `continue-${opType}` as PrimaryAction['type'],
+        tier: 'action',
         label: `Continue ${capitalizedOp}`,
         icon: AlertTriangle,
         variant: 'warning',
@@ -112,10 +114,10 @@ export function useActionState(
     if (sync.diverged) {
       return {
         type: 'sync-branch',
+        tier: 'action',
         label: 'Sync Branch',
-
         icon: GitBranch,
-        variant: 'info',
+        variant: 'default',
         message: `Rebase my branch on ${sync.baseBranch}`,
         dropdownActions: [
           { label: 'Merge Instead', message: `Merge ${sync.baseBranch} into my branch`, icon: GitMerge },
@@ -124,111 +126,107 @@ export function useActionState(
       };
     }
 
-    // Priority 5: Has uncommitted changes
-    if (workingDirectory.hasChanges) {
-      return {
-        type: 'commit-changes',
-        label: 'Commit Changes',
+    // Priority 5: Work to ship — uncommitted changes, unpushed commits, or commits ahead (no open PR)
+    // Collapses the old "Commit Changes", "Push Changes", and "Create PR" into one action.
+    const hasChanges = workingDirectory.hasChanges;
+    const hasUnpushed = sync.unpushedCommits > 0;
+    const hasAhead = sync.aheadBy > 0;
+    const hasOpenPR = session?.prStatus === 'open';
 
-        icon: GitCommit,
-        variant: 'purple',
-        message: 'Commit my changes',
-        dropdownActions: [
+    if ((hasChanges || hasUnpushed || hasAhead) && !hasOpenPR) {
+      // Adapt the primary message based on what work is needed
+      let message: string;
+      if (hasChanges) {
+        message = 'Commit all changes, push to remote, and create a pull request';
+      } else if (hasUnpushed) {
+        message = 'Push commits and create a pull request';
+      } else {
+        message = 'Create a pull request';
+      }
+
+      // Build contextual dropdown options
+      const dropdownActions: PrimaryAction['dropdownActions'] = [];
+
+      if (hasChanges) {
+        dropdownActions.push(
+          { label: 'Commit Only', message: 'Commit my changes', icon: GitCommit },
           { label: 'Commit & Push', message: 'Commit my changes and push to remote', icon: Rocket },
-          { label: 'Commit & Create PR', message: 'Commit my changes, push to remote, and create a pull request', icon: GitPullRequest },
-          { label: 'Stash Changes', message: 'Stash my changes for later', icon: Package },
-          { label: 'Amend Last Commit', message: 'Add these changes to my last commit', icon: History },
-        ],
-      };
-    }
+        );
+      }
+      if (hasUnpushed && !hasChanges) {
+        dropdownActions.push(
+          { label: 'Push Only', message: 'Push my commits to the remote branch', icon: Upload },
+        );
+      }
+      dropdownActions.push(
+        { label: 'Create PR in Draft', message: hasChanges
+          ? 'Commit all changes, push to remote, and create a draft pull request'
+          : hasUnpushed
+            ? 'Push commits and create a draft pull request'
+            : 'Create a draft pull request', icon: FileEdit },
+      );
 
-    // Priority 6: Has unpushed commits (no open PR)
-    if (sync.unpushedCommits > 0 && session?.prStatus !== 'open') {
       return {
-        type: 'push-changes',
-        label: 'Push Changes',
-
-        icon: Upload,
-        variant: 'default',
-        message: 'Push my commits',
-        dropdownActions: [
-          { label: 'Push & Create PR', message: 'Push my commits and create a pull request', icon: GitPullRequest },
-          { label: 'Force Push', message: 'Force push my commits to the remote branch', icon: Upload },
-        ],
-      };
-    }
-
-    // Priority 7a: Open PR with unpushed commits
-    if (session?.prStatus === 'open' && sync.unpushedCommits > 0) {
-      return {
-        type: 'update-pr',
-        label: 'Update PR',
+        type: 'create-pr',
+        tier: 'action',
+        label: 'New Pull Request',
         icon: GitPullRequest,
-        variant: 'success',
-        message: 'Push the latest changes to the PR',
-        dropdownActions: [
-          { label: 'Force Push', message: 'Force push to update the PR', icon: Upload },
-          { label: 'Squash & Push', message: 'Squash commits into one and push to the PR', icon: GitMerge },
-        ],
+        variant: 'default',
+        message,
+        dropdownActions,
       };
     }
 
-    // Priority 7b: Open PR (view only)
-    if (session?.prStatus === 'open') {
-      // Variant depends on CI check status:
-      // - checks passed or no checks → green (success)
-      // - checks pending or unknown  → neutral (default)
-      // Note: checks failed is caught by Priority 2 above
+    // Priority 6: Open PR — always show "Merge PR", with "Push Latest" in dropdown when needed
+    // Variant depends on CI check status:
+    // - checks passed or no checks → green (success) — safe to merge signal
+    // - checks pending or unknown  → neutral (default)
+    // Note: checks failed is caught by Priority 2 above
+    if (hasOpenPR) {
       const mergeVariant =
         prDetails?.checkStatus === 'success' || prDetails?.checkStatus === 'none'
           ? 'success' as const
           : 'default' as const;
 
+      const dropdownActions: PrimaryAction['dropdownActions'] = [];
+
+      // Add push option when there are unpushed commits
+      if (hasUnpushed) {
+        dropdownActions.push(
+          { label: 'Push Latest Changes', message: 'Push the latest changes to the PR', icon: Upload },
+        );
+      }
+
+      dropdownActions.push(
+        {
+          label: 'Create a merge commit',
+          message: 'Merge the pull request with a merge commit',
+          description: 'All commits from this branch will be added to the base branch via a merge commit.',
+        },
+        {
+          label: 'Squash and merge',
+          message: 'Squash and merge the pull request',
+          description: 'The commits from this branch will be combined into one commit in the base branch.',
+        },
+        {
+          label: 'Rebase and merge',
+          message: 'Rebase and merge the pull request',
+          description: 'The commits from this branch will be rebased and added to the base branch.',
+        },
+      );
+
       return {
         type: 'view-pr',
+        tier: 'action',
         label: 'Merge PR',
         icon: GitMerge,
         variant: mergeVariant,
         message: 'Squash and merge the pull request',
-        dropdownActions: [
-          {
-            label: 'Create a merge commit',
-            message: 'Merge the pull request with a merge commit',
-            description: 'All commits from this branch will be added to the base branch via a merge commit.',
-          },
-          {
-            label: 'Squash and merge',
-            message: 'Squash and merge the pull request',
-            description: 'The commits from this branch will be combined into one commit in the base branch.',
-          },
-          {
-            label: 'Rebase and merge',
-            message: 'Rebase and merge the pull request',
-            description: 'The commits from this branch will be rebased and added to the base branch.',
-          },
-        ],
+        dropdownActions,
       };
     }
 
-    // Priority 8: Clean state with commits ahead - ready to create PR
-    // Only show "Create PR" if we have commits ahead of the base branch
-    if (sync.aheadBy > 0) {
-      return {
-        type: 'create-pr',
-        label: 'New Pull Request',
-
-        icon: GitPullRequest,
-        variant: 'success',
-        message: 'Create a pull request',
-        dropdownActions: [
-          { label: 'Create PR in Draft', message: 'Create a draft pull request', icon: FileEdit },
-          { label: 'Push Changes Only', message: 'Push my commits to the remote branch', icon: Upload },
-          { label: 'Squash & Create PR', message: 'Squash my commits into one and create a pull request', icon: GitMerge },
-        ],
-      };
-    }
-
-    // Priority 9: Completely clean state - nothing to do, hide button
+    // Clean state — nothing to do, hide button
     return null;
   }, [gitStatus, session, prDetails]);
 }

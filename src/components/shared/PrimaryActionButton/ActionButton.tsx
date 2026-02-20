@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -39,7 +39,22 @@ export function ActionButton({
     setPendingActionKey(actionKey);
   }, [actionKey]);
 
-  // Nothing to render if action is null (e.g., merged PR)
+  // Replay enter animation when the tier changes by removing and re-adding the class
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prevTierRef = useRef(action?.tier);
+  useEffect(() => {
+    if (!action || !containerRef.current) return;
+    if (prevTierRef.current !== action.tier) {
+      const el = containerRef.current;
+      el.classList.remove('animate-action-enter');
+      // Force reflow so the browser registers the removal
+      void el.offsetWidth;
+      el.classList.add('animate-action-enter');
+    }
+    prevTierRef.current = action.tier;
+  }, [action?.tier, action]);
+
+  // Nothing to render if action is null (e.g., clean state)
   if (!action) {
     return null;
   }
@@ -98,17 +113,14 @@ export function ActionButton({
       destructive: 'border-l-red-400/40',
       success: 'border-l-emerald-400/40',
       warning: 'border-l-yellow-400/40',
-      info: 'border-l-blue-400/40',
-      purple: 'border-l-purple-400/40',
-      secondary: 'border-l-secondary-foreground/10',
     }[action.variant] || 'border-l-primary/30';
 
     return (
-      <div className={cn("inline-flex rounded-sm shadow-sm", className)}>
+      <div ref={containerRef} className={cn("inline-flex rounded-sm shadow-sm animate-action-enter", className)}>
         <Button
           variant={action.variant}
           size="sm"
-          className="h-6 text-xs gap-1 px-2 rounded-r-none rounded-l-sm border-r-0 transition-none"
+          className="h-6 text-xs gap-1 px-2 rounded-r-none rounded-l-sm border-r-0 transition-colors duration-150"
           onClick={handleClick}
           disabled={pendingAction}
         >
@@ -125,7 +137,7 @@ export function ActionButton({
               variant={action.variant}
               size="sm"
               className={cn(
-                'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l',
+                'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-colors duration-150 border-l',
                 separatorColor
               )}
               disabled={pendingAction}
@@ -165,21 +177,23 @@ export function ActionButton({
     );
   }
 
-  // Regular button - use transition-none for instant variant changes
+  // Regular button (no dropdown)
   return (
-    <Button
-      variant={action.variant}
-      size="sm"
-      className={cn("h-6 text-xs gap-1 px-2 rounded-sm transition-none", className)}
-      onClick={handleClick}
-      disabled={pendingAction}
-    >
-      {pendingAction ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Icon className="h-3.5 w-3.5" />
-      )}
-      {pendingAction ? 'Sending...' : action.label}
-    </Button>
+    <div ref={containerRef} className={cn("animate-action-enter", className)}>
+      <Button
+        variant={action.variant}
+        size="sm"
+        className="h-6 text-xs gap-1 px-2 rounded-sm transition-colors duration-150"
+        onClick={handleClick}
+        disabled={pendingAction}
+      >
+        {pendingAction ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Icon className="h-3.5 w-3.5" />
+        )}
+        {pendingAction ? 'Sending...' : action.label}
+      </Button>
+    </div>
   );
 }

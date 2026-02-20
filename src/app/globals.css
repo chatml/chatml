@@ -859,6 +859,28 @@ code.hljs { padding: 3px 5px; }
 .stagger-children > *:nth-child(9) { animation-delay: 400ms; }
 .stagger-children > *:nth-child(10) { animation-delay: 450ms; }
 
+/* PrimaryActionButton tier change animation */
+@keyframes action-button-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-action-enter {
+  animation: action-button-enter 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-action-enter {
+    animation: none;
+  }
+}
+
 /* Hover effects */
 .hover-lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
