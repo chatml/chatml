@@ -390,23 +390,50 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [clampedMatchIndex, searchQuery, searchMatches.total]);
 
-  // Scroll to the "Propose Plan" (ExitPlanMode) block when plan approval activates
+  // Scroll to the plan content when plan approval activates.
+  // Uses Virtuoso's own scroll container (via getScrollerElement) instead of native
+  // scrollIntoView to avoid desyncing Virtuoso's internal scroll tracking, which
+  // causes blank rendering areas. Also suppresses followOutput via pendingPlanApproval
+  // prop to prevent auto-scroll-to-bottom from fighting the plan scroll.
   const hasScrolledForPlanApprovalRef = useRef(false);
 
   useEffect(() => {
+    let outerRaf: number | undefined;
+    let innerRaf: number | undefined;
+
     if (selectedStreaming?.pendingPlanApproval) {
       if (hasScrolledForPlanApprovalRef.current) return;
       hasScrolledForPlanApprovalRef.current = true;
 
-      requestAnimationFrame(() => {
-        const el = document.querySelector('[data-plan-id="pending-plan"]');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+      // Double rAF: first lets React commit the DOM, second lets Virtuoso
+      // measure and lay out the footer content.
+      outerRaf = requestAnimationFrame(() => {
+        innerRaf = requestAnimationFrame(() => {
+          const scrollerEl = messageListRef.current?.getScrollerElement();
+          if (!scrollerEl) return;
+
+          const planEl = scrollerEl.querySelector('[data-plan-id="pending-plan"]');
+          if (!planEl) return;
+
+          const OFFSET_PX = 16;
+          const planRect = planEl.getBoundingClientRect();
+          const scrollerRect = scrollerEl.getBoundingClientRect();
+          const planTopInScroller = planRect.top - scrollerRect.top + scrollerEl.scrollTop;
+
+          scrollerEl.scrollTo({
+            top: planTopInScroller - OFFSET_PX,
+            behavior: 'smooth',
+          });
+        });
       });
     } else {
       hasScrolledForPlanApprovalRef.current = false;
     }
+
+    return () => {
+      if (outerRaf !== undefined) cancelAnimationFrame(outerRaf);
+      if (innerRaf !== undefined) cancelAnimationFrame(innerRaf);
+    };
   }, [selectedStreaming?.pendingPlanApproval]);
 
 // Filter tabs for current session only (strict session isolation)
@@ -1120,6 +1147,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             }
             footer={messageListFooter}
             isStreaming={selectedStreaming?.isStreaming ?? false}
+            pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
           />
           {/* Fade overlay at bottom of messages */}
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
