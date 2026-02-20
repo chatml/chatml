@@ -31,8 +31,9 @@ interface Session {
  *   Complete (green) — terminal/done state
  *
  * Priority order:
- * 1. Conflicts        → "Resolve Conflicts"   (alert)
- * 2. CI failures      → "Fix Issues"          (alert)
+ * 1.  Local conflicts  → "Resolve Conflicts"   (alert)
+ * 1b. GH conflicts     → "Resolve Conflicts"   (alert) — PR mergeable=false
+ * 2.  CI failures      → "Fix Issues"          (alert)
  * 3. In-progress op   → "Continue {Op}"       (action)
  * 4. Diverged         → "Sync Branch"         (action)
  * 5. Work to ship     → "New Pull Request"    (action) — collapses commit/push/create-pr
@@ -76,6 +77,22 @@ export function useActionState(
         icon: XCircle,
         variant: 'destructive',
         message: 'Resolve the merge conflicts',
+      };
+    }
+
+    // Priority 1.5: GitHub merge conflicts (PR can't be merged)
+    // This catches the case where GitHub reports conflicts but no local merge is in progress yet.
+    if (session?.prStatus === 'open' && prDetails && (prDetails.mergeableState === 'dirty' || prDetails.mergeable === false)) {
+      return {
+        type: 'resolve-conflicts',
+        tier: 'alert',
+        label: 'Resolve Conflicts',
+        icon: XCircle,
+        variant: 'destructive',
+        message: `Rebase my branch on ${sync.baseBranch} to resolve the merge conflicts`,
+        dropdownActions: [
+          { label: 'Merge Instead', message: `Merge ${sync.baseBranch} into my branch to resolve conflicts`, icon: GitMerge },
+        ],
       };
     }
 
