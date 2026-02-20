@@ -125,6 +125,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{id}/sessions/{sessionId}/branch-sync", h.SyncSessionBranch)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync/abort", h.AbortSessionSync)
 		r.Get("/{id}/sessions/{sessionId}/diff", h.GetSessionFileDiff)
+		r.Get("/{id}/sessions/{sessionId}/diff-summary", h.GetSessionDiffSummary)
 		r.Get("/{id}/sessions/{sessionId}/file-history", h.GetSessionFileHistory)
 		r.Get("/{id}/sessions/{sessionId}/file-at-ref", h.GetSessionFileAtRef)
 		r.Get("/{id}/sessions/{sessionId}/file", h.GetSessionFileContent)

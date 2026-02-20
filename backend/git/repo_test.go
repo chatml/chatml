@@ -633,7 +633,7 @@ func TestGetDiffSummary_WithChanges(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, summary, "=== Diff Stats ===")
-	assert.Contains(t, summary, "=== Diff (truncated) ===")
+	assert.Contains(t, summary, "=== Diff ===")
 	assert.Contains(t, summary, "new-file.txt")
 }
 
@@ -648,7 +648,7 @@ func TestGetDiffSummary_NoChanges(t *testing.T) {
 
 	// Should still have section headers but no actual diff content
 	assert.Contains(t, summary, "=== Diff Stats ===")
-	assert.Contains(t, summary, "=== Diff (truncated) ===")
+	assert.Contains(t, summary, "=== Diff ===")
 }
 
 func TestGetDiffSummary_Truncation(t *testing.T) {

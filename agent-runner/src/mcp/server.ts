@@ -122,17 +122,38 @@ export function createChatMLMcpServer(options: McpServerOptions) {
           file: z.string().optional().describe("Get diff for a specific file path"),
         },
         async ({ detailed, file }) => {
+          const MAX_DIFF_BYTES = 120000;
+
           try {
-            // Single file diff
+            // Single file unified diff
             if (file) {
-              const res = await fetch(sessionApiUrl(context, `/diff?path=${encodeURIComponent(file)}`), { headers: buildHeaders() });
+              const res = await fetch(
+                sessionApiUrl(context, `/diff-summary?path=${encodeURIComponent(file)}&maxBytes=${MAX_DIFF_BYTES}`),
+                { headers: buildHeaders() }
+              );
               if (!res.ok) {
                 const text = await res.text();
                 throw new Error(`Backend error ${res.status}: ${text}`);
               }
-              const diff = await res.json();
+              const diff = await res.text();
               return {
-                content: [{ type: "text", text: JSON.stringify(diff, null, 2) }],
+                content: [{ type: "text", text: diff || "No changes for this file" }],
+              };
+            }
+
+            // Detailed mode: unified diff for the whole workspace
+            if (detailed) {
+              const res = await fetch(
+                sessionApiUrl(context, `/diff-summary?maxBytes=${MAX_DIFF_BYTES}`),
+                { headers: buildHeaders() }
+              );
+              if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`Backend error ${res.status}: ${text}`);
+              }
+              const diff = await res.text();
+              return {
+                content: [{ type: "text", text: diff || "No changes" }],
               };
             }
 
@@ -159,40 +180,6 @@ export function createChatMLMcpServer(options: McpServerOptions) {
 
             if (!hasCommits && !hasUncommitted) {
               return { content: [{ type: "text", text: "No changes" }] };
-            }
-
-            if (detailed) {
-              // Collect all changed file paths (from both committed and uncommitted)
-              const filePaths = new Set<string>();
-              if (hasUncommitted) {
-                for (const f of uncommitted) filePaths.add(f.path);
-              }
-              if (hasCommits) {
-                for (const c of branch.commits) {
-                  for (const f of c.files) filePaths.add(f.path);
-                }
-              }
-
-              // Fetch full diffs for all files in parallel
-              const diffs = await Promise.all(
-                Array.from(filePaths).map(async (path) => {
-                  try {
-                    const res = await fetch(sessionApiUrl(context, `/diff?path=${encodeURIComponent(path)}`), { headers: buildHeaders() });
-                    if (!res.ok) {
-                      const text = await res.text();
-                      return { path, error: `Backend error ${res.status}: ${text}` };
-                    }
-                    const diff = await res.json();
-                    return { path, oldContent: diff.oldContent, newContent: diff.newContent };
-                  } catch {
-                    return { path, error: "Failed to fetch diff" };
-                  }
-                })
-              );
-
-              return {
-                content: [{ type: "text", text: JSON.stringify({ uncommitted, commits: branch.commits, branchStats: branch.branchStats, diffs }, null, 2) }],
-              };
             }
 
             // Stat mode: format a concise summary
