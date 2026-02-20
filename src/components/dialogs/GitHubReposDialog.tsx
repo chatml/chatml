@@ -343,9 +343,9 @@ export function GitHubReposDialog({
           </div>
         ) : (
           // Authenticated state
-          <>
+          <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
             {/* Search + Org filter */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
@@ -452,7 +452,7 @@ export function GitHubReposDialog({
             </ScrollArea>
 
             {/* Clone location */}
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2 pt-1 shrink-0">
               <label htmlFor="gh-clone-location" className="text-sm font-medium">
                 Clone to
               </label>
@@ -477,9 +477,9 @@ export function GitHubReposDialog({
             </div>
 
             {cloneError && (
-              <p className="text-sm text-destructive">{cloneError}</p>
+              <p className="text-sm text-destructive shrink-0">{cloneError}</p>
             )}
-          </>
+          </div>
         )}
 
         <DialogFooter>
