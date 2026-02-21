@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { memo, useMemo, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { FileDiff } from '@pierre/diffs/react';
 import type { FileContents, DiffLineAnnotation } from '@pierre/diffs/react';
 import type { FileDiffOptions, FileDiffMetadata, OnDiffLineClickProps } from '@pierre/diffs';
@@ -18,6 +18,10 @@ import { getShikiLanguage } from '@/lib/languageMapping';
 import type { ReviewComment } from '@/lib/types';
 
 const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
+
+// Injected into Pierre's Shadow DOM to prevent annotation slots from causing horizontal overflow
+// when the diff viewer is in scroll mode (line wrap off).
+const ANNOTATION_OVERFLOW_CSS = '[data-overflow="scroll"] [data-annotation-slot] { overflow: hidden; }';
 
 interface PierreDiffEditorProps {
   oldContent: string;
@@ -51,6 +55,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
   const [wordWrap, setWordWrap] = useState(true);
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const getNewContent = useCallback(() => newContent, [newContent]);
 
@@ -125,6 +130,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     lineDiffType: 'word' as const,
     tokenizeMaxLineLength: 500,
     onLineNumberClick: handleLineNumberClick,
+    unsafeCSS: ANNOTATION_OVERFLOW_CSS,
   }), [themeType, diffViewMode, wordWrap, handleLineNumberClick]);
 
   // Build annotations from review comments + active input
@@ -157,21 +163,21 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     const data = annotation.metadata;
     if (!data) return null;
 
+    let content: ReactNode = null;
+
     if (data.type === 'comment' && data.comment) {
-      return (
+      content = (
         <CommentThread
           comment={data.comment}
           onResolve={onResolveComment ?? (() => {})}
           onDelete={onDeleteComment}
         />
       );
-    }
-
-    if (data.type === 'input' && onCreateComment) {
-      return (
+    } else if (data.type === 'input' && onCreateComment) {
+      content = (
         <InlineCommentInput
-          onSubmit={(content) => {
-            onCreateComment(activeCommentLine!, content);
+          onSubmit={(c) => {
+            onCreateComment(activeCommentLine!, c);
             setActiveCommentLine(null);
           }}
           onCancel={() => setActiveCommentLine(null)}
@@ -179,11 +185,36 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
       );
     }
 
-    return null;
-  }, [onResolveComment, onDeleteComment, onCreateComment, activeCommentLine]);
+    if (!content) return null;
+
+    // In scroll mode, clamp annotation width to the visible container so
+    // comments don't extend beyond the viewport and cause horizontal overflow.
+    if (!wordWrap && containerWidth > 0) {
+      return (
+        <div style={{ maxWidth: containerWidth, boxSizing: 'border-box' }}>
+          {content}
+        </div>
+      );
+    }
+
+    return content;
+  }, [onResolveComment, onDeleteComment, onCreateComment, activeCommentLine, wordWrap, containerWidth]);
+
+  // Track visible container width so annotations can be clamped in scroll mode
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Scroll to target line when scrollToLine or diff content changes (e.g. review comment click)
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (scrollToLine == null || !scrollContainerRef.current) return;
     // Pierre renders inside a Shadow DOM — query through it
