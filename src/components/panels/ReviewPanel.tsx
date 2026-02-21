@@ -16,8 +16,14 @@ import {
   Check,
   Loader2,
   List,
+  ListTree,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { formatTimeAgo } from '@/lib/format';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -233,19 +239,25 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-5 text-xs px-1.5 text-muted-foreground ml-auto"
-          onClick={() => setGroupByFile((prev) => !prev)}
-          title={groupByFile ? 'Switch to flat list' : 'Switch to group by file'}
-        >
-          {groupByFile ? (
-            <List className="h-3 w-3" />
-          ) : (
-            <FileCode className="h-3 w-3" />
-          )}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 text-xs px-1.5 text-muted-foreground ml-auto"
+              onClick={() => setGroupByFile((prev) => !prev)}
+            >
+              {groupByFile ? (
+                <ListTree className="h-3 w-3" />
+              ) : (
+                <List className="h-3 w-3" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {groupByFile ? 'Switch to flat list' : 'Group by file'}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Comments list */}
