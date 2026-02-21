@@ -79,8 +79,8 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
 }
 
 const MODELS = [
-  { ...SHARED_MODELS[0], icon: Bot, badge: 'NEW' as const },
-  { ...SHARED_MODELS[1], icon: Bot, badge: 'NEW' as const },
+  { ...SHARED_MODELS[0], icon: Bot },
+  { ...SHARED_MODELS[1], icon: Bot },
   { ...SHARED_MODELS[2], icon: Bot },
 ];
 
@@ -1303,16 +1303,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                   >
                     <span className="flex flex-1 items-center gap-1.5 min-w-0">
                       <span className="truncate">{model.name}</span>
-                      {'badge' in model && model.badge && (
-                        <span className="shrink-0 rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
-                          {model.badge}
-                        </span>
-                      )}
-                      {isDefault && (
-                        <span className="shrink-0 text-xs text-muted-foreground">(default)</span>
-                      )}
                     </span>
                     <span className="ml-auto flex shrink-0 items-center gap-1">
+                      {isSelected && <Check className="h-3.5 w-3.5" />}
                       {isDefault ? (
                         <Star className="h-3 w-3 fill-current text-amber-500" />
                       ) : (
@@ -1338,7 +1331,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                           <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
                         </Tooltip>
                       )}
-                      {isSelected && <Check className="h-3.5 w-3.5" />}
                     </span>
                   </DropdownMenuItem>
                 );
