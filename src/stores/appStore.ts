@@ -221,6 +221,10 @@ interface AppState {
 
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
+  // Pending checkpoint UUID per conversation (set on checkpoint_created, consumed by finalizeStreamingMessage).
+  // Multiple checkpoint events can fire per turn; only the last one is kept (last-checkpoint-wins).
+  // This is intentional — the final checkpoint in a turn represents the most complete file state.
+  pendingCheckpointUuid: Record<string, string>;
 
   // Context window usage (keyed by conversationId)
   contextUsage: { [conversationId: string]: ContextUsage };
@@ -433,6 +437,7 @@ interface AppState {
   setCheckpoints: (checkpoints: CheckpointInfo[]) => void;
   addCheckpoint: (checkpoint: CheckpointInfo) => void;
   clearCheckpoints: () => void;
+  setPendingCheckpointUuid: (conversationId: string, uuid: string) => void;
 
   // Context usage actions
   setContextUsage: (conversationId: string, usage: Partial<ContextUsage>) => void;
@@ -493,6 +498,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpConfigLoading: false,
   mcpToolsByServer: {},
   checkpoints: [],
+  pendingCheckpointUuid: {},
   contextUsage: {},
   reviewComments: {},
   branchSyncStatus: {},
@@ -1690,6 +1696,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         timelineItems.length > 0 ? timelineItems.map(item => item.entry) : undefined;
 
       // Create the message from streaming text
+      const pendingCpUuid = state.pendingCheckpointUuid[conversationId];
       const newMessage: Message = {
         id: `msg-${Date.now()}`,
         conversationId,
@@ -1701,9 +1708,11 @@ updateFileTabContent: (id, content) => set((state) => ({
         runSummary: metadata.runSummary,
         ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
         ...(timeline ? { timeline } : {}),
+        ...(pendingCpUuid ? { checkpointUuid: pendingCpUuid } : {}),
       };
 
       // Atomically: add message AND clear streaming state
+      const { [conversationId]: _removedCp, ...remainingPendingCp } = state.pendingCheckpointUuid;
       return {
         messages: [...state.messages, newMessage],
         streamingState: {
@@ -1718,6 +1727,7 @@ updateFileTabContent: (id, content) => set((state) => ({
           ...state.subAgents,
           [conversationId]: [],
         },
+        pendingCheckpointUuid: remainingPendingCp,
       };
     });
   },
@@ -1911,6 +1921,9 @@ updateFileTabContent: (id, content) => set((state) => ({
     checkpoints: [...state.checkpoints, checkpoint]
   })),
   clearCheckpoints: () => set({ checkpoints: [] }),
+  setPendingCheckpointUuid: (conversationId, uuid) => set((state) => ({
+    pendingCheckpointUuid: { ...state.pendingCheckpointUuid, [conversationId]: uuid },
+  })),
 
   // Context usage actions
   setContextUsage: (conversationId, usage) => set((state) => {

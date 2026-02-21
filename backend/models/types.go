@@ -186,6 +186,7 @@ type Message struct {
 	DurationMs      int                `json:"durationMs,omitempty"`      // Turn duration in milliseconds
 	Timeline        []TimelineEntry    `json:"timeline,omitempty"`        // Interleaved text/tool ordering
 	PlanContent     string             `json:"planContent,omitempty"`     // Approved plan content
+	CheckpointUuid  string             `json:"checkpointUuid,omitempty"`  // File checkpoint UUID for revert
 	Timestamp       time.Time          `json:"timestamp"`
 }
 
