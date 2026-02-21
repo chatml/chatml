@@ -483,6 +483,7 @@ export function useWebSocket(enabled: boolean = true) {
           durationMs: t.endTime && t.startTime ? t.endTime - t.startTime : undefined,
           stdout: t.stdout,
           stderr: t.stderr,
+          metadata: t.metadata,
         }));
 
         // Atomic finalization - creates message and clears streaming/activeTools in one update

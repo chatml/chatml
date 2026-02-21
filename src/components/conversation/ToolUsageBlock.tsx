@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, lazy, Suspense } from 'react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -33,7 +33,13 @@ import { parseMcpToolName, formatToolDuration, stripCdPrefix } from '@/lib/forma
 import { TOOL_TARGET_TRUNCATE, TOOL_COMMAND_TRUNCATE } from '@/lib/constants';
 import { useAppStore } from '@/stores/appStore';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { TodoToolDetail } from '@/components/conversation/tool-details/TodoToolDetail';
 import type { ToolMetadata } from '@/lib/types';
+
+// Lazy-load heavy Pierre-based components (only loaded when user expands a tool block)
+const EditToolDetail = lazy(() => import('@/components/conversation/tool-details/EditToolDetail').then(m => ({ default: m.EditToolDetail })));
+const WriteToolDetail = lazy(() => import('@/components/conversation/tool-details/WriteToolDetail').then(m => ({ default: m.WriteToolDetail })));
+const ReadToolDetail = lazy(() => import('@/components/conversation/tool-details/ReadToolDetail').then(m => ({ default: m.ReadToolDetail })));
 
 interface ToolUsageBlockProps {
   id: string;
@@ -174,8 +180,12 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   // Check if this is a Bash tool
   const isBashTool = ['Bash', 'bash', 'execute_command'].includes(tool);
 
-  // Check if this is an Edit tool and calculate line stats
+  // Check tool types for specialized rendering
   const isEditTool = ['Edit', 'edit_file'].includes(tool);
+  const isWriteTool = ['Write', 'write_file'].includes(tool);
+  const isReadTool = ['Read', 'read_file'].includes(tool);
+  const isTodoTool = tool === 'TodoWrite';
+
   const editStats = useMemo(() => {
     if (!isEditTool) return null;
     return calculateEditStats(params);
@@ -479,58 +489,91 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
             }
           >
             <div className="mt-0.5 ml-4 space-y-1.5">
-              {/* Full command for Bash tools */}
-              {isBashTool && fullTarget && (
-                <div className="rounded border bg-muted p-2">
-                  <div className="text-2xs text-muted-foreground/60 mb-1">Command</div>
-                  <pre className="font-mono text-2xs text-text-success whitespace-pre-wrap break-all">
-                    $ {fullTarget}
-                  </pre>
-                </div>
+              {/* Edit tool: inline diff viewer */}
+              {isEditTool && typeof params?.old_string === 'string' && typeof params?.new_string === 'string' && fullFilePath ? (
+                <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading diff viewer...</div>}>
+                  <EditToolDetail
+                    oldString={params.old_string as string}
+                    newString={params.new_string as string}
+                    filePath={fullFilePath}
+                  />
+                </Suspense>
+              ) : isWriteTool && typeof params?.content === 'string' && fullFilePath ? (
+                /* Write tool: syntax-highlighted code viewer */
+                <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading code viewer...</div>}>
+                  <WriteToolDetail
+                    content={params.content as string}
+                    filePath={fullFilePath}
+                  />
+                </Suspense>
+              ) : isReadTool && stdout && fullFilePath ? (
+                /* Read tool: syntax-highlighted file preview */
+                <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading code viewer...</div>}>
+                  <ReadToolDetail
+                    content={stdout}
+                    filePath={fullFilePath}
+                  />
+                </Suspense>
+              ) : isTodoTool && Array.isArray(params?.todos) ? (
+                /* TodoWrite: formatted task list */
+                <TodoToolDetail todos={params.todos as Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }>} />
+              ) : (
+                /* Generic fallback for all other tools */
+                <>
+                  {/* Full command for Bash tools */}
+                  {isBashTool && fullTarget && (
+                    <div className="rounded border bg-muted p-2">
+                      <div className="text-2xs text-muted-foreground/60 mb-1">Command</div>
+                      <pre className="font-mono text-2xs text-text-success whitespace-pre-wrap break-all">
+                        $ {fullTarget}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Summary (hidden when stdout is present since the Output box already shows the full content) */}
+                  {summary && !stdout && (
+                    <div className={cn(
+                      'text-2xs px-2 py-1 rounded',
+                      success === false ? 'text-text-error bg-text-error/10' : 'text-muted-foreground bg-muted/30'
+                    )}>
+                      {summary}
+                    </div>
+                  )}
+
+                  {/* stdout output */}
+                  {stdout && (
+                    <div className="rounded border bg-muted p-2">
+                      <div className="text-2xs text-muted-foreground/60 mb-1">Output</div>
+                      <pre className="font-mono text-2xs text-foreground/80 whitespace-pre-wrap break-all max-h-[500px] overflow-y-auto">
+                        {stdout}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Additional parameters (structured display) */}
+                  {additionalParams.length > 0 && (
+                    <div className="rounded border bg-muted/30 p-2">
+                      <div className="text-2xs text-muted-foreground/60 mb-1">Parameters</div>
+                      <div className="space-y-0.5">
+                        {additionalParams.map(({ key, value }) => (
+                          <div key={key} className="flex gap-2 text-2xs">
+                            <span className="text-muted-foreground font-medium shrink-0">{key}:</span>
+                            <span className="text-foreground/80 font-mono break-all">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
-              {/* Summary (hidden when stdout is present since the Output box already shows the full content) */}
-              {summary && !stdout && (
-                <div className={cn(
-                  'text-2xs px-2 py-1 rounded',
-                  success === false ? 'text-text-error bg-text-error/10' : 'text-muted-foreground bg-muted/30'
-                )}>
-                  {summary}
-                </div>
-              )}
-
-              {/* stdout output */}
-              {stdout && (
-                <div className="rounded border bg-muted p-2">
-                  <div className="text-2xs text-muted-foreground/60 mb-1">Output</div>
-                  <pre className="font-mono text-2xs text-foreground/80 whitespace-pre-wrap break-all max-h-[500px] overflow-y-auto">
-                    {stdout}
-                  </pre>
-                </div>
-              )}
-
-              {/* stderr output */}
+              {/* stderr — always shown when present, regardless of which renderer was used */}
               {stderr && (
                 <div className="rounded border border-text-error/30 bg-text-error/10 p-2">
                   <div className="text-2xs text-text-error/60 mb-1">Error Output</div>
                   <pre className="font-mono text-2xs text-text-error whitespace-pre-wrap break-all max-h-[500px] overflow-y-auto">
                     {stderr}
                   </pre>
-                </div>
-              )}
-
-              {/* Additional parameters (structured display) */}
-              {additionalParams.length > 0 && (
-                <div className="rounded border bg-muted/30 p-2">
-                  <div className="text-2xs text-muted-foreground/60 mb-1">Parameters</div>
-                  <div className="space-y-0.5">
-                    {additionalParams.map(({ key, value }) => (
-                      <div key={key} className="flex gap-2 text-2xs">
-                        <span className="text-muted-foreground font-medium shrink-0">{key}:</span>
-                        <span className="text-foreground/80 font-mono break-all">{value}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
