@@ -171,4 +171,74 @@ describe('appStore - Plan Mode State', () => {
       expect(state?.planModeActive).toBe(false);
     });
   });
+
+  describe('clearApprovedPlanContent', () => {
+    it('clears approvedPlanContent and approvedPlanTimestamp', () => {
+      initStreamingState(convId);
+      useAppStore.getState().setApprovedPlanContent(convId, '# My Plan');
+
+      useAppStore.getState().clearApprovedPlanContent(convId);
+
+      const state = useAppStore.getState().streamingState[convId];
+      expect(state?.approvedPlanContent).toBeUndefined();
+      expect(state?.approvedPlanTimestamp).toBeUndefined();
+    });
+
+    it('does not affect other streaming state fields', () => {
+      initStreamingState(convId);
+      useAppStore.getState().setPlanModeActive(convId, true);
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-1');
+      useAppStore.getState().setApprovedPlanContent(convId, '# Plan');
+
+      useAppStore.getState().clearApprovedPlanContent(convId);
+
+      const state = useAppStore.getState().streamingState[convId];
+      expect(state?.planModeActive).toBe(true);
+      expect(state?.pendingPlanApproval).toEqual({ requestId: 'req-1' });
+      expect(state?.approvedPlanContent).toBeUndefined();
+    });
+
+    it('does not affect other conversations', () => {
+      const otherId = 'other-conv';
+      initStreamingState(convId);
+      initStreamingState(otherId);
+      useAppStore.getState().setApprovedPlanContent(convId, '# Plan A');
+      useAppStore.getState().setApprovedPlanContent(otherId, '# Plan B');
+
+      useAppStore.getState().clearApprovedPlanContent(convId);
+
+      expect(useAppStore.getState().streamingState[convId]?.approvedPlanContent).toBeUndefined();
+      expect(useAppStore.getState().streamingState[otherId]?.approvedPlanContent).toBe('# Plan B');
+    });
+
+    it('is safe to call when no approved plan exists', () => {
+      initStreamingState(convId);
+
+      // Should not throw
+      useAppStore.getState().clearApprovedPlanContent(convId);
+
+      const state = useAppStore.getState().streamingState[convId];
+      expect(state?.approvedPlanContent).toBeUndefined();
+    });
+  });
+
+  describe('plan mode re-entry clears stale state', () => {
+    it('clearing approved plan and pending approval resets for new plan cycle', () => {
+      initStreamingState(convId);
+      // Simulate: plan was approved in a previous cycle
+      useAppStore.getState().setApprovedPlanContent(convId, '# Old Plan');
+      useAppStore.getState().setPendingPlanApproval(convId, 'req-old');
+
+      // Simulate: user re-enters plan mode (what handlePlanModeToggle does)
+      useAppStore.getState().clearApprovedPlanContent(convId);
+      useAppStore.getState().clearPendingPlanApproval(convId);
+      useAppStore.getState().setPlanModeActive(convId, true);
+
+      const state = useAppStore.getState().streamingState[convId];
+      expect(state?.approvedPlanContent).toBeUndefined();
+      expect(state?.approvedPlanTimestamp).toBeUndefined();
+      expect(state?.pendingPlanApproval).toBeNull();
+      expect(state?.planModeActive).toBe(true);
+    });
+  });
 });

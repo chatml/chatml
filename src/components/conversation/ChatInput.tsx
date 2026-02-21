@@ -140,6 +140,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     commitQueuedMessage,
     clearPendingPlanApproval,
     setApprovedPlanContent,
+    clearApprovedPlanContent,
     clearActiveTools,
     finalizeStreamingMessage,
     setPlanModeActive,
@@ -589,8 +590,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     // Update store state optimistically so the banner and toggle react together
     if (selectedConversationId) {
       setPlanModeActive(selectedConversationId, newValue);
-      // Suppress stale backend events that would re-activate plan mode
-      if (!newValue) {
+      if (newValue) {
+        // New plan cycle — clear stale approved plan content from the previous cycle
+        // so it doesn't render in StreamingMessage or carry into the next message.
+        clearApprovedPlanContent(selectedConversationId);
+        clearPendingPlanApproval(selectedConversationId);
+      } else {
+        // Suppress stale backend events that would re-activate plan mode
         markPlanModeExited(selectedConversationId);
       }
     }
@@ -604,7 +610,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         // plan mode will be applied when the next message starts
       }
     }
-  }, [planModeEnabled, selectedConversationId, setPlanModeActive]);
+  }, [planModeEnabled, selectedConversationId, setPlanModeActive, clearApprovedPlanContent, clearPendingPlanApproval]);
 
 
   // Handle plan approval — clear UI optimistically so the bar disappears instantly

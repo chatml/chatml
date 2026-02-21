@@ -478,6 +478,10 @@ function setupInputQueue(): void {
             // Reset suppression and cooldown — user is explicitly entering plan mode
             suppressStalePlanMode = false;
             lastExitPlanApprovalTime = 0;
+            // Clear stale plan file path — a new plan cycle starts fresh.
+            // Without this, re-entering plan mode and calling ExitPlanMode would
+            // re-read the previously approved plan file from disk.
+            lastPlanFilePath = null;
           }
           currentPermissionMode = input.permissionMode as PermissionMode;
           void queryRef.setPermissionMode(input.permissionMode as "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk").then(() => {
@@ -1022,6 +1026,9 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
         debug(`Failed to restore permission mode after ExitPlanMode: ${err}`);
       }
     }
+    // Clear the plan file path now that the plan cycle is complete.
+    // Defense-in-depth: also cleared on plan mode re-entry (set_permission_mode handler).
+    lastPlanFilePath = null;
   }
 
   // If this is a sub-agent tool, emit a tool_end event with agentId
