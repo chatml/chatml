@@ -11,11 +11,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Eye, EyeOff } from 'lucide-react';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import type { ThinkingLevel } from '@/lib/thinkingLevels';
 import { getAnthropicApiKey, setAnthropicApiKey } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
+import { SettingsGroup } from '../shared/SettingsGroup';
+
+function ComingSoonBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+      Coming soon
+    </span>
+  );
+}
 
 export function AIModelSettings() {
   const defaultModel = useSettingsStore((s) => s.defaultModel);
@@ -28,116 +37,125 @@ export function AIModelSettings() {
   const setDefaultPlanMode = useSettingsStore((s) => s.setDefaultPlanMode);
   const maxThinkingTokens = useSettingsStore((s) => s.maxThinkingTokens);
   const setMaxThinkingTokens = useSettingsStore((s) => s.setMaxThinkingTokens);
-  const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
-  const setShowTokenUsage = useSettingsStore((s) => s.setShowTokenUsage);
-  const showChatCost = useSettingsStore((s) => s.showChatCost);
-  const setShowChatCost = useSettingsStore((s) => s.setShowChatCost);
-  const autoApproveSafeCommands = useSettingsStore((s) => s.autoApproveSafeCommands);
-  const setAutoApproveSafeCommands = useSettingsStore((s) => s.setAutoApproveSafeCommands);
-
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">AI & Models</h2>
 
-      <SettingsRow title="Default model" description="Model for new conversations">
-        <Select value={defaultModel} onValueChange={setDefaultModel}>
-          <SelectTrigger className="w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
-            <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem>
-            <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-
-      <SettingsRow title="Review model" description="Model for code reviews">
-        <Select value={reviewModel} onValueChange={setReviewModel}>
-          <SelectTrigger className="w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
-            <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem>
-            <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-
-      <SettingsRow
-        title="Default thinking"
-        description="Controls reasoning depth for new conversations"
-      >
-        <Select value={defaultThinkingLevel} onValueChange={(v) => setDefaultThinkingLevel(v as ThinkingLevel)}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="off">Off</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="high">High (default)</SelectItem>
-            <SelectItem value="max">Max</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-
-      <SettingsRow
-        title="Default to plan mode"
-        description="Start new conversations in plan mode"
-      >
-        <Switch checked={defaultPlanMode} onCheckedChange={setDefaultPlanMode} />
-      </SettingsRow>
-
-      {defaultThinkingLevel !== 'off' && (
+      <SettingsGroup label="Models">
         <SettingsRow
-          title="Max thinking budget"
-          description="Token budget cap for Sonnet & Haiku (Opus uses adaptive thinking)"
+          settingId="defaultModel"
+          title="Default model"
+          description="Model for new conversations"
+          isModified={defaultModel !== SETTINGS_DEFAULTS.defaultModel}
+          onReset={() => setDefaultModel(SETTINGS_DEFAULTS.defaultModel)}
         >
-          <Select
-            value={maxThinkingTokens.toString()}
-            onValueChange={(value) => {
-              const n = parseInt(value, 10);
-              if (!isNaN(n) && n > 0) setMaxThinkingTokens(n);
-            }}
-          >
-            <SelectTrigger className="w-32">
+          <Select value={defaultModel} onValueChange={setDefaultModel}>
+            <SelectTrigger className="w-52" aria-label="Default model">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="8000">8,000</SelectItem>
-              <SelectItem value="10000">10,000</SelectItem>
-              <SelectItem value="16000">16,000</SelectItem>
-              <SelectItem value="32000">32,000</SelectItem>
+              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
+              <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem>
+              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
             </SelectContent>
           </Select>
         </SettingsRow>
-      )}
 
-      <SettingsRow
-        title="Show token usage"
-        description="Display token counts and cost breakdown in run summaries"
-      >
-        <Switch checked={showTokenUsage} onCheckedChange={setShowTokenUsage} />
-      </SettingsRow>
+        <SettingsRow
+          settingId="reviewModel"
+          title="Review model"
+          description="Model for code reviews"
+          isModified={reviewModel !== SETTINGS_DEFAULTS.reviewModel}
+          onReset={() => setReviewModel(SETTINGS_DEFAULTS.reviewModel)}
+        >
+          <Select value={reviewModel} onValueChange={setReviewModel}>
+            <SelectTrigger className="w-52" aria-label="Review model">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="claude-opus-4-6">Claude Opus 4.6</SelectItem>
+              <SelectItem value="claude-sonnet-4-6">Claude Sonnet 4.6</SelectItem>
+              <SelectItem value="claude-haiku-4-5-20251001">Claude Haiku 4.5</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <SettingsRow
-        title="Show cost"
-        description="Display cost in run summaries"
-      >
-        <Switch checked={showChatCost} onCheckedChange={setShowChatCost} />
-      </SettingsRow>
+      <SettingsGroup label="Reasoning">
+        <SettingsRow
+          settingId="defaultThinkingLevel"
+          title="Default thinking"
+          description="Controls reasoning depth for new conversations"
+          isModified={defaultThinkingLevel !== SETTINGS_DEFAULTS.defaultThinkingLevel}
+          onReset={() => setDefaultThinkingLevel(SETTINGS_DEFAULTS.defaultThinkingLevel)}
+        >
+          <Select value={defaultThinkingLevel} onValueChange={(v) => setDefaultThinkingLevel(v as ThinkingLevel)}>
+            <SelectTrigger className="w-36" aria-label="Default thinking level">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Off</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High (default)</SelectItem>
+              <SelectItem value="max">Max</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
 
-      <SettingsRow
-        title="Auto-approve safe commands"
-        description="Automatically approve read-only commands (coming soon)"
-      >
-        <Switch checked={autoApproveSafeCommands} onCheckedChange={setAutoApproveSafeCommands} disabled />
-      </SettingsRow>
+        <SettingsRow
+          settingId="defaultPlanMode"
+          title="Default to plan mode"
+          description="Start new conversations in plan mode"
+          isModified={defaultPlanMode !== SETTINGS_DEFAULTS.defaultPlanMode}
+          onReset={() => setDefaultPlanMode(SETTINGS_DEFAULTS.defaultPlanMode)}
+        >
+          <Switch checked={defaultPlanMode} onCheckedChange={setDefaultPlanMode} aria-label="Default to plan mode" />
+        </SettingsRow>
 
-      {/* Anthropic API Key */}
-      <ApiKeySection />
+        {defaultThinkingLevel !== 'off' && (
+          <SettingsRow
+            settingId="maxThinkingTokens"
+            title="Max thinking budget"
+            description="Token budget cap for Sonnet & Haiku (Opus uses adaptive thinking)"
+            isModified={maxThinkingTokens !== SETTINGS_DEFAULTS.maxThinkingTokens}
+            onReset={() => setMaxThinkingTokens(SETTINGS_DEFAULTS.maxThinkingTokens)}
+          >
+            <Select
+              value={maxThinkingTokens.toString()}
+              onValueChange={(value) => {
+                const n = parseInt(value, 10);
+                if (!isNaN(n) && n > 0) setMaxThinkingTokens(n);
+              }}
+            >
+              <SelectTrigger className="w-32" aria-label="Max thinking budget">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="8000">8,000</SelectItem>
+                <SelectItem value="10000">10,000</SelectItem>
+                <SelectItem value="16000">16,000</SelectItem>
+                <SelectItem value="32000">32,000</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup label="Automation">
+        <SettingsRow
+          title="Auto-approve safe commands"
+          description="Automatically approve read-only commands"
+          badge={<ComingSoonBadge />}
+          className="opacity-60"
+        >
+          <Switch checked={false} disabled aria-label="Auto-approve safe commands" />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup label="Authentication">
+        <ApiKeySection />
+      </SettingsGroup>
     </div>
   );
 }
@@ -189,34 +207,35 @@ function ApiKeySection() {
   };
 
   return (
-    <div className="py-4 border-b border-border/50">
-      <h4 className="text-sm font-medium">Anthropic API Key</h4>
-      <p className="text-xs text-muted-foreground mt-0.5">
-        Set an API key to bypass OAuth authentication. Get one from{' '}
-        <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
-          console.anthropic.com
-        </a>.
-      </p>
-
+    <SettingsRow
+      settingId="anthropicApiKey"
+      variant="stacked"
+      title="Anthropic API Key"
+      description={
+        'Set an API key to bypass OAuth authentication. Get one from console.anthropic.com.'
+      }
+    >
       {apiKeyConfigured && (
-        <p className="text-xs text-muted-foreground mt-2">
+        <p className="text-xs text-muted-foreground mb-2">
           Current key: <code className="text-xs bg-muted px-1 py-0.5 rounded">{apiKeyMasked}</code>
         </p>
       )}
 
-      <div className="flex items-center gap-2 mt-3">
+      <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-xs">
           <input
             type={showApiKey ? 'text' : 'password'}
             value={apiKeyInput}
             onChange={(e) => setApiKeyInput(e.target.value)}
             placeholder={apiKeyConfigured ? 'Enter new key to replace' : 'sk-ant-...'}
+            aria-label="Anthropic API Key"
             className="w-full px-3 py-1.5 pr-8 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <button
             type="button"
             onClick={() => setShowApiKey(!showApiKey)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
           >
             {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           </button>
@@ -239,6 +258,6 @@ function ApiKeySection() {
           </Button>
         )}
       </div>
-    </div>
+    </SettingsRow>
   );
 }

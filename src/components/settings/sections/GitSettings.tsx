@@ -1,8 +1,19 @@
 'use client';
 
 import { Switch } from '@/components/ui/switch';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { SettingsRow } from '../shared/SettingsRow';
+import { SettingsGroup } from '../shared/SettingsGroup';
+
+function OverridableBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+      Per-workspace
+    </span>
+  );
+}
 
 export function GitSettings() {
   const branchPrefixType = useSettingsStore((s) => s.branchPrefixType);
@@ -21,103 +32,94 @@ export function GitSettings() {
     <div>
       <h2 className="text-xl font-semibold mb-5">Git</h2>
 
-      {/* Branch name prefix */}
-      <div className="py-4 border-b border-border/50">
-        <h4 className="text-sm font-medium">Branch name prefix</h4>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Prefix for new session branch names, followed by a slash.
-        </p>
+      <SettingsGroup label="Branches">
+        <SettingsRow
+          settingId="branchPrefixType"
+          variant="stacked"
+          title="Branch name prefix"
+          description="Prefix for new session branch names, followed by a slash."
+          badge={<OverridableBadge />}
+          isModified={branchPrefixType !== SETTINGS_DEFAULTS.branchPrefixType || customPrefix !== SETTINGS_DEFAULTS.branchPrefixCustom}
+          onReset={() => { setBranchPrefixType(SETTINGS_DEFAULTS.branchPrefixType); setCustomPrefix(SETTINGS_DEFAULTS.branchPrefixCustom); }}
+        >
+          <RadioGroup
+            value={branchPrefixType}
+            onValueChange={(v) => setBranchPrefixType(v as 'github' | 'custom' | 'none')}
+            className="gap-2.5"
+          >
+            <label className="flex items-center gap-3 cursor-pointer">
+              <RadioGroupItem value="github" />
+              <span className="text-sm">GitHub username ({githubUsername})</span>
+            </label>
 
-        <div className="mt-4 space-y-2">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="branchPrefix"
-              checked={branchPrefixType === 'github'}
-              onChange={() => setBranchPrefixType('github')}
-              className="w-4 h-4 text-primary border-muted-foreground/50 focus:ring-primary"
-            />
-            <span className="text-sm">GitHub username ({githubUsername})</span>
-          </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <RadioGroupItem value="custom" />
+              <span className="text-sm">Custom</span>
+            </label>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="branchPrefix"
-              checked={branchPrefixType === 'custom'}
-              onChange={() => setBranchPrefixType('custom')}
-              className="w-4 h-4 text-primary border-muted-foreground/50 focus:ring-primary"
-            />
-            <span className="text-sm">Custom</span>
-          </label>
+            {branchPrefixType === 'custom' && (
+              <div className="ml-7">
+                <input
+                  type="text"
+                  value={customPrefix}
+                  onChange={(e) => setCustomPrefix(e.target.value)}
+                  placeholder="Enter custom prefix"
+                  aria-label="Custom branch prefix"
+                  className="w-48 px-3 py-1.5 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            )}
 
-          {branchPrefixType === 'custom' && (
-            <div className="ml-7">
-              <input
-                type="text"
-                value={customPrefix}
-                onChange={(e) => setCustomPrefix(e.target.value)}
-                placeholder="Enter custom prefix"
-                className="w-48 px-3 py-1.5 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-          )}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <RadioGroupItem value="none" />
+              <span className="text-sm">None</span>
+            </label>
+          </RadioGroup>
+        </SettingsRow>
+      </SettingsGroup>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="branchPrefix"
-              checked={branchPrefixType === 'none'}
-              onChange={() => setBranchPrefixType('none')}
-              className="w-4 h-4 text-primary border-muted-foreground/50 focus:ring-primary"
-            />
-            <span className="text-sm">None</span>
-          </label>
-        </div>
-      </div>
-
-      {/* Delete branch on archive */}
-      <div className="flex items-start justify-between py-4 border-b border-border/50">
-        <div className="flex-1 pr-4">
-          <h4 className="text-sm font-medium">Delete branch on archive</h4>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Delete the local branch when archiving a session.
-            <br />
-            To delete the remote branch,{' '}
-            <a
-              href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              configure it on GitHub
-            </a>
-            .
-          </p>
-        </div>
-        <div className="shrink-0 pt-1">
+      <SettingsGroup label="Archiving">
+        <SettingsRow
+          settingId="deleteBranchOnArchive"
+          title="Delete branch on archive"
+          isModified={deleteBranchOnArchive !== SETTINGS_DEFAULTS.deleteBranchOnArchive}
+          onReset={() => setDeleteBranchOnArchive(SETTINGS_DEFAULTS.deleteBranchOnArchive)}
+          description={
+            <>
+              Delete the local branch when archiving a session. To delete the remote branch,{' '}
+              <a
+                href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                configure it on GitHub
+              </a>
+              .
+            </>
+          }
+        >
           <Switch
             checked={deleteBranchOnArchive}
             onCheckedChange={setDeleteBranchOnArchive}
+            aria-label="Delete branch on archive"
           />
-        </div>
-      </div>
+        </SettingsRow>
 
-      {/* Archive on merge */}
-      <div className="flex items-start justify-between py-4 border-b border-border/50">
-        <div className="flex-1 pr-4">
-          <h4 className="text-sm font-medium">Archive on merge</h4>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Automatically archive a session after merging its pull request
-          </p>
-        </div>
-        <div className="shrink-0 pt-1">
+        <SettingsRow
+          settingId="archiveOnMerge"
+          title="Archive on merge"
+          description="Automatically archive a session after merging its pull request"
+          isModified={archiveOnMerge !== SETTINGS_DEFAULTS.archiveOnMerge}
+          onReset={() => setArchiveOnMerge(SETTINGS_DEFAULTS.archiveOnMerge)}
+        >
           <Switch
             checked={archiveOnMerge}
             onCheckedChange={setArchiveOnMerge}
+            aria-label="Archive on merge"
           />
-        </div>
-      </div>
+        </SettingsRow>
+      </SettingsGroup>
     </div>
   );
 }
