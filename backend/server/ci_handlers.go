@@ -73,7 +73,7 @@ func (h *Handlers) ListCIRuns(w http.ResponseWriter, r *http.Request) {
 
 	runs, err := h.ghClient.ListWorkflowRuns(r.Context(), ghCtx.owner, ghCtx.repo, ghCtx.session.Branch)
 	if err != nil {
-		writeInternalError(w, "failed to list workflow runs", err)
+		writeBadGateway(w, "failed to list workflow runs", err)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (h *Handlers) GetCIRun(w http.ResponseWriter, r *http.Request) {
 
 	run, err := h.ghClient.GetWorkflowRun(r.Context(), ghCtx.owner, ghCtx.repo, runID)
 	if err != nil {
-		writeInternalError(w, "failed to get workflow run", err)
+		writeBadGateway(w, "failed to get workflow run", err)
 		return
 	}
 	if run == nil {
@@ -123,7 +123,7 @@ func (h *Handlers) ListCIJobs(w http.ResponseWriter, r *http.Request) {
 
 	jobs, err := h.ghClient.ListWorkflowJobs(r.Context(), ghCtx.owner, ghCtx.repo, runID)
 	if err != nil {
-		writeInternalError(w, "failed to list workflow jobs", err)
+		writeBadGateway(w, "failed to list workflow jobs", err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *Handlers) GetCIJobLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := h.ghClient.GetJobLogs(r.Context(), ghCtx.owner, ghCtx.repo, jobID)
 	if err != nil {
-		writeInternalError(w, "failed to get job logs", err)
+		writeBadGateway(w, "failed to get job logs", err)
 		return
 	}
 
@@ -179,7 +179,7 @@ func (h *Handlers) RerunCIWorkflow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeInternalError(w, "failed to rerun workflow", err)
+		writeBadGateway(w, "failed to rerun workflow", err)
 		return
 	}
 
@@ -241,14 +241,14 @@ func (h *Handlers) AnalyzeCIFailure(w http.ResponseWriter, r *http.Request) {
 	// Get workflow run for context
 	run, err := h.ghClient.GetWorkflowRun(ctx, ghCtx.owner, ghCtx.repo, req.RunID)
 	if err != nil {
-		writeInternalError(w, "failed to get workflow run", err)
+		writeBadGateway(w, "failed to get workflow run", err)
 		return
 	}
 
 	// Get job details to find the target job name
 	jobs, err := h.ghClient.ListWorkflowJobs(ctx, ghCtx.owner, ghCtx.repo, req.RunID)
 	if err != nil {
-		writeInternalError(w, "failed to get workflow jobs", err)
+		writeBadGateway(w, "failed to get workflow jobs", err)
 		return
 	}
 
@@ -263,7 +263,7 @@ func (h *Handlers) AnalyzeCIFailure(w http.ResponseWriter, r *http.Request) {
 	// Get job logs
 	logs, err := h.ghClient.GetJobLogs(ctx, ghCtx.owner, ghCtx.repo, req.JobID)
 	if err != nil {
-		writeInternalError(w, "failed to get job logs", err)
+		writeBadGateway(w, "failed to get job logs", err)
 		return
 	}
 
@@ -341,7 +341,7 @@ func (h *Handlers) GetCIFailureContext(w http.ResponseWriter, r *http.Request) {
 	// Fetch workflow runs for this branch
 	runs, err := h.ghClient.ListWorkflowRuns(ctx, ghCtx.owner, ghCtx.repo, branch)
 	if err != nil {
-		writeInternalError(w, "failed to list workflow runs", err)
+		writeBadGateway(w, "failed to list workflow runs", err)
 		return
 	}
 
