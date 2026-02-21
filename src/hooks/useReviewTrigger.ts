@@ -102,8 +102,10 @@ export function useReviewTrigger() {
           model: reviewModel,
         });
 
-        if (stale) return;
-
+        // Always add the conversation and message to the store, even if the
+        // user switched sessions. The conversation exists on the backend;
+        // keeping the store in sync ensures the tab appears when the user
+        // returns to the original session.
         addConversation({
           id: conv.id,
           sessionId: conv.sessionId,
@@ -124,8 +126,15 @@ export function useReviewTrigger() {
           timestamp: new Date().toISOString(),
         });
 
-        selectConversation(conv.id);
+        // Always mark streaming so WebSocket reconnection reconciliation
+        // can discover this conversation if the connection drops mid-review.
         setStreaming(conv.id, true);
+
+        // Only navigate to the review tab if the user is still on the
+        // same session. Otherwise they'll see it when they switch back.
+        if (!stale) {
+          selectConversation(conv.id);
+        }
       } catch (err) {
         if (!stale) console.error('Failed to start review:', err);
       }
