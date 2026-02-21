@@ -47,7 +47,7 @@ describe('AccountSettings', () => {
     it('shows connect prompt when not authenticated', () => {
       render(<AccountSettings />);
 
-      expect(screen.getByText('Linear Integration')).toBeInTheDocument();
+      expect(screen.getByText('Linear')).toBeInTheDocument();
       expect(screen.getByText('Connect Linear to import issues and track work.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
     });
