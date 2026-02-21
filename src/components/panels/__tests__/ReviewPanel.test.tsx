@@ -229,9 +229,18 @@ describe('ReviewPanel', () => {
     });
 
     it('shows file path in group header and line number in card', async () => {
+      const user = userEvent.setup();
       setupMswListComments([makeComment({ filePath: 'src/deep/nested/file.ts', lineNumber: 77 })]);
 
       render(<ReviewPanel workspaceId="ws-1" sessionId="session-1" />);
+
+      // Wait for comments to load (default is flat list)
+      await waitFor(() => {
+        expect(screen.getByText('Missing error handling')).toBeInTheDocument();
+      });
+
+      // Toggle to grouped view
+      await user.click(screen.getByRole('button', { name: 'Group by file' }));
 
       await waitFor(() => {
         expect(screen.getByText('file.ts')).toBeInTheDocument();

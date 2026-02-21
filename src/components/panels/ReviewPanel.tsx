@@ -57,7 +57,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   const [loading, setLoading] = useState(false);
   const [fetchSession, setFetchSession] = useState<string | null>(null);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
-  const [groupByFile, setGroupByFile] = useState(true);
+  const [groupByFile, setGroupByFile] = useState(false);
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -246,6 +246,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
               size="sm"
               className="h-5 text-xs px-1.5 text-muted-foreground ml-auto"
               onClick={() => setGroupByFile((prev) => !prev)}
+              aria-label={groupByFile ? 'Switch to flat list' : 'Group by file'}
             >
               {groupByFile ? (
                 <ListTree className="h-3 w-3" />
