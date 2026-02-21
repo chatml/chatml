@@ -614,10 +614,16 @@ export function useWebSocket(enabled: boolean = true) {
             // User-initiated plan mode activations are always honored.
             // SDK-originated events are suppressed if within the exit cooldown
             // (guards against SDK bug #15755 stale status messages).
-            if (event.source === 'user') {
+            if (event.source === 'user' || event.source === 'enter_plan_tool') {
+              // Genuine activation (user toggle or agent EnterPlanMode tool) — always honor
+              // and clear cooldown so subsequent sdk_status events for this cycle aren't suppressed.
               recentlyExitedPlanMode.delete(conversationId);
               store.setPlanModeActive(conversationId, true);
-              notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+              // Only notify when user explicitly toggles plan mode. Agent-initiated entry
+              // (enter_plan_tool) means the agent just started planning — no plan to review yet.
+              if (event.source === 'user') {
+                notifyDesktop(conversationId, 'Plan ready for review', 'The AI needs your approval');
+              }
             } else if (isInPlanModeExitCooldown(conversationId)) {
               // Suppress — cooldown window handles multiple stale events
             } else {

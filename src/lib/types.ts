@@ -289,7 +289,7 @@ export interface AgentEvent {
   sessionId?: string;
   resuming?: boolean;
   forking?: boolean;
-  source?: 'startup' | 'resume' | 'clear' | 'compact' | 'user' | 'exit_plan' | 'sdk_status';
+  source?: 'startup' | 'resume' | 'clear' | 'compact' | 'user' | 'exit_plan' | 'sdk_status' | 'enter_plan_tool';
   reason?: string;
 
   // Enhanced init fields

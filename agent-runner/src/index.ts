@@ -1031,6 +1031,32 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     lastPlanFilePath = null;
   }
 
+  // When the agent autonomously enters plan mode via EnterPlanMode, emit a dedicated
+  // event so the frontend can distinguish it from stale SDK status echoes and bypass
+  // the exit cooldown. Mirrors the ExitPlanMode pattern above.
+  if (hookInput.tool_name === "EnterPlanMode") {
+    // Clear stale-mode suppression — this is a genuine plan mode entry
+    suppressStalePlanMode = false;
+    // Track pre-plan mode so ExitPlanMode can restore it
+    if (currentPermissionMode !== "plan") {
+      prePlanPermissionMode = currentPermissionMode;
+    }
+    currentPermissionMode = "plan" as PermissionMode;
+    // Clear stale plan file path — new plan cycle starts fresh
+    lastPlanFilePath = null;
+    debug(`EnterPlanMode completed — entering plan mode, previous mode was "${prePlanPermissionMode}"`);
+    emit({ type: "permission_mode_changed", mode: "plan", source: "enter_plan_tool" });
+    // Sync SDK internal state to plan mode (mirrors ExitPlanMode's setPermissionMode call)
+    if (queryRef) {
+      try {
+        await queryRef.setPermissionMode("plan");
+        debug(`SDK permission mode confirmed set to "plan"`);
+      } catch (err: unknown) {
+        debug(`Failed to set permission mode after EnterPlanMode: ${err}`);
+      }
+    }
+  }
+
   // If this is a sub-agent tool, emit a tool_end event with agentId
   if (toolUseId) {
     const subTool = subagentActiveTools.get(toolUseId);
