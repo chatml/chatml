@@ -40,7 +40,6 @@ import {
   Boxes,
   ExternalLink,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { resolveWorkspaceColor } from '@/lib/workspace-colors';
 import { updateSession as apiUpdateSession } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -270,20 +269,10 @@ export function SessionToolbarContent() {
             <div className="w-1.5" />
 
             {selectedSession.prStatus !== 'merged' && (() => {
-              const reviewVariant =
-                (selectedSession.hasMergeConflict || selectedSession.hasCheckFailures)
-                  ? 'destructive' as const
-                  : 'secondary' as const;
-
-              const separatorColor = {
-                destructive: 'border-l-red-400/40',
-                secondary: 'border-l-secondary-foreground/10',
-              }[reviewVariant];
-
               return (
             <div className="inline-flex rounded-sm shadow-sm">
               <Button
-                variant={reviewVariant}
+                variant="secondary"
                 size="sm"
                 className="h-6 px-2 gap-1.5 text-xs rounded-r-none rounded-l-sm border-r-0 transition-none"
                 onClick={() => dispatchReview('quick')}
@@ -294,12 +283,9 @@ export function SessionToolbarContent() {
               <Popover open={reviewPopoverOpen} onOpenChange={setReviewPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
-                    variant={reviewVariant}
+                    variant="secondary"
                     size="sm"
-                    className={cn(
-                      'h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l',
-                      separatorColor,
-                    )}
+                    className="h-6 w-4 px-0.5 rounded-l-none rounded-r-sm transition-none border-l border-l-secondary-foreground/10"
                   >
                     <ChevronDown className="size-2.5" />
                   </Button>
