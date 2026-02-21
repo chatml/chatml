@@ -15,9 +15,10 @@ import {
   ChevronDown,
   Check,
   Loader2,
-  ExternalLink,
+  List,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatTimeAgo } from '@/lib/format';
 import { useAppStore } from '@/stores/appStore';
 import {
   listReviewComments,
@@ -49,8 +50,8 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   const [filter, setFilter] = useState<CommentSeverity | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const [fetchSession, setFetchSession] = useState<string | null>(null);
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+  const [groupByFile, setGroupByFile] = useState(true);
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -158,18 +159,6 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     [workspaceId, sessionId, updateReviewComment]
   );
 
-  const toggleCardExpanded = useCallback((commentId: string) => {
-    setExpandedCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(commentId)) {
-        next.delete(commentId);
-      } else {
-        next.add(commentId);
-      }
-      return next;
-    });
-  }, []);
-
   const toggleFileCollapsed = useCallback((filePath: string) => {
     setCollapsedFiles((prev) => {
       const next = new Set(prev);
@@ -244,6 +233,19 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
           <MessageSquare className="h-3 w-3 mr-0.5" />
           {counts.suggestion > 0 && counts.suggestion}
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 text-xs px-1.5 text-muted-foreground ml-auto"
+          onClick={() => setGroupByFile((prev) => !prev)}
+          title={groupByFile ? 'Switch to flat list' : 'Switch to group by file'}
+        >
+          {groupByFile ? (
+            <List className="h-3 w-3" />
+          ) : (
+            <FileCode className="h-3 w-3" />
+          )}
+        </Button>
       </div>
 
       {/* Comments list */}
@@ -272,55 +274,66 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
       ) : (
         <ScrollArea className="flex-1 min-h-0">
           <div className="p-1.5 space-y-1">
-            {Array.from(groupedComments.entries()).map(([filePath, fileComments]) => {
-              const fileName = filePath.split('/').pop() || filePath;
-              const dirPath = filePath.split('/').slice(0, -1).join('/');
-              const unresolvedCount = fileComments.filter((c) => !c.resolved).length;
-              const isCollapsed = collapsedFiles.has(filePath);
+            {groupByFile ? (
+              Array.from(groupedComments.entries()).map(([filePath, fileComments]) => {
+                const fileName = filePath.split('/').pop() || filePath;
+                const dirPath = filePath.split('/').slice(0, -1).join('/');
+                const unresolvedCount = fileComments.filter((c) => !c.resolved).length;
+                const isCollapsed = collapsedFiles.has(filePath);
 
-              return (
-                <div key={filePath}>
-                  {/* File group header */}
-                  <button
-                    className="flex items-center gap-1.5 w-full px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-2 rounded transition-colors"
-                    onClick={() => toggleFileCollapsed(filePath)}
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="h-3 w-3 shrink-0" />
-                    ) : (
-                      <ChevronDown className="h-3 w-3 shrink-0" />
-                    )}
-                    <FileCode className="h-3 w-3 shrink-0" />
-                    <span className="truncate text-left" title={filePath}>
-                      {dirPath && <span className="opacity-60">{dirPath}/</span>}
-                      <span className="text-foreground">{fileName}</span>
-                    </span>
-                    {unresolvedCount > 0 && (
-                      <span className="ml-auto shrink-0 bg-muted text-muted-foreground rounded-full px-1.5 py-0 text-2xs font-medium">
-                        {unresolvedCount}
+                return (
+                  <div key={filePath}>
+                    {/* File group header */}
+                    <button
+                      className="flex items-center gap-1.5 w-full px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-surface-2 rounded transition-colors"
+                      onClick={() => toggleFileCollapsed(filePath)}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3 shrink-0" />
+                      )}
+                      <FileCode className="h-3 w-3 shrink-0" />
+                      <span className="truncate text-left" title={filePath}>
+                        {dirPath && <span className="opacity-60">{dirPath}/</span>}
+                        <span className="text-foreground">{fileName}</span>
                       </span>
-                    )}
-                  </button>
+                      {unresolvedCount > 0 && (
+                        <span className="ml-auto shrink-0 bg-muted text-muted-foreground rounded-full px-1.5 py-0 text-2xs font-medium">
+                          {unresolvedCount}
+                        </span>
+                      )}
+                    </button>
 
-                  {/* File comments */}
-                  {!isCollapsed && (
-                    <div className="ml-2 space-y-1 mt-0.5">
-                      {fileComments.map((comment) => (
-                        <ReviewCommentCard
-                          key={comment.id}
-                          comment={comment}
-                          isExpanded={expandedCards.has(comment.id)}
-                          onToggleExpand={() => toggleCardExpanded(comment.id)}
-                          onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
-                          onResolve={() => handleResolve(comment.id)}
-                          isResolved={comment.resolved}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    {/* File comments */}
+                    {!isCollapsed && (
+                      <div className="ml-2 space-y-1 mt-0.5">
+                        {fileComments.map((comment) => (
+                          <ReviewCommentCard
+                            key={comment.id}
+                            comment={comment}
+                            onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
+                            onResolve={() => handleResolve(comment.id)}
+                            isResolved={comment.resolved}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              filteredComments.map((comment) => (
+                <ReviewCommentCard
+                  key={comment.id}
+                  comment={comment}
+                  onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
+                  onResolve={() => handleResolve(comment.id)}
+                  isResolved={comment.resolved}
+                  showFilePath
+                />
+              ))
+            )}
           </div>
         </ScrollArea>
       )}
@@ -344,24 +357,25 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
 
 function ReviewCommentCard({
   comment,
-  isExpanded,
-  onToggleExpand,
   onNavigate,
   onResolve,
   isResolved,
+  showFilePath,
 }: {
   comment: ReviewComment;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
   onNavigate: () => void;
   onResolve?: () => void;
   isResolved?: boolean;
+  showFilePath?: boolean;
 }) {
-  // Use title field if available, otherwise extract first line of content
   const title = comment.title || comment.content.split('\n')[0];
-  const description = comment.title
-    ? comment.content
-    : comment.content.split('\n').slice(1).join('\n').trim();
+
+  // Refresh relative timestamps every 60s
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const severity = comment.severity || 'info';
 
@@ -379,31 +393,16 @@ function ReviewCommentCard({
     suggestion: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
   }[severity];
 
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
-  };
-
   return (
     <div
       className={cn(
-        'rounded-lg border p-2 transition-colors',
+        'rounded-lg border p-2 transition-colors cursor-pointer',
         isResolved ? 'opacity-50 border-border bg-surface-1' : severityColor
       )}
+      onClick={onNavigate}
     >
-      {/* Header row - click to expand/collapse */}
-      <div
-        className="flex items-start gap-2 cursor-pointer"
-        onClick={onToggleExpand}
-      >
+      {/* Header row */}
+      <div className="flex items-start gap-2">
         {isResolved ? (
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-green-500" />
         ) : (
@@ -411,11 +410,6 @@ function ReviewCommentCard({
         )}
         <div className="flex-1 min-w-0">
           <div className={cn('font-medium text-xs leading-tight', isResolved && 'line-through')}>{title}</div>
-          {description && !isExpanded && (
-            <p className="text-2xs text-muted-foreground mt-0.5 line-clamp-1">
-              {description}
-            </p>
-          )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           {!isResolved && (
@@ -432,34 +426,23 @@ function ReviewCommentCard({
               <Check className="h-3 w-3" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-5 w-5 p-0 hover:bg-accent"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNavigate();
-            }}
-            title="Open in diff view"
-          >
-            <ExternalLink className="h-3 w-3 text-muted-foreground" />
-          </Button>
         </div>
       </div>
 
-      {/* Expanded content */}
-      {isExpanded && description && (
-        <div className="mt-1.5 ml-5.5 text-xs text-foreground/80 whitespace-pre-wrap break-words border-t border-border/50 pt-1.5">
-          {description}
-        </div>
-      )}
-
-      {/* Footer row - line number and time */}
+      {/* Footer row - location and time */}
       <div className="flex items-center gap-2 mt-1 ml-5.5 text-2xs text-muted-foreground">
         {comment.lineNumber > 0 && (
-          <span>L{comment.lineNumber}</span>
+          <span
+            className="truncate"
+            title={showFilePath ? `${comment.filePath}:${comment.lineNumber}` : undefined}
+          >
+            {showFilePath
+              ? `${comment.filePath}:${comment.lineNumber}`
+              : `L${comment.lineNumber}`
+            }
+          </span>
         )}
-        <span className="ml-auto flex items-center gap-0.5">
+        <span className="ml-auto flex items-center gap-0.5 shrink-0">
           <Clock className="h-2.5 w-2.5" />
           {formatTimeAgo(comment.createdAt)}
         </span>

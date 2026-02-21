@@ -13,6 +13,7 @@
 import { memo, useCallback } from 'react';
 import { AlertCircle, AlertTriangle, Info, Lightbulb, CheckCircle2, Circle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { cn } from '@/lib/utils';
 import type { ReviewComment } from '@/lib/types';
 
@@ -156,9 +157,9 @@ export const CommentThread = memo(function CommentThread({
         </div>
       </div>
 
-      {/* Content - simple text rendering (could add markdown support later) */}
-      <div className="text-foreground/90 whitespace-pre-wrap break-words">
-        {comment.content}
+      {/* Content - rendered as markdown */}
+      <div className="prose prose-sm dark:prose-invert max-w-none text-sm text-foreground/90 break-words [&_pre]:my-1 [&_pre]:bg-muted/50 [&_pre]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1">
+        <CachedMarkdown cacheKey={`review-comment:${comment.id}`} content={comment.content} />
       </div>
     </div>
   );
