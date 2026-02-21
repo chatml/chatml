@@ -328,7 +328,11 @@ export const MessageBlock = memo(function MessageBlock({
 
         {/* Run Summary */}
         {message.runSummary && (
-          <RunSummaryBlock summary={message.runSummary} />
+          <RunSummaryBlock
+            summary={message.runSummary}
+            checkpointUuid={message.checkpointUuid}
+            conversationId={message.conversationId}
+          />
         )}
       </div>
     </div>
@@ -344,6 +348,7 @@ export const MessageBlock = memo(function MessageBlock({
     prev.role !== next.role ||
     prev.thinkingContent !== next.thinkingContent ||
     prev.planContent !== next.planContent ||
+    prev.checkpointUuid !== next.checkpointUuid ||
     prevProps.isFirst !== nextProps.isFirst ||
     prevProps.worktreePath !== nextProps.worktreePath ||
     prevProps.searchQuery !== nextProps.searchQuery) {

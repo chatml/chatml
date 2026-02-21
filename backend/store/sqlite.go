@@ -182,6 +182,7 @@ func (s *SQLiteStore) initSchema() error {
 		duration_ms INTEGER DEFAULT NULL,
 		timeline TEXT DEFAULT NULL,
 		plan_content TEXT DEFAULT NULL,
+		checkpoint_uuid TEXT DEFAULT NULL,
 		timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		position INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -321,6 +322,8 @@ func (s *SQLiteStore) initSchema() error {
 func (s *SQLiteStore) runMigrations() error {
 	// Add pr_title column (ignore error if already exists)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN pr_title TEXT NOT NULL DEFAULT ''`)
+	// Add checkpoint_uuid column to messages (ignore error if already exists)
+	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN checkpoint_uuid TEXT DEFAULT NULL`)
 	return nil
 }
 
@@ -1364,7 +1367,7 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				plan_content, timestamp, position
+				plan_content, checkpoint_uuid, timestamp, position
 			FROM messages
 			WHERE conversation_id = ? AND position < ?
 			ORDER BY position DESC
@@ -1373,7 +1376,7 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		rows, err = s.db.QueryContext(ctx, `
 			SELECT id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				plan_content, timestamp, position
+				plan_content, checkpoint_uuid, timestamp, position
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY position DESC
@@ -1394,12 +1397,12 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		var msg models.Message
 		var setupInfoJSON, runSummaryJSON sql.NullString
 		var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
-		var planContentNull sql.NullString
+		var planContentNull, checkpointUuidNull sql.NullString
 		var durationMsNull sql.NullInt64
 		var position int
 		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
 			&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
-			&planContentNull, &msg.Timestamp, &position); err != nil {
+			&planContentNull, &checkpointUuidNull, &msg.Timestamp, &position); err != nil {
 			return nil, fmt.Errorf("GetConversationMessages scan: %w", err)
 		}
 		if setupInfoJSON.Valid {
@@ -1434,6 +1437,9 @@ func (s *SQLiteStore) GetConversationMessages(ctx context.Context, convID string
 		}
 		if planContentNull.Valid {
 			msg.PlanContent = planContentNull.String
+		}
+		if checkpointUuidNull.Valid {
+			msg.CheckpointUuid = checkpointUuidNull.String
 		}
 		items = append(items, messageWithPos{msg: msg, position: position})
 	}
@@ -1682,6 +1688,7 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 	// Nullable scalar fields
 	thinkingContent := nullString(msg.ThinkingContent)
 	planContent := nullString(msg.PlanContent)
+	checkpointUuid := nullString(msg.CheckpointUuid)
 	var durationMs sql.NullInt64
 	if msg.DurationMs > 0 {
 		durationMs = sql.NullInt64{Int64: int64(msg.DurationMs), Valid: true}
@@ -1708,11 +1715,11 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary,
 				tool_usage, thinking_content, duration_ms, timeline,
-				plan_content, timestamp, position)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				plan_content, checkpoint_uuid, timestamp, position)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			msg.ID, convID, msg.Role, msg.Content, setupInfoJSON, runSummaryJSON,
 			toolUsageJSON, thinkingContent, durationMs, timelineJSON,
-			planContent, msg.Timestamp, nextPos)
+			planContent, checkpointUuid, msg.Timestamp, nextPos)
 		if err != nil {
 			tx.Rollback()
 			return err

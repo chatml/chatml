@@ -247,6 +247,8 @@ export interface Message {
   timeline?: TimelineEntry[];
   // Approved plan content from ExitPlanMode
   planContent?: string;
+  // File checkpoint UUID for revert
+  checkpointUuid?: string;
 }
 
 // Run statistics from agent

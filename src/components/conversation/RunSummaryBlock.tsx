@@ -13,6 +13,8 @@ import {
   Terminal,
   Search,
   RotateCw,
+  RotateCcw,
+  Loader2,
   ChevronDown,
   ChevronRight,
   Globe,
@@ -24,19 +26,74 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatTokens } from '@/lib/format';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { getApiBase } from '@/lib/api';
 import type { RunSummary } from '@/lib/types';
 
 interface RunSummaryBlockProps {
   summary: RunSummary;
+  checkpointUuid?: string;
+  conversationId?: string;
 }
 
-export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSummaryBlockProps) {
+export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpointUuid, conversationId }: RunSummaryBlockProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isRewinding, setIsRewinding] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const showTokenUsage = useSettingsStore((s) => s.showTokenUsage);
   const showChatCost = useSettingsStore((s) => s.showChatCost);
+
+  const handleRewind = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!conversationId || !checkpointUuid || isRewinding) return;
+
+    setConfirmOpen(false);
+    setIsRewinding(true);
+    try {
+      const response = await fetch(`${getApiBase()}/api/conversations/${conversationId}/rewind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkpointUuid }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to rewind:', errorText);
+        window.dispatchEvent(new CustomEvent('agent-notification', {
+          detail: {
+            title: 'Rewind failed',
+            message: errorText || 'Failed to revert files to checkpoint',
+            type: 'error',
+            conversationId,
+          }
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to rewind:', err);
+      window.dispatchEvent(new CustomEvent('agent-notification', {
+        detail: {
+          title: 'Rewind failed',
+          message: err instanceof Error ? err.message : 'Network error while reverting files',
+          type: 'error',
+          conversationId,
+        }
+      }));
+    } finally {
+      setIsRewinding(false);
+    }
+  };
 
   const formatDuration = (ms?: number) => {
     if (!ms) return null;
@@ -100,7 +157,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <CollapsibleTrigger
         className={cn(
-          'mt-3 flex items-center gap-3 text-xs text-muted-foreground flex-wrap w-full',
+          'group mt-3 flex items-center gap-3 text-xs text-muted-foreground flex-wrap w-full',
           'hover:text-foreground/80 transition-colors cursor-pointer',
           !summary.success && 'text-destructive/70'
         )}
@@ -158,9 +215,50 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary }: RunSum
           </span>
         )}
 
+        {/* Revert to checkpoint */}
+        {checkpointUuid && (
+          <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0 p-0.5 rounded hover:bg-muted"
+                    onClick={(e) => { e.stopPropagation(); setConfirmOpen(true); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setConfirmOpen(true); } }}
+                  >
+                    {isRewinding ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-3 h-3" />
+                    )}
+                  </span>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Revert files to this checkpoint</p>
+              </TooltipContent>
+            </Tooltip>
+            <PopoverContent
+              side="top"
+              align="end"
+              className="w-auto p-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Revert files?</span>
+                <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={handleRewind}>
+                  Revert
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+
         {/* Expand indicator if there are detailed stats */}
         {hasDetailedStats && (
-          <span className="ml-auto shrink-0">
+          <span className={cn('shrink-0', !checkpointUuid && 'ml-auto')}>
             {isExpanded ? (
               <ChevronDown className="w-3 h-3" />
             ) : (

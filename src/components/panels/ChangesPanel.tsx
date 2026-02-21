@@ -7,7 +7,6 @@ import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionB
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
-import { CheckpointTimeline } from '@/components/panels/CheckpointTimeline';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
 import { ChecksPanel, type ChecksPanelHandle } from '@/components/panels/ChecksPanel';
 
@@ -729,11 +728,6 @@ export function ChangesPanel() {
                   <McpServersPanel />
                 </ErrorBoundary>
               )}
-              {bottomTab === 'history' && (
-                <ErrorBoundary section="CheckpointTimeline" fallback={<InlineErrorFallback message="Unable to display checkpoints" />}>
-                  <CheckpointTimeline />
-                </ErrorBoundary>
-              )}
               {bottomTab === 'file-history' && (
                 <ErrorBoundary section="FileHistory" fallback={<InlineErrorFallback message="Unable to display file history" />}>
                   <FileHistoryPanel />
@@ -759,7 +753,6 @@ const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; shortcutId?: stri
 // Bottom panel tabs configuration
 const BOTTOM_TABS_CONFIG: Record<AllBottomPanelTab, { label: string; alwaysVisible?: boolean }> = {
   todos: { label: 'Tasks', alwaysVisible: true },
-  history: { label: 'Checkpoints' },
   'file-history': { label: 'File History' },
   budget: { label: 'Usage' },
   mcp: { label: 'MCP' },

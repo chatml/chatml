@@ -844,6 +844,7 @@ export function useWebSocket(enabled: boolean = true) {
             isResult: event.isResult as boolean | undefined,
             conversationId,
           });
+          store.setPendingCheckpointUuid(conversationId, String(event.checkpointUuid));
         }
         break;
 

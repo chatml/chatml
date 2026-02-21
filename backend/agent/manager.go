@@ -395,6 +395,7 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	var currentThinking string // Accumulated thinking for snapshot/backwards compat
 	var pendingPlanContent string
 	var pendingPlanTimestamp time.Time
+	var pendingCheckpointUuid string
 	var isThinking bool
 	var snapshotDirty bool
 
@@ -846,6 +847,7 @@ outer:
 
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
+					pendingCheckpointUuid = event.CheckpointUuid
 					conv, _ := m.store.GetConversationMeta(ctx, convID)
 					if conv != nil {
 						cp := &models.Checkpoint{
@@ -945,6 +947,7 @@ outer:
 						ToolUsage:       completedTools,
 						ThinkingContent: currentThinking,
 						PlanContent:     planContent,
+						CheckpointUuid:  pendingCheckpointUuid,
 						DurationMs:      durationMs,
 						Timeline:        timeline,
 						Timestamp:       time.Now(),
@@ -957,6 +960,7 @@ outer:
 				currentThinking = ""
 				pendingPlanContent = ""
 				pendingPlanTimestamp = time.Time{}
+				pendingCheckpointUuid = ""
 				isThinking = false
 				thinkingBlocks = nil
 				currentThinkingText = ""
@@ -1116,6 +1120,7 @@ outer:
 			ToolUsage:       completedTools,
 			ThinkingContent: currentThinking,
 			PlanContent:     finalPlanContent,
+			CheckpointUuid:  pendingCheckpointUuid,
 			DurationMs:      durationMs,
 			Timeline:        timeline,
 			Timestamp:       time.Now(),
