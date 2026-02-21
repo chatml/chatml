@@ -414,52 +414,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [clampedMatchIndex, searchQuery, searchMatches.total]);
 
-  // Scroll to the plan content when plan approval activates.
-  // Uses Virtuoso's own scroll container (via getScrollerElement) instead of native
-  // scrollIntoView to avoid desyncing Virtuoso's internal scroll tracking, which
-  // causes blank rendering areas. Also suppresses followOutput via pendingPlanApproval
-  // prop to prevent auto-scroll-to-bottom from fighting the plan scroll.
-  const hasScrolledForPlanApprovalRef = useRef(false);
-
-  useEffect(() => {
-    let outerRaf: number | undefined;
-    let innerRaf: number | undefined;
-
-    if (selectedStreaming?.pendingPlanApproval) {
-      if (hasScrolledForPlanApprovalRef.current) return;
-      hasScrolledForPlanApprovalRef.current = true;
-
-      // Double rAF: first lets React commit the DOM, second lets Virtuoso
-      // measure and lay out the footer content.
-      outerRaf = requestAnimationFrame(() => {
-        innerRaf = requestAnimationFrame(() => {
-          const scrollerEl = messageListRef.current?.getScrollerElement();
-          if (!scrollerEl) return;
-
-          const planEl = scrollerEl.querySelector('[data-plan-id="pending-plan"]');
-          if (!planEl) return;
-
-          const OFFSET_PX = 16;
-          const planRect = planEl.getBoundingClientRect();
-          const scrollerRect = scrollerEl.getBoundingClientRect();
-          const planTopInScroller = planRect.top - scrollerRect.top + scrollerEl.scrollTop;
-
-          scrollerEl.scrollTo({
-            top: planTopInScroller - OFFSET_PX,
-            behavior: 'smooth',
-          });
-        });
-      });
-    } else {
-      hasScrolledForPlanApprovalRef.current = false;
-    }
-
-    return () => {
-      if (outerRaf !== undefined) cancelAnimationFrame(outerRaf);
-      if (innerRaf !== undefined) cancelAnimationFrame(innerRaf);
-    };
-  }, [selectedStreaming?.pendingPlanApproval]);
-
 // Filter tabs for current session only (strict session isolation)
   // All tabs are now session-scoped - no more workspace-level tabs
   const { visibleTabs, sessionTabs } = useMemo(() => {
