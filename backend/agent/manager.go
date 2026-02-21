@@ -2000,11 +2000,6 @@ func (m *Manager) tryAutoNameSession(ctx context.Context, sessionID, suggestedNa
 		return
 	}
 
-	// Skip if session has already been auto-named
-	if sess.AutoNamed {
-		return
-	}
-
 	// Format the name like a branch name
 	formattedName := formatSessionName(suggestedName)
 	if formattedName == "" {
