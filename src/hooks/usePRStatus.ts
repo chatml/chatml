@@ -75,6 +75,20 @@ export function usePRStatus(
     await fetchStatus();
   }, [fetchStatus]);
 
+  // Clear stale data immediately when session identity changes.
+  // Without this, the previous session's PR details linger in state
+  // while the new fetch is in-flight, causing downstream consumers
+  // (e.g. PrimaryActionButton) to briefly render stale actions.
+  // Uses setTimeout to satisfy react-hooks/set-state-in-effect.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setPRDetails(null);
+      setLoading(true);
+      setError(null);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [workspaceId, sessionId]);
+
   // Initial fetch and fetch on session change
   useEffect(() => {
     isMountedRef.current = true;
@@ -92,6 +106,7 @@ export function usePRStatus(
       }
     } else {
       setPRDetails(null);
+      setLoading(false);
     }
 
     return () => {

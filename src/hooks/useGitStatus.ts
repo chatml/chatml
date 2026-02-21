@@ -101,9 +101,20 @@ export function useGitStatus(
     await fetchStatus();
   }, [fetchStatus]);
 
-  // Reset permanent error flag when session changes
+  // Reset state when session identity changes.
+  // Clears the permanent error flag and nullifies stale data so that
+  // consumers don't briefly render actions from the previous session.
+  // Uses setTimeout to avoid synchronous setState within the effect body
+  // (satisfies react-hooks/set-state-in-effect).
   useEffect(() => {
     permanentErrorRef.current = false;
+    const id = setTimeout(() => {
+      setStatus(null);
+      setLoading(true);
+      setError(null);
+      setErrorCode(null);
+    }, 0);
+    return () => clearTimeout(id);
   }, [workspaceId, sessionId]);
 
   // Initial fetch and fetch on session change
