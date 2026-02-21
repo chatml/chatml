@@ -95,6 +95,9 @@ export function SessionToolbarContent() {
   const selectedConversationId = useAppStore((s) => s.selectedConversationId);
   const addConversation = useAppStore((s) => s.addConversation);
   const selectConversation = useAppStore((s) => s.selectConversation);
+  const addMessage = useAppStore((s) => s.addMessage);
+  const setStreaming = useAppStore((s) => s.setStreaming);
+  const updateConversation = useAppStore((s) => s.updateConversation);
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
   const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const [reviewPopoverOpen, setReviewPopoverOpen] = useState(false);
@@ -120,6 +123,29 @@ export function SessionToolbarContent() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId, showWarning]);
 
+  // Wrapper that adds a user bubble before sending — used by PrimaryActionButton
+  const handleActionWithBubble = useCallback((content: string) => {
+    if (!selectedConversationId) {
+      showWarning('No active conversation');
+      return;
+    }
+    addMessage({
+      id: crypto.randomUUID(),
+      conversationId: selectedConversationId,
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString(),
+    });
+    window.dispatchEvent(new CustomEvent('chat-message-submitted'));
+    updateConversation(selectedConversationId, { status: 'active' });
+    setStreaming(selectedConversationId, true);
+    sendConversationMessage(selectedConversationId, content).catch((error) => {
+      console.error('Failed to send action message:', error);
+      setStreaming(selectedConversationId, false);
+      updateConversation(selectedConversationId, { status: 'idle' });
+    });
+  }, [selectedConversationId, showWarning, addMessage, updateConversation, setStreaming]);
+
   const [, setFixIssuesLoading] = useState(false);
 
   const handleFixIssues = useCallback(async () => {
@@ -128,11 +154,32 @@ export function SessionToolbarContent() {
       return;
     }
 
+    // Show short user bubble immediately (full CI context is sent to the agent separately)
+    addMessage({
+      id: crypto.randomUUID(),
+      conversationId: selectedConversationId,
+      role: 'user',
+      content: 'Fix the failing CI checks',
+      timestamp: new Date().toISOString(),
+    });
+    window.dispatchEvent(new CustomEvent('chat-message-submitted'));
+    updateConversation(selectedConversationId, { status: 'active' });
+    setStreaming(selectedConversationId, true);
+
     setFixIssuesLoading(true);
     try {
       const context = await getCIFailureContext(selectedWorkspaceId, selectedSessionId);
 
       if (context.failedRuns.length === 0) {
+        setStreaming(selectedConversationId, false);
+        updateConversation(selectedConversationId, { status: 'idle' });
+        addMessage({
+          id: crypto.randomUUID(),
+          conversationId: selectedConversationId,
+          role: 'assistant',
+          content: 'No CI failures found. All checks may have passed.',
+          timestamp: new Date().toISOString(),
+        });
         showWarning('No CI failures found. Checks may have passed.');
         return;
       }
@@ -146,12 +193,14 @@ export function SessionToolbarContent() {
         await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks');
         showWarning('Could not fetch CI details. Sent generic request.');
       } catch {
+        setStreaming(selectedConversationId, false);
+        updateConversation(selectedConversationId, { status: 'idle' });
         showWarning('Failed to send message to agent.');
       }
     } finally {
       setFixIssuesLoading(false);
     }
-  }, [selectedConversationId, selectedWorkspaceId, selectedSessionId, showWarning]);
+  }, [selectedConversationId, selectedWorkspaceId, selectedSessionId, showWarning, addMessage, updateConversation, setStreaming]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -259,7 +308,7 @@ export function SessionToolbarContent() {
               <PrimaryActionButton
                 workspaceId={selectedWorkspaceId}
                 session={selectedSession}
-                onSendMessage={handleGitActionMessage}
+                onSendMessage={handleActionWithBubble}
                 onFixIssues={handleFixIssues}
                 onArchiveSession={requestArchive}
                 onCreatePR={() => setShowCreatePRDialog(true)}
@@ -455,7 +504,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
 
   useMainToolbarContent(toolbarConfig);
 
