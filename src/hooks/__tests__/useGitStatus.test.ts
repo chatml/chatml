@@ -179,6 +179,43 @@ describe('useGitStatus', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('clears stale data when sessionId changes', async () => {
+    const statusA = makeGitStatus({ branch: { name: 'branch-a', upstream: 'origin/branch-a' } });
+    const statusB = makeGitStatus({ branch: { name: 'branch-b', upstream: 'origin/branch-b' } });
+
+    // Start with session A
+    mockedGetGitStatus.mockResolvedValue(statusA);
+    const { result, rerender } = renderHook(
+      ({ sessionId }) => useGitStatus('ws-1', sessionId),
+      { initialProps: { sessionId: 'session-a' } }
+    );
+    await flushAndAdvance();
+    expect(result.current.status).toEqual(statusA);
+    expect(result.current.loading).toBe(false);
+
+    // Switch to session B — API will take time to respond
+    let resolveB!: (value: ReturnType<typeof makeGitStatus>) => void;
+    mockedGetGitStatus.mockReturnValue(
+      new Promise((resolve) => { resolveB = resolve; })
+    );
+    rerender({ sessionId: 'session-b' });
+
+    // Before the API responds, stale data should be cleared
+    await flushAndAdvance();
+    expect(result.current.status).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    // Now resolve the API call
+    await act(async () => {
+      resolveB(statusB);
+      await Promise.resolve();
+    });
+    await flushAndAdvance();
+
+    expect(result.current.status).toEqual(statusB);
+    expect(result.current.loading).toBe(false);
+  });
+
   it('polls periodically', async () => {
     renderHook(() => useGitStatus('ws-1', 'session-1'));
     await flushAndAdvance();
