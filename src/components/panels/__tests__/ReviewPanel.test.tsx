@@ -239,8 +239,9 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Missing error handling')).toBeInTheDocument();
       });
 
-      // Toggle to grouped view
-      await user.click(screen.getByRole('button', { name: 'Group by file' }));
+      // Toggle to grouped view (the grouping button is the last button in the filter bar)
+      const buttons = screen.getAllByRole('button');
+      await user.click(buttons[buttons.length - 1]);
 
       await waitFor(() => {
         expect(screen.getByText('file.ts')).toBeInTheDocument();
