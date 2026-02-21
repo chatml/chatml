@@ -89,6 +89,33 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const sessions = useAppStore((s) => s.sessions);
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
+
+  // Defer heavy file tab rendering on session switch for instant UI response.
+  // Shadow DOM + Shiki tokenization in the code viewer blocks startTransition;
+  // rendering a placeholder first lets the session switch paint immediately.
+  const [fileTabsReady, setFileTabsReady] = useState(true);
+  const prevSessionIdRef = useRef(selectedSessionId);
+
+  useEffect(() => {
+    if (prevSessionIdRef.current !== selectedSessionId) {
+      prevSessionIdRef.current = selectedSessionId;
+      setFileTabsReady(false);
+      // Double-rAF ensures the placeholder paints before we re-enable heavy
+      // rendering. A single rAF fires before the paint, so React may batch
+      // both state updates into one render, skipping the placeholder entirely.
+      let outerRafId: number;
+      let innerRafId: number;
+      outerRafId = requestAnimationFrame(() => {
+        innerRafId = requestAnimationFrame(() => {
+          setFileTabsReady(true);
+        });
+      });
+      return () => {
+        cancelAnimationFrame(outerRafId);
+        cancelAnimationFrame(innerRafId);
+      };
+    }
+  }, [selectedSessionId]);
   // Session-scoped streaming state for the selected conversation only
   const selectedStreaming = useStreamingState(selectedConversationId);
   const queuedMessage = useAppStore(
@@ -1015,7 +1042,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 key={tab.id}
                 className={isActive ? 'h-full' : 'hidden'}
               >
-                {tab.loadError ? (
+                {!fileTabsReady && isActive ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Loading file...</span>
+                    </div>
+                  </div>
+                ) : tab.loadError ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="text-center max-w-md">
                       <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
