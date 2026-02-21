@@ -93,28 +93,25 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Defer heavy file tab rendering on session switch for instant UI response.
   // Shadow DOM + Shiki tokenization in the code viewer blocks startTransition;
   // rendering a placeholder first lets the session switch paint immediately.
-  const [fileTabsReady, setFileTabsReady] = useState(true);
-  const prevSessionIdRef = useRef(selectedSessionId);
+  // We track a deferred session ID that catches up after a double-rAF, and
+  // derive readiness by comparing it to the current selected session.
+  const [deferredSessionId, setDeferredSessionId] = useState(selectedSessionId);
+  const fileTabsReady = deferredSessionId === selectedSessionId;
 
   useEffect(() => {
-    if (prevSessionIdRef.current !== selectedSessionId) {
-      prevSessionIdRef.current = selectedSessionId;
-      setFileTabsReady(false);
-      // Double-rAF ensures the placeholder paints before we re-enable heavy
-      // rendering. A single rAF fires before the paint, so React may batch
-      // both state updates into one render, skipping the placeholder entirely.
-      let outerRafId: number;
-      let innerRafId: number;
-      outerRafId = requestAnimationFrame(() => {
-        innerRafId = requestAnimationFrame(() => {
-          setFileTabsReady(true);
-        });
+    // Double-rAF ensures the placeholder paints before we re-enable heavy
+    // rendering. A single rAF fires before the paint, so React may batch
+    // both state updates into one render, skipping the placeholder entirely.
+    const outerRafId = requestAnimationFrame(() => {
+      innerRafId = requestAnimationFrame(() => {
+        setDeferredSessionId(selectedSessionId);
       });
-      return () => {
-        cancelAnimationFrame(outerRafId);
-        cancelAnimationFrame(innerRafId);
-      };
-    }
+    });
+    let innerRafId: number;
+    return () => {
+      cancelAnimationFrame(outerRafId);
+      cancelAnimationFrame(innerRafId);
+    };
   }, [selectedSessionId]);
   // Session-scoped streaming state for the selected conversation only
   const selectedStreaming = useStreamingState(selectedConversationId);
