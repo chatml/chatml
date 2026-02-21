@@ -949,6 +949,7 @@ export interface ToolUsageDTO {
   durationMs?: number;
   stdout?: string;
   stderr?: string;
+  metadata?: import('@/lib/types').ToolMetadata;
 }
 
 export interface TimelineEntryDTO {
