@@ -1396,6 +1396,10 @@ export function useWebSocket(enabled: boolean = true) {
           const payload = data.payload as ReviewComment | undefined;
           if (payload?.id) {
             getStore().addReviewComment(data.sessionId, payload);
+            // Auto-switch sidebar to Code Review tab when a new comment arrives for the active session
+            if (data.sessionId === getStore().selectedSessionId) {
+              window.dispatchEvent(new CustomEvent('select-sidebar-tab', { detail: { tab: 'review' } }));
+            }
           }
           return;
         }

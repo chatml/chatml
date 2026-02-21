@@ -240,7 +240,7 @@ describe('ReviewPanel', () => {
       expect(screen.getByText('src/deep/nested/')).toBeInTheDocument();
     });
 
-    it('uses title for card heading, content for description', async () => {
+    it('uses title for card heading (content not shown in card)', async () => {
       setupMswListComments([
         makeComment({
           title: 'Short title',
@@ -253,7 +253,8 @@ describe('ReviewPanel', () => {
       await waitFor(() => {
         expect(screen.getByText('Short title')).toBeInTheDocument();
       });
-      expect(screen.getByText('This is a longer description explaining the issue in detail.')).toBeInTheDocument();
+      // Content is not rendered in the card (only visible in the diff editor)
+      expect(screen.queryByText('This is a longer description explaining the issue in detail.')).not.toBeInTheDocument();
     });
 
     it('falls back to first line of content when no title', async () => {
@@ -269,7 +270,8 @@ describe('ReviewPanel', () => {
       await waitFor(() => {
         expect(screen.getByText('First line used as title')).toBeInTheDocument();
       });
-      expect(screen.getByText('Second line is the description.')).toBeInTheDocument();
+      // Only the first line (used as title) is shown; rest is not rendered in the card
+      expect(screen.queryByText('Second line is the description.')).not.toBeInTheDocument();
     });
   });
 
@@ -403,7 +405,7 @@ describe('ReviewPanel', () => {
   // ── onFileSelect callback ────────────────────────────────────────────
 
   describe('onFileSelect callback', () => {
-    it('calls onFileSelect with file path and line number when navigate button is clicked', async () => {
+    it('calls onFileSelect with file path and line number when card is clicked', async () => {
       const user = userEvent.setup();
       const onFileSelect = vi.fn();
 
@@ -423,8 +425,8 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Click me')).toBeInTheDocument();
       });
 
-      // Click the "Open in diff view" button
-      await user.click(screen.getByTitle('Open in diff view'));
+      // Click the comment card to navigate to the file
+      await user.click(screen.getByText('Click me'));
 
       expect(onFileSelect).toHaveBeenCalledWith('src/index.ts', 33);
     });

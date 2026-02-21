@@ -594,6 +594,24 @@ export function ChangesPanel() {
     }
   }, [fetchChanges, fetchBranchData]);
 
+  // Auto-switch to a tab when requested by other components (e.g., WebSocket comment_added).
+  // Debounced so rapid-fire events (many comments in a review) only switch once.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ tab: string }>).detail;
+      if (detail?.tab) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => handleTabSelect(detail.tab), 300);
+      }
+    };
+    window.addEventListener('select-sidebar-tab', handler);
+    return () => {
+      window.removeEventListener('select-sidebar-tab', handler);
+      if (timer) clearTimeout(timer);
+    };
+  }, [handleTabSelect]);
+
   // Keyboard shortcuts for switching sidebar tabs
   const tabShortcuts = useMemo(() => ({
     sidebarFilesTab: () => handleTabSelect('files'),

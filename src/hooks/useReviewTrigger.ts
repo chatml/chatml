@@ -8,19 +8,22 @@ import {
 import { useSelectedIds } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 
+const MARKDOWN_INSTRUCTION =
+  '\nWhen writing comment content, use Markdown formatting for detailed comments that include code examples, lists, or structured explanations (use fenced code blocks for code, bullet lists for multiple points, **bold** for emphasis). Keep simple one-sentence comments as plain text.';
+
 const REVIEW_PROMPTS: Record<string, string> = {
   quick:
-    'Review the changes in this session. Use get_workspace_diff to see what changed, then use add_review_comment to leave inline comments. Focus on bugs, errors, and obvious issues. Be concise.',
+    'Review the changes in this session. Use get_workspace_diff to see what changed, then use add_review_comment to leave inline comments. Focus on bugs, errors, and obvious issues. Be concise.' + MARKDOWN_INSTRUCTION,
   deep:
-    'Do a thorough code review of all changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue found. Check for bugs, performance problems, security issues, error handling gaps, and code quality. Be detailed and specific.',
+    'Do a thorough code review of all changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue found. Check for bugs, performance problems, security issues, error handling gaps, and code quality. Be detailed and specific.' + MARKDOWN_INSTRUCTION,
   security:
-    'Perform a security audit on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each security concern. Look for injection vulnerabilities, authentication/authorization issues, data exposure, insecure defaults, and other OWASP top 10 risks.',
+    'Perform a security audit on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each security concern. Look for injection vulnerabilities, authentication/authorization issues, data exposure, insecure defaults, and other OWASP top 10 risks.' + MARKDOWN_INSTRUCTION,
   performance:
-    'Review the changes in this session for performance issues. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Look for unnecessary re-renders, memory leaks, expensive computations in hot paths, missing memoization, N+1 queries, and blocking operations. Call get_review_comment_stats at the end to summarize.',
+    'Review the changes in this session for performance issues. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Look for unnecessary re-renders, memory leaks, expensive computations in hot paths, missing memoization, N+1 queries, and blocking operations. Call get_review_comment_stats at the end to summarize.' + MARKDOWN_INSTRUCTION,
   architecture:
-    'Review the changes in this session for architectural quality. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Evaluate separation of concerns, coupling between modules, adherence to existing patterns in the codebase, SOLID principles, and appropriate abstractions. Call get_review_comment_stats at the end to summarize.',
+    'Review the changes in this session for architectural quality. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Evaluate separation of concerns, coupling between modules, adherence to existing patterns in the codebase, SOLID principles, and appropriate abstractions. Call get_review_comment_stats at the end to summarize.' + MARKDOWN_INSTRUCTION,
   premerge:
-    'Perform a final pre-merge check on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue. Check for leftover TODOs, console.logs, debug code, commented-out code, missing error handling, incomplete implementations, and anything that should not be merged. Call get_review_comment_stats at the end to summarize.',
+    'Perform a final pre-merge check on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue. Check for leftover TODOs, console.logs, debug code, commented-out code, missing error handling, incomplete implementations, and anything that should not be merged. Call get_review_comment_stats at the end to summarize.' + MARKDOWN_INSTRUCTION,
 };
 
 const REVIEW_TYPE_META: { key: string; label: string; placeholder: string }[] = [
