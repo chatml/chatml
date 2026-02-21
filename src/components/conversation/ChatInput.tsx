@@ -394,19 +394,29 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     && conversationHasMessages
     && !isSuggestionStale;
 
-  // Sync toggle with agent-driven plan mode changes:
-  // - ON when agent enters plan mode (e.g. EnterPlanMode tool)
-  // - OFF when agent exits plan mode without user interaction (auto-exit with no plan content)
-  // Explicit user deactivation is handled by handleApprovePlan.
+  // Sync the local planModeEnabled toggle with the store's planModeActive, and vice versa.
+  // Agent-driven changes (store → toggle) take priority during streaming.
+  // User-driven changes (toggle → store) apply when not streaming.
   useEffect(() => {
+    // Agent-driven: store says plan mode ON but toggle is OFF → sync toggle ON
     if (planModeActive && !planModeEnabled) {
       setPlanModeEnabled(true);
-    } else if (!planModeActive && planModeEnabled && isStreaming && !pendingPlanApproval) {
-      // Agent exited plan mode (auto-approved, no plan to review) — sync toggle off.
-      // Only syncs during streaming to avoid fighting with user's manual toggle.
-      setPlanModeEnabled(false);
+      return; // Store is already correct, don't push back
     }
-  }, [planModeActive, planModeEnabled, isStreaming, pendingPlanApproval]);
+    // Agent-driven: store says plan mode OFF while streaming → sync toggle OFF
+    if (!planModeActive && planModeEnabled && isStreaming && !pendingPlanApproval) {
+      setPlanModeEnabled(false);
+      return; // Store is already correct, don't push back
+    }
+    // User-driven: toggle changed while not streaming → push to store
+    if (selectedConversationId) {
+      const current = useAppStore.getState().streamingState[selectedConversationId];
+      if (current?.isStreaming) return; // Don't fight with WebSocket handler
+      if ((current?.planModeActive ?? false) !== planModeEnabled) {
+        setPlanModeActive(selectedConversationId, planModeEnabled);
+      }
+    }
+  }, [planModeActive, planModeEnabled, isStreaming, pendingPlanApproval, selectedConversationId, setPlanModeActive]);
 
   // Restore per-session toggle states when switching sessions
   const prevSessionRef = useRef<string | null>(null);
@@ -432,19 +442,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setSessionToggleState(selectedSessionId, { thinkingLevel, planModeEnabled });
   }, [selectedSessionId, thinkingLevel, planModeEnabled, setSessionToggleState]);
 
-  // Keep streaming state planModeActive in sync with the local toggle.
-  // This ensures the ConversationArea banner is visible immediately when:
-  // - A new session starts with defaultPlanMode = true
-  // - Switching to a session that had planModeEnabled = true
-  // - A new conversation is created in a session with plan mode on
-  useEffect(() => {
-    if (!selectedConversationId) return;
-    const current = useAppStore.getState().streamingState[selectedConversationId];
-    if (current?.isStreaming) return; // Don't fight with WebSocket handler
-    if ((current?.planModeActive ?? false) !== planModeEnabled) {
-      setPlanModeActive(selectedConversationId, planModeEnabled);
-    }
-  }, [selectedConversationId, planModeEnabled, setPlanModeActive]);
 
   // Check if there's a pending user question
   const pendingQuestion = usePendingUserQuestion(selectedConversationId);
