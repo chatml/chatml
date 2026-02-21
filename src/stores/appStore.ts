@@ -372,6 +372,7 @@ interface AppState {
   setPendingPlanApproval: (conversationId: string, requestId: string, planContent?: string) => void;
   clearPendingPlanApproval: (conversationId: string) => void;
   setApprovedPlanContent: (conversationId: string, content: string) => void;
+  clearApprovedPlanContent: (conversationId: string) => void;
   addActiveTool: (conversationId: string, tool: ActiveTool, opts?: { skipTimeout?: boolean }) => void;
   completeActiveTool: (conversationId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string, metadata?: import('@/lib/types').ToolMetadata) => void;
   updateToolProgress: (conversationId: string, toolId: string, progress: { elapsedTimeSeconds?: number; toolName?: string }) => void;
@@ -1387,6 +1388,12 @@ updateFileTabContent: (id, content) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       approvedPlanContent: content,
       approvedPlanTimestamp: Date.now(),
+    }),
+  })),
+  clearApprovedPlanContent: (conversationId) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      approvedPlanContent: undefined,
+      approvedPlanTimestamp: undefined,
     }),
   })),
   addActiveTool: (conversationId, tool, opts) => {
