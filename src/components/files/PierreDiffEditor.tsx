@@ -50,7 +50,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
   const themeType = useResolvedThemeType();
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
   const [diffViewMode, setDiffViewMode] = useState<'split' | 'unified'>('unified');
-  const [wordWrap, setWordWrap] = useState(false);
+  const [wordWrap, setWordWrap] = useState(true);
 
   const getNewContent = useCallback(() => newContent, [newContent]);
 
