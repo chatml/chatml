@@ -29,6 +29,7 @@ import {
   Check,
   Copy,
   MessageSquarePlus,
+  Star,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
@@ -95,6 +96,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   // Read store defaults once at mount time — these initialize per-conversation
   // state and intentionally don't sync if the user changes settings mid-session.
   const defaultModel = useSettingsStore((s) => s.defaultModel);
+  const setDefaultModel = useSettingsStore((s) => s.setDefaultModel);
   const defaultThinkingLevel = useSettingsStore((s) => s.defaultThinkingLevel);
   const [selectedModel, setSelectedModel] = useState(
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
@@ -1277,26 +1279,64 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           {/* Model Selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" title={`Model: ${selectedModel.name} (⌥M to cycle)`}>
+              <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" title={`Model: ${selectedModel.name}${selectedModel.id === defaultModel ? ' (default)' : ''} (⌥M to cycle)`}>
                 <selectedModel.icon className="h-3.5 w-3.5" />
                 {selectedModel.name}
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {MODELS.map((model) => (
-                <DropdownMenuItem
-                  key={model.id}
-                  onClick={() => setSelectedModel(model)}
-                >
-                  {model.name}
-                  {'badge' in model && model.badge && (
-                    <span className="ml-auto rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
-                      {model.badge}
+            <DropdownMenuContent align="start" className="w-64">
+              {MODELS.map((model) => {
+                const isDefault = model.id === defaultModel;
+                const isSelected = model.id === selectedModel.id;
+                return (
+                  <DropdownMenuItem
+                    key={model.id}
+                    className="group flex items-center gap-2 pr-1.5"
+                    onClick={() => setSelectedModel(model)}
+                  >
+                    <span className="flex flex-1 items-center gap-1.5 min-w-0">
+                      <span className="truncate">{model.name}</span>
+                      {'badge' in model && model.badge && (
+                        <span className="shrink-0 rounded-sm bg-emerald-500 px-1.5 py-px text-[10px] font-semibold text-white">
+                          {model.badge}
+                        </span>
+                      )}
+                      {isDefault && (
+                        <span className="shrink-0 text-xs text-muted-foreground">(default)</span>
+                      )}
                     </span>
-                  )}
-                </DropdownMenuItem>
-              ))}
+                    <span className="ml-auto flex shrink-0 items-center gap-1">
+                      {isDefault ? (
+                        <Star className="h-3 w-3 fill-current text-amber-500" />
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              role="button"
+                              aria-label={`Set ${model.name} as default`}
+                              className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+                              onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDefaultModel(model.id);
+                                showInfo(`${model.name} set as default for new conversations`);
+                              }}
+                            >
+                              <Star className="h-3 w-3" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 
