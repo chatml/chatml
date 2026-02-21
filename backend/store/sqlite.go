@@ -182,6 +182,7 @@ func (s *SQLiteStore) initSchema() error {
 		duration_ms INTEGER DEFAULT NULL,
 		timeline TEXT DEFAULT NULL,
 		plan_content TEXT DEFAULT NULL,
+		checkpoint_uuid TEXT DEFAULT NULL,
 		timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		position INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -322,7 +323,7 @@ func (s *SQLiteStore) runMigrations() error {
 	// Add pr_title column (ignore error if already exists)
 	_, _ = s.db.Exec(`ALTER TABLE sessions ADD COLUMN pr_title TEXT NOT NULL DEFAULT ''`)
 	// Add checkpoint_uuid column to messages (ignore error if already exists)
-	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN checkpoint_uuid TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE messages ADD COLUMN checkpoint_uuid TEXT DEFAULT NULL`)
 	return nil
 }
 
