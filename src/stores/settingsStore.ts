@@ -61,6 +61,45 @@ export const DEFAULT_LAYOUTS = {
   changes: { 'file-list': 65, 'terminal': 35 },
 } as const;
 
+// Exported defaults for user-facing settings (used by reset functionality)
+// Excludes UI state, onboarding flags, and theme (handled by next-themes)
+export const SETTINGS_DEFAULTS = {
+  // General
+  confirmCloseActiveTab: true,
+  confirmArchiveDirtySession: true,
+  desktopNotifications: true,
+  soundEffects: false,
+  soundEffectType: 'chime',
+  sendWithEnter: true,
+  suggestionsEnabled: true,
+  autoSubmitPillSuggestion: false,
+  autoConvertLongText: true,
+  defaultOpenApp: 'vscode',
+  // Appearance (theme excluded — uses next-themes)
+  fontSize: 'medium' as FontSize,
+  showTokenUsage: true,
+  showChatCost: true,
+  zenMode: false,
+  // AI & Models
+  defaultModel: 'claude-opus-4-6',
+  defaultThinkingLevel: 'high' as ThinkingLevel,
+  maxThinkingTokens: 16000,
+  showThinkingBlocks: true,
+  reviewModel: 'claude-opus-4-6',
+  defaultPlanMode: false,
+  autoApproveSafeCommands: true,
+  // Git
+  branchPrefixType: 'github' as BranchPrefixType,
+  branchPrefixCustom: '',
+  deleteBranchOnArchive: false,
+  archiveOnMerge: false,
+  // Account
+  strictPrivacy: false,
+  // Sidebar
+  sidebarGroupBy: 'project' as SidebarGroupBy,
+  sidebarSortBy: 'recent' as SidebarSortBy,
+};
+
 interface SettingsState {
   // Chat settings
   confirmCloseActiveTab: boolean;
@@ -186,6 +225,7 @@ interface SettingsState {
   setHasCompletedOnboarding: (value: boolean) => void;
   setHasCompletedGuidedTour: (value: boolean) => void;
   resetOnboarding: () => void;
+  resetAllSettings: () => void;
   setSidebarGroupBy: (value: SidebarGroupBy) => void;
   setSidebarSortBy: (value: SidebarSortBy) => void;
   toggleSidebarGroupCollapsed: (key: string) => void;
@@ -195,32 +235,9 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      // Default values
-      confirmCloseActiveTab: true,
-      confirmArchiveDirtySession: true,
-      defaultModel: 'claude-opus-4-6',
-      defaultThinkingLevel: 'high' as ThinkingLevel,
-      maxThinkingTokens: 16000,
-      showThinkingBlocks: true,
-      showTokenUsage: true,
-      desktopNotifications: true,
-      soundEffects: false,
-      soundEffectType: 'chime',
-      sendWithEnter: true,
-      suggestionsEnabled: true,
-      autoSubmitPillSuggestion: false,
-      reviewModel: 'claude-opus-4-6',
-      defaultPlanMode: false,
-      autoConvertLongText: true,
-      showChatCost: true,
-      theme: 'system',
-      fontSize: 'medium',
-      branchPrefixType: 'github',
-      branchPrefixCustom: '',
-      deleteBranchOnArchive: false,
-      archiveOnMerge: false,
-      autoApproveSafeCommands: true,
-      strictPrivacy: false,
+      // User-facing setting defaults (spread from shared constant)
+      ...SETTINGS_DEFAULTS,
+      theme: 'system' as ThemeOption, // Theme is in store but AppearanceSettings uses next-themes
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       unreadWorkspaces: [], // Workspace IDs marked as unread
       unreadSessions: [], // Session IDs with unread agent completions
@@ -359,6 +376,7 @@ export const useSettingsStore = create<SettingsState>()(
       setHasCompletedOnboarding: (value) => set({ hasCompletedOnboarding: value }),
       setHasCompletedGuidedTour: (value) => set({ hasCompletedGuidedTour: value }),
       resetOnboarding: () => set({ hasCompletedOnboarding: false, hasCompletedGuidedTour: false }),
+      resetAllSettings: () => set({ ...SETTINGS_DEFAULTS }),
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
       setLastRepoDashboardWorkspaceId: (id) => set({ lastRepoDashboardWorkspaceId: id }),

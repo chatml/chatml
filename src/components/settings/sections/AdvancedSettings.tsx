@@ -1,16 +1,118 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, ExternalLink, Download, Upload } from 'lucide-react';
 import { openFolderDialog } from '@/lib/tauri';
 import { getWorkspacesBasePath, setWorkspacesBasePath, getEnvSettings, setEnvSettings } from '@/lib/api';
-import { ExternalLink } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
+import { useTheme } from 'next-themes';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { SettingsRow } from '../shared/SettingsRow';
+import { SettingsGroup } from '../shared/SettingsGroup';
+
+interface SettingsExportFile {
+  version: 1;
+  theme: string;
+  settings: Partial<typeof SETTINGS_DEFAULTS>;
+}
 
 export function AdvancedSettings() {
   const toasts = useToast();
+  const { theme, setTheme } = useTheme();
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportSettings = useCallback(() => {
+    try {
+      const storeState = useSettingsStore.getState();
+      const exportedSettings: Record<string, unknown> = {};
+      for (const key of Object.keys(SETTINGS_DEFAULTS)) {
+        exportedSettings[key] = storeState[key as keyof typeof SETTINGS_DEFAULTS];
+      }
+
+      const payload: SettingsExportFile = {
+        version: 1,
+        theme: theme ?? 'system',
+        settings: exportedSettings as Partial<typeof SETTINGS_DEFAULTS>,
+      };
+
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `chatml-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+
+      toasts.success('Settings exported successfully.');
+    } catch (err) {
+      console.error('Export failed', err);
+      toasts.error('Failed to export settings.');
+    }
+  }, [theme, toasts]);
+
+  const handleImportSettings = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const raw = event.target?.result as string;
+        const parsed = JSON.parse(raw) as unknown;
+
+        if (
+          typeof parsed !== 'object' ||
+          parsed === null ||
+          (parsed as Record<string, unknown>).version !== 1
+        ) {
+          toasts.error('Invalid settings file: unrecognized format.');
+          return;
+        }
+
+        const data = parsed as SettingsExportFile;
+
+        if (typeof data.theme === 'string' && ['light', 'dark', 'system'].includes(data.theme)) {
+          setTheme(data.theme);
+        }
+
+        if (typeof data.settings === 'object' && data.settings !== null) {
+          const defaults = SETTINGS_DEFAULTS as Record<string, unknown>;
+          const importedSettings: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(data.settings)) {
+            if (key in defaults && typeof value === typeof defaults[key]) {
+              importedSettings[key] = value;
+            }
+          }
+          if (Object.keys(importedSettings).length > 0) {
+            useSettingsStore.setState(importedSettings);
+          }
+        }
+
+        toasts.success('Settings imported successfully.');
+      } catch {
+        toasts.error('Failed to import settings: invalid JSON.');
+      } finally {
+        if (importInputRef.current) {
+          importInputRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsText(file);
+  }, [setTheme, toasts]);
 
   const handleClearCache = () => {
     try {
@@ -26,24 +128,102 @@ export function AdvancedSettings() {
     }
   };
 
+  const handleResetAll = () => {
+    useSettingsStore.getState().resetAllSettings();
+    setTheme('system');
+    setShowResetDialog(false);
+    toasts.success('All settings have been reset to defaults.');
+  };
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Advanced</h2>
 
-      {/* ChatML root directory */}
-      <RootDirectorySection />
+      <SettingsGroup label="Storage">
+        <RootDirectorySection />
+      </SettingsGroup>
 
-      {/* Environment variables */}
-      <EnvSection />
+      <SettingsGroup label="Environment">
+        <EnvSection />
+      </SettingsGroup>
 
-      <SettingsRow
-        title="Clear cache"
-        description="Clear cached data and temporary files"
-      >
-        <Button variant="outline" size="sm" onClick={handleClearCache}>
-          Clear
-        </Button>
-      </SettingsRow>
+      <SettingsGroup label="Configuration">
+        <SettingsRow
+          settingId="exportSettings"
+          title="Export settings"
+          description="Download your preferences as a JSON file"
+        >
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportSettings}>
+            <Download className="w-3.5 h-3.5" />
+            Export
+          </Button>
+        </SettingsRow>
+
+        <SettingsRow
+          settingId="importSettings"
+          title="Import settings"
+          description="Restore preferences from a previously exported JSON file"
+        >
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="sr-only"
+            onChange={handleImportSettings}
+            aria-label="Import settings file"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => importInputRef.current?.click()}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import
+          </Button>
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup label="Maintenance">
+        <SettingsRow
+          settingId="clearCache"
+          title="Clear cache"
+          description="Clear cached data and temporary files"
+        >
+          <Button variant="outline" size="sm" onClick={handleClearCache}>
+            Clear
+          </Button>
+        </SettingsRow>
+
+        <SettingsRow
+          settingId="resetAllSettings"
+          title="Reset all settings"
+          description="Restore all preferences to their default values"
+        >
+          <Button variant="outline" size="sm" onClick={() => setShowResetDialog(true)}>
+            Reset
+          </Button>
+        </SettingsRow>
+      </SettingsGroup>
+
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset all settings?</DialogTitle>
+            <DialogDescription>
+              This will reset all preferences to their default values. Your account, API keys, custom instructions, and workspace data will not be affected.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowResetDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleResetAll}>
+              Reset all settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -81,16 +261,18 @@ function RootDirectorySection() {
   }, [rootDirectory, hasUnsavedChanges]);
 
   return (
-    <div className="py-4 border-b border-border/50">
-      <h4 className="text-sm font-medium">ChatML root directory</h4>
-      <p className="text-sm text-muted-foreground mt-0.5">
-        Where ChatML stores repositories and sessions. Changing this requires restarting the app.
-      </p>
-      <div className="flex items-center gap-2 mt-3">
+    <SettingsRow
+      settingId="workspacesBasePath"
+      variant="stacked"
+      title="ChatML root directory"
+      description="Where ChatML stores repositories and sessions. Changing this requires restarting the app."
+    >
+      <div className="flex items-center gap-2">
         <input
           type="text"
           value={rootDirectory}
           onChange={(e) => setRootDirectory(e.target.value)}
+          aria-label="ChatML root directory"
           className="flex-1 px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <Button
@@ -122,7 +304,7 @@ function RootDirectorySection() {
       {saveError && (
         <p className="text-sm text-destructive mt-2">{saveError}</p>
       )}
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -162,30 +344,30 @@ function EnvSection() {
   }, [envVars, hasUnsavedChanges]);
 
   return (
-    <div className="py-4 border-b border-border/50">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h4 className="text-sm font-medium">Environment variables</h4>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Useful for using third-party providers like Bedrock or Vertex.
-            Changes take effect for new agent sessions.
-          </p>
-        </div>
-        <a
-          href="https://docs.anthropic.com/en/docs/claude-code"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-        >
-          View docs
-          <ExternalLink className="w-3 h-3" />
-        </a>
-      </div>
-
+    <SettingsRow
+      settingId="envVars"
+      variant="stacked"
+      title="Environment variables"
+      description={
+        <>
+          Useful for using third-party providers like Bedrock or Vertex. Changes take effect for new agent sessions.{' '}
+          <a
+            href="https://docs.anthropic.com/en/docs/claude-code"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline inline-flex items-center gap-0.5"
+          >
+            View docs
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </>
+      }
+    >
       <textarea
         value={envVars}
         onChange={(e) => setEnvVarsLocal(e.target.value)}
         disabled={loading}
+        aria-label="Environment variables"
         className="w-full h-40 px-4 py-3 font-mono text-sm bg-muted/50 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary resize-none disabled:opacity-50"
         placeholder="VAR_NAME=value"
       />
@@ -209,6 +391,6 @@ function EnvSection() {
           {saving ? 'Saving...' : 'Save'}
         </Button>
       </div>
-    </div>
+    </SettingsRow>
   );
 }

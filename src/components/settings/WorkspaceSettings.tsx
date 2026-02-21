@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import {
   getRepoDetails,
@@ -33,6 +33,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface WorkspaceSettingsProps {
   workspaceId: string;
@@ -161,6 +162,8 @@ function RepositorySection({
 }) {
   const updateWorkspace = useAppStore((s) => s.updateWorkspace);
   const { error: showError } = useToast();
+  const showErrorRef = useRef(showError);
+  useEffect(() => { showErrorRef.current = showError; }, [showError]);
   const [remotesData, setRemotesData] = useState<RepoRemotesDTO | null>(null);
   const [loadingRemotes, setLoadingRemotes] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -187,7 +190,6 @@ function RepositorySection({
     setSaving(key);
     try {
       const updated = await updateRepoSettings(workspace.id, settings);
-      // Update workspace in store
       updateWorkspace(workspace.id, {
         defaultBranch: updated.branch,
         remote: updated.remote || 'origin',
@@ -195,12 +197,11 @@ function RepositorySection({
         customPrefix: updated.customPrefix || '',
       });
     } catch {
-      showError('Failed to save setting');
+      showErrorRef.current('Failed to save setting');
     } finally {
       setSaving(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace.id]);
+  }, [workspace.id, updateWorkspace]);
 
   const currentRemote = workspace.remote || 'origin';
   const remoteBranches = remotesData?.branches?.[currentRemote] || [];
@@ -368,28 +369,23 @@ function BranchPrefixSelector({
   ] as const;
 
   return (
-    <div className="space-y-2">
+    <RadioGroup
+      value={value}
+      onValueChange={(v) => {
+        if (v === 'custom') {
+          onSelect('custom', customInput.trim());
+        } else {
+          onSelect(v, '');
+        }
+      }}
+      className={cn('gap-2', saving && 'opacity-50 pointer-events-none')}
+    >
       {options.map((opt) => (
         <label
           key={opt.key}
-          className={cn(
-            'flex items-center gap-2 cursor-pointer text-sm py-1',
-            saving && 'opacity-50 pointer-events-none',
-          )}
+          className="flex items-center gap-2 cursor-pointer text-sm py-1"
         >
-          <input
-            type="radio"
-            name="branchPrefix"
-            className="accent-primary"
-            checked={value === opt.key}
-            onChange={() => {
-              if (opt.key === 'custom') {
-                onSelect('custom', customInput.trim());
-              } else {
-                onSelect(opt.key, '');
-              }
-            }}
-          />
+          <RadioGroupItem value={opt.key} />
           {opt.label}
         </label>
       ))}
@@ -413,7 +409,7 @@ function BranchPrefixSelector({
           />
         </div>
       )}
-    </div>
+    </RadioGroup>
   );
 }
 
@@ -426,6 +422,8 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
   const [globalPrTemplate, setGlobalPrTemplate] = useState('');
   const [saving, setSaving] = useState(false);
   const { error: showError } = useToast();
+  const showErrorRef = useRef(showError);
+  useEffect(() => { showErrorRef.current = showError; }, [showError]);
 
   useEffect(() => {
     Promise.all([
@@ -441,9 +439,8 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
       setSavedPrTemplate(wsPr);
       setGlobalPrTemplate(glPr);
     }).catch(() => {
-      showError('Failed to load settings');
+      showErrorRef.current('Failed to load settings');
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   const hasChanges = JSON.stringify(prompts) !== JSON.stringify(saved) || prTemplate !== savedPrTemplate;
@@ -464,12 +461,31 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
       setPrTemplate(prTemplate.trim());
       setSavedPrTemplate(prTemplate.trim());
     } catch {
-      showError('Failed to save settings');
+      showErrorRef.current('Failed to save settings');
     } finally {
       setSaving(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, prompts, prTemplate]);
+
+  const hasAnyOverride = Object.values(prompts).some((v) => v.trim()) || prTemplate.trim();
+
+  const handleResetAll = useCallback(async () => {
+    setSaving(true);
+    try {
+      await Promise.all([
+        setWorkspaceReviewPrompts(workspaceId, {}),
+        setPRTemplate(workspaceId, ''),
+      ]);
+      setPrompts({});
+      setSaved({});
+      setPrTemplate('');
+      setSavedPrTemplate('');
+    } catch {
+      showErrorRef.current('Failed to reset settings');
+    } finally {
+      setSaving(false);
+    }
+  }, [workspaceId]);
 
   const prPlaceholder = globalPrTemplate
     ? `Global: ${globalPrTemplate.slice(0, 60)}${globalPrTemplate.length > 60 ? '…' : ''}`
@@ -477,7 +493,20 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-1">Review Prompts</h2>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-xl font-semibold">Review Prompts</h2>
+        {hasAnyOverride && !hasChanges && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground hover:text-foreground"
+            disabled={saving}
+            onClick={handleResetAll}
+          >
+            Reset to global defaults
+          </Button>
+        )}
+      </div>
       <p className="text-sm text-muted-foreground mb-6">
         Override the global review prompt settings for this workspace.
         Leave empty to use the global default.
@@ -489,10 +518,18 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
           const effectivePlaceholder = globalOverride
             ? `Global: ${globalOverride.slice(0, 60)}…`
             : placeholder;
+          const hasOverride = !!(prompts[key]?.trim());
 
           return (
             <div key={key}>
-              <label className="text-sm font-medium block mb-1.5">{label}</label>
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-sm font-medium">{label}</label>
+                {hasOverride && (
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+                    Overridden
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
                 Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
               </p>
@@ -508,7 +545,14 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
       </div>
 
       <div className="mt-8 pt-8 border-t border-border/50">
-        <h3 className="text-lg font-semibold mb-1">PR Creation</h3>
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-lg font-semibold">PR Creation</h3>
+          {prTemplate.trim() && (
+            <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+              Overridden
+            </span>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground mb-4">
           Override the global PR template for this workspace.
           Leave empty to use the global default.
