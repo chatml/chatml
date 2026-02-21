@@ -25,20 +25,21 @@ interface Session {
 /**
  * Hook that determines the primary action based on git status, session state, and PR details.
  *
- * Three-tier color system:
- *   Alert (red)    — blockers that need fixing
- *   Action (primary) — the natural next workflow step
- *   Complete (green) — terminal/done state
+ * Color system:
+ *   Red (destructive) — blockers that need fixing
+ *   Yellow (warning)  — in-progress operations needing attention
+ *   Green (success)   — positive forward actions (create PR, merge)
+ *   Purple (default)  — neutral actions (sync, archive)
  *
  * Priority order:
- * 1.  Local conflicts  → "Resolve Conflicts"   (alert)
- * 1b. GH conflicts     → "Resolve Conflicts"   (alert) — PR mergeable=false
- * 2.  CI failures      → "Fix Issues"          (alert)
- * 3. In-progress op   → "Continue {Op}"       (action)
- * 4. Diverged         → "Sync Branch"         (action)
- * 5. Work to ship     → "New Pull Request"    (action) — collapses commit/push/create-pr
- * 6. Open PR          → "Merge PR"            (action) — includes "Push Latest" when needed
- * 7. PR merged        → "Archive Session"     (complete)
+ * 1.  Local conflicts  → "Resolve Conflicts"   (red)
+ * 1b. GH conflicts     → "Resolve Conflicts"   (red) — PR mergeable=false
+ * 2.  CI failures      → "Fix Issues"          (red)
+ * 3. In-progress op   → "Continue {Op}"       (yellow)
+ * 4. Diverged         → "Sync Branch"         (purple)
+ * 5. Work to ship     → "New Pull Request"    (green)
+ * 6. Open PR (CI ok)  → "Merge PR"            (green) — hidden while CI pending
+ * 7. PR merged        → "Archive Session"     (purple)
  */
 export function useActionState(
   gitStatus: GitStatusDTO | null,
@@ -56,7 +57,7 @@ export function useActionState(
         tier: 'complete',
         label: 'Archive Session',
         icon: Archive,
-        variant: 'success',
+        variant: 'default',
         sessionId: session?.id,
       };
     }
@@ -188,22 +189,21 @@ export function useActionState(
         tier: 'action',
         label: 'New Pull Request',
         icon: GitPullRequest,
-        variant: 'default',
+        variant: 'success',
         message,
         dropdownActions,
       };
     }
 
-    // Priority 6: Open PR — always show "Merge PR", with "Push Latest" in dropdown when needed
-    // Variant depends on CI check status:
-    // - checks passed or no checks → green (success) — safe to merge signal
-    // - checks pending or unknown  → neutral (default)
+    // Priority 6: Open PR — show "Merge PR" when safe to merge
+    // - checks passed or no checks → show green (success)
+    // - checks pending             → hide button (nothing actionable while CI runs)
     // Note: checks failed is caught by Priority 2 above
     if (hasOpenPR) {
-      const mergeVariant =
-        prDetails?.checkStatus === 'success' || prDetails?.checkStatus === 'none'
-          ? 'success' as const
-          : 'default' as const;
+      // Don't show merge button while CI is still running
+      if (prDetails?.checkStatus === 'pending') {
+        return null;
+      }
 
       const dropdownActions: PrimaryAction['dropdownActions'] = [];
 
@@ -237,7 +237,7 @@ export function useActionState(
         tier: 'action',
         label: 'Merge PR',
         icon: GitMerge,
-        variant: mergeVariant,
+        variant: 'success',
         message: 'Squash and merge the pull request',
         dropdownActions,
       };
