@@ -12,7 +12,7 @@ interface BranchCacheEntry {
 interface BranchCacheState {
   cache: Record<string, BranchCacheEntry>;
 
-  /** Fetch remote branches for a workspace, returning cached data if fresh. */
+  /** Fetch branches for a workspace, returning cached data if fresh. */
   fetchBranches: (workspaceId: string, force?: boolean) => Promise<BranchDTO[]>;
 
   /** Mark all caches stale so the next access triggers a re-fetch. */
@@ -69,16 +69,16 @@ async function doFetch(
       sortBy: 'date',
       limit: 100,
     });
-    const remoteBranches = [...res.sessionBranches, ...res.otherBranches].filter((b) => b.isRemote);
+    const branches = [...res.sessionBranches, ...res.otherBranches];
 
     set((state) => ({
       cache: {
         ...state.cache,
-        [workspaceId]: { branches: remoteBranches, timestamp: Date.now(), isLoading: false },
+        [workspaceId]: { branches, timestamp: Date.now(), isLoading: false },
       },
     }));
 
-    return remoteBranches;
+    return branches;
   } catch (error) {
     set((state) => ({
       cache: {

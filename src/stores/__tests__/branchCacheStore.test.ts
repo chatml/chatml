@@ -58,7 +58,7 @@ describe('fetchBranches', () => {
     expect(result).toEqual(branches);
   });
 
-  it('filters out non-remote branches', async () => {
+  it('includes both local and remote branches', async () => {
     mockListBranches.mockResolvedValue({
       sessionBranches: [
         makeBranch({ name: 'origin/remote', isRemote: true }),
@@ -68,8 +68,8 @@ describe('fetchBranches', () => {
     });
 
     const result = await useBranchCacheStore.getState().fetchBranches('ws-1');
-    expect(result).toHaveLength(1);
-    expect(result[0].name).toBe('origin/remote');
+    expect(result).toHaveLength(2);
+    expect(result.map((b) => b.name)).toEqual(['origin/remote', 'local-only']);
   });
 
   it('returns cached data on second call within TTL', async () => {
