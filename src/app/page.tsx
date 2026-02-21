@@ -1020,10 +1020,20 @@ export default function Home() {
   // and shortcuts that need special terminal/focus handling.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+R to reload the app
+      // Block browser zoom in production (Cmd+= Cmd+- Cmd+0)
+      if (process.env.NODE_ENV !== 'development') {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey &&
+            (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
+          e.preventDefault();
+          return;
+        }
+      }
+      // Cmd+R to reload the app (development only)
       if (e.key === 'r' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         e.preventDefault();
-        window.location.reload();
+        if (process.env.NODE_ENV === 'development') {
+          window.location.reload();
+        }
       }
       // Cmd+K for command palette - allow terminal to handle it for clear
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -1115,6 +1125,14 @@ export default function Home() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [sessions, toggleBottomTerminal, selectNextTab, selectPreviousTab, setZenMode]);
+
+  // Disable default browser context menu in production
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') return;
+    const handler = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener('contextmenu', handler);
+    return () => document.removeEventListener('contextmenu', handler);
+  }, []);
 
   // Handle Tauri menu events
   useEffect(() => {
