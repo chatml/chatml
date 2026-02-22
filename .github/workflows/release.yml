@@ -84,9 +84,14 @@ jobs:
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
         run: |
           cd backend
-          GOOS=darwin GOARCH=arm64 go build -ldflags "\
-            -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
-            -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'" \
+          # Build with embedded OAuth credentials if available, otherwise plain build
+          # (plain builds fall back to environment variables at runtime)
+          LDFLAGS=""
+          if [ -n "$GITHUB_CLIENT_ID" ]; then
+            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+              -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-aarch64-apple-darwin .
 
       - name: Build Go backend (macOS x64)
@@ -96,12 +101,17 @@ jobs:
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
         run: |
           cd backend
-          GOOS=darwin GOARCH=amd64 go build -ldflags "\
-            -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
-            -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'" \
+          # Build with embedded OAuth credentials if available, otherwise plain build
+          LDFLAGS=""
+          if [ -n "$GITHUB_CLIENT_ID" ]; then
+            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+              -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-apple-darwin .
 
       - name: Sign Go backend sidecar (macOS)
+        if: env.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}

@@ -8,6 +8,7 @@ import (
 
 	"os"
 
+	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/models"
@@ -1111,9 +1112,11 @@ func TestNewAIClient_Source1_SQLiteApiKey(t *testing.T) {
 		}
 	}()
 
-	client := m.newAIClient()
-	require.NotNil(t, client, "should create client from SQLite API key")
+	provider := m.newAIClient()
+	require.NotNil(t, provider, "should create client from SQLite API key")
 	// Client should use x-api-key auth (not Bearer)
+	client, ok := provider.(*ai.Client)
+	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "x-api-key", client.AuthHeader())
 }
 
@@ -1131,8 +1134,10 @@ func TestNewAIClient_Source2_EnvVar(t *testing.T) {
 		}
 	}()
 
-	client := m.newAIClient()
-	require.NotNil(t, client, "should create client from env var")
+	provider := m.newAIClient()
+	require.NotNil(t, provider, "should create client from env var")
+	client, ok := provider.(*ai.Client)
+	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "x-api-key", client.AuthHeader())
 }
 
@@ -1155,9 +1160,11 @@ func TestNewAIClient_Source1_TakesPriorityOverSource2(t *testing.T) {
 		}
 	}()
 
-	client := m.newAIClient()
-	require.NotNil(t, client)
+	provider := m.newAIClient()
+	require.NotNil(t, provider)
 	// Client should use SQLite key (source 1), not env var (source 2)
+	client, ok := provider.(*ai.Client)
+	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "x-api-key", client.AuthHeader())
 	assert.Equal(t, "sk-sqlite-priority", client.AuthValue())
 }
@@ -1242,8 +1249,10 @@ func TestNewAIClient_EnvVarsWithAnthropicKey(t *testing.T) {
 		}
 	}()
 
-	client := m.newAIClient()
-	require.NotNil(t, client, "should create client from env-vars setting")
+	provider := m.newAIClient()
+	require.NotNil(t, provider, "should create client from env-vars setting")
+	client, ok := provider.(*ai.Client)
+	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "x-api-key", client.AuthHeader())
 	assert.Equal(t, "sk-from-env-vars-setting", client.AuthValue())
 }
@@ -1268,10 +1277,12 @@ func TestNewAIClient_EncryptedKeyOverridesEnvVarsSetting(t *testing.T) {
 		}
 	}()
 
-	client := m.newAIClient()
-	require.NotNil(t, client)
+	provider := m.newAIClient()
+	require.NotNil(t, provider)
 	// The encrypted key should override the env-vars setting key
 	// because loadEnvVars() sets envMap["ANTHROPIC_API_KEY"] = decrypted at the end
+	client, ok := provider.(*ai.Client)
+	require.True(t, ok, "expected *ai.Client, got %T", provider)
 	assert.Equal(t, "sk-encrypted-wins", client.AuthValue())
 }
 

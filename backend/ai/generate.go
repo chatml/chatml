@@ -20,7 +20,8 @@ const (
 	clientTimeout = 60 * time.Second
 )
 
-// Client is a lightweight Anthropic API client for generating PR descriptions.
+// Client is the Anthropic implementation of the Provider interface.
+// It is a lightweight API client used for PR descriptions, summarization, and suggestions.
 type Client struct {
 	authHeader string // HTTP header name: "x-api-key" or "Authorization"
 	authValue  string // Header value: raw API key or "Bearer <token>"
@@ -34,6 +35,9 @@ func (c *Client) AuthHeader() string { return c.authHeader }
 
 // AuthValue returns the HTTP header value used for authentication (for testing).
 func (c *Client) AuthValue() string { return c.authValue }
+
+// Name returns the provider name.
+func (c *Client) Name() string { return "anthropic" }
 
 // NewClient creates a new AI client using an API key (x-api-key header).
 // Returns nil if apiKey is empty.

@@ -91,32 +91,6 @@ Workspace → Session → Conversation → Message
 - **Frontend**: Zustand stores in `src/stores/`
 - **Backend**: SQLite persistence in `backend/store/`
 
-## Issue Tracking (Linear)
-
-This project uses the **ChatML** team in Linear for issue tracking. Use the Linear MCP tools (e.g., `mcp__linear__list_issues`, `mcp__linear__create_issue`).
-
-### Working with Issues
-
-```bash
-# List issues
-mcp__linear__list_issues team="ChatML"
-
-# Create issue
-mcp__linear__create_issue team="ChatML" title="Description" description="..."
-
-# View issue
-mcp__linear__get_issue id="CHA-123"
-```
-
-### Priority Levels
-
-| Priority | Use For |
-|----------|---------|
-| Urgent (1) | Critical - must fix immediately |
-| High (2) | Important, blocks other work |
-| Medium (3) | Normal priority |
-| Low (4) | Nice to have |
-
 ## Git Workflow
 
 ### ⛔ CRITICAL: Never Commit to Main
