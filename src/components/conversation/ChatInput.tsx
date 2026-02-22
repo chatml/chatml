@@ -49,6 +49,9 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
+import { LinearIssuePicker } from './LinearIssuePicker';
+import { WorkspacePicker } from './WorkspacePicker';
+import type { LinearIssueDTO } from '@/lib/api';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
 import { MODELS as SHARED_MODELS } from '@/lib/models';
 import type { MentionItem } from '@/components/ui/mention-node';
@@ -121,6 +124,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const [summaryPickerOpen, setSummaryPickerOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [selectedSummaryIds, setSelectedSummaryIds] = useState<string[]>([]);
+  const [linearPickerOpen, setLinearPickerOpen] = useState(false);
+  const [linkedLinearIssue, setLinkedLinearIssue] = useState<LinearIssueDTO | null>(null);
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+  const [linkedWorkspaceIds, setLinkedWorkspaceIds] = useState<string[]>([]);
   const plateInputRef = useRef<PlateInputHandle>(null);
   const attachmentsRef = useRef<Attachment[]>(attachments);
   attachmentsRef.current = attachments;
@@ -801,6 +808,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         handleOpenFilePicker();
       }
+      // Cmd+I to open Linear issue picker
+      if (e.code === 'KeyI' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setLinearPickerOpen(true);
+      }
       // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
     };
 
@@ -895,6 +907,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           effort: thinkingParams.effort,
           attachments: loadedAttachments.length > 0 ? loadedAttachments : undefined,
           summaryIds: selectedSummaryIds.length > 0 ? selectedSummaryIds : undefined,
+          linearIssue: linkedLinearIssue ? {
+            identifier: linkedLinearIssue.identifier,
+            title: linkedLinearIssue.title,
+            description: linkedLinearIssue.description,
+            stateName: linkedLinearIssue.stateName,
+            labels: linkedLinearIssue.labels,
+          } : undefined,
+          linkedWorkspaceIds: linkedWorkspaceIds.length > 0 ? linkedWorkspaceIds : undefined,
         });
 
         // Clear streaming on placeholder before removing it
@@ -1000,8 +1020,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         );
       }
 
-      // Clear attachments only after successful send
+      // Clear attachments and linked context after successful send
       setAttachments([]);
+      setSelectedSummaryIds([]);
+      setLinkedLinearIssue(null);
+      setLinkedWorkspaceIds([]);
     } catch (error) {
       console.error('Failed to send message:', error);
       const convId = selectedConversationId;
@@ -1232,6 +1255,43 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           </div>
         )}
 
+        {/* Linked Linear issue indicator */}
+        {linkedLinearIssue && (
+          <div className="px-3 py-1.5 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">
+              <Link className="size-3" />
+              <span className="font-mono">{linkedLinearIssue.identifier}</span>
+              <span className="truncate max-w-[200px]">{linkedLinearIssue.title}</span>
+              <button
+                type="button"
+                className="ml-1 hover:text-destructive"
+                onClick={() => setLinkedLinearIssue(null)}
+                aria-label="Remove linked issue"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Linked workspaces indicator */}
+        {linkedWorkspaceIds.length > 0 && (
+          <div className="px-3 py-1.5 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">
+              <FolderSymlink className="size-3" />
+              {linkedWorkspaceIds.length} {linkedWorkspaceIds.length === 1 ? 'workspace' : 'workspaces'} linked
+              <button
+                type="button"
+                className="ml-1 hover:text-destructive"
+                onClick={() => setLinkedWorkspaceIds([])}
+                aria-label="Remove linked workspaces"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Text Input with Cmd+L hint */}
         <div className="relative px-3 py-2">
           <PlateInput
@@ -1446,15 +1506,26 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 Add attachment
                 <span className="ml-auto text-xs text-muted-foreground">⌘U</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLinearPickerOpen(true)}>
                 <Link className="size-4" />
                 Link Linear issue
-                <span className="ml-auto text-xs text-muted-foreground">⌘I</span>
+                {linkedLinearIssue ? (
+                  <span className="ml-auto text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                    1
+                  </span>
+                ) : (
+                  <span className="ml-auto text-xs text-muted-foreground">⌘I</span>
+                )}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setWorkspacePickerOpen(true)}>
                 <FolderSymlink className="size-4" />
                 Link workspaces
+                {linkedWorkspaceIds.length > 0 && (
+                  <span className="ml-auto text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                    {linkedWorkspaceIds.length}
+                  </span>
+                )}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setSummaryPickerOpen(true)}>
@@ -1525,6 +1596,25 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           sessionId={selectedSessionId}
           selectedIds={selectedSummaryIds}
           onSelectionChange={setSelectedSummaryIds}
+        />
+      )}
+
+      {/* Linear Issue Picker Dialog */}
+      <LinearIssuePicker
+        open={linearPickerOpen}
+        onOpenChange={setLinearPickerOpen}
+        selectedIssue={linkedLinearIssue}
+        onIssueChange={setLinkedLinearIssue}
+      />
+
+      {/* Workspace Picker Dialog */}
+      {selectedWorkspaceId && (
+        <WorkspacePicker
+          open={workspacePickerOpen}
+          onOpenChange={setWorkspacePickerOpen}
+          currentWorkspaceId={selectedWorkspaceId}
+          selectedIds={linkedWorkspaceIds}
+          onSelectionChange={setLinkedWorkspaceIds}
         />
       )}
 
