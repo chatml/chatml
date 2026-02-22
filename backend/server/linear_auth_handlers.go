@@ -223,3 +223,41 @@ func (h *LinearAuthHandlers) persistTokens(ctx context.Context, tokens *linear.T
 
 	return nil
 }
+
+// ListMyIssues handles GET /api/auth/linear/issues
+func (h *LinearAuthHandlers) ListMyIssues(w http.ResponseWriter, r *http.Request) {
+	if !h.linearClient.IsAuthenticated() {
+		writeUnauthorized(w, "Linear not authenticated")
+		return
+	}
+
+	issues, err := h.linearClient.ListMyIssues(r.Context())
+	if err != nil {
+		writeBadGateway(w, "failed to fetch Linear issues", err)
+		return
+	}
+
+	writeJSON(w, issues)
+}
+
+// SearchLinearIssues handles GET /api/auth/linear/issues/search?q=...
+func (h *LinearAuthHandlers) SearchLinearIssues(w http.ResponseWriter, r *http.Request) {
+	if !h.linearClient.IsAuthenticated() {
+		writeUnauthorized(w, "Linear not authenticated")
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeValidationError(w, "query parameter 'q' is required")
+		return
+	}
+
+	issues, err := h.linearClient.SearchIssues(r.Context(), q)
+	if err != nil {
+		writeBadGateway(w, "failed to search Linear issues", err)
+		return
+	}
+
+	writeJSON(w, issues)
+}

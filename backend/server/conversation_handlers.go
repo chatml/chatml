@@ -41,6 +41,14 @@ type CreateConversationRequest struct {
 	Effort            string              `json:"effort"`            // Reasoning effort: low, medium, high, max (optional)
 	Attachments       []models.Attachment `json:"attachments"`       // File attachments (optional)
 	SummaryIDs        []string            `json:"summaryIds"`        // Summaries to attach as context (optional)
+	LinearIssue       *struct {
+		Identifier  string   `json:"identifier"`
+		Title       string   `json:"title"`
+		Description string   `json:"description,omitempty"`
+		StateName   string   `json:"stateName"`
+		Labels      []string `json:"labels"`
+	} `json:"linearIssue,omitempty"` // Linked Linear issue (optional)
+	LinkedWorkspaceIDs []string `json:"linkedWorkspaceIds,omitempty"` // Additional workspace IDs for context (optional)
 }
 
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +107,48 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(parts) > 0 {
 			instructions = "## Context from Previous Conversations\n\n" + strings.Join(parts, "\n\n")
+		}
+	}
+
+	// Build instructions from linked Linear issue
+	if req.LinearIssue != nil {
+		section := fmt.Sprintf("## Linked Linear Issue\n\n**%s: %s**\nStatus: %s",
+			req.LinearIssue.Identifier, req.LinearIssue.Title, req.LinearIssue.StateName)
+		if len(req.LinearIssue.Labels) > 0 {
+			section += " | Labels: " + strings.Join(req.LinearIssue.Labels, ", ")
+		}
+		if req.LinearIssue.Description != "" {
+			// Truncate very long descriptions to keep instructions manageable
+			desc := req.LinearIssue.Description
+			if len(desc) > 2000 {
+				desc = desc[:2000] + "\n\n(description truncated)"
+			}
+			section += "\n\n" + desc
+		}
+		if instructions != "" {
+			instructions += "\n\n"
+		}
+		instructions += section
+	}
+
+	// Build instructions from linked workspaces
+	if len(req.LinkedWorkspaceIDs) > 0 {
+		var wsParts []string
+		for _, wsID := range req.LinkedWorkspaceIDs {
+			repo, err := h.store.GetRepo(ctx, wsID)
+			if err != nil || repo == nil {
+				continue
+			}
+			wsParts = append(wsParts, fmt.Sprintf("- **%s** at %s (branch: %s)", repo.Name, repo.Path, repo.Branch))
+		}
+		if len(wsParts) > 0 {
+			section := "## Linked Workspaces\n\nThe user has linked the following additional workspaces for reference:\n" +
+				strings.Join(wsParts, "\n") +
+				"\n\nThese workspaces provide additional context about related codebases. You can read files from these paths if needed."
+			if instructions != "" {
+				instructions += "\n\n"
+			}
+			instructions += section
 		}
 	}
 

@@ -47,6 +47,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/linear/callback", linearAuth.Callback)
 		r.Get("/linear/status", linearAuth.GetStatus)
 		r.Post("/linear/logout", linearAuth.Logout)
+
+		// Linear issue endpoints
+		r.Get("/linear/issues", linearAuth.ListMyIssues)
+		r.Get("/linear/issues/search", linearAuth.SearchLinearIssues)
 	})
 
 	// WebSocket
