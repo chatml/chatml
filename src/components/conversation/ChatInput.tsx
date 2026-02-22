@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
@@ -44,7 +45,7 @@ import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAll
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion, useStreamingState } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { THINKING_LEVELS, THINKING_TOKEN_MAP, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
+import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
 import { SummaryPicker } from './SummaryPicker';
 import { PlateInput, type PlateInputHandle } from './PlateInput';
@@ -98,6 +99,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const defaultModel = useSettingsStore((s) => s.defaultModel);
   const setDefaultModel = useSettingsStore((s) => s.setDefaultModel);
   const defaultThinkingLevel = useSettingsStore((s) => s.defaultThinkingLevel);
+  const setDefaultThinkingLevel = useSettingsStore((s) => s.setDefaultThinkingLevel);
   const [selectedModel, setSelectedModel] = useState(
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
   );
@@ -1353,48 +1355,63 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72">
-              {THINKING_LEVELS.map((level) => {
-                const isDisabled = level.id === 'off' && !canDisableThinking(selectedModel);
-                const isSelected = level.id === thinkingLevel;
-                const tokens = THINKING_TOKEN_MAP[level.id];
-                const budgetLabel = level.id === 'off'
-                  ? null
-                  : selectedModel.supportsEffort
-                    ? 'adaptive'
-                    : tokens != null
-                      ? `${(tokens / 1000).toFixed(0)}K tokens`
-                      : null;
-                return (
-                  <DropdownMenuItem
-                    key={level.id}
-                    disabled={isDisabled}
-                    onClick={() => setThinkingLevel(level.id)}
-                    className="flex-col items-start gap-0 py-2"
-                  >
-                    <div className="flex w-full items-center gap-1.5">
-                      <span className="font-medium">{level.label}</span>
-                      {level.id === defaultThinkingLevel && (
-                        <span className="text-xs text-muted-foreground">(default)</span>
-                      )}
-                      {isDisabled && (
-                        <span className="text-xs text-muted-foreground">(Opus always thinks)</span>
-                      )}
-                      <span className="ml-auto flex items-center gap-2">
-                        {budgetLabel && (
-                          <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                            {budgetLabel}
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuLabel className="flex items-center justify-between text-2xs font-normal text-muted-foreground uppercase tracking-wider">
+                Extended Thinking
+                <span className="normal-case tracking-normal text-muted-foreground/60">⌥T</span>
+              </DropdownMenuLabel>
+              {THINKING_LEVELS
+                .filter((level) => level.id !== 'off' || canDisableThinking(selectedModel))
+                .map((level, index, arr) => {
+                  const isSelected = level.id === thinkingLevel;
+                  const isDefault = level.id === defaultThinkingLevel;
+                  return (
+                    <Fragment key={level.id}>
+                      {/* Separate "Off" from the thinking levels; only renders when "Off" is the first item */}
+                      {index === 1 && arr[0].id === 'off' && <DropdownMenuSeparator />}
+                      <DropdownMenuItem
+                        onClick={() => setThinkingLevel(level.id)}
+                        className="group flex-col items-start gap-0 py-2"
+                      >
+                        <div className="flex w-full items-center gap-1.5">
+                          <span className="font-medium">{level.label}</span>
+                          <span className="ml-auto flex shrink-0 items-center gap-1">
+                            {isSelected && <Check className="h-3.5 w-3.5" />}
+                            {isDefault ? (
+                              <Star className="h-3 w-3 fill-current text-amber-500" />
+                            ) : level.id !== 'off' ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    aria-label={`Set ${level.label} as default thinking level`}
+                                    className="flex items-center justify-center rounded p-0.5 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                    onPointerDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setDefaultThinkingLevel(level.id);
+                                      showInfo(`${level.label} set as default thinking level`);
+                                    }}
+                                  >
+                                    <Star className="h-3 w-3" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>Set as default</TooltipContent>
+                              </Tooltip>
+                            ) : null}
                           </span>
-                        )}
-                        {isSelected && <Check className="h-3.5 w-3.5" />}
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground leading-tight">
-                      {level.description}
-                    </span>
-                  </DropdownMenuItem>
-                );
-              })}
+                        </div>
+                        <span className="text-xs text-muted-foreground leading-tight">
+                          {level.description}
+                        </span>
+                      </DropdownMenuItem>
+                    </Fragment>
+                  );
+                })}
             </DropdownMenuContent>
           </DropdownMenu>
 
