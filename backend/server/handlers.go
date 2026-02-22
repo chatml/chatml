@@ -542,8 +542,13 @@ type Handlers struct {
 	issueCache       *github.IssueCache
 	avatarCache      *github.AvatarCache
 	statsCache       *SessionStatsCache
-	aiClient         *ai.Client
+	aiClient         ai.Provider
 	scriptRunner     *scripts.Runner
+}
+
+// GetProviderCapabilities returns the current AI agent provider's capabilities.
+func (h *Handlers) GetProviderCapabilities(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, agent.DefaultProvider())
 }
 
 // writeJSON writes data as JSON response, logging any encoding errors
@@ -585,7 +590,7 @@ func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {
 	return git.WorkspacesBaseDirWithOverride(configured)
 }
 
-func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient *ai.Client, scriptRunner *scripts.Runner) *Handlers {
+func NewHandlers(s *store.SQLiteStore, am *agent.Manager, dirCacheConfig DirListingCacheConfig, bw *branch.Watcher, prw *branch.PRWatcher, hub *Hub, ghClient *github.Client, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, aiClient ai.Provider, scriptRunner *scripts.Runner) *Handlers {
 	// Initialize session name cache with workspaces directory
 	// Cache initializes lazily on first use
 	workspacesDir, err := git.WorkspacesBaseDir()

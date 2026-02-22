@@ -1,3 +1,4 @@
+// TODO: When multi-provider support is added, generalize this to check the active provider's auth status.
 import { useState, useEffect } from 'react';
 import { getClaudeAuthStatus } from '@/lib/api';
 

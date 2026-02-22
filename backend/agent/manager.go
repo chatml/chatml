@@ -1653,7 +1653,7 @@ func formatSessionName(name string) string {
 // 2. ANTHROPIC_API_KEY environment variable
 // 3. Claude Code OAuth token from macOS Keychain
 // Returns nil if no credentials are available.
-func (m *Manager) newAIClient() *ai.Client {
+func (m *Manager) newAIClient() ai.Provider {
 	// Source 1: SQLite settings (explicit user-configured API key)
 	envVars, err := m.loadEnvVars(m.ctx)
 	if err != nil {

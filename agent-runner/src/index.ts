@@ -1503,6 +1503,7 @@ async function main(): Promise<void> {
   lifecycle("main() entered");
   emit({
     type: "ready",
+    provider: "claude",
     conversationId,
     cwd,
     resuming: !!resumeSessionId,

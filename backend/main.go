@@ -431,8 +431,12 @@ func main() {
 	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)
 	defer issueCache.Close()
 
-	// AI client for PR description generation
-	aiClient := ai.NewClient(os.Getenv("ANTHROPIC_API_KEY"))
+	// AI client for PR description generation, summarization, and suggestions.
+	// Returns nil if ANTHROPIC_API_KEY is not set; features gracefully degrade.
+	var aiClient ai.Provider
+	if c := ai.NewClient(os.Getenv("ANTHROPIC_API_KEY")); c != nil {
+		aiClient = c
+	}
 
 	// Script runner for setup/run scripts with WebSocket output streaming
 	scriptRunner := scripts.NewRunner(

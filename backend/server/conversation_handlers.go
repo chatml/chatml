@@ -102,6 +102,20 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Gracefully degrade features not supported by the current provider.
+	// For Claude, all capabilities are true so these are no-ops today.
+	// TODO: Replace DefaultProvider() with a session-aware lookup when multi-provider support lands.
+	provider := agent.DefaultProvider()
+	if req.PlanMode && !provider.SupportsPlanMode {
+		req.PlanMode = false
+	}
+	if req.MaxThinkingTokens > 0 && !provider.SupportsThinking {
+		req.MaxThinkingTokens = 0
+	}
+	if req.Effort != "" && !provider.SupportsEffort {
+		req.Effort = ""
+	}
+
 	// Build options for starting the conversation
 	var opts *agent.StartConversationOptions
 	if req.MaxThinkingTokens > 0 || len(req.Attachments) > 0 || req.PlanMode || instructions != "" || req.Model != "" || req.Effort != "" {
