@@ -253,13 +253,16 @@ func TestCloneRepo_Handler_URLValidation(t *testing.T) {
 		name       string
 		url        string
 		expectCode int
+		anyError   bool // when true, accept any error status (>= 400) instead of exact match
 	}{
-		{"valid https", "https://github.com/user/repo.git", http.StatusBadGateway}, // Valid URL but clone fails (no real repo)
-		{"valid ssh", "git@github.com:user/repo.git", http.StatusBadGateway},       // Valid URL but clone fails
-		{"invalid empty", "", http.StatusBadRequest},
-		{"invalid garbage", "not-a-url", http.StatusBadRequest},
-		{"invalid ftp", "ftp://example.com/repo", http.StatusBadRequest},
-		{"invalid local path", "/some/local/path", http.StatusBadRequest},
+		// Valid URLs pass validation but clone fails — the exact HTTP status depends on
+		// git's error message (401 for auth failure, 404 for not found, 502 for other).
+		{"valid https", "https://github.com/user/repo.git", 0, true},
+		{"valid ssh", "git@github.com:user/repo.git", 0, true},
+		{"invalid empty", "", http.StatusBadRequest, false},
+		{"invalid garbage", "not-a-url", http.StatusBadRequest, false},
+		{"invalid ftp", "ftp://example.com/repo", http.StatusBadRequest, false},
+		{"invalid local path", "/some/local/path", http.StatusBadRequest, false},
 	}
 
 	for _, tt := range tests {
@@ -275,7 +278,11 @@ func TestCloneRepo_Handler_URLValidation(t *testing.T) {
 
 			h.CloneRepo(rr, req)
 
-			assert.Equal(t, tt.expectCode, rr.Code, "url=%s", tt.url)
+			if tt.anyError {
+				assert.GreaterOrEqual(t, rr.Code, 400, "url=%s should return an error status", tt.url)
+			} else {
+				assert.Equal(t, tt.expectCode, rr.Code, "url=%s", tt.url)
+			}
 		})
 	}
 }
@@ -299,6 +306,36 @@ func TestCloneRepo_Handler_WhitespaceTrimmming(t *testing.T) {
 	var apiErr APIError
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&apiErr))
 	assert.Contains(t, apiErr.Error, "url is required")
+}
+
+func TestCloneRepo_Handler_ContextCancellation(t *testing.T) {
+	// Verify the handler doesn't panic or produce unexpected results
+	// when the request context is cancelled (simulating client disconnect).
+	h, _ := setupTestHandlers(t)
+	bareRepo := createBareTestRepoForClone(t)
+	parentDir := t.TempDir()
+
+	body, _ := json.Marshal(CloneRepoRequest{
+		URL:     bareRepo,
+		Path:    parentDir,
+		DirName: "cancel-test",
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately to simulate client disconnect
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clone", bytes.NewReader(body))
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	// Should not panic
+	assert.NotPanics(t, func() {
+		h.CloneRepo(rr, req)
+	})
+
+	// Note: With file:// URLs, local clones may complete before the cancellation
+	// takes effect, so we don't assert on the status code. The important thing is
+	// the handler handles cancellation gracefully without panicking.
 }
 
 // Verify that the store.GetRepoByPath function exists and works correctly

@@ -2105,11 +2105,12 @@ export async function resolveGitHubRepo(url: string, signal?: AbortSignal): Prom
   return handleResponse<GitHubRepoDTO>(res);
 }
 
-export async function cloneRepo(url: string, path: string, dirName: string): Promise<CloneRepoResponse> {
+export async function cloneRepo(url: string, path: string, dirName: string, signal?: AbortSignal): Promise<CloneRepoResponse> {
   const res = await fetchWithAuth(`${getApiBase()}/api/clone`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, path, dirName }),
+    ...(signal && { signal }),
   });
   return handleResponse<CloneRepoResponse>(res);
 }

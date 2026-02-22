@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -219,4 +220,76 @@ func TestCloneRepo_ParentIsFile(t *testing.T) {
 	_, err := rm.CloneRepo(context.Background(), "https://github.com/user/repo.git", filePath, "test")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a directory")
+}
+
+func TestCloneRepo_FailsFastWithoutHanging(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network-dependent test in short mode")
+	}
+	// This test verifies that cloning a nonexistent repo fails quickly
+	// (within 30s) instead of hanging for 5 minutes waiting for credentials.
+	// The GIT_TERMINAL_PROMPT=0 and SSH BatchMode=yes settings should prevent hangs.
+	parentDir := t.TempDir()
+	rm := NewRepoManager()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := rm.CloneRepo(ctx, "https://github.com/nonexistent-user-zzzzz/nonexistent-repo-zzzzz.git", parentDir, "fast-fail-test")
+	require.Error(t, err)
+
+	// Should complete within the 30-second test timeout, not hang for 5 minutes.
+	// The error should NOT be a timeout error.
+	assert.NotContains(t, err.Error(), "timed out")
+}
+
+func TestClassifyCloneError(t *testing.T) {
+	tests := []struct {
+		name     string
+		stderr   string
+		contains string
+	}{
+		{
+			name:     "authentication failed",
+			stderr:   "fatal: Authentication failed for 'https://github.com/user/repo.git'",
+			contains: "authentication failed",
+		},
+		{
+			name:     "terminal prompts disabled",
+			stderr:   "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+			contains: "authentication failed",
+		},
+		{
+			name:     "could not read username",
+			stderr:   "fatal: could not read Username for 'https://github.com': No such device or address",
+			contains: "authentication failed",
+		},
+		{
+			name:     "permission denied ssh",
+			stderr:   "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+			contains: "SSH authentication failed",
+		},
+		{
+			name:     "host key verification",
+			stderr:   "Host key verification failed.\nfatal: Could not read from remote repository.",
+			contains: "SSH authentication failed",
+		},
+		{
+			name:     "repository not found",
+			stderr:   "fatal: repository 'https://github.com/user/repo.git/' not found",
+			contains: "repository not found",
+		},
+		{
+			name:     "generic error",
+			stderr:   "fatal: some unexpected error occurred",
+			contains: "git clone failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := classifyCloneError(tt.stderr)
+			assert.Contains(t, err.Error(), tt.contains)
+		})
+	}
 }

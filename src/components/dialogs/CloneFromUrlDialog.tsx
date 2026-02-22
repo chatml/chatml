@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { openFolderDialog, getHomeDir } from '@/lib/tauri';
 import { cloneRepo, resolveGitHubRepo, type GitHubRepoDTO, type RepoDTO } from '@/lib/api';
 import { parseGitHubUrl, extractRepoName } from '@/lib/github-url';
+import { classifyCloneError } from '@/lib/clone-errors';
 import { Loader2, Star, Lock, Globe2 } from 'lucide-react';
 
 interface CloneFromUrlDialogProps {
@@ -40,6 +41,7 @@ export function CloneFromUrlDialog({ isOpen, onClose, onCloned }: CloneFromUrlDi
   const hasInitializedLocation = useRef(false);
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cloneAbortRef = useRef<AbortController | null>(null);
 
   // Fetch home directory once for default location
   useEffect(() => {
@@ -53,19 +55,27 @@ export function CloneFromUrlDialog({ isOpen, onClose, onCloned }: CloneFromUrlDi
     }
   }, []);
 
+  // Abort clone on unmount to prevent orphaned operations
+  useEffect(() => {
+    return () => {
+      if (cloneAbortRef.current) cloneAbortRef.current.abort();
+    };
+  }, []);
+
   const handleClose = useCallback(() => {
-    if (isCloning) return; // Don't close while cloning
+    // Abort in-progress clone if any
+    if (cloneAbortRef.current) cloneAbortRef.current.abort();
+    if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
+    if (previewAbortRef.current) previewAbortRef.current.abort();
     setGitUrl('');
     setDirName('');
     setUrlError(null);
     setCloneError(null);
     setRepoPreview(null);
     setIsLoadingPreview(false);
-    if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
-    if (previewAbortRef.current) previewAbortRef.current.abort();
     // Intentionally preserve cloneLocation — users often clone to the same directory
     onClose();
-  }, [isCloning, onClose]);
+  }, [onClose]);
 
   // Debounced GitHub URL detection and preview
   const fetchPreview = useCallback((url: string) => {
@@ -132,20 +142,22 @@ export function CloneFromUrlDialog({ isOpen, onClose, onCloned }: CloneFromUrlDi
     setIsCloning(true);
     setCloneError(null);
 
+    const controller = new AbortController();
+    cloneAbortRef.current = controller;
+
+    // Frontend timeout: 6 minutes (backend has 5-min timeout for git clone).
+    // Pass a reason string so we can distinguish timeout aborts from user cancels.
+    const timeoutId = setTimeout(() => controller.abort('clone_timeout'), 6 * 60 * 1000);
+
     try {
-      const result = await cloneRepo(trimmedUrl, trimmedLocation, trimmedDirName);
+      const result = await cloneRepo(trimmedUrl, trimmedLocation, trimmedDirName, controller.signal);
       onCloned?.(result.repo);
       handleClose();
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Clone failed';
-      if (msg.includes('already exists')) {
-        setCloneError('A directory with this name already exists at the selected location.');
-      } else if (msg.includes('clone failed') || msg.includes('BAD_GATEWAY')) {
-        setCloneError('Git clone failed. Please check the URL and try again.');
-      } else {
-        setCloneError(msg);
-      }
+      setCloneError(classifyCloneError(error, controller.signal));
     } finally {
+      clearTimeout(timeoutId);
+      cloneAbortRef.current = null;
       setIsCloning(false);
     }
   };
@@ -260,8 +272,8 @@ export function CloneFromUrlDialog({ isOpen, onClose, onCloned }: CloneFromUrlDi
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleClose} disabled={isCloning}>
-              Cancel
+            <Button type="button" variant={isCloning ? "destructive" : "outline"} onClick={handleClose}>
+              {isCloning ? 'Cancel clone' : 'Cancel'}
             </Button>
             <Button type="submit" disabled={!gitUrl.trim() || !cloneLocation.trim() || !dirName.trim() || isCloning}>
               {isCloning ? (
