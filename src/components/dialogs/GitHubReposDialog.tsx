@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import {
   Dialog,
   DialogContent,
@@ -8,8 +9,13 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Select,
   SelectContent,
@@ -28,6 +34,8 @@ import {
 } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import { startOAuthFlow } from '@/lib/auth';
+import { getLanguageColor } from '@/lib/languageColors';
+import { cn } from '@/lib/utils';
 import {
   Loader2,
   Star,
@@ -36,6 +44,7 @@ import {
   Github,
   Search,
   GitFork,
+  ArrowRight,
 } from 'lucide-react';
 
 interface GitHubReposDialogProps {
@@ -63,77 +72,138 @@ function formatRelativeTime(dateStr: string): string {
   return 'just now';
 }
 
-function RepoCard({
+// -- Sub-components ----------------------------------------------------------
+
+function OwnerAvatar({ owner }: { owner: string }) {
+  const hue = useMemo(() => {
+    let hash = 0;
+    for (let i = 0; i < owner.length; i++) {
+      hash = owner.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return Math.abs(hash) % 360;
+  }, [owner]);
+
+  const initials = owner.slice(0, 2).toUpperCase();
+
+  return (
+    <div
+      className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-white text-[9px] font-medium leading-none select-none"
+      style={{ backgroundColor: `oklch(0.55 0.1 ${hue})` }}
+      title={owner}
+    >
+      {initials}
+    </div>
+  );
+}
+
+function RepoRow({
   repo,
   isSelected,
+  isFocused,
   onClick,
 }: {
   repo: GitHubRepoDTO;
   isSelected: boolean;
+  isFocused: boolean;
   onClick: () => void;
 }) {
-  return (
+  const hasTooltipContent = repo.description || repo.fork || repo.updatedAt;
+
+  const row = (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left rounded-md border p-3 space-y-1.5 transition-colors cursor-pointer ${
-        isSelected
-          ? 'border-primary bg-primary/5 ring-1 ring-primary'
-          : 'border-border hover:border-muted-foreground/30 hover:bg-muted/30'
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        <span className="font-medium text-sm truncate">{repo.name}</span>
-        {repo.fork && (
-          <GitFork className="h-3 w-3 text-muted-foreground shrink-0" />
-        )}
-        {repo.private ? (
-          <Badge variant="outline" className="text-xs gap-1 shrink-0">
-            <Lock className="h-3 w-3" />
-            Private
-          </Badge>
-        ) : (
-          <Badge variant="secondary" className="text-xs gap-1 shrink-0">
-            <Globe2 className="h-3 w-3" />
-            Public
-          </Badge>
-        )}
-      </div>
-      {repo.description && (
-        <p className="text-xs text-muted-foreground line-clamp-2">
-          {repo.description}
-        </p>
+      data-selected={isSelected || undefined}
+      className={cn(
+        'w-full text-left flex items-center gap-3 px-4 py-1.5 transition-colors cursor-pointer outline-none',
+        'border-l-2 border-l-transparent',
+        'hover:bg-muted/40',
+        isSelected && 'bg-primary/8 dark:bg-primary/12 border-l-primary',
+        isFocused && !isSelected && 'bg-muted/30',
       )}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {repo.language && <span>{repo.language}</span>}
-        {repo.stargazersCount > 0 && (
-          <span className="flex items-center gap-1">
-            <Star className="h-3 w-3" />
-            {repo.stargazersCount.toLocaleString()}
+    >
+      <OwnerAvatar owner={repo.owner} />
+
+      <span
+        className={cn(
+          'text-sm truncate min-w-0 flex-1',
+          isSelected ? 'font-medium text-foreground' : 'text-foreground/80',
+        )}
+      >
+        <span className="text-muted-foreground">{repo.owner}/</span>
+        {repo.name}
+      </span>
+
+      <div className="flex items-center gap-2.5 shrink-0 text-muted-foreground">
+        {repo.private ? (
+          <Lock className="h-3 w-3" />
+        ) : (
+          <Globe2 className="h-3 w-3" />
+        )}
+
+        {repo.language && (
+          <span className="flex items-center gap-1 text-2xs">
+            <span
+              className="inline-block h-2 w-2 rounded-full shrink-0"
+              style={{ backgroundColor: getLanguageColor(repo.language) }}
+            />
+            <span className="hidden sm:inline">{repo.language}</span>
           </span>
         )}
-        {repo.updatedAt && <span>Updated {formatRelativeTime(repo.updatedAt)}</span>}
+
+        {repo.stargazersCount > 0 && (
+          <span className="flex items-center gap-0.5 text-2xs tabular-nums">
+            <Star className="h-2.5 w-2.5" />
+            {repo.stargazersCount >= 1000
+              ? `${(repo.stargazersCount / 1000).toFixed(1)}k`
+              : repo.stargazersCount}
+          </span>
+        )}
       </div>
     </button>
   );
+
+  if (hasTooltipContent) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{row}</TooltipTrigger>
+        <TooltipContent side="right" className="max-w-xs text-left">
+          {repo.description && (
+            <p className="text-xs leading-relaxed line-clamp-3">{repo.description}</p>
+          )}
+          <div className="flex items-center gap-2 mt-1 text-2xs opacity-80">
+            {repo.fork && (
+              <span className="flex items-center gap-1">
+                <GitFork className="h-2.5 w-2.5" /> Fork
+              </span>
+            )}
+            {repo.updatedAt && (
+              <span>Updated {formatRelativeTime(repo.updatedAt)}</span>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return row;
 }
 
-function RepoCardSkeleton() {
+function RepoRowSkeleton() {
   return (
-    <div className="rounded-md border border-border p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-5 w-14" />
-      </div>
-      <Skeleton className="h-3 w-full" />
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-3 w-16" />
-        <Skeleton className="h-3 w-12" />
-        <Skeleton className="h-3 w-20" />
+    <div className="flex items-center gap-3 px-4 py-1.5">
+      <Skeleton className="h-5 w-5 rounded-full shrink-0" />
+      <Skeleton className="h-3.5 flex-1 max-w-[220px]" />
+      <div className="flex items-center gap-2.5 ml-auto">
+        <Skeleton className="h-3 w-3 rounded-full" />
+        <Skeleton className="h-2 w-2 rounded-full" />
+        <Skeleton className="h-3 w-10" />
       </div>
     </div>
   );
 }
+
+// -- Main dialog -------------------------------------------------------------
 
 export function GitHubReposDialog({
   isOpen,
@@ -155,10 +225,12 @@ export function GitHubReposDialog({
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [isCloning, setIsCloning] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
 
   const hasInitializedLocation = useRef(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // Fetch home directory once for default clone location
   useEffect(() => {
@@ -244,6 +316,7 @@ export function GitHubReposDialog({
     setIsLoadingRepos(false);
     setHasMore(false);
     setPage(1);
+    setFocusedIndex(-1);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     if (abortRef.current) abortRef.current.abort();
     onClose();
@@ -251,6 +324,7 @@ export function GitHubReposDialog({
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
+    setFocusedIndex(-1);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
     searchTimeoutRef.current = setTimeout(() => {
@@ -262,17 +336,27 @@ export function GitHubReposDialog({
   const handleOrgChange = (org: string) => {
     setSelectedOrg(org);
     setSelectedRepo(null);
+    setFocusedIndex(-1);
     fetchRepos(1, search, org, false);
   };
 
-  const handleLoadMore = () => {
-    fetchRepos(page + 1, search, selectedOrg, true);
-  };
+  const handleLoadMore = useCallback(() => {
+    if (!isLoadingMore && hasMore) {
+      fetchRepos(page + 1, search, selectedOrg, true);
+    }
+  }, [fetchRepos, page, search, selectedOrg, isLoadingMore, hasMore]);
 
   const handleBrowse = async () => {
     const selectedPath = await openFolderDialog('Select Clone Location');
     if (selectedPath) setCloneLocation(selectedPath);
   };
+
+  const handleSelectRepo = useCallback((repo: GitHubRepoDTO) => {
+    setSelectedRepo((prev) =>
+      prev?.fullName === repo.fullName ? null : repo
+    );
+    setCloneError(null);
+  }, []);
 
   const handleClone = async () => {
     if (!selectedRepo || !cloneLocation.trim()) return;
@@ -292,10 +376,10 @@ export function GitHubReposDialog({
       const msg = error instanceof Error ? error.message : 'Clone failed';
       if (msg.includes('already exists')) {
         setCloneError(
-          `A directory "${selectedRepo.name}" already exists at the selected location.`
+          `Directory "${selectedRepo.name}" already exists at this location.`
         );
       } else if (msg.includes('clone failed') || msg.includes('BAD_GATEWAY')) {
-        setCloneError('Git clone failed. Please check your access and try again.');
+        setCloneError('Git clone failed. Check your access and try again.');
       } else {
         setCloneError(msg);
       }
@@ -313,14 +397,46 @@ export function GitHubReposDialog({
     }
   };
 
+  // Keyboard navigation for the repo list
+  const handleListKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (repos.length === 0) return;
+
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          setFocusedIndex((prev) => {
+            const next = Math.min(prev + 1, repos.length - 1);
+            virtuosoRef.current?.scrollToIndex({ index: next, align: 'center', behavior: 'auto' });
+            return next;
+          });
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setFocusedIndex((prev) => {
+            const next = Math.max(prev - 1, 0);
+            virtuosoRef.current?.scrollToIndex({ index: next, align: 'center', behavior: 'auto' });
+            return next;
+          });
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (focusedIndex >= 0 && focusedIndex < repos.length) {
+            handleSelectRepo(repos[focusedIndex]);
+          }
+          break;
+      }
+    },
+    [repos, focusedIndex, handleSelectRepo]
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-lg p-0 gap-0 flex flex-col h-[85vh]">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 flex flex-col h-[85vh]">
         {/* Header */}
-        <div className="shrink-0 px-6 pt-6 pb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Github className="h-5 w-5" />
-            GitHub Repositories
+        <div className="shrink-0 px-5 pt-5 pb-3">
+          <DialogTitle className="text-base font-semibold">
+            Clone a Repository
           </DialogTitle>
         </div>
 
@@ -340,19 +456,19 @@ export function GitHubReposDialog({
             </Button>
           </div>
         ) : (
-          // Authenticated state — sections are direct flex children
           <>
             {/* Search + Org filter */}
-            <div className="shrink-0 px-6 pb-3">
+            <div className="shrink-0 px-5 pb-2">
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
                   <Input
                     value={search}
                     onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder="Search repos..."
-                    className="pl-8 text-sm"
+                    placeholder="Search repositories..."
+                    className="pl-8 text-sm h-8"
                     disabled={isCloning}
+                    autoFocus
                   />
                 </div>
                 {orgs.length > 0 && (
@@ -361,14 +477,21 @@ export function GitHubReposDialog({
                     onValueChange={handleOrgChange}
                     disabled={isCloning}
                   >
-                    <SelectTrigger className="w-[160px]">
+                    <SelectTrigger className="w-[140px] h-8 text-sm">
                       <SelectValue placeholder="All repos" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All repos</SelectItem>
                       {orgs.map((org) => (
                         <SelectItem key={org.login} value={org.login}>
-                          {org.login}
+                          <span className="flex items-center gap-2">
+                            <img
+                              src={org.avatarUrl}
+                              alt=""
+                              className="h-4 w-4 rounded-full"
+                            />
+                            {org.login}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -377,133 +500,143 @@ export function GitHubReposDialog({
               </div>
             </div>
 
-            {/* Repo list — native scroll, no Radix ScrollArea */}
-            <div className="flex-1 min-h-0 overflow-y-auto border-y">
-              <div className="space-y-2 px-6 py-3">
-                {isLoadingRepos && repos.length === 0 ? (
-                  <>
-                    <RepoCardSkeleton />
-                    <RepoCardSkeleton />
-                    <RepoCardSkeleton />
-                    <RepoCardSkeleton />
-                  </>
-                ) : fetchError ? (
-                  <div className="flex flex-col items-center justify-center py-8 space-y-2">
-                    <p className="text-sm text-destructive">{fetchError}</p>
+            {/* Repo list */}
+            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+            <div
+              className="flex-1 min-h-0 border-y"
+              role="listbox"
+              aria-label="Repositories"
+              onKeyDown={handleListKeyDown}
+              tabIndex={0}
+            >
+              {isLoadingRepos && repos.length === 0 ? (
+                <div className="divide-y divide-border/50">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <RepoRowSkeleton key={i} />
+                  ))}
+                </div>
+              ) : fetchError ? (
+                <EmptyState
+                  icon={Github}
+                  title="Failed to load repositories"
+                  description={fetchError}
+                  size="sm"
+                  action={
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        fetchRepos(1, search, selectedOrg, false)
-                      }
+                      onClick={() => fetchRepos(1, search, selectedOrg, false)}
                     >
                       Try again
                     </Button>
-                  </div>
-                ) : repos.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <p className="text-sm text-muted-foreground">
-                      {search
-                        ? 'No repositories match your search.'
-                        : 'No repositories found.'}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {repos.map((repo) => (
-                      <RepoCard
-                        key={repo.fullName}
+                  }
+                />
+              ) : repos.length === 0 && !isLoadingRepos ? (
+                <EmptyState
+                  icon={Search}
+                  title={search ? 'No matches' : 'No repositories found'}
+                  description={search ? `No repositories matching "${search}"` : undefined}
+                  size="sm"
+                />
+              ) : (
+                <Virtuoso
+                  ref={virtuosoRef}
+                  data={repos}
+                  endReached={() => hasMore && !isLoadingMore && handleLoadMore()}
+                  overscan={200}
+                  itemContent={(index, repo) => (
+                    <div className="border-b border-border/50 last:border-b-0">
+                      <RepoRow
                         repo={repo}
                         isSelected={selectedRepo?.fullName === repo.fullName}
-                        onClick={() =>
-                          setSelectedRepo(
-                            selectedRepo?.fullName === repo.fullName
-                              ? null
-                              : repo
-                          )
-                        }
+                        isFocused={focusedIndex === index}
+                        onClick={() => handleSelectRepo(repo)}
                       />
-                    ))}
-                    {hasMore && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full"
-                        onClick={handleLoadMore}
-                        disabled={isLoadingMore}
-                      >
-                        {isLoadingMore ? (
-                          <>
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            Loading...
-                          </>
-                        ) : (
-                          'Load more'
-                        )}
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
+                    </div>
+                  )}
+                  components={{
+                    Footer: () =>
+                      isLoadingMore ? (
+                        <div className="flex items-center justify-center py-2">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : null,
+                  }}
+                />
+              )}
             </div>
 
-            {/* Clone location */}
-            <div className="shrink-0 px-6 pt-3 pb-1 space-y-2">
-              <label htmlFor="gh-clone-location" className="text-sm font-medium">
-                Clone to
-              </label>
-              <div className="flex gap-2">
+            {/* Clone location — compact inline bar */}
+            <div className="shrink-0 px-5 py-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                  Clone to
+                </span>
                 <Input
                   id="gh-clone-location"
                   value={cloneLocation}
                   onChange={(e) => setCloneLocation(e.target.value)}
                   placeholder="Select a location..."
-                  className="font-mono text-sm flex-1"
+                  className="font-mono text-xs h-7 flex-1 min-w-0"
                   disabled={isCloning}
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
+                  size="sm"
                   onClick={handleBrowse}
                   disabled={isCloning}
+                  className="text-xs shrink-0"
                 >
                   Browse...
                 </Button>
               </div>
             </div>
-
-            {cloneError && (
-              <p className="text-sm text-destructive shrink-0 px-6">{cloneError}</p>
-            )}
           </>
         )}
 
-        {/* Footer */}
-        <div className="shrink-0 px-6 py-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button
-            variant="outline"
-            onClick={handleClose}
-            disabled={isCloning}
-          >
-            Cancel
-          </Button>
-          {isAuthenticated && (
+        {/* Footer — contextual with selection info */}
+        <div className="shrink-0 px-5 py-3 flex items-center gap-3 border-t">
+          <div className="flex-1 min-w-0">
+            {cloneError ? (
+              <p className="text-xs text-destructive truncate">{cloneError}</p>
+            ) : selectedRepo ? (
+              <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+                <span className="font-medium text-foreground">{selectedRepo.fullName}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+                <span className="font-mono truncate">
+                  {cloneLocation}/{selectedRepo.name}
+                </span>
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <Button
-              onClick={handleClone}
-              disabled={
-                !selectedRepo || !cloneLocation.trim() || isCloning
-              }
+              variant="ghost"
+              size="sm"
+              onClick={handleClose}
+              disabled={isCloning}
             >
-              {isCloning ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Cloning...
-                </>
-              ) : (
-                'Clone'
-              )}
+              Cancel
             </Button>
-          )}
+            {isAuthenticated && (
+              <Button
+                size="sm"
+                onClick={handleClone}
+                disabled={!selectedRepo || !cloneLocation.trim() || isCloning}
+              >
+                {isCloning ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Cloning...
+                  </>
+                ) : (
+                  'Clone'
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
