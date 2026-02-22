@@ -230,6 +230,13 @@ export const SHORTCUTS: Shortcut[] = [
     label: 'Previous search match',
     category: 'Chat',
   },
+  {
+    id: 'stopAgent',
+    key: 'Backspace',
+    modifiers: ['meta', 'shift'],
+    label: 'Stop agent',
+    category: 'Chat',
+  },
 
   // Terminal shortcuts are handled directly by xterm.js and are listed here
   // for documentation purposes only. They are not registered via useShortcut
