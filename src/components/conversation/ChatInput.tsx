@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'rea
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
+import { useShortcut } from '@/hooks/useShortcut';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -760,6 +761,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId, isStreaming, commitQueuedMessage, finalizeStreamingMessage, addMessage, setStreaming, updateConversation, clearActiveTools, showError]);
 
+  useShortcut('stopAgent', handleStop, { enabled: isStreaming });
+
   // Global keyboard shortcuts
 
   useEffect(() => {
@@ -798,14 +801,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         e.preventDefault();
         handleOpenFilePicker();
       }
-      // Escape to stop agent (only when streaming, no dialog/combobox open)
-      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-        const hasOpenOverlay = document.querySelector('[role="listbox"], [role="dialog"]');
-        if (!hasOpenOverlay && isStreaming) {
-          e.preventDefault();
-          handleStop();
-        }
-      }
       // Note: Cmd+Shift+Enter for plan approval is handled in handleKeyDown on the textarea
     };
 
@@ -832,7 +827,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, isStreaming, handleStop]);
+  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel]);
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
@@ -1483,12 +1478,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                   variant="destructive"
                   className="h-8 w-8 rounded-lg"
                   onClick={handleStop}
-                  aria-label="Stop agent (Escape)"
+                  aria-label="Stop agent (⌘⇧⌫)"
                 >
                   <Square className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Stop agent (Esc)</TooltipContent>
+              <TooltipContent side="top">Stop agent (⌘⇧⌫)</TooltipContent>
             </Tooltip>
           ) : buttonMode === 'queue' ? (
             <Tooltip>
