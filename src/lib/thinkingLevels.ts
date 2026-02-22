@@ -10,10 +10,10 @@ export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max';
 
 export const THINKING_LEVELS: { id: ThinkingLevel; label: string; description: string }[] = [
   { id: 'off', label: 'Off', description: 'Disable extended thinking' },
-  { id: 'low', label: 'Low', description: 'Minimal reasoning, may skip on simple tasks' },
-  { id: 'medium', label: 'Medium', description: 'Balanced reasoning for moderate tasks' },
-  { id: 'high', label: 'High', description: 'Strong reasoning for most problems' },
-  { id: 'max', label: 'Max', description: 'Maximum reasoning depth and capability' },
+  { id: 'low', label: 'Low', description: 'Quick answers, may skip thinking on simple tasks' },
+  { id: 'medium', label: 'Medium', description: 'Brief reasoning before responding' },
+  { id: 'high', label: 'High', description: 'Thorough reasoning for complex tasks' },
+  { id: 'max', label: 'Max', description: 'Deepest analysis, best for hard problems' },
 ];
 
 /** Default thinking token budgets for non-effort models (Sonnet/Haiku). */
