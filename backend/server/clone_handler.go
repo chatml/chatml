@@ -76,11 +76,23 @@ func (h *Handlers) CloneRepo(w http.ResponseWriter, r *http.Request) {
 	clonedPath, err := h.repoManager.CloneRepo(ctx, req.URL, req.Path, req.DirName)
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "directory already exists") {
+		switch {
+		case strings.Contains(errMsg, "directory already exists"):
 			writeConflict(w, "directory already exists")
+		case strings.Contains(errMsg, "authentication failed"):
+			writeUnauthorized(w, errMsg)
+		case strings.Contains(errMsg, "SSH authentication failed"):
+			writeUnauthorized(w, errMsg)
+		case strings.Contains(errMsg, "repository not found"):
+			writeError(w, http.StatusNotFound, ErrCodeNotFound, errMsg, nil)
+		case strings.Contains(errMsg, "timed out"):
+			writeError(w, http.StatusGatewayTimeout, "GATEWAY_TIMEOUT", errMsg, err)
+		case strings.Contains(errMsg, "cancelled"):
+			// Client cancelled — connection is likely already closed
 			return
+		default:
+			writeBadGateway(w, "git clone failed", err)
 		}
-		writeBadGateway(w, "git clone failed", err)
 		return
 	}
 

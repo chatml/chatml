@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -63,6 +64,12 @@ func (rm *RepoManager) CloneRepo(ctx context.Context, url, parentDir, dirName st
 	defer cancel()
 
 	cmd := exec.CommandContext(cloneCtx, "git", "clone", url, targetPath)
+	// Prevent git from hanging on interactive credential/passphrase prompts.
+	// Without these, git clone can block indefinitely in a headless sidecar process.
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_SSH_COMMAND=ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
+	)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -76,8 +83,29 @@ func (rm *RepoManager) CloneRepo(ctx context.Context, url, parentDir, dirName st
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("git clone cancelled: %w", ctx.Err())
 		}
-		return "", fmt.Errorf("git clone failed: %s", stderr.String())
+
+		stderrStr := stderr.String()
+		return "", classifyCloneError(stderrStr)
 	}
 
 	return targetPath, nil
+}
+
+// classifyCloneError maps common git stderr messages to user-friendly error messages.
+func classifyCloneError(stderr string) error {
+	lower := strings.ToLower(stderr)
+	switch {
+	case strings.Contains(lower, "authentication failed") ||
+		strings.Contains(lower, "could not read username") ||
+		strings.Contains(lower, "terminal prompts disabled"):
+		return fmt.Errorf("authentication failed: the repository may be private or require credentials")
+	case strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "host key verification failed"):
+		return fmt.Errorf("SSH authentication failed: check your SSH key configuration")
+	case strings.Contains(lower, "repository not found") ||
+		strings.Contains(lower, "not found"):
+		return fmt.Errorf("repository not found: check that the URL is correct and you have access")
+	default:
+		return fmt.Errorf("git clone failed: %s", stderr)
+	}
 }

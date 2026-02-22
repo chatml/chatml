@@ -32,6 +32,7 @@ import {
   type GitHubOrgDTO,
   type RepoDTO,
 } from '@/lib/api';
+import { classifyCloneError } from '@/lib/clone-errors';
 import { useAuthStore } from '@/stores/authStore';
 import { startOAuthFlow } from '@/lib/auth';
 import { getLanguageColor } from '@/lib/languageColors';
@@ -231,6 +232,7 @@ export function GitHubReposDialog({
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const cloneAbortRef = useRef<AbortController | null>(null);
 
   // Fetch home directory once for default clone location
   useEffect(() => {
@@ -240,6 +242,13 @@ export function GitHubReposDialog({
         if (home) setCloneLocation(home);
       });
     }
+  }, []);
+
+  // Abort clone on unmount to prevent orphaned operations
+  useEffect(() => {
+    return () => {
+      if (cloneAbortRef.current) cloneAbortRef.current.abort();
+    };
   }, []);
 
   const fetchRepos = useCallback(
@@ -305,7 +314,8 @@ export function GitHubReposDialog({
   }, [isOpen, isAuthenticated, fetchRepos]);
 
   const handleClose = useCallback(() => {
-    if (isCloning) return;
+    // Abort in-progress clone if any
+    if (cloneAbortRef.current) cloneAbortRef.current.abort();
     setRepos([]);
     setOrgs([]);
     setSelectedRepo(null);
@@ -320,7 +330,7 @@ export function GitHubReposDialog({
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     if (abortRef.current) abortRef.current.abort();
     onClose();
-  }, [isCloning, onClose]);
+  }, [onClose]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -364,26 +374,27 @@ export function GitHubReposDialog({
     setIsCloning(true);
     setCloneError(null);
 
+    const controller = new AbortController();
+    cloneAbortRef.current = controller;
+
+    // Frontend timeout: 6 minutes (backend has 5-min timeout for git clone).
+    // Pass a reason string so we can distinguish timeout aborts from user cancels.
+    const timeoutId = setTimeout(() => controller.abort('clone_timeout'), 6 * 60 * 1000);
+
     try {
       const result = await cloneRepo(
         selectedRepo.cloneUrl,
         cloneLocation.trim(),
-        selectedRepo.name
+        selectedRepo.name,
+        controller.signal
       );
       onCloned?.(result.repo);
       handleClose();
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Clone failed';
-      if (msg.includes('already exists')) {
-        setCloneError(
-          `Directory "${selectedRepo.name}" already exists at this location.`
-        );
-      } else if (msg.includes('clone failed') || msg.includes('BAD_GATEWAY')) {
-        setCloneError('Git clone failed. Check your access and try again.');
-      } else {
-        setCloneError(msg);
-      }
+      setCloneError(classifyCloneError(error, controller.signal));
     } finally {
+      clearTimeout(timeoutId);
+      cloneAbortRef.current = null;
       setIsCloning(false);
     }
   };
@@ -613,12 +624,11 @@ export function GitHubReposDialog({
 
           <div className="flex items-center gap-2 shrink-0">
             <Button
-              variant="ghost"
+              variant={isCloning ? "destructive" : "ghost"}
               size="sm"
               onClick={handleClose}
-              disabled={isCloning}
             >
-              Cancel
+              {isCloning ? 'Cancel clone' : 'Cancel'}
             </Button>
             {isAuthenticated && (
               <Button
