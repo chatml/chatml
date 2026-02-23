@@ -46,6 +46,7 @@ import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/com
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
 import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary } from '@/lib/api';
+import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
@@ -677,9 +678,22 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     // For diff view without diff content, load it
     if (currentFileTab.viewMode === 'diff' && !currentFileTab.diff && !currentFileTab.isBinary && !currentFileTab.isTooLarge && !currentFileTab.loadError && currentFileTab.sessionId) {
       const loadDiff = async () => {
+        // Check frontend diff cache first
+        const cachedDiff = getDiffFromCache(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
+        if (cachedDiff) {
+          updateFileTab(currentFileTab.id, {
+            diff: {
+              oldContent: cachedDiff.oldContent ?? '',
+              newContent: cachedDiff.newContent ?? '',
+            },
+            isLoading: false,
+          });
+          return;
+        }
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
           const diffData = await getSessionFileDiff(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
+          setDiffInCache(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path, diffData);
           updateFileTab(currentFileTab.id, {
             diff: {
               oldContent: diffData.oldContent ?? '',
@@ -776,22 +790,35 @@ export function ConversationArea({ children }: ConversationAreaProps) {
 
     // For diff view without diff content, load it
     if (tab.viewMode === 'diff' && !tab.diff && !tab.isBinary && !tab.isTooLarge && !tab.loadError && tab.sessionId) {
-      updateFileTab(id, { isLoading: true });
-      try {
-        const diffData = await getSessionFileDiff(tab.workspaceId, tab.sessionId, tab.path);
+      // Check frontend diff cache first
+      const cachedDiff = getDiffFromCache(tab.workspaceId, tab.sessionId, tab.path);
+      if (cachedDiff) {
         updateFileTab(id, {
           diff: {
-            oldContent: diffData.oldContent ?? '',
-            newContent: diffData.newContent ?? '',
+            oldContent: cachedDiff.oldContent ?? '',
+            newContent: cachedDiff.newContent ?? '',
           },
           isLoading: false,
         });
-      } catch (error) {
-        console.error('Failed to load diff:', error);
-        updateFileTab(id, {
-          loadError: error instanceof Error ? error.message : 'Unknown error',
-          isLoading: false,
-        });
+      } else {
+        updateFileTab(id, { isLoading: true });
+        try {
+          const diffData = await getSessionFileDiff(tab.workspaceId, tab.sessionId, tab.path);
+          setDiffInCache(tab.workspaceId, tab.sessionId, tab.path, diffData);
+          updateFileTab(id, {
+            diff: {
+              oldContent: diffData.oldContent ?? '',
+              newContent: diffData.newContent ?? '',
+            },
+            isLoading: false,
+          });
+        } catch (error) {
+          console.error('Failed to load diff:', error);
+          updateFileTab(id, {
+            loadError: error instanceof Error ? error.message : 'Unknown error',
+            isLoading: false,
+          });
+        }
       }
     }
   }, [fileTabs, selectFileTab, updateFileTab]);

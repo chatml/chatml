@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
+import { getDiffFromCache, setDiffInCache, invalidateDiffCache } from '@/lib/diffCache';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
@@ -122,6 +123,7 @@ export function ChangesPanel() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
+  const prevChangesKeyRef = useRef<string>('');
   const [changesLoading, setChangesLoading] = useState(false);
   const [allChanges, setAllChanges] = useState<FileChangeDTO[]>([]);
   const [branchStats, setBranchStats] = useState<BranchStatsDTO | null>(null);
@@ -141,6 +143,12 @@ export function ChangesPanel() {
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
+      // Only invalidate diff cache when the set of changed files actually differs
+      const newKey = (data || []).map(f => `${f.path}:${f.status}:${f.additions}:${f.deletions}`).sort().join('\n');
+      if (newKey !== prevChangesKeyRef.current) {
+        prevChangesKeyRef.current = newKey;
+        invalidateDiffCache(selectedWorkspaceId, selectedSessionId);
+      }
     } catch (error) {
       console.error('Failed to fetch changes:', error);
     }
@@ -241,6 +249,56 @@ export function ChangesPanel() {
     }
   };
 
+  // Shared helper: check cache then fetch diff, applying size check and updating tab state.
+  const loadDiffForTab = async (tabId: string, workspaceId: string, sessionId: string, path: string) => {
+    // Check frontend diff cache first — avoids HTTP round-trip on re-open
+    const cachedDiff = getDiffFromCache(workspaceId, sessionId, path);
+    if (cachedDiff) {
+      const totalSize = (cachedDiff.oldContent?.length || 0) + (cachedDiff.newContent?.length || 0);
+      if (totalSize > MAX_DIFF_SIZE) {
+        updateFileTab(tabId, { isLoading: false, isTooLarge: true });
+        return;
+      }
+      updateFileTab(tabId, {
+        diff: {
+          oldContent: cachedDiff.oldContent ?? '',
+          newContent: cachedDiff.newContent ?? '',
+        },
+        isLoading: false,
+      });
+      return;
+    }
+
+    updateFileTab(tabId, { isLoading: true });
+
+    try {
+      const diffData = await getSessionFileDiff(workspaceId, sessionId, path);
+
+      // Cache the result for fast re-opens
+      setDiffInCache(workspaceId, sessionId, path, diffData);
+
+      const totalSize = (diffData.oldContent?.length || 0) + (diffData.newContent?.length || 0);
+      if (totalSize > MAX_DIFF_SIZE) {
+        updateFileTab(tabId, { isLoading: false, isTooLarge: true });
+        return;
+      }
+
+      updateFileTab(tabId, {
+        diff: {
+          oldContent: diffData.oldContent ?? '',
+          newContent: diffData.newContent ?? '',
+        },
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Failed to load diff:', error);
+      updateFileTab(tabId, {
+        loadError: error instanceof Error ? error.message : 'Unknown error',
+        isLoading: false,
+      });
+    }
+  };
+
   // Handle changed file selection - shows diff view (session-scoped tab)
   const handleChangedFileSelect = async (path: string) => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -248,6 +306,13 @@ export function ChangesPanel() {
     const filename = path.split('/').pop() || path;
     // Include sessionId in tab ID to allow same file open in different sessions
     const tabId = `${selectedWorkspaceId}-${selectedSessionId}-diff-${path}`;
+
+    // If this tab is already open, just select it
+    const existingTab = fileTabs.find((t) => t.id === tabId);
+    if (existingTab) {
+      selectFileTab(tabId);
+      return;
+    }
 
     // Check if it's a binary file
     if (isBinaryFile(filename)) {
@@ -277,39 +342,7 @@ export function ChangesPanel() {
     };
 
     openFileTab(newTab);
-
-    // Always set loading state for existing tabs (e.g., restored from persistence without content)
-    updateFileTab(tabId, { isLoading: true });
-
-    // Fetch diff
-    try {
-      const diffData = await getSessionFileDiff(selectedWorkspaceId, selectedSessionId, path);
-
-      // Check if file is too large
-      const totalSize = (diffData.oldContent?.length || 0) + (diffData.newContent?.length || 0);
-      if (totalSize > MAX_DIFF_SIZE) {
-        updateFileTab(tabId, {
-          isLoading: false,
-          isTooLarge: true,
-        });
-        return;
-      }
-
-      updateFileTab(tabId, {
-        diff: {
-          // Ensure strings even if API returns undefined
-          oldContent: diffData.oldContent ?? '',
-          newContent: diffData.newContent ?? '',
-        },
-        isLoading: false,
-      });
-    } catch (error) {
-      console.error('Failed to load diff:', error);
-      updateFileTab(tabId, {
-        loadError: error instanceof Error ? error.message : 'Unknown error',
-        isLoading: false,
-      });
-    }
+    await loadDiffForTab(tabId, selectedWorkspaceId, selectedSessionId, path);
   };
 
   // Handle review comment click - opens diff view scrolled to the comment line
@@ -360,31 +393,7 @@ export function ChangesPanel() {
     };
 
     openFileTab(newTab);
-
-    // Fetch diff
-    try {
-      const diffData = await getSessionFileDiff(selectedWorkspaceId, selectedSessionId, path);
-
-      const totalSize = (diffData.oldContent?.length || 0) + (diffData.newContent?.length || 0);
-      if (totalSize > MAX_DIFF_SIZE) {
-        updateFileTab(tabId, { isLoading: false, isTooLarge: true });
-        return;
-      }
-
-      updateFileTab(tabId, {
-        diff: {
-          oldContent: diffData.oldContent ?? '',
-          newContent: diffData.newContent ?? '',
-        },
-        isLoading: false,
-      });
-    } catch (error) {
-      console.error('Failed to load diff:', error);
-      updateFileTab(tabId, {
-        loadError: error instanceof Error ? error.message : 'Unknown error',
-        isLoading: false,
-      });
-    }
+    await loadDiffForTab(tabId, selectedWorkspaceId, selectedSessionId, path);
   };
 
   // Get current session and workspace for status-based styling
