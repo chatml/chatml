@@ -1749,6 +1749,26 @@ updateFileTabContent: (id, content) => set((state) => ({
       const timeline: TimelineEntry[] | undefined =
         timelineItems.length > 0 ? timelineItems.map(item => item.entry) : undefined;
 
+      // Auto-derive toolUsage from activeTools when not explicitly provided.
+      // This ensures tool blocks render correctly even when callers (handleStop,
+      // complete event, safety net) don't capture toolUsage themselves.
+      const derivedToolUsage: ToolUsage[] | undefined =
+        metadata.toolUsage !== undefined
+          ? metadata.toolUsage
+          : tools.length > 0
+            ? tools.map((t) => ({
+                id: t.id,
+                tool: t.tool,
+                params: t.params,
+                success: t.success,
+                summary: t.summary,
+                durationMs: t.endTime && t.startTime ? t.endTime - t.startTime : undefined,
+                stdout: t.stdout,
+                stderr: t.stderr,
+                metadata: t.metadata,
+              }))
+            : undefined;
+
       // Create the message from streaming text
       const pendingCpUuid = state.pendingCheckpointUuid[conversationId];
       const newMessage: Message = {
@@ -1758,7 +1778,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         content: streaming.text,
         timestamp: new Date().toISOString(),
         durationMs: metadata.durationMs,
-        toolUsage: metadata.toolUsage,
+        toolUsage: derivedToolUsage,
         runSummary: metadata.runSummary,
         ...(streaming.thinking ? { thinkingContent: streaming.thinking } : {}),
         ...(timeline ? { timeline } : {}),

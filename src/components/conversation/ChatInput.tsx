@@ -790,9 +790,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     try {
       // Commit any queued message to history before stopping
       commitQueuedMessage(selectedConversationId);
+      // Compute elapsed time for the stopped run
+      const startTime = useAppStore.getState().streamingState[selectedConversationId]?.startTime;
+      const durationMs = startTime ? Date.now() - startTime : undefined;
       // Finalize streaming content into a committed message before stopping
-      // so it persists in the message list (same as normal turn completion)
-      finalizeStreamingMessage(selectedConversationId, {});
+      // so it persists in the message list (same as normal turn completion).
+      // toolUsage is auto-derived from activeTools inside finalizeStreamingMessage.
+      finalizeStreamingMessage(selectedConversationId, { durationMs });
       // Add system message indicating the agent was stopped
       addMessage({
         id: `msg-stopped-${Date.now()}`,
@@ -802,14 +806,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         timestamp: new Date().toISOString(),
       });
       await stopConversation(selectedConversationId);
-      setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
-      clearActiveTools(selectedConversationId);
     } catch (error) {
       console.error('Failed to stop conversation:', error);
       showError('Failed to stop conversation. Please try again.');
     }
-  }, [selectedConversationId, isStreaming, commitQueuedMessage, finalizeStreamingMessage, addMessage, setStreaming, updateConversation, clearActiveTools, showError]);
+  }, [selectedConversationId, isStreaming, commitQueuedMessage, finalizeStreamingMessage, addMessage, updateConversation, showError]);
 
   useShortcut('stopAgent', handleStop, { enabled: isStreaming });
 
