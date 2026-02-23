@@ -229,6 +229,7 @@ interface SettingsState {
   setSidebarGroupBy: (value: SidebarGroupBy) => void;
   setSidebarSortBy: (value: SidebarSortBy) => void;
   toggleSidebarGroupCollapsed: (key: string) => void;
+  ensureSidebarGroupExpanded: (key: string, defaultCollapsed: boolean) => void;
   setLastRepoDashboardWorkspaceId: (id: string | null) => void;
 }
 
@@ -385,6 +386,18 @@ export const useSettingsStore = create<SettingsState>()(
           const has = state.collapsedSidebarGroups.includes(key);
           return {
             collapsedSidebarGroups: has
+              ? state.collapsedSidebarGroups.filter((k) => k !== key)
+              : [...state.collapsedSidebarGroups, key],
+          };
+        }),
+      // Same toggle-from-default logic as isSidebarGroupExpanded() in useSidebarSessions.ts
+      ensureSidebarGroupExpanded: (key, defaultCollapsed) =>
+        set((state) => {
+          const isToggled = state.collapsedSidebarGroups.includes(key);
+          const isExpanded = defaultCollapsed ? isToggled : !isToggled;
+          if (isExpanded) return state;
+          return {
+            collapsedSidebarGroups: isToggled
               ? state.collapsedSidebarGroups.filter((k) => k !== key)
               : [...state.collapsedSidebarGroups, key],
           };
