@@ -168,6 +168,7 @@ interface SettingsState {
   sidebarGroupBy: SidebarGroupBy;
   sidebarSortBy: SidebarSortBy;
   collapsedSidebarGroups: string[]; // composite keys toggled from default, e.g. "status:done"
+  workspaceOrder: string[]; // Persisted workspace display order (array of workspace IDs)
 
   // Last selected workspace for PR/Branches dashboard views (shared between both)
   lastRepoDashboardWorkspaceId: string | null;
@@ -231,6 +232,7 @@ interface SettingsState {
   toggleSidebarGroupCollapsed: (key: string) => void;
   ensureSidebarGroupExpanded: (key: string, defaultCollapsed: boolean) => void;
   setLastRepoDashboardWorkspaceId: (id: string | null) => void;
+  setWorkspaceOrder: (order: string[]) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -261,6 +263,7 @@ export const useSettingsStore = create<SettingsState>()(
       sidebarGroupBy: 'project', // Default: group by project
       sidebarSortBy: 'recent', // Default: sort by recency
       collapsedSidebarGroups: [], // Keys toggled from default state
+      workspaceOrder: [], // Empty = use natural backend order until user first reorders
       lastRepoDashboardWorkspaceId: null, // Last workspace selected in PR/Branches views
 
       // Actions
@@ -381,6 +384,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSidebarGroupBy: (value) => set({ sidebarGroupBy: value }),
       setSidebarSortBy: (value) => set({ sidebarSortBy: value }),
       setLastRepoDashboardWorkspaceId: (id) => set({ lastRepoDashboardWorkspaceId: id }),
+      setWorkspaceOrder: (order) => set({ workspaceOrder: order }),
       toggleSidebarGroupCollapsed: (key) =>
         set((state) => {
           const has = state.collapsedSidebarGroups.includes(key);
@@ -507,4 +511,32 @@ export function getWorkspaceBranchPrefix(workspace: Workspace): string | undefin
       return login || undefined;
     }
   }
+}
+
+/**
+ * Apply persisted workspace order to a list of workspaces.
+ * Workspaces in `order` appear first (in that order), followed by any new workspaces
+ * not yet in the persisted order. Stale IDs in `order` are silently skipped.
+ * Returns null if no custom order has been set (order is empty).
+ */
+export function applyWorkspaceOrder<T extends { id: string }>(
+  workspaces: T[],
+  order: string[],
+): T[] | null {
+  if (order.length === 0) return null;
+  const wsMap = new Map(workspaces.map((w) => [w.id, w]));
+  const ordered: T[] = [];
+  for (const id of order) {
+    const ws = wsMap.get(id);
+    if (ws) {
+      ordered.push(ws);
+      wsMap.delete(id);
+    }
+  }
+  for (const ws of workspaces) {
+    if (wsMap.has(ws.id)) {
+      ordered.push(ws);
+    }
+  }
+  return ordered;
 }
