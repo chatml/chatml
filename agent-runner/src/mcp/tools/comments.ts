@@ -24,7 +24,7 @@ export function createCommentTools(context: WorkspaceContext) {
       "Add a code review comment to a specific line in a file. Use this to leave feedback, suggestions, or highlight issues during code review.",
       {
         filePath: z.string().describe("Relative path to the file being reviewed"),
-        lineNumber: z.number().int().min(1).describe("Line number for the comment (1-based)"),
+        lineNumber: z.coerce.number().int().min(1).describe("Line number for the comment (1-based)"),
         title: z.string().optional().describe("Short title summarizing the issue (e.g., 'Potential memory leak', 'Missing error handling')"),
         content: z.string().describe("The review comment content with details (supports markdown)"),
         severity: z.enum(["error", "warning", "suggestion", "info"]).optional().describe("Optional severity level: 'error' for bugs/critical issues, 'warning' for potential problems, 'suggestion' for improvements, 'info' for informational notes"),
