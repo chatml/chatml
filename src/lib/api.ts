@@ -1885,6 +1885,48 @@ export async function setWorkspaceReviewPrompts(
 }
 
 // ---------------------------------------------------------------------------
+// Action Template Overrides
+// ---------------------------------------------------------------------------
+
+export async function getGlobalActionTemplates(): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/action-templates`);
+  const data = await handleResponse<{ templates: Record<string, string> }>(res);
+  return data.templates;
+}
+
+export async function setGlobalActionTemplates(templates: Record<string, string>): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/action-templates`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ templates }),
+  });
+  await handleVoidResponse(res, 'Failed to save action templates');
+}
+
+export async function getWorkspaceActionTemplates(workspaceId: string): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/action-templates`
+  );
+  const data = await handleResponse<{ templates: Record<string, string> }>(res);
+  return data.templates;
+}
+
+export async function setWorkspaceActionTemplates(
+  workspaceId: string,
+  templates: Record<string, string>,
+): Promise<void> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/action-templates`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ templates }),
+    },
+  );
+  await handleVoidResponse(res, 'Failed to save workspace action templates');
+}
+
+// ---------------------------------------------------------------------------
 // Custom Instructions
 // ---------------------------------------------------------------------------
 

@@ -1,12 +1,16 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGitStatus } from '@/hooks/useGitStatus';
 import { usePRStatus } from '@/hooks/usePRStatus';
 import { useActionState } from './useActionState';
 import { ActionButton } from './ActionButton';
 import { useAppStore } from '@/stores/appStore';
 import type { GitStatusDTO, PRDetails } from '@/lib/api';
+import { getGlobalActionTemplates, getWorkspaceActionTemplates } from '@/lib/api';
+import { ACTION_TEMPLATES, getTemplateKey, fetchMergedActionTemplates } from '@/lib/action-templates';
+import type { ActionTemplateKey } from '@/lib/action-templates';
+import type { PrimaryActionType } from './types';
 
 interface WorktreeSession {
   id: string;
@@ -21,6 +25,7 @@ interface PrimaryActionButtonProps {
   workspaceId: string | null;
   session: WorktreeSession | null | undefined;
   onSendMessage: (content: string) => void;
+  onSendMessageWithTemplate: (content: string, templateContent: string) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
   onCreatePR?: () => void;
@@ -33,6 +38,7 @@ export function PrimaryActionButton({
   workspaceId,
   session,
   onSendMessage,
+  onSendMessageWithTemplate,
   onFixIssues,
   onArchiveSession,
   onCreatePR,
@@ -108,11 +114,48 @@ export function PrimaryActionButton({
   // Determine loading state
   const isLoading = gitLoading || prLoading;
 
+  // ---------------------------------------------------------------------------
+  // Action templates — fetch merged templates and wrap onSendMessage
+  // ---------------------------------------------------------------------------
+
+  const [mergedTemplates, setMergedTemplates] = useState<Record<ActionTemplateKey, string>>(ACTION_TEMPLATES);
+
+  // Fetch helper — used on mount and when settings change
+  const refreshTemplates = useCallback(() => {
+    if (!workspaceId) return;
+    fetchMergedActionTemplates(workspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates)
+      .then((t) => setMergedTemplates(t))
+      .catch(() => { /* use built-in defaults */ });
+  }, [workspaceId]);
+
+  useEffect(() => {
+    refreshTemplates();
+  }, [refreshTemplates]);
+
+  // Re-fetch when action templates are saved in settings
+  useEffect(() => {
+    const handler = () => refreshTemplates();
+    window.addEventListener('action-templates-changed', handler);
+    return () => window.removeEventListener('action-templates-changed', handler);
+  }, [refreshTemplates]);
+
+  // Wrap onSendMessage to include template content when available.
+  // Accepts actionType from the click handler to avoid stale closure issues.
+  const handleSendWithTemplate = useCallback((content: string, actionType: PrimaryActionType) => {
+    const templateKey = getTemplateKey(actionType);
+    const templateContent = templateKey ? mergedTemplates[templateKey] : null;
+    if (templateContent) {
+      onSendMessageWithTemplate(content, templateContent);
+    } else {
+      onSendMessage(content);
+    }
+  }, [mergedTemplates, onSendMessage, onSendMessageWithTemplate]);
+
   return (
     <ActionButton
       action={action}
       isLoading={isLoading}
-      onSendMessage={onSendMessage}
+      onSendMessage={handleSendWithTemplate}
       onFixIssues={onFixIssues}
       onArchiveSession={onArchiveSession}
       onCreatePR={onCreatePR}

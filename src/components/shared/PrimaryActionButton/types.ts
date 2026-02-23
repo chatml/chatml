@@ -10,6 +10,7 @@ export type PrimaryActionType =
   | 'sync-branch'
   | 'create-pr'
   | 'view-pr'
+  | 'merge-pr'
   | 'archive-session';
 
 export type ButtonVariant = 'default' | 'destructive' | 'success' | 'warning';
@@ -42,7 +43,7 @@ export interface PrimaryAction {
 export interface ActionButtonProps {
   action: PrimaryAction | null;
   isLoading: boolean;
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, actionType: PrimaryActionType) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
   onCreatePR?: () => void;

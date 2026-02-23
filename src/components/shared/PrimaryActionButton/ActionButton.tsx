@@ -12,6 +12,8 @@ import { Loader2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ActionButtonProps } from './types';
 
+const PENDING_TIMEOUT_MS = 8000;
+
 export function ActionButton({
   action,
   onSendMessage,
@@ -27,10 +29,10 @@ export function ActionButton({
   const actionKey = action ? `${action.type}:${action.label}` : null;
   const pendingAction = pendingActionKey !== null && pendingActionKey === actionKey;
 
-  // Safety timeout: reset after 3s in case the action object doesn't change
+  // Safety timeout: reset after timeout in case the action object doesn't change
   useEffect(() => {
     if (!pendingActionKey) return;
-    const timer = setTimeout(() => setPendingActionKey(null), 3000);
+    const timer = setTimeout(() => setPendingActionKey(null), PENDING_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [pendingActionKey]);
 
@@ -78,6 +80,11 @@ export function ActionButton({
     } else if (action.type === 'create-pr' && onCreatePR) {
       // Open PR creation dialog
       onCreatePR();
+    } else if (action.type === 'merge-pr') {
+      // Merge PR: send the merge instruction to the agent
+      if (action.message) {
+        onSendMessage(action.message, action.type);
+      }
     } else if (action.type === 'view-pr' && action.prUrl) {
       // Open PR in browser
       window.open(action.prUrl, '_blank');
@@ -86,19 +93,24 @@ export function ActionButton({
       onArchiveSession(action.sessionId);
     } else if (action.message) {
       // Send message to agent
-      onSendMessage(action.message);
+      onSendMessage(action.message, action.type);
     }
   };
 
-  // Handle dropdown action click
+  // Handle dropdown action click — uses the parent action.type (not per-item) so
+  // all dropdown items resolve to the same template (e.g. all merge strategies → 'merge-pr').
   const handleDropdownClick = (message: string) => {
-    onSendMessage(message);
+    if (pendingAction) return;
+    markPending();
+    onSendMessage(message, action.type);
   };
 
   // Handle secondary action click (legacy single action)
   const handleSecondaryClick = () => {
+    if (pendingAction) return;
+    markPending();
     if (action.secondaryAction) {
-      onSendMessage(action.secondaryAction.message);
+      onSendMessage(action.secondaryAction.message, action.type);
     }
   };
 

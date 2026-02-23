@@ -14,9 +14,13 @@ import {
   getGlobalPRTemplate,
   getPRTemplate,
   setPRTemplate,
+  getGlobalActionTemplates,
+  getWorkspaceActionTemplates,
+  setWorkspaceActionTemplates,
 } from '@/lib/api';
 import type { Workspace } from '@/lib/types';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
+import { ACTION_TEMPLATES, ACTION_TEMPLATE_META } from '@/lib/action-templates';
 import { useToast } from '@/components/ui/toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -25,6 +29,7 @@ import { Input } from '@/components/ui/input';
 import {
   ArrowLeft,
   Eye,
+  Zap,
   GitBranch,
   FolderOpen,
   Globe,
@@ -40,7 +45,7 @@ interface WorkspaceSettingsProps {
   onBack: () => void;
 }
 
-type WorkspaceSettingsSection = 'repository' | 'review';
+type WorkspaceSettingsSection = 'repository' | 'review' | 'actions';
 
 export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProps) {
   const workspaces = useAppStore((s) => s.workspaces);
@@ -128,6 +133,18 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
                 <Eye className="w-3.5 h-3.5" />
                 Review
               </Button>
+              <Button
+                variant={section === 'actions' ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn(
+                  'w-full justify-start gap-2 h-7 text-xs',
+                  section === 'actions' && 'bg-sidebar-accent',
+                )}
+                onClick={() => setSection('actions')}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Actions
+              </Button>
             </div>
           </div>
         </ScrollArea>
@@ -145,6 +162,9 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
             )}
             {section === 'review' && (
               <WorkspaceReviewSettings workspaceId={workspaceId} />
+            )}
+            {section === 'actions' && (
+              <WorkspaceActionSettings workspaceId={workspaceId} />
             )}
           </div>
         </ScrollArea>
@@ -568,6 +588,132 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
           value={prTemplate}
           onChange={(e) => setPrTemplate(e.target.value)}
         />
+      </div>
+
+      {hasChanges && (
+        <div className="mt-4 flex justify-end">
+          <Button size="sm" disabled={saving} onClick={handleSave}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
+  const [templates, setTemplates] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState<Record<string, string>>({});
+  const [globalTemplates, setGlobalTemplates] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const { error: showError } = useToast();
+  const showErrorRef = useRef(showError);
+  useEffect(() => { showErrorRef.current = showError; }, [showError]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getWorkspaceActionTemplates(workspaceId),
+      getGlobalActionTemplates(),
+    ]).then(([ws, gl]) => {
+      if (cancelled) return;
+      setTemplates(ws);
+      setSaved(ws);
+      setGlobalTemplates(gl);
+    }).catch(() => {
+      if (cancelled) return;
+      showErrorRef.current('Failed to load settings');
+    });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const hasChanges = JSON.stringify(templates) !== JSON.stringify(saved);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const cleaned: Record<string, string> = {};
+      for (const [k, v] of Object.entries(templates)) {
+        if (v.trim()) cleaned[k] = v.trim();
+      }
+      await setWorkspaceActionTemplates(workspaceId, cleaned);
+      setTemplates(cleaned);
+      setSaved(cleaned);
+      window.dispatchEvent(new CustomEvent('action-templates-changed'));
+    } catch {
+      showErrorRef.current('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  }, [workspaceId, templates]);
+
+  const hasAnyOverride = Object.values(templates).some((v) => v.trim());
+
+  const handleResetAll = useCallback(async () => {
+    setSaving(true);
+    try {
+      await setWorkspaceActionTemplates(workspaceId, {});
+      setTemplates({});
+      setSaved({});
+      window.dispatchEvent(new CustomEvent('action-templates-changed'));
+    } catch {
+      showErrorRef.current('Failed to reset settings');
+    } finally {
+      setSaving(false);
+    }
+  }, [workspaceId]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-xl font-semibold">Action Templates</h2>
+        {hasAnyOverride && !hasChanges && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground hover:text-foreground"
+            disabled={saving}
+            onClick={handleResetAll}
+          >
+            Reset to global defaults
+          </Button>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground mb-6">
+        Override the global action template settings for this workspace.
+        Leave empty to use the global default.
+      </p>
+
+      <div className="space-y-5">
+        {ACTION_TEMPLATE_META.map(({ key, label, placeholder }) => {
+          const globalOverride = globalTemplates[key];
+          const effectivePlaceholder = globalOverride
+            ? `Global: ${globalOverride.slice(0, 60)}…`
+            : placeholder;
+          const hasOverride = !!(templates[key]?.trim());
+
+          return (
+            <div key={key}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-sm font-medium">{label}</label>
+                {hasOverride && (
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+                    Overridden
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mb-1.5 line-clamp-2">
+                Default: {ACTION_TEMPLATES[key]?.slice(0, 100)}&hellip;
+              </p>
+              <Textarea
+                className="text-sm min-h-[80px]"
+                placeholder={effectivePlaceholder}
+                value={templates[key] || ''}
+                onChange={(e) => setTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {hasChanges && (
