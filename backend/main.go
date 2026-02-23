@@ -154,6 +154,10 @@ func main() {
 	statsCache := server.NewSessionStatsCache(30 * time.Second)
 	defer statsCache.Close()
 
+	// Diff cache with 10 second TTL — avoids repeated git show subprocess spawns
+	diffCache := server.NewDiffCache(10 * time.Second)
+	defer diffCache.Close()
+
 	// Repo manager for stats computation in callbacks
 	repoManager := git.NewRepoManager()
 
@@ -233,8 +237,9 @@ func main() {
 					return
 				}
 
-				// Invalidate cache first
+				// Invalidate caches first
 				statsCache.Invalidate(sessionID)
+				diffCache.InvalidateSession(sessionID)
 
 				// Get session and workspace data to recompute stats
 				sess, err := s.GetSession(ctx, sessionID)
@@ -470,7 +475,7 @@ func main() {
 		},
 	)
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, aiClient, scriptRunner)
+	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
 
 	// Pre-warm session stats cache in background so the first getDashboardData
 	// returns stats from cache instead of computing them on-the-fly.

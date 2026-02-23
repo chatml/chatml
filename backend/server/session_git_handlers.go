@@ -192,6 +192,14 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check diff cache
+	if h.diffCache != nil {
+		if cached, ok := h.diffCache.Get(sessionID, cleanPath); ok {
+			writeJSON(w, cached)
+			return
+		}
+	}
+
 	// Read current file content from the worktree
 	var isDeleted bool
 	fullPath := filepath.Join(workingPath, cleanPath)
@@ -225,6 +233,11 @@ func (h *Handlers) GetSessionFileDiff(w http.ResponseWriter, r *http.Request) {
 		NewFilename: cleanPath,
 		HasConflict: hasConflict,
 		IsDeleted:   isDeleted,
+	}
+
+	// Cache the result
+	if h.diffCache != nil {
+		h.diffCache.Set(sessionID, cleanPath, &response)
 	}
 
 	writeJSON(w, response)
