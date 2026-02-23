@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.50",
-    "jsdom": "^28.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

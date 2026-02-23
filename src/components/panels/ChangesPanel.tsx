@@ -15,8 +15,6 @@ import { ChecksPanel, type ChecksPanelHandle } from '@/components/panels/ChecksP
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
 import { ReviewPanel } from '@/components/panels/ReviewPanel';
 import { FileHistoryPanel } from '@/components/panels/FileHistoryPanel';
-// TODO: Re-import ScriptsPanel when the Scripts tab is reintroduced
-// import { ScriptsPanel } from '@/components/panels/ScriptsPanel';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
