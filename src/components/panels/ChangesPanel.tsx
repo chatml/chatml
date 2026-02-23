@@ -48,6 +48,7 @@ import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
+  type PanelImperativeHandle,
 } from '@/components/ui/resizable';
 import {
   MoreVertical,
@@ -117,6 +118,9 @@ export function ChangesPanel() {
   const updateSession = useAppStore((s) => s.updateSession);
   const layoutChanges = useSettingsStore((s) => s.layoutChanges);
   const setLayoutChanges = useSettingsStore((s) => s.setLayoutChanges);
+  const sidebarBottomPanelMinimized = useSettingsStore((s) => s.sidebarBottomPanelMinimized);
+  const setSidebarBottomPanelMinimized = useSettingsStore((s) => s.setSidebarBottomPanelMinimized);
+  const toggleSidebarBottomPanel = useSettingsStore((s) => s.toggleSidebarBottomPanel);
   const [selectedTab, setSelectedTab] = useState('files');
   const [bottomTab, setBottomTab] = useState('todos');
   const [files, setFiles] = useState<FileNode[]>([]);
@@ -135,6 +139,7 @@ export function ChangesPanel() {
   const fileTreeRef = useRef<FileTreeHandle>(null);
   const checksPanelRef = useRef<ChecksPanelHandle>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const bottomPanelRef = useRef<PanelImperativeHandle>(null);
 
   // Fetch working changes (truly uncommitted files only — diff against HEAD)
   const fetchChanges = useCallback(async () => {
@@ -603,6 +608,25 @@ export function ChangesPanel() {
     }
   }, [fetchChanges, fetchBranchData]);
 
+  // Handle bottom tab click when panel is minimized: expand and select the tab
+  const handleBottomTabClick = useCallback((tabId: string) => {
+    setBottomTab(tabId);
+    if (sidebarBottomPanelMinimized) {
+      setSidebarBottomPanelMinimized(false);
+    }
+  }, [sidebarBottomPanelMinimized, setSidebarBottomPanelMinimized]);
+
+  // Sync imperative panel collapse/expand with the persisted minimized state
+  useEffect(() => {
+    const panel = bottomPanelRef.current;
+    if (!panel) return;
+    if (sidebarBottomPanelMinimized) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+  }, [sidebarBottomPanelMinimized]);
+
   // Auto-switch to a tab when requested by other components (e.g., WebSocket comment_added).
   // Debounced so rapid-fire events (many comments in a review) only switch once.
   useEffect(() => {
@@ -641,14 +665,14 @@ export function ChangesPanel() {
         menuContext={menuContext}
       />
 
-      {/* Resizable content area */}
+      {/* Always-mounted resizable layout — bottom panel uses collapsible API to avoid remounting */}
       <ResizablePanelGroup
         direction="vertical"
         className="flex-1 min-h-0"
         defaultLayout={layoutChanges}
         onLayoutChange={setLayoutChanges}
       >
-        {/* File List */}
+        {/* Top Panel - Files/Changes/Review/Checks */}
         <ResizablePanel id="file-list" defaultSize="65%" minSize="20%" className="overflow-hidden">
           {/* All panels stay mounted; CSS visibility toggling prevents unmount/remount flash */}
           <div className={cn("h-full", selectedTab !== 'files' && 'hidden')}>
@@ -727,40 +751,56 @@ export function ChangesPanel() {
           </div>
         </ResizablePanel>
 
-        <ResizableHandle direction="vertical" />
+        <ResizableHandle direction="vertical" onDoubleClick={toggleSidebarBottomPanel} />
 
-        {/* Bottom Panel - Todos/MCP/History */}
-        <ResizablePanel id="terminal" defaultSize="35%" minSize="15%" className="overflow-hidden">
+        {/* Bottom Panel - Todos/MCP/History — collapsible to avoid remounting */}
+        <ResizablePanel
+          ref={bottomPanelRef}
+          id="terminal"
+          defaultSize="35%"
+          minSize="15%"
+          collapsible
+          collapsedSize={0}
+          onResize={(size) => {
+            // Sync minimized state when user drags the panel to/from collapsed
+            const isCollapsed = size.asPercentage === 0;
+            if (isCollapsed !== sidebarBottomPanelMinimized) {
+              setSidebarBottomPanelMinimized(isCollapsed);
+            }
+          }}
+          className="overflow-hidden"
+        >
           <div className="flex flex-col h-full w-full">
             {/* Tabs Row - matching top panel style */}
             <BottomPanelTabs
               bottomTab={bottomTab}
-              setBottomTab={setBottomTab}
+              setBottomTab={handleBottomTabClick}
               totalPendingTodos={totalPendingTodos}
+              isMinimized={sidebarBottomPanelMinimized}
+              onToggleMinimize={toggleSidebarBottomPanel}
             />
-            {/* Tab content */}
+            {/* Tab content — CSS visibility toggling prevents unmount/remount */}
             <div className="flex-1 min-h-0">
-              {bottomTab === 'todos' && (
+              <div className={cn("h-full", bottomTab !== 'todos' && 'hidden')}>
                 <ErrorBoundary section="TodoPanel" fallback={<InlineErrorFallback message="Unable to display tasks" />}>
                   <TodoPanel />
                 </ErrorBoundary>
-              )}
-              {bottomTab === 'budget' && (
+              </div>
+              <div className={cn("h-full", bottomTab !== 'budget' && 'hidden')}>
                 <ErrorBoundary section="BudgetPanel" fallback={<InlineErrorFallback message="Unable to display usage" />}>
                   <BudgetStatusPanel />
                 </ErrorBoundary>
-              )}
-              {bottomTab === 'mcp' && (
+              </div>
+              <div className={cn("h-full", bottomTab !== 'mcp' && 'hidden')}>
                 <ErrorBoundary section="McpPanel" fallback={<InlineErrorFallback message="Unable to display MCP servers" />}>
                   <McpServersPanel />
                 </ErrorBoundary>
-              )}
-              {bottomTab === 'file-history' && (
+              </div>
+              <div className={cn("h-full", bottomTab !== 'file-history' && 'hidden')}>
                 <ErrorBoundary section="FileHistory" fallback={<InlineErrorFallback message="Unable to display file history" />}>
                   <FileHistoryPanel />
                 </ErrorBoundary>
-              )}
-              {/* TODO: Re-enable Scripts tab when the feature is reintroduced (see ScriptsPanel.tsx) */}
+              </div>
             </div>
           </div>
         </ResizablePanel>
@@ -875,10 +915,14 @@ function BottomPanelTabs({
   bottomTab,
   setBottomTab,
   totalPendingTodos,
+  isMinimized,
+  onToggleMinimize,
 }: {
   bottomTab: string;
   setBottomTab: (tab: string) => void;
   totalPendingTodos: number;
+  isMinimized: boolean;
+  onToggleMinimize: () => void;
 }) {
   // Use individual selectors to prevent unnecessary re-renders
   const hiddenBottomTabs = useSettingsStore((s) => s.hiddenBottomTabs);
@@ -976,6 +1020,27 @@ function BottomPanelTabs({
           })}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Minimize/expand toggle */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 shrink-0"
+            onClick={onToggleMinimize}
+          >
+            {isMinimized ? (
+              <ChevronsUpDown className="size-3" />
+            ) : (
+              <ChevronsDownUp className="size-3" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {isMinimized ? 'Expand Panel' : 'Minimize Panel'}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }

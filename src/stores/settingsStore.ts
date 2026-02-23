@@ -137,6 +137,7 @@ interface SettingsState {
   unreadSessions: string[]; // Session IDs with unread agent completions
   showBottomTerminal: boolean;
   zenMode: boolean; // Distraction-free mode that hides sidebars
+  sidebarBottomPanelMinimized: boolean; // Whether the sidebar bottom panel (Tasks/History/etc) is minimized
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
   bottomTabOrder: AllBottomPanelTab[]; // Order of bottom panel tabs
   topTabOrder: AllTopPanelTab[]; // Order of top panel tabs
@@ -202,6 +203,8 @@ interface SettingsState {
   setStrictPrivacy: (value: boolean) => void;
   setShowBottomTerminal: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
+  setSidebarBottomPanelMinimized: (value: boolean) => void;
+  toggleSidebarBottomPanel: () => void;
   toggleWorkspaceCollapsed: (workspaceId: string) => void;
   expandWorkspace: (workspaceId: string) => void;
   markWorkspaceUnread: (workspaceId: string) => void;
@@ -246,6 +249,7 @@ export const useSettingsStore = create<SettingsState>()(
       unreadSessions: [], // Session IDs with unread agent completions
       showBottomTerminal: false,
       zenMode: false,
+      sidebarBottomPanelMinimized: false,
       hiddenBottomTabs: [], // All tabs visible by default
       bottomTabOrder: DEFAULT_BOTTOM_TAB_ORDER, // Default tab order
       topTabOrder: DEFAULT_TOP_TAB_ORDER, // Default top tab order
@@ -295,6 +299,8 @@ export const useSettingsStore = create<SettingsState>()(
       setStrictPrivacy: (value) => set({ strictPrivacy: value }),
       setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),
+      setSidebarBottomPanelMinimized: (value) => set({ sidebarBottomPanelMinimized: value }),
+      toggleSidebarBottomPanel: () => set((state) => ({ sidebarBottomPanelMinimized: !state.sidebarBottomPanelMinimized })),
       toggleWorkspaceCollapsed: (workspaceId) =>
         set((state) => {
           const isCollapsed = state.collapsedWorkspaces.includes(workspaceId);
