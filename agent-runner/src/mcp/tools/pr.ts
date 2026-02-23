@@ -23,7 +23,7 @@ export function createPRTools(context: WorkspaceContext) {
       "report_pr_created",
       "Report that a pull request was created for this session. Call this AFTER successfully creating a PR with `gh pr create` or any other method. This ensures the PR is immediately tracked in the ChatML UI.",
       {
-        prNumber: z.number().int().positive().describe("The PR number (e.g., 123)"),
+        prNumber: z.coerce.number().int().positive().describe("The PR number (e.g., 123)"),
         prUrl: z.string().describe("The full PR URL (e.g., https://github.com/owner/repo/pull/123)"),
       },
       async ({ prNumber, prUrl }) => {
@@ -78,7 +78,7 @@ export function createPRTools(context: WorkspaceContext) {
       "report_pr_merged",
       "Report that a pull request was merged for this session. Call this AFTER successfully merging a PR with `gh pr merge` or any other method. This updates the session status in ChatML.",
       {
-        prNumber: z.number().int().positive().optional().describe("The PR number that was merged (optional if the session already has a PR associated)"),
+        prNumber: z.coerce.number().int().positive().optional().describe("The PR number that was merged (optional if the session already has a PR associated)"),
       },
       async ({ prNumber }) => {
         try {
