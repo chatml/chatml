@@ -47,9 +47,11 @@ export function Terminal({ sessionId, workspacePath, className, onExit }: Termin
     if (!container) return;
 
     resizeObserverRef.current = new ResizeObserver(() => {
-      // Debounce fit calls
+      // Debounce fit calls, skip when hidden (0 dimensions)
       requestAnimationFrame(() => {
-        fit();
+        if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+          fit();
+        }
       });
     });
 

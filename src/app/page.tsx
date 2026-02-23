@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { Loader2 } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -190,6 +190,7 @@ export default function Home() {
   // Panel refs for imperative collapse/expand
   const leftSidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const rightSidebarPanelRef = useRef<PanelImperativeHandle>(null);
+  const bottomTerminalPanelRef = useRef<PanelImperativeHandle>(null);
 
   const leftSidebarDomRef = useRef<HTMLDivElement>(null);
 
@@ -244,12 +245,30 @@ export default function Home() {
   })));
 
   const toggleBottomTerminal = useCallback(() => {
-    setShowBottomTerminal(!showBottomTerminal);
-  }, [showBottomTerminal, setShowBottomTerminal]);
+    const panel = bottomTerminalPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, []);
 
   const hideBottomTerminal = useCallback(() => {
-    setShowBottomTerminal(false);
-  }, [setShowBottomTerminal]);
+    bottomTerminalPanelRef.current?.collapse();
+  }, []);
+
+  // Sync bottom terminal panel collapse state on mount from persisted setting
+  // useLayoutEffect to prevent flash of expanded panel before collapsing
+  useLayoutEffect(() => {
+    const panel = bottomTerminalPanelRef.current;
+    if (!panel) return;
+    if (!showBottomTerminal && !panel.isCollapsed()) {
+      panel.collapse();
+    }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Determine if we're in a Full Content view (not conversation)
   // Also treat as full content view when no session is selected (to show welcome screen)
@@ -1392,7 +1411,7 @@ export default function Home() {
     const handleToggleRightPanel = () => toggleRightSidebar();
     const handleToggleBottomPanel = () => toggleBottomTerminal();
     const handleShowBottomPanel = () => {
-      setShowBottomTerminal(true);
+      bottomTerminalPanelRef.current?.expand();
     };
     const handleOpenInVSCode = () => {
       const { selectedSessionId, sessions } = useAppStore.getState();
@@ -1623,28 +1642,39 @@ export default function Home() {
                       ) : null}
                     </ResizablePanel>
 
-                    {/* Bottom Terminal - conditionally rendered */}
-                    {selectedSession && showBottomTerminal && (
-                      <>
-                        <ResizableHandle direction="vertical" />
-                        <ResizablePanel
-                          id="bottom-terminal"
-                          defaultSize="250px"
-                          minSize="100px"
-                          maxSize="400px"
-                        >
-                          <div className="h-full">
-                            <ErrorBoundary section="Terminal">
-                              <BottomTerminal
-                                sessionId={selectedSession.id}
-                                workspacePath={selectedSession.worktreePath}
-                                onHide={hideBottomTerminal}
-                              />
-                            </ErrorBoundary>
-                          </div>
-                        </ResizablePanel>
-                      </>
-                    )}
+                    {/* Bottom Terminal - always mounted, collapsible */}
+                    <ResizableHandle
+                      direction="vertical"
+                      className={cn(!showBottomTerminal && "hidden")}
+                    />
+                    <ResizablePanel
+                      ref={bottomTerminalPanelRef}
+                      id="bottom-terminal"
+                      defaultSize="250px"
+                      minSize="100px"
+                      maxSize="400px"
+                      collapsible={true}
+                      collapsedSize={0}
+                      onResize={(size) => {
+                        const collapsed = size.asPercentage === 0;
+                        if (collapsed && showBottomTerminal) {
+                          setShowBottomTerminal(false);
+                        } else if (!collapsed && !showBottomTerminal) {
+                          setShowBottomTerminal(true);
+                        }
+                      }}
+                    >
+                      <div className="h-full">
+                        <ErrorBoundary section="Terminal">
+                          <BottomTerminal
+                            currentSessionId={selectedSessionId}
+                            currentWorkspacePath={selectedSession?.worktreePath ?? null}
+                            isExpanded={showBottomTerminal}
+                            onHide={hideBottomTerminal}
+                          />
+                        </ErrorBoundary>
+                      </div>
+                    </ResizablePanel>
                   </ResizablePanelGroup>
                 </ResizablePanel>
 

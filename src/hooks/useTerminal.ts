@@ -268,8 +268,10 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     };
   }, []);
 
-  // Fit terminal to container
+  // Fit terminal to container (skip when container has 0 dimensions to avoid resizing PTY to 0x0)
   const fit = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || container.offsetWidth === 0 || container.offsetHeight === 0) return;
     if (fitAddonRef.current && terminalRef.current) {
       fitAddonRef.current.fit();
     }

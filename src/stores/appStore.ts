@@ -426,7 +426,7 @@ interface AppState {
   deleteCustomTodo: (sessionId: string, todoId: string) => void;
 
   // Terminal instance actions (bottom panel)
-  createTerminal: (sessionId: string) => TerminalInstance | null;
+  createTerminal: (sessionId: string, workspacePath: string) => TerminalInstance | null;
   closeTerminal: (sessionId: string, terminalId: string) => void;
   setActiveTerminal: (sessionId: string, terminalId: string) => void;
   markTerminalExited: (terminalId: string) => void;
@@ -741,6 +741,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { [id]: _toggleState, ...remainingToggleState } = state.sessionToggleState;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _draft, ...remainingDraftInputs } = state.draftInputs;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _terminals, ...remainingTerminalInstances } = state.terminalInstances;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
 
       return {
         sessions: state.sessions.filter((s) => s.id !== id),
@@ -761,6 +765,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastActiveConversationPerSession: remainingLastActive,
         sessionToggleState: remainingToggleState,
         draftInputs: remainingDraftInputs,
+        terminalInstances: remainingTerminalInstances,
+        activeTerminalId: remainingActiveTerminalId,
         selectedFileTabId: null,
         fileTabs: [],
       };
@@ -850,10 +856,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
+    // Clean up terminal instances — PTYs for archived sessions should not stay alive
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _terminals, ...remainingTerminalInstances } = state.terminalInstances;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
+
     return {
       sessions: updatedSessions,
       selectedSessionId: newSelectedSessionId,
       selectedConversationId: newSelectedConversationId,
+      terminalInstances: remainingTerminalInstances,
+      activeTerminalId: remainingActiveTerminalId,
     };
   }),
   unarchiveSession: (id) => set((state) => {
@@ -1847,7 +1861,7 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
 
   // Terminal instance actions (bottom panel)
-  createTerminal: (sessionId) => {
+  createTerminal: (sessionId, workspacePath) => {
     const state = get();
     const existing = state.terminalInstances[sessionId] || [];
 
@@ -1864,6 +1878,7 @@ updateFileTabContent: (id, content) => set((state) => ({
       sessionId,
       slotNumber: slot,
       status: 'active',
+      workspacePath,
     };
 
     set({
