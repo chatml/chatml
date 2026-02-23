@@ -979,7 +979,14 @@ export function useWebSocket(enabled: boolean = true) {
       // ====================================================================
       case 'supported_models':
         if (event?.models) {
-          store.setSupportedModels(event.models as Array<{ value: string; displayName: string; description: string }>);
+          store.setSupportedModels(event.models as Array<{
+            value: string;
+            displayName: string;
+            description: string;
+            supportsEffort?: boolean;
+            supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+            supportsAdaptiveThinking?: boolean;
+          }>);
         }
         break;
 
@@ -1031,6 +1038,13 @@ export function useWebSocket(enabled: boolean = true) {
       case 'subagent_output':
         if (event?.agentId) {
           store.setSubAgentOutput(conversationId, event.agentId as string, event.agentOutput || '');
+        }
+        break;
+
+      case 'subagent_usage':
+        if (event?.toolUseId && event?.usage) {
+          const usage = event.usage as { totalTokens: number; toolUses: number; durationMs: number };
+          store.setSubAgentUsage(conversationId, event.toolUseId as string, usage);
         }
         break;
 

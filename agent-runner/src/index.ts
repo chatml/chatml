@@ -9,6 +9,7 @@ import {
   type SDKHookResponseMessage,
   type SDKToolProgressMessage,
   type SDKAuthStatusMessage,
+  type SDKTaskNotificationMessage,
   type Query,
   type HookCallback,
   type PreToolUseHookInput,
@@ -121,7 +122,7 @@ const effort: EffortLevel | undefined = effortArg
   : undefined;
 
 // Permission mode (e.g., "plan" for plan mode at startup)
-const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "delegate"] as const;
+const validPermissionModes = ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"] as const;
 type PermissionMode = typeof validPermissionModes[number];
 let initialPermissionMode: PermissionMode = "bypassPermissions";
 // Tracks the current permission mode and the mode before plan mode was activated.
@@ -2169,7 +2170,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -2242,6 +2243,20 @@ function handleMessage(message: SDKMessage): void {
           exitCode: hookMsg.exit_code,
           sessionId: hookMsg.session_id,
         });
+      } else if (sysMsg.subtype === "task_notification") {
+        const taskMsg = sysMsg as SDKTaskNotificationMessage;
+        // Emit usage data for completed subagents (correlate via tool_use_id)
+        if (taskMsg.usage && taskMsg.tool_use_id) {
+          emit({
+            type: "subagent_usage",
+            toolUseId: taskMsg.tool_use_id,
+            usage: {
+              totalTokens: taskMsg.usage.total_tokens,
+              toolUses: taskMsg.usage.tool_uses,
+              durationMs: taskMsg.usage.duration_ms,
+            },
+          });
+        }
       }
       break;
     }

@@ -832,6 +832,21 @@ outer:
 					markSnapshotDirty()
 				}
 
+			case EventTypeSubagentUsage:
+				// Correlate usage data with sub-agent via parentToolUseId matching event.ToolUseId
+				if event.ToolUseId != "" && event.Usage != nil {
+					usage := parseSubAgentUsage(event.Usage)
+					if usage != nil {
+						for _, sa := range activeSubAgents {
+							if sa.ParentToolUseId == event.ToolUseId {
+								sa.Usage = usage
+								markSnapshotDirty()
+								break
+							}
+						}
+					}
+				}
+
 			case EventTypeSubagentOutput:
 				if sa, ok := activeSubAgents[event.AgentId]; ok {
 					sa.Output = event.AgentOutput
@@ -1882,6 +1897,27 @@ func (m *Manager) buildSessionContext(ctx context.Context, convID string) string
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// parseSubAgentUsage extracts SubAgentUsage from a raw JSON map.
+func parseSubAgentUsage(raw map[string]interface{}) *SubAgentUsage {
+	if raw == nil {
+		return nil
+	}
+	usage := &SubAgentUsage{}
+	if v, ok := raw["totalTokens"].(float64); ok {
+		usage.TotalTokens = int(v)
+	}
+	if v, ok := raw["toolUses"].(float64); ok {
+		usage.ToolUses = int(v)
+	}
+	if v, ok := raw["durationMs"].(float64); ok {
+		usage.DurationMs = int64(v)
+	}
+	if usage.TotalTokens == 0 && usage.ToolUses == 0 && usage.DurationMs == 0 {
+		return nil
+	}
+	return usage
 }
 
 // generateInputSuggestion uses the AI client to generate a suggested next prompt

@@ -83,12 +83,50 @@ function flattenFileTree(nodes: FileNodeDTO[], parentPath: string = ''): FlatFil
   return result;
 }
 
-const MODELS = [
-  { ...SHARED_MODELS[0], icon: Bot },
-  { ...SHARED_MODELS[1], icon: Bot },
-  { ...SHARED_MODELS[2], icon: Bot },
-];
+/** Static fallback model list (used when no SDK models are available). */
+const STATIC_MODELS: ModelEntry[] = SHARED_MODELS.map((m) => ({
+  id: m.id,
+  name: m.name,
+  icon: Bot,
+  supportsThinking: m.supportsThinking,
+  supportsEffort: m.supportsEffort,
+}));
 
+interface ModelEntry {
+  id: string;
+  name: string;
+  icon: typeof Bot;
+  supportsThinking: boolean;
+  supportsEffort: boolean;
+  supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+}
+
+/** Build the model list from SDK-reported dynamic models, with static fallback. */
+function buildModelList(dynamic: ReturnType<typeof useAppStore.getState>['supportedModels']): ModelEntry[] {
+  if (dynamic.length === 0) return STATIC_MODELS;
+  return dynamic.map((m) => ({
+    id: m.value,
+    name: m.displayName,
+    icon: Bot,
+    supportsThinking: m.supportsAdaptiveThinking ?? true,
+    supportsEffort: m.supportsEffort ?? false,
+    supportedEffortLevels: m.supportedEffortLevels,
+  }));
+}
+
+
+/** Get available thinking level IDs for a model, respecting SDK-reported supported levels. */
+function getAvailableThinkingLevels(model: ModelEntry): ThinkingLevel[] {
+  const allLevels = THINKING_LEVELS.map(l => l.id);
+  const allowOff = canDisableThinking(model);
+  let available = allowOff ? allLevels : allLevels.filter(l => l !== 'off');
+  // Filter by SDK-reported supported effort levels when available
+  if (model.supportsEffort && model.supportedEffortLevels) {
+    const supported = new Set(model.supportedEffortLevels);
+    available = available.filter(l => l === 'off' || supported.has(l as 'low' | 'medium' | 'high' | 'max'));
+  }
+  return available;
+}
 
 interface ChatInputProps {
   onMessageSubmit?: () => void;
@@ -104,7 +142,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const setDefaultModel = useSettingsStore((s) => s.setDefaultModel);
   const defaultThinkingLevel = useSettingsStore((s) => s.defaultThinkingLevel);
   const setDefaultThinkingLevel = useSettingsStore((s) => s.setDefaultThinkingLevel);
-  const [selectedModel, setSelectedModel] = useState(
+
+  // Dynamic model list from SDK, with static fallback
+  const dynamicModels = useAppStore((s) => s.supportedModels);
+  const MODELS = useMemo(() => buildModelList(dynamicModels), [dynamicModels]);
+
+  const [selectedModel, setSelectedModel] = useState<ModelEntry>(
     () => MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]
   );
   const [isSending, setIsSending] = useState(false);
@@ -272,7 +315,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       // Reset to default when conversation has no saved model
       setSelectedModel(MODELS.find((m) => m.id === defaultModel) ?? MODELS[0]);
     }
-  }, [selectedConversationId, currentConversationModel, defaultModel]);
+  }, [selectedConversationId, currentConversationModel, defaultModel, MODELS]);
 
   // Derive available slash commands from store
   const getAllCommands = useSlashCommandStore((s) => s.getAllCommands);
@@ -791,9 +834,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       if (e.code === 'KeyT' && e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
         setThinkingLevel(prev => {
-          const levels = THINKING_LEVELS.map(l => l.id);
-          const allowOff = canDisableThinking(selectedModel);
-          const available = allowOff ? levels : levels.filter(l => l !== 'off');
+          const available = getAvailableThinkingLevels(selectedModel);
           const idx = available.indexOf(prev);
           return available[(idx + 1) % available.length];
         });
@@ -820,9 +861,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     const handleFocusInput = () => plateInputRef.current?.focus();
     const handleToggleThinking = () => {
       setThinkingLevel(prev => {
-        const levels = THINKING_LEVELS.map(l => l.id);
-        const allowOff = canDisableThinking(selectedModel);
-        const available = allowOff ? levels : levels.filter(l => l !== 'off');
+        const available = getAvailableThinkingLevels(selectedModel);
         const idx = available.indexOf(prev);
         return available[(idx + 1) % available.length];
       });
@@ -839,7 +878,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel]);
+  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, MODELS]);
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
@@ -1416,7 +1455,14 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <span className="normal-case tracking-normal text-muted-foreground/60">⌥T</span>
               </DropdownMenuLabel>
               {THINKING_LEVELS
-                .filter((level) => level.id !== 'off' || canDisableThinking(selectedModel))
+                .filter((level) => {
+                  if (level.id === 'off') return canDisableThinking(selectedModel);
+                  // Filter by SDK-reported supported effort levels when available
+                  if (selectedModel.supportsEffort && selectedModel.supportedEffortLevels) {
+                    return selectedModel.supportedEffortLevels.includes(level.id as 'low' | 'medium' | 'high' | 'max');
+                  }
+                  return true;
+                })
                 .map((level, index, arr) => {
                   const isSelected = level.id === thinkingLevel;
                   const isDefault = level.id === defaultThinkingLevel;

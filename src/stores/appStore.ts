@@ -253,8 +253,15 @@ interface AppState {
   // File watcher: last file change event (for reactive subscriptions)
   lastFileChange: { workspaceId: string; path: string; fullPath: string; timestamp: number } | null;
 
-  // Query responses from agent
-  supportedModels: Array<{ value: string; displayName: string; description: string }>;
+  // Query responses from agent (dynamic model info from SDK)
+  supportedModels: Array<{
+    value: string;
+    displayName: string;
+    description: string;
+    supportsEffort?: boolean;
+    supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+    supportsAdaptiveThinking?: boolean;
+  }>;
   supportedCommands: Array<{ name: string; description: string; argumentHint: string }>;
   accountInfo: Record<string, unknown> | null;
 
@@ -384,6 +391,7 @@ interface AppState {
   addSubAgentTool: (conversationId: string, agentId: string, tool: ActiveTool) => void;
   completeSubAgentTool: (conversationId: string, agentId: string, toolId: string, success?: boolean, summary?: string, stdout?: string, stderr?: string) => void;
   setSubAgentOutput: (conversationId: string, agentId: string, output: string) => void;
+  setSubAgentUsage: (conversationId: string, toolUseId: string, usage: import('@/lib/types').SubAgentUsage) => void;
   clearSubAgents: (conversationId: string) => void;
 
   restoreStreamingFromSnapshot: (conversationId: string, snapshot: {
@@ -430,7 +438,14 @@ interface AppState {
   saveMcpServerConfigs: (workspaceId: string, configs: McpServerConfig[]) => Promise<void>;
 
   // Query response actions
-  setSupportedModels: (models: Array<{ value: string; displayName: string; description: string }>) => void;
+  setSupportedModels: (models: Array<{
+    value: string;
+    displayName: string;
+    description: string;
+    supportsEffort?: boolean;
+    supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+    supportsAdaptiveThinking?: boolean;
+  }>) => void;
   setSupportedCommands: (commands: Array<{ name: string; description: string; argumentHint: string }>) => void;
   setAccountInfo: (info: Record<string, unknown>) => void;
 
@@ -1563,6 +1578,14 @@ updateFileTabContent: (id, content) => set((state) => ({
       ...state.subAgents,
       [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
         a.agentId === agentId ? { ...a, output } : a
+      ),
+    },
+  })),
+  setSubAgentUsage: (conversationId, toolUseId, usage) => set((state) => ({
+    subAgents: {
+      ...state.subAgents,
+      [conversationId]: (state.subAgents[conversationId] || []).map((a) =>
+        a.parentToolUseId === toolUseId ? { ...a, usage } : a
       ),
     },
   })),

@@ -16,6 +16,13 @@ import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import type { SubAgent } from '@/lib/types';
 
+/** Format token count compactly (e.g., 1234 → "1.2k", 56789 → "57k"). */
+function formatTokensCompact(tokens: number): string {
+  if (tokens < 1000) return `${tokens}`;
+  if (tokens < 10000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${Math.round(tokens / 1000)}k`;
+}
+
 // Map agent types to short display labels
 function getAgentLabel(agentType: string): string {
   switch (agentType) {
@@ -132,10 +139,11 @@ export const SubAgentRow = memo(function SubAgentRow({ agent, worktreePath }: Su
 
         <span className="flex-1" />
 
-        {/* Duration: live elapsed for active, final for completed */}
+        {/* Duration and token usage: live elapsed for active, final stats for completed */}
         {agent.completed && agent.endTime ? (
           <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
             {((agent.endTime - agent.startTime) / 1000).toFixed(1)}s
+            {agent.usage ? ` · ${formatTokensCompact(agent.usage.totalTokens)} tokens` : ''}
           </span>
         ) : !agent.completed ? (
           <AgentElapsedTime startTime={agent.startTime} />
@@ -241,6 +249,7 @@ const SubAgentCompactRow = memo(function SubAgentCompactRow({ agent, worktreePat
         {agent.completed && agent.endTime ? (
           <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
             {((agent.endTime - agent.startTime) / 1000).toFixed(1)}s
+            {agent.usage ? ` · ${formatTokensCompact(agent.usage.totalTokens)} tokens` : ''}
           </span>
         ) : !agent.completed ? (
           <AgentElapsedTime startTime={agent.startTime} />
@@ -358,10 +367,14 @@ export const SubAgentGroupedRow = memo(function SubAgentGroupedRow({ agents, wor
 
         <span className="flex-1" />
 
-        {/* Total duration */}
+        {/* Total duration and aggregate token usage */}
         {totalDuration ? (
           <span className="text-2xs text-muted-foreground/70 font-mono tabular-nums shrink-0">
             {(totalDuration / 1000).toFixed(1)}s
+            {(() => {
+              const totalTokens = agents.reduce((sum, a) => sum + (a.usage?.totalTokens ?? 0), 0);
+              return totalTokens > 0 ? ` · ${formatTokensCompact(totalTokens)} tokens` : '';
+            })()}
           </span>
         ) : anyActive ? (
           <AgentElapsedTime startTime={Math.min(...agents.map(a => a.startTime))} />
