@@ -40,6 +40,7 @@ import type { ToolMetadata } from '@/lib/types';
 const EditToolDetail = lazy(() => import('@/components/conversation/tool-details/EditToolDetail').then(m => ({ default: m.EditToolDetail })));
 const WriteToolDetail = lazy(() => import('@/components/conversation/tool-details/WriteToolDetail').then(m => ({ default: m.WriteToolDetail })));
 const ReadToolDetail = lazy(() => import('@/components/conversation/tool-details/ReadToolDetail').then(m => ({ default: m.ReadToolDetail })));
+const WorkspaceDiffDetail = lazy(() => import('@/components/conversation/tool-details/WorkspaceDiffDetail').then(m => ({ default: m.WorkspaceDiffDetail })));
 
 interface ToolUsageBlockProps {
   id: string;
@@ -185,6 +186,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const isWriteTool = ['Write', 'write_file'].includes(tool);
   const isReadTool = ['Read', 'read_file'].includes(tool);
   const isTodoTool = tool === 'TodoWrite';
+  const isWorkspaceDiffTool = tool === 'mcp__chatml__get_workspace_diff';
 
   const editStats = useMemo(() => {
     if (!isEditTool) return null;
@@ -517,6 +519,11 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               ) : isTodoTool && Array.isArray(params?.todos) ? (
                 /* TodoWrite: formatted task list */
                 <TodoToolDetail todos={params.todos as Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm?: string }>} />
+              ) : isWorkspaceDiffTool && stdout ? (
+                /* Workspace diff: rich multi-file diff viewer */
+                <Suspense fallback={<div className="rounded border bg-muted p-2 text-2xs text-muted-foreground">Loading diff viewer...</div>}>
+                  <WorkspaceDiffDetail stdout={stdout} worktreePath={worktreePath} />
+                </Suspense>
               ) : (
                 /* Generic fallback for all other tools */
                 <>
