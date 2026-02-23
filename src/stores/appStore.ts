@@ -592,7 +592,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       w.id === id ? { ...w, ...updates } : w
     ),
   })),
-  removeWorkspace: (id) => set((state) => {
+  removeWorkspace: (id) => {
+    set((state) => {
     // Get all sessions for this workspace
     const workspaceSessions = state.sessions.filter((s) => s.workspaceId === id);
     const workspaceSessionIds = workspaceSessions.map((s) => s.id);
@@ -652,7 +653,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedFileTabId: null,
       fileTabs: [],
     };
-  }),
+    });
+
+    // Clean up persisted workspace order (outside set() to avoid cross-store side effects)
+    const { workspaceOrder, setWorkspaceOrder } = useSettingsStore.getState();
+    if (workspaceOrder.includes(id)) {
+      setWorkspaceOrder(workspaceOrder.filter((wId) => wId !== id));
+    }
+  },
   selectWorkspace: (id) => set({ selectedWorkspaceId: id }),
   reorderWorkspaces: (activeId, overId) => set((state) => {
     const oldIndex = state.workspaces.findIndex((w) => w.id === activeId);
@@ -661,6 +669,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newWorkspaces = [...state.workspaces];
     const [removed] = newWorkspaces.splice(oldIndex, 1);
     newWorkspaces.splice(newIndex, 0, removed);
+    // Persist the new order to localStorage via settingsStore
+    useSettingsStore.getState().setWorkspaceOrder(newWorkspaces.map((w) => w.id));
     return { workspaces: newWorkspaces };
   }),
 

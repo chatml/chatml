@@ -11,7 +11,7 @@ import {
   usePageActions,
   useMessages,
 } from '@/stores/selectors';
-import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
+import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, applyWorkspaceOrder } from '@/stores/settingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { navigate } from '@/lib/navigation';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
@@ -578,7 +578,13 @@ export default function Home() {
       try {
         // Step 1: Fetch all workspaces
         const repos = await listRepos();
-        const mappedWorkspaces = repos.map(repoToWorkspace);
+        let mappedWorkspaces = repos.map(repoToWorkspace);
+
+        // Apply persisted workspace order (if any)
+        const { workspaceOrder } = useSettingsStore.getState();
+        const reordered = applyWorkspaceOrder(mappedWorkspaces, workspaceOrder);
+        if (reordered) mappedWorkspaces = reordered;
+
         setWorkspaces(mappedWorkspaces);
 
         // Prefetch branch lists for all workspaces (fire-and-forget)
