@@ -2,6 +2,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { WorkspaceContext } from "../context.js";
+import { fetchWithRetry } from "./fetch-utils.js";
 
 const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://localhost:9876";
 const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
@@ -36,7 +37,7 @@ export function createPRTools(context: WorkspaceContext) {
         }
 
         try {
-          const response = await fetch(
+          const response = await fetchWithRetry(
             `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/pr/report`,
             {
               method: "POST",
@@ -81,7 +82,7 @@ export function createPRTools(context: WorkspaceContext) {
       },
       async ({ prNumber }) => {
         try {
-          const response = await fetch(
+          const response = await fetchWithRetry(
             `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/pr/report-merge`,
             {
               method: "POST",
