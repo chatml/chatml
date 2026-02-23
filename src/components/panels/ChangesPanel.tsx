@@ -1309,12 +1309,12 @@ export function ChangesFileList({
             <span>across {displayStats.totalFiles} file{displayStats.totalFiles !== 1 ? 's' : ''}</span>
           </>
         )}
-        <div className="ml-auto flex items-center gap-0.5 bg-surface-2 rounded-sm p-0.5">
+        <div className="ml-auto flex items-center gap-0.5 bg-surface-2 dark:bg-surface-1 rounded-md p-0.5 shadow-inner">
           <button
             onClick={() => onChangesViewChange('all')}
             className={cn(
-              "px-1.5 py-0.5 rounded-sm text-2xs transition-colors",
-              changesView === 'all' ? "bg-accent/30 text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
+              "px-1.5 py-0.5 rounded-sm text-2xs transition-all duration-150",
+              changesView === 'all' ? "bg-white dark:bg-surface-3 text-foreground font-medium shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]" : "text-muted-foreground hover:text-foreground/80"
             )}
           >
             All
@@ -1322,8 +1322,8 @@ export function ChangesFileList({
           <button
             onClick={() => onChangesViewChange('uncommitted')}
             className={cn(
-              "px-1.5 py-0.5 rounded-sm text-2xs transition-colors",
-              changesView === 'uncommitted' ? "bg-accent/30 text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
+              "px-1.5 py-0.5 rounded-sm text-2xs transition-all duration-150",
+              changesView === 'uncommitted' ? "bg-white dark:bg-surface-3 text-foreground font-medium shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]" : "text-muted-foreground hover:text-foreground/80"
             )}
           >
             Uncommitted
