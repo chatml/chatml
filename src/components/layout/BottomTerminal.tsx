@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useTerminalState } from '@/stores/selectors';
+import { useTerminalState, useAllTerminalInstances } from '@/stores/selectors';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback } from '@/components/shared/ErrorFallbacks';
@@ -22,13 +22,14 @@ const Terminal = dynamic(
 );
 
 interface BottomTerminalProps {
-  sessionId: string;
-  workspacePath: string;
+  currentSessionId: string | null;
+  currentWorkspacePath: string | null;
+  isExpanded: boolean;
   onHide: () => void;
 }
 
-export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTerminalProps) {
-  // Use optimized selector scoped to this session
+export function BottomTerminal({ currentSessionId, currentWorkspacePath, isExpanded, onHide }: BottomTerminalProps) {
+  // Current session's terminals for tab bar display
   const {
     instances,
     activeId,
@@ -36,7 +37,11 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
     closeTerminal,
     setActiveTerminal,
     markTerminalExited,
-  } = useTerminalState(sessionId);
+  } = useTerminalState(currentSessionId);
+
+  // ALL sessions' terminals for persistent rendering
+  const { allInstances, allActiveIds } = useAllTerminalInstances();
+
   const canCreateMore = instances.length < 5;
 
   // Ref to track if we've already created a terminal for this session
@@ -45,30 +50,32 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
 
   // Auto-create first terminal when panel is shown and no terminals exist
   // Deferred so it doesn't block session navigation render
+  // Gated on isExpanded to avoid spawning PTYs when the panel is collapsed
   useEffect(() => {
-    if (instances.length === 0 && createdRef.current !== sessionId) {
+    if (isExpanded && currentSessionId && currentWorkspacePath && instances.length === 0 && createdRef.current !== currentSessionId) {
       const id = setTimeout(() => {
-        createdRef.current = sessionId;
-        createTerminal(sessionId);
+        createdRef.current = currentSessionId;
+        createTerminal(currentSessionId, currentWorkspacePath);
       }, 500);
       return () => clearTimeout(id);
     }
-  }, [sessionId, instances.length, createTerminal]);
+  }, [isExpanded, currentSessionId, currentWorkspacePath, instances.length, createTerminal]);
 
   const handleCreateTerminal = () => {
-    if (canCreateMore) {
-      createTerminal(sessionId);
+    if (canCreateMore && currentSessionId && currentWorkspacePath) {
+      createTerminal(currentSessionId, currentWorkspacePath);
     }
   };
 
   const handleCloseTerminal = (terminalId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!currentSessionId) return;
     // If this is the last terminal, hide the panel
     if (instances.length === 1) {
-      closeTerminal(sessionId, terminalId);
+      closeTerminal(currentSessionId, terminalId);
       onHide();
     } else {
-      closeTerminal(sessionId, terminalId);
+      closeTerminal(currentSessionId, terminalId);
     }
   };
 
@@ -78,7 +85,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
 
   return (
     <div className="flex flex-col h-full bg-background border-t">
-      {/* Header with tabs */}
+      {/* Header with tabs - shows current session's terminals */}
       <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30 shrink-0">
         {/* Terminal tabs */}
         <div role="tablist" aria-label="Terminal tabs" className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
@@ -91,7 +98,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
               aria-label={`Terminal ${terminal.slotNumber}${terminal.status === 'exited' ? ' (exited)' : ''}`}
               aria-controls={`terminal-panel-${terminal.id}`}
               tabIndex={activeId === terminal.id ? 0 : -1}
-              onClick={() => setActiveTerminal(sessionId, terminal.id)}
+              onClick={() => currentSessionId && setActiveTerminal(currentSessionId, terminal.id)}
               className={cn(
                 'flex items-center gap-1 px-2 py-1 text-xs rounded-sm shrink-0',
                 'hover:bg-surface-2 transition-colors',
@@ -121,7 +128,7 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
             size="icon"
             className="h-6 w-6 shrink-0"
             onClick={handleCreateTerminal}
-            disabled={!canCreateMore}
+            disabled={!canCreateMore || !currentSessionId}
             title={canCreateMore ? 'New terminal' : 'Maximum 5 terminals'}
             aria-label={canCreateMore ? 'New terminal' : 'Maximum 5 terminals'}
           >
@@ -142,36 +149,45 @@ export function BottomTerminal({ sessionId, workspacePath, onHide }: BottomTermi
         </Button>
       </div>
 
-      {/* Terminal content */}
+      {/* Terminal content - render ALL sessions' terminals for persistence */}
       <div className="flex-1 min-h-0 relative bg-background">
-        {instances.length === 0 ? (
+        {currentSessionId && instances.length === 0 && (
           <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
             Click + to create a terminal
           </div>
-        ) : (
-          instances.map((terminal) => (
-            <div
-              key={terminal.id}
-              id={`terminal-panel-${terminal.id}`}
-              role="tabpanel"
-              aria-labelledby={`terminal-tab-${terminal.id}`}
-              className={cn(
-                'absolute inset-0 bg-background',
-                activeId === terminal.id ? 'block' : 'hidden'
-              )}
-            >
-              <ErrorBoundary
-                section="TerminalTab"
-                fallback={<BlockErrorFallback title="Terminal error" description="This terminal encountered an error" />}
+        )}
+
+        {/* Render terminals for EVERY session that has instances - CSS controls visibility */}
+        {Object.entries(allInstances).map(([sessionId, sessionTerminals]) =>
+          sessionTerminals.map((terminal) => {
+            const isCurrentSession = sessionId === currentSessionId;
+            const isActiveTab = allActiveIds[sessionId] === terminal.id;
+            const isVisible = isCurrentSession && isActiveTab;
+
+            return (
+              <div
+                key={terminal.id}
+                id={`terminal-panel-${terminal.id}`}
+                role="tabpanel"
+                aria-labelledby={`terminal-tab-${terminal.id}`}
+                className={cn(
+                  'absolute inset-0 bg-background',
+                  isVisible ? 'block' : 'hidden'
+                )}
               >
-                <Terminal
-                  sessionId={terminal.id}
-                  workspacePath={workspacePath}
-                  onExit={() => handleTerminalExit(terminal.id)}
-                />
-              </ErrorBoundary>
-            </div>
-          ))
+                <ErrorBoundary
+                  section="TerminalTab"
+                  fallback={<BlockErrorFallback title="Terminal error" description="This terminal encountered an error" />}
+                >
+                  <Terminal
+                    sessionId={terminal.id}
+                    workspacePath={terminal.workspacePath}
+                    onExit={() => handleTerminalExit(terminal.id)}
+                  />
+                </ErrorBoundary>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

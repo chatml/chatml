@@ -641,6 +641,7 @@ export interface TerminalInstance {
   sessionId: string;
   slotNumber: number;   // 1-5
   status: 'active' | 'exited';
+  workspacePath: string; // cwd for this terminal's PTY
 }
 
 // Review comment for code review inline comments

@@ -277,6 +277,18 @@ export const useTerminalState = (sessionId: string | null) =>
     }))
   );
 
+/**
+ * All terminal instances across all sessions.
+ * Use in: BottomTerminal (for persistent rendering of all sessions' terminals)
+ */
+export const useAllTerminalInstances = () =>
+  useAppStore(
+    useShallow((s) => ({
+      allInstances: s.terminalInstances,
+      allActiveIds: s.activeTerminalId,
+    }))
+  );
+
 // ============================================================================
 // Todo State
 // ============================================================================
