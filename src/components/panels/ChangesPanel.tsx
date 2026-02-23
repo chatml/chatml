@@ -1231,8 +1231,7 @@ function FileChangeRow({ change, onSelect, containerWidth, commentStats }: {
 }
 
 const KNOWN_STATUSES = ['added', 'modified', 'deleted', 'untracked'] as const;
-const CHANGES_GROUP_ORDER_ALL = ['added', 'modified', 'deleted', 'untracked'] as const;
-const CHANGES_GROUP_ORDER_UNCOMMITTED = ['untracked', 'added', 'modified', 'deleted'] as const;
+const CHANGES_GROUP_ORDER = ['untracked', 'added', 'modified', 'deleted'] as const;
 const CHANGES_GROUP_LABELS: Record<string, string> = {
   added: 'ADDED',
   modified: 'MODIFIED',
@@ -1295,7 +1294,7 @@ export function ChangesFileList({
     return groups;
   }, [displayFiles]);
 
-  const groupOrder = changesView === 'all' ? CHANGES_GROUP_ORDER_ALL : CHANGES_GROUP_ORDER_UNCOMMITTED;
+  const groupOrder = CHANGES_GROUP_ORDER;
 
   return (
     <>
