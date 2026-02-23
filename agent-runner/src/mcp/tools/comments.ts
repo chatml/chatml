@@ -2,6 +2,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import type { WorkspaceContext } from "../context.js";
+import { fetchWithRetry } from "./fetch-utils.js";
 
 // Backend URL from environment. This matches the default port used by the Go backend.
 // TODO: Consider adding backendUrl to WorkspaceContext for consistency with other tools
@@ -30,7 +31,7 @@ export function createCommentTools(context: WorkspaceContext) {
       },
       async ({ filePath, lineNumber, title, content, severity }) => {
         try {
-          const response = await fetch(
+          const response = await fetchWithRetry(
             `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/comments`,
             {
               method: "POST",
@@ -90,7 +91,7 @@ export function createCommentTools(context: WorkspaceContext) {
             url += `?filePath=${encodeURIComponent(filePath)}`;
           }
 
-          const response = await fetch(url, { headers: buildHeaders() });
+          const response = await fetchWithRetry(url, { headers: buildHeaders() });
           if (!response.ok) {
             const error = await response.text();
             return {
@@ -152,7 +153,7 @@ export function createCommentTools(context: WorkspaceContext) {
       {},
       async () => {
         try {
-          const response = await fetch(
+          const response = await fetchWithRetry(
             `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/comments/stats`,
             { headers: buildHeaders() }
           );
