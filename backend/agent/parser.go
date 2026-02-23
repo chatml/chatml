@@ -144,6 +144,7 @@ type AgentEvent struct {
 
 	// Tool metadata (structured data extracted from tool results)
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+
 }
 
 // McpServerStatus represents MCP server connection status
@@ -172,9 +173,12 @@ type RunStats struct {
 
 // ModelInfo represents available model information
 type ModelInfo struct {
-	Value       string `json:"value"`
-	DisplayName string `json:"displayName"`
-	Description string `json:"description"`
+	Value                    string   `json:"value"`
+	DisplayName              string   `json:"displayName"`
+	Description              string   `json:"description"`
+	SupportsEffort           *bool    `json:"supportsEffort,omitempty"`
+	SupportedEffortLevels    []string `json:"supportedEffortLevels,omitempty"`
+	SupportsAdaptiveThinking *bool    `json:"supportsAdaptiveThinking,omitempty"`
 }
 
 // SlashCmd represents a slash command/skill
@@ -268,6 +272,9 @@ const (
 
 	// Input suggestion events (Haiku-generated prompt suggestions)
 	EventTypeInputSuggestion = "input_suggestion"
+
+	// Sub-agent usage stats (from SDK task_notification)
+	EventTypeSubagentUsage = "subagent_usage"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool
@@ -319,6 +326,13 @@ type ActiveToolEntry struct {
 	AgentId   string                 `json:"agentId,omitempty"`
 }
 
+// SubAgentUsage represents token/tool usage stats for a sub-agent.
+type SubAgentUsage struct {
+	TotalTokens int   `json:"totalTokens"`
+	ToolUses    int   `json:"toolUses"`
+	DurationMs  int64 `json:"durationMs"`
+}
+
 // SubAgentEntry represents a sub-agent spawned during streaming.
 type SubAgentEntry struct {
 	AgentId         string            `json:"agentId"`
@@ -329,6 +343,7 @@ type SubAgentEntry struct {
 	StartTime       int64             `json:"startTime"`
 	ActiveTools     []ActiveToolEntry `json:"activeTools"`
 	Completed       bool              `json:"completed"`
+	Usage           *SubAgentUsage    `json:"usage,omitempty"`
 }
 
 // ParseAgentLine parses a line of JSON output from the agent-runner

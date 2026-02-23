@@ -174,6 +174,13 @@ export interface ActiveTool {
   agentId?: string; // Sub-agent that owns this tool (undefined = parent agent)
 }
 
+// Sub-agent usage stats from SDK task_notification
+export interface SubAgentUsage {
+  totalTokens: number;
+  toolUses: number;
+  durationMs: number;
+}
+
 // Sub-agent spawned by the Task tool during parallel execution
 export interface SubAgent {
   agentId: string;
@@ -185,6 +192,7 @@ export interface SubAgent {
   endTime?: number;
   completed: boolean;
   tools: ActiveTool[];
+  usage?: SubAgentUsage; // Token/tool usage stats from SDK
 }
 
 // Setup info for system messages
