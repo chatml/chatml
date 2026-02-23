@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { SidebarGroupBy, SidebarSortBy } from '@/stores/settingsStore';
 
 export interface SidebarGroup {
@@ -214,4 +215,38 @@ export function isSidebarGroupExpanded(
   const isToggled = collapsedSidebarGroups.includes(key);
   // If default is collapsed and toggled, it's now expanded (and vice versa)
   return defaultCollapsed ? isToggled : !isToggled;
+}
+
+/**
+ * Expand any collapsed sidebar groups that contain the given session.
+ * Call this after auto-selecting a session (e.g. after archiving) so
+ * the user can see the newly selected session in the sidebar.
+ */
+export function expandGroupsForSession(session: WorktreeSession): void {
+  const {
+    sidebarGroupBy,
+    ensureSidebarGroupExpanded,
+    expandWorkspace,
+  } = useSettingsStore.getState();
+
+  if (sidebarGroupBy === 'none') return;
+
+  if (sidebarGroupBy === 'status') {
+    const key = `status:${session.taskStatus}`;
+    const defaultCollapsed = DEFAULT_COLLAPSED_STATUSES.has(session.taskStatus);
+    ensureSidebarGroupExpanded(key, defaultCollapsed);
+    return;
+  }
+
+  if (sidebarGroupBy === 'project') {
+    expandWorkspace(session.workspaceId);
+    return;
+  }
+
+  if (sidebarGroupBy === 'project-status') {
+    expandWorkspace(session.workspaceId);
+    const subKey = `project:${session.workspaceId}:status:${session.taskStatus}`;
+    const defaultCollapsed = DEFAULT_COLLAPSED_STATUSES.has(session.taskStatus);
+    ensureSidebarGroupExpanded(subKey, defaultCollapsed);
+  }
 }

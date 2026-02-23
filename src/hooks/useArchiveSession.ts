@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { updateSession as updateSessionApi, getGitStatus } from '@/lib/api';
+import { expandGroupsForSession } from '@/hooks/useSidebarSessions';
 import type { ArchiveSessionDialogGitStatus } from '@/components/dialogs/ArchiveSessionDialog';
 
 interface ArchiveDialogState {
@@ -58,6 +59,15 @@ export function useArchiveSession(options?: {
         } else {
           // Session was archived normally
           archiveSession(sessionId);
+
+          // If a new session was auto-selected, ensure its sidebar group is visible
+          const { selectedSessionId, sessions } = useAppStore.getState();
+          if (selectedSessionId) {
+            const newSession = sessions.find((s) => s.id === selectedSessionId && !s.archived);
+            if (newSession) {
+              expandGroupsForSession(newSession);
+            }
+          }
         }
 
         // Sync updated selection to tabStore so persisted state doesn't reference archived/removed session
