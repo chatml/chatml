@@ -49,5 +49,4 @@ objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSImage", "NSBitm
 objc2-foundation = { version = "0.3", features = ["NSString", "NSData", "NSArray"] }
 
 [dev-dependencies]
-tempfile = "3.10"
 serial_test = "3.1"

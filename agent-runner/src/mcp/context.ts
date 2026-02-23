@@ -64,13 +64,6 @@ export class WorkspaceContext {
     this._linearIssue = issue;
   }
 
-  get gitState(): GitState {
-    if (!this._gitState) {
-      this._gitState = this.fetchGitState();
-    }
-    return this._gitState;
-  }
-
   refreshGitState(): GitState {
     this._gitState = this.fetchGitState();
     return this._gitState;

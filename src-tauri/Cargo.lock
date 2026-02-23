@@ -803,7 +803,6 @@ dependencies = [
  "tauri-plugin-stronghold",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
- "tempfile",
 ]
 
 [[package]]

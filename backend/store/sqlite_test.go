@@ -451,43 +451,6 @@ func TestListAllSessions_ReadsArchivedField(t *testing.T) {
 	assert.True(t, sessions[0].Archived, "Archived field should be read from DB")
 }
 
-func TestListArchivedSessionDirs(t *testing.T) {
-	ctx := context.Background()
-	s := newTestStore(t)
-	createTestRepo(t, s, "ws-1")
-
-	// Create three sessions, archive two of them
-	createTestSession(t, s, "s1", "ws-1")
-	createTestSession(t, s, "s2", "ws-1")
-	createTestSession(t, s, "s3", "ws-1")
-
-	// Set worktree paths and archive s1 and s3
-	require.NoError(t, s.UpdateSession(ctx, "s1", func(sess *models.Session) {
-		sess.WorktreePath = "/worktrees/session-s1"
-		sess.Archived = true
-	}))
-	require.NoError(t, s.UpdateSession(ctx, "s2", func(sess *models.Session) {
-		sess.WorktreePath = "/worktrees/session-s2"
-	}))
-	require.NoError(t, s.UpdateSession(ctx, "s3", func(sess *models.Session) {
-		sess.WorktreePath = "/worktrees/session-s3"
-		sess.Archived = true
-	}))
-
-	dirs, err := s.ListArchivedSessionDirs(ctx)
-	require.NoError(t, err)
-	assert.Len(t, dirs, 2, "should return only archived sessions")
-
-	// Verify returned data
-	dirMap := make(map[string]string)
-	for _, d := range dirs {
-		dirMap[d.ID] = d.WorktreePath
-	}
-	assert.Equal(t, "/worktrees/session-s1", dirMap["s1"])
-	assert.Equal(t, "/worktrees/session-s3", dirMap["s3"])
-	assert.NotContains(t, dirMap, "s2", "non-archived session should not be returned")
-}
-
 func TestUpdateSession_SetArchived(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
