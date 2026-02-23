@@ -16,6 +16,7 @@ import {
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInApp } from '@/lib/tauri';
+import { cn } from '@/lib/utils';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { CreatePRDialog } from '@/components/dialogs/CreatePRDialog';
 import { openUrlInBrowser } from '@/lib/tauri';
@@ -70,13 +71,22 @@ import { getAppIcon } from '@/components/icons/AppIcons';
 // ---------------------------------------------------------------------------
 
 const REVIEW_TYPES = [
-  { icon: Zap, title: 'Quick Scan', key: 'quick', description: 'Fast pass over changes — catch obvious issues and typos' },
-  { icon: Search, title: 'Deep Review', key: 'deep', description: 'Thorough line-by-line analysis with detailed feedback' },
-  { icon: Shield, title: 'Security Audit', key: 'security', description: 'Focus on vulnerabilities, auth gaps, and injection risks' },
-  { icon: Gauge, title: 'Performance', key: 'performance', description: 'Check for regressions, memory leaks, and slow paths' },
-  { icon: Boxes, title: 'Architecture', key: 'architecture', description: 'Evaluate design patterns, coupling, and separation of concerns' },
-  { icon: GitMerge, title: 'Pre-merge Check', key: 'premerge', description: 'Final review before merge — verify tests, conflicts, and coverage' },
+  { icon: Zap, title: 'Quick Scan', key: 'quick', description: 'Fast pass over changes — catch obvious issues and typos', color: 'amber', shortcut: '1' },
+  { icon: Search, title: 'Deep Review', key: 'deep', description: 'Thorough line-by-line analysis with detailed feedback', color: 'blue', shortcut: '2' },
+  { icon: Shield, title: 'Security Audit', key: 'security', description: 'Focus on vulnerabilities, auth gaps, and injection risks', color: 'red', shortcut: '3' },
+  { icon: Gauge, title: 'Performance', key: 'performance', description: 'Check for regressions, memory leaks, and slow paths', color: 'green', shortcut: '4' },
+  { icon: Boxes, title: 'Architecture', key: 'architecture', description: 'Evaluate design patterns, coupling, and separation of concerns', color: 'purple', shortcut: '5' },
+  { icon: GitMerge, title: 'Pre-merge Check', key: 'premerge', description: 'Final review before merge — verify tests, conflicts, and coverage', color: 'teal', shortcut: '6' },
 ] as const;
+
+const REVIEW_COLOR_CLASSES: Record<string, { icon: string; bg: string; hoverBg: string }> = {
+  amber:  { icon: 'text-amber-500',  bg: 'bg-amber-500/10',  hoverBg: 'group-hover:bg-amber-500/20' },
+  blue:   { icon: 'text-blue-500',   bg: 'bg-blue-500/10',   hoverBg: 'group-hover:bg-blue-500/20' },
+  red:    { icon: 'text-red-500',    bg: 'bg-red-500/10',    hoverBg: 'group-hover:bg-red-500/20' },
+  green:  { icon: 'text-green-500',  bg: 'bg-green-500/10',  hoverBg: 'group-hover:bg-green-500/20' },
+  purple: { icon: 'text-purple-500', bg: 'bg-purple-500/10', hoverBg: 'group-hover:bg-purple-500/20' },
+  teal:   { icon: 'text-teal-500',   bg: 'bg-teal-500/10',   hoverBg: 'group-hover:bg-teal-500/20' },
+};
 
 function dispatchReview(type: string) {
   window.dispatchEvent(new CustomEvent('start-review', { detail: { type } }));
@@ -339,25 +349,49 @@ export function SessionToolbarContent() {
                     <ChevronDown className="size-2.5" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-1.5">
-                  {REVIEW_TYPES.map((type) => (
-                    <button
-                      key={type.title}
-                      className="w-full text-left rounded-md px-3 py-2.5 hover:bg-accent transition-colors"
-                      onClick={() => {
-                        dispatchReview(type.key);
-                        setReviewPopoverOpen(false);
-                      }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <type.icon className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                        <div>
-                          <div className="text-sm font-medium">{type.title}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">{type.description}</div>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                <PopoverContent
+                  align="end"
+                  className="w-80 p-1.5"
+                  onKeyDown={(e) => {
+                    const idx = parseInt(e.key, 10);
+                    if (idx >= 1 && idx <= 6) {
+                      e.preventDefault();
+                      dispatchReview(REVIEW_TYPES[idx - 1].key);
+                      setReviewPopoverOpen(false);
+                    }
+                  }}
+                >
+                  <div className="stagger-children">
+                    {REVIEW_TYPES.map((type) => {
+                      const colors = REVIEW_COLOR_CLASSES[type.color];
+                      return (
+                        <button
+                          key={type.key}
+                          className="group w-full text-left rounded-md px-2.5 py-2 hover:bg-accent transition-colors"
+                          onClick={() => {
+                            dispatchReview(type.key);
+                            setReviewPopoverOpen(false);
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={cn(
+                              'flex items-center justify-center h-7 w-7 rounded-lg shrink-0 transition-colors',
+                              colors.bg, colors.hoverBg,
+                            )}>
+                              <type.icon className={cn('h-3.5 w-3.5', colors.icon)} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium leading-tight">{type.title}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5 leading-tight">{type.description}</div>
+                            </div>
+                            <kbd className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-medium bg-muted/50 border border-border/40 rounded text-muted-foreground/60 shrink-0">
+                              {type.shortcut}
+                            </kbd>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
