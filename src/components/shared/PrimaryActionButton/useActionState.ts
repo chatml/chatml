@@ -233,7 +233,7 @@ export function useActionState(
       );
 
       return {
-        type: 'view-pr',
+        type: 'merge-pr',
         tier: 'action',
         label: 'Merge PR',
         icon: GitMerge,

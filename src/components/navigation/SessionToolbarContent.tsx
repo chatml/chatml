@@ -12,6 +12,7 @@ import {
   toStoreConversation,
   getCIFailureContext,
   refreshPRStatus,
+  type AttachmentDTO,
 } from '@/lib/api';
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
@@ -65,6 +66,16 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { getAppById, CATEGORY_LABELS } from '@/lib/openApps';
 import type { AppCategory } from '@/lib/openApps';
 import { getAppIcon } from '@/components/icons/AppIcons';
+
+/** Encode a UTF-8 string to base64, safe for non-Latin1 characters. */
+function toBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
 // ---------------------------------------------------------------------------
 // Review type options for the split button popover
@@ -126,15 +137,20 @@ export function SessionToolbarContent() {
   const isAgentWorking = sessionActivityState === 'working';
 
   const handleGitActionMessage = useCallback((content: string) => {
+    if (isAgentWorking) return;
     if (!selectedConversationId) {
       showWarning('No active conversation');
       return;
     }
-    sendConversationMessage(selectedConversationId, content).catch(console.error);
-  }, [selectedConversationId, showWarning]);
+    sendConversationMessage(selectedConversationId, content).catch((error) => {
+      console.error('Failed to send git action message:', error);
+      showError('Failed to send message to agent');
+    });
+  }, [selectedConversationId, showWarning, showError, isAgentWorking]);
 
   // Wrapper that adds a user bubble before sending — used by PrimaryActionButton
   const handleActionWithBubble = useCallback((content: string) => {
+    if (isAgentWorking) return;
     if (!selectedConversationId) {
       showWarning('No active conversation');
       return;
@@ -153,12 +169,53 @@ export function SessionToolbarContent() {
       console.error('Failed to send action message:', error);
       setStreaming(selectedConversationId, false);
       updateConversation(selectedConversationId, { status: 'idle' });
+      showError('Failed to send message to agent');
     });
-  }, [selectedConversationId, showWarning, addMessage, updateConversation, setStreaming]);
+  }, [selectedConversationId, showWarning, showError, updateConversation, setStreaming, isAgentWorking]);
+
+  // Wrapper that adds a user bubble + sends template content as attachment
+  const handleActionWithBubbleAndTemplate = useCallback((content: string, templateContent: string) => {
+    if (isAgentWorking) return;
+    if (!selectedConversationId) {
+      showWarning('No active conversation');
+      return;
+    }
+    // User bubble shows only the short instruction
+    addMessage({
+      id: crypto.randomUUID(),
+      conversationId: selectedConversationId,
+      role: 'user',
+      content,
+      timestamp: new Date().toISOString(),
+    });
+    window.dispatchEvent(new CustomEvent('chat-message-submitted'));
+    updateConversation(selectedConversationId, { status: 'active' });
+    setStreaming(selectedConversationId, true);
+
+    // Create template attachment
+    const templateAttachment: AttachmentDTO = {
+      id: crypto.randomUUID(),
+      type: 'file',
+      name: 'action-instructions.md',
+      mimeType: 'text/markdown',
+      size: new Blob([templateContent]).size,
+      lineCount: templateContent.split('\n').length,
+      base64Data: toBase64(templateContent),
+      preview: templateContent.slice(0, 200),
+    };
+
+    sendConversationMessage(selectedConversationId, content, [templateAttachment]).catch((error) => {
+      console.error('Failed to send action message:', error);
+      setStreaming(selectedConversationId, false);
+      updateConversation(selectedConversationId, { status: 'idle' });
+      showError('Failed to send message to agent');
+    });
+  }, [selectedConversationId, showWarning, showError, addMessage, updateConversation, setStreaming, isAgentWorking]);
 
   const [, setFixIssuesLoading] = useState(false);
 
   const handleFixIssues = useCallback(async () => {
+    if (isAgentWorking) return;
     if (!selectedConversationId || !selectedWorkspaceId || !selectedSessionId) {
       showWarning('No active conversation');
       return;
@@ -210,7 +267,7 @@ export function SessionToolbarContent() {
     } finally {
       setFixIssuesLoading(false);
     }
-  }, [selectedConversationId, selectedWorkspaceId, selectedSessionId, showWarning, addMessage, updateConversation, setStreaming]);
+  }, [selectedConversationId, selectedWorkspaceId, selectedSessionId, showWarning, addMessage, updateConversation, setStreaming, isAgentWorking]);
 
   const handleNewConversation = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
@@ -319,6 +376,7 @@ export function SessionToolbarContent() {
                 workspaceId={selectedWorkspaceId}
                 session={selectedSession}
                 onSendMessage={handleActionWithBubble}
+                onSendMessageWithTemplate={handleActionWithBubbleAndTemplate}
                 onFixIssues={handleFixIssues}
                 onArchiveSession={requestArchive}
                 onCreatePR={() => setShowCreatePRDialog(true)}
@@ -538,7 +596,7 @@ export function SessionToolbarContent() {
         ),
       },
     };
-  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
+  }, [selectedWorkspace, selectedSession, selectedWorkspaceId, selectedSessionId, handleGitActionMessage, handleActionWithBubble, handleActionWithBubbleAndTemplate, handleFixIssues, handleNewConversation, handleCopyBranch, handleArchive, requestArchive, handleTaskStatusChange, reviewPopoverOpen, openAppPopoverOpen, defaultOpenApp, installedApps, workspaceColors, showSuccess, showWarning, isAgentWorking]);
 
   useMainToolbarContent(toolbarConfig);
 

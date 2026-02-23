@@ -10,6 +10,7 @@ import {
   Bot,
   GitBranch,
   Eye,
+  Zap,
   User,
   Wrench,
   Info,
@@ -28,6 +29,7 @@ import { AccountSettings } from './sections/AccountSettings';
 import { AdvancedSettings } from './sections/AdvancedSettings';
 import { AboutSettings } from './sections/AboutSettings';
 import { InstructionsSettings } from './sections/InstructionsSettings';
+import { ActionSettings } from './sections/ActionSettings';
 import { SettingsSearchResults } from './SettingsSearchResults';
 import { searchSettings, type SettingsCategory } from './settingsRegistry';
 
@@ -49,6 +51,7 @@ const mainNavItems: NavItem[] = [
   { id: 'instructions', label: 'Instructions', icon: <ScrollText className="w-3.5 h-3.5" /> },
   { id: 'git', label: 'Git', icon: <GitBranch className="w-3.5 h-3.5" /> },
   { id: 'review', label: 'Review & PRs', icon: <Eye className="w-3.5 h-3.5" /> },
+  { id: 'actions', label: 'Actions', icon: <Zap className="w-3.5 h-3.5" /> },
   { id: 'account', label: 'Account', icon: <User className="w-3.5 h-3.5" /> },
 ];
 
@@ -290,6 +293,7 @@ export function SettingsPage({ onBack, initialCategory = 'general' }: SettingsPa
                 {selectedCategory === 'instructions' && <InstructionsSettings />}
                 {selectedCategory === 'git' && <GitSettings />}
                 {selectedCategory === 'review' && <ReviewSettings />}
+                {selectedCategory === 'actions' && <ActionSettings />}
                 {selectedCategory === 'account' && <AccountSettings />}
                 {selectedCategory === 'advanced' && <AdvancedSettings />}
                 {selectedCategory === 'about' && <AboutSettings />}

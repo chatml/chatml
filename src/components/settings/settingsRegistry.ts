@@ -5,6 +5,7 @@ export type SettingsCategory =
   | 'instructions'
   | 'git'
   | 'review'
+  | 'actions'
   | 'account'
   | 'advanced'
   | 'about';
@@ -255,6 +256,16 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     keywords: ['pr', 'pull request', 'description', 'template', 'prompt'],
     category: 'review',
     categoryLabel: 'Review & PRs',
+  },
+
+  // ── Actions ──
+  {
+    id: 'actionTemplates',
+    title: 'Action templates',
+    description: 'Customize instructions sent to the agent for toolbar actions like merge, sync, and resolve conflicts',
+    keywords: ['action', 'template', 'merge', 'sync', 'resolve', 'conflicts', 'fix', 'issues', 'instructions', 'primary', 'button'],
+    category: 'actions',
+    categoryLabel: 'Actions',
   },
 
   // ── Account: Integrations ──
