@@ -19,7 +19,6 @@ export function ActionButton({
   onSendMessage,
   onFixIssues,
   onArchiveSession,
-  onCreatePR,
   className,
 }: ActionButtonProps) {
   // Pending action state — blocks duplicate clicks and shows spinner feedback.
@@ -77,9 +76,6 @@ export function ActionButton({
     if (action.type === 'fix-issues' && onFixIssues) {
       // Fetch CI failure context and forward to agent
       onFixIssues();
-    } else if (action.type === 'create-pr' && onCreatePR) {
-      // Open PR creation dialog
-      onCreatePR();
     } else if (action.type === 'merge-pr') {
       // Merge PR: send the merge instruction to the agent
       if (action.message) {
@@ -88,6 +84,11 @@ export function ActionButton({
     } else if (action.type === 'view-pr' && action.prUrl) {
       // Open PR in browser
       window.open(action.prUrl, '_blank');
+    } else if (action.type === 'create-pr') {
+      // Create PR: send the instruction to the agent
+      if (action.message) {
+        onSendMessage(action.message, action.type);
+      }
     } else if (action.type === 'archive-session' && action.sessionId && onArchiveSession) {
       // Archive the session
       onArchiveSession(action.sessionId);

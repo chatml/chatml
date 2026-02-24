@@ -206,19 +206,6 @@ func TestPRTemplate_GlobalAndWorkspaceIsolated(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w4.Body.Bytes(), &globalResp))
 	assert.Equal(t, "global instructions", globalResp["template"])
 }
-func TestGeneratePRDescription_NoAIClient(t *testing.T) {
-	h, _ := setupTestHandlers(t) // handlers created with nil aiClient
-
-	req := httptest.NewRequest("GET", "/api/repos/ws-1/sessions/sess-1/pr/generate", nil)
-	req = withChiContext(req, map[string]string{"id": "ws-1", "sessionId": "sess-1"})
-	w := httptest.NewRecorder()
-
-	h.GeneratePRDescription(w, req)
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-	assert.Contains(t, w.Body.String(), "not available")
-}
-
 func TestResolvePR_Success(t *testing.T) {
 	ghServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/repos/myorg/myrepo/pulls/42", r.URL.Path)

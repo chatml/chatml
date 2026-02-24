@@ -124,8 +124,6 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{id}/sessions/{sessionId}/pr-refresh", h.RefreshPRStatus)
 		r.Post("/{id}/sessions/{sessionId}/pr/report", h.ReportPRCreated)
 		r.Post("/{id}/sessions/{sessionId}/pr/report-merge", h.ReportPRMerged)
-		r.Get("/{id}/sessions/{sessionId}/pr/generate", h.GeneratePRDescription)
-		r.Post("/{id}/sessions/{sessionId}/pr/create", h.CreatePR)
 		r.Get("/{id}/settings/pr-template", h.GetPRTemplate)
 		r.Put("/{id}/settings/pr-template", h.SetPRTemplate)
 		r.Get("/{id}/settings/review-prompts", h.GetWorkspaceReviewPrompts)

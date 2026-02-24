@@ -28,7 +28,6 @@ interface PrimaryActionButtonProps {
   onSendMessageWithTemplate: (content: string, templateContent: string) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
-  onCreatePR?: () => void;
   // Optional: pass pre-fetched data to avoid duplicate fetches
   gitStatus?: GitStatusDTO | null;
   prDetails?: PRDetails | null;
@@ -41,7 +40,6 @@ export function PrimaryActionButton({
   onSendMessageWithTemplate,
   onFixIssues,
   onArchiveSession,
-  onCreatePR,
   gitStatus: externalGitStatus,
   prDetails: externalPRDetails,
 }: PrimaryActionButtonProps) {
@@ -158,7 +156,6 @@ export function PrimaryActionButton({
       onSendMessage={handleSendWithTemplate}
       onFixIssues={onFixIssues}
       onArchiveSession={onArchiveSession}
-      onCreatePR={onCreatePR}
     />
   );
 }
