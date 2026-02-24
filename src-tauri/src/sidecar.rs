@@ -285,7 +285,9 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
                     // try_claim_restart uses compare_exchange to atomically prevent races.
                     if state_clone.is_ready() && state_clone.try_claim_restart() {
                         // try_increment_restart_attempts atomically checks < max and increments
-                        if let Some(attempt) = state_clone.try_increment_restart_attempts(MAX_AUTO_RESTART_ATTEMPTS) {
+                        if let Some(attempt) =
+                            state_clone.try_increment_restart_attempts(MAX_AUTO_RESTART_ATTEMPTS)
+                        {
                             log::info!(
                                 "Auto-restarting sidecar (attempt {}/{})",
                                 attempt,
@@ -294,30 +296,48 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
 
                             // Notify frontend that restart is starting
                             if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.emit("sidecar-restarting", SidecarRestartingPayload {
-                                    attempt,
-                                    max_attempts: MAX_AUTO_RESTART_ATTEMPTS,
-                                });
+                                let _ = window.emit(
+                                    "sidecar-restarting",
+                                    SidecarRestartingPayload {
+                                        attempt,
+                                        max_attempts: MAX_AUTO_RESTART_ATTEMPTS,
+                                    },
+                                );
                             }
 
                             // Exponential backoff: 1s, 2s, 4s
                             let delay = Duration::from_secs(1 << (attempt - 1));
-                            tokio::time::sleep(delay).await;
+                            let _ = tauri::async_runtime::spawn_blocking(move || {
+                                std::thread::sleep(delay);
+                            })
+                            .await;
 
-                            match restart_sidecar_async(app_handle.clone(), state_clone.clone()).await {
+                            match restart_sidecar_async(app_handle.clone(), state_clone.clone())
+                                .await
+                            {
                                 Ok(_) => {
-                                    log::info!("Sidecar auto-restart succeeded (attempt {})", attempt);
+                                    log::info!(
+                                        "Sidecar auto-restart succeeded (attempt {})",
+                                        attempt
+                                    );
                                     if let Some(window) = app_handle.get_webview_window("main") {
                                         let _ = window.emit("sidecar-restarted", ());
                                     }
                                 }
                                 Err(e) => {
-                                    log::error!("Sidecar auto-restart failed (attempt {}): {}", attempt, e);
+                                    log::error!(
+                                        "Sidecar auto-restart failed (attempt {}): {}",
+                                        attempt,
+                                        e
+                                    );
                                     if let Some(window) = app_handle.get_webview_window("main") {
-                                        let _ = window.emit("sidecar-restart-failed", SidecarRestartFailedPayload {
-                                            attempt,
-                                            error: e.to_string(),
-                                        });
+                                        let _ = window.emit(
+                                            "sidecar-restart-failed",
+                                            SidecarRestartFailedPayload {
+                                                attempt,
+                                                error: e.to_string(),
+                                            },
+                                        );
                                     }
                                 }
                             }
