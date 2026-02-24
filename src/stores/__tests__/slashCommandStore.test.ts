@@ -260,6 +260,73 @@ describe('setSdkCommandsRich', () => {
       argumentHint: '<pattern>',
     });
   });
+
+  it('merges with existing init-reported commands instead of replacing', () => {
+    // Simulate init event populating bare SDK commands
+    useSlashCommandStore.getState().setSdkCommands(['alpha', 'beta', 'gamma']);
+
+    // Simulate supported_commands response with a different/smaller set
+    useSlashCommandStore.getState().setSdkCommandsRich([
+      { name: 'beta', description: 'Beta command' },
+      { name: 'delta', description: 'Delta command' },
+    ]);
+
+    const state = useSlashCommandStore.getState();
+
+    // New commands first, then init-only commands preserved
+    expect(state.sdkCommands).toEqual(['beta', 'delta', 'alpha', 'gamma']);
+    // Rich metadata available for new commands
+    expect(state.sdkCommandMeta['beta']).toEqual({ name: 'beta', description: 'Beta command' });
+    expect(state.sdkCommandMeta['delta']).toEqual({ name: 'delta', description: 'Delta command' });
+    // Init-only commands have no metadata (but are still in the list)
+    expect(state.sdkCommandMeta['alpha']).toBeUndefined();
+  });
+
+  it('preserves existing metadata when merging', () => {
+    // First call with metadata
+    useSlashCommandStore.getState().setSdkCommandsRich([
+      { name: 'cmd-a', description: 'First description' },
+    ]);
+
+    // Second call with different commands — first metadata should survive
+    useSlashCommandStore.getState().setSdkCommandsRich([
+      { name: 'cmd-b', description: 'Second description' },
+    ]);
+
+    const state = useSlashCommandStore.getState();
+    expect(state.sdkCommands).toEqual(['cmd-b', 'cmd-a']);
+    expect(state.sdkCommandMeta['cmd-a']).toEqual({ name: 'cmd-a', description: 'First description' });
+    expect(state.sdkCommandMeta['cmd-b']).toEqual({ name: 'cmd-b', description: 'Second description' });
+  });
+});
+
+// ============================================================================
+// setSdkCommands (merge behavior)
+// ============================================================================
+
+describe('setSdkCommands', () => {
+  it('merges with existing commands instead of replacing', () => {
+    useSlashCommandStore.getState().setSdkCommandsRich([
+      { name: 'rich-cmd', description: 'Has metadata' },
+    ]);
+
+    // A late init event with a different set should merge, not clobber
+    useSlashCommandStore.getState().setSdkCommands(['init-cmd', 'rich-cmd']);
+
+    const state = useSlashCommandStore.getState();
+    expect(state.sdkCommands).toEqual(['init-cmd', 'rich-cmd']);
+    // Metadata from earlier setSdkCommandsRich call is preserved
+    expect(state.sdkCommandMeta['rich-cmd']).toEqual({ name: 'rich-cmd', description: 'Has metadata' });
+  });
+
+  it('appends previously-known commands not in new list', () => {
+    useSlashCommandStore.getState().setSdkCommands(['alpha', 'beta']);
+    useSlashCommandStore.getState().setSdkCommands(['beta', 'gamma']);
+
+    const state = useSlashCommandStore.getState();
+    // beta and gamma from the new call, alpha preserved from existing
+    expect(state.sdkCommands).toEqual(['beta', 'gamma', 'alpha']);
+  });
 });
 
 // ============================================================================

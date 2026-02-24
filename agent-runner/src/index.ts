@@ -526,8 +526,12 @@ function setupInputQueue(): void {
       if (input.type === "get_supported_commands") {
         if (queryRef) {
           void queryRef.supportedCommands().then((commands: unknown) => {
+            const count = Array.isArray(commands) ? commands.length : 0;
+            const names = Array.isArray(commands) ? (commands as Array<{name?: string}>).map(c => c.name ?? JSON.stringify(c)).join(", ") : "N/A";
+            lifecycle(`supportedCommands() returned ${count} commands: [${names}]`);
             emit({ type: "supported_commands", commands });
           }).catch((cmdErr: unknown) => {
+            lifecycle(`supportedCommands() error: ${String(cmdErr)}`);
             emit({ type: "command_error", command: "get_supported_commands", error: String(cmdErr) });
           });
         } else {
