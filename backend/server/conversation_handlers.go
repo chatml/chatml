@@ -719,6 +719,50 @@ func (h *Handlers) GetConversationSummary(w http.ResponseWriter, r *http.Request
 	writeJSON(w, summary)
 }
 
+// AddSystemMessage persists a lightweight system message (e.g. "context compacted")
+// without triggering the agent.
+type AddSystemMessageRequest struct {
+	Content string `json:"content"`
+}
+
+func (h *Handlers) AddSystemMessage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+
+	conv, err := h.store.GetConversationMeta(ctx, convID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if conv == nil {
+		writeNotFound(w, "conversation")
+		return
+	}
+
+	var req AddSystemMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	if req.Content == "" {
+		writeValidationError(w, "content is required")
+		return
+	}
+
+	msg := models.Message{
+		ID:        uuid.New().String(),
+		Role:      "system",
+		Content:   req.Content,
+		Timestamp: time.Now().UTC(),
+	}
+	if err := h.store.AddMessageToConversation(ctx, convID, msg); err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"id": msg.ID})
+}
+
 func (h *Handlers) ListSessionSummaries(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sessionID := chi.URLParam(r, "sessionId")

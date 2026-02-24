@@ -1106,6 +1106,15 @@ export async function sendConversationMessage(
   }
 }
 
+export async function addSystemMessage(convId: string, content: string): Promise<{ id: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/system-message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  return handleResponse<{ id: string }>(res);
+}
+
 export async function stopConversation(convId: string): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/stop`, { method: 'POST' });
   await handleVoidResponse(res, 'Failed to stop conversation');

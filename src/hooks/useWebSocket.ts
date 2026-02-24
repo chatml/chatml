@@ -12,7 +12,7 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
@@ -798,6 +798,23 @@ export function useWebSocket(enabled: boolean = true) {
             conversationId,
           }
         }));
+        // Persist a system message so it survives reloads
+        {
+          const compactContent = event?.trigger
+            ? `Context was compacted (${event.trigger}).`
+            : 'Context was compacted to stay within limits.';
+          addSystemMessage(conversationId, compactContent)
+            .then(({ id }) => {
+              store.addMessage({
+                id,
+                conversationId,
+                role: 'system',
+                content: compactContent,
+                timestamp: new Date().toISOString(),
+              });
+            })
+            .catch((err) => console.warn('Failed to persist compact message:', err));
+        }
         break;
 
       case 'pre_compact':
@@ -888,13 +905,17 @@ export function useWebSocket(enabled: boolean = true) {
         store.commitQueuedMessage(conversationId);
         // Finalize streaming content into a committed message so it persists
         store.finalizeStreamingMessage(conversationId, {});
-        store.addMessage({
-          id: `msg-stopped-${Date.now()}`,
-          conversationId,
-          role: 'system',
-          content: 'Agent was stopped by user.',
-          timestamp: new Date().toISOString(),
-        });
+        addSystemMessage(conversationId, 'Agent was stopped by user.')
+          .then(({ id }) => {
+            store.addMessage({
+              id,
+              conversationId,
+              role: 'system',
+              content: 'Agent was stopped by user.',
+              timestamp: new Date().toISOString(),
+            });
+          })
+          .catch((err) => console.warn('Failed to persist stopped message:', err));
         store.setStreaming(conversationId, false);
         store.clearPendingUserQuestion(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });

@@ -193,6 +193,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{convId}", h.GetConversation)
 		r.Get("/{convId}/messages", h.GetConversationMessages)
 		r.With(messageRateLimiter).Post("/{convId}/messages", h.SendConversationMessage)
+		r.Post("/{convId}/system-message", h.AddSystemMessage)
 		r.Post("/{convId}/stop", h.StopConversation)
 		r.Get("/{convId}/streaming-snapshot", h.GetStreamingSnapshot)
 		r.Get("/{convId}/drop-stats", h.GetConversationDropStats)
