@@ -46,6 +46,5 @@ export interface ActionButtonProps {
   onSendMessage: (content: string, actionType: PrimaryActionType) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
-  onCreatePR?: () => void;
   className?: string;
 }

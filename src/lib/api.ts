@@ -1804,50 +1804,8 @@ export async function getCommitStatuses(
 }
 
 // ============================================================================
-// PR Creation
+// PR Templates
 // ============================================================================
-
-export interface GeneratePRDescriptionResponse {
-  title: string;
-  body: string;
-}
-
-export interface CreatePRRequestBody {
-  title: string;
-  body: string;
-  draft: boolean;
-}
-
-export interface CreatePRResponse {
-  number: number;
-  htmlUrl: string;
-}
-
-export async function generatePRDescription(
-  workspaceId: string,
-  sessionId: string
-): Promise<GeneratePRDescriptionResponse> {
-  const res = await fetchWithAuth(
-    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr/generate`
-  );
-  return handleResponse<GeneratePRDescriptionResponse>(res);
-}
-
-export async function createPR(
-  workspaceId: string,
-  sessionId: string,
-  data: CreatePRRequestBody
-): Promise<CreatePRResponse> {
-  const res = await fetchWithAuth(
-    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/pr/create`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }
-  );
-  return handleResponse<CreatePRResponse>(res);
-}
 
 export async function getPRTemplate(workspaceId: string): Promise<string> {
   const res = await fetchWithAuth(

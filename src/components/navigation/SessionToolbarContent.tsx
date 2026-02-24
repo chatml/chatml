@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useWorkspaceSelection, useSessionActivityState } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
@@ -19,8 +19,6 @@ import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInApp } from '@/lib/tauri';
 import { cn } from '@/lib/utils';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
-import { CreatePRDialog } from '@/components/dialogs/CreatePRDialog';
-import { openUrlInBrowser } from '@/lib/tauri';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { PRHoverCard } from '@/components/shared/PRHoverCard';
 import {
@@ -120,7 +118,6 @@ export function SessionToolbarContent() {
   const setStreaming = useAppStore((s) => s.setStreaming);
   const updateConversation = useAppStore((s) => s.updateConversation);
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
-  const [showCreatePRDialog, setShowCreatePRDialog] = useState(false);
   const [reviewPopoverOpen, setReviewPopoverOpen] = useState(false);
   const [openAppPopoverOpen, setOpenAppPopoverOpen] = useState(false);
   const { installedApps } = useInstalledApps();
@@ -211,6 +208,13 @@ export function SessionToolbarContent() {
       showError('Failed to send message to agent');
     });
   }, [selectedConversationId, showWarning, showError, addMessage, updateConversation, setStreaming, isAgentWorking]);
+
+  // Listen for git-create-pr events from menu handler and command palette
+  useEffect(() => {
+    const handleCreatePR = () => handleActionWithBubble('Create a pull request');
+    window.addEventListener('git-create-pr', handleCreatePR);
+    return () => window.removeEventListener('git-create-pr', handleCreatePR);
+  }, [handleActionWithBubble]);
 
   const [, setFixIssuesLoading] = useState(false);
 
@@ -379,7 +383,6 @@ export function SessionToolbarContent() {
                 onSendMessageWithTemplate={handleActionWithBubbleAndTemplate}
                 onFixIssues={handleFixIssues}
                 onArchiveSession={requestArchive}
-                onCreatePR={() => setShowCreatePRDialog(true)}
               />
             )}
 
@@ -568,7 +571,7 @@ export function SessionToolbarContent() {
                 <DropdownMenuItem onSelect={handleCopyBranch}>
                   <Copy /> Copy Branch Name
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setShowCreatePRDialog(true)}>
+                <DropdownMenuItem onSelect={() => handleActionWithBubble('Create a pull request')}>
                   <GitMerge /> Create Pull Request
                 </DropdownMenuItem>
                 {!selectedSession?.prNumber && selectedWorkspaceId && selectedSessionId && (
@@ -603,29 +606,6 @@ export function SessionToolbarContent() {
   return (
     <>
       {archiveDialogProps && <ArchiveSessionDialog {...archiveDialogProps} />}
-      {selectedWorkspaceId && selectedSessionId && (
-        <CreatePRDialog
-          open={showCreatePRDialog}
-          onOpenChange={setShowCreatePRDialog}
-          workspaceId={selectedWorkspaceId}
-          sessionId={selectedSessionId}
-          onSuccess={(prNumber, prUrl) => {
-            // Optimistically update the session store so the UI reflects the PR
-            // immediately, without waiting for the WebSocket event from the backend.
-            if (selectedSessionId) {
-              storeUpdateSession(selectedSessionId, {
-                prStatus: 'open' as const,
-                prNumber,
-                prUrl,
-                // Mirror backend logic: only transition in_progress → in_review
-                ...(selectedSession?.taskStatus === 'in_progress' && { taskStatus: 'in_review' as const }),
-              });
-            }
-            showSuccess('Pull request created');
-            openUrlInBrowser(prUrl);
-          }}
-        />
-      )}
     </>
   );
 }
