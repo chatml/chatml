@@ -145,6 +145,22 @@ type AgentEvent struct {
 	// Tool metadata (structured data extracted from tool results)
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 
+	// Permission denials (tools denied during this turn)
+	PermissionDenials []PermissionDenial `json:"permissionDenials,omitempty"`
+
+	// MCP server event fields (used by mcp_server_reconnected, mcp_server_toggled)
+	// NOTE: These live on AgentEvent rather than a nested struct because the JSON
+	// wire format from agent-runner uses top-level fields. If AgentEvent keeps
+	// growing, consider introducing per-event-type payload structs with embedded
+	// JSON tags to keep this manageable.
+	ServerName string `json:"serverName,omitempty"`
+	Enabled    *bool  `json:"enabled,omitempty"`
+}
+
+// PermissionDenial represents a tool use that was denied by the permission system
+type PermissionDenial struct {
+	ToolName  string `json:"toolName"`
+	ToolUseId string `json:"toolUseId"`
 }
 
 // McpServerStatus represents MCP server connection status
@@ -213,38 +229,40 @@ const (
 	EventTypeShutdown       = "shutdown"
 
 	// New event types
-	EventTypeSessionStarted    = "session_started"
-	EventTypeSessionEnded      = "session_ended"
-	EventTypeSessionIdUpdate   = "session_id_update"
-	EventTypeHookPreTool       = "hook_pre_tool"
-	EventTypeHookPostTool      = "hook_post_tool"
-	EventTypeHookToolFailure   = "hook_tool_failure"
-	EventTypeAgentNotification = "agent_notification"
-	EventTypeAgentStop         = "agent_stop"
-	EventTypeSubagentStarted   = "subagent_started"
-	EventTypeSubagentStopped   = "subagent_stopped"
-	EventTypeSubagentOutput    = "subagent_output"
-	EventTypeCompactBoundary   = "compact_boundary"
-	EventTypePreCompact        = "pre_compact"
-	EventTypeStatusUpdate      = "status_update"
-	EventTypeHookResponse      = "hook_response"
-	EventTypeToolProgress      = "tool_progress"
-	EventTypeAuthStatus        = "auth_status"
-	EventTypeInterrupted       = "interrupted"
+	EventTypeSessionStarted           = "session_started"
+	EventTypeSessionEnded             = "session_ended"
+	EventTypeSessionIdUpdate          = "session_id_update"
+	EventTypeHookPreTool              = "hook_pre_tool"
+	EventTypeHookPostTool             = "hook_post_tool"
+	EventTypeHookToolFailure          = "hook_tool_failure"
+	EventTypeAgentNotification        = "agent_notification"
+	EventTypeAgentStop                = "agent_stop"
+	EventTypeSubagentStarted          = "subagent_started"
+	EventTypeSubagentStopped          = "subagent_stopped"
+	EventTypeSubagentOutput           = "subagent_output"
+	EventTypeCompactBoundary          = "compact_boundary"
+	EventTypePreCompact               = "pre_compact"
+	EventTypeStatusUpdate             = "status_update"
+	EventTypeHookResponse             = "hook_response"
+	EventTypeToolProgress             = "tool_progress"
+	EventTypeAuthStatus               = "auth_status"
+	EventTypeInterrupted              = "interrupted"
 	EventTypeModelChanged             = "model_changed"
 	EventTypePermModeChanged          = "permission_mode_changed"
 	EventTypeMaxThinkingTokensChanged = "max_thinking_tokens_changed"
-	EventTypeSupportedModels   = "supported_models"
-	EventTypeSupportedCommands = "supported_commands"
-	EventTypeMcpStatus         = "mcp_status"
-	EventTypeAccountInfo       = "account_info"
-	EventTypeAgentStderr       = "agent_stderr"
-	EventTypeThinking          = "thinking"
-	EventTypeThinkingDelta     = "thinking_delta"
-	EventTypeThinkingStart     = "thinking_start"
-	EventTypeCheckpointCreated = "checkpoint_created"
-	EventTypeFilesRewound      = "files_rewound"
-	EventTypeJsonParseError    = "json_parse_error"
+	EventTypeSupportedModels          = "supported_models"
+	EventTypeSupportedCommands        = "supported_commands"
+	EventTypeMcpStatus                = "mcp_status"
+	EventTypeMcpServerReconnected     = "mcp_server_reconnected"
+	EventTypeMcpServerToggled         = "mcp_server_toggled"
+	EventTypeAccountInfo              = "account_info"
+	EventTypeAgentStderr              = "agent_stderr"
+	EventTypeThinking                 = "thinking"
+	EventTypeThinkingDelta            = "thinking_delta"
+	EventTypeThinkingStart            = "thinking_start"
+	EventTypeCheckpointCreated        = "checkpoint_created"
+	EventTypeFilesRewound             = "files_rewound"
+	EventTypeJsonParseError           = "json_parse_error"
 
 	// Warning events
 	EventTypeStreamingWarning = "streaming_warning"

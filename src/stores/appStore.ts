@@ -433,6 +433,8 @@ interface AppState {
 
   // MCP servers actions
   setMcpServers: (servers: McpServerStatus[]) => void;
+  updateMcpServerStatus: (serverName: string, status: McpServerStatus['status']) => void;
+  removeMcpServer: (serverName: string) => void;
   setMcpToolsByServer: (tools: Record<string, string[]>) => void;
   fetchMcpServerConfigs: (workspaceId: string) => Promise<void>;
   saveMcpServerConfigs: (workspaceId: string, configs: McpServerConfig[]) => Promise<void>;
@@ -1965,6 +1967,16 @@ updateFileTabContent: (id, content) => set((state) => ({
 
   // MCP servers actions
   setMcpServers: (servers) => set({ mcpServers: servers }),
+  updateMcpServerStatus: (serverName, status) => set((state) => {
+    const exists = state.mcpServers.some((s) => s.name === serverName);
+    if (exists) {
+      return { mcpServers: state.mcpServers.map((s) => s.name === serverName ? { ...s, status } : s) };
+    }
+    return { mcpServers: [...state.mcpServers, { name: serverName, status }] };
+  }),
+  removeMcpServer: (serverName) => set((state) => ({
+    mcpServers: state.mcpServers.filter((s) => s.name !== serverName),
+  })),
   setMcpToolsByServer: (tools) => set({ mcpToolsByServer: tools }),
   fetchMcpServerConfigs: async (workspaceId) => {
     set({ mcpConfigLoading: true });
