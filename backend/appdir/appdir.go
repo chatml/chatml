@@ -3,6 +3,7 @@ package appdir
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 )
 
@@ -11,9 +12,14 @@ var (
 	root string
 )
 
-// Init initializes the application directory structure under
-// ~/Library/Application Support/ChatML/. It is safe to call multiple
-// times; only the first call has any effect.
+// Init initializes the application directory structure.
+// The default data directory is platform-specific:
+//   - macOS:   ~/Library/Application Support/ChatML
+//   - Windows: %LOCALAPPDATA%/ChatML
+//   - Linux:   $XDG_DATA_HOME/ChatML (fallback: ~/.local/share/ChatML)
+//
+// Set CHATML_DATA_DIR to override the default location.
+// It is safe to call multiple times; only the first call has any effect.
 // Panics if the directories cannot be created.
 func Init() {
 	once.Do(func() {
@@ -22,11 +28,7 @@ func Init() {
 		if override := os.Getenv("CHATML_DATA_DIR"); override != "" {
 			root = override
 		} else {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				panic("appdir: failed to get home directory: " + err.Error())
-			}
-			root = filepath.Join(homeDir, "Library", "Application Support", "ChatML")
+			root = defaultDataDir()
 		}
 
 		// Create the directory tree in a single call (MkdirAll is idempotent).
@@ -47,7 +49,30 @@ func mustInit() {
 	}
 }
 
-// Root returns ~/Library/Application Support/ChatML.
+// defaultDataDir returns the platform-specific default data directory.
+func defaultDataDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic("appdir: failed to get home directory: " + err.Error())
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(homeDir, "Library", "Application Support", "ChatML")
+	case "windows":
+		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
+			return filepath.Join(localAppData, "ChatML")
+		}
+		return filepath.Join(homeDir, "AppData", "Local", "ChatML")
+	default: // linux, freebsd, etc.
+		if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+			return filepath.Join(xdgData, "ChatML")
+		}
+		return filepath.Join(homeDir, ".local", "share", "ChatML")
+	}
+}
+
+// Root returns the application data directory.
 func Root() string {
 	mustInit()
 	return root

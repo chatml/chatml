@@ -5,6 +5,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { navigate } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/lib/platform';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,7 +86,7 @@ export function TopBar({
 
   if (!selectedWorkspace || !selectedSession) {
     return (
-      <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
+      <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0", centerToolbarBg, !showLeftSidebar && (isMacOS() ? 'pl-20' : 'pl-2'))}>
         {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
         {!showLeftSidebar && onToggleLeftSidebar && (
           <Button
@@ -106,7 +107,7 @@ export function TopBar({
   }
 
   return (
-    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0 pr-1", centerToolbarBg, !showLeftSidebar && 'pl-20')}>
+    <div data-tauri-drag-region className={cn("h-10 flex items-center border-b shrink-0 pr-1", centerToolbarBg, !showLeftSidebar && (isMacOS() ? 'pl-20' : 'pl-2'))}>
       {/* Toggle Left Sidebar Button - only shown when sidebar is hidden */}
       {!showLeftSidebar && onToggleLeftSidebar && (
         <Button

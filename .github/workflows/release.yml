@@ -55,6 +55,12 @@ jobs:
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             target: x86_64-apple-darwin
+          - platform: ubuntu-22.04
+            args: --target x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            args: --target x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -70,6 +76,12 @@ jobs:
         uses: dtolnay/rust-action@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -109,6 +121,37 @@ jobs:
           fi
           GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-apple-darwin .
+
+      - name: Build Go backend (Linux x64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+        run: |
+          cd backend
+          LDFLAGS=""
+          if [ -n "$GITHUB_CLIENT_ID" ]; then
+            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+              -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" \
+            -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu .
+
+      - name: Build Go backend (Windows x64)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+        run: |
+          cd backend
+          LDFLAGS=""
+          if [ -n "$GITHUB_CLIENT_ID" ]; then
+            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+              -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" \
+            -o ../src-tauri/binaries/chatml-backend-x86_64-pc-windows-msvc.exe .
 
       - name: Sign Go backend sidecar (macOS)
         if: env.APPLE_CERTIFICATE != ''

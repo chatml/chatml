@@ -570,8 +570,7 @@ const CLI_COMMAND_MAP: Record<string, string> = {
 
 /**
  * Open a path in a detected app.
- * Uses CLI for editors (better workspace handling), falls back to `open -a`.
- * Finder uses `open -R` to reveal in Finder.
+ * Uses CLI for editors (better workspace handling), falls back to platform-specific commands.
  *
  * Caller args must be index-aligned with the scope definition in capabilities.
  * Fixed args consume indices but their values are overridden by the scope.
@@ -584,11 +583,18 @@ export async function openInApp(
   if (!isTauri()) return;
   try {
     const { Command } = await import('@tauri-apps/plugin-shell');
+    const { getPlatformKey } = await import('./platform');
+    const platform = getPlatformKey();
 
-    // Finder special case: use open -R
-    // Scope: [Fixed("-R"), Var(path)]
-    if (appId === 'finder') {
-      Command.create('open-finder', ['-R', path]).spawn().catch(console.error);
+    // File manager special case: reveal file in system file manager
+    if (appId === 'finder' || appId === 'explorer' || appId === 'nautilus') {
+      if (platform === 'darwin') {
+        Command.create('open-finder', ['-R', path]).spawn().catch(console.error);
+      } else if (platform === 'windows') {
+        Command.create('explorer-select', ['/select,', path]).spawn().catch(console.error);
+      } else {
+        Command.create('xdg-open', [path]).spawn().catch(console.error);
+      }
       return;
     }
 
@@ -600,14 +606,17 @@ export async function openInApp(
         await Command.create(cliCommand, [path]).spawn();
         return;
       } catch {
-        // CLI not in PATH — fall through to open -a
+        // CLI not in PATH — fall through to platform-specific fallback
       }
     }
 
-    // Fall back to open -a (works for all macOS apps)
-    // Scope: [Fixed("-a"), Var(appName), Var(path)]
-    if (appName) {
+    // Platform-specific fallback for non-CLI apps
+    if (platform === 'darwin' && appName) {
       Command.create('open-app', ['-a', appName, path]).spawn().catch(console.error);
+    } else if (platform === 'linux') {
+      Command.create('xdg-open', [path]).spawn().catch(console.error);
+    } else if (platform === 'windows') {
+      Command.create('explorer-open', [path]).spawn().catch(console.error);
     }
   } catch (e) {
     console.error(`Failed to open in ${appId}`, e);

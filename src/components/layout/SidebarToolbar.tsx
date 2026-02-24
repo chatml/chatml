@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/popover';
 import { ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/lib/platform';
 import { useUIStore } from '@/stores/uiStore';
 import { useNavigationStore } from '@/stores/navigationStore';
 import { goBack, goForward } from '@/lib/navigation';
@@ -40,7 +41,8 @@ export function SidebarToolbar() {
     <div
       data-tauri-drag-region
       className={cn(
-        'h-11 pl-20 pr-2 flex items-center justify-between shrink-0',
+        'h-11 pr-2 flex items-center justify-between shrink-0',
+        isMacOS() ? 'pl-20' : 'pl-3',
         leftToolbarBg
       )}
     >

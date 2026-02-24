@@ -13,7 +13,9 @@ import {
   HelpCircle,
   Settings,
 } from 'lucide-react';
+import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/lib/platform';
 
 export type ActivityView = 'workspaces' | 'search' | 'history';
 
@@ -22,17 +24,22 @@ interface ActivityBarProps {
   onViewChange: (view: ActivityView) => void;
 }
 
-const activities: { id: ActivityView; icon: React.ElementType; label: string; shortcut: string }[] = [
-  { id: 'workspaces', icon: FolderGit2, label: 'Workspaces', shortcut: '⌘ 1' },
-  { id: 'search', icon: Search, label: 'Search', shortcut: '⌘ 2' },
-  { id: 'history', icon: History, label: 'History', shortcut: '⌘ 3' },
-];
+function getActivities(mac: boolean): { id: ActivityView; icon: React.ElementType; label: string; shortcut: string }[] {
+  const modKey = mac ? '⌘' : 'Ctrl+';
+  return [
+    { id: 'workspaces', icon: FolderGit2, label: 'Workspaces', shortcut: `${modKey}1` },
+    { id: 'search', icon: Search, label: 'Search', shortcut: `${modKey}2` },
+    { id: 'history', icon: History, label: 'History', shortcut: `${modKey}3` },
+  ];
+}
 
 export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
+  const mac = isMacOS();
+  const activities = useMemo(() => getActivities(mac), [mac]);
   return (
     <div className="flex flex-col h-full w-12 bg-sidebar border-r border-sidebar-border">
-      {/* Top activities - pt-10 adds space for macOS traffic lights */}
-      <div className="flex-1 flex flex-col items-center pt-10 pb-2 gap-1">
+      {/* Top activities - extra padding on macOS for traffic lights */}
+      <div className={cn("flex-1 flex flex-col items-center pb-2 gap-1", isMacOS() ? 'pt-10' : 'pt-2')}>
         {activities.map((activity) => {
           const Icon = activity.icon;
           const isActive = activeView === activity.id;

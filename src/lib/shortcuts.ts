@@ -3,6 +3,8 @@
  * Single source of truth for all keyboard shortcuts in the app.
  */
 
+import { isMacOS } from './platform';
+
 export type ShortcutCategory = 'General' | 'Navigation' | 'Chat' | 'Editor' | 'Terminal';
 
 export type ModifierKey = 'meta' | 'ctrl' | 'alt' | 'shift';
@@ -272,22 +274,27 @@ export function getShortcutById(id: string): Shortcut | undefined {
 /**
  * Format a shortcut's key combination for display.
  * Returns an array of symbols/keys to render.
+ * Uses macOS symbols on Mac, text labels on Windows/Linux.
  */
 export function formatShortcutKeys(shortcut: Shortcut): string[] {
+  const mac = isMacOS();
   const keys: string[] = [];
 
   // Add modifiers in standard order
-  if (shortcut.modifiers.includes('meta')) {
-    keys.push('⌘');
+  // On non-Mac, both 'meta' and 'ctrl' map to Ctrl — avoid duplicating
+  const hasMeta = shortcut.modifiers.includes('meta');
+  const hasCtrl = shortcut.modifiers.includes('ctrl');
+  if (hasMeta) {
+    keys.push(mac ? '⌘' : 'Ctrl');
   }
-  if (shortcut.modifiers.includes('ctrl')) {
-    keys.push('⌃');
+  if (hasCtrl && (mac || !hasMeta)) {
+    keys.push(mac ? '⌃' : 'Ctrl');
   }
   if (shortcut.modifiers.includes('alt')) {
-    keys.push('⌥');
+    keys.push(mac ? '⌥' : 'Alt');
   }
   if (shortcut.modifiers.includes('shift')) {
-    keys.push('⇧');
+    keys.push(mac ? '⇧' : 'Shift');
   }
 
   // Add the main key

@@ -94,6 +94,34 @@
               "validator": "[/~.][-\\w\\s./~]+"
             }
           ]
+        },
+        {
+          "name": "xdg-open",
+          "cmd": "xdg-open",
+          "args": [
+            {
+              "validator": "[/~.][-\\w\\s./~]+"
+            }
+          ]
+        },
+        {
+          "name": "explorer-select",
+          "cmd": "explorer",
+          "args": [
+            "/select,",
+            {
+              "validator": "[A-Za-z]:?[\\\\/ ][-\\w\\s./\\\\~:]+"
+            }
+          ]
+        },
+        {
+          "name": "explorer-open",
+          "cmd": "explorer",
+          "args": [
+            {
+              "validator": "[A-Za-z]:?[\\\\/ ][-\\w\\s./\\\\~:]+"
+            }
+          ]
         }
       ]
     },

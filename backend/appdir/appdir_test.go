@@ -17,11 +17,11 @@ func TestInit_CreatesDirectories(t *testing.T) {
 	resetForTest()
 
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	t.Setenv("CHATML_DATA_DIR", filepath.Join(tmp, "ChatML"))
 
 	Init()
 
-	expected := filepath.Join(tmp, "Library", "Application Support", "ChatML")
+	expected := filepath.Join(tmp, "ChatML")
 	if root != expected {
 		t.Fatalf("root = %q, want %q", root, expected)
 	}
@@ -37,11 +37,37 @@ func TestInit_CreatesDirectories(t *testing.T) {
 	}
 }
 
-func TestInit_Idempotent(t *testing.T) {
+func TestInit_DefaultDir(t *testing.T) {
 	resetForTest()
 
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	// Ensure no override is set
+	t.Setenv("CHATML_DATA_DIR", "")
+
+	Init()
+
+	// Verify that a directory was created (platform-specific path)
+	if root == "" {
+		t.Fatal("root should not be empty after Init()")
+	}
+
+	for _, sub := range []string{"state", "workspaces"} {
+		info, err := os.Stat(filepath.Join(root, sub))
+		if err != nil {
+			t.Fatalf("expected directory %s to exist: %v", sub, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("%s is not a directory", sub)
+		}
+	}
+}
+
+func TestInit_Idempotent(t *testing.T) {
+	resetForTest()
+
+	tmp := t.TempDir()
+	t.Setenv("CHATML_DATA_DIR", filepath.Join(tmp, "ChatML"))
 
 	Init()
 	first := root
@@ -56,11 +82,10 @@ func TestAccessors(t *testing.T) {
 	resetForTest()
 
 	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
+	base := filepath.Join(tmp, "ChatML")
+	t.Setenv("CHATML_DATA_DIR", base)
 
 	Init()
-
-	base := filepath.Join(tmp, "Library", "Application Support", "ChatML")
 
 	tests := []struct {
 		name string
