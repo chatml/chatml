@@ -33,6 +33,7 @@ const EMPTY_TERMINAL_INSTANCES: readonly TerminalInstance[] = [];
 const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
 const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
 const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
+const EMPTY_ACTIVE_IDS: readonly string[] = [];
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -173,26 +174,28 @@ export const useActiveSessions = <T extends { id: string }>(sessions: T[]): T[] 
   const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
 
   const activeIds = useAppStore(
-    useCallback(
-      (state) => {
-        const ids: string[] = [];
-        for (const sid of sessionIds) {
-          let activity: SessionActivityState = 'idle';
-          for (const c of state.conversations) {
-            if (c.sessionId !== sid || c.status !== 'active') continue;
-            const convId = c.id;
-            if (state.pendingUserQuestion[convId]) { activity = 'awaiting_input'; break; }
-            if (state.streamingState[convId]?.pendingPlanApproval) {
-              activity = 'awaiting_approval';
-            } else if (state.streamingState[convId]?.isStreaming && activity === 'idle') {
-              activity = 'working';
+    useShallow(
+      useCallback(
+        (state) => {
+          const ids: string[] = [];
+          for (const sid of sessionIds) {
+            let activity: SessionActivityState = 'idle';
+            for (const c of state.conversations) {
+              if (c.sessionId !== sid || c.status !== 'active') continue;
+              const convId = c.id;
+              if (state.pendingUserQuestion[convId]) { activity = 'awaiting_input'; break; }
+              if (state.streamingState[convId]?.pendingPlanApproval) {
+                activity = 'awaiting_approval';
+              } else if (state.streamingState[convId]?.isStreaming && activity === 'idle') {
+                activity = 'working';
+              }
             }
+            if (activity !== 'idle') ids.push(sid);
           }
-          if (activity !== 'idle') ids.push(sid);
-        }
-        return ids;
-      },
-      [sessionIds]
+          return ids.length > 0 ? ids : EMPTY_ACTIVE_IDS;
+        },
+        [sessionIds]
+      )
     )
   );
 
