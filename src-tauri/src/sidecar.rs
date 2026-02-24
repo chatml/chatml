@@ -104,7 +104,9 @@ pub fn kill_process_on_port(port: u16) {
             let port_str = format!(":{} ", port);
             let port_str_tab = format!(":{}\t", port);
             for line in stdout.lines() {
-                if (line.contains(&port_str) || line.contains(&port_str_tab)) && line.contains("LISTENING") {
+                if (line.contains(&port_str) || line.contains(&port_str_tab))
+                    && line.contains("LISTENING")
+                {
                     if let Some(pid_str) = line.split_whitespace().last() {
                         if pid_str.parse::<u32>().is_ok() {
                             log::info!(

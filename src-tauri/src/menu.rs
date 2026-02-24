@@ -314,9 +314,9 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // "Bring All to Front" is a macOS-specific concept
     #[cfg(target_os = "macos")]
     {
-        window_menu_builder = window_menu_builder
-            .separator()
-            .item(&MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front").build(app)?);
+        window_menu_builder = window_menu_builder.separator().item(
+            &MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front").build(app)?,
+        );
     }
 
     let window_menu = window_menu_builder.build()?;
