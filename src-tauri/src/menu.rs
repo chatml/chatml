@@ -6,6 +6,7 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, Submen
 /// start disabled. The frontend enables them dynamically via the `update_menu_state` command.
 pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // 1. App menu (macOS shows as the app name; on other platforms it's a regular menu)
+    #[allow(unused_mut)]
     let mut app_menu_builder = SubmenuBuilder::new(app, "ChatML")
         .item(&PredefinedMenuItem::about(app, Some("About ChatML"), None)?)
         .separator()
@@ -307,6 +308,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .build()?;
 
     // 8. Window menu
+    #[allow(unused_mut)]
     let mut window_menu_builder = SubmenuBuilder::new(app, "Window")
         .item(&PredefinedMenuItem::minimize(app, None)?)
         .item(&PredefinedMenuItem::maximize(app, Some("Zoom"))?);
