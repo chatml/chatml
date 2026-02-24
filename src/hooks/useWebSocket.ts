@@ -489,6 +489,11 @@ export function useWebSocket(enabled: boolean = true) {
 
         // Atomic finalization - creates message and clears streaming/activeTools in one update
         // Note: finalizeStreamingMessage also clears thinking state, so no separate clearThinking needed
+        // Extract permission denials if present
+        const permissionDenials = Array.isArray(event.permissionDenials) && event.permissionDenials.length > 0
+          ? (event.permissionDenials as Array<{ toolName: string; toolUseId: string }>)
+          : undefined;
+
         freshStore.finalizeStreamingMessage(conversationId, {
           durationMs,
           toolUsage: toolUsage.length > 0 ? toolUsage : undefined,
@@ -504,6 +509,7 @@ export function useWebSocket(enabled: boolean = true) {
             limitExceeded: event.subtype === 'error_max_budget_usd' ? 'budget' as const
                          : event.subtype === 'error_max_turns' ? 'turns' as const
                          : undefined,
+            permissionDenials,
           },
         });
         // Extract context window size from the result's modelUsage.
@@ -1025,6 +1031,22 @@ export function useWebSocket(enabled: boolean = true) {
       case 'mcp_status':
         if (event?.servers && isMcpServerStatusArray(event.servers)) {
           store.setMcpServers(event.servers);
+        }
+        break;
+
+      case 'mcp_server_reconnected':
+        if (event?.serverName) {
+          store.updateMcpServerStatus(event.serverName as string, 'connected');
+        }
+        break;
+
+      case 'mcp_server_toggled':
+        if (event?.serverName) {
+          if (event.enabled === true) {
+            store.updateMcpServerStatus(event.serverName as string, 'connected');
+          } else if (event.enabled === false) {
+            store.removeMcpServer(event.serverName as string);
+          }
         }
         break;
 

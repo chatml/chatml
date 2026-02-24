@@ -2066,19 +2066,30 @@ function handleMessage(message: SDKMessage): void {
       }
 
       flushBlockBuffer();
-      const resultMsg = message as SDKResultMessage;
+      // Extend SDK type with fields that may not yet be in the published type definitions
+      const resultMsg = message as SDKResultMessage & {
+        checkpoint_uuid?: string;
+        message_index?: number;
+        permission_denials?: Array<{ tool_name: string; tool_use_id: string; tool_input: unknown }>;
+      };
 
       // Check for checkpoint_uuid in result messages (present when checkpointing is enabled)
-      // Type guard for SDK messages with checkpoint fields
-      const resultWithCheckpoint = message as SDKResultMessage & { checkpoint_uuid?: string; message_index?: number };
-      if (resultWithCheckpoint.checkpoint_uuid) {
+      if (resultMsg.checkpoint_uuid) {
         emit({
           type: "checkpoint_created",
-          checkpointUuid: resultWithCheckpoint.checkpoint_uuid,
-          messageIndex: resultWithCheckpoint.message_index || 0,
+          checkpointUuid: resultMsg.checkpoint_uuid,
+          messageIndex: resultMsg.message_index || 0,
           isResult: true,
         });
       }
+
+      // Extract permission denials (tools that were denied during this turn)
+      const permissionDenials = resultMsg.permission_denials?.length
+        ? resultMsg.permission_denials.map((d) => ({
+            toolName: d.tool_name,
+            toolUseId: d.tool_use_id,
+          }))
+        : undefined;
 
       if (resultMsg.subtype === "success") {
         emit({
@@ -2095,6 +2106,7 @@ function handleMessage(message: SDKMessage): void {
           modelUsage: resultMsg.modelUsage,
           structuredOutput: resultMsg.structured_output,
           sessionId: resultMsg.session_id,
+          ...(permissionDenials ? { permissionDenials } : {}),
           stats: {
             toolCalls: runStats.toolCalls,
             toolsByType: runStats.toolsByType,
@@ -2123,6 +2135,7 @@ function handleMessage(message: SDKMessage): void {
           usage: resultMsg.usage,
           modelUsage: resultMsg.modelUsage,
           sessionId: resultMsg.session_id,
+          ...(permissionDenials ? { permissionDenials } : {}),
           stats: {
             toolCalls: runStats.toolCalls,
             toolsByType: runStats.toolsByType,

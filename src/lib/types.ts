@@ -111,6 +111,11 @@ export interface ModelUsageInfo {
 }
 
 // Run summary displayed at end of agent turn
+export interface PermissionDenial {
+  toolName: string;
+  toolUseId: string;
+}
+
 export interface RunSummary {
   success: boolean;
   cost?: number;
@@ -121,6 +126,7 @@ export interface RunSummary {
   usage?: TokenUsage;
   modelUsage?: Record<string, ModelUsageInfo>;
   limitExceeded?: 'budget' | 'turns';
+  permissionDenials?: PermissionDenial[];
 }
 
 // Structured metadata extracted from tool results (tool-specific)
@@ -390,6 +396,13 @@ export interface AgentEvent {
   // Stderr data
   data?: string;
 
+  // Permission denials (tools denied during this turn)
+  permissionDenials?: PermissionDenial[];
+
+  // MCP server event fields (mcp_server_reconnected, mcp_server_toggled)
+  serverName?: string;
+  enabled?: boolean;
+
   // Checkpoint fields
   checkpointUuid?: string;
   messageIndex?: number;
@@ -505,6 +518,8 @@ export const AgentEventTypes = {
   SUPPORTED_MODELS: 'supported_models',
   SUPPORTED_COMMANDS: 'supported_commands',
   MCP_STATUS: 'mcp_status',
+  MCP_SERVER_RECONNECTED: 'mcp_server_reconnected',
+  MCP_SERVER_TOGGLED: 'mcp_server_toggled',
   ACCOUNT_INFO: 'account_info',
 
   // Thinking events
