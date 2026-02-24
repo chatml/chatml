@@ -171,6 +171,7 @@ interface StreamingState {
   pendingPlanApproval: { requestId: string; planContent?: string } | null; // Pending ExitPlanMode approval request
   approvedPlanContent?: string; // Plan content to persist after approval
   approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
+  recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
 }
 
 // ActiveTool is imported from @/lib/types
@@ -325,6 +326,7 @@ interface AppState {
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
+  truncateMessagesFrom: (conversationId: string, fromPosition: number, keepMessageId?: string) => void;
 
   // Message pagination state & actions
   messagePagination: Record<string, {
@@ -371,6 +373,8 @@ interface AppState {
   appendStreamingText: (conversationId: string, text: string) => void;
   setStreaming: (conversationId: string, isStreaming: boolean) => void;
   setStreamingError: (conversationId: string, error: string | null) => void;
+  setAgentRecovering: (conversationId: string, attempt: number, maxAttempts: number) => void;
+  clearAgentRecovery: (conversationId: string) => void;
   clearStreamingText: (conversationId: string) => void;
   clearStreamingContent: (conversationId: string) => void;
   appendThinkingText: (conversationId: string, text: string) => void;
@@ -418,6 +422,10 @@ interface AppState {
   // Queued message actions
   setQueuedMessage: (conversationId: string, message: QueuedMessage | null) => void;
   commitQueuedMessage: (conversationId: string) => void;
+
+  // Session handoff dialog state
+  showSessionHandoff: boolean;
+  setShowSessionHandoff: (show: boolean) => void;
 
   // Todo actions
   setAgentTodos: (conversationId: string, todos: AgentTodoItem[]) => void;
@@ -1030,6 +1038,28 @@ export const useAppStore = create<AppState>((set, get) => ({
       m.id === id ? { ...m, ...updates } : m
     ),
   })),
+  // Remove messages in a conversation after the truncation boundary.
+  // Used when the backend truncates messages during regeneration.
+  // When keepMessageId is provided, uses it as a reliable boundary (keeps all
+  // messages up to and including that ID). Falls back to fromPosition as an
+  // array-index slice when keepMessageId is unavailable.
+  truncateMessagesFrom: (conversationId, fromPosition, keepMessageId?) => set((state) => {
+    const convMessages = state.messages.filter((m) => m.conversationId === conversationId);
+    const otherMessages = state.messages.filter((m) => m.conversationId !== conversationId);
+
+    let kept: typeof convMessages;
+    if (keepMessageId) {
+      // Find the boundary message by ID — robust regardless of array ordering
+      const boundaryIdx = convMessages.findIndex((m) => m.id === keepMessageId);
+      kept = boundaryIdx >= 0 ? convMessages.slice(0, boundaryIdx + 1) : convMessages.slice(0, fromPosition);
+    } else {
+      kept = convMessages.slice(0, fromPosition);
+    }
+
+    return {
+      messages: [...otherMessages, ...kept],
+    };
+  }),
 
   // Message pagination actions
   setMessagePage: (convId, messages, hasMore, oldestPosition, totalCount) => set((state) => ({
@@ -1374,6 +1404,17 @@ updateFileTabContent: (id, content) => set((state) => ({
       isThinking: false,
       pendingPlanApproval: null,
       startTime: undefined,
+      recovery: undefined,
+    }),
+  })),
+  setAgentRecovering: (conversationId, attempt, maxAttempts) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      recovery: { attempt, maxAttempts },
+    }),
+  })),
+  clearAgentRecovery: (conversationId) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      recovery: undefined,
     }),
   })),
   clearStreamingText: (conversationId) => set((state) => ({
@@ -1851,6 +1892,10 @@ updateFileTabContent: (id, content) => set((state) => ({
       } : {}),
     };
   }),
+
+  // Session handoff dialog state
+  showSessionHandoff: false,
+  setShowSessionHandoff: (show) => set({ showSessionHandoff: show }),
 
   // Todo actions
   setAgentTodos: (conversationId, todos) => set((state) => ({

@@ -12,6 +12,7 @@ import (
 	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/logger"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
@@ -1694,6 +1695,204 @@ func (s *SQLiteStore) AddMessageToConversation(ctx context.Context, convID strin
 		if err != nil {
 			tx.Rollback()
 			return err
+		}
+
+		return tx.Commit()
+	})
+}
+
+// GetMessageByID returns a single message by its ID, including its conversation ID
+// and position in the conversation. Returns nil, "", 0, nil if the message does not exist.
+func (s *SQLiteStore) GetMessageByID(ctx context.Context, msgID string) (*models.Message, string, int, error) {
+	var msg models.Message
+	var convID string
+	var position int
+	var setupInfoJSON, runSummaryJSON sql.NullString
+	var toolUsageJSON, thinkingContentNull, timelineJSON sql.NullString
+	var planContentNull, checkpointUuidNull sql.NullString
+	var durationMsNull sql.NullInt64
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, conversation_id, role, content, setup_info, run_summary,
+			tool_usage, thinking_content, duration_ms, timeline,
+			plan_content, checkpoint_uuid, timestamp, position
+		FROM messages WHERE id = ?`, msgID).Scan(
+		&msg.ID, &convID, &msg.Role, &msg.Content, &setupInfoJSON, &runSummaryJSON,
+		&toolUsageJSON, &thinkingContentNull, &durationMsNull, &timelineJSON,
+		&planContentNull, &checkpointUuidNull, &msg.Timestamp, &position)
+	if err == sql.ErrNoRows {
+		return nil, "", 0, nil
+	}
+	if err != nil {
+		return nil, "", 0, fmt.Errorf("GetMessageByID: %w", err)
+	}
+
+	if thinkingContentNull.Valid {
+		msg.ThinkingContent = thinkingContentNull.String
+	}
+	if durationMsNull.Valid {
+		msg.DurationMs = int(durationMsNull.Int64)
+	}
+	if planContentNull.Valid {
+		msg.PlanContent = planContentNull.String
+	}
+	if checkpointUuidNull.Valid {
+		msg.CheckpointUuid = checkpointUuidNull.String
+	}
+
+	return &msg, convID, position, nil
+}
+
+// DeleteMessagesAfterPosition deletes all messages (and their attachments via FK cascade)
+// in a conversation with position strictly greater than the given position.
+// Also deletes associated checkpoints and tool actions for those positions.
+func (s *SQLiteStore) DeleteMessagesAfterPosition(ctx context.Context, convID string, position int) error {
+	return RetryDBExec(ctx, "DeleteMessagesAfterPosition", DefaultRetryConfig(), func(ctx context.Context) error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
+
+		// Delete tool actions for messages after position
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM tool_actions WHERE conversation_id = ? AND position > ?`,
+			convID, position); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("delete tool_actions: %w", err)
+		}
+
+		// Delete checkpoints linked to messages after position
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM checkpoints WHERE conversation_id = ? AND message_index > ?`,
+			convID, position); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("delete checkpoints: %w", err)
+		}
+
+		// Delete messages after position (attachments cascade via FK)
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM messages WHERE conversation_id = ? AND position > ?`,
+			convID, position); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("delete messages: %w", err)
+		}
+
+		return tx.Commit()
+	})
+}
+
+// UpdateMessageContent updates the text content of a message.
+func (s *SQLiteStore) UpdateMessageContent(ctx context.Context, msgID string, content string) error {
+	return RetryDBExec(ctx, "UpdateMessageContent", DefaultRetryConfig(), func(ctx context.Context) error {
+		res, err := s.db.ExecContext(ctx,
+			`UPDATE messages SET content = ? WHERE id = ?`, content, msgID)
+		if err != nil {
+			return fmt.Errorf("UpdateMessageContent: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("UpdateMessageContent rows affected: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("UpdateMessageContent: message %s not found", msgID)
+		}
+		return nil
+	})
+}
+
+// GetLastUserMessageContentBefore returns the content of the last user-role message
+// in a conversation with position strictly less than the given position.
+// Returns "", false, nil if no such message exists.
+func (s *SQLiteStore) GetLastUserMessageContentBefore(ctx context.Context, convID string, beforePosition int) (string, bool, error) {
+	var content string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT content FROM messages
+		WHERE conversation_id = ? AND position < ? AND role = 'user'
+		ORDER BY position DESC LIMIT 1`, convID, beforePosition).Scan(&content)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("GetLastUserMessageContentBefore: %w", err)
+	}
+	return content, true, nil
+}
+
+// GetMessageIDAtPosition returns the ID of a message at a specific position in a conversation.
+// Returns "" if no message exists at that position.
+func (s *SQLiteStore) GetMessageIDAtPosition(ctx context.Context, convID string, position int) (string, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id FROM messages
+		WHERE conversation_id = ? AND position = ?`, convID, position).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("GetMessageIDAtPosition: %w", err)
+	}
+	return id, nil
+}
+
+// CopyMessagesUpToPosition copies all messages from one conversation to another,
+// up to and including the given position. Uses new IDs and sequential positions.
+func (s *SQLiteStore) CopyMessagesUpToPosition(ctx context.Context, srcConvID, dstConvID string, upToPosition int) error {
+	return RetryDBExec(ctx, "CopyMessagesUpToPosition", DefaultRetryConfig(), func(ctx context.Context) error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin: %w", err)
+		}
+
+		// Fetch source messages up to position
+		rows, err := tx.QueryContext(ctx, `
+			SELECT role, content, setup_info, run_summary,
+				tool_usage, thinking_content, duration_ms, timeline,
+				plan_content, checkpoint_uuid, timestamp
+			FROM messages
+			WHERE conversation_id = ? AND position <= ?
+			ORDER BY position ASC`, srcConvID, upToPosition)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("query source: %w", err)
+		}
+
+		type rawMsg struct {
+			role, content                                                              string
+			setupInfo, runSummary, toolUsage, thinkingContent, timeline                sql.NullString
+			planContent, checkpointUuid                                                sql.NullString
+			durationMs                                                                 sql.NullInt64
+			timestamp                                                                  time.Time
+		}
+
+		var msgs []rawMsg
+		for rows.Next() {
+			var m rawMsg
+			if err := rows.Scan(&m.role, &m.content, &m.setupInfo, &m.runSummary,
+				&m.toolUsage, &m.thinkingContent, &m.durationMs, &m.timeline,
+				&m.planContent, &m.checkpointUuid, &m.timestamp); err != nil {
+				rows.Close()
+				tx.Rollback()
+				return fmt.Errorf("scan: %w", err)
+			}
+			msgs = append(msgs, m)
+		}
+		rows.Close()
+
+		// Insert each message with a new ID into the destination conversation
+		for i, m := range msgs {
+			newID := uuid.New().String()[:8]
+			_, err := tx.ExecContext(ctx, `
+				INSERT INTO messages (id, conversation_id, role, content, setup_info, run_summary,
+					tool_usage, thinking_content, duration_ms, timeline,
+					plan_content, checkpoint_uuid, timestamp, position)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				newID, dstConvID, m.role, m.content, m.setupInfo, m.runSummary,
+				m.toolUsage, m.thinkingContent, m.durationMs, m.timeline,
+				m.planContent, m.checkpointUuid, m.timestamp, i)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("insert msg %d: %w", i, err)
+			}
 		}
 
 		return tx.Commit()

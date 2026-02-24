@@ -6,6 +6,8 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 function formatTokenCount(tokens: number): string {
@@ -129,6 +131,23 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
             />
           )}
         </div>
+
+        {/* Handoff prompt at 90%+ */}
+        {percentage >= 90 && (
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <p className="text-xs text-muted-foreground mb-2">
+              Context window is almost full. Continue in a new conversation to avoid losing context.
+            </p>
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs gap-1"
+              onClick={() => useAppStore.getState().setShowSessionHandoff(true)}
+            >
+              <ArrowRight className="w-3 h-3" />
+              Continue in new conversation
+            </Button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

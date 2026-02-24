@@ -13,7 +13,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Copy, Check, FileText, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
+import { Copy, Check, FileText, ChevronDown, ChevronRight, Wrench, Pencil, RotateCw, GitBranch, X } from 'lucide-react';
+import { ContextMenuSeparator } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import type { Message, ToolUsage } from '@/lib/types';
 import { COPY_FEEDBACK_DURATION_MS, PROSE_CLASSES } from '@/lib/constants';
@@ -82,6 +83,13 @@ export interface MessageBlockProps {
   currentMatchIndex?: number;
   matchOffset?: number;
   hasMatches?: boolean;
+  // Edit/regenerate/fork actions — only provided when the conversation is idle
+  onEdit?: (messageId: string, newContent: string) => void;
+  onRegenerate?: (messageId: string) => void;
+  onFork?: (messageId: string) => void;
+  isLastUserMessage?: boolean;
+  isLastAssistantMessage?: boolean;
+  isStreaming?: boolean;
 }
 
 export const MessageBlock = memo(function MessageBlock({
@@ -93,9 +101,17 @@ export const MessageBlock = memo(function MessageBlock({
   matchOffset = 0,
   // hasMatches is intentionally not destructured — it's only used by the memo
   // comparator below to skip re-renders for messages without search matches.
+  onEdit,
+  onRegenerate,
+  onFork,
+  isLastUserMessage,
+  isLastAssistantMessage,
+  isStreaming,
 }: MessageBlockProps) {
   const [copied, setCopied] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
 
   const copyContent = useCallback(async () => {
     const success = await copyToClipboard(message.content);
@@ -131,37 +147,191 @@ export const MessageBlock = memo(function MessageBlock({
   }
 
   if (message.role === 'user') {
+    const canEdit = !isStreaming && onEdit;
+    const canRegenerate = !isStreaming && isLastUserMessage && onRegenerate;
+    const canFork = !isStreaming && onFork;
+    const hasActions = canEdit || canRegenerate || canFork;
+
     return (
       <div className={cn('py-2 flex justify-end', !isFirst && 'pt-3')}>
-        <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
-          {message.attachments && message.attachments.length > 0 && (
-            <>
-              <AttachmentGrid
-                attachments={message.attachments}
-                onPreview={(index) => setPreviewIndex(index)}
-                readOnly
-              />
-              {previewIndex !== null && (
-                <AttachmentPreviewModal
-                  open
-                  onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+        <div className="group/user relative max-w-[85%]">
+          <div className="bg-surface-2 dark:bg-[#2D1B4E] rounded-lg px-4 py-2.5">
+            {message.attachments && message.attachments.length > 0 && (
+              <>
+                <AttachmentGrid
                   attachments={message.attachments}
-                  initialIndex={previewIndex}
+                  onPreview={(index) => setPreviewIndex(index)}
+                  readOnly
                 />
+                {previewIndex !== null && (
+                  <AttachmentPreviewModal
+                    open
+                    onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+                    attachments={message.attachments}
+                    initialIndex={previewIndex}
+                  />
+                )}
+              </>
+            )}
+            {editing ? (
+              <div className="space-y-2">
+                <textarea
+                  className="w-full min-h-[60px] bg-transparent text-base leading-relaxed resize-y border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setEditing(false);
+                    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      if (editText.trim() && editText !== message.content) {
+                        onEdit?.(message.id, editText);
+                      }
+                      setEditing(false);
+                    }
+                  }}
+                />
+                <div className="flex justify-end gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-6 text-xs"
+                    disabled={!editText.trim() || editText === message.content}
+                    onClick={() => {
+                      onEdit?.(message.id, editText);
+                      setEditing(false);
+                    }}
+                  >
+                    Save & Regenerate
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-base leading-relaxed whitespace-pre-wrap">
+                {highlightedContent || <MentionText content={message.content} />}
+              </p>
+            )}
+          </div>
+          {/* Action buttons — shown on hover below the message */}
+          {hasActions && !editing && (
+            <div className="flex justify-end gap-0.5 mt-0.5 opacity-0 group-hover/user:opacity-100 transition-opacity">
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Edit message"
+                  onClick={() => {
+                    setEditText(message.content);
+                    setEditing(true);
+                  }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
               )}
-            </>
+              {canRegenerate && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Regenerate response"
+                  onClick={() => onRegenerate?.(message.id)}
+                >
+                  <RotateCw className="h-3 w-3" />
+                </Button>
+              )}
+              {canFork && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Fork conversation from here"
+                  onClick={() => onFork?.(message.id)}
+                >
+                  <GitBranch className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
           )}
-          <p className="text-base leading-relaxed whitespace-pre-wrap">
-            {highlightedContent || <MentionText content={message.content} />}
-          </p>
         </div>
       </div>
     );
   }
 
+  const canRegenerateAssistant = !isStreaming && isLastAssistantMessage && onRegenerate;
+  const canForkAssistant = !isStreaming && onFork;
+  const hasAssistantActions = canRegenerateAssistant || canForkAssistant;
+
+  // Context menu items shared between timeline and legacy paths
+  const assistantContextMenuItems = (
+    <>
+      <ContextMenuItem onClick={copyContent}>
+        <Copy className="size-4" />
+        Copy
+      </ContextMenuItem>
+      <ContextMenuItem onClick={copyContent}>
+        <FileText className="size-4" />
+        Copy as Markdown
+      </ContextMenuItem>
+      {hasAssistantActions && (
+        <>
+          <ContextMenuSeparator />
+          {canRegenerateAssistant && (
+            <ContextMenuItem onClick={() => onRegenerate!(message.id)}>
+              <RotateCw className="size-4" />
+              Regenerate
+            </ContextMenuItem>
+          )}
+          {canForkAssistant && (
+            <ContextMenuItem onClick={() => onFork!(message.id)}>
+              <GitBranch className="size-4" />
+              Fork from here
+            </ContextMenuItem>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // Hover action buttons for assistant messages
+  const assistantActionButtons = hasAssistantActions ? (
+    <div className="flex gap-0.5 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      {canRegenerateAssistant && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title="Regenerate response"
+          onClick={() => onRegenerate!(message.id)}
+        >
+          <RotateCw className="h-3 w-3" />
+        </Button>
+      )}
+      {canForkAssistant && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title="Fork conversation from here"
+          onClick={() => onFork!(message.id)}
+        >
+          <GitBranch className="h-3 w-3" />
+        </Button>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="py-2">
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 group">
         {/* Backward compat: show planContent at top for old messages without plan timeline entry */}
         {message.planContent && !(message.timeline?.some(e => e.type === 'plan')) && (
           <ApprovedPlanBlock
@@ -240,14 +410,7 @@ export const MessageBlock = memo(function MessageBlock({
               </div>
             </ContextMenuTrigger>
             <ContextMenuContent>
-              <ContextMenuItem onClick={copyContent}>
-                <Copy className="size-4" />
-                Copy
-              </ContextMenuItem>
-              <ContextMenuItem onClick={copyContent}>
-                <FileText className="size-4" />
-                Copy as Markdown
-              </ContextMenuItem>
+              {assistantContextMenuItems}
             </ContextMenuContent>
           </ContextMenu>
         ) : (
@@ -302,19 +465,15 @@ export const MessageBlock = memo(function MessageBlock({
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem onClick={copyContent}>
-                    <Copy className="size-4" />
-                    Copy
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={copyContent}>
-                    <FileText className="size-4" />
-                    Copy as Markdown
-                  </ContextMenuItem>
+                  {assistantContextMenuItems}
                 </ContextMenuContent>
               </ContextMenu>
             )}
           </>
         )}
+
+        {/* Action buttons for assistant messages — shown on hover */}
+        {assistantActionButtons}
 
         {/* Verification Results */}
         {message.verificationResults && message.verificationResults.length > 0 && (
@@ -351,7 +510,10 @@ export const MessageBlock = memo(function MessageBlock({
     prev.checkpointUuid !== next.checkpointUuid ||
     prevProps.isFirst !== nextProps.isFirst ||
     prevProps.worktreePath !== nextProps.worktreePath ||
-    prevProps.searchQuery !== nextProps.searchQuery) {
+    prevProps.searchQuery !== nextProps.searchQuery ||
+    prevProps.isLastUserMessage !== nextProps.isLastUserMessage ||
+    prevProps.isLastAssistantMessage !== nextProps.isLastAssistantMessage ||
+    prevProps.isStreaming !== nextProps.isStreaming) {
     return false;
   }
 
