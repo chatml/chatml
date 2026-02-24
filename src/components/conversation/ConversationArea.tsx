@@ -45,7 +45,7 @@ import { QueuedMessageBubble } from '@/components/conversation/QueuedMessageBubb
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary, regenerateMessage, forkConversation } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
@@ -53,6 +53,8 @@ import { BranchSyncBanner } from '@/components/BranchSyncBanner';
 import { BranchSyncConflictDialog } from '@/components/BranchSyncConflictDialog';
 import { useBranchSync } from '@/hooks/useBranchSync';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
+import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDialog';
+import { useToast } from '@/components/ui/toast';
 import { KeyRound, Settings2 } from 'lucide-react';
 
 // Module-level scroll position cache (singleton — ConversationArea is only rendered once).
@@ -85,6 +87,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     updateFileTab,
     setPendingCloseFileTabId,
   } = useFileTabState();
+
+  const { error: showError } = useToast();
 
   // Targeted selectors for remaining state
   const sessions = useAppStore((s) => s.sessions);
@@ -249,6 +253,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameConvId, setRenameConvId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+
+  // Session handoff state (triggered by ContextMeter or RunSummaryBlock via store)
+  const showHandoff = useAppStore((s) => s.showSessionHandoff);
+  const setShowHandoff = useAppStore((s) => s.setShowSessionHandoff);
 
   // Summary state
   const summaries = useAppStore((s) => s.summaries);
@@ -713,6 +721,66 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [currentFileTab, updateFileTab]);
 
+  // ── Message editing, regeneration, and forking ──
+
+  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
+    if (!selectedConversationId) return;
+    try {
+      await regenerateMessage(selectedConversationId, messageId, newContent);
+      // The backend broadcasts `conversation_truncated` via WebSocket,
+      // which the useWebSocket handler picks up to trim the local store.
+    } catch (error) {
+      console.error('Failed to edit & regenerate message:', error);
+      showError('Failed to regenerate message. Please try again.');
+    }
+  }, [selectedConversationId, showError]);
+
+  const handleRegenerateMessage = useCallback(async (messageId: string) => {
+    if (!selectedConversationId) return;
+    try {
+      await regenerateMessage(selectedConversationId, messageId);
+    } catch (error) {
+      console.error('Failed to regenerate message:', error);
+      showError('Failed to regenerate message. Please try again.');
+    }
+  }, [selectedConversationId, showError]);
+
+  const handleForkMessage = useCallback(async (messageId: string) => {
+    if (!selectedConversationId) return;
+    try {
+      const newConv = await forkConversation(selectedConversationId, messageId);
+      addConversation({
+        id: newConv.id,
+        sessionId: newConv.sessionId,
+        type: newConv.type,
+        name: newConv.name,
+        status: newConv.status,
+        messages: newConv.messages.map((m) => ({
+          id: m.id,
+          conversationId: newConv.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+          setupInfo: m.setupInfo,
+          runSummary: m.runSummary,
+          timestamp: m.timestamp,
+        })),
+        toolSummary: newConv.toolSummary.map((t) => ({
+          id: t.id,
+          tool: t.tool,
+          target: t.target,
+          success: t.success,
+        })),
+        createdAt: newConv.createdAt,
+        updatedAt: newConv.updatedAt,
+      });
+      selectConversation(newConv.id);
+      selectFileTab(null);
+    } catch (error) {
+      console.error('Failed to fork conversation:', error);
+      showError('Failed to fork conversation. Please try again.');
+    }
+  }, [selectedConversationId, addConversation, selectConversation, selectFileTab, showError]);
+
   const handleNewConversation = useCallback(async (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
@@ -971,6 +1039,18 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         </div>
       )}
 
+      {/* Agent crash recovery banner */}
+      {selectedStreaming?.recovery && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <span className="text-xs text-amber-200/90">
+              Agent reconnecting... (attempt {selectedStreaming.recovery.attempt}/{selectedStreaming.recovery.maxAttempts})
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Branch sync conflict dialog */}
       <BranchSyncConflictDialog
         open={showConflictDialog}
@@ -1160,6 +1240,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             footer={messageListFooter}
             isStreaming={selectedStreaming?.isStreaming ?? false}
             pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
+            onEditMessage={handleEditMessage}
+            onRegenerateMessage={handleRegenerateMessage}
+            onForkMessage={handleForkMessage}
           />
           {/* Fade overlay at bottom of messages */}
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
@@ -1232,6 +1315,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Session Handoff Dialog — triggered by ContextMeter or RunSummaryBlock */}
+      {selectedConversationId && selectedWorkspaceId && selectedSessionId && (
+        <SessionHandoffDialog
+          open={showHandoff}
+          onOpenChange={setShowHandoff}
+          conversationId={selectedConversationId}
+          workspaceId={selectedWorkspaceId}
+          sessionId={selectedSessionId}
+        />
+      )}
     </div>
   );
 }

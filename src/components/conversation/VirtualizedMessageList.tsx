@@ -37,6 +37,10 @@ interface VirtualizedMessageListProps {
   onRangeChanged?: (range: ListRange) => void;
   /** When true, suppress followOutput to prevent auto-scroll-to-bottom from fighting plan scroll */
   pendingPlanApproval?: boolean;
+  /** Callbacks for message editing, regeneration, and forking */
+  onEditMessage?: (messageId: string, newContent: string) => void;
+  onRegenerateMessage?: (messageId: string) => void;
+  onForkMessage?: (messageId: string) => void;
 }
 
 export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, VirtualizedMessageListProps>(
@@ -58,6 +62,9 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       initialTopMostItemIndex,
       onRangeChanged,
       pendingPlanApproval,
+      onEditMessage,
+      onRegenerateMessage,
+      onForkMessage,
     },
     ref
   ) {
@@ -88,6 +95,18 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       },
     }));
 
+    // Precompute last user/assistant message indices for edit/regenerate/fork buttons
+    const { lastUserIdx, lastAssistantIdx } = useMemo(() => {
+      let lastU = -1;
+      let lastA = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (lastU === -1 && messages[i].role === 'user') lastU = i;
+        if (lastA === -1 && messages[i].role === 'assistant') lastA = i;
+        if (lastU !== -1 && lastA !== -1) break;
+      }
+      return { lastUserIdx: lastU, lastAssistantIdx: lastA };
+    }, [messages]);
+
     const itemContent = useCallback(
       (index: number, message: Message) => (
         <div className="pl-5 pr-12">
@@ -103,11 +122,17 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
               currentMatchIndex={currentMatchIndex}
               matchOffset={searchMatches.messageOffsets[index] ?? 0}
               hasMatches={messageHasMatches[index] ?? false}
+              onEdit={onEditMessage}
+              onRegenerate={onRegenerateMessage}
+              onFork={onForkMessage}
+              isLastUserMessage={index === lastUserIdx}
+              isLastAssistantMessage={index === lastAssistantIdx}
+              isStreaming={isStreaming}
             />
           </ErrorBoundary>
         </div>
       ),
-      [worktreePath, searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches]
+      [worktreePath, searchQuery, currentMatchIndex, searchMatches.messageOffsets, messageHasMatches, onEditMessage, onRegenerateMessage, onForkMessage, lastUserIdx, lastAssistantIdx, isStreaming]
     );
 
     // Determine follow output behavior: auto-scroll when at bottom.

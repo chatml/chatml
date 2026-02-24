@@ -1149,6 +1149,39 @@ export async function deleteConversation(convId: string): Promise<void> {
   await handleVoidResponse(res, 'Failed to delete conversation');
 }
 
+export async function regenerateMessage(
+  convId: string,
+  messageId: string,
+  content?: string,
+): Promise<{ status: string; truncatedFromPos: number }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/regenerate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId, ...(content !== undefined ? { content } : {}) }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+  return res.json();
+}
+
+export async function forkConversation(
+  convId: string,
+  messageId: string,
+): Promise<ConversationDTO> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/fork`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
+  }
+  return res.json();
+}
+
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/plan-mode`, {
     method: 'POST',

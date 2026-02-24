@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, memo } from 'react';
+import { useAppStore } from '@/stores/appStore';
 import {
   CheckCircle2,
   XCircle,
@@ -20,6 +21,7 @@ import {
   Globe,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ArrowRight,
 } from 'lucide-react';
 import {
   Collapsible,
@@ -154,6 +156,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
   };
 
   return (
+    <div>
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <CollapsibleTrigger
         className={cn(
@@ -400,5 +403,24 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
         </CollapsibleContent>
       )}
     </Collapsible>
+
+    {/* Handoff prompt when a limit was exceeded */}
+    {summary.limitExceeded && (
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">
+          {summary.limitExceeded === 'budget' ? 'Budget' : 'Turn'} limit reached.
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-xs gap-1"
+          onClick={() => useAppStore.getState().setShowSessionHandoff(true)}
+        >
+          <ArrowRight className="w-3 h-3" />
+          Continue in new conversation
+        </Button>
+      </div>
+    )}
+    </div>
   );
 });

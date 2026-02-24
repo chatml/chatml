@@ -1568,6 +1568,33 @@ func (m *Manager) StopConversation(ctx context.Context, convID string) {
 	}
 }
 
+// StopAndWaitConversation stops the agent process and waits for it to fully exit
+// before returning. This prevents races where a caller needs to modify conversation
+// state (e.g. truncating messages) after the agent has stopped writing.
+// The timeout prevents indefinite blocking if the process hangs.
+func (m *Manager) StopAndWaitConversation(ctx context.Context, convID string, timeout time.Duration) {
+	m.mu.Lock()
+	proc, ok := m.convProcesses[convID]
+	m.mu.Unlock()
+
+	// Perform the normal stop (which removes from map and sends signals)
+	m.StopConversation(ctx, convID)
+
+	if !ok || proc == nil {
+		return
+	}
+
+	// Wait for the process to fully exit (output goroutines drain, etc.)
+	select {
+	case <-proc.Done():
+		// Process exited cleanly
+	case <-time.After(timeout):
+		logger.Manager.Warnf("Timed out waiting for process to exit for conv %s after %v", convID, timeout)
+	case <-ctx.Done():
+		// Request context cancelled
+	}
+}
+
 // CompleteConversation marks a conversation as completed
 func (m *Manager) CompleteConversation(ctx context.Context, convID string) {
 	m.StopConversation(ctx, convID)

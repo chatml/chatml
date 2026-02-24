@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import type { WSEvent, AgentEvent, AgentTodoItem, UserQuestion, ReviewComment, TokenUsage, ModelUsageInfo, McpServerStatus } from '@/lib/types';
+import { createStreamingBatcher, type StreamingBatcher } from '@/hooks/useStreamingBatcher';
 
 import {
   WEBSOCKET_RECONNECT_BASE_DELAY_MS,
@@ -208,6 +209,25 @@ function getWsUrl(): string {
   return process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9876/ws';
 }
 
+// Events that are buffered by the streaming batcher and should NOT trigger a force-flush.
+// All other conversation events force-flush pending text/thinking before processing.
+const BATCHABLE_EVENTS = new Set([
+  'assistant_text', 'thinking_delta', 'thinking_start', 'thinking',
+  // Low-frequency informational events that don't depend on streaming text state
+  'name_suggestion', 'input_suggestion', 'context_usage', 'context_window_size',
+  'todo_update', 'tool_progress', 'agent_notification', 'warning',
+  'hook_pre_tool', 'hook_post_tool', 'hook_response', 'hook_tool_failure',
+  'session_started', 'session_ended', 'session_id_update',
+  'auth_status', 'status_update', 'agent_stderr', 'json_parse_error',
+  'agent_stop', 'pre_compact', 'model_changed', 'supported_models',
+  'supported_commands', 'mcp_status', 'account_info',
+  'subagent_started', 'subagent_stopped', 'subagent_output', 'subagent_usage',
+  'user_question_request', 'user_question_timeout', 'user_question_cancelled',
+  'permission_mode_changed', 'plan_approval_request', 'plan_mode_auto_exited',
+  'streaming_warning', 'summary_updated', 'checkpoint_created', 'files_rewound',
+  'ghost_text',
+]);
+
 export function useWebSocket(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -224,6 +244,26 @@ export function useWebSocket(enabled: boolean = true) {
   // Access store actions via getState() to avoid subscribing to all state changes.
   // Actions are stable references so this is safe and avoids re-renders on every store update.
   const getStore = useAppStore.getState;
+
+  // Streaming batcher: accumulates assistant_text and thinking_delta events,
+  // flushing to the store once per animation frame (~16ms) instead of per-event.
+  // Reduces store updates from 60+/sec to ~10/sec during fast streaming.
+  const batcherRef = useRef<StreamingBatcher | null>(null);
+  if (!batcherRef.current) {
+    batcherRef.current = createStreamingBatcher(
+      // onFlushText: batch all side-effects that accompany assistant_text
+      (convId, text) => {
+        const s = useAppStore.getState();
+        s.setThinking(convId, false);
+        s.appendStreamingText(convId, text);
+        s.clearInputSuggestion(convId);
+      },
+      // onFlushThinking: simple append
+      (convId, text) => {
+        useAppStore.getState().appendThinkingText(convId, text);
+      },
+    );
+  }
 
   // Map backend status to frontend session status
   const mapStatus = (status: string): 'active' | 'idle' | 'done' | 'error' => {
@@ -248,6 +288,14 @@ export function useWebSocket(enabled: boolean = true) {
     }
 
     const store = getStore();
+    const batcher = batcherRef.current!;
+
+    // Force-flush any buffered text/thinking before events that depend on
+    // up-to-date store state (tool boundaries, turn ends, errors, etc.).
+    // No-op when buffers are empty, so safe to call unconditionally.
+    if (!BATCHABLE_EVENTS.has(data.type)) {
+      batcher.flush();
+    }
 
     // Handle conversation_status separately - it uses a string payload
     if (data.type === 'conversation_status') {
@@ -266,6 +314,20 @@ export function useWebSocket(enabled: boolean = true) {
         }
       } else {
         console.warn('Invalid conversation status payload:', data.payload);
+      }
+      return;
+    }
+
+    // Handle conversation_truncated (from regenerate/edit)
+    if (data.type === 'conversation_truncated') {
+      const payload = data.payload as { fromPosition?: number; keepMessageId?: string } | undefined;
+      if (payload) {
+        store.truncateMessagesFrom(conversationId, payload.fromPosition ?? 0, payload.keepMessageId);
+        // Clear streaming state since the agent will restart fresh
+        store.clearStreamingText(conversationId);
+        store.clearActiveTools(conversationId);
+        store.clearThinking(conversationId);
+        store.clearSubAgents(conversationId);
       }
       return;
     }
@@ -304,6 +366,8 @@ export function useWebSocket(enabled: boolean = true) {
           store.clearThinking(conversationId);
           store.clearSubAgents(conversationId);
         }
+        // Clear recovery state — the agent recovered successfully
+        store.clearAgentRecovery(conversationId);
         // Clear stale input suggestions from the previous turn
         store.clearInputSuggestion(conversationId);
         // Capture budget/thinking configuration from init event (per-conversation)
@@ -347,12 +411,11 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'assistant_text':
-        // Append streaming text - mark thinking as done but preserve content
+        // Buffer text for batched store update (flushed once per animation frame).
+        // Side-effects (setThinking(false), clearInputSuggestion) are deferred to
+        // flush time — the 16ms delay is imperceptible and avoids N*3 store updates.
         if (event?.content) {
-          store.setThinking(conversationId, false);
-          store.appendStreamingText(conversationId, event.content);
-          // Clear input suggestions when new turn starts streaming
-          store.clearInputSuggestion(conversationId);
+          batcher.batchText(conversationId, event.content);
         }
         break;
 
@@ -362,9 +425,9 @@ export function useWebSocket(enabled: boolean = true) {
         break;
 
       case 'thinking_delta':
-        // Append thinking text
+        // Buffer thinking text for batched store update
         if (event?.content) {
-          store.appendThinkingText(conversationId, event.content);
+          batcher.batchThinking(conversationId, event.content);
         }
         break;
 
@@ -977,10 +1040,13 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'session_recovering':
         // CLI process crashed — agent-runner is auto-recovering.
-        // No UI change needed: streaming indicator keeps spinning.
-        // The 'init' event from the recovered session clears stale state.
-        // If all retries fail, the 'error' event handles it normally.
-        console.warn(`Session recovering for ${conversationId} (attempt ${event.attempt}/${event.maxAttempts})`);
+        // Show recovery banner. The 'init' event from the recovered
+        // session clears the state. If all retries fail, 'error' handles it.
+        store.setAgentRecovering(
+          conversationId,
+          typeof event.attempt === 'number' ? event.attempt : 1,
+          typeof event.maxAttempts === 'number' ? event.maxAttempts : 3,
+        );
         break;
 
       case 'warning':
@@ -1559,6 +1625,8 @@ export function useWebSocket(enabled: boolean = true) {
         clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
+      // Tear down the streaming batcher to cancel any pending animation frame
+      batcherRef.current?.destroy();
     };
   }, [enabled, connect]);
 
