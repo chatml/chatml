@@ -10,6 +10,7 @@ import {
   useFileTabState,
   usePageActions,
   useMessages,
+  useTerminalPanelVisible,
 } from '@/stores/selectors';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix, applyWorkspaceOrder } from '@/stores/settingsStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -224,15 +225,12 @@ export default function Home() {
   const contentView = useSettingsStore((s) => s.contentView);
   const { error: showError } = useToast();
   const {
-    showBottomTerminal, setShowBottomTerminal,
     zenMode, setZenMode,
     layoutOuter, setLayoutOuter,
     layoutInner, setLayoutInner,
     layoutVertical, setLayoutVertical,
     resetLayouts,
   } = useSettingsStore(useShallow((s) => ({
-    showBottomTerminal: s.showBottomTerminal,
-    setShowBottomTerminal: s.setShowBottomTerminal,
     zenMode: s.zenMode,
     setZenMode: s.setZenMode,
     layoutOuter: s.layoutOuter,
@@ -245,29 +243,16 @@ export default function Home() {
   })));
 
   const toggleBottomTerminal = useCallback(() => {
-    const panel = bottomTerminalPanelRef.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) {
-      panel.expand();
-    } else {
-      panel.collapse();
-    }
+    const { selectedSessionId: sid } = useAppStore.getState();
+    if (!sid) return;
+    const current = useAppStore.getState().terminalPanelVisible[sid] ?? false;
+    useAppStore.getState().setTerminalPanelVisible(sid, !current);
   }, []);
 
   const hideBottomTerminal = useCallback(() => {
-    bottomTerminalPanelRef.current?.collapse();
-  }, []);
-
-  // Sync bottom terminal panel collapse state on mount from persisted setting
-  // useLayoutEffect to prevent flash of expanded panel before collapsing
-  useLayoutEffect(() => {
-    const panel = bottomTerminalPanelRef.current;
-    if (!panel) return;
-    if (!showBottomTerminal && !panel.isCollapsed()) {
-      panel.collapse();
-    }
-    // Only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const { selectedSessionId: sid } = useAppStore.getState();
+    if (!sid) return;
+    useAppStore.getState().setTerminalPanelVisible(sid, false);
   }, []);
 
   // Determine if we're in a Full Content view (not conversation)
@@ -460,6 +445,21 @@ export default function Home() {
   const conversationMessages = useMessages(selectedConversationId);
   const selectNextTab = useAppStore((s) => s.selectNextTab);
   const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
+
+  // Per-session terminal panel visibility (hidden by default, not persisted across restarts)
+  const showBottomTerminal = useTerminalPanelVisible(selectedSessionId);
+  const setTerminalPanelVisible = useAppStore((s) => s.setTerminalPanelVisible);
+
+  // Sync bottom terminal panel collapse/expand state when session changes
+  useLayoutEffect(() => {
+    const panel = bottomTerminalPanelRef.current;
+    if (!panel) return;
+    if (showBottomTerminal && panel.isCollapsed()) {
+      panel.expand();
+    } else if (!showBottomTerminal && !panel.isCollapsed()) {
+      panel.collapse();
+    }
+  }, [showBottomTerminal]);
 
   const expandWorkspace = useSettingsStore((s) => s.expandWorkspace);
   const { showWizard, showGuidedTour, completeWizard, completeTour, skipAll } = useOnboarding();
@@ -1411,7 +1411,9 @@ export default function Home() {
     const handleToggleRightPanel = () => toggleRightSidebar();
     const handleToggleBottomPanel = () => toggleBottomTerminal();
     const handleShowBottomPanel = () => {
-      bottomTerminalPanelRef.current?.expand();
+      const { selectedSessionId: sid } = useAppStore.getState();
+      if (!sid) return;
+      useAppStore.getState().setTerminalPanelVisible(sid, true);
     };
     const handleOpenInVSCode = () => {
       const { selectedSessionId, sessions } = useAppStore.getState();
@@ -1448,7 +1450,7 @@ export default function Home() {
       window.removeEventListener('show-bottom-panel', handleShowBottomPanel);
       window.removeEventListener('open-in-vscode', handleOpenInVSCode);
     };
-  }, [handleNewSession, handleNewConversation, resolvedTheme, setTheme, toggleLeftSidebar, toggleRightSidebar, toggleBottomTerminal, setShowBottomTerminal]);
+  }, [handleNewSession, handleNewConversation, resolvedTheme, setTheme, toggleLeftSidebar, toggleRightSidebar, toggleBottomTerminal]);
 
   // Don't render anything until client-side mounted - prevents hydration flash
   // Body background (set by ThemeScript) shows through
@@ -1657,10 +1659,11 @@ export default function Home() {
                       collapsedSize={0}
                       onResize={(size) => {
                         const collapsed = size.asPercentage === 0;
+                        if (!selectedSessionId) return;
                         if (collapsed && showBottomTerminal) {
-                          setShowBottomTerminal(false);
+                          setTerminalPanelVisible(selectedSessionId, false);
                         } else if (!collapsed && !showBottomTerminal) {
-                          setShowBottomTerminal(true);
+                          setTerminalPanelVisible(selectedSessionId, true);
                         }
                       }}
                     >

@@ -289,6 +289,13 @@ export const useAllTerminalInstances = () =>
     }))
   );
 
+/**
+ * Terminal panel visibility for a specific session.
+ * Returns false (collapsed) by default — panels start hidden.
+ */
+export const useTerminalPanelVisible = (sessionId: string | null) =>
+  useAppStore((s) => (sessionId ? s.terminalPanelVisible[sessionId] ?? false : false));
+
 // ============================================================================
 // Todo State
 // ============================================================================
