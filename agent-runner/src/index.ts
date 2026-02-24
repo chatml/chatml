@@ -830,7 +830,15 @@ function buildUserMessage(msg: QueuedMessage): SDKUserMessage {
 let blockBuffer = "";
 const BLOCK_BUFFER_MAX_SIZE = 4096; // Flush even without paragraph break to ensure progressive rendering
 
+// Track whether the current (parent) turn produced any assistant_text events.
+// Used to detect local commands (like /release-notes) whose output only appears
+// in the result message's `result` field, not as streamed text.
+// Only set by parent-session stream events (sub-agent streams are filtered at
+// the isSubAgentMessage guard), so sub-agents cannot interfere with this flag.
+let parentTurnHadAssistantText = false;
+
 function processTextChunk(text: string): void {
+  parentTurnHadAssistantText = true;
   blockBuffer += text;
 
   // Emit complete blocks (separated by double newlines)
@@ -1665,6 +1673,7 @@ async function main(): Promise<void> {
 
           // Reset per-turn state
           blockBuffer = "";
+          parentTurnHadAssistantText = false;
           resetRunStats();
 
           // Update workspace context with current session ID if it changed.
@@ -2065,13 +2074,22 @@ function handleMessage(message: SDKMessage): void {
         break;
       }
 
-      flushBlockBuffer();
       // Extend SDK type with fields that may not yet be in the published type definitions
       const resultMsg = message as SDKResultMessage & {
         checkpoint_uuid?: string;
         message_index?: number;
         permission_denials?: Array<{ tool_name: string; tool_use_id: string; tool_input: unknown }>;
       };
+
+      // If the turn produced no streamed text but the result has content,
+      // this was a local command (e.g. /release-notes). Route through
+      // processTextChunk so the text gets proper block-buffered paragraph
+      // splitting, then flush — consistent with normal streamed output.
+      if (!parentTurnHadAssistantText && resultMsg.subtype === "success" && resultMsg.result) {
+        processTextChunk(resultMsg.result);
+      }
+
+      flushBlockBuffer();
 
       // Check for checkpoint_uuid in result messages (present when checkpointing is enabled)
       if (resultMsg.checkpoint_uuid) {
