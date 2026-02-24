@@ -21,7 +21,7 @@ export function RecentSessions({ sessions, workspaces, workspaceColors }: Recent
       {sessions.length === 0 ? (
         <p className="text-sm text-muted-foreground">No sessions yet</p>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-1">
           {sessions.map((session) => (
             <RecentSessionItem
               key={session.id}
