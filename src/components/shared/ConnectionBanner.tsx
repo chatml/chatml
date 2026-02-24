@@ -1,19 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { WifiOff, RefreshCw, Loader2 } from 'lucide-react';
+import { WifiOff, RefreshCw, Loader2, ServerCrash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { WEBSOCKET_DISCONNECT_GRACE_MS } from '@/lib/constants';
 
 interface ConnectionBannerProps {
   onReconnect: () => void;
+  onManualSidecarRestart?: () => void;
 }
 
-export function ConnectionBanner({ onReconnect }: ConnectionBannerProps) {
+export function ConnectionBanner({ onReconnect, onManualSidecarRestart }: ConnectionBannerProps) {
   const status = useConnectionStore((s) => s.status);
   const attempt = useConnectionStore((s) => s.reconnectAttempt);
   const lastDisconnectedAt = useConnectionStore((s) => s.lastDisconnectedAt);
+  const sidecarState = useConnectionStore((s) => s.sidecarState);
+  const sidecarRestartAttempt = useConnectionStore((s) => s.sidecarRestartAttempt);
+  const sidecarMaxRestartAttempts = useConnectionStore((s) => s.sidecarMaxRestartAttempts);
   const [gracePeriodElapsed, setGracePeriodElapsed] = useState(false);
 
   useEffect(() => {
@@ -50,6 +54,50 @@ export function ConnectionBanner({ onReconnect }: ConnectionBannerProps) {
     return () => clearTimeout(timer);
   }, [status, lastDisconnectedAt, gracePeriodElapsed]);
 
+  // Sidecar restarting banner — shown immediately (no grace period)
+  if (sidecarState === 'restarting') {
+    return (
+      <div className="bg-warning/10 border-b border-warning/20 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 text-warning animate-spin shrink-0" />
+          <span className="text-sm">
+            Backend restarting
+            <span className="text-muted-foreground ml-1">
+              (attempt {sidecarRestartAttempt}/{sidecarMaxRestartAttempts})...
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Sidecar failed banner — all restart attempts exhausted
+  if (sidecarState === 'failed') {
+    return (
+      <div className="bg-destructive/10 border-b border-destructive/20 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <ServerCrash className="h-4 w-4 text-destructive shrink-0" />
+          <span className="text-sm">
+            Backend failed to restart.
+          </span>
+          <div className="flex-1" />
+          {onManualSidecarRestart && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-6 text-xs gap-1.5 px-2"
+              onClick={onManualSidecarRestart}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Restart Manually
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Standard WebSocket disconnect banner (with grace period)
   const isDisconnected = status !== 'connected';
   const visible = isDisconnected && gracePeriodElapsed;
 

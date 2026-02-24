@@ -13,6 +13,10 @@ pub struct AppState {
     pub auth_token: Mutex<Option<String>>,
     /// Pending OAuth callback URL (set by deep link handler, consumed by frontend)
     pub pending_oauth_callback: Mutex<Option<String>>,
+    /// Number of auto-restart attempts since last successful connection
+    pub restart_attempts: Mutex<u32>,
+    /// Whether an auto-restart is currently in progress
+    pub restart_in_progress: AtomicBool,
 }
 
 impl Default for AppState {
@@ -29,6 +33,8 @@ impl AppState {
             sidecar_port: Mutex::new(None),
             auth_token: Mutex::new(None),
             pending_oauth_callback: Mutex::new(None),
+            restart_attempts: Mutex::new(0),
+            restart_in_progress: AtomicBool::new(false),
         }
     }
 
@@ -140,6 +146,68 @@ impl AppState {
                 None
             }
         }
+    }
+
+    /// Get the current number of restart attempts (used in tests)
+    #[cfg(test)]
+    pub fn get_restart_attempts(&self) -> u32 {
+        match self.restart_attempts.lock() {
+            Ok(guard) => *guard,
+            Err(e) => {
+                log::warn!("restart_attempts mutex poisoned: {}", e);
+                0
+            }
+        }
+    }
+
+    /// Atomically check if attempts < max, and if so increment and return Some(new_attempt).
+    /// Returns None if the limit has been reached. This avoids a TOCTOU race between
+    /// checking the count and incrementing it.
+    pub fn try_increment_restart_attempts(&self, max: u32) -> Option<u32> {
+        match self.restart_attempts.lock() {
+            Ok(mut guard) => {
+                if *guard >= max {
+                    return None;
+                }
+                *guard += 1;
+                log::info!("Sidecar restart attempt: {}", *guard);
+                Some(*guard)
+            }
+            Err(e) => {
+                log::warn!("restart_attempts mutex poisoned: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Reset the restart attempt counter (called after successful recovery)
+    pub fn reset_restart_attempts(&self) {
+        match self.restart_attempts.lock() {
+            Ok(mut guard) => {
+                *guard = 0;
+            }
+            Err(e) => log::warn!("restart_attempts mutex poisoned: {}", e),
+        }
+    }
+
+    /// Atomically try to claim the restart-in-progress flag.
+    /// Returns true if successfully claimed (was false, now true).
+    /// Returns false if a restart is already in progress.
+    pub fn try_claim_restart(&self) -> bool {
+        self.restart_in_progress
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
+    /// Clear the restart-in-progress flag
+    pub fn clear_restart_in_progress(&self) {
+        self.restart_in_progress.store(false, Ordering::SeqCst);
+    }
+
+    /// Check if a restart is currently in progress (used in tests)
+    #[cfg(test)]
+    pub fn is_restart_in_progress(&self) -> bool {
+        self.restart_in_progress.load(Ordering::SeqCst)
     }
 }
 
@@ -270,5 +338,58 @@ mod tests {
 
         state.set_sidecar_port(9877);
         assert_eq!(state.get_sidecar_port(), Some(9877));
+    }
+
+    #[test]
+    fn test_restart_attempts_initial_value() {
+        let state = AppState::new();
+        assert_eq!(state.get_restart_attempts(), 0);
+    }
+
+    #[test]
+    fn test_try_increment_restart_attempts() {
+        let state = AppState::new();
+
+        assert_eq!(state.try_increment_restart_attempts(3), Some(1));
+        assert_eq!(state.try_increment_restart_attempts(3), Some(2));
+        assert_eq!(state.try_increment_restart_attempts(3), Some(3));
+        // Now at max — should return None
+        assert_eq!(state.try_increment_restart_attempts(3), None);
+        assert_eq!(state.get_restart_attempts(), 3);
+    }
+
+    #[test]
+    fn test_restart_attempts_reset() {
+        let state = AppState::new();
+
+        state.try_increment_restart_attempts(3);
+        state.try_increment_restart_attempts(3);
+        assert_eq!(state.get_restart_attempts(), 2);
+
+        state.reset_restart_attempts();
+        assert_eq!(state.get_restart_attempts(), 0);
+    }
+
+    #[test]
+    fn test_restart_in_progress_initial_value() {
+        let state = AppState::new();
+        assert!(!state.is_restart_in_progress());
+    }
+
+    #[test]
+    fn test_try_claim_restart() {
+        let state = AppState::new();
+
+        // First claim succeeds
+        assert!(state.try_claim_restart());
+        assert!(state.is_restart_in_progress());
+
+        // Second claim fails (already in progress)
+        assert!(!state.try_claim_restart());
+
+        // After clearing, claim succeeds again
+        state.clear_restart_in_progress();
+        assert!(!state.is_restart_in_progress());
+        assert!(state.try_claim_restart());
     }
 }
