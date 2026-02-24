@@ -278,15 +278,42 @@ export const useSlashCommandStore = create<SlashCommandStoreState>((set, get) =>
 
   setInstalledSkills: (skills) => { _commandCache = null; set({ installedSkills: skills }); },
   setUserCommands: (commands) => { _commandCache = null; set({ userCommands: commands }); },
-  setSdkCommands: (commands) => { _commandCache = null; set({ sdkCommands: commands }); },
+  setSdkCommands: (commands) => {
+    // Merge with existing list so a late init event doesn't clobber
+    // enriched data from setSdkCommandsRich.
+    const { sdkCommands: existing } = get();
+    const seen = new Set(commands);
+    const merged = [...commands];
+    for (const name of existing) {
+      if (!seen.has(name)) {
+        merged.push(name);
+      }
+    }
+    _commandCache = null;
+    set({ sdkCommands: merged });
+  },
   setSdkCommandsRich: (commands) => {
-    const names = commands.map((c) => c.name);
-    const meta: Record<string, SdkCommandInfo> = {};
+    const { sdkCommands: existing, sdkCommandMeta: existingMeta } = get();
+
+    // Build merged set: new commands first, then any init-reported commands
+    // not present in the new set. This preserves plugin commands from init
+    // even if supportedCommands() returns a smaller set.
+    const newNames = new Set(commands.map((c) => c.name));
+    const merged = [...newNames];
+    for (const name of existing) {
+      if (!newNames.has(name)) {
+        merged.push(name);
+      }
+    }
+
+    // Merge metadata (new commands enrich, existing preserved)
+    const meta: Record<string, SdkCommandInfo> = { ...existingMeta };
     for (const c of commands) {
       meta[c.name] = c;
     }
+
     _commandCache = null;
-    set({ sdkCommands: names, sdkCommandMeta: meta });
+    set({ sdkCommands: merged, sdkCommandMeta: meta });
   },
 
   fetchUserCommands: async (workspaceId, sessionId) => {
