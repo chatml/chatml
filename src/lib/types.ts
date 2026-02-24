@@ -396,6 +396,13 @@ export interface AgentEvent {
   // Stderr data
   data?: string;
 
+  // Permission denials (tools denied during this turn)
+  permissionDenials?: PermissionDenial[];
+
+  // MCP server event fields (mcp_server_reconnected, mcp_server_toggled)
+  serverName?: string;
+  enabled?: boolean;
+
   // Checkpoint fields
   checkpointUuid?: string;
   messageIndex?: number;
