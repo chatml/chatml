@@ -1,6 +1,6 @@
 'use client';
 
-import { Folder, Globe, Plus, GitBranch } from 'lucide-react';
+import { FolderOpen, Globe, Plus, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QuickActionsProps {
@@ -12,10 +12,35 @@ interface QuickActionsProps {
 }
 
 const ACTION_CARDS = [
-  { icon: Folder, label: 'Open project', key: 'open' },
-  { icon: Globe, label: 'Clone from URL', key: 'clone' },
-  { icon: Plus, label: 'New session', key: 'new-session', requiresWorkspace: true },
-  { icon: GitBranch, label: 'From PR/Branch', key: 'from-pr' },
+  {
+    icon: Plus,
+    label: 'New session',
+    key: 'new-session',
+    requiresWorkspace: true,
+    bgClass: 'bg-primary/10 dark:bg-primary/15',
+    iconClass: 'text-primary',
+  },
+  {
+    icon: FolderOpen,
+    label: 'Open project',
+    key: 'open',
+    bgClass: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+    iconClass: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    icon: Globe,
+    label: 'Clone repo',
+    key: 'clone',
+    bgClass: 'bg-blue-500/10 dark:bg-blue-500/15',
+    iconClass: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    icon: GitBranch,
+    label: 'From PR',
+    key: 'from-pr',
+    bgClass: 'bg-purple-500/10 dark:bg-purple-500/15',
+    iconClass: 'text-purple-600 dark:text-purple-400',
+  },
 ] as const;
 
 export function QuickActions({
@@ -43,8 +68,8 @@ export function QuickActions({
   };
 
   return (
-    <div className="flex gap-3 flex-wrap justify-center">
-      {ACTION_CARDS.map(({ icon: Icon, label, key, ...rest }) => {
+    <div className="grid grid-cols-4 gap-6">
+      {ACTION_CARDS.map(({ icon: Icon, label, key, bgClass, iconClass, ...rest }) => {
         const disabled = 'requiresWorkspace' in rest && rest.requiresWorkspace && !hasWorkspace;
         return (
           <button
@@ -52,21 +77,29 @@ export function QuickActions({
             onClick={() => !disabled && handleCardClick(key)}
             disabled={disabled}
             className={cn(
-              'group flex flex-col w-36 h-24 p-4 rounded-xl border border-border/50 bg-card/50 transition-all duration-200',
-              disabled
-                ? 'opacity-40 cursor-not-allowed'
-                : 'hover:bg-card hover:border-border cursor-pointer'
+              'group flex flex-col items-center gap-3 py-2 transition-all duration-200',
+              disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             )}
             {...(key === 'open' ? { 'data-tour-target': 'add-workspace' } : {})}
           >
-            <Icon className={cn(
-              'h-5 w-5 text-muted-foreground transition-colors',
-              !disabled && 'group-hover:text-foreground'
-            )} />
-            <span className={cn(
-              'mt-auto text-sm text-muted-foreground transition-colors',
-              !disabled && 'group-hover:text-foreground'
-            )}>
+            {/* Icon container */}
+            <div
+              className={cn(
+                'w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-200',
+                bgClass,
+                !disabled && 'group-hover:scale-[1.08] group-active:scale-[0.95]'
+              )}
+            >
+              <Icon className={cn('size-7', iconClass)} />
+            </div>
+
+            {/* Label */}
+            <span
+              className={cn(
+                'text-xs font-medium text-muted-foreground transition-colors duration-200',
+                !disabled && 'group-hover:text-foreground'
+              )}
+            >
               {label}
             </span>
           </button>
