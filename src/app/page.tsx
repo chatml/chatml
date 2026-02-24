@@ -642,12 +642,15 @@ export default function Home() {
                           collapsible={true}
                           collapsedSize={0}
                           onResize={(size) => {
+                            // Only sync manual drag-to-collapse → store.
+                            // Expansion is driven by user actions (toggle/show) that update the store directly;
+                            // useLayoutEffect then calls panel.expand(). Never set visible here — it races
+                            // with mount/remount (defaultSize="250px" fires onResize before the layout effect
+                            // can collapse the panel).
                             const collapsed = size.asPercentage === 0;
                             if (!layout.selectedSessionId) return;
                             if (collapsed && layout.showBottomTerminal) {
                               layout.setTerminalPanelVisible(layout.selectedSessionId, false);
-                            } else if (!collapsed && !layout.showBottomTerminal) {
-                              layout.setTerminalPanelVisible(layout.selectedSessionId, true);
                             }
                           }}
                         >
@@ -682,12 +685,7 @@ export default function Home() {
                       collapsedSize={0}
                       onResize={(size) => {
                         const collapsed = size.asPercentage === 0;
-                        if (!layout.selectedSessionId) return;
-                        if (collapsed && layout.showBottomTerminal) {
-                          layout.setTerminalPanelVisible(layout.selectedSessionId, false);
-                        } else if (!collapsed && !layout.showBottomTerminal) {
-                          layout.setTerminalPanelVisible(layout.selectedSessionId, true);
-                        }
+                        layout.setRightSidebarCollapsed((prev) => prev === collapsed ? prev : collapsed);
                       }}
                       className={cn(
                         "overflow-hidden bg-content-background dark:bg-transparent",
