@@ -8,17 +8,6 @@ import (
 	"time"
 )
 
-// claudeCodeCredentials represents the JSON structure stored in the macOS Keychain
-// under the "Claude Code-credentials" service.
-type claudeCodeCredentials struct {
-	ClaudeAiOAuth *claudeOAuth `json:"claudeAiOauth"`
-}
-
-type claudeOAuth struct {
-	AccessToken string `json:"accessToken"`
-	ExpiresAt   int64  `json:"expiresAt"` // Unix milliseconds
-}
-
 // ReadClaudeCodeOAuthToken reads the Claude Code OAuth access token from the macOS Keychain.
 // Returns the token string or an error. Returns an error if no token is found or it has expired.
 func ReadClaudeCodeOAuthToken() (string, error) {

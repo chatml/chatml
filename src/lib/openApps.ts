@@ -1,16 +1,21 @@
+import { getPlatformKey, type PlatformKey } from './platform';
+
 export type AppCategory = 'editor' | 'terminal' | 'file-manager';
+
+export interface PlatformAppDef {
+  /** Paths to check for app installation */
+  paths: string[];
+  /** CLI command name (if available in PATH) */
+  cli?: string;
+  /** Display name for the app (used in fallback app-open commands) */
+  appName?: string;
+}
 
 export interface AppDefinition {
   id: string;
   name: string;
   category: AppCategory;
-  platforms: {
-    darwin?: {
-      bundlePaths: string[];
-      cli?: string;
-      appName?: string;
-    };
-  };
+  platforms: Partial<Record<PlatformKey, PlatformAppDef>>;
 }
 
 export const APP_REGISTRY: AppDefinition[] = [
@@ -21,9 +26,17 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Visual Studio Code.app'],
+        paths: ['/Applications/Visual Studio Code.app'],
         cli: 'code',
         appName: 'Visual Studio Code',
+      },
+      linux: {
+        paths: ['/usr/bin/code', '/usr/share/code/code', '/snap/bin/code'],
+        cli: 'code',
+      },
+      windows: {
+        paths: ['C:\\Program Files\\Microsoft VS Code\\Code.exe'],
+        cli: 'code',
       },
     },
   },
@@ -33,9 +46,17 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Cursor.app'],
+        paths: ['/Applications/Cursor.app'],
         cli: 'cursor',
         appName: 'Cursor',
+      },
+      linux: {
+        paths: ['/usr/bin/cursor', '/opt/Cursor/cursor'],
+        cli: 'cursor',
+      },
+      windows: {
+        paths: ['C:\\Program Files\\Cursor\\Cursor.exe'],
+        cli: 'cursor',
       },
     },
   },
@@ -45,9 +66,13 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Zed.app'],
+        paths: ['/Applications/Zed.app'],
         cli: 'zed',
         appName: 'Zed',
+      },
+      linux: {
+        paths: ['/usr/bin/zed', '/usr/local/bin/zed'],
+        cli: 'zed',
       },
     },
   },
@@ -57,9 +82,17 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Windsurf.app'],
+        paths: ['/Applications/Windsurf.app'],
         cli: 'windsurf',
         appName: 'Windsurf',
+      },
+      linux: {
+        paths: ['/usr/bin/windsurf'],
+        cli: 'windsurf',
+      },
+      windows: {
+        paths: ['C:\\Program Files\\Windsurf\\Windsurf.exe'],
+        cli: 'windsurf',
       },
     },
   },
@@ -69,7 +102,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Antigravity.app'],
+        paths: ['/Applications/Antigravity.app'],
         appName: 'Antigravity',
       },
     },
@@ -80,7 +113,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Xcode.app'],
+        paths: ['/Applications/Xcode.app'],
         appName: 'Xcode',
       },
     },
@@ -91,9 +124,17 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'editor',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Sublime Text.app'],
+        paths: ['/Applications/Sublime Text.app'],
         cli: 'subl',
         appName: 'Sublime Text',
+      },
+      linux: {
+        paths: ['/usr/bin/subl', '/opt/sublime_text/sublime_text'],
+        cli: 'subl',
+      },
+      windows: {
+        paths: ['C:\\Program Files\\Sublime Text\\sublime_text.exe'],
+        cli: 'subl',
       },
     },
   },
@@ -104,8 +145,15 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'terminal',
     platforms: {
       darwin: {
-        bundlePaths: ['/System/Applications/Utilities/Terminal.app'],
+        paths: ['/System/Applications/Utilities/Terminal.app'],
         appName: 'Terminal',
+      },
+      linux: {
+        paths: ['/usr/bin/gnome-terminal', '/usr/bin/konsole', '/usr/bin/xfce4-terminal'],
+      },
+      windows: {
+        paths: ['C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'],
+        appName: 'PowerShell',
       },
     },
   },
@@ -115,7 +163,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'terminal',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/iTerm.app'],
+        paths: ['/Applications/iTerm.app'],
         appName: 'iTerm',
       },
     },
@@ -126,7 +174,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'terminal',
     platforms: {
       darwin: {
-        bundlePaths: ['/Applications/Warp.app'],
+        paths: ['/Applications/Warp.app'],
         appName: 'Warp',
       },
     },
@@ -138,8 +186,29 @@ export const APP_REGISTRY: AppDefinition[] = [
     category: 'file-manager',
     platforms: {
       darwin: {
-        bundlePaths: ['/System/Library/CoreServices/Finder.app'],
+        paths: ['/System/Library/CoreServices/Finder.app'],
         appName: 'Finder',
+      },
+    },
+  },
+  {
+    id: 'explorer',
+    name: 'File Explorer',
+    category: 'file-manager',
+    platforms: {
+      windows: {
+        paths: ['C:\\Windows\\explorer.exe'],
+        appName: 'Explorer',
+      },
+    },
+  },
+  {
+    id: 'nautilus',
+    name: 'Files',
+    category: 'file-manager',
+    platforms: {
+      linux: {
+        paths: ['/usr/bin/nautilus', '/usr/bin/dolphin', '/usr/bin/thunar'],
       },
     },
   },
@@ -156,11 +225,30 @@ export function getAppById(id: string): AppDefinition | undefined {
 }
 
 /**
+ * Get the platform-specific definition for an app on the current platform.
+ */
+export function getAppPlatformDef(app: AppDefinition): PlatformAppDef | undefined {
+  return app.platforms[getPlatformKey()];
+}
+
+/**
+ * Get the display name for an app on the current platform.
+ */
+export function getAppName(app: AppDefinition): string | undefined {
+  return getAppPlatformDef(app)?.appName;
+}
+
+/**
  * Build the (appId, paths[]) pairs to send to the Rust detection command.
+ * Only includes apps that have definitions for the current platform.
  */
 export function getDetectionPairs(): [string, string[]][] {
-  return APP_REGISTRY.map((app) => {
-    const paths = app.platforms.darwin?.bundlePaths ?? [];
-    return [app.id, paths];
-  });
+  const platform = getPlatformKey();
+  return APP_REGISTRY
+    .map((app) => {
+      const def = app.platforms[platform];
+      const paths = def?.paths ?? [];
+      return [app.id, paths] as [string, string[]];
+    })
+    .filter(([, paths]) => paths.length > 0);
 }

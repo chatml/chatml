@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/lib/platform';
 import { useMainToolbarContent } from '@/hooks/useMainToolbarContent';
 import { GeneralSettings } from './sections/GeneralSettings';
 import { AppearanceSettings } from './sections/AppearanceSettings';
@@ -159,8 +160,8 @@ export function SettingsPage({ onBack, initialCategory = 'general' }: SettingsPa
     <div className="flex h-full bg-content-background">
       {/* Settings Sidebar */}
       <nav className="w-56 border-r bg-sidebar flex flex-col" role="navigation" aria-label="Settings">
-        {/* Back button - with padding for macOS traffic lights */}
-        <div data-tauri-drag-region className="h-10 pl-20 pr-3 flex items-center border-b shrink-0">
+        {/* Back button - extra padding on macOS for traffic lights */}
+        <div data-tauri-drag-region className={cn("h-10 pr-3 flex items-center border-b shrink-0", isMacOS() ? 'pl-20' : 'pl-3')}>
           <Button
             variant="ghost"
             size="sm"

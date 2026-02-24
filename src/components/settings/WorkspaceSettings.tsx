@@ -38,6 +38,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/lib/platform';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface WorkspaceSettingsProps {
@@ -90,8 +91,8 @@ export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProp
     <div className="flex h-full bg-content-background">
       {/* Left Sidebar */}
       <div className="w-56 border-r bg-sidebar flex flex-col">
-        {/* Back button - with padding for macOS traffic lights */}
-        <div data-tauri-drag-region className="h-10 pl-20 pr-3 flex items-center border-b shrink-0">
+        {/* Back button - extra padding on macOS for traffic lights */}
+        <div data-tauri-drag-region className={cn("h-10 pr-3 flex items-center border-b shrink-0", isMacOS() ? 'pl-20' : 'pl-3')}>
           <Button
             variant="ghost"
             size="sm"

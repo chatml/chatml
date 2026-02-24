@@ -1,10 +1,10 @@
-//go:build !darwin
+//go:build !darwin && !linux && !windows
 
 package ai
 
 import "fmt"
 
-// ReadClaudeCodeOAuthToken is not supported on non-macOS platforms.
+// ReadClaudeCodeOAuthToken is not supported on this platform.
 func ReadClaudeCodeOAuthToken() (string, error) {
-	return "", fmt.Errorf("keychain credential reading is only supported on macOS")
+	return "", fmt.Errorf("keychain credential reading is not supported on this platform")
 }

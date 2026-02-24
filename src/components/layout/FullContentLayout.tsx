@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 import { useUIStore } from '@/stores/uiStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isMacOS } from '@/lib/platform';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +50,7 @@ export function FullContentLayout({
           className={cn(
             'h-10 flex items-center border-b shrink-0 pr-1',
             centerToolbarBg,
-            !showLeftSidebar && 'pl-20'
+            !showLeftSidebar && (isMacOS() ? 'pl-20' : 'pl-2')
           )}
         >
           {/* Title */}

@@ -63,7 +63,7 @@ import { TargetBranchSelector } from '@/components/shared/TargetBranchSelector';
 import { useInstalledApps } from '@/hooks/useInstalledApps';
 import type { InstalledApp } from '@/hooks/useInstalledApps';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { getAppById, CATEGORY_LABELS } from '@/lib/openApps';
+import { getAppById, getAppName, CATEGORY_LABELS } from '@/lib/openApps';
 import type { AppCategory } from '@/lib/openApps';
 import { getAppIcon } from '@/components/icons/AppIcons';
 
@@ -482,7 +482,7 @@ export function SessionToolbarContent() {
                 disabled={!hasWorktree}
                 onClick={() => {
                   if (!selectedSession?.worktreePath || !defaultApp) return;
-                  openInApp(defaultApp.id, selectedSession.worktreePath, defaultApp.platforms.darwin?.appName);
+                  openInApp(defaultApp.id, selectedSession.worktreePath, getAppName(defaultApp));
                 }}
               >
                 {defaultInstalled?.iconBase64 ? (
@@ -521,7 +521,7 @@ export function SessionToolbarContent() {
                             className="w-full text-left rounded-md px-2 py-1.5 hover:bg-accent transition-colors flex items-center gap-2"
                             onClick={() => {
                               if (!selectedSession?.worktreePath) return;
-                              openInApp(app.id, selectedSession.worktreePath, app.platforms.darwin?.appName);
+                              openInApp(app.id, selectedSession.worktreePath, getAppName(app));
                               setOpenAppPopoverOpen(false);
                             }}
                           >

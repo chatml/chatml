@@ -96,6 +96,33 @@ pub fn kill_process_on_port(port: u16) {
             }
         }
     }
+
+    #[cfg(windows)]
+    {
+        if let Ok(output) = Command::new("netstat").args(["-ano"]).output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let port_str = format!(":{} ", port);
+            let port_str_tab = format!(":{}\t", port);
+            for line in stdout.lines() {
+                if (line.contains(&port_str) || line.contains(&port_str_tab))
+                    && line.contains("LISTENING")
+                {
+                    if let Some(pid_str) = line.split_whitespace().last() {
+                        if pid_str.parse::<u32>().is_ok() {
+                            log::info!(
+                                "Killing existing process on port {}: PID {}",
+                                port,
+                                pid_str
+                            );
+                            let _ = Command::new("taskkill")
+                                .args(["/F", "/PID", pid_str])
+                                .output();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Kill the stored sidecar process if it exists
@@ -112,6 +139,13 @@ pub fn kill_stored_sidecar(state: &AppState) {
             std::thread::sleep(Duration::from_millis(2000));
             // Force kill if still running
             let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+        }
+
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output();
         }
     }
 }
@@ -138,13 +172,32 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // In dev builds, isolate the data directory so dev and production don't share state
     #[cfg(debug_assertions)]
     {
-        if let Ok(home) = std::env::var("HOME") {
-            let dev_data_dir = std::path::PathBuf::from(&home)
-                .join("Library")
-                .join("Application Support")
-                .join("ChatML-Dev");
+        let dev_data_dir = if cfg!(target_os = "macos") {
+            std::env::var("HOME").ok().map(|h| {
+                std::path::PathBuf::from(h)
+                    .join("Library")
+                    .join("Application Support")
+                    .join("ChatML-Dev")
+            })
+        } else if cfg!(target_os = "windows") {
+            std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join("ChatML-Dev"))
+        } else {
+            // Linux: XDG_DATA_HOME or ~/.local/share
+            std::env::var("XDG_DATA_HOME")
+                .ok()
+                .or_else(|| {
+                    std::env::var("HOME")
+                        .ok()
+                        .map(|h| format!("{}/.local/share", h))
+                })
+                .map(|b| std::path::PathBuf::from(b).join("ChatML-Dev"))
+        };
+
+        if let Some(dir) = dev_data_dir {
             sidecar_command =
-                sidecar_command.env("CHATML_DATA_DIR", dev_data_dir.to_string_lossy().as_ref());
+                sidecar_command.env("CHATML_DATA_DIR", dir.to_string_lossy().as_ref());
         }
     }
 

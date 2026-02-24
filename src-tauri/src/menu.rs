@@ -5,8 +5,9 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, Submen
 /// Items that require application state (workspace selected, session selected, etc.)
 /// start disabled. The frontend enables them dynamically via the `update_menu_state` command.
 pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    // 1. App menu (macOS only shows this as the app name)
-    let app_menu = SubmenuBuilder::new(app, "ChatML")
+    // 1. App menu (macOS shows as the app name; on other platforms it's a regular menu)
+    #[allow(unused_mut)]
+    let mut app_menu_builder = SubmenuBuilder::new(app, "ChatML")
         .item(&PredefinedMenuItem::about(app, Some("About ChatML"), None)?)
         .separator()
         .item(&MenuItemBuilder::with_id("check_for_updates", "Check for Updates...").build(app)?)
@@ -16,11 +17,19 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?,
         )
-        .separator()
-        .item(&PredefinedMenuItem::hide(app, Some("Hide ChatML"))?)
-        .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
-        .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
-        .separator()
+        .separator();
+
+    // Hide/Show All are macOS-specific window management
+    #[cfg(target_os = "macos")]
+    {
+        app_menu_builder = app_menu_builder
+            .item(&PredefinedMenuItem::hide(app, Some("Hide ChatML"))?)
+            .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
+            .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
+            .separator();
+    }
+
+    let app_menu = app_menu_builder
         .item(&PredefinedMenuItem::quit(app, Some("Quit ChatML"))?)
         .build()?;
 
@@ -299,12 +308,20 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .build()?;
 
     // 8. Window menu
-    let window_menu = SubmenuBuilder::new(app, "Window")
+    #[allow(unused_mut)]
+    let mut window_menu_builder = SubmenuBuilder::new(app, "Window")
         .item(&PredefinedMenuItem::minimize(app, None)?)
-        .item(&PredefinedMenuItem::maximize(app, Some("Zoom"))?)
-        .separator()
-        .item(&MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front").build(app)?)
-        .build()?;
+        .item(&PredefinedMenuItem::maximize(app, Some("Zoom"))?);
+
+    // "Bring All to Front" is a macOS-specific concept
+    #[cfg(target_os = "macos")]
+    {
+        window_menu_builder = window_menu_builder.separator().item(
+            &MenuItemBuilder::with_id("bring_all_to_front", "Bring All to Front").build(app)?,
+        );
+    }
+
+    let window_menu = window_menu_builder.build()?;
 
     // 9. Help menu
     let help_menu = SubmenuBuilder::new(app, "Help")
