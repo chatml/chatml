@@ -9,8 +9,27 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
+use serde::Serialize;
+
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
+
+/// Maximum number of automatic restart attempts before giving up
+const MAX_AUTO_RESTART_ATTEMPTS: u32 = 3;
+
+/// Payload emitted to the frontend when a sidecar restart is starting
+#[derive(Clone, Serialize)]
+struct SidecarRestartingPayload {
+    attempt: u32,
+    max_attempts: u32,
+}
+
+/// Payload emitted to the frontend when a sidecar restart fails
+#[derive(Clone, Serialize)]
+struct SidecarRestartFailedPayload {
+    attempt: u32,
+    error: String,
+}
 
 /// Default port used by the ChatML backend sidecar (production)
 pub const DEFAULT_SIDECAR_PORT: u16 = 9876;
@@ -259,6 +278,59 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
                     if let Some(window) = app_handle.get_webview_window("main") {
                         if let Err(e) = window.emit("sidecar-terminated", payload.code) {
                             log::warn!("Failed to emit sidecar-terminated event: {}", e);
+                        }
+                    }
+
+                    // Auto-restart if the app is ready and no restart is already in progress.
+                    // try_claim_restart uses compare_exchange to atomically prevent races.
+                    if state_clone.is_ready() && state_clone.try_claim_restart() {
+                        // try_increment_restart_attempts atomically checks < max and increments
+                        if let Some(attempt) = state_clone.try_increment_restart_attempts(MAX_AUTO_RESTART_ATTEMPTS) {
+                            log::info!(
+                                "Auto-restarting sidecar (attempt {}/{})",
+                                attempt,
+                                MAX_AUTO_RESTART_ATTEMPTS
+                            );
+
+                            // Notify frontend that restart is starting
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("sidecar-restarting", SidecarRestartingPayload {
+                                    attempt,
+                                    max_attempts: MAX_AUTO_RESTART_ATTEMPTS,
+                                });
+                            }
+
+                            // Exponential backoff: 1s, 2s, 4s
+                            let delay = Duration::from_secs(1 << (attempt - 1));
+                            tokio::time::sleep(delay).await;
+
+                            match restart_sidecar_async(app_handle.clone(), state_clone.clone()).await {
+                                Ok(_) => {
+                                    log::info!("Sidecar auto-restart succeeded (attempt {})", attempt);
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        let _ = window.emit("sidecar-restarted", ());
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Sidecar auto-restart failed (attempt {}): {}", attempt, e);
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        let _ = window.emit("sidecar-restart-failed", SidecarRestartFailedPayload {
+                                            attempt,
+                                            error: e.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                            state_clone.clear_restart_in_progress();
+                        } else {
+                            state_clone.clear_restart_in_progress();
+                            log::error!(
+                                "Sidecar auto-restart exhausted ({} attempts)",
+                                MAX_AUTO_RESTART_ATTEMPTS
+                            );
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("sidecar-restart-exhausted", ());
+                            }
                         }
                     }
                 }

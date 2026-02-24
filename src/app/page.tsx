@@ -34,6 +34,7 @@ import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialo
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { useSidecarLifecycle } from '@/hooks/useSidecarLifecycle';
 import { useTabPersistence } from '@/hooks/useTabPersistence';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useFileWatcher } from '@/hooks/useFileWatcher';
@@ -502,6 +503,9 @@ export default function Home() {
 
   // Connect WebSocket for real-time updates (only when backend is connected)
   const { reconnect } = useWebSocket(backendConnected);
+
+  // Monitor sidecar lifecycle and auto-restart on crash
+  const { manualRestart } = useSidecarLifecycle(reconnect);
 
   // Listen for /review, /deep-review, /security slash commands
   useReviewTrigger();
@@ -1558,7 +1562,7 @@ export default function Home() {
               )}>
               {/* Action bar — context-aware bar at top of main content */}
               <ContentActionBar />
-              <ConnectionBanner onReconnect={reconnect} />
+              <ConnectionBanner onReconnect={reconnect} onManualSidecarRestart={manualRestart} />
 
               {/* Content Area */}
               <div className="flex-1 min-h-0">

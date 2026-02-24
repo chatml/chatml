@@ -28,6 +28,12 @@ pub async fn restart_sidecar(
     sidecar::restart_sidecar_async(app, Arc::clone(&state)).await
 }
 
+/// Reset the sidecar restart attempt counter (called by frontend after successful health check)
+#[tauri::command]
+pub fn reset_sidecar_restart_count(state: State<'_, Arc<AppState>>) {
+    state.reset_restart_attempts();
+}
+
 /// Start the global file watcher on the base worktrees directory.
 /// If `create_if_needed` is true, the directory will be created when it doesn't exist.
 #[tauri::command]

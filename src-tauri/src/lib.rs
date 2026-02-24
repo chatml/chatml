@@ -140,6 +140,7 @@ pub fn run() {
             commands::update_menu_state,
             commands::mark_app_ready,
             commands::restart_sidecar,
+            commands::reset_sidecar_restart_count,
             // Global file watcher commands
             commands::start_file_watcher,
             commands::stop_file_watcher,

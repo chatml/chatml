@@ -1482,6 +1482,14 @@ export function useWebSocket(enabled: boolean = true) {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+
+      // If the sidecar is restarting, skip auto-reconnect — the useSidecarLifecycle
+      // hook will trigger reconnect() after the backend is healthy again.
+      const { sidecarState } = useConnectionStore.getState();
+      if (sidecarState === 'restarting' || sidecarState === 'failed') {
+        return;
+      }
+
       // Only reconnect if still enabled and under max attempts
       if (enabledRef.current && connectRef.current) {
         attemptRef.current += 1;
