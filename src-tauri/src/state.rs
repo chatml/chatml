@@ -148,7 +148,8 @@ impl AppState {
         }
     }
 
-    /// Get the current number of restart attempts
+    /// Get the current number of restart attempts (used in tests)
+    #[cfg(test)]
     pub fn get_restart_attempts(&self) -> u32 {
         match self.restart_attempts.lock() {
             Ok(guard) => *guard,
@@ -203,7 +204,8 @@ impl AppState {
         self.restart_in_progress.store(false, Ordering::SeqCst);
     }
 
-    /// Check if a restart is currently in progress
+    /// Check if a restart is currently in progress (used in tests)
+    #[cfg(test)]
     pub fn is_restart_in_progress(&self) -> bool {
         self.restart_in_progress.load(Ordering::SeqCst)
     }
