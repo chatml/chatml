@@ -920,6 +920,28 @@ export interface RunStatsDTO {
   totalToolDurationMs: number;
 }
 
+export interface TokenUsageDTO {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+}
+
+export interface ModelUsageInfoDTO {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  webSearchRequests: number;
+  costUSD: number;
+  contextWindow: number;
+}
+
+export interface PermissionDenialDTO {
+  toolName: string;
+  toolUseId: string;
+}
+
 export interface RunSummaryDTO {
   success: boolean;
   cost?: number;
@@ -927,6 +949,10 @@ export interface RunSummaryDTO {
   durationMs?: number;
   stats?: RunStatsDTO;
   errors?: unknown[];
+  usage?: TokenUsageDTO;
+  modelUsage?: Record<string, ModelUsageInfoDTO>;
+  limitExceeded?: 'budget' | 'turns';
+  permissionDenials?: PermissionDenialDTO[];
 }
 
 export interface AttachmentDTO {
@@ -1147,39 +1173,6 @@ export async function getStreamingSnapshot(convId: string): Promise<StreamingSna
 export async function deleteConversation(convId: string): Promise<void> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}`, { method: 'DELETE' });
   await handleVoidResponse(res, 'Failed to delete conversation');
-}
-
-export async function regenerateMessage(
-  convId: string,
-  messageId: string,
-  content?: string,
-): Promise<{ status: string; truncatedFromPos: number }> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/regenerate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messageId, ...(content !== undefined ? { content } : {}) }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
-  }
-  return res.json();
-}
-
-export async function forkConversation(
-  convId: string,
-  messageId: string,
-): Promise<ConversationDTO> {
-  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/fork`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messageId }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(text || `HTTP ${res.status}`, res.status, text);
-  }
-  return res.json();
 }
 
 export async function setConversationPlanMode(convId: string, enabled: boolean): Promise<void> {

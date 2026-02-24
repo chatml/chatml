@@ -318,20 +318,6 @@ export function useWebSocket(enabled: boolean = true) {
       return;
     }
 
-    // Handle conversation_truncated (from regenerate/edit)
-    if (data.type === 'conversation_truncated') {
-      const payload = data.payload as { fromPosition?: number; keepMessageId?: string } | undefined;
-      if (payload) {
-        store.truncateMessagesFrom(conversationId, payload.fromPosition ?? 0, payload.keepMessageId);
-        // Clear streaming state since the agent will restart fresh
-        store.clearStreamingText(conversationId);
-        store.clearActiveTools(conversationId);
-        store.clearThinking(conversationId);
-        store.clearSubAgents(conversationId);
-      }
-      return;
-    }
-
     // Handle summary_updated events
     if (data.type === 'summary_updated') {
       const payload = data.payload as unknown as Record<string, unknown> | null;
