@@ -212,6 +212,7 @@ interface AppState {
   // Terminal instances (bottom panel terminals per session)
   terminalInstances: Record<string, TerminalInstance[]>; // keyed by sessionId
   activeTerminalId: Record<string, string | null>;       // keyed by sessionId
+  terminalPanelVisible: Record<string, boolean>;         // keyed by sessionId
 
   // MCP servers state
   mcpServers: McpServerStatus[];
@@ -426,6 +427,7 @@ interface AppState {
   deleteCustomTodo: (sessionId: string, todoId: string) => void;
 
   // Terminal instance actions (bottom panel)
+  setTerminalPanelVisible: (sessionId: string, visible: boolean) => void;
   createTerminal: (sessionId: string, workspacePath: string) => TerminalInstance | null;
   closeTerminal: (sessionId: string, terminalId: string) => void;
   setActiveTerminal: (sessionId: string, terminalId: string) => void;
@@ -511,6 +513,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   customTodos: {},
   terminalInstances: {},
   activeTerminalId: {},
+  terminalPanelVisible: {},
   mcpServers: [],
   mcpServerConfigs: [],
   mcpConfigLoading: false,
@@ -635,6 +638,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cleanedSessionOutputs = { ...state.sessionOutputs };
     const cleanedTerminalInstances = { ...state.terminalInstances };
     const cleanedActiveTerminalId = { ...state.activeTerminalId };
+    const cleanedTerminalPanelVisible = { ...state.terminalPanelVisible };
     const cleanedTerminalSessions = { ...state.terminalSessions };
     const cleanedLastActive = { ...state.lastActiveConversationPerSession };
     for (const sessionId of workspaceSessionIds) {
@@ -642,6 +646,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete cleanedSessionOutputs[sessionId];
       delete cleanedTerminalInstances[sessionId];
       delete cleanedActiveTerminalId[sessionId];
+      delete cleanedTerminalPanelVisible[sessionId];
       delete cleanedTerminalSessions[sessionId];
       delete cleanedLastActive[sessionId];
     }
@@ -665,6 +670,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessionOutputs: cleanedSessionOutputs,
       terminalInstances: cleanedTerminalInstances,
       activeTerminalId: cleanedActiveTerminalId,
+      terminalPanelVisible: cleanedTerminalPanelVisible,
       terminalSessions: cleanedTerminalSessions,
       lastActiveConversationPerSession: cleanedLastActive,
       selectedFileTabId: null,
@@ -747,6 +753,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { [id]: _terminals, ...remainingTerminalInstances } = state.terminalInstances;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
 
       return {
         sessions: state.sessions.filter((s) => s.id !== id),
@@ -769,6 +777,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         draftInputs: remainingDraftInputs,
         terminalInstances: remainingTerminalInstances,
         activeTerminalId: remainingActiveTerminalId,
+        terminalPanelVisible: remainingTerminalPanelVisible,
         selectedFileTabId: null,
         fileTabs: [],
       };
@@ -863,6 +872,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [id]: _terminals, ...remainingTerminalInstances } = state.terminalInstances;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
 
     return {
       sessions: updatedSessions,
@@ -870,6 +881,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedConversationId: newSelectedConversationId,
       terminalInstances: remainingTerminalInstances,
       activeTerminalId: remainingActiveTerminalId,
+      terminalPanelVisible: remainingTerminalPanelVisible,
     };
   }),
   unarchiveSession: (id) => set((state) => {
@@ -1883,6 +1895,10 @@ updateFileTabContent: (id, content) => set((state) => ({
   })),
 
   // Terminal instance actions (bottom panel)
+  setTerminalPanelVisible: (sessionId, visible) => set((state) => ({
+    terminalPanelVisible: { ...state.terminalPanelVisible, [sessionId]: visible },
+  })),
+
   createTerminal: (sessionId, workspacePath) => {
     const state = get();
     const existing = state.terminalInstances[sessionId] || [];

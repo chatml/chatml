@@ -135,7 +135,6 @@ interface SettingsState {
   collapsedWorkspaces: string[]; // Workspace IDs that are collapsed (all others are expanded)
   unreadWorkspaces: string[]; // Workspace IDs marked as unread
   unreadSessions: string[]; // Session IDs with unread agent completions
-  showBottomTerminal: boolean;
   zenMode: boolean; // Distraction-free mode that hides sidebars
   sidebarBottomPanelMinimized: boolean; // Whether the sidebar bottom panel (Tasks/History/etc) is minimized
   hiddenBottomTabs: BottomPanelTab[]; // Bottom panel tabs that are hidden (Tasks always visible)
@@ -201,7 +200,6 @@ interface SettingsState {
   setArchiveOnMerge: (value: boolean) => void;
   setAutoApproveSafeCommands: (value: boolean) => void;
   setStrictPrivacy: (value: boolean) => void;
-  setShowBottomTerminal: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
   setSidebarBottomPanelMinimized: (value: boolean) => void;
   toggleSidebarBottomPanel: () => void;
@@ -247,7 +245,6 @@ export const useSettingsStore = create<SettingsState>()(
       collapsedWorkspaces: [], // Workspace IDs that are collapsed (all others expanded by default)
       unreadWorkspaces: [], // Workspace IDs marked as unread
       unreadSessions: [], // Session IDs with unread agent completions
-      showBottomTerminal: false,
       zenMode: false,
       sidebarBottomPanelMinimized: false,
       hiddenBottomTabs: [], // All tabs visible by default
@@ -297,7 +294,6 @@ export const useSettingsStore = create<SettingsState>()(
       setArchiveOnMerge: (value) => set({ archiveOnMerge: value }),
       setAutoApproveSafeCommands: (value) => set({ autoApproveSafeCommands: value }),
       setStrictPrivacy: (value) => set({ strictPrivacy: value }),
-      setShowBottomTerminal: (value) => set({ showBottomTerminal: value }),
       setZenMode: (value) => set({ zenMode: value }),
       setSidebarBottomPanelMinimized: (value) => set({ sidebarBottomPanelMinimized: value }),
       toggleSidebarBottomPanel: () => set((state) => ({ sidebarBottomPanelMinimized: !state.sidebarBottomPanelMinimized })),
