@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { CheckCircle2, Circle, Loader2 } from 'lucide-react';
+import { CheckCircle2, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TodoItem {
@@ -31,7 +31,7 @@ export const TodoToolDetail = memo(function TodoToolDetail({ todos }: TodoToolDe
             {todo.status === 'completed' ? (
               <CheckCircle2 className="w-3 h-3 text-text-success" />
             ) : todo.status === 'in_progress' ? (
-              <Loader2 className="w-3 h-3 text-primary animate-spin" />
+              <Circle className="w-3 h-3 text-primary" />
             ) : (
               <Circle className="w-3 h-3 text-muted-foreground/50" />
             )}
