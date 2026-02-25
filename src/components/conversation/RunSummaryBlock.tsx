@@ -50,8 +50,8 @@ import type { RunSummary } from '@/lib/types';
 function StatPill({ icon: Icon, value, label }: { icon: LucideIcon; value: number; label: string }) {
   if (value <= 0) return null;
   return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/40 text-2xs text-muted-foreground">
-      <Icon className="w-3 h-3 opacity-50" />
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-2xs text-muted-foreground">
+      <Icon className="w-3 h-3 text-primary/50" />
       <span className="font-medium text-foreground/70">{value}</span>
       <span className="opacity-70">{label}</span>
     </div>
@@ -60,10 +60,10 @@ function StatPill({ icon: Icon, value, label }: { icon: LucideIcon; value: numbe
 
 function ToolPill({ icon: Icon, name, count }: { icon: LucideIcon; name: string; count: number }) {
   return (
-    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/30 text-2xs text-muted-foreground">
-      <Icon className="w-3 h-3 opacity-40" />
+    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/40 text-2xs text-muted-foreground">
+      <Icon className="w-3 h-3 text-primary/40" />
       <span className="font-medium">{name}</span>
-      <span className="opacity-40">{'\u00D7'}{count}</span>
+      <span className="opacity-50">{'\u00D7'}{count}</span>
     </div>
   );
 }
@@ -331,12 +331,12 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
       {/* ── Expanded Panel ── */}
       {hasDetailedStats && (
         <CollapsibleContent>
-          <div className="mt-2 rounded-lg border border-border/50 overflow-hidden divide-y divide-border/30 animate-slide-up-fade">
+          <div className="mt-2 rounded-lg border border-border/60 bg-surface-1 overflow-hidden divide-y divide-border/30 animate-slide-up-fade">
 
             {/* Section: Activity Overview */}
             {hasActivityStats && (
               <div className="px-3 py-2.5">
-                <div className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">
+                <div className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                   Activity
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -352,7 +352,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
             {/* Section: Tool Breakdown */}
             {stats?.toolsByType && Object.keys(stats.toolsByType).length > 0 && (
               <div className="px-3 py-2.5">
-                <div className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">
+                <div className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                   Tools
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -367,7 +367,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
 
             {/* Section: Performance / Timing */}
             {(duration || toolDuration) && (
-              <div className="px-3 py-2 flex items-center gap-4 text-2xs text-muted-foreground">
+              <div className="px-3 py-2.5 flex items-center gap-4 text-2xs text-muted-foreground">
                 {duration && (
                   <span>
                     Duration{' '}
@@ -386,7 +386,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
             {/* Section: Token Usage */}
             {showTokenUsage && hasModelUsage && (
               <div className="px-3 py-2.5">
-                <div className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">
+                <div className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
                   Tokens
                 </div>
 
@@ -427,13 +427,13 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                 {/* Cache efficiency bar */}
                 {cacheRead > 0 && (
                   <div className="mt-2.5">
-                    <div className="flex items-center justify-between text-2xs text-muted-foreground/50 mb-1">
+                    <div className="flex items-center justify-between text-2xs text-muted-foreground/70 mb-1">
                       <span>Cache efficiency</span>
                       <span className="font-mono">{cacheHitRatio.toFixed(1)}%</span>
                     </div>
-                    <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-muted/60 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-text-success/40 transition-all"
+                        className="h-full rounded-full bg-text-success/50 transition-all"
                         style={{ width: `${Math.min(cacheHitRatio, 100)}%` }}
                       />
                     </div>
@@ -445,12 +445,12 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                   {Object.entries(summary.modelUsage ?? {}).map(([model, usage]) => (
                     <div key={model} className="flex items-baseline justify-between text-2xs text-muted-foreground">
                       <div className="flex items-baseline gap-2 min-w-0">
-                        <span className="font-medium truncate">{model}</span>
+                        <span className="font-medium text-foreground/70 truncate">{model}</span>
                         <span className="opacity-50 shrink-0">
                           {formatTokens(usage.inputTokens)} in / {formatTokens(usage.outputTokens)} out
                         </span>
                       </div>
-                      <span className="font-mono font-medium shrink-0 ml-3">
+                      <span className="font-mono font-medium text-foreground/60 shrink-0 ml-3">
                         ${usage.costUSD.toFixed(4)}
                       </span>
                     </div>
