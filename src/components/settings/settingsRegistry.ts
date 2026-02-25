@@ -10,6 +10,12 @@ export type SettingsCategory =
   | 'advanced'
   | 'about';
 
+export type WorkspaceSettingsSection = 'repository' | 'review' | 'actions';
+
+export type SettingsView =
+  | { type: 'app'; category: SettingsCategory }
+  | { type: 'workspace'; workspaceId: string; section: WorkspaceSettingsSection };
+
 export interface SettingMeta {
   id: string;
   title: string;
