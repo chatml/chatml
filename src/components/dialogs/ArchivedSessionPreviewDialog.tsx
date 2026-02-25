@@ -31,8 +31,8 @@ import {
   Plus,
   Minus,
   Loader2,
-  FileText,
 } from 'lucide-react';
+import { DialogMarkdown } from '@/components/shared/DialogMarkdown';
 
 interface ArchivedSessionPreviewDialogProps {
   open: boolean;
@@ -181,12 +181,10 @@ export function ArchivedSessionPreviewDialog({
                   <span>Generating summary...</span>
                 </div>
               ) : session.archiveSummaryStatus === 'completed' && session.archiveSummary ? (
-                <div className="flex items-start gap-1.5 text-xs">
-                  <FileText className="w-3 h-3 mt-0.5 text-muted-foreground shrink-0" />
-                  <p className="text-foreground/80 leading-relaxed break-words min-w-0 whitespace-pre-wrap">
-                    {session.archiveSummary}
-                  </p>
-                </div>
+                <DialogMarkdown
+                  cacheKey={`archive-summary:${session.id}`}
+                  content={session.archiveSummary}
+                />
               ) : session.archiveSummaryStatus === 'failed' ? (
                 <div className="flex items-center gap-2 text-xs text-text-error/80 py-1">
                   <AlertTriangle className="w-3 h-3 shrink-0" />
