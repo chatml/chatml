@@ -7,7 +7,7 @@ describe('parseMcpToolName', () => {
     expect(result).toEqual({
       serverName: 'chatml',
       toolName: 'get_session_status',
-      displayLabel: 'Get session status',
+      displayLabel: 'Get Session Status',
       displayServer: 'ChatML',
     });
   });
@@ -17,7 +17,7 @@ describe('parseMcpToolName', () => {
     expect(result).toEqual({
       serverName: 'claude_ai_Linear',
       toolName: 'get_issue',
-      displayLabel: 'Get issue',
+      displayLabel: 'Get Issue',
       displayServer: 'Linear',
     });
   });
@@ -27,7 +27,7 @@ describe('parseMcpToolName', () => {
     expect(result).toEqual({
       serverName: 'tauri',
       toolName: 'webview_screenshot',
-      displayLabel: 'Webview screenshot',
+      displayLabel: 'Webview Screenshot',
       displayServer: 'Tauri',
     });
   });
@@ -46,12 +46,12 @@ describe('parseMcpToolName', () => {
     const result = parseMcpToolName('mcp__my_custom_server__do_something');
     expect(result).not.toBeNull();
     expect(result!.displayServer).toBe('My Custom Server');
-    expect(result!.displayLabel).toBe('Do something');
+    expect(result!.displayLabel).toBe('Do Something');
   });
 
   it('handles tool names with multiple underscores', () => {
     const result = parseMcpToolName('mcp__chatml__get_recent_activity');
     expect(result).not.toBeNull();
-    expect(result!.displayLabel).toBe('Get recent activity');
+    expect(result!.displayLabel).toBe('Get Recent Activity');
   });
 });

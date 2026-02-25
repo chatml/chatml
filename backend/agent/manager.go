@@ -294,7 +294,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		envVars = make(map[string]string)
 	}
 	// Inject backend URL so agent-runner connects to the correct port
-	envVars["CHATML_BACKEND_URL"] = fmt.Sprintf("http://localhost:%d", m.backendPort)
+	envVars["CHATML_BACKEND_URL"] = fmt.Sprintf("http://127.0.0.1:%d", m.backendPort)
 	procOpts.EnvVars = envVars
 
 	// Load workspace MCP server configs from settings
