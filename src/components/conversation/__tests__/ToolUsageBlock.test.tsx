@@ -127,7 +127,7 @@ describe('ToolUsageBlock', () => {
       />
     );
 
-    expect(screen.getByText('Get session status')).toBeInTheDocument();
+    expect(screen.getByText('Get Session Status')).toBeInTheDocument();
     expect(screen.getByText('ChatML')).toBeInTheDocument();
   });
 
@@ -142,7 +142,7 @@ describe('ToolUsageBlock', () => {
       />
     );
 
-    expect(screen.getByText('Get issue')).toBeInTheDocument();
+    expect(screen.getByText('Get Issue')).toBeInTheDocument();
     expect(screen.getByText('Linear')).toBeInTheDocument();
   });
 

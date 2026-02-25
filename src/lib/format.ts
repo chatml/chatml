@@ -61,7 +61,7 @@ export function formatToolDuration(ms: number): string {
 export interface McpToolInfo {
   serverName: string;     // raw server name, e.g. "chatml"
   toolName: string;       // raw tool name, e.g. "get_session_status"
-  displayLabel: string;   // human-readable, e.g. "Get session status"
+  displayLabel: string;   // human-readable, e.g. "Get Session Status"
   displayServer: string;  // human-readable, e.g. "ChatML"
 }
 
