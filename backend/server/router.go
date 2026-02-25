@@ -188,6 +188,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// Conversation endpoints (top-level for direct access)
 	r.Route("/api/conversations", func(r chi.Router) {
 		r.Get("/active-streaming", h.GetActiveStreamingConversations)
+		r.Get("/interrupted", h.GetInterruptedConversations)
 		r.Get("/{convId}", h.GetConversation)
 		r.Get("/{convId}/messages", h.GetConversationMessages)
 		r.With(messageRateLimiter).Post("/{convId}/messages", h.SendConversationMessage)
@@ -200,6 +201,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{convId}/max-thinking-tokens", h.SetConversationMaxThinkingTokens)
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
+		r.Post("/{convId}/resume-agent", h.ResumeAgent)
+		r.Post("/{convId}/clear-snapshot", h.ClearStreamingSnapshot)
 		r.With(messageRateLimiter).Post("/{convId}/regenerate", h.RegenerateMessage)
 		r.With(conversationRateLimiter).Post("/{convId}/fork", h.ForkConversation)
 		r.Delete("/{convId}", h.DeleteConversation)

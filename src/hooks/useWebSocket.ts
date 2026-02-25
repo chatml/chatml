@@ -13,7 +13,7 @@ import {
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPort, getBackendPortSync } from '@/lib/backend-port';
 import { useConnectionStore } from '@/stores/connectionStore';
-import { getConversationDropStats, getActiveStreamingConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage } from '@/lib/api';
+import { getConversationDropStats, getActiveStreamingConversations, getInterruptedConversations, getConversationMessages, getStreamingSnapshot, toStoreMessage, updateSession as updateSessionApi, refreshPRStatus, addSystemMessage } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
 import { useSlashCommandStore } from '@/stores/slashCommandStore';
@@ -368,6 +368,8 @@ export function useWebSocket(enabled: boolean = true) {
         }
         // Clear recovery state — the agent recovered successfully
         store.clearAgentRecovery(conversationId);
+        // Clear interrupted state — the agent resumed successfully after app restart
+        store.clearInterruptedState(conversationId);
         // Clear stale input suggestions from the previous turn
         store.clearInputSuggestion(conversationId);
         // Capture budget/thinking configuration from init event (per-conversation)
@@ -1251,9 +1253,9 @@ export function useWebSocket(enabled: boolean = true) {
   const reconcileInitialStreamingState = useCallback(async () => {
     const store = getStore();
 
+    // Phase 1: Discover conversations that are actively streaming (agent still running)
     try {
       const { conversationIds: serverActive } = await getActiveStreamingConversations();
-      if (serverActive.length === 0) return;
 
       for (const convId of serverActive) {
         // Skip if conversation isn't loaded yet (dashboard data may still be loading)
@@ -1283,6 +1285,26 @@ export function useWebSocket(enabled: boolean = true) {
       }
     } catch (err) {
       console.warn('Failed to reconcile initial streaming state:', err);
+    }
+
+    // Phase 2: Discover conversations interrupted by app shutdown (agent dead, snapshot in DB)
+    try {
+      const interrupted = await getInterruptedConversations();
+      for (const item of interrupted) {
+        const conv = store.conversations.find(c => c.id === item.id);
+        if (!conv) continue;
+
+        // Mark as idle (agent is dead) but record the interrupted state
+        store.updateConversation(item.id, { status: 'idle' });
+        store.setInterruptedState(item.id, {
+          agentSessionId: item.agentSessionId,
+          hadPendingPlan: !!item.snapshot?.pendingPlanApproval,
+          hadPendingQuestion: !!item.snapshot?.pendingUserQuestion,
+          snapshot: item.snapshot,
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to reconcile interrupted conversations:', err);
     }
   // getStore is a stable reference (useAppStore.getState), no deps needed
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -120,6 +120,9 @@ func main() {
 	}()
 
 	agentMgr := agent.NewManager(ctx, s, wm, actualPort)
+	if err := agentMgr.Init(ctx); err != nil {
+		logger.Main.Errorf("Agent manager init: %v", err)
+	}
 
 	// GitHub OAuth client
 	ghConfig := server.LoadGitHubConfig()

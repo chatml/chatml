@@ -333,6 +333,23 @@ type StreamingSnapshot struct {
 	IsThinking     bool                  `json:"isThinking"`
 	PlanModeActive bool                  `json:"planModeActive"`
 	SubAgents      []SubAgentEntry       `json:"subAgents,omitempty"`
+	// Pending interaction state — persisted so the frontend can recover after app restart.
+	PendingPlanApproval *PendingPlanApprovalSnapshot `json:"pendingPlanApproval,omitempty"`
+	PendingUserQuestion *PendingUserQuestionSnapshot `json:"pendingUserQuestion,omitempty"`
+}
+
+// PendingPlanApprovalSnapshot captures a pending ExitPlanMode approval request.
+type PendingPlanApprovalSnapshot struct {
+	RequestID   string `json:"requestId"`
+	PlanContent string `json:"planContent,omitempty"`
+	Timestamp   int64  `json:"timestamp"` // Unix milliseconds
+}
+
+// PendingUserQuestionSnapshot captures a pending AskUserQuestion request.
+type PendingUserQuestionSnapshot struct {
+	RequestID string         `json:"requestId"`
+	Questions []UserQuestion `json:"questions"`
+	Timestamp int64          `json:"timestamp"` // Unix milliseconds
 }
 
 // ActiveToolEntry represents a tool currently in-flight during streaming.

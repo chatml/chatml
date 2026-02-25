@@ -1975,6 +1975,56 @@ func (s *SQLiteStore) ClearStreamingSnapshot(ctx context.Context, convID string)
 	})
 }
 
+// InterruptedConversation represents a conversation that was interrupted by an app shutdown.
+// It has a non-empty streaming snapshot but no running agent process.
+type InterruptedConversation struct {
+	ID             string `json:"id"`
+	SessionID      string `json:"sessionId"`
+	AgentSessionID string `json:"agentSessionId"`
+	SnapshotJSON   []byte `json:"snapshot"`
+}
+
+// GetInterruptedConversations returns conversations that have a non-empty streaming
+// snapshot. After an app restart, these conversations were interrupted mid-turn
+// (their agent processes were killed during shutdown).
+func (s *SQLiteStore) GetInterruptedConversations(ctx context.Context) ([]InterruptedConversation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, session_id, agent_session_id, streaming_snapshot
+		FROM conversations
+		WHERE streaming_snapshot != '' AND streaming_snapshot != '{}'
+			AND agent_session_id != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("GetInterruptedConversations: %w", err)
+	}
+	defer rows.Close()
+
+	var result []InterruptedConversation
+	for rows.Next() {
+		var ic InterruptedConversation
+		var snapshot string
+		if err := rows.Scan(&ic.ID, &ic.SessionID, &ic.AgentSessionID, &snapshot); err != nil {
+			return nil, fmt.Errorf("GetInterruptedConversations scan: %w", err)
+		}
+		ic.SnapshotJSON = []byte(snapshot)
+		result = append(result, ic)
+	}
+	return result, rows.Err()
+}
+
+// CleanupStaleConversations resets conversations that were left in 'active' status
+// from a previous unclean shutdown. Their agent processes are dead but their
+// streaming snapshots are preserved for frontend recovery.
+// Only resets conversations that haven't been updated in the last 30 seconds to
+// avoid clobbering legitimately active conversations during hot-reloads.
+func (s *SQLiteStore) CleanupStaleConversations(ctx context.Context) error {
+	return RetryDBExec(ctx, "CleanupStaleConversations", DefaultRetryConfig(), func(ctx context.Context) error {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE conversations SET status = 'idle'
+			 WHERE status = 'active' AND updated_at < datetime('now', '-30 seconds')`)
+		return err
+	})
+}
+
 // ============================================================================
 // FileTab methods
 // ============================================================================

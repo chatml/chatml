@@ -50,6 +50,7 @@ import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
+import { InterruptedBanner } from '@/components/conversation/InterruptedBanner';
 import { BranchSyncConflictDialog } from '@/components/BranchSyncConflictDialog';
 import { useBranchSync } from '@/hooks/useBranchSync';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
@@ -1049,6 +1050,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             </span>
           </div>
         </div>
+      )}
+
+      {/* Interrupted conversation banner - shows when conversation was interrupted by app shutdown */}
+      {selectedConversationId && (
+        <InterruptedBanner conversationId={selectedConversationId} />
       )}
 
       {/* Branch sync conflict dialog */}

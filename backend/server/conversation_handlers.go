@@ -360,6 +360,71 @@ func (h *Handlers) GetActiveStreamingConversations(w http.ResponseWriter, r *htt
 	})
 }
 
+// GetInterruptedConversations returns conversations that have a non-empty streaming
+// snapshot but no running agent process (i.e., interrupted by app shutdown).
+func (h *Handlers) GetInterruptedConversations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	interrupted, err := h.store.GetInterruptedConversations(ctx)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+
+	// Filter out conversations that actually have a running process
+	// (their snapshot hasn't been cleared yet but the agent is alive)
+	active := h.agentManager.GetActiveStreamingConversations()
+	activeSet := make(map[string]bool, len(active))
+	for _, id := range active {
+		activeSet[id] = true
+	}
+
+	type interruptedDTO struct {
+		ID             string          `json:"id"`
+		SessionID      string          `json:"sessionId"`
+		AgentSessionID string          `json:"agentSessionId"`
+		Snapshot       json.RawMessage `json:"snapshot"`
+	}
+
+	result := make([]interruptedDTO, 0)
+	for _, ic := range interrupted {
+		if activeSet[ic.ID] {
+			continue // Agent is still running — not interrupted
+		}
+		result = append(result, interruptedDTO{
+			ID:             ic.ID,
+			SessionID:      ic.SessionID,
+			AgentSessionID: ic.AgentSessionID,
+			Snapshot:       json.RawMessage(ic.SnapshotJSON),
+		})
+	}
+	writeJSON(w, result)
+}
+
+// ResumeAgent restarts a dead agent process for an interrupted conversation
+// using the SDK resume mechanism.
+func (h *Handlers) ResumeAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+
+	if err := h.agentManager.ResumeConversation(ctx, convID); err != nil {
+		writeInternalError(w, "failed to resume agent", err)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "resuming"})
+}
+
+// ClearStreamingSnapshot removes the streaming snapshot for a conversation.
+// Used when the user dismisses an interrupted conversation banner.
+func (h *Handlers) ClearStreamingSnapshot(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	convID := chi.URLParam(r, "convId")
+	if err := h.store.ClearStreamingSnapshot(ctx, convID); err != nil {
+		writeInternalError(w, "failed to clear snapshot", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type RewindConversationRequest struct {
 	CheckpointUuid string `json:"checkpointUuid"`
 }
