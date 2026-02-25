@@ -8,6 +8,10 @@ vi.mock('@/lib/tauri', () => ({
   copyToClipboard: vi.fn(),
 }));
 
+vi.mock('@/components/shared/DialogMarkdown', () => ({
+  DialogMarkdown: ({ content }: { content: string }) => <div>{content}</div>,
+}));
+
 const baseSession: WorktreeSession = {
   id: 'sess-1',
   workspaceId: 'ws-1',

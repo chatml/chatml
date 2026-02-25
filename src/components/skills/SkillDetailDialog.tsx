@@ -7,7 +7,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
+import { DialogMarkdown } from '@/components/shared/DialogMarkdown';
 import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { getSkillContent } from '@/lib/api';
@@ -120,30 +120,29 @@ export function SkillDetailDialog({
 
         {/* Body — native scroll, no ScrollArea */}
         <div className="flex-1 min-h-0 overflow-y-auto border-y">
-          <div className="p-6 skill-detail-markdown">
-            {contentLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : contentError ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-3">
-                <AlertCircle className="h-5 w-5 text-destructive" />
-                <p className="text-sm text-destructive">{contentError}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={retry}
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : strippedContent ? (
-              <CachedMarkdown
-                cacheKey={`skill-detail-${skill.id}`}
-                content={strippedContent}
-              />
-            ) : null}
-          </div>
+          {contentLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : contentError ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3 px-6">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <p className="text-sm text-destructive">{contentError}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={retry}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : strippedContent ? (
+            <DialogMarkdown
+              cacheKey={`skill-detail-${skill.id}`}
+              content={strippedContent}
+              className="p-6"
+            />
+          ) : null}
         </div>
 
         {/* Footer */}
