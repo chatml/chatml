@@ -1156,6 +1156,17 @@ export async function getActiveStreamingConversations(): Promise<{ conversationI
   return handleResponse(res);
 }
 
+export interface SnapshotSubAgent {
+  agentId: string;
+  agentType: string;
+  parentToolUseId?: string;
+  description?: string;
+  output?: string;
+  startTime: number;
+  activeTools: { id: string; tool: string; startTime: number }[];
+  completed: boolean;
+}
+
 export interface StreamingSnapshotDTO {
   text: string;
   textSegments?: { text: string; timestamp: number }[];
@@ -1163,11 +1174,36 @@ export interface StreamingSnapshotDTO {
   thinking?: string;
   isThinking: boolean;
   planModeActive: boolean;
+  subAgents?: SnapshotSubAgent[];
+  pendingPlanApproval?: { requestId: string; planContent?: string; timestamp: number } | null;
+  pendingUserQuestion?: { requestId: string; questions: import('./types').UserQuestion[]; timestamp: number } | null;
 }
 
 export async function getStreamingSnapshot(convId: string): Promise<StreamingSnapshotDTO | null> {
   const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/streaming-snapshot`);
   return handleResponse(res);
+}
+
+export interface InterruptedConversationDTO {
+  id: string;
+  sessionId: string;
+  agentSessionId: string;
+  snapshot: StreamingSnapshotDTO | null;
+}
+
+export async function getInterruptedConversations(): Promise<InterruptedConversationDTO[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/interrupted`);
+  return handleResponse(res);
+}
+
+export async function resumeAgent(convId: string): Promise<{ status: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/resume-agent`, { method: 'POST' });
+  return handleResponse(res);
+}
+
+export async function clearConversationSnapshot(convId: string): Promise<void> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/conversations/${convId}/clear-snapshot`, { method: 'POST' });
+  await handleVoidResponse(res, 'Failed to clear snapshot');
 }
 
 export async function deleteConversation(convId: string): Promise<void> {

@@ -108,6 +108,16 @@ func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManag
 	}
 }
 
+// Init performs startup cleanup tasks such as resetting stale conversation
+// statuses from a previous unclean shutdown. Call after NewManager and before
+// the HTTP server starts accepting requests.
+func (m *Manager) Init(ctx context.Context) error {
+	if err := m.store.CleanupStaleConversations(ctx); err != nil {
+		return fmt.Errorf("failed to cleanup stale conversations: %w", err)
+	}
+	return nil
+}
+
 // Legacy handler setters
 func (m *Manager) SetOutputHandler(handler OutputHandler) {
 	m.onOutput = handler
@@ -399,6 +409,9 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	var pendingCheckpointUuid string
 	var isThinking bool
 	var snapshotDirty bool
+	// Pending interaction state for snapshot recovery after app restart
+	var pendingPlanApprovalSnapshot *PendingPlanApprovalSnapshot
+	var pendingUserQuestionSnapshot *PendingUserQuestionSnapshot
 
 	// Per-turn accumulation for message persistence (Phase 3)
 	var completedTools []models.ToolUsageRecord
@@ -479,13 +492,15 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 		}
 
 		snapshot := StreamingSnapshot{
-			Text:           currentAssistantMessage,
-			TextSegments:   snapshotSegments,
-			ActiveTools:    tools,
-			Thinking:       currentThinking,
-			IsThinking:     isThinking,
-			PlanModeActive: proc.IsPlanModeActive(),
-			SubAgents:      subAgents,
+			Text:                currentAssistantMessage,
+			TextSegments:        snapshotSegments,
+			ActiveTools:         tools,
+			Thinking:            currentThinking,
+			IsThinking:          isThinking,
+			PlanModeActive:      proc.IsPlanModeActive(),
+			SubAgents:           subAgents,
+			PendingPlanApproval: pendingPlanApprovalSnapshot,
+			PendingUserQuestion: pendingUserQuestionSnapshot,
 		}
 		data, err := json.Marshal(snapshot)
 		if err != nil {
@@ -693,6 +708,15 @@ outer:
 				}
 				markSnapshotDirty()
 
+				// Clear pending interaction state when the tool completes
+				// (the hook resolved — user approved/answered or it was denied/timed out)
+				if event.Tool == "ExitPlanMode" {
+					pendingPlanApprovalSnapshot = nil
+				}
+				if event.Tool == "AskUserQuestion" {
+					pendingUserQuestionSnapshot = nil
+				}
+
 				// Store tool action in summary (legacy flat list)
 				if err := m.store.AddToolActionToConversation(ctx, convID, models.ToolAction{
 					ID:      event.ID,
@@ -855,11 +879,26 @@ outer:
 				}
 
 			case EventTypeUserQuestionRequest:
-				// No-op: handled by frontend
+				// Track pending question for snapshot recovery after app restart
+				pendingUserQuestionSnapshot = &PendingUserQuestionSnapshot{
+					RequestID: event.RequestID,
+					Questions: event.Questions,
+					Timestamp: time.Now().UnixMilli(),
+				}
+				markSnapshotDirty()
+				flushSnapshot() // Force immediate flush — don't wait for debounce
 
 			case EventTypePlanApprovalRequest:
 				pendingPlanContent = event.PlanContent
 				pendingPlanTimestamp = time.Now()
+				// Track pending approval for snapshot recovery after app restart
+				pendingPlanApprovalSnapshot = &PendingPlanApprovalSnapshot{
+					RequestID:   event.RequestID,
+					PlanContent: event.PlanContent,
+					Timestamp:   time.Now().UnixMilli(),
+				}
+				markSnapshotDirty()
+				flushSnapshot() // Force immediate flush — don't wait for debounce
 
 			case EventTypeCheckpointCreated:
 				if event.CheckpointUuid != "" {
@@ -1015,6 +1054,8 @@ outer:
 				pendingPlanTimestamp = time.Time{}
 				pendingCheckpointUuid = ""
 				isThinking = false
+				pendingPlanApprovalSnapshot = nil
+				pendingUserQuestionSnapshot = nil
 				thinkingBlocks = nil
 				currentThinkingText = ""
 				thinkingBlockStart = nil
@@ -1511,6 +1552,111 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		go m.generateAndApplySessionTitle(titleSessionID, convID, message)
 	}
 
+	return nil
+}
+
+// ResumeConversation restarts an interrupted conversation's agent process using
+// the SDK resume mechanism. The SDK re-executes the last turn, which re-triggers
+// PreToolUse hooks for pending plan approvals or user questions.
+func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
+	// Check if a process is already running
+	m.mu.RLock()
+	existingProc, exists := m.convProcesses[convID]
+	m.mu.RUnlock()
+	if exists && existingProc.IsRunning() {
+		return nil // already running
+	}
+
+	conv, err := m.store.GetConversation(ctx, convID)
+	if err != nil {
+		return fmt.Errorf("failed to get conversation: %w", err)
+	}
+	if conv == nil {
+		return fmt.Errorf("conversation not found: %s", convID)
+	}
+	if conv.AgentSessionID == "" {
+		return fmt.Errorf("no agent session ID available for resume")
+	}
+
+	session, err := m.store.GetSession(ctx, conv.SessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("session not found: %s", conv.SessionID)
+	}
+
+	// Build process options modeled after SendConversationMessage restart path
+	opts := ProcessOptions{
+		ID:                  convID,
+		ConversationID:      convID,
+		Workdir:             session.WorktreePath,
+		WorkspaceID:         session.WorkspaceID,
+		BackendSessionID:    conv.SessionID,
+		ResumeSession:       conv.AgentSessionID,
+		EnableCheckpointing: true,
+		Model:               conv.Model,
+		SettingSources:      "project,user,local",
+	}
+
+	// Apply target branch from session
+	sessionWithWs, err := m.store.GetSessionWithWorkspace(ctx, conv.SessionID)
+	if err != nil {
+		logger.Manager.Warnf("Failed to get session with workspace for resume %s: %v", convID, err)
+	}
+	if sessionWithWs != nil {
+		opts.TargetBranch = sessionWithWs.EffectiveTargetBranch()
+	}
+
+	// Load env vars and MCP servers (same as StartConversation)
+	envVars, err := m.loadEnvVars(ctx)
+	if err != nil {
+		logger.Manager.Errorf("Failed to load env vars for resume %s: %v", convID, err)
+	}
+	opts.EnvVars = envVars
+
+	mcpServersJSON, err := m.loadMcpServers(ctx, session.WorkspaceID)
+	if err != nil {
+		logger.Manager.Errorf("Failed to load MCP servers for resume %s: %v", convID, err)
+	}
+	opts.McpServersJSON = mcpServersJSON
+
+	// Build system instructions from session context
+	opts.Instructions = m.buildSystemInstructions(ctx, session, sessionWithWs, "")
+
+	newProc := NewProcessWithOptions(opts)
+
+	// Double-check under write lock to prevent race
+	m.mu.Lock()
+	if ep, ok := m.convProcesses[convID]; ok && ep.IsRunning() {
+		m.mu.Unlock()
+		return nil // another goroutine already started it
+	}
+	m.convProcesses[convID] = newProc
+	m.mu.Unlock()
+
+	if err := newProc.Start(); err != nil {
+		m.mu.Lock()
+		delete(m.convProcesses, convID)
+		m.mu.Unlock()
+		return fmt.Errorf("failed to start resumed agent process: %w", err)
+	}
+
+	go m.handleConversationOutput(convID, newProc)
+	go m.handleConversationCompletion(convID, newProc)
+
+	newStatus := models.ConversationStatusActive
+	if err := m.store.UpdateConversation(ctx, convID, func(c *models.Conversation) {
+		c.Status = newStatus
+		c.UpdatedAt = time.Now()
+	}); err != nil {
+		logger.Manager.Errorf("Failed to update conversation status on resume for %s: %v", convID, err)
+	}
+	if m.onConversationStatus != nil {
+		m.onConversationStatus(convID, newStatus)
+	}
+
+	logger.Manager.Infof("Resumed conversation %s with agent session %s", convID, conv.AgentSessionID)
 	return nil
 }
 

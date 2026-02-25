@@ -29,6 +29,7 @@ import type {
   InputSuggestion,
   SessionToggleState,
 } from '@/lib/types';
+import type { StreamingSnapshotDTO, SnapshotSubAgent } from '@/lib/api';
 import { useSettingsStore } from './settingsStore';
 import { refreshPRStatus } from '@/lib/api';
 
@@ -174,6 +175,15 @@ interface StreamingState {
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
 }
 
+// Info about a conversation interrupted by app shutdown, detected on restart
+export interface InterruptedInfo {
+  agentSessionId: string;
+  hadPendingPlan: boolean;
+  hadPendingQuestion: boolean;
+  snapshot: StreamingSnapshotDTO | null;
+  resuming?: boolean; // true while resume is in progress
+}
+
 // ActiveTool is imported from @/lib/types
 
 interface AppState {
@@ -245,6 +255,9 @@ interface AppState {
 
   // Pending user questions from AskUserQuestion tool (keyed by conversationId)
   pendingUserQuestion: { [conversationId: string]: PendingUserQuestion | null };
+
+  // Interrupted conversations detected on app restart (keyed by conversationId)
+  interruptedState: { [conversationId: string]: InterruptedInfo | null };
 
   // Input suggestions from Haiku (keyed by conversationId)
   inputSuggestions: { [conversationId: string]: InputSuggestion };
@@ -404,7 +417,9 @@ interface AppState {
     thinking?: string;
     isThinking: boolean;
     planModeActive: boolean;
-    subAgents?: { agentId: string; agentType: string; parentToolUseId?: string; description?: string; output?: string; startTime: number; activeTools: { id: string; tool: string; startTime: number }[]; completed: boolean }[];
+    subAgents?: SnapshotSubAgent[];
+    pendingPlanApproval?: { requestId: string; planContent?: string; timestamp: number } | null;
+    pendingUserQuestion?: { requestId: string; questions: import('@/lib/types').UserQuestion[]; timestamp: number } | null;
   }) => void;
 
   // Atomic streaming finalization - creates message and clears streaming in one update
@@ -490,6 +505,11 @@ interface AppState {
   prevUserQuestion: (conversationId: string) => void;
   clearPendingUserQuestion: (conversationId: string) => void;
 
+  // Interrupted conversation actions (app restart recovery)
+  setInterruptedState: (conversationId: string, info: InterruptedInfo | null) => void;
+  setInterruptedResuming: (conversationId: string, resuming: boolean) => void;
+  clearInterruptedState: (conversationId: string) => void;
+
   // File watcher actions
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
 }
@@ -534,6 +554,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   branchSyncCompletedAt: {},
   lastTurnCompletedAt: {},
   pendingUserQuestion: {},
+  interruptedState: {},
   inputSuggestions: {},
   summaries: {},
   lastFileChange: null,
@@ -931,6 +952,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _question, ...remainingPendingQuestions } = state.pendingUserQuestion;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [id]: _interrupted, ...remainingInterruptedState } = state.interruptedState;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _queued, ...remainingQueuedMessage } = state.queuedMessage;
@@ -970,6 +993,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTools: remainingActiveTools,
       agentTodos: remainingAgentTodos,
       pendingUserQuestion: remainingPendingQuestions,
+      interruptedState: remainingInterruptedState,
       contextUsage: remainingContextUsage,
       queuedMessage: remainingQueuedMessage,
     };
@@ -1690,6 +1714,11 @@ updateFileTabContent: (id, content) => set((state) => ({
       })),
     }));
 
+    // Restore pending plan approval from snapshot (if persisted before shutdown)
+    const pendingPlanApproval = snapshot.pendingPlanApproval
+      ? { requestId: snapshot.pendingPlanApproval.requestId, planContent: snapshot.pendingPlanApproval.planContent }
+      : null;
+
     set((state) => ({
       streamingState: updateStreamingConv(state.streamingState, conversationId, {
         text: snapshot.text,
@@ -1699,6 +1728,7 @@ updateFileTabContent: (id, content) => set((state) => ({
         thinking: snapshot.thinking || null,
         isThinking: snapshot.isThinking,
         planModeActive: snapshot.planModeActive,
+        pendingPlanApproval,
       }),
       activeTools: {
         ...state.activeTools,
@@ -1708,6 +1738,18 @@ updateFileTabContent: (id, content) => set((state) => ({
         ...state.subAgents,
         [conversationId]: restoredSubAgents,
       },
+      // Restore pending user question from snapshot (if persisted before shutdown)
+      ...(snapshot.pendingUserQuestion ? {
+        pendingUserQuestion: {
+          ...state.pendingUserQuestion,
+          [conversationId]: {
+            requestId: snapshot.pendingUserQuestion.requestId,
+            questions: snapshot.pendingUserQuestion.questions,
+            currentIndex: 0,
+            answers: {},
+          },
+        },
+      } : {}),
     }));
   },
 
@@ -2204,6 +2246,30 @@ updateFileTabContent: (id, content) => set((state) => ({
   clearPendingUserQuestion: (conversationId) => set((state) => ({
     pendingUserQuestion: {
       ...state.pendingUserQuestion,
+      [conversationId]: null,
+    },
+  })),
+
+  // Interrupted conversation actions (app restart recovery)
+  setInterruptedState: (conversationId, info) => set((state) => ({
+    interruptedState: {
+      ...state.interruptedState,
+      [conversationId]: info,
+    },
+  })),
+  setInterruptedResuming: (conversationId, resuming) => set((state) => {
+    const current = state.interruptedState[conversationId];
+    if (!current) return state;
+    return {
+      interruptedState: {
+        ...state.interruptedState,
+        [conversationId]: { ...current, resuming },
+      },
+    };
+  }),
+  clearInterruptedState: (conversationId) => set((state) => ({
+    interruptedState: {
+      ...state.interruptedState,
       [conversationId]: null,
     },
   })),
