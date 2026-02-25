@@ -15,6 +15,7 @@ import {
   getAttachmentSubtitle,
   loadAttachmentContent,
 } from '@/lib/attachments';
+import { fetchAttachmentData } from '@/lib/api';
 import type { Attachment } from '@/lib/types';
 import {
   XIcon,
@@ -41,6 +42,8 @@ interface AttachmentPreviewModalProps {
   onOpenChange: (open: boolean) => void;
   attachments: Attachment[];
   initialIndex: number;
+  /** When true, load attachment content from the DB API instead of from the original file path on disk. */
+  fromHistory?: boolean;
 }
 
 // ============================================================================
@@ -138,6 +141,7 @@ export function AttachmentPreviewModal({
   onOpenChange,
   attachments,
   initialIndex,
+  fromHistory = false,
 }: AttachmentPreviewModalProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [asyncState, setAsyncState] = useState<AsyncLoadState>({ status: 'idle' });
@@ -174,17 +178,18 @@ export function AttachmentPreviewModal({
       }
     }
 
-    // No path and no inline data — can't load
-    if (!attachment.path) {
+    // No path and no inline data — can't load from disk
+    if (!attachment.path && !fromHistory) {
       return { status: 'error', message: 'No file path available' };
     }
 
-    return null; // needs async load from disk
-  }, [open, attachment, isBinaryPreview]);
+    return null; // needs async load (from disk or DB)
+  }, [open, attachment, isBinaryPreview, fromHistory]);
 
-  // Whether we need to load from disk
-  const needsAsyncLoad = open && attachment && !syncContent && !!attachment.path;
+  // Whether we need to load asynchronously (from disk or DB)
+  const needsAsyncLoad = open && attachment && !syncContent && (fromHistory || !!attachment.path);
   const attachmentPath = attachment?.path;
+  const attachmentId = attachment?.id;
 
   // Reset async state when switching attachments
   useEffect(() => {
@@ -192,26 +197,33 @@ export function AttachmentPreviewModal({
     setAsyncState({ status: 'idle' });
   }, [currentIndex]);
 
-  // Async load from disk when base64Data is not available
+  // Async load: from DB API (history) or from disk (compose)
   useEffect(() => {
-    if (!needsAsyncLoad || !attachmentPath) return;
+    if (!needsAsyncLoad) return;
+    if (!fromHistory && !attachmentPath) return;
 
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAsyncState({ status: 'loading' });
 
-    loadAttachmentContent(attachment!)
-      .then((loaded) => {
+    const loadPromise = fromHistory
+      ? attachmentId
+        ? fetchAttachmentData(attachmentId).then((base64) => ({ base64Data: base64 }))
+        : Promise.reject(new Error('Attachment ID missing for history load'))
+      : loadAttachmentContent(attachment!).then((loaded) => ({ base64Data: loaded.base64Data }));
+
+    loadPromise
+      .then(({ base64Data }) => {
         if (cancelled) return;
-        if (!loaded.base64Data) {
+        if (!base64Data) {
           setAsyncState({ status: 'error', message: 'Failed to read file content' });
           return;
         }
         if (isBinaryPreview) {
-          setAsyncState({ status: 'loaded', content: loaded.base64Data });
+          setAsyncState({ status: 'loaded', content: base64Data });
         } else {
           try {
-            setAsyncState({ status: 'loaded', content: decodeBase64ToString(loaded.base64Data) });
+            setAsyncState({ status: 'loaded', content: decodeBase64ToString(base64Data) });
           } catch {
             setAsyncState({ status: 'error', message: 'Failed to decode file content' });
           }
@@ -223,7 +235,7 @@ export function AttachmentPreviewModal({
       });
 
     return () => { cancelled = true; };
-  }, [needsAsyncLoad, attachmentPath, isBinaryPreview]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [needsAsyncLoad, fromHistory, attachmentId, attachmentPath, isBinaryPreview]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derive final state: prefer sync content, fall back to async
   const loadState: ResolvedContent = syncContent ?? (asyncState.status === 'idle' ? { status: 'loading' } : asyncState);

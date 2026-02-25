@@ -148,6 +148,7 @@ export const MessageBlock = memo(function MessageBlock({
                     onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
                     attachments={message.attachments}
                     initialIndex={previewIndex}
+                    fromHistory
                   />
                 )}
               </>
