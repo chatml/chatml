@@ -950,7 +950,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
       {/* Branch sync banner - shows when origin/main has updates */}
-      {branchSyncStatus && branchSyncStatus.behindBy > 0 && !branchSyncDismissed && currentSession?.prStatus !== 'merged' && (
+      {branchSyncStatus && branchSyncStatus.behindBy > 0 && !branchSyncDismissed && (
         <BranchSyncBanner
           status={branchSyncStatus}
           loading={branchSyncing}

@@ -388,8 +388,6 @@ export function SessionToolbarContent() {
 
             <div className="w-1.5" />
 
-            {selectedSession.prStatus !== 'merged' && (() => {
-              return (
             <div className="inline-flex rounded-sm shadow-sm">
               <Button
                 variant="secondary"
@@ -456,8 +454,6 @@ export function SessionToolbarContent() {
                 </PopoverContent>
               </Popover>
             </div>
-              );
-            })()}
 
             <div className="w-1.5" />
 
