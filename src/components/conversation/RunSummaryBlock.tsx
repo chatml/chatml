@@ -2,12 +2,12 @@
 
 import { useState, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
+import type { LucideIcon } from 'lucide-react';
 import {
   CheckCircle2,
   XCircle,
   Clock,
   Wrench,
-  DollarSign,
   GitBranch,
   FileText,
   FileEdit,
@@ -44,6 +44,35 @@ import { formatTokens } from '@/lib/format';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getApiBase } from '@/lib/api';
 import type { RunSummary } from '@/lib/types';
+
+// -- Inline helper components --
+
+function StatPill({ icon: Icon, value, label }: { icon: LucideIcon; value: number; label: string }) {
+  if (value <= 0) return null;
+  return (
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/40 text-2xs text-muted-foreground">
+      <Icon className="w-3 h-3 opacity-50" />
+      <span className="font-medium text-foreground/70">{value}</span>
+      <span className="opacity-70">{label}</span>
+    </div>
+  );
+}
+
+function ToolPill({ icon: Icon, name, count }: { icon: LucideIcon; name: string; count: number }) {
+  return (
+    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/30 text-2xs text-muted-foreground">
+      <Icon className="w-3 h-3 opacity-40" />
+      <span className="font-medium">{name}</span>
+      <span className="opacity-40">{'\u00D7'}{count}</span>
+    </div>
+  );
+}
+
+function DotSeparator() {
+  return <span className="text-muted-foreground/30 select-none">&middot;</span>;
+}
+
+// -- Main component --
 
 interface RunSummaryBlockProps {
   summary: RunSummary;
@@ -121,11 +150,9 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
   const totalOutputTokens = summary.usage?.outputTokens ?? 0;
   const hasModelUsage = summary.modelUsage && Object.keys(summary.modelUsage).length > 0;
 
-  // Check if we have detailed breakdown to show
   const hasDetailedStats = (stats?.toolsByType && Object.keys(stats.toolsByType).length > 0) ||
     (showTokenUsage && hasModelUsage);
 
-  // Get tool icon for breakdown
   const getToolIcon = (tool: string) => {
     switch (tool) {
       case 'Read':
@@ -155,68 +182,98 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
     }
   };
 
+  // Cache efficiency: Anthropic API reports inputTokens as the non-cached portion,
+  // so total = uncached (inputTokens) + cacheRead + cacheWrite.
+  const cacheRead = summary.usage?.cacheReadInputTokens ?? 0;
+  const cacheWrite = summary.usage?.cacheCreationInputTokens ?? 0;
+  const cacheTotal = cacheRead + totalInputTokens + cacheWrite;
+  const cacheHitRatio = cacheTotal > 0 ? (cacheRead / cacheTotal) * 100 : 0;
+
+  // Check if we have any activity stats to show
+  const hasActivityStats = stats && (
+    stats.filesRead > 0 || stats.filesWritten > 0 || stats.bashCommands > 0 ||
+    stats.webSearches > 0 || stats.subAgents > 0
+  );
+
   return (
     <div>
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      {/* ── Collapsed Bar ── */}
       <CollapsibleTrigger
         className={cn(
-          'group mt-3 flex items-center gap-3 text-xs text-muted-foreground flex-wrap w-full',
+          'group mt-3 flex items-center gap-2 text-xs text-muted-foreground flex-wrap w-full',
           'hover:text-foreground/80 transition-colors cursor-pointer',
           !summary.success && 'text-destructive/70'
         )}
       >
-        {/* Status */}
+        {/* Status icon */}
         {summary.success ? (
-          <CheckCircle2 className="w-3 h-3 text-text-success shrink-0" />
+          <CheckCircle2 className="w-3.5 h-3.5 text-text-success shrink-0" />
         ) : (
-          <XCircle className="w-3 h-3 text-destructive shrink-0" />
+          <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />
         )}
 
         {/* Duration */}
         {duration && (
           <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3" />
+            <Clock className="w-3 h-3 opacity-50" />
             {duration}
           </span>
         )}
 
         {/* Cost */}
         {showChatCost && cost && (
-          <span className="flex items-center gap-1">
-            <DollarSign className="w-3 h-3" />
-            {cost}
-          </span>
+          <>
+            <DotSeparator />
+            <span className="font-medium">{cost}</span>
+          </>
         )}
 
-        {/* Token counts */}
-        {showTokenUsage && totalInputTokens > 0 && (
-          <span className="flex items-center gap-1">
-            <ArrowDownToLine className="w-3 h-3" />
-            {formatTokens(totalInputTokens)} in
-          </span>
-        )}
-        {showTokenUsage && totalOutputTokens > 0 && (
-          <span className="flex items-center gap-1">
-            <ArrowUpFromLine className="w-3 h-3" />
-            {formatTokens(totalOutputTokens)} out
-          </span>
+        {/* Token counts — grouped pair */}
+        {showTokenUsage && (totalInputTokens > 0 || totalOutputTokens > 0) && (
+          <>
+            <DotSeparator />
+            <span className="flex items-center gap-2">
+              {totalInputTokens > 0 && (
+                <span className="flex items-center gap-1">
+                  <ArrowDownToLine className="w-3 h-3 opacity-50" />
+                  {formatTokens(totalInputTokens)} in
+                </span>
+              )}
+              {totalOutputTokens > 0 && (
+                <span className="flex items-center gap-1">
+                  <ArrowUpFromLine className="w-3 h-3 opacity-50" />
+                  {formatTokens(totalOutputTokens)} out
+                </span>
+              )}
+            </span>
+          </>
         )}
 
         {/* Turns */}
         {summary.turns !== undefined && (
-          <span className="flex items-center gap-1">
-            <RotateCw className="w-3 h-3" />
-            {summary.turns} turn{summary.turns !== 1 ? 's' : ''}
-          </span>
+          <>
+            <DotSeparator />
+            <span className="flex items-center gap-1">
+              <RotateCw className="w-3 h-3 opacity-50" />
+              {summary.turns} turn{summary.turns !== 1 ? 's' : ''}
+            </span>
+          </>
         )}
 
         {/* Tool Calls */}
         {stats && stats.toolCalls > 0 && (
-          <span className="flex items-center gap-1">
-            <Wrench className="w-3 h-3" />
-            {stats.toolCalls} tool{stats.toolCalls !== 1 ? 's' : ''}
-          </span>
+          <>
+            <DotSeparator />
+            <span className="flex items-center gap-1">
+              <Wrench className="w-3 h-3 opacity-50" />
+              {stats.toolCalls} tool{stats.toolCalls !== 1 ? 's' : ''}
+            </span>
+          </>
         )}
+
+        {/* Spacer */}
+        <span className="flex-1" />
 
         {/* Revert to checkpoint */}
         {checkpointUuid && (
@@ -227,7 +284,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                   <span
                     role="button"
                     tabIndex={0}
-                    className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0 p-0.5 rounded hover:bg-muted"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0 p-0.5 rounded hover:bg-muted"
                     onClick={(e) => { e.stopPropagation(); setConfirmOpen(true); }}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setConfirmOpen(true); } }}
                   >
@@ -259,9 +316,9 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
           </Popover>
         )}
 
-        {/* Expand indicator if there are detailed stats */}
+        {/* Expand chevron */}
         {hasDetailedStats && (
-          <span className={cn('shrink-0', !checkpointUuid && 'ml-auto')}>
+          <span className="shrink-0">
             {isExpanded ? (
               <ChevronDown className="w-3 h-3" />
             ) : (
@@ -271,129 +328,155 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
         )}
       </CollapsibleTrigger>
 
+      {/* ── Expanded Panel ── */}
       {hasDetailedStats && (
         <CollapsibleContent>
-          <div className="mt-2 ml-4 p-2 rounded border bg-muted/30 space-y-2">
-            {/* Tool breakdown by type */}
+          <div className="mt-2 rounded-lg border border-border/50 overflow-hidden divide-y divide-border/30 animate-slide-up-fade">
+
+            {/* Section: Activity Overview */}
+            {hasActivityStats && (
+              <div className="px-3 py-2.5">
+                <div className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">
+                  Activity
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <StatPill icon={FileText} value={stats?.filesRead ?? 0} label={(stats?.filesRead ?? 0) === 1 ? 'file read' : 'files read'} />
+                  <StatPill icon={FileEdit} value={stats?.filesWritten ?? 0} label={(stats?.filesWritten ?? 0) === 1 ? 'file written' : 'files written'} />
+                  <StatPill icon={Terminal} value={stats?.bashCommands ?? 0} label={(stats?.bashCommands ?? 0) === 1 ? 'command' : 'commands'} />
+                  <StatPill icon={Globe} value={stats?.webSearches ?? 0} label={(stats?.webSearches ?? 0) === 1 ? 'search' : 'searches'} />
+                  <StatPill icon={GitBranch} value={stats?.subAgents ?? 0} label={(stats?.subAgents ?? 0) === 1 ? 'sub-agent' : 'sub-agents'} />
+                </div>
+              </div>
+            )}
+
+            {/* Section: Tool Breakdown */}
             {stats?.toolsByType && Object.keys(stats.toolsByType).length > 0 && (
-              <div>
-                <div className="text-2xs text-muted-foreground/60 mb-1.5 font-medium">
-                  Tool Breakdown
+              <div className="px-3 py-2.5">
+                <div className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">
+                  Tools
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {Object.entries(stats.toolsByType || {}).map(([tool, count]) => {
-                    const Icon = getToolIcon(tool);
-                    return (
-                      <div
-                        key={tool}
-                        className="flex items-center gap-1.5 text-2xs text-muted-foreground"
-                      >
-                        <Icon className="w-3 h-3 shrink-0" />
-                        <span className="font-medium">{tool}</span>
-                        <span className="text-muted-foreground/60">{'\u00D7'}{count}</span>
-                      </div>
-                    );
-                  })}
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(stats.toolsByType)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([tool, count]) => (
+                      <ToolPill key={tool} icon={getToolIcon(tool)} name={tool} count={count} />
+                    ))}
                 </div>
               </div>
             )}
 
-            {/* File operations summary */}
-            {stats && (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
-                {stats.filesRead > 0 && (
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3 h-3" />
-                    {stats.filesRead} file{stats.filesRead !== 1 ? 's' : ''} read
+            {/* Section: Performance / Timing */}
+            {(duration || toolDuration) && (
+              <div className="px-3 py-2 flex items-center gap-4 text-2xs text-muted-foreground">
+                {duration && (
+                  <span>
+                    Duration{' '}
+                    <span className="font-medium font-mono text-foreground/60">{duration}</span>
                   </span>
                 )}
-                {stats.filesWritten > 0 && (
-                  <span className="flex items-center gap-1">
-                    <FileEdit className="w-3 h-3" />
-                    {stats.filesWritten} file{stats.filesWritten !== 1 ? 's' : ''} written
-                  </span>
-                )}
-                {stats.bashCommands > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Terminal className="w-3 h-3" />
-                    {stats.bashCommands} command{stats.bashCommands !== 1 ? 's' : ''}
-                  </span>
-                )}
-                {stats.webSearches > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Globe className="w-3 h-3" />
-                    {stats.webSearches} web search{stats.webSearches !== 1 ? 'es' : ''}
-                  </span>
-                )}
-                {stats.subAgents > 0 && (
-                  <span className="flex items-center gap-1">
-                    <GitBranch className="w-3 h-3" />
-                    {stats.subAgents} sub-agent{stats.subAgents !== 1 ? 's' : ''}
+                {toolDuration && (
+                  <span>
+                    Tool execution{' '}
+                    <span className="font-medium font-mono text-foreground/60">{toolDuration}</span>
                   </span>
                 )}
               </div>
             )}
 
-            {/* Tool execution time */}
-            {toolDuration && (
-              <div className="text-2xs text-muted-foreground/60">
-                Total tool execution time: {toolDuration}
-              </div>
-            )}
-
-            {/* Token usage breakdown */}
+            {/* Section: Token Usage */}
             {showTokenUsage && hasModelUsage && (
-              <div className="pt-2 border-t border-border/50">
-                <div className="text-2xs text-muted-foreground/60 mb-1.5 font-medium">
-                  Token Usage
+              <div className="px-3 py-2.5">
+                <div className="text-2xs font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">
+                  Tokens
                 </div>
-                {/* Aggregate usage */}
+
+                {/* Aggregate stats */}
                 {summary.usage && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground mb-2">
-                    <span>Input: {totalInputTokens.toLocaleString()}</span>
-                    <span>Output: {totalOutputTokens.toLocaleString()}</span>
-                    {summary.usage.cacheReadInputTokens ? (
-                      <span>Cache read: {summary.usage.cacheReadInputTokens.toLocaleString()}</span>
-                    ) : null}
-                    {summary.usage.cacheCreationInputTokens ? (
-                      <span>Cache write: {summary.usage.cacheCreationInputTokens.toLocaleString()}</span>
-                    ) : null}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-2xs text-muted-foreground">
+                    <span>
+                      Input{' '}
+                      <span className="font-mono font-medium text-foreground/60">
+                        {totalInputTokens.toLocaleString()}
+                      </span>
+                    </span>
+                    <span>
+                      Output{' '}
+                      <span className="font-mono font-medium text-foreground/60">
+                        {totalOutputTokens.toLocaleString()}
+                      </span>
+                    </span>
+                    {cacheRead > 0 && (
+                      <span>
+                        Cache read{' '}
+                        <span className="font-mono font-medium text-foreground/60">
+                          {formatTokens(cacheRead)}
+                        </span>
+                      </span>
+                    )}
+                    {cacheWrite > 0 && (
+                      <span>
+                        Cache write{' '}
+                        <span className="font-mono font-medium text-foreground/60">
+                          {formatTokens(cacheWrite)}
+                        </span>
+                      </span>
+                    )}
                   </div>
                 )}
+
+                {/* Cache efficiency bar */}
+                {cacheRead > 0 && (
+                  <div className="mt-2.5">
+                    <div className="flex items-center justify-between text-2xs text-muted-foreground/50 mb-1">
+                      <span>Cache efficiency</span>
+                      <span className="font-mono">{cacheHitRatio.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-text-success/40 transition-all"
+                        style={{ width: `${Math.min(cacheHitRatio, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Per-model breakdown */}
-                <div className="space-y-1.5">
+                <div className="mt-2.5 space-y-1.5">
                   {Object.entries(summary.modelUsage ?? {}).map(([model, usage]) => (
-                    <div key={model} className="text-2xs text-muted-foreground">
-                      <span className="font-medium">{model}</span>
-                      <div className="ml-2 flex flex-wrap gap-x-3 gap-y-0.5">
-                        <span>In: {usage.inputTokens.toLocaleString()}</span>
-                        <span>Out: {usage.outputTokens.toLocaleString()}</span>
-                        <span>Cost: ${usage.costUSD.toFixed(4)}</span>
+                    <div key={model} className="flex items-baseline justify-between text-2xs text-muted-foreground">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-medium truncate">{model}</span>
+                        <span className="opacity-50 shrink-0">
+                          {formatTokens(usage.inputTokens)} in / {formatTokens(usage.outputTokens)} out
+                        </span>
                       </div>
+                      <span className="font-mono font-medium shrink-0 ml-3">
+                        ${usage.costUSD.toFixed(4)}
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Errors if any */}
+            {/* Section: Errors */}
             {summary.errors && summary.errors.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-border/50">
-                <div className="text-2xs text-destructive/80 font-medium mb-1">
-                  {summary.errors.length} error{summary.errors.length !== 1 ? 's' : ''}
+              <div className="px-3 py-2.5">
+                <div className="text-2xs font-medium text-destructive/60 uppercase tracking-wider mb-2">
+                  {summary.errors.length} {summary.errors.length === 1 ? 'Error' : 'Errors'}
                 </div>
                 <div className="space-y-1">
                   {summary.errors.slice(0, 3).map((error, idx) => (
                     <div
                       key={idx}
-                      className="text-2xs text-destructive/70 font-mono bg-destructive/5 p-1 rounded"
+                      className="text-2xs text-destructive/70 font-mono bg-destructive/5 px-2 py-1 rounded-md"
                     >
                       {typeof error === 'string' ? error : JSON.stringify(error)}
                     </div>
                   ))}
                   {summary.errors.length > 3 && (
-                    <div className="text-2xs text-destructive/60">
-                      ... and {summary.errors.length - 3} more
+                    <div className="text-2xs text-destructive/50">
+                      &hellip; and {summary.errors.length - 3} more
                     </div>
                   )}
                 </div>
