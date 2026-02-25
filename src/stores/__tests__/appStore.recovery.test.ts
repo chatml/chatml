@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useAppStore } from '../appStore';
 
-describe('appStore - agent recovery & message truncation', () => {
+describe('appStore - agent recovery', () => {
   const convId = 'conv-1';
   const otherConvId = 'conv-2';
 
@@ -87,84 +87,4 @@ describe('appStore - agent recovery & message truncation', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // truncateMessagesFrom
-  // ---------------------------------------------------------------------------
-  describe('truncateMessagesFrom', () => {
-    const makeMessage = (id: string, conversationId: string) => ({
-      id,
-      conversationId,
-      role: 'user' as const,
-      content: `content-${id}`,
-      timestamp: new Date().toISOString(),
-    });
-
-    it('removes messages from a given position onward', () => {
-      const messages = [
-        makeMessage('m0', convId),
-        makeMessage('m1', convId),
-        makeMessage('m2', convId),
-        makeMessage('m3', convId),
-      ];
-      useAppStore.setState({ messages });
-
-      useAppStore.getState().truncateMessagesFrom(convId, 2);
-
-      const remaining = useAppStore.getState().messages;
-      expect(remaining).toHaveLength(2);
-      expect(remaining.map((m) => m.id)).toEqual(['m0', 'm1']);
-    });
-
-    it('does not affect messages from other conversations', () => {
-      const messages = [
-        makeMessage('m0', convId),
-        makeMessage('m1', convId),
-        makeMessage('m2', convId),
-        makeMessage('other-0', otherConvId),
-        makeMessage('other-1', otherConvId),
-      ];
-      useAppStore.setState({ messages });
-
-      useAppStore.getState().truncateMessagesFrom(convId, 1);
-
-      const remaining = useAppStore.getState().messages;
-      const convMessages = remaining.filter((m) => m.conversationId === convId);
-      const otherMessages = remaining.filter((m) => m.conversationId === otherConvId);
-
-      expect(convMessages).toHaveLength(1);
-      expect(convMessages[0].id).toBe('m0');
-      expect(otherMessages).toHaveLength(2);
-      expect(otherMessages.map((m) => m.id)).toEqual(['other-0', 'other-1']);
-    });
-
-    it('with position 0 removes all messages for that conversation', () => {
-      const messages = [
-        makeMessage('m0', convId),
-        makeMessage('m1', convId),
-        makeMessage('m2', convId),
-        makeMessage('other-0', otherConvId),
-      ];
-      useAppStore.setState({ messages });
-
-      useAppStore.getState().truncateMessagesFrom(convId, 0);
-
-      const remaining = useAppStore.getState().messages;
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0].id).toBe('other-0');
-    });
-
-    it('is a no-op when position is beyond the message count', () => {
-      const messages = [
-        makeMessage('m0', convId),
-        makeMessage('m1', convId),
-      ];
-      useAppStore.setState({ messages });
-
-      useAppStore.getState().truncateMessagesFrom(convId, 10);
-
-      const remaining = useAppStore.getState().messages;
-      expect(remaining).toHaveLength(2);
-      expect(remaining.map((m) => m.id)).toEqual(['m0', 'm1']);
-    });
-  });
 });

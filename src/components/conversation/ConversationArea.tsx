@@ -45,7 +45,7 @@ import { QueuedMessageBubble } from '@/components/conversation/QueuedMessageBubb
 import { VirtualizedMessageList, type VirtualizedMessageListHandle } from '@/components/conversation/VirtualizedMessageList';
 import { ChatSearchBar, countSearchMatches } from '@/components/conversation/ChatSearchBar';
 import { useShortcut } from '@/hooks/useShortcut';
-import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary, regenerateMessage, forkConversation } from '@/lib/api';
+import { getSessionFileContent, getSessionFileDiff, updateReviewComment, deleteReviewComment as deleteReviewCommentApi, listReviewComments, createConversation, createReviewComment, getConversationMessages, toStoreMessage, generateSummary, getConversationSummary } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache } from '@/lib/diffCache';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
@@ -721,66 +721,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
   }, [currentFileTab, updateFileTab]);
 
-  // ── Message editing, regeneration, and forking ──
-
-  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
-    if (!selectedConversationId) return;
-    try {
-      await regenerateMessage(selectedConversationId, messageId, newContent);
-      // The backend broadcasts `conversation_truncated` via WebSocket,
-      // which the useWebSocket handler picks up to trim the local store.
-    } catch (error) {
-      console.error('Failed to edit & regenerate message:', error);
-      showError('Failed to regenerate message. Please try again.');
-    }
-  }, [selectedConversationId, showError]);
-
-  const handleRegenerateMessage = useCallback(async (messageId: string) => {
-    if (!selectedConversationId) return;
-    try {
-      await regenerateMessage(selectedConversationId, messageId);
-    } catch (error) {
-      console.error('Failed to regenerate message:', error);
-      showError('Failed to regenerate message. Please try again.');
-    }
-  }, [selectedConversationId, showError]);
-
-  const handleForkMessage = useCallback(async (messageId: string) => {
-    if (!selectedConversationId) return;
-    try {
-      const newConv = await forkConversation(selectedConversationId, messageId);
-      addConversation({
-        id: newConv.id,
-        sessionId: newConv.sessionId,
-        type: newConv.type,
-        name: newConv.name,
-        status: newConv.status,
-        messages: newConv.messages.map((m) => ({
-          id: m.id,
-          conversationId: newConv.id,
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
-          setupInfo: m.setupInfo,
-          runSummary: m.runSummary,
-          timestamp: m.timestamp,
-        })),
-        toolSummary: newConv.toolSummary.map((t) => ({
-          id: t.id,
-          tool: t.tool,
-          target: t.target,
-          success: t.success,
-        })),
-        createdAt: newConv.createdAt,
-        updatedAt: newConv.updatedAt,
-      });
-      selectConversation(newConv.id);
-      selectFileTab(null);
-    } catch (error) {
-      console.error('Failed to fork conversation:', error);
-      showError('Failed to fork conversation. Please try again.');
-    }
-  }, [selectedConversationId, addConversation, selectConversation, selectFileTab, showError]);
-
   const handleNewConversation = useCallback(async (type: 'task' | 'review' | 'chat' = 'task') => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
 
@@ -1240,9 +1180,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             footer={messageListFooter}
             isStreaming={selectedStreaming?.isStreaming ?? false}
             pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
-            onEditMessage={handleEditMessage}
-            onRegenerateMessage={handleRegenerateMessage}
-            onForkMessage={handleForkMessage}
           />
           {/* Fade overlay at bottom of messages */}
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />

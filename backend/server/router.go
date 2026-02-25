@@ -200,8 +200,6 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{convId}/max-thinking-tokens", h.SetConversationMaxThinkingTokens)
 		r.Post("/{convId}/approve-plan", h.ApprovePlan)
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
-		r.With(messageRateLimiter).Post("/{convId}/regenerate", h.RegenerateMessage)
-		r.With(conversationRateLimiter).Post("/{convId}/fork", h.ForkConversation)
 		r.Delete("/{convId}", h.DeleteConversation)
 		// Summary endpoints
 		r.With(conversationRateLimiter).Post("/{convId}/summary", h.GenerateConversationSummary)
