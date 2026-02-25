@@ -1363,6 +1363,13 @@ export async function deleteFileTab(workspaceId: string, tabId: string): Promise
   await handleVoidResponse(res, 'Failed to delete file tab');
 }
 
+// Attachment data — returns base64 content, or null when the DB has no data for this attachment.
+export async function fetchAttachmentData(attachmentId: string): Promise<string | null> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/attachments/${encodeURIComponent(attachmentId)}/data`);
+  const json = await handleResponse<{ base64Data: string }>(res);
+  return json.base64Data || null;
+}
+
 // File save function
 export async function saveFile(
   workspaceId: string,
