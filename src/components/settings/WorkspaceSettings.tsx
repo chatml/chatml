@@ -29,15 +29,11 @@ import {
 import type { ActionTemplateKey, ActionTemplateOverride, OverrideMode } from '@/lib/action-templates';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { useToast } from '@/components/ui/toast';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import {
-  ArrowLeft,
   ChevronRight,
-  Eye,
-  Zap,
   GitBranch,
   FolderOpen,
   Globe,
@@ -46,143 +42,51 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isMacOS } from '@/lib/platform';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import type { WorkspaceSettingsSection } from './settingsRegistry';
 
-interface WorkspaceSettingsProps {
+/**
+ * Standalone content component for rendering workspace settings sections.
+ * Used by SettingsPage to render workspace settings inline (no sidebar/overlay).
+ */
+export function WorkspaceSettingsContent({ workspaceId, section }: {
   workspaceId: string;
-  onBack: () => void;
-}
-
-type WorkspaceSettingsSection = 'repository' | 'review' | 'actions';
-
-export function WorkspaceSettings({ workspaceId, onBack }: WorkspaceSettingsProps) {
+  section: WorkspaceSettingsSection;
+}) {
   const workspaces = useAppStore((s) => s.workspaces);
   const workspace = workspaces.find((w) => w.id === workspaceId);
   const [repoDetails, setRepoDetails] = useState<RepoDetailsDTO | null>(null);
-  const [section, setSection] = useState<WorkspaceSettingsSection>('repository');
 
-  // Fetch repo details on mount
   useEffect(() => {
-    const fetchDetails = async () => {
-      try {
-        const details = await getRepoDetails(workspaceId);
-        setRepoDetails(details);
-      } catch (error) {
-        console.error('Failed to fetch repo details:', error);
-      }
-    };
-    fetchDetails();
+    getRepoDetails(workspaceId).then(setRepoDetails).catch((error) => {
+      console.error('Failed to fetch repo details:', error);
+    });
   }, [workspaceId]);
-
-  // Handle Escape key to go back
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onBack();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onBack]);
 
   if (!workspace) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
         Workspace not found
       </div>
     );
   }
 
   return (
-    <div className="flex h-full bg-content-background">
-      {/* Left Sidebar */}
-      <div className="w-56 border-r bg-sidebar flex flex-col">
-        {/* Back button - extra padding on macOS for traffic lights */}
-        <div data-tauri-drag-region className={cn("h-10 pr-3 flex items-center border-b shrink-0", isMacOS() ? 'pl-20' : 'pl-3')}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 -ml-2 text-muted-foreground hover:text-foreground"
-            onClick={onBack}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to app
-          </Button>
-        </div>
-
-        <ScrollArea className="flex-1">
-          <div className="py-2 px-2">
-            <div className="space-y-0.5">
-              <div className="px-2 py-1.5 text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                {workspace.name}
-              </div>
-              <Button
-                variant={section === 'repository' ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn(
-                  'w-full justify-start gap-2 h-7 text-xs',
-                  section === 'repository' && 'bg-sidebar-accent',
-                )}
-                onClick={() => setSection('repository')}
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-                Repository
-              </Button>
-              <Button
-                variant={section === 'review' ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn(
-                  'w-full justify-start gap-2 h-7 text-xs',
-                  section === 'review' && 'bg-sidebar-accent',
-                )}
-                onClick={() => setSection('review')}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                Review
-              </Button>
-              <Button
-                variant={section === 'actions' ? 'secondary' : 'ghost'}
-                size="sm"
-                className={cn(
-                  'w-full justify-start gap-2 h-7 text-xs',
-                  section === 'actions' && 'bg-sidebar-accent',
-                )}
-                onClick={() => setSection('actions')}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                Actions
-              </Button>
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
-
-      {/* Content Area */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Drag region for window */}
-        <div data-tauri-drag-region className="h-10 shrink-0 border-b" />
-
-        <ScrollArea className="flex-1">
-          <div className="max-w-2xl mx-auto py-8 px-8">
-            {section === 'repository' && (
-              <RepositorySection workspace={workspace} repoDetails={repoDetails} />
-            )}
-            {section === 'review' && (
-              <WorkspaceReviewSettings workspaceId={workspaceId} />
-            )}
-            {section === 'actions' && (
-              <WorkspaceActionSettings workspaceId={workspaceId} />
-            )}
-          </div>
-        </ScrollArea>
-      </div>
-    </div>
+    <>
+      {section === 'repository' && (
+        <RepositorySection workspace={workspace} repoDetails={repoDetails} />
+      )}
+      {section === 'review' && (
+        <WorkspaceReviewSettings workspaceId={workspaceId} />
+      )}
+      {section === 'actions' && (
+        <WorkspaceActionSettings workspaceId={workspaceId} />
+      )}
+    </>
   );
 }
 
-function RepositorySection({
+export function RepositorySection({
   workspace,
   repoDetails,
 }: {
@@ -442,7 +346,7 @@ function BranchPrefixSelector({
   );
 }
 
-function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
+export function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, string>>({});
   const [globalPrompts, setGlobalPrompts] = useState<Record<string, string>>({});
@@ -517,7 +421,7 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId]);
 
   const prPlaceholder = globalPrTemplate
-    ? `Global: ${globalPrTemplate.slice(0, 60)}${globalPrTemplate.length > 60 ? '…' : ''}`
+    ? `Global: ${globalPrTemplate.slice(0, 60)}${globalPrTemplate.length > 60 ? '...' : ''}`
     : 'e.g., Include a testing checklist, link to related issues';
 
   return (
@@ -545,7 +449,7 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
         {REVIEW_TYPE_META.map(({ key, label, placeholder }) => {
           const globalOverride = globalPrompts[key];
           const effectivePlaceholder = globalOverride
-            ? `Global: ${globalOverride.slice(0, 60)}…`
+            ? `Global: ${globalOverride.slice(0, 60)}...`
             : placeholder;
           const hasOverride = !!(prompts[key]?.trim());
 
@@ -560,7 +464,7 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
                 )}
               </div>
               <p className="text-xs text-muted-foreground mb-1.5 line-clamp-1">
-                Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}…
+                Default: {REVIEW_PROMPTS[key]?.slice(0, 80)}...
               </p>
               <Textarea
                 className="text-sm min-h-[60px]"
@@ -610,7 +514,7 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
+export function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
   const [templates, setTemplatesState] = useState<Partial<Record<ActionTemplateKey, ActionTemplateOverride>>>({});
   const [saved, setSaved] = useState<Partial<Record<ActionTemplateKey, ActionTemplateOverride>>>({});
   const [globalOverrides, setGlobalOverrides] = useState<Partial<Record<ActionTemplateKey, ActionTemplateOverride>>>({});

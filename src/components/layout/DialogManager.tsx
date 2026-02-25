@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { useShortcut } from '@/hooks/useShortcut';
 import { SettingsPage } from '@/components/settings/SettingsPage';
-import { WorkspaceSettings } from '@/components/settings/WorkspaceSettings';
+import type { WorkspaceSettingsSection } from '@/components/settings/settingsRegistry';
 import { AddWorkspaceModal } from '@/components/dialogs/AddWorkspaceModal';
 import { CreateFromPRModal } from '@/components/dialogs/CreateFromPRModal';
 import { CloneFromUrlDialog } from '@/components/dialogs/CloneFromUrlDialog';
@@ -58,9 +58,10 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
 }, ref) {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [showCreateFromPR, setShowCreateFromPR] = useState(false);
-  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<string | undefined>(undefined);
+  const [settingsInitialWorkspaceId, setSettingsInitialWorkspaceId] = useState<string | undefined>(undefined);
+  const [settingsInitialWorkspaceSection, setSettingsInitialWorkspaceSection] = useState<WorkspaceSettingsSection | undefined>(undefined);
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
   const [showGitHubRepos, setShowGitHubRepos] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -91,18 +92,25 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
   // Expose dialog openers for use by parent via the returned object
   const openSettings = useCallback((category?: string) => {
     if (category) setSettingsInitialCategory(category);
+    setSettingsInitialWorkspaceId(undefined);
+    setSettingsInitialWorkspaceSection(undefined);
     setShowSettings(true);
   }, []);
 
   const closeSettings = useCallback(() => {
     setShowSettings(false);
     setSettingsInitialCategory(undefined);
+    setSettingsInitialWorkspaceId(undefined);
+    setSettingsInitialWorkspaceSection(undefined);
     refreshClaudeAuthStatus();
   }, []);
 
   const openWorkspaceSettings = useCallback((workspaceId: string) => {
     expandWorkspace(workspaceId);
-    setShowWorkspaceSettings(workspaceId);
+    setSettingsInitialWorkspaceId(workspaceId);
+    setSettingsInitialWorkspaceSection('repository');
+    setSettingsInitialCategory(undefined);
+    setShowSettings(true);
   }, [expandWorkspace]);
 
   // Expose dialog openers to parent via ref
@@ -119,22 +127,14 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
 
   return (
     <>
-      {/* Settings Overlay - full screen */}
+      {/* Settings Overlay - full screen (unified: app + workspace settings) */}
       {showSettings && (
         <div className="absolute inset-0 z-20 bg-content-background">
           <SettingsPage
             initialCategory={settingsInitialCategory as 'general' | 'ai-models' | undefined}
+            initialWorkspaceId={settingsInitialWorkspaceId}
+            initialWorkspaceSection={settingsInitialWorkspaceSection}
             onBack={closeSettings}
-          />
-        </div>
-      )}
-
-      {/* Workspace Settings Overlay - full screen */}
-      {showWorkspaceSettings && (
-        <div className="absolute inset-0 z-20 bg-content-background">
-          <WorkspaceSettings
-            workspaceId={showWorkspaceSettings}
-            onBack={() => setShowWorkspaceSettings(null)}
           />
         </div>
       )}
