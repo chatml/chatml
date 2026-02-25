@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { act } from 'react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UserQuestionPrompt } from '../UserQuestionPrompt';
 import { useAppStore } from '@/stores/appStore';
@@ -76,10 +75,12 @@ describe('UserQuestionPrompt', () => {
       expect(container.innerHTML).toBe('');
     });
 
-    it('renders the question text', () => {
+    it('renders the question text with base font size', () => {
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
-      expect(screen.getByText('Which framework do you prefer?')).toBeInTheDocument();
+      const questionEl = screen.getByText('Which framework do you prefer?');
+      expect(questionEl).toBeInTheDocument();
+      expect(questionEl.className).toContain('text-base');
     });
 
     it('renders all option labels', () => {
@@ -112,13 +113,51 @@ describe('UserQuestionPrompt', () => {
       expect(screen.getByText('No')).toBeInTheDocument();
     });
 
-    it('renders option numbers (1-indexed)', () => {
+    it('renders number badges for each option (1-indexed)', () => {
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
       expect(screen.getByText('1')).toBeInTheDocument();
       expect(screen.getByText('2')).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument();
       expect(screen.getByText('4')).toBeInTheDocument();
+      // "Other" gets number 5
+      expect(screen.getByText('5')).toBeInTheDocument();
+    });
+
+    it('renders the "Other" option as "Type something else..." with a number badge', () => {
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+      expect(screen.getByTestId('other-option')).toBeInTheDocument();
+      expect(screen.getByText('Type something else...')).toBeInTheDocument();
+    });
+
+    it('does not render "Other" for free-text-only questions', () => {
+      setPending(makePending({
+        questions: [makeQuestion({ options: [] })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+      expect(screen.queryByTestId('other-option')).not.toBeInTheDocument();
+    });
+
+    it('renders a Skip button instead of X dismiss', () => {
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+      expect(screen.getByTestId('skip-question')).toBeInTheDocument();
+      expect(screen.getByText('Skip')).toBeInTheDocument();
+    });
+
+    it('renders question counter in header for multi-question wizard', () => {
+      const q1 = makeQuestion({ question: 'Q1', header: 'H1' });
+      const q2 = makeQuestion({ question: 'Q2', header: 'H2', options: [{ label: 'A', description: '' }] });
+      setPending(makePending({ questions: [q1, q2] }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+      expect(screen.getByTestId('question-counter')).toHaveTextContent('1/2');
+    });
+
+    it('does not render question counter for single question', () => {
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+      expect(screen.queryByTestId('question-counter')).not.toBeInTheDocument();
     });
   });
 
@@ -127,22 +166,27 @@ describe('UserQuestionPrompt', () => {
   // ==========================================================================
 
   describe('single select', () => {
-    it('auto-submits on single-select click for single question', async () => {
+    it('auto-submits on single-select click after brief delay', async () => {
       const user = userEvent.setup();
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('Vue'));
 
-      // Auto-submit should have fired
-      expect(answerConversationQuestion).toHaveBeenCalledWith(
-        CONV_ID,
-        'req-1',
-        { Framework: 'Vue' },
-      );
-      // Pending should be cleared
-      const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]).toBeNull();
+      // Answer should be in store immediately
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('Vue');
+
+      // Auto-submit fires after the 200ms delay
+      await waitFor(() => {
+        expect(answerConversationQuestion).toHaveBeenCalledWith(
+          CONV_ID,
+          'req-1',
+          { Framework: 'Vue' },
+        );
+      });
+      await waitFor(() => {
+        expect(useAppStore.getState().pendingUserQuestion[CONV_ID]).toBeNull();
+      });
     });
 
     it('auto-advances to next question in wizard on single-select click', async () => {
@@ -161,11 +205,11 @@ describe('UserQuestionPrompt', () => {
 
       await user.click(screen.getByText('React'));
 
-      // Should advance to Q2 without submitting
+      await waitFor(() => {
+        expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
+      });
       expect(answerConversationQuestion).not.toHaveBeenCalled();
-      const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
-      expect(state.pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('React');
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('React');
     });
   });
 
@@ -187,7 +231,6 @@ describe('UserQuestionPrompt', () => {
       const state = useAppStore.getState();
       const pending = state.pendingUserQuestion[CONV_ID];
       const answer = pending?.answers['Framework'] ?? '';
-      // Comma-separated, both present
       expect(answer.split(',')).toContain('React');
       expect(answer.split(',')).toContain('Svelte');
     });
@@ -201,7 +244,6 @@ describe('UserQuestionPrompt', () => {
 
       await user.click(screen.getByText('React'));
       await user.click(screen.getByText('Svelte'));
-      // Deselect React
       await user.click(screen.getByText('React'));
 
       const state = useAppStore.getState();
@@ -238,7 +280,6 @@ describe('UserQuestionPrompt', () => {
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('Vue'));
-
       await user.click(screen.getByTestId('submit-question'));
 
       expect(answerConversationQuestion).toHaveBeenCalledWith(
@@ -254,7 +295,6 @@ describe('UserQuestionPrompt', () => {
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
       await user.click(screen.getByText('React'));
-
       await user.click(screen.getByTestId('submit-question'));
 
       const state = useAppStore.getState();
@@ -263,16 +303,16 @@ describe('UserQuestionPrompt', () => {
   });
 
   // ==========================================================================
-  // Cancel / Dismiss
+  // Cancel / Skip
   // ==========================================================================
 
-  describe('cancel', () => {
-    it('sends __cancelled on dismiss click', async () => {
+  describe('skip', () => {
+    it('sends __cancelled on Skip click', async () => {
       const user = userEvent.setup();
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      await user.click(screen.getByTestId('dismiss-question'));
+      await user.click(screen.getByTestId('skip-question'));
 
       expect(answerConversationQuestion).toHaveBeenCalledWith(
         CONV_ID,
@@ -281,27 +321,25 @@ describe('UserQuestionPrompt', () => {
       );
     });
 
-    it('clears pending question after dismiss', async () => {
+    it('clears pending question after skip', async () => {
       const user = userEvent.setup();
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      await user.click(screen.getByTestId('dismiss-question'));
+      await user.click(screen.getByTestId('skip-question'));
 
       const state = useAppStore.getState();
       expect(state.pendingUserQuestion[CONV_ID]).toBeNull();
     });
 
-    it('swallows API errors on dismiss gracefully', async () => {
+    it('swallows API errors on skip gracefully', async () => {
       vi.mocked(answerConversationQuestion).mockRejectedValueOnce(new Error('Network error'));
       const user = userEvent.setup();
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      // Should not throw
-      await user.click(screen.getByTestId('dismiss-question'));
+      await user.click(screen.getByTestId('skip-question'));
 
-      // Still clears UI despite API error
       const state = useAppStore.getState();
       expect(state.pendingUserQuestion[CONV_ID]).toBeNull();
     });
@@ -337,8 +375,7 @@ describe('UserQuestionPrompt', () => {
     it('shows pagination dots for multi-question wizard', () => {
       setPending(makeMultiPending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
-      // "1 of 3" text
-      expect(screen.getByText('1 of 3')).toBeInTheDocument();
+      expect(screen.getByTestId('question-counter')).toHaveTextContent('1/3');
     });
 
     it('shows first question initially', () => {
@@ -347,10 +384,10 @@ describe('UserQuestionPrompt', () => {
       expect(screen.getByText('Pick a framework')).toBeInTheDocument();
     });
 
-    it('does not show pagination for single question', () => {
+    it('does not show question counter for single question', () => {
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
-      expect(screen.queryByText(/of/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('question-counter')).not.toBeInTheDocument();
     });
 
     it('auto-advances to next question on single-select click', async () => {
@@ -358,15 +395,14 @@ describe('UserQuestionPrompt', () => {
       setPending(makeMultiPending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      // Click an option on Q1 — should auto-advance to Q2
       await user.click(screen.getByText('React'));
 
-      const state = useAppStore.getState();
-      expect(state.pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
+      await waitFor(() => {
+        expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.currentIndex).toBe(1);
+      });
     });
 
     it('preserves answers when navigating back', async () => {
-      // Set up: Q1 answered, currently on Q2
       setPending(makeMultiPending());
       const store = useAppStore.getState();
       store.updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
@@ -382,7 +418,6 @@ describe('UserQuestionPrompt', () => {
     });
 
     it('submit is disabled until all questions are answered', () => {
-      // Only answer Q1
       setPending(makeMultiPending());
       useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
 
@@ -408,19 +443,20 @@ describe('UserQuestionPrompt', () => {
       setPending(makeMultiPending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 
-      // Answer Q1 — auto-advances to Q2
       await user.click(screen.getByText('React'));
 
-      // Q2 options should now be visible and clickable
-      expect(screen.getByText('Pick a database')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Pick a database')).toBeInTheDocument();
+      });
+
       await user.click(screen.getByText('PostgreSQL'));
 
-      // Should auto-advance to Q3
-      const state = useAppStore.getState();
-      const pending = state.pendingUserQuestion[CONV_ID];
-      expect(pending?.answers['Database']).toBe('PostgreSQL');
-      // Q1 answer should still be preserved
-      expect(pending?.answers['Framework']).toBe('React');
+      await waitFor(() => {
+        const state = useAppStore.getState();
+        const pending = state.pendingUserQuestion[CONV_ID];
+        expect(pending?.answers['Database']).toBe('PostgreSQL');
+        expect(pending?.answers['Framework']).toBe('React');
+      });
     });
 
     it('sends all answers in a single submit call', async () => {
@@ -448,6 +484,212 @@ describe('UserQuestionPrompt', () => {
   });
 
   // ==========================================================================
+  // "Other" (Custom Text) Option
+  // ==========================================================================
+
+  describe('Other option', () => {
+    it('shows text input when "Other" is selected (single-select)', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+
+      expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+    });
+
+    it('does NOT auto-submit when "Other" is selected (single-select)', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+
+      // "Other" click never starts the auto-submit timer, so verify immediately
+      expect(answerConversationQuestion).not.toHaveBeenCalled();
+      expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+    });
+
+    it('submits typed text as the answer via submit button', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+      await user.type(screen.getByTestId('other-text-input'), 'Solid.js');
+      await user.click(screen.getByTestId('submit-question'));
+
+      expect(answerConversationQuestion).toHaveBeenCalledWith(
+        CONV_ID,
+        'req-1',
+        { Framework: 'Solid.js' },
+      );
+    });
+
+    it('submits typed text on Enter key', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+      await user.type(screen.getByTestId('other-text-input'), 'Solid.js{Enter}');
+
+      expect(answerConversationQuestion).toHaveBeenCalledWith(
+        CONV_ID,
+        'req-1',
+        { Framework: 'Solid.js' },
+      );
+    });
+
+    it('clears "Other" when a regular option is clicked (single-select)', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+      expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+
+      await user.click(screen.getByText('React'));
+
+      expect(screen.queryByTestId('other-text-input')).not.toBeInTheDocument();
+    });
+
+    it('submit is disabled when "Other" is selected but no text typed', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByTestId('other-option'));
+
+      expect(screen.getByTestId('submit-question')).toBeDisabled();
+    });
+
+    it('works alongside regular selections in multi-select', async () => {
+      const user = userEvent.setup();
+      setPending(makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByText('React'));
+      await user.click(screen.getByTestId('other-option'));
+      await user.type(screen.getByTestId('other-text-input'), 'Solid.js');
+      await user.click(screen.getByTestId('submit-question'));
+
+      const calledWith = vi.mocked(answerConversationQuestion).mock.calls[0][2];
+      const values = calledWith['Framework'].split(',');
+      expect(values).toContain('React');
+      expect(values).toContain('Solid.js');
+    });
+
+    it('toggles "Other" off in multi-select mode', async () => {
+      const user = userEvent.setup();
+      setPending(makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      await user.click(screen.getByText('React'));
+      await user.click(screen.getByTestId('other-option'));
+      expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('other-option'));
+      expect(screen.queryByTestId('other-text-input')).not.toBeInTheDocument();
+
+      const state = useAppStore.getState();
+      expect(state.pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('React');
+    });
+
+    it('cancels pending auto-submit when "Other" is clicked after a regular option', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      // Click a regular option (starts 200ms auto-submit timer)
+      await user.click(screen.getByText('Vue'));
+      // Immediately click "Other" before the timer fires
+      await user.click(screen.getByTestId('other-option'));
+
+      // Wait past the would-be auto-submit delay (200ms) to ensure it was cancelled
+      await waitFor(() => {
+        expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+      });
+      // Give extra time for the cancelled timer to have fired if it wasn't cancelled
+      await new Promise(r => setTimeout(r, 250));
+
+      // Auto-submit should NOT have fired because "Other" cancelled it
+      expect(answerConversationQuestion).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Keyboard Shortcuts
+  // ==========================================================================
+
+  describe('keyboard shortcuts', () => {
+    it('pressing a number key selects the corresponding option', async () => {
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      fireEvent.keyDown(document, { key: '2' });
+
+      // Should select "Vue" (option 2)
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('Vue');
+    });
+
+    it('pressing the "Other" number key activates Other mode', async () => {
+      setPending(makePending()); // 4 options → Other is 5
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      fireEvent.keyDown(document, { key: '5' });
+
+      expect(screen.getByTestId('other-text-input')).toBeInTheDocument();
+    });
+
+    it('does not intercept number keys when typing in an input', async () => {
+      const user = userEvent.setup();
+      setPending(makePending());
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      // Activate "Other" to get a text input
+      await user.click(screen.getByTestId('other-option'));
+      const input = screen.getByTestId('other-text-input');
+
+      // Type "123" into the input — should not trigger option selection
+      await user.type(input, '123');
+
+      expect(input).toHaveValue('123');
+      // Should NOT have selected options 1, 2, 3
+      const store = useAppStore.getState();
+      expect(store.pendingUserQuestion[CONV_ID]?.answers['Framework']).toBe('123');
+    });
+
+    it('ignores number keys out of range', () => {
+      setPending(makePending()); // 4 options + Other = 5, so 6-9 are out of range
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      fireEvent.keyDown(document, { key: '9' });
+
+      // No answer should be set
+      expect(useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework']).toBeUndefined();
+    });
+
+    it('selects option via number key in multi-select mode', () => {
+      setPending(makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      fireEvent.keyDown(document, { key: '1' });
+      fireEvent.keyDown(document, { key: '3' });
+
+      const answer = useAppStore.getState().pendingUserQuestion[CONV_ID]?.answers['Framework'] ?? '';
+      expect(answer.split(',')).toContain('React');
+      expect(answer.split(',')).toContain('Svelte');
+    });
+  });
+
+  // ==========================================================================
   // Concurrent Question Handling
   // ==========================================================================
 
@@ -456,7 +698,6 @@ describe('UserQuestionPrompt', () => {
       setPending(makePending({ requestId: 'req-1' }));
       useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
 
-      // Second question replaces first
       setPending(makePending({
         requestId: 'req-2',
         questions: [makeQuestion({ question: 'New question', header: 'New' })],
