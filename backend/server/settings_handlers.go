@@ -89,6 +89,81 @@ func (h *Handlers) SetWorkspaceReviewPrompts(w http.ResponseWriter, r *http.Requ
 	h.setReviewPrompts(w, r, fmt.Sprintf("review-prompts:%s", workspaceID))
 }
 
+// getActionTemplates reads action template overrides from the given settings key.
+func (h *Handlers) getActionTemplates(w http.ResponseWriter, ctx context.Context, key string) {
+	value, found, err := h.store.GetSetting(ctx, key)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]any{"templates": map[string]string{}})
+		return
+	}
+
+	var templates map[string]string
+	if err := json.Unmarshal([]byte(value), &templates); err != nil {
+		writeError(w, http.StatusInternalServerError, ErrCodeInternal, "corrupted action templates data", err)
+		return
+	}
+
+	writeJSON(w, map[string]any{"templates": templates})
+}
+
+// setActionTemplates writes action template overrides to the given settings key.
+func (h *Handlers) setActionTemplates(w http.ResponseWriter, r *http.Request, key string) {
+	ctx := r.Context()
+
+	var req struct {
+		Templates map[string]string `json:"templates"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if len(req.Templates) == 0 {
+		if err := h.store.DeleteSetting(ctx, key); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	} else {
+		data, err := json.Marshal(req.Templates)
+		if err != nil {
+			writeValidationError(w, "failed to encode templates")
+			return
+		}
+		if err := h.store.SetSetting(ctx, key, string(data)); err != nil {
+			writeDBError(w, err)
+			return
+		}
+	}
+
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+// GetActionTemplates returns the global custom action template overrides
+func (h *Handlers) GetActionTemplates(w http.ResponseWriter, r *http.Request) {
+	h.getActionTemplates(w, r.Context(), "action-templates")
+}
+
+// SetActionTemplates updates the global custom action template overrides
+func (h *Handlers) SetActionTemplates(w http.ResponseWriter, r *http.Request) {
+	h.setActionTemplates(w, r, "action-templates")
+}
+
+// GetWorkspaceActionTemplates returns per-workspace custom action template overrides
+func (h *Handlers) GetWorkspaceActionTemplates(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.getActionTemplates(w, r.Context(), fmt.Sprintf("action-templates:%s", workspaceID))
+}
+
+// SetWorkspaceActionTemplates updates per-workspace custom action template overrides
+func (h *Handlers) SetWorkspaceActionTemplates(w http.ResponseWriter, r *http.Request) {
+	workspaceID := chi.URLParam(r, "id")
+	h.setActionTemplates(w, r, fmt.Sprintf("action-templates:%s", workspaceID))
+}
+
 // GetCustomInstructions returns the global custom instructions for agent system prompts
 func (h *Handlers) GetCustomInstructions(w http.ResponseWriter, r *http.Request) {
 	value, found, err := h.store.GetSetting(r.Context(), "custom-instructions")
