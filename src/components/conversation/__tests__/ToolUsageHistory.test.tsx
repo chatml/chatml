@@ -58,7 +58,7 @@ describe('ToolUsageHistory', () => {
     await user.click(trigger);
 
     // MCP tool should show formatted label instead of raw name
-    expect(screen.getByText('Get session status')).toBeInTheDocument();
+    expect(screen.getByText('Get Session Status')).toBeInTheDocument();
     expect(screen.getByText('ChatML')).toBeInTheDocument();
     // Raw name should NOT appear
     expect(screen.queryByText('mcp__chatml__get_session_status')).toBeNull();

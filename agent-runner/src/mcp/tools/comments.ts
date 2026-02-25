@@ -6,7 +6,7 @@ import { fetchWithRetry } from "./fetch-utils.js";
 
 // Backend URL from environment. This matches the default port used by the Go backend.
 // TODO: Consider adding backendUrl to WorkspaceContext for consistency with other tools
-const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://localhost:9876";
+const BACKEND_URL = process.env.CHATML_BACKEND_URL || "http://127.0.0.1:9876";
 const AUTH_TOKEN = process.env.CHATML_AUTH_TOKEN || "";
 
 function buildHeaders(json = false): Record<string, string> {

@@ -61,7 +61,7 @@ export function formatToolDuration(ms: number): string {
 export interface McpToolInfo {
   serverName: string;     // raw server name, e.g. "chatml"
   toolName: string;       // raw tool name, e.g. "get_session_status"
-  displayLabel: string;   // human-readable, e.g. "Get session status"
+  displayLabel: string;   // human-readable, e.g. "Get Session Status"
   displayServer: string;  // human-readable, e.g. "ChatML"
 }
 
@@ -72,12 +72,15 @@ const SERVER_DISPLAY_NAMES: Record<string, string> = {
   tauri: 'Tauri',
 };
 
-/** Convert snake_case to sentence case: "get_session_status" → "Get session status" */
+/** Well-known acronyms that should be rendered in ALL CAPS. */
+const ACRONYMS = new Set(['pr', 'url', 'api', 'id', 'ui', 'css', 'html', 'js', 'ts', 'mcp', 'ipc', 'dom']);
+
+/** Convert snake_case to Title Case: "report_pr_created" → "Report PR Created" */
 function formatSnakeCaseToLabel(name: string): string {
   const words = name.split('_');
   if (words.length === 0) return name;
   return words
-    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .map((w) => ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
 
