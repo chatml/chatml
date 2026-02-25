@@ -58,6 +58,7 @@ describe('RunSummaryBlock', () => {
         filesWritten: 3,
         bashCommands: 2,
         webSearches: 0,
+        totalToolDurationMs: 3000,
       },
     };
 
@@ -67,7 +68,7 @@ describe('RunSummaryBlock', () => {
     const trigger = screen.getByRole('button');
     await user.click(trigger);
 
-    // Detailed stats should appear — "Tool Breakdown" heading
-    expect(screen.getByText('Tool Breakdown')).toBeInTheDocument();
+    // Detailed stats should appear — "Tools" heading
+    expect(screen.getByText('Tools')).toBeInTheDocument();
   });
 });

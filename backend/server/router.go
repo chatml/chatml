@@ -128,6 +128,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Put("/{id}/settings/pr-template", h.SetPRTemplate)
 		r.Get("/{id}/settings/review-prompts", h.GetWorkspaceReviewPrompts)
 		r.Put("/{id}/settings/review-prompts", h.SetWorkspaceReviewPrompts)
+		r.Get("/{id}/settings/action-templates", h.GetWorkspaceActionTemplates)
+		r.Put("/{id}/settings/action-templates", h.SetWorkspaceActionTemplates)
 		r.Get("/{id}/sessions/{sessionId}/branch-sync", h.GetSessionBranchSyncStatus)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync", h.SyncSessionBranch)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync/abort", h.AbortSessionSync)
@@ -203,8 +205,6 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Post("/{convId}/answer-question", h.AnswerConversationQuestion)
 		r.Post("/{convId}/resume-agent", h.ResumeAgent)
 		r.Post("/{convId}/clear-snapshot", h.ClearStreamingSnapshot)
-		r.With(messageRateLimiter).Post("/{convId}/regenerate", h.RegenerateMessage)
-		r.With(conversationRateLimiter).Post("/{convId}/fork", h.ForkConversation)
 		r.Delete("/{convId}", h.DeleteConversation)
 		// Summary endpoints
 		r.With(conversationRateLimiter).Post("/{convId}/summary", h.GenerateConversationSummary)
@@ -224,6 +224,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Put("/api/settings/pr-template", h.SetGlobalPRTemplate)
 	r.Get("/api/settings/anthropic-api-key", h.GetAnthropicApiKey)
 	r.Put("/api/settings/anthropic-api-key", h.SetAnthropicApiKey)
+	r.Get("/api/settings/action-templates", h.GetActionTemplates)
+	r.Put("/api/settings/action-templates", h.SetActionTemplates)
 	r.Get("/api/settings/claude-auth-status", h.GetClaudeAuthStatus)
 
 	// Attachment endpoints

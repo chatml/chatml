@@ -14,6 +14,13 @@ export type ActionTemplateKey =
   | 'create-pr'
   | 'merge-pr';
 
+export type OverrideMode = 'replace' | 'append';
+
+export interface ActionTemplateOverride {
+  text: string;
+  mode: OverrideMode;
+}
+
 /**
  * Built-in default templates for each action.
  * These provide detailed instructions to the agent beyond the short label.
@@ -108,29 +115,90 @@ export function getTemplateKey(actionType: string): ActionTemplateKey | null {
   return ACTION_TYPE_TO_TEMPLATE[actionType] ?? null;
 }
 
+const VALID_MODES: Set<string> = new Set<string>(['append', 'replace']);
+
+/**
+ * Parse the flat key-value map from the backend into structured overrides.
+ * Keys like "resolve-conflicts" hold the text; "resolve-conflicts:mode" hold the mode.
+ * Absence of a :mode key defaults to 'append' (the safer default — preserves built-in).
+ */
+export function parseOverrides(raw: Record<string, string>): Partial<Record<ActionTemplateKey, ActionTemplateOverride>> {
+  const result: Partial<Record<ActionTemplateKey, ActionTemplateOverride>> = {};
+  for (const key of Object.keys(ACTION_TEMPLATES) as ActionTemplateKey[]) {
+    const text = raw[key];
+    if (text) {
+      const rawMode = raw[`${key}:mode`];
+      const mode: OverrideMode = (rawMode && VALID_MODES.has(rawMode)) ? rawMode as OverrideMode : 'append';
+      result[key] = { text, mode };
+    }
+  }
+  return result;
+}
+
+/**
+ * Serialize structured overrides back to the flat map for storage.
+ * Only stores :mode keys when mode is 'replace' (append is the default).
+ */
+export function serializeOverrides(overrides: Partial<Record<ActionTemplateKey, ActionTemplateOverride>>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, override] of Object.entries(overrides)) {
+    if (override && override.text.trim()) {
+      result[key] = override.text.trim();
+      if (override.mode === 'replace') {
+        result[`${key}:mode`] = 'replace';
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Fetches global and per-workspace overrides and merges them with built-in defaults.
- * Per-workspace overrides > global overrides > built-in defaults.
  *
- * Mirrors fetchMergedOverrides() in useReviewTrigger.ts.
+ * Merge strategy per key:
+ *  - 'replace' at any level replaces everything below it.
+ *  - 'append' stacks: builtIn + global append + workspace append.
+ *  - Workspace replace wins over global (even if global is append).
+ *  - Global replace replaces built-in; workspace append then appends to that.
  */
 export async function fetchMergedActionTemplates(
   workspaceId: string,
   getGlobal: () => Promise<Record<string, string>>,
   getWorkspace: (id: string) => Promise<Record<string, string>>,
 ): Promise<Record<ActionTemplateKey, string>> {
-  const [global, workspace] = await Promise.all([
+  const [globalRaw, workspaceRaw] = await Promise.all([
     getGlobal().catch(() => ({} as Record<string, string>)),
     getWorkspace(workspaceId).catch(() => ({} as Record<string, string>)),
   ]);
 
+  const globalOverrides = parseOverrides(globalRaw);
+  const workspaceOverrides = parseOverrides(workspaceRaw);
+
   const merged = { ...ACTION_TEMPLATES };
   for (const key of Object.keys(ACTION_TEMPLATES) as ActionTemplateKey[]) {
-    if (workspace[key]) {
-      merged[key] = workspace[key];
-    } else if (global[key]) {
-      merged[key] = global[key];
+    let base = ACTION_TEMPLATES[key];
+    const global = globalOverrides[key];
+    const workspace = workspaceOverrides[key];
+
+    // Apply global override first
+    if (global) {
+      if (global.mode === 'replace') {
+        base = global.text;
+      } else {
+        base = `${base}\n\n## Additional Instructions\n\n${global.text}`;
+      }
     }
+
+    // Apply workspace override on top
+    if (workspace) {
+      if (workspace.mode === 'replace') {
+        base = workspace.text;
+      } else {
+        base = `${base}\n\n## Additional Instructions (Workspace)\n\n${workspace.text}`;
+      }
+    }
+
+    merged[key] = base;
   }
   return merged;
 }

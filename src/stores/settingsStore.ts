@@ -463,9 +463,12 @@ export const useSettingsStore = create<SettingsState>()(
           merged.hiddenBottomTabs = persisted.hiddenBottomTabs.filter((t) => validBottomTabs.includes(t));
         }
 
-        // Clear poisoned vertical layout (terminal collapsed state shouldn't be persisted)
-        if (persisted.layoutVertical && persisted.layoutVertical['bottom-terminal'] === 0) {
-          merged.layoutVertical = undefined;
+        // Always strip bottom-terminal from persisted vertical layout.
+        // Terminal panel visibility is managed by appStore (in-memory, per-session)
+        // and must always start collapsed on app restart.
+        if (merged.layoutVertical && 'bottom-terminal' in merged.layoutVertical) {
+          const { 'bottom-terminal': _, ...rest } = merged.layoutVertical;
+          merged.layoutVertical = Object.keys(rest).length > 0 ? rest : undefined;
         }
 
         return merged;

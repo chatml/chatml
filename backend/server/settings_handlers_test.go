@@ -352,6 +352,204 @@ func TestGetReviewPrompts_CorruptedData(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+func TestGetActionTemplates_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/settings/action-templates", nil)
+	w := httptest.NewRecorder()
+
+	h.GetActionTemplates(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["templates"].(map[string]any))
+}
+
+func TestSetActionTemplates_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	templates := map[string]any{"templates": map[string]string{"resolve-conflicts": "Custom conflict instructions"}}
+	body, _ := json.Marshal(templates)
+	req := httptest.NewRequest("PUT", "/api/settings/action-templates", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetActionTemplates(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify it was saved
+	req2 := httptest.NewRequest("GET", "/api/settings/action-templates", nil)
+	w2 := httptest.NewRecorder()
+
+	h.GetActionTemplates(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	p := resp["templates"].(map[string]any)
+	assert.Equal(t, "Custom conflict instructions", p["resolve-conflicts"])
+}
+
+func TestSetActionTemplates_EmptyDeletes(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.SetSetting(ctx, "action-templates", `{"resolve-conflicts":"old"}`))
+
+	body, _ := json.Marshal(map[string]any{"templates": map[string]string{}})
+	req := httptest.NewRequest("PUT", "/api/settings/action-templates", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetActionTemplates(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify deleted
+	req2 := httptest.NewRequest("GET", "/api/settings/action-templates", nil)
+	w2 := httptest.NewRecorder()
+	h.GetActionTemplates(w2, req2)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["templates"].(map[string]any))
+}
+
+func TestSetActionTemplates_InvalidBody(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("PUT", "/api/settings/action-templates", bytes.NewReader([]byte("invalid")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SetActionTemplates(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetWorkspaceActionTemplates_Empty(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	req := httptest.NewRequest("GET", "/api/repos/ws-1/settings/action-templates", nil)
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.GetWorkspaceActionTemplates(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["templates"].(map[string]any))
+}
+
+func TestSetWorkspaceActionTemplates_Success(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	templates := map[string]any{"templates": map[string]string{"sync-branch": "Use merge not rebase"}}
+	body, _ := json.Marshal(templates)
+	req := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/action-templates", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiContext(req, map[string]string{"id": "ws-1"})
+	w := httptest.NewRecorder()
+
+	h.SetWorkspaceActionTemplates(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify saved
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/action-templates", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+
+	h.GetWorkspaceActionTemplates(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	p := resp["templates"].(map[string]any)
+	assert.Equal(t, "Use merge not rebase", p["sync-branch"])
+}
+
+func TestSetWorkspaceActionTemplates_IsolatedPerWorkspace(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set for ws-1
+	body1, _ := json.Marshal(map[string]any{"templates": map[string]string{"create-pr": "ws1 instructions"}})
+	req1 := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/action-templates", bytes.NewReader(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	req1 = withChiContext(req1, map[string]string{"id": "ws-1"})
+	w1 := httptest.NewRecorder()
+	h.SetWorkspaceActionTemplates(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// ws-2 should still be empty
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-2/settings/action-templates", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-2"})
+	w2 := httptest.NewRecorder()
+	h.GetWorkspaceActionTemplates(w2, req2)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp))
+	assert.Equal(t, map[string]any{}, resp["templates"].(map[string]any))
+}
+
+func TestActionTemplates_GlobalAndWorkspaceIsolated(t *testing.T) {
+	h, _ := setupTestHandlers(t)
+
+	// Set a global template
+	globalBody, _ := json.Marshal(map[string]any{"templates": map[string]string{"merge-pr": "global merge instructions"}})
+	req1 := httptest.NewRequest("PUT", "/api/settings/action-templates", bytes.NewReader(globalBody))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	h.SetActionTemplates(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Workspace endpoint should still be empty
+	req2 := httptest.NewRequest("GET", "/api/repos/ws-1/settings/action-templates", nil)
+	req2 = withChiContext(req2, map[string]string{"id": "ws-1"})
+	w2 := httptest.NewRecorder()
+	h.GetWorkspaceActionTemplates(w2, req2)
+
+	var wsResp map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &wsResp))
+	assert.Equal(t, map[string]any{}, wsResp["templates"].(map[string]any))
+
+	// Set a workspace template
+	wsBody, _ := json.Marshal(map[string]any{"templates": map[string]string{"fix-issues": "workspace fix instructions"}})
+	req3 := httptest.NewRequest("PUT", "/api/repos/ws-1/settings/action-templates", bytes.NewReader(wsBody))
+	req3.Header.Set("Content-Type", "application/json")
+	req3 = withChiContext(req3, map[string]string{"id": "ws-1"})
+	w3 := httptest.NewRecorder()
+	h.SetWorkspaceActionTemplates(w3, req3)
+	assert.Equal(t, http.StatusOK, w3.Code)
+
+	// Global should still only have "merge-pr", not "fix-issues"
+	req4 := httptest.NewRequest("GET", "/api/settings/action-templates", nil)
+	w4 := httptest.NewRecorder()
+	h.GetActionTemplates(w4, req4)
+
+	var globalResp map[string]any
+	require.NoError(t, json.Unmarshal(w4.Body.Bytes(), &globalResp))
+	gp := globalResp["templates"].(map[string]any)
+	assert.Equal(t, "global merge instructions", gp["merge-pr"])
+	assert.Nil(t, gp["fix-issues"])
+}
+
+func TestGetActionTemplates_CorruptedData(t *testing.T) {
+	h, s := setupTestHandlers(t)
+	ctx := context.Background()
+
+	// Store invalid JSON
+	require.NoError(t, s.SetSetting(ctx, "action-templates", "not-json"))
+
+	req := httptest.NewRequest("GET", "/api/settings/action-templates", nil)
+	w := httptest.NewRecorder()
+	h.GetActionTemplates(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestGetEnvSettings_Empty(t *testing.T) {
 	h, st := setupTestHandlers(t)
 	defer st.Close()

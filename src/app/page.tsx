@@ -610,11 +610,7 @@ export default function Home() {
                         direction="vertical"
                         className="h-full"
                         defaultLayout={layout.layoutVertical}
-                        onLayoutChange={(layoutVal) => {
-                          if (layoutVal['bottom-terminal'] && layoutVal['bottom-terminal'] > 0) {
-                            layout.setLayoutVertical(layoutVal);
-                          }
-                        }}
+                        onLayoutChange={layout.setLayoutVertical}
                       >
                         <ResizablePanel id="conversation" minSize={20}>
                           {selectedSessionId ? (
@@ -634,7 +630,24 @@ export default function Home() {
                           className={cn(!layout.showBottomTerminal && "hidden")}
                         />
                         <ResizablePanel
-                          ref={layout.bottomTerminalPanelRef}
+                          ref={(handle) => {
+                            layout.bottomTerminalPanelRef.current = handle;
+                            if (handle) {
+                              // Sync collapse state on mount. Handles the case where the
+                              // useLayoutEffect already ran before the panel mounted (ref was null).
+                              queueMicrotask(() => {
+                                // Guard: handle may be stale if component unmounted before microtask ran
+                                if (layout.bottomTerminalPanelRef.current !== handle) return;
+                                const state = useAppStore.getState();
+                                const sid = state.selectedSessionId;
+                                if (!sid) return;
+                                const visible = state.terminalPanelVisible[sid] ?? false;
+                                if (!visible && !handle.isCollapsed()) {
+                                  handle.collapse();
+                                }
+                              });
+                            }
+                          }}
                           id="bottom-terminal"
                           defaultSize="250px"
                           minSize="100px"
@@ -642,15 +655,24 @@ export default function Home() {
                           collapsible={true}
                           collapsedSize={0}
                           onResize={(size) => {
-                            // Only sync manual drag-to-collapse → store.
-                            // Expansion is driven by user actions (toggle/show) that update the store directly;
-                            // useLayoutEffect then calls panel.expand(). Never set visible here — it races
-                            // with mount/remount (defaultSize="250px" fires onResize before the layout effect
-                            // can collapse the panel).
                             const collapsed = size.asPercentage === 0;
-                            if (!layout.selectedSessionId) return;
-                            if (collapsed && layout.showBottomTerminal) {
-                              layout.setTerminalPanelVisible(layout.selectedSessionId, false);
+                            // Read store directly to avoid stale closure values from render.
+                            // The useLayoutEffect may have just called expand() which triggers
+                            // this handler before React re-renders with the new state.
+                            const state = useAppStore.getState();
+                            const sid = state.selectedSessionId;
+                            if (!sid) return;
+                            const visible = state.terminalPanelVisible[sid] ?? false;
+                            // Sync manual drag-to-collapse -> store
+                            if (collapsed && visible) {
+                              layout.setTerminalPanelVisible(sid, false);
+                            }
+                            // Guard: re-collapse if panel expanded but store says hidden.
+                            // Handles parent resize (sidebar toggle) inadvertently expanding the panel.
+                            if (!collapsed && !visible) {
+                              queueMicrotask(() => {
+                                layout.bottomTerminalPanelRef.current?.collapse();
+                              });
                             }
                           }}
                         >

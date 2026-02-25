@@ -20,7 +20,14 @@ import {
 } from '@/lib/api';
 import type { Workspace } from '@/lib/types';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
-import { ACTION_TEMPLATES, ACTION_TEMPLATE_META } from '@/lib/action-templates';
+import {
+  ACTION_TEMPLATES,
+  ACTION_TEMPLATE_META,
+  parseOverrides,
+  serializeOverrides,
+} from '@/lib/action-templates';
+import type { ActionTemplateKey, ActionTemplateOverride, OverrideMode } from '@/lib/action-templates';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { useToast } from '@/components/ui/toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -28,6 +35,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import {
   ArrowLeft,
+  ChevronRight,
   Eye,
   Zap,
   GitBranch,
@@ -603,9 +611,9 @@ function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }) {
 }
 
 function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
-  const [templates, setTemplates] = useState<Record<string, string>>({});
-  const [saved, setSaved] = useState<Record<string, string>>({});
-  const [globalTemplates, setGlobalTemplates] = useState<Record<string, string>>({});
+  const [templates, setTemplatesState] = useState<Partial<Record<ActionTemplateKey, ActionTemplateOverride>>>({});
+  const [saved, setSaved] = useState<Partial<Record<ActionTemplateKey, ActionTemplateOverride>>>({});
+  const [globalOverrides, setGlobalOverrides] = useState<Partial<Record<ActionTemplateKey, ActionTemplateOverride>>>({});
   const [saving, setSaving] = useState(false);
   const { error: showError } = useToast();
   const showErrorRef = useRef(showError);
@@ -618,9 +626,11 @@ function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
       getGlobalActionTemplates(),
     ]).then(([ws, gl]) => {
       if (cancelled) return;
-      setTemplates(ws);
-      setSaved(ws);
-      setGlobalTemplates(gl);
+      const wsParsed = parseOverrides(ws);
+      const glParsed = parseOverrides(gl);
+      setTemplatesState(wsParsed);
+      setSaved(wsParsed);
+      setGlobalOverrides(glParsed);
     }).catch(() => {
       if (cancelled) return;
       showErrorRef.current('Failed to load settings');
@@ -633,13 +643,11 @@ function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      const cleaned: Record<string, string> = {};
-      for (const [k, v] of Object.entries(templates)) {
-        if (v.trim()) cleaned[k] = v.trim();
-      }
-      await setWorkspaceActionTemplates(workspaceId, cleaned);
-      setTemplates(cleaned);
-      setSaved(cleaned);
+      const serialized = serializeOverrides(templates);
+      await setWorkspaceActionTemplates(workspaceId, serialized);
+      const parsed = parseOverrides(serialized);
+      setTemplatesState(parsed);
+      setSaved(parsed);
       window.dispatchEvent(new CustomEvent('action-templates-changed'));
     } catch {
       showErrorRef.current('Failed to save settings');
@@ -648,13 +656,13 @@ function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId, templates]);
 
-  const hasAnyOverride = Object.values(templates).some((v) => v.trim());
+  const hasAnyOverride = Object.values(templates).some((v) => v?.text?.trim());
 
   const handleResetAll = useCallback(async () => {
     setSaving(true);
     try {
       await setWorkspaceActionTemplates(workspaceId, {});
-      setTemplates({});
+      setTemplatesState({});
       setSaved({});
       window.dispatchEvent(new CustomEvent('action-templates-changed'));
     } catch {
@@ -663,6 +671,20 @@ function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
       setSaving(false);
     }
   }, [workspaceId]);
+
+  const setTemplateText = useCallback((key: ActionTemplateKey, text: string) => {
+    setTemplatesState((prev) => ({
+      ...prev,
+      [key]: { text, mode: prev[key]?.mode || 'append' },
+    }));
+  }, []);
+
+  const setTemplateMode = useCallback((key: ActionTemplateKey, mode: OverrideMode) => {
+    setTemplatesState((prev) => ({
+      ...prev,
+      [key]: { text: prev[key]?.text || '', mode },
+    }));
+  }, []);
 
   return (
     <div>
@@ -687,31 +709,70 @@ function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }) {
 
       <div className="space-y-5">
         {ACTION_TEMPLATE_META.map(({ key, label, placeholder }) => {
-          const globalOverride = globalTemplates[key];
-          const effectivePlaceholder = globalOverride
-            ? `Global: ${globalOverride.slice(0, 60)}…`
-            : placeholder;
-          const hasOverride = !!(templates[key]?.trim());
+          const override = templates[key];
+          const hasText = !!override?.text?.trim();
+          const hasGlobalOverride = !!globalOverrides[key]?.text?.trim();
 
           return (
-            <div key={key}>
-              <div className="flex items-center gap-2 mb-1.5">
+            <div key={key} className="border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
                 <label className="text-sm font-medium">{label}</label>
-                {hasOverride && (
+                {hasText && (
                   <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
-                    Overridden
+                    Overridden ({override?.mode === 'replace' ? 'replaced' : 'appended'})
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground mb-1.5 line-clamp-2">
-                Default: {ACTION_TEMPLATES[key]?.slice(0, 100)}&hellip;
-              </p>
+
+              <Collapsible>
+                <CollapsibleTrigger className="group flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  <ChevronRight className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-90" />
+                  View built-in default
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-2 p-3 bg-muted/50 rounded-md text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border border-border/50">
+                    {ACTION_TEMPLATES[key]}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {hasGlobalOverride && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Global override active ({globalOverrides[key]?.mode === 'replace' ? 'replaces' : 'appends to'} default)
+                </p>
+              )}
+
+              {hasText && (
+                <RadioGroup
+                  value={override?.mode || 'append'}
+                  onValueChange={(v) => setTemplateMode(key, v as OverrideMode)}
+                  className="flex gap-4 mt-3"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="append" id={`ws-${key}-append`} />
+                    <label htmlFor={`ws-${key}-append`} className="text-xs cursor-pointer">Add to default</label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <RadioGroupItem value="replace" id={`ws-${key}-replace`} />
+                    <label htmlFor={`ws-${key}-replace`} className="text-xs cursor-pointer">Replace default</label>
+                  </div>
+                </RadioGroup>
+              )}
+
               <Textarea
-                className="text-sm min-h-[80px]"
-                placeholder={effectivePlaceholder}
-                value={templates[key] || ''}
-                onChange={(e) => setTemplates((prev) => ({ ...prev, [key]: e.target.value }))}
+                className="text-sm min-h-[80px] mt-3"
+                placeholder={placeholder}
+                value={override?.text || ''}
+                onChange={(e) => setTemplateText(key, e.target.value)}
               />
+
+              {hasText && (
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {override?.mode === 'replace'
+                    ? 'Your text will completely replace the built-in default.'
+                    : 'Your text will be appended after the built-in default.'}
+                </p>
+              )}
             </div>
           );
         })}

@@ -339,8 +339,6 @@ interface AppState {
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
-  truncateMessagesFrom: (conversationId: string, fromPosition: number, keepMessageId?: string) => void;
-
   // Message pagination state & actions
   messagePagination: Record<string, {
     hasMore: boolean;
@@ -1062,29 +1060,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       m.id === id ? { ...m, ...updates } : m
     ),
   })),
-  // Remove messages in a conversation after the truncation boundary.
-  // Used when the backend truncates messages during regeneration.
-  // When keepMessageId is provided, uses it as a reliable boundary (keeps all
-  // messages up to and including that ID). Falls back to fromPosition as an
-  // array-index slice when keepMessageId is unavailable.
-  truncateMessagesFrom: (conversationId, fromPosition, keepMessageId?) => set((state) => {
-    const convMessages = state.messages.filter((m) => m.conversationId === conversationId);
-    const otherMessages = state.messages.filter((m) => m.conversationId !== conversationId);
-
-    let kept: typeof convMessages;
-    if (keepMessageId) {
-      // Find the boundary message by ID — robust regardless of array ordering
-      const boundaryIdx = convMessages.findIndex((m) => m.id === keepMessageId);
-      kept = boundaryIdx >= 0 ? convMessages.slice(0, boundaryIdx + 1) : convMessages.slice(0, fromPosition);
-    } else {
-      kept = convMessages.slice(0, fromPosition);
-    }
-
-    return {
-      messages: [...otherMessages, ...kept],
-    };
-  }),
-
   // Message pagination actions
   setMessagePage: (convId, messages, hasMore, oldestPosition, totalCount) => set((state) => ({
     // Replace any existing messages for this conversation with the new page

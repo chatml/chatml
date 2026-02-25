@@ -39,7 +39,8 @@ interface Session {
  * 4. Diverged         → "Sync Branch"         (purple)
  * 5. Work to ship     → "New Pull Request"    (green)
  * 6. Open PR (CI ok)  → "Merge PR"            (green) — hidden while CI pending
- * 7. PR merged        → "Archive Session"     (purple)
+ * 7. PR merged (clean) → "Archive Session"     (purple)
+ * 7b. PR merged + work → falls through to 1–6  (allows new PR cycle)
  */
 export function useActionState(
   gitStatus: GitStatusDTO | null,
@@ -47,19 +48,40 @@ export function useActionState(
   prDetails: PRDetails | null,
 ): PrimaryAction | null {
   return useMemo(() => {
-    // Priority 7: PR is merged — show archive session button
-    // Check both the session store (updated by PRWatcher) and live prDetails
-    // (fetched from GitHub) to handle the case where the PR was just merged
-    // but the store hasn't been updated yet.
-    if (session?.prStatus === 'merged' || prDetails?.merged) {
-      return {
-        type: 'archive-session',
-        tier: 'complete',
-        label: 'Archive Session',
-        icon: Archive,
-        variant: 'default',
-        sessionId: session?.id,
-      };
+    const archiveAction: PrimaryAction = {
+      type: 'archive-session',
+      tier: 'complete',
+      label: 'Archive Session',
+      icon: Archive,
+      variant: 'default',
+      sessionId: session?.id,
+    };
+
+    // Helper: does the working tree have new work beyond the merged PR?
+    const hasNewWork = gitStatus && (
+      gitStatus.workingDirectory.hasChanges ||
+      gitStatus.sync.unpushedCommits > 0 ||
+      gitStatus.sync.aheadBy > 0
+    );
+
+    // Priority 7: PR is merged
+    // When the store confirms the merge AND there's new work (uncommitted changes,
+    // unpushed commits, or commits ahead of base), fall through to the normal
+    // priority chain so the user can sync, review, and create a new PR.
+    if (session?.prStatus === 'merged') {
+      if (!gitStatus || !hasNewWork) {
+        return archiveAction;
+      }
+      // Fall through — normal chain handles sync, PR creation, etc.
+    }
+
+    // Catch-up: GitHub says merged but the store hasn't synced yet.
+    // Show archive to avoid briefly showing stale actions while the store updates.
+    // Also check for new work so the behavior is consistent with the branch above.
+    if (prDetails?.merged && session?.prStatus !== 'merged') {
+      if (!gitStatus || !hasNewWork) {
+        return archiveAction;
+      }
     }
 
     // If we don't have git status yet, hide button until we know the state

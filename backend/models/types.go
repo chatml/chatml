@@ -148,14 +148,43 @@ type RunStats struct {
 	TotalToolDurationMs int            `json:"totalToolDurationMs"`
 }
 
+// TokenUsage contains aggregated token counts from an agent run
+type TokenUsage struct {
+	InputTokens              int `json:"inputTokens"`
+	OutputTokens             int `json:"outputTokens"`
+	CacheReadInputTokens     int `json:"cacheReadInputTokens,omitempty"`
+	CacheCreationInputTokens int `json:"cacheCreationInputTokens,omitempty"`
+}
+
+// ModelUsageInfo contains per-model usage breakdown
+type ModelUsageInfo struct {
+	InputTokens              int     `json:"inputTokens"`
+	OutputTokens             int     `json:"outputTokens"`
+	CacheReadInputTokens     int     `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int     `json:"cacheCreationInputTokens"`
+	WebSearchRequests        int     `json:"webSearchRequests"`
+	CostUSD                  float64 `json:"costUSD"`
+	ContextWindow            int     `json:"contextWindow"`
+}
+
+// PermissionDenial records a tool that was denied during a turn
+type PermissionDenial struct {
+	ToolName  string `json:"toolName"`
+	ToolUseId string `json:"toolUseId"`
+}
+
 // RunSummary contains summary information displayed at the end of an agent turn
 type RunSummary struct {
-	Success    bool      `json:"success"`
-	Cost       float64   `json:"cost,omitempty"`
-	Turns      int       `json:"turns,omitempty"`
-	DurationMs int       `json:"durationMs,omitempty"`
-	Stats      *RunStats `json:"stats,omitempty"`
-	Errors     []any     `json:"errors,omitempty"`
+	Success           bool                       `json:"success"`
+	Cost              float64                    `json:"cost,omitempty"`
+	Turns             int                        `json:"turns,omitempty"`
+	DurationMs        int                        `json:"durationMs,omitempty"`
+	Stats             *RunStats                  `json:"stats,omitempty"`
+	Errors            []any                      `json:"errors,omitempty"`
+	Usage             *TokenUsage                `json:"usage,omitempty"`
+	ModelUsage        map[string]*ModelUsageInfo  `json:"modelUsage,omitempty"`
+	LimitExceeded     string                     `json:"limitExceeded,omitempty"`
+	PermissionDenials []PermissionDenial         `json:"permissionDenials,omitempty"`
 }
 
 // Attachment represents a file attached to a message

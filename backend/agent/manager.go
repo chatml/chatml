@@ -22,6 +22,7 @@ import (
 )
 
 const snapshotDebounceInterval = 500 * time.Millisecond
+const supportedCommandsRetryDelay = 3 * time.Second
 
 // prURLPattern matches GitHub PR URLs in tool output (e.g., "https://github.com/owner/repo/pull/123")
 // Capture group 1 = PR number.
@@ -994,6 +995,42 @@ outer:
 
 					durationMs := int(time.Since(turnStartTime).Milliseconds())
 
+					// Build RunSummary for result events so it persists to the DB
+					var runSummary *models.RunSummary
+					if event.Type == EventTypeResult {
+						runSummary = &models.RunSummary{
+							Success:    event.Success,
+							Cost:       event.Cost,
+							Turns:      event.Turns,
+							DurationMs: durationMs,
+							Errors:     toAnySlice(event.Errors),
+						}
+						if event.Stats != nil {
+							runSummary.Stats = &models.RunStats{
+								ToolCalls:           event.Stats.ToolCalls,
+								ToolsByType:         event.Stats.ToolsByType,
+								SubAgents:           event.Stats.SubAgents,
+								FilesRead:           event.Stats.FilesRead,
+								FilesWritten:        event.Stats.FilesWritten,
+								BashCommands:        event.Stats.BashCommands,
+								WebSearches:         event.Stats.WebSearches,
+								TotalToolDurationMs: int(event.Stats.TotalToolDurationMs),
+							}
+						}
+						if event.Usage != nil {
+							runSummary.Usage = parseTokenUsage(event.Usage)
+						}
+						if event.ModelUsage != nil {
+							runSummary.ModelUsage = parseModelUsage(event.ModelUsage)
+						}
+						switch event.Subtype {
+						case "error_max_budget_usd":
+							runSummary.LimitExceeded = "budget"
+						case "error_max_turns":
+							runSummary.LimitExceeded = "turns"
+						}
+					}
+
 					if err := m.store.AddMessageToConversation(ctx, convID, models.Message{
 						ID:              uuid.New().String()[:8],
 						Role:            "assistant",
@@ -1004,6 +1041,7 @@ outer:
 						CheckpointUuid:  pendingCheckpointUuid,
 						DurationMs:      durationMs,
 						Timeline:        timeline,
+						RunSummary:      runSummary,
 						Timestamp:       time.Now(),
 					}); err != nil {
 						logger.Manager.Errorf("Failed to store assistant message for conv %s: %v", convID, err)
@@ -1070,6 +1108,19 @@ outer:
 				if err := proc.GetSupportedCommands(); err != nil {
 					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
 				}
+				// Retry after delay — plugins may still be loading during init.
+				// The frontend merges responses, so a second call enriches rather
+				// than overwrites the first result.
+				// Look up proc by convID instead of capturing the reference so
+				// the goroutine doesn't keep a terminated process alive.
+				go func(cID string) {
+					time.Sleep(supportedCommandsRetryDelay)
+					if p := m.GetConversationProcess(cID); p != nil && p.IsRunning() {
+						if err := p.GetSupportedCommands(); err != nil {
+							logger.Manager.Debugf("Conversation %s: retry GetSupportedCommands failed: %v", cID, err)
+						}
+					}
+				}(convID)
 			}
 
 			// Generate input suggestion after turn completes (async, fire-and-forget)
@@ -1711,33 +1762,6 @@ func (m *Manager) StopConversation(ctx context.Context, convID string) {
 	}
 	if m.onConversationStatus != nil {
 		m.onConversationStatus(convID, models.ConversationStatusIdle)
-	}
-}
-
-// StopAndWaitConversation stops the agent process and waits for it to fully exit
-// before returning. This prevents races where a caller needs to modify conversation
-// state (e.g. truncating messages) after the agent has stopped writing.
-// The timeout prevents indefinite blocking if the process hangs.
-func (m *Manager) StopAndWaitConversation(ctx context.Context, convID string, timeout time.Duration) {
-	m.mu.Lock()
-	proc, ok := m.convProcesses[convID]
-	m.mu.Unlock()
-
-	// Perform the normal stop (which removes from map and sends signals)
-	m.StopConversation(ctx, convID)
-
-	if !ok || proc == nil {
-		return
-	}
-
-	// Wait for the process to fully exit (output goroutines drain, etc.)
-	select {
-	case <-proc.Done():
-		// Process exited cleanly
-	case <-time.After(timeout):
-		logger.Manager.Warnf("Timed out waiting for process to exit for conv %s after %v", convID, timeout)
-	case <-ctx.Done():
-		// Request context cancelled
 	}
 }
 
@@ -2585,4 +2609,78 @@ func (m *Manager) buildSystemInstructions(ctx context.Context, session *models.S
 	}
 
 	return strings.Join(parts, "\n\n")
+}
+
+// toAnySlice converts a string slice to []any for RunSummary.Errors
+func toAnySlice(ss []string) []any {
+	if len(ss) == 0 {
+		return nil
+	}
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
+}
+
+// parseTokenUsage extracts TokenUsage from the untyped usage map in AgentEvent
+func parseTokenUsage(raw map[string]interface{}) *models.TokenUsage {
+	if raw == nil {
+		return nil
+	}
+	usage := &models.TokenUsage{}
+	if v, ok := raw["inputTokens"].(float64); ok {
+		usage.InputTokens = int(v)
+	}
+	if v, ok := raw["outputTokens"].(float64); ok {
+		usage.OutputTokens = int(v)
+	}
+	if v, ok := raw["cacheReadInputTokens"].(float64); ok {
+		usage.CacheReadInputTokens = int(v)
+	}
+	if v, ok := raw["cacheCreationInputTokens"].(float64); ok {
+		usage.CacheCreationInputTokens = int(v)
+	}
+	return usage
+}
+
+// parseModelUsage extracts per-model usage from the untyped map in AgentEvent
+func parseModelUsage(raw map[string]interface{}) map[string]*models.ModelUsageInfo {
+	if raw == nil {
+		return nil
+	}
+	result := make(map[string]*models.ModelUsageInfo, len(raw))
+	for model, v := range raw {
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		info := &models.ModelUsageInfo{}
+		if n, ok := m["inputTokens"].(float64); ok {
+			info.InputTokens = int(n)
+		}
+		if n, ok := m["outputTokens"].(float64); ok {
+			info.OutputTokens = int(n)
+		}
+		if n, ok := m["cacheReadInputTokens"].(float64); ok {
+			info.CacheReadInputTokens = int(n)
+		}
+		if n, ok := m["cacheCreationInputTokens"].(float64); ok {
+			info.CacheCreationInputTokens = int(n)
+		}
+		if n, ok := m["webSearchRequests"].(float64); ok {
+			info.WebSearchRequests = int(n)
+		}
+		if n, ok := m["costUSD"].(float64); ok {
+			info.CostUSD = n
+		}
+		if n, ok := m["contextWindow"].(float64); ok {
+			info.ContextWindow = int(n)
+		}
+		result[model] = info
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }

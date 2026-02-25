@@ -97,7 +97,7 @@ export function useLayoutState() {
     } else if (!showBottomTerminal && !panel.isCollapsed()) {
       panel.collapse();
     }
-  }, [showBottomTerminal]);
+  }, [showBottomTerminal, selectedSessionId]);
 
   // Zen mode ref for keyboard handler closures
   const zenModeRef = useRef(zenMode);

@@ -1115,14 +1115,14 @@ code.hljs { padding: 3px 5px; }
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-/* Skill detail dialog — compact markdown styling (scoped, does not affect other markdown) */
-.skill-detail-markdown {
+/* Dialog markdown — compact styling for markdown rendered inside dialogs */
+.dialog-markdown {
   color: var(--color-foreground);
   font-size: 0.8125rem; /* 13px */
   line-height: 1.6;
 }
 
-.skill-detail-markdown h1 {
+.dialog-markdown h1 {
   font-size: 1.125rem;
   font-weight: 600;
   margin-top: 1.5em;
@@ -1130,7 +1130,7 @@ code.hljs { padding: 3px 5px; }
   line-height: 1.3;
 }
 
-.skill-detail-markdown h2 {
+.dialog-markdown h2 {
   font-size: 0.9375rem;
   font-weight: 600;
   margin-top: 1.25em;
@@ -1138,7 +1138,7 @@ code.hljs { padding: 3px 5px; }
   line-height: 1.3;
 }
 
-.skill-detail-markdown h3 {
+.dialog-markdown h3 {
   font-size: 0.8125rem;
   font-weight: 600;
   margin-top: 1em;
@@ -1146,31 +1146,31 @@ code.hljs { padding: 3px 5px; }
   line-height: 1.4;
 }
 
-.skill-detail-markdown p {
+.dialog-markdown p {
   margin-top: 0;
   margin-bottom: 0.6em;
 }
 
-.skill-detail-markdown ul,
-.skill-detail-markdown ol {
+.dialog-markdown ul,
+.dialog-markdown ol {
   margin-top: 0.3em;
   margin-bottom: 0.6em;
   padding-left: 1.25em;
 }
 
-.skill-detail-markdown li {
+.dialog-markdown li {
   margin-top: 0.15em;
   margin-bottom: 0.15em;
 }
 
-.skill-detail-markdown code:not(pre code) {
+.dialog-markdown code:not(pre code) {
   font-size: 0.75rem;
   padding: 0.15em 0.35em;
   border-radius: 0.25rem;
   background: var(--color-muted);
 }
 
-.skill-detail-markdown pre {
+.dialog-markdown pre {
   font-size: 0.75rem;
   line-height: 1.5;
   margin-top: 0.5em;
@@ -1181,13 +1181,13 @@ code.hljs { padding: 3px 5px; }
   overflow-x: auto;
 }
 
-.skill-detail-markdown a {
+.dialog-markdown a {
   color: var(--color-primary);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.skill-detail-markdown blockquote {
+.dialog-markdown blockquote {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
   padding-left: 0.75em;
@@ -1195,13 +1195,13 @@ code.hljs { padding: 3px 5px; }
   color: var(--color-muted-foreground);
 }
 
-.skill-detail-markdown hr {
+.dialog-markdown hr {
   margin-top: 1em;
   margin-bottom: 1em;
   border-color: var(--color-border);
 }
 
-.skill-detail-markdown table {
+.dialog-markdown table {
   font-size: 0.75rem;
   width: 100%;
   border-collapse: collapse;
@@ -1209,22 +1209,22 @@ code.hljs { padding: 3px 5px; }
   margin-bottom: 0.75em;
 }
 
-.skill-detail-markdown th,
-.skill-detail-markdown td {
+.dialog-markdown th,
+.dialog-markdown td {
   padding: 0.3em 0.6em;
   border: 1px solid var(--color-border);
   text-align: left;
 }
 
-.skill-detail-markdown th {
+.dialog-markdown th {
   font-weight: 600;
   background: var(--color-muted);
 }
 
-.skill-detail-markdown > *:first-child {
+.dialog-markdown > *:first-child {
   margin-top: 0;
 }
 
-.skill-detail-markdown > *:last-child {
+.dialog-markdown > *:last-child {
   margin-bottom: 0;
 }
