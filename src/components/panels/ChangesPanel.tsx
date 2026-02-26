@@ -1404,30 +1404,39 @@ export function ChangesFileList({
       </div>
 
       {/* Grouped file list */}
-      {groupOrder.map(status => {
-        const files = grouped[status];
-        if (!files?.length) return null;
-        return (
-          <div key={status}>
-            <div className="px-2 py-1 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
-              {CHANGES_GROUP_LABELS[status]}
-            </div>
-            {files.map(file => (
-              <FileChangeRow
-                key={file.path}
-                change={file}
-                onSelect={() =>
-                  file.status === 'untracked'
-                    ? onFileSelect(file.path)
-                    : onChangedFileSelect(file.path)
-                }
-                containerWidth={containerWidth}
-                commentStats={commentStats.get(file.path)}
-              />
-            ))}
+      {displayFiles.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center text-muted-foreground">
+            <CheckCheck className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No uncommitted changes</p>
           </div>
-        );
-      })}
+        </div>
+      ) : (
+        groupOrder.map(status => {
+          const files = grouped[status];
+          if (!files?.length) return null;
+          return (
+            <div key={status}>
+              <div className="px-2 py-1 text-2xs font-medium text-foreground/60 uppercase tracking-wider">
+                {CHANGES_GROUP_LABELS[status]}
+              </div>
+              {files.map(file => (
+                <FileChangeRow
+                  key={file.path}
+                  change={file}
+                  onSelect={() =>
+                    file.status === 'untracked'
+                      ? onFileSelect(file.path)
+                      : onChangedFileSelect(file.path)
+                  }
+                  containerWidth={containerWidth}
+                  commentStats={commentStats.get(file.path)}
+                />
+              ))}
+            </div>
+          );
+        })
+      )}
     </>
   );
 }
