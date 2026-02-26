@@ -224,4 +224,10 @@ The agent runner spawns Claude Agent SDK processes for each conversation, stream
 
 ## License
 
-MIT
+ChatML is licensed under the [GNU General Public License v3.0](LICENSE).
+
+This means you are free to use, modify, and distribute this software, provided that any derivative works are also distributed under the same license terms. This ensures that ChatML and its derivatives remain free and open source.
+
+### Contributing
+
+We require all contributors to sign a Contributor License Agreement (CLA) before we can accept contributions. This allows us to ensure proper licensing and maintain the project long-term. See [CLA.md](CLA.md) for details.
