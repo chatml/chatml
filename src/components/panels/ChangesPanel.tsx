@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
+import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments, useSessionActivityState } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache, invalidateDiffCache } from '@/lib/diffCache';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
@@ -111,6 +111,8 @@ export function ChangesPanel() {
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
   const reviewComments = useReviewComments(selectedSessionId);
+  const sessionActivityState = useSessionActivityState(selectedSessionId ?? '');
+  const isAgentWorking = sessionActivityState === 'working';
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
@@ -661,6 +663,7 @@ export function ChangesPanel() {
         changesCount={branchStats?.totalFiles || changes?.length || 0}
         reviewCount={unresolvedCount}
         menuContext={menuContext}
+        isAgentWorking={isAgentWorking}
       />
 
       {/* Always-mounted resizable layout — bottom panel uses collapsible API to avoid remounting */}
@@ -808,9 +811,9 @@ export function ChangesPanel() {
 }
 
 // Top panel tabs configuration (all tabs always visible)
-const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; shortcutId?: string }> = {
+const TOP_TABS_CONFIG: Record<AllTopPanelTab, { label: string; shortcutId?: string; icon?: React.ComponentType<{ className?: string }> }> = {
   changes: { label: 'Changes', shortcutId: 'sidebarChangesTab' },
-  review: { label: 'Code Review', shortcutId: 'sidebarReviewTab' },
+  review: { label: 'Code Review', shortcutId: 'sidebarReviewTab', icon: Eye },
   checks: { label: 'Checks', shortcutId: 'sidebarChecksTab' },
   files: { label: 'Files', shortcutId: 'sidebarFilesTab' },
 };
@@ -832,6 +835,7 @@ const SortableTabButton = memo(function SortableTabButton({
   onClick,
   badge,
   shortcutId,
+  icon,
 }: {
   id: string;
   label: string;
@@ -839,6 +843,7 @@ const SortableTabButton = memo(function SortableTabButton({
   onClick: () => void;
   badge?: number;
   shortcutId?: string;
+  icon?: React.ReactNode;
 }) {
   const {
     attributes,
@@ -886,6 +891,7 @@ const SortableTabButton = memo(function SortableTabButton({
       )}
       onClick={handleClick}
     >
+      {icon}
       {label}
       {badge !== undefined && badge > 0 && (
         <span className="bg-muted-foreground/20 text-foreground px-1 rounded text-2xs">
@@ -1061,12 +1067,14 @@ function TopPanelTabs({
   changesCount,
   reviewCount,
   menuContext,
+  isAgentWorking,
 }: {
   selectedTab: string;
   setSelectedTab: (tab: string) => void;
   changesCount: number;
   reviewCount: number;
   menuContext: TopPanelMenuContext;
+  isAgentWorking: boolean;
 }) {
   const topTabOrder = useSettingsStore((s) => s.topTabOrder);
   const setTopTabOrder = useSettingsStore((s) => s.setTopTabOrder);
@@ -1125,6 +1133,11 @@ function TopPanelTabs({
                     : undefined
                   }
                   shortcutId={TOP_TABS_CONFIG[tabId].shortcutId}
+                  icon={(() => {
+                    const IconComponent = tabId === 'review' && isAgentWorking ? Loader2 : TOP_TABS_CONFIG[tabId].icon;
+                    if (!IconComponent) return undefined;
+                    return <IconComponent className={cn("size-3", tabId === 'review' && isAgentWorking && "animate-spin")} />;
+                  })()}
                 />
               ))}
             </div>
