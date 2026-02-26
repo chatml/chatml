@@ -25,7 +25,7 @@ import {
   Plus,
   Link,
   FolderSymlink,
-  PenLine,
+
   Upload,
   ScrollText,
   Check,
@@ -691,18 +691,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     }
   }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval, setApprovedPlanContent, setPlanModeActive, showError]);
 
-  // Handle reject - sends denial to the agent so it stays in plan mode
-  const handleRejectPlan = useCallback(async () => {
-    if (!selectedConversationId || !pendingPlanApproval) return;
-
-    try {
-      await approvePlan(selectedConversationId, pendingPlanApproval.requestId, false);
-    } catch {
-      // Ignore errors - agent may have already timed out
-    }
-    clearPendingPlanApproval(selectedConversationId);
-    setApprovalError(null);
-  }, [selectedConversationId, pendingPlanApproval, clearPendingPlanApproval]);
 
   // Handle copying plan content to clipboard
   const handleCopyPlan = useCallback(async () => {
@@ -1170,7 +1158,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         <div className="space-y-1.5 mb-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
-              Approve the plan (<kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">⌘⇧↵</kbd>) or tell the AI what to do differently <kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">↵</kbd>
+              Approve plan or type what to change <kbd className="px-1 py-0.5 rounded bg-muted text-xs font-mono">↵</kbd>
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -1197,19 +1185,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <MessageSquarePlus className="h-3.5 w-3.5" />
                 Hand off
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 text-xs text-muted-foreground"
-                onClick={handleRejectPlan}
-              >
-                <PenLine className="h-3.5 w-3.5" />
-                Request changes
-              </Button>
+
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-7 gap-1.5 text-xs bg-foreground text-background hover:bg-foreground/90 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
+                className="h-7 gap-1.5 text-xs font-semibold bg-foreground text-background hover:bg-foreground/80 transition-colors dark:bg-foreground dark:text-background dark:hover:bg-foreground/80"
                 onClick={handleApprovePlan}
               >
                 Approve Plan
