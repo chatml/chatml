@@ -2,6 +2,7 @@
   "name": "chatml",
   "version": "0.1.0",
   "private": true,
+  "license": "GPL-3.0-only",
   "scripts": {
     "dev": "next dev --turbopack --port 3100",
     "build": "next build",
