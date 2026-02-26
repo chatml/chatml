@@ -81,6 +81,7 @@ type Process struct {
 	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
 	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
 	producedOutput     bool          // Whether any assistant text was emitted during this process lifetime
+	pendingUserMessage *models.Message // User message deferred until turn completes (correct DB position ordering)
 }
 
 // InputMessage represents a message sent to the agent runner via stdin
@@ -851,4 +852,29 @@ func (p *Process) SetOptionsPlanMode(enabled bool) {
 	defer p.mu.Unlock()
 	p.opts.PlanMode = enabled
 	p.planModeActive = enabled
+}
+
+// SetPendingUserMessage stores a user message to be flushed to the DB after
+// the current assistant turn completes. This ensures correct position ordering
+// when a user submits a message while the agent is still streaming.
+// If a pending message already exists (rapid double-send), the old message is
+// logged as a warning — this should not happen in normal UI flow.
+func (p *Process) SetPendingUserMessage(msg *models.Message) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.pendingUserMessage != nil {
+		logger.Process.Warnf("Overwriting pending user message %s with %s — previous message will be lost",
+			p.pendingUserMessage.ID, msg.ID)
+	}
+	p.pendingUserMessage = msg
+}
+
+// TakePendingUserMessage returns and clears the pending user message.
+// Returns nil if no message is pending.
+func (p *Process) TakePendingUserMessage() *models.Message {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	msg := p.pendingUserMessage
+	p.pendingUserMessage = nil
+	return msg
 }
