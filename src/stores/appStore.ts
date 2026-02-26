@@ -32,6 +32,7 @@ import type {
 import type { StreamingSnapshotDTO, SnapshotSubAgent } from '@/lib/api';
 import { useSettingsStore } from './settingsStore';
 import { refreshPRStatus } from '@/lib/api';
+import { buildTurnConfigLabel } from '@/lib/models';
 
 // Throttle on-select PR refresh to avoid excessive API calls.
 // Entries are pruned when the map exceeds MAX_PR_REFRESH_ENTRIES to prevent unbounded growth.
@@ -173,6 +174,7 @@ interface StreamingState {
   approvedPlanContent?: string; // Plan content to persist after approval
   approvedPlanTimestamp?: number; // When the plan was approved (for timeline ordering)
   recovery?: { attempt: number; maxAttempts: number }; // Agent crash recovery in progress
+  turnStartMeta?: { model?: string; effort?: string; permissionMode?: string }; // Turn-start config from init event
 }
 
 // Info about a conversation interrupted by app shutdown, detected on restart
@@ -386,6 +388,7 @@ interface AppState {
   setStreamingError: (conversationId: string, error: string | null) => void;
   setAgentRecovering: (conversationId: string, attempt: number, maxAttempts: number) => void;
   clearAgentRecovery: (conversationId: string) => void;
+  setTurnStartMeta: (conversationId: string, meta: { model?: string; effort?: string; permissionMode?: string }) => void;
   clearStreamingText: (conversationId: string) => void;
   clearStreamingContent: (conversationId: string) => void;
   appendThinkingText: (conversationId: string, text: string) => void;
@@ -1416,6 +1419,11 @@ updateFileTabContent: (id, content) => set((state) => ({
       recovery: undefined,
     }),
   })),
+  setTurnStartMeta: (conversationId, meta) => set((state) => ({
+    streamingState: updateStreamingConv(state.streamingState, conversationId, {
+      turnStartMeta: meta,
+    }),
+  })),
   clearStreamingText: (conversationId) => set((state) => ({
     streamingState: updateStreamingConv(state.streamingState, conversationId, {
       text: '',
@@ -1811,6 +1819,23 @@ updateFileTabContent: (id, content) => set((state) => ({
       for (const tool of tools) {
         if (!tool.agentId) {
           timelineItems.push({ timestamp: tool.startTime, entry: { type: 'tool', toolId: tool.id } });
+        }
+      }
+      // Add thinking content to timeline (mirrors backend's thinkingBlocks logic)
+      if (streaming.thinking) {
+        timelineItems.push({
+          timestamp: streaming.startTime || 0,
+          entry: { type: 'thinking', content: streaming.thinking },
+        });
+      }
+      // Add turn-start configuration status entry
+      if (streaming.turnStartMeta) {
+        const label = buildTurnConfigLabel(streaming.turnStartMeta);
+        if (label) {
+          timelineItems.push({
+            timestamp: (streaming.startTime || 0) - 1, // Sort before thinking
+            entry: { type: 'status', content: label, variant: 'config' },
+          });
         }
       }
       // Add approved plan content at its chronological position

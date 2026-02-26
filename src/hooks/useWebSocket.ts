@@ -381,6 +381,12 @@ export function useWebSocket(enabled: boolean = true) {
         if (event?.slashCommands && Array.isArray(event.slashCommands)) {
           useSlashCommandStore.getState().setSdkCommands(event.slashCommands as string[]);
         }
+        // Capture turn-start metadata for timeline status indicators
+        store.setTurnStartMeta(conversationId, {
+          model: event?.model as string | undefined,
+          effort: (event?.budgetConfig as Record<string, unknown> | undefined)?.effort as string | undefined,
+          permissionMode: event?.permissionMode as string | undefined,
+        });
         // Extract MCP tools grouped by server from the tools list
         if (event?.tools && Array.isArray(event.tools)) {
           const toolsByServer: Record<string, string[]> = {};

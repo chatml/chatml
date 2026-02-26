@@ -55,3 +55,12 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
 export function getModelDisplayName(modelId: string): string {
   return getModelInfo(modelId)?.name ?? modelId;
 }
+
+/** Build the turn-start config label from init event metadata. */
+export function buildTurnConfigLabel(meta: { model?: string; effort?: string; permissionMode?: string }): string | null {
+  const parts: string[] = [];
+  if (meta.model) parts.push(getModelDisplayName(meta.model));
+  if (meta.effort) parts.push(`${meta.effort} effort`);
+  if (meta.permissionMode === 'plan') parts.push('plan mode');
+  return parts.length > 0 ? parts.join(' \u00b7 ') : null;
+}

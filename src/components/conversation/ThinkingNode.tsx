@@ -20,7 +20,7 @@ export const ThinkingNode = memo(function ThinkingNode({
   if (!showThinkingBlocks) return null;
 
   return (
-    <div className="flex flex-col gap-1 mt-2 animate-slide-up-fade" aria-label="Agent thinking">
+    <div className="flex flex-col gap-1 mt-2 mb-1 animate-slide-up-fade" aria-label="Agent thinking">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 text-xs text-ai-thinking hover:text-ai-thinking/80 transition-colors"

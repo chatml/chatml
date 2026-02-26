@@ -432,6 +432,10 @@ func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	var currentSegmentStart *time.Time
 	turnStartTime := time.Now()
 
+	// Turn-start metadata captured from init event for timeline status entry
+	var turnModel string
+	var turnPermissionMode string
+
 	// Track PR-related tool activity for deferred re-check at turn end.
 	// The initial check at tool_end often races with GitHub's eventual
 	// consistency; a second check after the turn gives GitHub time to
@@ -937,22 +941,26 @@ outer:
 						thinkingBlockStart = nil
 					}
 
-					// Build interleaved timeline from text segments, thinking blocks, and completed tools
+					// Build interleaved timeline from text segments, thinking blocks, and completed tools.
+					// sortPriority breaks ties when timestamps are equal: lower values sort first.
 					type timelineItem struct {
-						timestamp time.Time
-						entry     models.TimelineEntry
+						timestamp    time.Time
+						sortPriority int // 0 = status/config, 1 = default
+						entry        models.TimelineEntry
 					}
 					var items []timelineItem
 					for _, seg := range textSegments {
 						items = append(items, timelineItem{
-							timestamp: seg.timestamp,
-							entry:     models.TimelineEntry{Type: "text", Content: seg.content},
+							timestamp:    seg.timestamp,
+							sortPriority: 1,
+							entry:        models.TimelineEntry{Type: "text", Content: seg.content},
 						})
 					}
 					for _, block := range thinkingBlocks {
 						items = append(items, timelineItem{
-							timestamp: block.timestamp,
-							entry:     models.TimelineEntry{Type: "thinking", Content: block.content},
+							timestamp:    block.timestamp,
+							sortPriority: 1,
+							entry:        models.TimelineEntry{Type: "thinking", Content: block.content},
 						})
 					}
 					for _, tool := range completedTools {
@@ -961,8 +969,9 @@ outer:
 							ts = time.Now() // fallback
 						}
 						items = append(items, timelineItem{
-							timestamp: ts,
-							entry:     models.TimelineEntry{Type: "tool", ToolID: tool.ID},
+							timestamp:    ts,
+							sortPriority: 1,
+							entry:        models.TimelineEntry{Type: "tool", ToolID: tool.ID},
 						})
 					}
 					// Only persist plan content if ExitPlanMode succeeded this turn
@@ -978,11 +987,29 @@ outer:
 					// Add approved plan content to timeline at its chronological position
 					if planContent != "" && !pendingPlanTimestamp.IsZero() {
 						items = append(items, timelineItem{
-							timestamp: pendingPlanTimestamp,
-							entry:     models.TimelineEntry{Type: "plan", Content: planContent},
+							timestamp:    pendingPlanTimestamp,
+							sortPriority: 1,
+							entry:        models.TimelineEntry{Type: "plan", Content: planContent},
+						})
+					}
+					// Add turn-start configuration status entry
+					if turnModel != "" {
+						var parts []string
+						parts = append(parts, turnModel)
+						if turnPermissionMode == "plan" {
+							parts = append(parts, "plan mode")
+						}
+						statusContent := strings.Join(parts, " · ")
+						items = append(items, timelineItem{
+							timestamp:    turnStartTime,
+							sortPriority: 0, // Sort before other items at the same timestamp
+							entry:        models.TimelineEntry{Type: "status", Content: statusContent, Variant: "config"},
 						})
 					}
 					sort.Slice(items, func(i, j int) bool {
+						if items[i].timestamp.Equal(items[j].timestamp) {
+							return items[i].sortPriority < items[j].sortPriority
+						}
 						return items[i].timestamp.Before(items[j].timestamp)
 					})
 					var timeline []models.TimelineEntry
@@ -1105,6 +1132,13 @@ outer:
 			// skills haven't been discovered yet. The supported_commands
 			// response provides the authoritative, enriched command list.
 			if event.Type == EventTypeInit {
+				// Capture turn-start metadata for timeline status entry
+				if event.Model != "" {
+					turnModel = event.Model
+				}
+				if event.PermissionMode != "" {
+					turnPermissionMode = event.PermissionMode
+				}
 				if err := proc.GetSupportedCommands(); err != nil {
 					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
 				}

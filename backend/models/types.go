@@ -235,9 +235,10 @@ type ToolUsageRecord struct {
 
 // TimelineEntry represents an entry in the interleaved message timeline
 type TimelineEntry struct {
-	Type    string `json:"type"`              // "text", "tool", "thinking", or "plan"
-	Content string `json:"content,omitempty"` // For text, thinking, and plan entries
+	Type    string `json:"type"`              // "text", "tool", "thinking", "plan", or "status"
+	Content string `json:"content,omitempty"` // For text, thinking, plan, and status entries
 	ToolID  string `json:"toolId,omitempty"`  // For tool entries, references ToolUsageRecord.ID
+	Variant string `json:"variant,omitempty"` // For status entries: "thinking_enabled", "config", "info"
 }
 
 // ToolAction represents a tool usage record for the summary

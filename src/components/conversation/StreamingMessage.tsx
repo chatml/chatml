@@ -8,11 +8,12 @@ import { ToolUsageBlock } from '@/components/conversation/ToolUsageBlock';
 import { ThinkingNode } from '@/components/conversation/ThinkingNode';
 import { SubAgentRow, SubAgentGroupedRow } from '@/components/conversation/SubAgentGroup';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
+import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { StreamingMarkdown } from '@/components/shared/StreamingMarkdown';
 import { cn } from '@/lib/utils';
 import { PROSE_CLASSES } from '@/lib/constants';
-import { getModelInfo } from '@/lib/models';
+import { getModelInfo, buildTurnConfigLabel } from '@/lib/models';
 
 // Timeline item types for interleaved display
 type TimelineItem =
@@ -20,6 +21,7 @@ type TimelineItem =
   | { type: 'tool'; id: string; tool: string; params?: Record<string, unknown>; startTime: number; endTime?: number; success?: boolean; summary?: string; stdout?: string; stderr?: string; elapsedSeconds?: number; metadata?: import('@/lib/types').ToolMetadata }
   | { type: 'thinking'; id: string; text: string; isActive: boolean; timestamp: number }
   | { type: 'plan'; id: string; content: string; timestamp: number }
+  | { type: 'status'; id: string; content: string; variant?: string; timestamp: number }
   | { type: 'subagent'; agent: import('@/lib/types').SubAgent }
   | { type: 'subagent_group'; agents: import('@/lib/types').SubAgent[] };
 
@@ -240,6 +242,20 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
       });
     }
 
+    // Add turn-start configuration status entry
+    if (streaming?.turnStartMeta) {
+      const label = buildTurnConfigLabel(streaming.turnStartMeta);
+      if (label) {
+        items.push({
+          type: 'status',
+          id: 'turn-config',
+          content: label,
+          variant: 'config',
+          timestamp: (streaming.startTime || 0) - 1, // Sort before thinking
+        });
+      }
+    }
+
     // Add sub-agents into the timeline
     for (const agent of subAgents) {
       items.push({ type: 'subagent', agent });
@@ -251,6 +267,7 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
         case 'text': return item.timestamp;
         case 'thinking': return item.timestamp;
         case 'plan': return item.timestamp;
+        case 'status': return item.timestamp;
         case 'subagent': return item.agent.startTime;
         case 'subagent_group': return item.agents[0].startTime;
         default: return item.startTime;
@@ -348,6 +365,14 @@ export function StreamingMessage({ conversationId, worktreePath }: StreamingMess
                   key={item.id}
                   cacheKey={`approved-plan:${conversationId}`}
                   content={item.content}
+                />
+              );
+            } else if (item.type === 'status') {
+              return (
+                <TurnStatusIndicator
+                  key={item.id}
+                  content={item.content}
+                  variant={item.variant}
                 />
               );
             } else if (item.type === 'subagent_group') {

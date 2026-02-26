@@ -161,7 +161,8 @@ export type TimelineEntry =
   | { type: 'text'; content: string }
   | { type: 'tool'; toolId: string }
   | { type: 'thinking'; content: string }
-  | { type: 'plan'; content: string };
+  | { type: 'plan'; content: string }
+  | { type: 'status'; content: string; variant: 'thinking_enabled' | 'config' | 'info' };
 
 // Active tool during streaming (real-time tracking)
 export interface ActiveTool {
