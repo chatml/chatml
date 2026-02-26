@@ -393,6 +393,24 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 // handleConversationOutput processes output from the agent process.
 // Note: Uses the app-level context so background work is cancelled on shutdown.
 // Store errors are logged but not propagated since this is async processing.
+// flushPendingUserMessage takes any deferred user message from the process and
+// persists it to the database. Returns true if a message was flushed.
+func (m *Manager) flushPendingUserMessage(ctx context.Context, convID string, proc *Process) bool {
+	pending := proc.TakePendingUserMessage()
+	if pending == nil {
+		return false
+	}
+	if err := m.store.AddMessageToConversation(ctx, convID, *pending); err != nil {
+		logger.Manager.Errorf("Failed to store deferred user message for conv %s: %v", convID, err)
+	}
+	if len(pending.Attachments) > 0 {
+		if err := m.store.SaveAttachments(ctx, pending.ID, pending.Attachments); err != nil {
+			logger.Manager.Errorf("Failed to save attachments for deferred message: %v", err)
+		}
+	}
+	return true
+}
+
 func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	ctx := m.ctx
 	var currentAssistantMessage string
@@ -1075,6 +1093,12 @@ outer:
 					}
 					currentAssistantMessage = ""
 				}
+
+				// Flush deferred user message (sent during active turn).
+				// Must happen AFTER storing the assistant message so the DB
+				// position ordering is correct: [assistant_N, user_N+1].
+				m.flushPendingUserMessage(ctx, convID, proc)
+
 				// Reset per-turn accumulation state
 				currentThinking = ""
 				pendingPlanContent = ""
@@ -1269,6 +1293,10 @@ outer:
 			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}
 	}
+
+	// Flush any remaining deferred user message so it is not lost when the
+	// process exits without a turn_complete event (e.g. crash, forced stop).
+	m.flushPendingUserMessage(ctx, convID, proc)
 
 	// Clear snapshot on process exit — but only if this process is still the current
 	// one in the map. If a new process has already been started (via SendConversationMessage),
@@ -1553,7 +1581,14 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		m.mu.Unlock()
 	}
 
-	// Store user message with attachments
+	// Store user message with attachments.
+	// When the process was restarted (or freshly started), there is no pending
+	// assistant turn, so the user message can be stored immediately with the
+	// correct position. When the process is already running, the agent may be
+	// mid-turn streaming a response — storing now would give this message a
+	// position before the assistant response, breaking chronological order on
+	// reload. Defer storage until the current turn completes (flushed in
+	// handleConversationOutput).
 	msg := models.Message{
 		ID:          uuid.New().String()[:8],
 		Role:        "user",
@@ -1561,21 +1596,26 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		Attachments: attachments,
 		Timestamp:   time.Now(),
 	}
-	if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
-		logger.Manager.Errorf("Failed to store user message for conv %s: %v", convID, err)
-	}
-
-	// Save attachments to database if any
-	if len(attachments) > 0 {
-		if err := m.store.SaveAttachments(ctx, msg.ID, attachments); err != nil {
-			logger.Manager.Errorf("Failed to save attachments: %v", err)
+	if needsRestart {
+		if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
+			logger.Manager.Errorf("Failed to store user message for conv %s: %v", convID, err)
 		}
+		if len(attachments) > 0 {
+			if err := m.store.SaveAttachments(ctx, msg.ID, attachments); err != nil {
+				logger.Manager.Errorf("Failed to save attachments: %v", err)
+			}
+		}
+	} else {
+		proc.SetPendingUserMessage(&msg)
 	}
 
 	// Send to process with attachments
 	logger.Manager.Infof("Sending message to conv %s (content=%d chars, attachments=%d, processRestarted=%v)",
 		convID, len(message), len(attachments), needsRestart)
 	if err := proc.SendMessageWithAttachments(message, attachments); err != nil {
+		// Discard the pending message — it was never delivered to the agent,
+		// so it should not be flushed to the DB later.
+		proc.TakePendingUserMessage()
 		logger.Manager.Errorf("Failed to send message to conv %s: %v (attachments=%d)", convID, err, len(attachments))
 		return err
 	}

@@ -788,15 +788,17 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (!selectedConversationId || !isStreaming) return;
 
     try {
-      // Commit any queued message to history before stopping
-      commitQueuedMessage(selectedConversationId);
-      // Compute elapsed time for the stopped run
+      // Compute elapsed time for the stopped run (must read before finalize clears state)
       const startTime = useAppStore.getState().streamingState[selectedConversationId]?.startTime;
       const durationMs = startTime ? Date.now() - startTime : undefined;
-      // Finalize streaming content into a committed message before stopping
-      // so it persists in the message list (same as normal turn completion).
+      // Finalize streaming content first, then commit queued message.
+      // Order matters: assistant message must be appended before the queued
+      // user message to maintain correct timeline ordering. Also,
+      // finalizeStreamingMessage checks for queued message to keep
+      // isStreaming=true, preventing a visual flash between turns.
       // toolUsage is auto-derived from activeTools inside finalizeStreamingMessage.
       finalizeStreamingMessage(selectedConversationId, { durationMs });
+      commitQueuedMessage(selectedConversationId);
       // Add system message indicating the agent was stopped
       addMessage({
         id: `msg-stopped-${Date.now()}`,
