@@ -1207,11 +1207,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-7 gap-1.5 text-xs bg-background hover:bg-surface-2"
+                className="h-7 gap-1.5 text-xs bg-foreground text-background hover:bg-foreground/90 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
                 onClick={handleApprovePlan}
               >
-                Approve
-                <kbd className="px-1 py-0.5 rounded bg-muted text-2xs font-mono">⌘⇧↵</kbd>
+                Approve Plan
+                <kbd className="px-1 py-0.5 rounded bg-background/20 text-background text-2xs font-mono">⌘⇧↵</kbd>
               </Button>
             </div>
           </div>
