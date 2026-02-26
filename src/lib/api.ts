@@ -982,9 +982,10 @@ export interface ToolUsageDTO {
 }
 
 export interface TimelineEntryDTO {
-  type: 'text' | 'tool' | 'thinking' | 'plan';
+  type: 'text' | 'tool' | 'thinking' | 'plan' | 'status';
   content?: string;
   toolId?: string;
+  variant?: 'thinking_enabled' | 'config' | 'info';
 }
 
 export interface MessageDTO {

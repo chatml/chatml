@@ -32,6 +32,7 @@ import { AttachmentGrid } from '@/components/conversation/AttachmentGrid';
 import { AttachmentPreviewModal } from '@/components/conversation/AttachmentPreviewModal';
 import { MentionText } from '@/components/conversation/MentionText';
 import { ApprovedPlanBlock } from '@/components/conversation/ApprovedPlanBlock';
+import { TurnStatusIndicator } from '@/components/conversation/TurnStatusIndicator';
 
 // Collapsed tool summary with individual ToolUsageBlock instances when expanded
 const ToolUsageSummary = memo(function ToolUsageSummary({ tools, worktreePath }: { tools: ToolUsage[]; worktreePath?: string }) {
@@ -237,6 +238,14 @@ export const MessageBlock = memo(function MessageBlock({
                         key={`tl-plan-${idx}`}
                         cacheKey={`plan:${message.id}:tl:${idx}`}
                         content={entry.content}
+                      />
+                    );
+                  } else if (entry.type === 'status') {
+                    return (
+                      <TurnStatusIndicator
+                        key={`tl-status-${idx}`}
+                        content={entry.content}
+                        variant={entry.variant}
                       />
                     );
                   }
