@@ -50,20 +50,20 @@ import type { RunSummary } from '@/lib/types';
 function StatPill({ icon: Icon, value, label }: { icon: LucideIcon; value: number; label: string }) {
   if (value <= 0) return null;
   return (
-    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-2xs text-muted-foreground">
-      <Icon className="w-3 h-3 text-primary/50" />
-      <span className="font-medium text-foreground/70">{value}</span>
-      <span className="opacity-70">{label}</span>
+    <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/60 dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.06] text-2xs text-muted-foreground">
+      <Icon className="w-3 h-3 text-primary/70" />
+      <span className="font-semibold text-foreground/80">{value}</span>
+      <span className="text-muted-foreground/80">{label}</span>
     </div>
   );
 }
 
 function ToolPill({ icon: Icon, name, count }: { icon: LucideIcon; name: string; count: number }) {
   return (
-    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/40 text-2xs text-muted-foreground">
-      <Icon className="w-3 h-3 text-primary/40" />
-      <span className="font-medium">{name}</span>
-      <span className="opacity-50">{'\u00D7'}{count}</span>
+    <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/60 dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.06] text-2xs text-muted-foreground">
+      <Icon className="w-3 h-3 text-primary/60" />
+      <span className="font-medium text-foreground/70">{name}</span>
+      <span className="text-muted-foreground/70">{'\u00D7'}{count}</span>
     </div>
   );
 }
@@ -331,12 +331,12 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
       {/* ── Expanded Panel ── */}
       {hasDetailedStats && (
         <CollapsibleContent>
-          <div className="mt-2 rounded-lg border border-border/60 bg-surface-1 overflow-hidden divide-y divide-border/30 animate-slide-up-fade">
+          <div className="mt-2 rounded-lg border border-border/60 bg-surface-1 overflow-hidden divide-y divide-border/40 animate-slide-up-fade">
 
             {/* Section: Activity Overview */}
             {hasActivityStats && (
               <div className="px-3 py-2.5">
-                <div className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Activity
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -352,7 +352,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
             {/* Section: Tool Breakdown */}
             {stats?.toolsByType && Object.keys(stats.toolsByType).length > 0 && (
               <div className="px-3 py-2.5">
-                <div className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Tools
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -371,13 +371,13 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                 {duration && (
                   <span>
                     Duration{' '}
-                    <span className="font-medium font-mono text-foreground/60">{duration}</span>
+                    <span className="font-medium font-mono text-foreground/70">{duration}</span>
                   </span>
                 )}
                 {toolDuration && (
                   <span>
                     Tool execution{' '}
-                    <span className="font-medium font-mono text-foreground/60">{toolDuration}</span>
+                    <span className="font-medium font-mono text-foreground/70">{toolDuration}</span>
                   </span>
                 )}
               </div>
@@ -386,7 +386,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
             {/* Section: Token Usage */}
             {showTokenUsage && hasModelUsage && (
               <div className="px-3 py-2.5">
-                <div className="text-2xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
+                <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Tokens
                 </div>
 
@@ -395,20 +395,20 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-2xs text-muted-foreground">
                     <span>
                       Input{' '}
-                      <span className="font-mono font-medium text-foreground/60">
+                      <span className="font-mono font-medium text-foreground/70">
                         {totalInputTokens.toLocaleString()}
                       </span>
                     </span>
                     <span>
                       Output{' '}
-                      <span className="font-mono font-medium text-foreground/60">
+                      <span className="font-mono font-medium text-foreground/70">
                         {totalOutputTokens.toLocaleString()}
                       </span>
                     </span>
                     {cacheRead > 0 && (
                       <span>
                         Cache read{' '}
-                        <span className="font-mono font-medium text-foreground/60">
+                        <span className="font-mono font-medium text-foreground/70">
                           {formatTokens(cacheRead)}
                         </span>
                       </span>
@@ -416,7 +416,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                     {cacheWrite > 0 && (
                       <span>
                         Cache write{' '}
-                        <span className="font-mono font-medium text-foreground/60">
+                        <span className="font-mono font-medium text-foreground/70">
                           {formatTokens(cacheWrite)}
                         </span>
                       </span>
@@ -431,7 +431,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                       <span>Cache efficiency</span>
                       <span className="font-mono">{cacheHitRatio.toFixed(1)}%</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-muted/60 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-black/[0.06] dark:bg-white/[0.06] overflow-hidden">
                       <div
                         className="h-full rounded-full bg-text-success/50 transition-all"
                         style={{ width: `${Math.min(cacheHitRatio, 100)}%` }}
@@ -450,7 +450,7 @@ export const RunSummaryBlock = memo(function RunSummaryBlock({ summary, checkpoi
                           {formatTokens(usage.inputTokens)} in / {formatTokens(usage.outputTokens)} out
                         </span>
                       </div>
-                      <span className="font-mono font-medium text-foreground/60 shrink-0 ml-3">
+                      <span className="font-mono font-medium text-foreground/70 shrink-0 ml-3">
                         ${usage.costUSD.toFixed(4)}
                       </span>
                     </div>
