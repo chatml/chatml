@@ -18,10 +18,12 @@ export const TurnStatusIndicator = memo(function TurnStatusIndicator({
 
   const colorClass = variant === 'thinking_enabled'
     ? 'text-ai-thinking'
+    : variant === 'config'
+    ? 'text-ai-active'
     : 'text-muted-foreground';
 
   return (
-    <div className="flex items-center gap-2" aria-label={content}>
+    <div className="flex items-center gap-2 my-2" aria-label={content}>
       <Icon className={`w-3.5 h-3.5 shrink-0 ${colorClass}`} aria-hidden="true" />
       <span className={`text-xs ${colorClass}`}>{content}</span>
     </div>
