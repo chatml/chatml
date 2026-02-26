@@ -56,7 +56,7 @@ export function ArchivedSessionPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false} className="sm:max-w-lg p-0 gap-0">
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <DialogHeader className="px-4 pt-4 pb-2 overflow-hidden">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Archive className="w-4 h-4 text-muted-foreground" />
             <span className="font-mono truncate">{session.branch}</span>

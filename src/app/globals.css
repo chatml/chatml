@@ -1120,6 +1120,8 @@ code.hljs { padding: 3px 5px; }
   color: var(--color-foreground);
   font-size: 0.8125rem; /* 13px */
   line-height: 1.6;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .dialog-markdown h1 {
@@ -1168,6 +1170,7 @@ code.hljs { padding: 3px 5px; }
   padding: 0.15em 0.35em;
   border-radius: 0.25rem;
   background: var(--color-muted);
+  overflow-wrap: break-word;
 }
 
 .dialog-markdown pre {
