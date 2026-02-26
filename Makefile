@@ -1,4 +1,4 @@
-.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html
+.PHONY: build build-release build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -41,6 +41,12 @@ dev: deps backend agent-runner
 # Production build (auto-installs deps if needed)
 build: deps backend agent-runner
 	npm run tauri:build
+
+# Production release build for local distribution (creates DMG with embedded OAuth credentials)
+# Requires GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET (via env vars or .env file)
+# Skips updater artifacts (no TAURI_SIGNING_PRIVATE_KEY needed)
+build-release: deps backend-release agent-runner
+	npm run tauri:build -- --bundles dmg
 
 # Debug build (for testing deep links, OAuth, etc.)
 # Note: The updater plugin fails without a valid signing key, but we only need the .app bundle
