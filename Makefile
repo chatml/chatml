@@ -1,4 +1,4 @@
-.PHONY: build build-release build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html
+.PHONY: build build-release build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html sign-sidecar
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -6,6 +6,23 @@ export
 
 # Get the Rust target triple for the current platform
 TARGET := $(shell rustc -vV | grep host | cut -d' ' -f2)
+
+# Sign the Go sidecar binary (required for macOS app bundle integrity).
+# Uses Developer ID from keychain if available (for distribution), otherwise ad-hoc.
+# For fully distributable builds (notarized + signed), use the CI release workflow.
+sign-sidecar:
+	@if security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then \
+		IDENTITY=$$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | awk -F'"' '{print $$2}'); \
+		echo "Signing sidecar with: $$IDENTITY"; \
+		codesign --force --options runtime --sign "$$IDENTITY" \
+			--entitlements src-tauri/entitlements.plist \
+			src-tauri/binaries/chatml-backend-$(TARGET); \
+	else \
+		echo "No Developer ID found, ad-hoc signing sidecar..."; \
+		codesign --force --sign - \
+			--entitlements src-tauri/entitlements.plist \
+			src-tauri/binaries/chatml-backend-$(TARGET); \
+	fi
 
 # Install npm dependencies if node_modules is missing
 deps:
@@ -31,6 +48,7 @@ backend-release:
 		-X 'github.com/chatml/chatml-backend/server.githubClientID=$$GITHUB_CLIENT_ID' \
 		-X 'github.com/chatml/chatml-backend/server.githubClientSecret=$$GITHUB_CLIENT_SECRET'" \
 		-o ../src-tauri/binaries/chatml-backend-$(TARGET)
+	$(MAKE) sign-sidecar
 
 # Development mode (auto-installs deps if needed)
 # Trap SIGINT/SIGTERM to kill all child processes in the process group
@@ -40,6 +58,7 @@ dev: deps backend agent-runner
 
 # Production build (auto-installs deps if needed)
 build: deps backend agent-runner
+	$(MAKE) sign-sidecar
 	npm run tauri:build
 
 # Production release build for local distribution (creates DMG with embedded OAuth credentials)
