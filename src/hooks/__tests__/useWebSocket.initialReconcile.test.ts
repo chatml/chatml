@@ -32,7 +32,7 @@ describe('useWebSocket — initial streaming state reconciliation', () => {
       activeTools: {},
       subAgents: {},
       conversations: [],
-      messages: [],
+      messagesByConversation: {},
     });
   });
 

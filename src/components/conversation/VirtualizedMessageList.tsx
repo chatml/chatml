@@ -176,7 +176,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
         alignToBottom
         startReached={onStartReached}
         rangeChanged={onRangeChanged}
-        increaseViewportBy={{ top: 2000, bottom: 2000 }}
+        increaseViewportBy={{ top: 400, bottom: 800 }}
         atBottomStateChange={onAtBottomStateChange}
         atBottomThreshold={50}
         className="h-full"

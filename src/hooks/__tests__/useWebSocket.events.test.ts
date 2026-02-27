@@ -28,7 +28,7 @@ describe('useWebSocket — missing event handling', () => {
           updatedAt: '',
         },
       ],
-      messages: [],
+      messagesByConversation: {},
       checkpoints: [],
       mcpServers: [],
       supportedModels: [],
@@ -655,7 +655,7 @@ describe('useWebSocket — missing event handling', () => {
       store.finalizeStreamingMessage(CONV_ID, { durationMs: 1500 });
 
       const state = useAppStore.getState();
-      const msgs = state.messages.filter((m) => m.conversationId === CONV_ID && m.role === 'assistant');
+      const msgs = (state.messagesByConversation[CONV_ID] ?? []).filter((m) => m.role === 'assistant');
       expect(msgs.length).toBe(1);
       expect(msgs[0].content).toContain('Turn 1 response text');
     });

@@ -617,26 +617,41 @@ code.hljs { padding: 3px 5px; }
   animation: dash-march 60s linear infinite;
 }
 
-/* Dictation button pulsing animation */
+/* Dictation button pulsing animation
+   Uses a pseudo-element with transform + opacity instead of box-shadow
+   to avoid expensive recompositing on every animation frame. */
 @keyframes dictation-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4);
+    transform: scale(1);
+    opacity: 0.4;
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(249, 115, 22, 0);
+    transform: scale(1.4);
+    opacity: 0;
   }
 }
 
 .dictation-active {
-  animation: dictation-pulse 1.5s ease-in-out infinite;
+  position: relative;
   background-color: rgba(249, 115, 22, 0.1);
+}
+
+.dictation-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid rgba(249, 115, 22, 0.4);
+  animation: dictation-pulse 1.5s ease-in-out infinite;
+  will-change: transform, opacity;
+  pointer-events: none;
 }
 
 .dictation-active:hover {
   background-color: rgba(249, 115, 22, 0.2);
 }
 
-/* Sound level bars animation */
+/* Sound level bars animation — currently unused, no component references .sound-bar */
 .sound-bar {
   transition: height 75ms ease-out;
 }
@@ -651,7 +666,8 @@ code.hljs { padding: 3px 5px; }
   margin-right: 0 !important;
   opacity: 0 !important;
   overflow: hidden;
-  transition: all 150ms ease-in;
+  --tab-close-dur: 150ms;
+  transition: width var(--tab-close-dur) ease-in, min-width var(--tab-close-dur) ease-in, padding var(--tab-close-dur) ease-in, margin var(--tab-close-dur) ease-in, opacity var(--tab-close-dur) ease-in;
 }
 
 .tab-opening {
@@ -1001,20 +1017,22 @@ code.hljs { padding: 3px 5px; }
   z-index: 10;
 }
 
-/* Session active indicator - equalizer bars animation */
+/* Session active indicator - equalizer bars animation
+   Uses transform: scaleY() instead of height to avoid layout reflow.
+   Bars have a fixed base height and scale from there. */
 @keyframes session-bar-1 {
-  0%, 100% { height: 3px; }
-  50% { height: 10px; }
+  0%, 100% { transform: scaleY(0.27); }
+  50% { transform: scaleY(0.91); }
 }
 
 @keyframes session-bar-2 {
-  0%, 100% { height: 8px; }
-  50% { height: 4px; }
+  0%, 100% { transform: scaleY(0.73); }
+  50% { transform: scaleY(0.36); }
 }
 
 @keyframes session-bar-3 {
-  0%, 100% { height: 5px; }
-  50% { height: 11px; }
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
 }
 
 .session-active-indicator {
@@ -1028,8 +1046,11 @@ code.hljs { padding: 3px 5px; }
 
 .session-active-indicator .bar {
   width: 2.5px;
+  height: 11px;
   border-radius: 1px;
   background: linear-gradient(to top, #8b5cf6, #a78bfa);
+  transform-origin: center bottom;
+  will-change: transform;
 }
 
 .session-active-indicator .bar:nth-child(1) {
@@ -1049,7 +1070,7 @@ code.hljs { padding: 3px 5px; }
 @media (prefers-reduced-motion: reduce) {
   .session-active-indicator .bar {
     animation: none;
-    height: 6px;
+    transform: scaleY(0.55);
   }
 }
 
@@ -1071,22 +1092,31 @@ code.hljs { padding: 3px 5px; }
   }
 }
 
-/* Agent working indicator - equalizer bars */
+/* Agent working indicator - equalizer bars
+   Uses transform: scaleY() instead of height to avoid layout reflow. */
 @keyframes agent-bar-1 {
-  0%, 100% { height: 25%; }
-  50% { height: 100%; }
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
 }
 
 @keyframes agent-bar-2 {
-  0%, 100% { height: 50%; }
-  50% { height: 25%; }
-  75% { height: 100%; }
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(0.25); }
+  75% { transform: scaleY(1); }
 }
 
 @keyframes agent-bar-3 {
-  0%, 100% { height: 100%; }
-  25% { height: 25%; }
-  75% { height: 50%; }
+  0%, 100% { transform: scaleY(1); }
+  25% { transform: scaleY(0.25); }
+  75% { transform: scaleY(0.5); }
+}
+
+.animate-agent-bar-1,
+.animate-agent-bar-2,
+.animate-agent-bar-3 {
+  height: 100%;
+  transform-origin: center bottom;
+  will-change: transform;
 }
 
 .animate-agent-bar-1 {
@@ -1106,7 +1136,7 @@ code.hljs { padding: 3px 5px; }
   .animate-agent-bar-2,
   .animate-agent-bar-3 {
     animation: none;
-    height: 50%;
+    transform: scaleY(0.5);
   }
 }
 

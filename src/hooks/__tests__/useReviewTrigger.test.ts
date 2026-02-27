@@ -40,7 +40,7 @@ function resetStore() {
     selectedSessionId: null,
     selectedConversationId: null,
     conversations: [],
-    messages: [],
+    messagesByConversation: {},
     reviewComments: {},
     streamingState: {},
   });
@@ -249,8 +249,7 @@ describe('useReviewTrigger', () => {
         dispatchStartReview('quick');
       });
 
-      const messages = useAppStore.getState().messages;
-      const reviewMessages = messages.filter((m) => m.conversationId === 'new-review-conv');
+      const reviewMessages = useAppStore.getState().messagesByConversation['new-review-conv'] ?? [];
       expect(reviewMessages).toHaveLength(1);
       expect(reviewMessages[0].role).toBe('user');
       expect(reviewMessages[0].content).toContain('Review the changes');

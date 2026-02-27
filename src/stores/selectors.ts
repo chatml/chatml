@@ -60,14 +60,15 @@ export const useConversationState = () =>
  * Messages for a specific conversation.
  * Use in: ConversationArea, MessageList
  *
- * Uses useShallow to prevent infinite re-render loops by comparing array
- * elements by reference rather than creating new array references.
+ * O(1) lookup into messagesByConversation. The returned array reference is
+ * stable when unrelated store state changes, so useShallow is still used
+ * to handle cases where the bucket array is replaced (e.g., new message added).
  */
 export const useMessages = (conversationId: string | null) =>
   useAppStore(
     useShallow((s) =>
       conversationId
-        ? s.messages.filter((m) => m.conversationId === conversationId)
+        ? s.messagesByConversation[conversationId] ?? EMPTY_MESSAGES
         : EMPTY_MESSAGES
     )
   );
@@ -89,7 +90,7 @@ export const useMessagePagination = (conversationId: string | null) =>
 export const useHasUserMessages = (conversationId: string | null) =>
   useAppStore((s) =>
     conversationId
-      ? s.messages.some((m) => m.conversationId === conversationId && m.role === 'user')
+      ? (s.messagesByConversation[conversationId] ?? []).some((m) => m.role === 'user')
       : false
   );
 
@@ -109,11 +110,9 @@ export const useConversationsWithUserMessages = () =>
   useAppStore(
     useShallow((s) => {
       const ids: string[] = [];
-      const seen = new Set<string>();
-      for (const m of s.messages) {
-        if (m.role === 'user' && !seen.has(m.conversationId)) {
-          seen.add(m.conversationId);
-          ids.push(m.conversationId);
+      for (const [convId, msgs] of Object.entries(s.messagesByConversation)) {
+        if (msgs.some((m) => m.role === 'user')) {
+          ids.push(convId);
         }
       }
       return ids.length > 0 ? ids : EMPTY_CONVERSATION_IDS;
@@ -437,6 +436,73 @@ export const useReviewCommentActions = () =>
       deleteReviewComment: s.deleteReviewComment,
       setReviewComments: s.setReviewComments,
     }))
+  );
+
+// ============================================================================
+// ChatInput Actions
+// ============================================================================
+
+/**
+ * Actions needed by ChatInput that don't carry data dependencies.
+ * useShallow required — see usePageActions comment.
+ * Action refs are stable, so this selector never triggers re-renders after init.
+ * Use in: ChatInput
+ */
+export const useChatInputActions = () =>
+  useAppStore(
+    useShallow((s) => ({
+      addMessage: s.addMessage,
+      setStreaming: s.setStreaming,
+      setQueuedMessage: s.setQueuedMessage,
+      commitQueuedMessage: s.commitQueuedMessage,
+      clearPendingPlanApproval: s.clearPendingPlanApproval,
+      setApprovedPlanContent: s.setApprovedPlanContent,
+      clearApprovedPlanContent: s.clearApprovedPlanContent,
+      clearActiveTools: s.clearActiveTools,
+      finalizeStreamingMessage: s.finalizeStreamingMessage,
+      setPlanModeActive: s.setPlanModeActive,
+      clearInputSuggestion: s.clearInputSuggestion,
+      setSessionToggleState: s.setSessionToggleState,
+      setDraftInput: s.setDraftInput,
+      clearDraftInput: s.clearDraftInput,
+    }))
+  );
+
+// ============================================================================
+// Sidebar Actions
+// ============================================================================
+
+/**
+ * Actions needed by WorkspaceSidebar that don't carry data dependencies.
+ * useShallow required — see usePageActions comment.
+ * Action refs are stable, so this selector never triggers re-renders after init.
+ * Use in: WorkspaceSidebar
+ */
+export const useSidebarActions = () =>
+  useAppStore(
+    useShallow((s) => ({
+      addSession: s.addSession,
+      addConversation: s.addConversation,
+      reorderWorkspaces: s.reorderWorkspaces,
+      removeWorkspace: s.removeWorkspace,
+      updateSession: s.updateSession,
+    }))
+  );
+
+// ============================================================================
+// Conversation Has Messages
+// ============================================================================
+
+/**
+ * Check if a conversation has any messages at all.
+ * O(1) lookup into messagesByConversation — just checks array length.
+ * Use in: ChatInput for ghost text vs placeholder logic
+ */
+export const useConversationHasMessages = (conversationId: string | null) =>
+  useAppStore((s) =>
+    conversationId
+      ? (s.messagesByConversation[conversationId]?.length ?? 0) > 0
+      : false
   );
 
 // ============================================================================

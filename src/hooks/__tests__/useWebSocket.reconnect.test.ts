@@ -289,7 +289,7 @@ describe('useWebSocket — reconnect streaming reconciliation', () => {
       expect(conv1?.status).toBe('completed');
 
       // CONV_1: messages should be reloaded
-      const msgs = useAppStore.getState().messages.filter(m => m.conversationId === CONV_1);
+      const msgs = useAppStore.getState().messagesByConversation[CONV_1] ?? [];
       expect(msgs).toHaveLength(1);
 
       // CONV_2: still streaming — untouched
