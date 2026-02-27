@@ -390,13 +390,9 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	return conv, nil
 }
 
-// handleConversationOutput processes output from the agent process.
-// Note: Uses the app-level context so background work is cancelled on shutdown.
-// Store errors are logged but not propagated since this is async processing.
-// flushPendingUserMessage takes any deferred user message from the process and
-// persists it to the database. Returns true if a message was flushed.
-func (m *Manager) flushPendingUserMessage(ctx context.Context, convID string, proc *Process) bool {
-	pending := proc.TakePendingUserMessage()
+// storePendingUserMessage persists a previously-deferred user message to the DB.
+// Returns false if pending is nil (nothing to store).
+func (m *Manager) storePendingUserMessage(ctx context.Context, convID string, pending *models.Message) bool {
 	if pending == nil {
 		return false
 	}
@@ -411,6 +407,9 @@ func (m *Manager) flushPendingUserMessage(ctx context.Context, convID string, pr
 	return true
 }
 
+// handleConversationOutput processes output from the agent process.
+// Note: Uses the app-level context so background work is cancelled on shutdown.
+// Store errors are logged but not propagated since this is async processing.
 func (m *Manager) handleConversationOutput(convID string, proc *Process) {
 	ctx := m.ctx
 	var currentAssistantMessage string
@@ -594,6 +593,8 @@ outer:
 				}
 				isThinking = false
 
+				// Mark that a turn is actively producing output (for user message deferral logic)
+				proc.SetInActiveTurn(true)
 				// Track that the process produced user-visible output (for zero-output detection)
 				proc.SetProducedOutput()
 				currentAssistantMessage += event.Content
@@ -606,6 +607,7 @@ outer:
 				markSnapshotDirty()
 
 			case EventTypeToolStart:
+				proc.SetInActiveTurn(true)
 				entry := ActiveToolEntry{
 					ID:        event.ID,
 					Tool:      event.Tool,
@@ -655,6 +657,7 @@ outer:
 				markSnapshotDirty()
 
 			case EventTypeThinkingStart:
+				proc.SetInActiveTurn(true)
 				// Seal previous thinking block if any
 				if thinkingBlockStart != nil && currentThinkingText != "" {
 					thinkingBlocks = append(thinkingBlocks, thinkingBlock{content: currentThinkingText, timestamp: *thinkingBlockStart})
@@ -1094,10 +1097,14 @@ outer:
 					currentAssistantMessage = ""
 				}
 
-				// Flush deferred user message (sent during active turn).
+				// Atomically clear the active turn flag and take any deferred
+				// user message. This must be atomic so a concurrent
+				// SendConversationMessage cannot slip a new message between
+				// clearing the flag and flushing the old deferred one.
 				// Must happen AFTER storing the assistant message so the DB
-				// position ordering is correct: [assistant_N, user_N+1].
-				m.flushPendingUserMessage(ctx, convID, proc)
+				// position ordering is correct: [assistant_N, queued_user_N+1].
+				pending := proc.EndTurnAndTakePending()
+				m.storePendingUserMessage(ctx, convID, pending)
 
 				// Reset per-turn accumulation state
 				currentThinking = ""
@@ -1294,9 +1301,11 @@ outer:
 		}
 	}
 
-	// Flush any remaining deferred user message so it is not lost when the
-	// process exits without a turn_complete event (e.g. crash, forced stop).
-	m.flushPendingUserMessage(ctx, convID, proc)
+	// Atomically clear active turn flag and flush any remaining deferred user
+	// message so it is not lost when the process exits without a turn_complete
+	// event (e.g. crash, forced stop).
+	pending := proc.EndTurnAndTakePending()
+	m.storePendingUserMessage(ctx, convID, pending)
 
 	// Clear snapshot on process exit — but only if this process is still the current
 	// one in the map. If a new process has already been started (via SendConversationMessage),
@@ -1582,13 +1591,15 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	}
 
 	// Store user message with attachments.
-	// When the process was restarted (or freshly started), there is no pending
-	// assistant turn, so the user message can be stored immediately with the
-	// correct position. When the process is already running, the agent may be
-	// mid-turn streaming a response — storing now would give this message a
-	// position before the assistant response, breaking chronological order on
-	// reload. Defer storage until the current turn completes (flushed in
-	// handleConversationOutput).
+	// Three cases:
+	//  1. needsRestart=true  — process was restarted/freshly started, no active turn.
+	//     Store immediately so the user message precedes the assistant response.
+	//  2. needsRestart=false, process idle between turns — store immediately.
+	//     Same reasoning as case 1.
+	//  3. needsRestart=false, process mid-turn (inActiveTurn=true) — defer storage
+	//     until the current turn completes. The assistant response for the current
+	//     turn is stored first, then this queued user message is flushed after it.
+	//     This preserves chronological order: [assistant_N, queued_user_N+1].
 	msg := models.Message{
 		ID:          uuid.New().String()[:8],
 		Role:        "user",
@@ -1596,7 +1607,12 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		Attachments: attachments,
 		Timestamp:   time.Now(),
 	}
-	if needsRestart {
+	// StoreOrDeferMessage atomically checks inActiveTurn and either defers
+	// (returns false) or signals store-now (returns true). Short-circuits
+	// when needsRestart is true — the process was just created (proc = newProc
+	// above), so inActiveTurn is false and pendingUserMessage is nil by default.
+	storeNow := needsRestart || proc.StoreOrDeferMessage(&msg)
+	if storeNow {
 		if err := m.store.AddMessageToConversation(ctx, convID, msg); err != nil {
 			logger.Manager.Errorf("Failed to store user message for conv %s: %v", convID, err)
 		}
@@ -1605,8 +1621,6 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 				logger.Manager.Errorf("Failed to save attachments: %v", err)
 			}
 		}
-	} else {
-		proc.SetPendingUserMessage(&msg)
 	}
 
 	// Send to process with attachments
