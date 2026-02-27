@@ -442,10 +442,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add system message with setup info
-	originBranch := repo.Branch
-	if originBranch == "" {
-		originBranch = "main"
-	}
+	originBranch := targetBranch
 	setupMsg := models.Message{
 		ID:      uuid.New().String()[:8],
 		Role:    "system",

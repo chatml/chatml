@@ -15,6 +15,7 @@ import (
 
 	"github.com/chatml/chatml-backend/github"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -882,6 +883,275 @@ func TestCreateSession_CheckoutExisting_SystemMessageStored(t *testing.T) {
 		}
 	}
 	assert.True(t, foundSystemMsg, "System message should be stored in the conversation")
+}
+
+func TestCreateSession_SetupInfo_OriginBranch(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupRepo      func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo
+		request        CreateSessionRequest
+		expectedOrigin string
+	}{
+		{
+			name: "default_origin_main",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+				return createTestRepo(t, s, "ws-default", repoPath)
+			},
+			request: CreateSessionRequest{
+				Name: fmt.Sprintf("test-default-%d", time.Now().UnixNano()),
+			},
+			expectedOrigin: "origin/main",
+		},
+		{
+			name: "custom_target_branch",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+
+				// Get origin path and push a develop branch
+				cmd := exec.Command("git", "remote", "get-url", "origin")
+				cmd.Dir = repoPath
+				originOut, err := cmd.Output()
+				require.NoError(t, err)
+				originPath := strings.TrimSpace(string(originOut))
+
+				cloneDir := t.TempDir()
+				runGit(t, cloneDir, "clone", originPath, ".")
+				runGit(t, cloneDir, "config", "user.email", "test@test.com")
+				runGit(t, cloneDir, "config", "user.name", "Test User")
+				runGit(t, cloneDir, "checkout", "-b", "develop")
+				writeFile(t, cloneDir, "dev.txt", "develop content")
+				runGit(t, cloneDir, "add", ".")
+				runGit(t, cloneDir, "commit", "-m", "Develop commit")
+				runGit(t, cloneDir, "push", "origin", "develop")
+
+				// Fetch in the working repo so origin/develop exists
+				runGit(t, repoPath, "fetch", "origin")
+
+				return createTestRepo(t, s, "ws-custom", repoPath)
+			},
+			request: CreateSessionRequest{
+				Name:         fmt.Sprintf("test-custom-%d", time.Now().UnixNano()),
+				TargetBranch: "origin/develop",
+			},
+			expectedOrigin: "origin/develop",
+		},
+		{
+			name: "repo_with_custom_remote",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+
+				// Rename the remote from "origin" to "upstream"
+				runGit(t, repoPath, "remote", "rename", "origin", "upstream")
+
+				repo := createTestRepo(t, s, "ws-upstream", repoPath)
+				repo.Remote = "upstream"
+				require.NoError(t, s.UpdateRepo(context.Background(), repo))
+				return repo
+			},
+			request: CreateSessionRequest{
+				Name: fmt.Sprintf("test-upstream-%d", time.Now().UnixNano()),
+			},
+			expectedOrigin: "upstream/main",
+		},
+		{
+			name: "checkout_existing_branch",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+
+				// Push a feature branch to origin
+				cmd := exec.Command("git", "remote", "get-url", "origin")
+				cmd.Dir = repoPath
+				originOut, err := cmd.Output()
+				require.NoError(t, err)
+				originPath := strings.TrimSpace(string(originOut))
+
+				cloneDir := t.TempDir()
+				runGit(t, cloneDir, "clone", originPath, ".")
+				runGit(t, cloneDir, "config", "user.email", "test@test.com")
+				runGit(t, cloneDir, "config", "user.name", "Test User")
+				runGit(t, cloneDir, "checkout", "-b", "feature/setup-info-test")
+				writeFile(t, cloneDir, "feature.txt", "feature content")
+				runGit(t, cloneDir, "add", ".")
+				runGit(t, cloneDir, "commit", "-m", "Feature commit")
+				runGit(t, cloneDir, "push", "origin", "feature/setup-info-test")
+
+				return createTestRepo(t, s, "ws-checkout", repoPath)
+			},
+			request: CreateSessionRequest{
+				Name:             fmt.Sprintf("test-checkout-%d", time.Now().UnixNano()),
+				Branch:           "feature/setup-info-test",
+				CheckoutExisting: true,
+			},
+			// When checking out an existing branch, targetBranch is still origin/main
+			expectedOrigin: "origin/main",
+		},
+		{
+			name: "empty_repo_branch_defaults_to_origin_main",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+				repo := createTestRepo(t, s, "ws-empty-branch", repoPath)
+				repo.Branch = "" // Clear the branch to trigger fallback
+				require.NoError(t, s.UpdateRepo(context.Background(), repo))
+				return repo
+			},
+			request: CreateSessionRequest{
+				Name: fmt.Sprintf("test-empty-branch-%d", time.Now().UnixNano()),
+			},
+			expectedOrigin: "origin/main",
+		},
+		{
+			name: "nonexistent_configured_branch_falls_back_to_main",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+				repo := createTestRepo(t, s, "ws-nonexistent", repoPath)
+				repo.Branch = "production" // Doesn't exist on origin
+				require.NoError(t, s.UpdateRepo(context.Background(), repo))
+				return repo
+			},
+			request: CreateSessionRequest{
+				Name: fmt.Sprintf("test-nonexistent-%d", time.Now().UnixNano()),
+			},
+			expectedOrigin: "origin/main",
+		},
+		{
+			name: "falls_back_to_origin_master_when_main_missing",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				// Create a repo where origin only has "master", not "main"
+				dir := t.TempDir()
+				runGit(t, dir, "init")
+				runGit(t, dir, "config", "user.email", "test@test.com")
+				runGit(t, dir, "config", "user.name", "Test User")
+				runGit(t, dir, "checkout", "-b", "master")
+				writeFile(t, dir, "README.md", "# Test")
+				runGit(t, dir, "add", ".")
+				runGit(t, dir, "commit", "-m", "Initial commit")
+
+				originDir := t.TempDir()
+				runGit(t, originDir, "init", "--bare")
+				runGit(t, dir, "remote", "add", "origin", originDir)
+				runGit(t, dir, "push", "-u", "origin", "master")
+
+				repo := createTestRepo(t, s, "ws-master", dir)
+				repo.Branch = "staging" // Non-existent; should fall back to origin/master
+				require.NoError(t, s.UpdateRepo(context.Background(), repo))
+				return repo
+			},
+			request: CreateSessionRequest{
+				Name: fmt.Sprintf("test-master-%d", time.Now().UnixNano()),
+			},
+			expectedOrigin: "origin/master",
+		},
+		{
+			name: "explicit_target_overrides_repo_branch",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+
+				// Push a develop branch to origin
+				cmd := exec.Command("git", "remote", "get-url", "origin")
+				cmd.Dir = repoPath
+				originOut, err := cmd.Output()
+				require.NoError(t, err)
+				originPath := strings.TrimSpace(string(originOut))
+
+				cloneDir := t.TempDir()
+				runGit(t, cloneDir, "clone", originPath, ".")
+				runGit(t, cloneDir, "config", "user.email", "test@test.com")
+				runGit(t, cloneDir, "config", "user.name", "Test User")
+				runGit(t, cloneDir, "checkout", "-b", "develop")
+				writeFile(t, cloneDir, "dev.txt", "develop content")
+				runGit(t, cloneDir, "add", ".")
+				runGit(t, cloneDir, "commit", "-m", "Develop commit")
+				runGit(t, cloneDir, "push", "origin", "develop")
+				runGit(t, repoPath, "fetch", "origin")
+
+				// repo.Branch is "main" but explicit target overrides it
+				return createTestRepo(t, s, "ws-override", repoPath)
+			},
+			request: CreateSessionRequest{
+				Name:         fmt.Sprintf("test-override-%d", time.Now().UnixNano()),
+				TargetBranch: "origin/develop",
+			},
+			expectedOrigin: "origin/develop",
+		},
+		{
+			name: "empty_remote_defaults_to_origin",
+			setupRepo: func(t *testing.T, h *Handlers, s *store.SQLiteStore) *models.Repo {
+				repoPath := createTestGitRepo(t)
+				repo := createTestRepo(t, s, "ws-no-remote", repoPath)
+				repo.Remote = "" // Explicitly clear — should fall back to "origin"
+				require.NoError(t, s.UpdateRepo(context.Background(), repo))
+				return repo
+			},
+			request: CreateSessionRequest{
+				Name: fmt.Sprintf("test-no-remote-%d", time.Now().UnixNano()),
+			},
+			expectedOrigin: "origin/main",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, s := setupTestHandlers(t)
+			repo := tt.setupRepo(t, h, s)
+
+			body, err := json.Marshal(tt.request)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest("POST", "/api/repos/"+repo.ID+"/sessions", bytes.NewReader(body))
+			req = withChiContext(req, map[string]string{"id": repo.ID})
+			w := httptest.NewRecorder()
+
+			h.CreateSession(w, req)
+			require.Equal(t, http.StatusOK, w.Code, "Response: %s", w.Body.String())
+
+			var sess models.Session
+			err = json.Unmarshal(w.Body.Bytes(), &sess)
+			require.NoError(t, err)
+
+			// Fetch system message from DB and validate SetupInfo
+			ctx := context.Background()
+			conversations, err := s.ListConversations(ctx, sess.ID)
+			require.NoError(t, err)
+			require.NotEmpty(t, conversations, "session should have at least one conversation")
+
+			msgPage, err := s.GetConversationMessages(ctx, conversations[0].ID, nil, 100)
+			require.NoError(t, err)
+
+			var setupInfo *models.SetupInfo
+			for _, msg := range msgPage.Messages {
+				if msg.Role == "system" && msg.SetupInfo != nil {
+					setupInfo = msg.SetupInfo
+					break
+				}
+			}
+			require.NotNil(t, setupInfo, "system message should have SetupInfo")
+			assert.Equal(t, sess.Name, setupInfo.SessionName, "SetupInfo.SessionName should match session name")
+			assert.Equal(t, sess.Branch, setupInfo.BranchName, "SetupInfo.BranchName should match session branch")
+			assert.Equal(t, tt.expectedOrigin, setupInfo.OriginBranch, "SetupInfo.OriginBranch should reflect the actual target branch")
+		})
+	}
+}
+
+func TestCreateSession_SetupInfo_InvalidTargetBranchWithoutSlash(t *testing.T) {
+	h, s := setupTestHandlers(t)
+
+	repoPath := createTestGitRepo(t)
+	repo := createTestRepo(t, s, "ws-invalid-target", repoPath)
+
+	body, err := json.Marshal(CreateSessionRequest{
+		Name:         "test-invalid-target",
+		TargetBranch: "main", // Missing slash — must be "<remote>/<branch>"
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/api/repos/"+repo.ID+"/sessions", bytes.NewReader(body))
+	req = withChiContext(req, map[string]string{"id": repo.ID})
+	w := httptest.NewRecorder()
+
+	h.CreateSession(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "targetBranch must be in the form")
 }
 
 func TestCreateSession_WithBranchPrefix(t *testing.T) {
