@@ -675,6 +675,7 @@ export interface ReviewComment {
   resolved: boolean;
   resolvedAt?: string;
   resolvedBy?: string;
+  resolutionType?: 'fixed' | 'ignored';
 }
 
 // Comment statistics per file

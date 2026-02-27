@@ -26,6 +26,9 @@ export const GIT_STATUS_POLL_INTERVAL_MS = 30000; // 30 seconds
 // Shared Tailwind prose classes for markdown content rendering
 export const PROSE_CLASSES = 'prose prose-base dark:prose-invert max-w-none text-base leading-relaxed prose-p:my-3 prose-pre:my-2 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-2 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary';
 
+// Compact prose classes for inline comment threads and smaller markdown areas
+export const PROSE_CLASSES_COMPACT = 'prose prose-sm dark:prose-invert max-w-none text-sm leading-normal prose-p:my-1 prose-pre:my-1 prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-xs prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-headings:font-semibold prose-headings:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-ul:marker:text-primary prose-ol:marker:text-primary';
+
 // Tool rendering constants
 export const TOOL_TARGET_TRUNCATE = 60;
 export const TOOL_COMMAND_TRUNCATE = 80;

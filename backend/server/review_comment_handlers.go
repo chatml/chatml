@@ -168,11 +168,12 @@ func (h *Handlers) GetReviewCommentStats(w http.ResponseWriter, r *http.Request)
 }
 
 type UpdateReviewCommentRequest struct {
-	Title      *string `json:"title,omitempty"`
-	Content    *string `json:"content,omitempty"`
-	Severity   *string `json:"severity,omitempty"`
-	Resolved   *bool   `json:"resolved,omitempty"`
-	ResolvedBy *string `json:"resolvedBy,omitempty"`
+	Title          *string `json:"title,omitempty"`
+	Content        *string `json:"content,omitempty"`
+	Severity       *string `json:"severity,omitempty"`
+	Resolved       *bool   `json:"resolved,omitempty"`
+	ResolvedBy     *string `json:"resolvedBy,omitempty"`
+	ResolutionType *string `json:"resolutionType,omitempty"`
 }
 
 func (h *Handlers) UpdateReviewComment(w http.ResponseWriter, r *http.Request) {
@@ -218,6 +219,14 @@ func (h *Handlers) UpdateReviewComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate resolution type if provided
+	if req.ResolutionType != nil && *req.ResolutionType != "" &&
+		*req.ResolutionType != models.CommentResolutionFixed &&
+		*req.ResolutionType != models.CommentResolutionIgnored {
+		writeValidationError(w, "resolutionType must be 'fixed' or 'ignored'")
+		return
+	}
+
 	if err := h.store.UpdateReviewComment(ctx, commentID, func(c *models.ReviewComment) {
 		if req.Title != nil {
 			c.Title = *req.Title
@@ -236,9 +245,14 @@ func (h *Handlers) UpdateReviewComment(w http.ResponseWriter, r *http.Request) {
 				if req.ResolvedBy != nil {
 					c.ResolvedBy = *req.ResolvedBy
 				}
+				// Only apply resolutionType when resolving
+				if req.ResolutionType != nil {
+					c.ResolutionType = *req.ResolutionType
+				}
 			} else {
 				c.ResolvedAt = nil
 				c.ResolvedBy = ""
+				c.ResolutionType = ""
 			}
 		}
 	}); err != nil {

@@ -362,7 +362,7 @@ describe('ReviewPanel', () => {
         }),
         http.patch(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/comments/:commentId`, () => {
           patchCalled = true;
-          return HttpResponse.json(makeComment({ id: 'c-resolve-1', resolved: true, resolvedBy: 'user' }));
+          return HttpResponse.json(makeComment({ id: 'c-resolve-1', resolved: true, resolvedBy: 'user', resolutionType: 'fixed' }));
         })
       );
 
@@ -372,9 +372,12 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('To resolve')).toBeInTheDocument();
       });
 
-      // Find and click the resolve button (checkmark icon)
+      // Find and click the resolve dropdown trigger, then select "Mark as Fixed"
       const resolveButton = screen.getByTitle('Resolve comment');
       await user.click(resolveButton);
+
+      const fixedOption = await screen.findByText('Mark as Fixed');
+      await user.click(fixedOption);
 
       await waitFor(() => {
         expect(patchCalled).toBe(true);
@@ -399,8 +402,12 @@ describe('ReviewPanel', () => {
         expect(screen.getByText('Will fail resolve')).toBeInTheDocument();
       });
 
+      // Open dropdown and select "Mark as Fixed"
       const resolveButton = screen.getByTitle('Resolve comment');
       await user.click(resolveButton);
+
+      const fixedOption = await screen.findByText('Mark as Fixed');
+      await user.click(fixedOption);
 
       // After API failure, the optimistic update should be reverted
       await waitFor(() => {

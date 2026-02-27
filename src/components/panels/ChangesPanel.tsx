@@ -11,6 +11,7 @@ import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/compon
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
 import { ChecksPanel, type ChecksPanelHandle } from '@/components/panels/ChecksPanel';
+import { useToast } from '@/components/ui/toast';
 
 
 import { McpServersPanel } from '@/components/panels/McpServersPanel';
@@ -89,6 +90,7 @@ export function ChangesPanel() {
   const { agentTodos } = useTodoState(selectedConversationId, selectedSessionId);
   const commentStats = useFileCommentStats(selectedSessionId);
   const reviewComments = useReviewComments(selectedSessionId);
+  const { error: showError } = useToast();
   const sessions = useAppStore((s) => s.sessions);
   const workspaces = useAppStore((s) => s.workspaces);
   const updateSession = useAppStore((s) => s.updateSession);
@@ -515,22 +517,31 @@ export function ChangesPanel() {
     const unresolved = comments.filter((c) => !c.resolved);
     if (unresolved.length === 0) return;
 
-    // Optimistically resolve all
+    // Optimistically resolve all as "fixed"
     for (const comment of unresolved) {
       updateReviewComment(selectedSessionId, comment.id, {
         resolved: true,
         resolvedBy: 'user',
+        resolutionType: 'fixed',
       });
     }
 
-    // Fire API calls (best-effort, no rollback for bulk)
-    for (const comment of unresolved) {
-      apiUpdateReviewComment(selectedWorkspaceId, selectedSessionId, comment.id, {
-        resolved: true,
-        resolvedBy: 'user',
-      }).catch(console.error);
+    // Fire API calls and report failures
+    const results = await Promise.allSettled(
+      unresolved.map((comment) =>
+        apiUpdateReviewComment(selectedWorkspaceId, selectedSessionId, comment.id, {
+          resolved: true,
+          resolvedBy: 'user',
+          resolutionType: 'fixed',
+        })
+      )
+    );
+
+    const failedCount = results.filter((r) => r.status === 'rejected').length;
+    if (failedCount > 0) {
+      showError(`Failed to resolve ${failedCount} comment${failedCount > 1 ? 's' : ''}`);
     }
-  }, [selectedWorkspaceId, selectedSessionId, updateReviewComment]);
+  }, [selectedWorkspaceId, selectedSessionId, updateReviewComment, showError]);
 
   // Fetch files from session's worktree when session changes.
   // Decoupled from tab visibility so data is ready when the user switches tabs.

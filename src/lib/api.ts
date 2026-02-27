@@ -1407,6 +1407,7 @@ export interface ReviewCommentDTO {
   resolved: boolean;
   resolvedAt?: string;
   resolvedBy?: string;
+  resolutionType?: 'fixed' | 'ignored';
 }
 
 export interface CommentStatsDTO {
@@ -1465,7 +1466,7 @@ export async function updateReviewComment(
   workspaceId: string,
   sessionId: string,
   commentId: string,
-  data: { resolved?: boolean; resolvedBy?: string }
+  data: { resolved?: boolean; resolvedBy?: string; resolutionType?: 'fixed' | 'ignored' }
 ): Promise<ReviewCommentDTO> {
   const res = await fetchWithAuth(
     `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/comments/${commentId}`,

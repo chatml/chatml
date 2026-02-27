@@ -374,19 +374,20 @@ type FileTab struct {
 
 // ReviewComment represents an inline code review comment
 type ReviewComment struct {
-	ID         string     `json:"id"`
-	SessionID  string     `json:"sessionId"`
-	FilePath   string     `json:"filePath"`
-	LineNumber int        `json:"lineNumber"`
-	Title      string     `json:"title,omitempty"`
-	Content    string     `json:"content"`
-	Source     string     `json:"source"` // "claude" or "user"
-	Author     string     `json:"author"` // Display name
-	Severity   string     `json:"severity,omitempty"` // "error", "warning", "suggestion", "info"
-	CreatedAt  time.Time  `json:"createdAt"`
-	Resolved   bool       `json:"resolved"`
-	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
-	ResolvedBy string     `json:"resolvedBy,omitempty"`
+	ID             string     `json:"id"`
+	SessionID      string     `json:"sessionId"`
+	FilePath       string     `json:"filePath"`
+	LineNumber     int        `json:"lineNumber"`
+	Title          string     `json:"title,omitempty"`
+	Content        string     `json:"content"`
+	Source         string     `json:"source"` // "claude" or "user"
+	Author         string     `json:"author"` // Display name
+	Severity       string     `json:"severity,omitempty"` // "error", "warning", "suggestion", "info"
+	CreatedAt      time.Time  `json:"createdAt"`
+	Resolved       bool       `json:"resolved"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedBy     string     `json:"resolvedBy,omitempty"`
+	ResolutionType string     `json:"resolutionType,omitempty"` // "fixed" or "ignored"
 }
 
 // ReviewCommentSource constants
@@ -401,6 +402,12 @@ const (
 	CommentSeverityWarning    = "warning"
 	CommentSeveritySuggestion = "suggestion"
 	CommentSeverityInfo       = "info"
+)
+
+// ReviewCommentResolution constants
+const (
+	CommentResolutionFixed   = "fixed"
+	CommentResolutionIgnored = "ignored"
 )
 
 // CommentStats represents per-file comment statistics
