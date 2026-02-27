@@ -69,9 +69,9 @@ function SeverityIcon({ severity }: { severity?: 'error' | 'warning' | 'suggesti
     case 'warning':
       return <AlertTriangle className="w-4 h-4 text-text-warning shrink-0" />;
     case 'info':
-      return <Info className="w-4 h-4 text-text-info shrink-0" />;
+      return <Info className="w-4 h-4 text-slate-400 shrink-0" />;
     case 'suggestion':
-      return <Lightbulb className="w-4 h-4 text-text-info shrink-0" />;
+      return <Lightbulb className="w-4 h-4 text-purple-500 shrink-0" />;
     default:
       return null;
   }
@@ -87,9 +87,9 @@ function getSeverityBorderClass(severity?: 'error' | 'warning' | 'suggestion' | 
     case 'warning':
       return 'border-l-yellow-500';
     case 'info':
-      return 'border-l-blue-500';
+      return 'border-l-slate-300 dark:border-l-slate-500';
     case 'suggestion':
-      return 'border-l-blue-500';
+      return 'border-l-purple-500';
     default:
       return 'border-l-muted-foreground/50';
   }

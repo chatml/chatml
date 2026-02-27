@@ -957,8 +957,15 @@ code.hljs { padding: 3px 5px; }
   border-radius: 2px;
 }
 
+.comment-gutter-info {
+  background-color: #94a3b8;  /* slate-400 */
+  width: 4px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
 .comment-gutter-suggestion {
-  background-color: #3b82f6;
+  background-color: #a855f7;  /* purple-500 */
   width: 4px !important;
   margin-left: 3px;
   border-radius: 2px;
