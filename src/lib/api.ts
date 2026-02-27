@@ -1603,6 +1603,7 @@ export async function getClaudeAuthStatus(): Promise<{
   hasStoredKey: boolean;
   hasEnvKey: boolean;
   hasCliCredentials: boolean;
+  credentialSource: string;
 }> {
   const res = await fetchWithAuth(`${getApiBase()}/api/settings/claude-auth-status`);
   return handleResponse(res);

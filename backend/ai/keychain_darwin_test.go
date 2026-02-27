@@ -44,10 +44,35 @@ func TestExtractKeychainPassword_EmptyOutput(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-func TestExtractKeychainPassword_PasswordWithoutQuotes(t *testing.T) {
-	output := `password: 0x7B22636C61756465416F41757468223A7B7D7D`
+func TestExtractKeychainPassword_HexEncodedSimple(t *testing.T) {
+	// Hex-encode a simple JSON credential
+	cred := `{"claudeAiOauth":{}}`
+	hexStr := "0x" + fmt.Sprintf("%x", []byte(cred))
+	output := "password: " + hexStr
 	result := extractKeychainPassword(output)
-	assert.Equal(t, "0x7B22636C61756465416F41757468223A7B7D7D", result)
+	assert.Equal(t, cred, result)
+}
+
+func TestExtractKeychainPassword_HexEncodedValidCredential(t *testing.T) {
+	// Hex-encode a full credential JSON
+	cred := `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-abc","expiresAt":1770776037151}}`
+	hexStr := "0x" + fmt.Sprintf("%x", []byte(cred))
+	output := "password: " + hexStr
+	result := extractKeychainPassword(output)
+	assert.Equal(t, cred, result)
+
+	// Verify it parses as valid JSON
+	var parsed map[string]interface{}
+	err := json.Unmarshal([]byte(result), &parsed)
+	require.NoError(t, err)
+	assert.Contains(t, parsed, "claudeAiOauth")
+}
+
+func TestExtractKeychainPassword_HexDecodeFailureFallsBack(t *testing.T) {
+	// Invalid hex (not valid hex chars) — should return raw value
+	output := `password: 0xNOTHEX`
+	result := extractKeychainPassword(output)
+	assert.Equal(t, "0xNOTHEX", result)
 }
 
 func TestExtractKeychainPassword_PasswordLineWithLeadingWhitespace(t *testing.T) {

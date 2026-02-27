@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getClaudeAuthStatus } from '@/lib/api';
+import { DEFAULT_AUTH_STATUS, type ClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { WorkspacesStep } from './steps/WorkspacesStep';
 import { SessionsStep } from './steps/SessionsStep';
@@ -18,29 +19,21 @@ interface OnboardingWizardProps {
 }
 
 const CONCEPT_STEPS = [WelcomeStep, WorkspacesStep, SessionsStep, ConversationsStep, ShortcutsStep];
+const TOTAL_STEPS = CONCEPT_STEPS.length + 1; // +1 for ApiKeyStep (always shown)
 
 export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const keyboardReady = useRef(false);
-  const [needsApiKey, setNeedsApiKey] = useState<boolean | null>(null);
+  const [authStatus, setAuthStatus] = useState<ClaudeAuthStatus | null>(null);
 
   // Check auth status once when component mounts
   useEffect(() => {
     getClaudeAuthStatus()
-      .then((result) => setNeedsApiKey(!result.configured))
-      .catch(() => setNeedsApiKey(true));
+      .then((result) => setAuthStatus(result))
+      .catch(() => setAuthStatus(DEFAULT_AUTH_STATUS));
   }, []);
 
-  const steps = useMemo(() => {
-    if (needsApiKey) {
-      return [...CONCEPT_STEPS, ApiKeyStep];
-    }
-    return CONCEPT_STEPS;
-  }, [needsApiKey]);
-
-  const totalSteps = steps.length;
-  const isLastStep = currentStep === totalSteps - 1;
-  const isApiKeyStep = needsApiKey && currentStep === totalSteps - 1;
+  const isLastStep = currentStep === TOTAL_STEPS - 1;
 
   const handleNext = useCallback(() => {
     if (isLastStep) {
@@ -85,21 +78,28 @@ export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: Onboard
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleNext, handlePrev, onSkip]);
 
-  const StepComponent = steps[currentStep];
-
   const getButtonLabel = () => {
     if (currentStep === 0) return 'Get Started';
-    if (isApiKeyStep) return 'Open Settings';
-    if (isLastStep) return 'Start Using ChatML';
+    if (isLastStep) {
+      return authStatus?.configured ? 'Start Using ChatML' : 'Open Settings';
+    }
     return 'Next';
   };
 
   const handleButtonClick = () => {
-    if (isApiKeyStep && onOpenSettings) {
+    if (isLastStep && !authStatus?.configured && onOpenSettings) {
       onOpenSettings();
     } else {
       handleNext();
     }
+  };
+
+  const renderStep = () => {
+    if (isLastStep) {
+      return <ApiKeyStep authStatus={authStatus} />;
+    }
+    const StepComponent = CONCEPT_STEPS[currentStep];
+    return <StepComponent />;
   };
 
   return (
@@ -112,13 +112,13 @@ export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: Onboard
         onClick={onSkip}
         className="absolute top-14 right-6 text-sm text-muted-foreground/70 hover:text-foreground transition-colors z-40"
       >
-        {isApiKeyStep ? 'Skip for now' : 'Skip Onboarding'}
+        {isLastStep && !authStatus?.configured ? 'Skip for now' : 'Skip Onboarding'}
       </button>
 
       {/* Step content — full-size opaque layer prevents GPU cache artifacts from previous step */}
       <div className="absolute inset-0 flex items-center justify-center bg-background z-10" key={currentStep}>
         <div className="w-full max-w-lg px-8 animate-fade-in">
-          <StepComponent />
+          {renderStep()}
         </div>
       </div>
 
@@ -135,7 +135,7 @@ export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: Onboard
 
         {/* Dot indicators */}
         <div className="flex items-center gap-2">
-          {steps.map((_, index) => (
+          {Array.from({ length: TOTAL_STEPS }, (_, index) => (
             <button
               key={index}
               onClick={() => setCurrentStep(index)}

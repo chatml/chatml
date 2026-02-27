@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -61,6 +62,14 @@ func extractKeychainPassword(output string) string {
 			// Remove surrounding quotes
 			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
 				value = value[1 : len(value)-1]
+			}
+			// Handle hex-encoded passwords (e.g., 0x7B22636C...)
+			if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+				decoded, err := hex.DecodeString(value[2:])
+				if err == nil {
+					return string(decoded)
+				}
+				// If hex decode fails, return the raw value and let JSON parsing catch it
 			}
 			return value
 		}
