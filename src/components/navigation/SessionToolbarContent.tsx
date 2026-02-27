@@ -12,8 +12,12 @@ import {
   toStoreConversation,
   getCIFailureContext,
   refreshPRStatus,
+  getGlobalActionTemplates,
+  getWorkspaceActionTemplates,
   type AttachmentDTO,
 } from '@/lib/api';
+import { ACTION_TEMPLATES, fetchMergedActionTemplates } from '@/lib/action-templates';
+import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInApp } from '@/lib/tauri';
@@ -215,6 +219,33 @@ export function SessionToolbarContent() {
     window.addEventListener('git-create-pr', handleCreatePR);
     return () => window.removeEventListener('git-create-pr', handleCreatePR);
   }, [handleActionWithBubble]);
+
+  // Shared handler for branch-sync events (rebase & merge)
+  const handleBranchSyncEvent = useCallback((baseBranch: string, message: string) => {
+    if (isAgentWorking || !selectedConversationId || !selectedWorkspaceId) {
+      dispatchAppEvent('branch-sync-rejected');
+      return;
+    }
+    fetchMergedActionTemplates(selectedWorkspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates)
+      .then((templates) => {
+        handleActionWithBubbleAndTemplate(message, templates['sync-branch']);
+        dispatchAppEvent('branch-sync-accepted');
+      })
+      .catch(() => {
+        handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES['sync-branch']);
+        dispatchAppEvent('branch-sync-accepted');
+      });
+  }, [selectedWorkspaceId, selectedConversationId, isAgentWorking, handleActionWithBubbleAndTemplate]);
+
+  // Listen for branch-sync-rebase events from BranchSyncBanner
+  useAppEventListener('branch-sync-rebase', (detail) => {
+    handleBranchSyncEvent(detail?.baseBranch || 'origin/main', `Rebase my branch on ${detail?.baseBranch || 'origin/main'}`);
+  }, [handleBranchSyncEvent]);
+
+  // Listen for branch-sync-merge events from BranchSyncBanner
+  useAppEventListener('branch-sync-merge', (detail) => {
+    handleBranchSyncEvent(detail?.baseBranch || 'origin/main', `Merge ${detail?.baseBranch || 'origin/main'} into my branch`);
+  }, [handleBranchSyncEvent]);
 
   const [, setFixIssuesLoading] = useState(false);
 
