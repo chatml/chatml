@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/chatml/chatml-backend/agent"
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/models"
@@ -529,4 +530,64 @@ func (h *Handlers) SetMcpServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, servers)
+}
+
+// settingKeyEnabledAgents returns the settings key for enabled agents in a workspace.
+func settingKeyEnabledAgents(workspaceID string) string {
+	return "enabled-agents:" + workspaceID
+}
+
+// GetEnabledAgents returns the list of enabled agent names for a workspace.
+func (h *Handlers) GetEnabledAgents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	raw, found, err := h.store.GetSetting(ctx, settingKeyEnabledAgents(workspaceID))
+	if err != nil {
+		writeInternalError(w, "failed to get enabled agents", err)
+		return
+	}
+
+	if !found || raw == "" {
+		writeJSON(w, agent.DefaultEnabledAgents)
+		return
+	}
+
+	var agents []string
+	if err := json.Unmarshal([]byte(raw), &agents); err != nil {
+		writeInternalError(w, "failed to parse enabled agents", err)
+		return
+	}
+
+	writeJSON(w, agents)
+}
+
+// SetEnabledAgents updates the list of enabled agent names for a workspace.
+func (h *Handlers) SetEnabledAgents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+
+	var agents []string
+	if err := json.NewDecoder(r.Body).Decode(&agents); err != nil {
+		writeValidationError(w, "invalid request body: expected JSON array of strings")
+		return
+	}
+
+	data, err := json.Marshal(agents)
+	if err != nil {
+		writeInternalError(w, "failed to serialize enabled agents", err)
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyEnabledAgents(workspaceID), string(data)); err != nil {
+		writeInternalError(w, "failed to save enabled agents", err)
+		return
+	}
+
+	writeJSON(w, agents)
+}
+
+// GetAvailableAgents returns metadata about all built-in agents for the settings UI.
+func (h *Handlers) GetAvailableAgents(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, agent.AvailableAgents())
 }

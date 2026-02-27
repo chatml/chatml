@@ -95,6 +95,9 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	// Sessions endpoint — returns all sessions across all workspaces in a single query
 	r.Get("/api/sessions", h.ListAllSessions)
 
+	// Available agents metadata (not workspace-specific)
+	r.Get("/api/settings/available-agents", h.GetAvailableAgents)
+
 	// Repository endpoints
 	r.Route("/api/repos", func(r chi.Router) {
 		r.Get("/", h.ListRepos)
@@ -130,6 +133,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Put("/{id}/settings/review-prompts", h.SetWorkspaceReviewPrompts)
 		r.Get("/{id}/settings/action-templates", h.GetWorkspaceActionTemplates)
 		r.Put("/{id}/settings/action-templates", h.SetWorkspaceActionTemplates)
+		r.Get("/{id}/settings/enabled-agents", h.GetEnabledAgents)
+		r.Put("/{id}/settings/enabled-agents", h.SetEnabledAgents)
 		r.Get("/{id}/sessions/{sessionId}/branch-sync", h.GetSessionBranchSyncStatus)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync", h.SyncSessionBranch)
 		r.Post("/{id}/sessions/{sessionId}/branch-sync/abort", h.AbortSessionSync)

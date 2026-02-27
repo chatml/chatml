@@ -155,12 +155,36 @@ type AgentEvent struct {
 	// JSON tags to keep this manageable.
 	ServerName string `json:"serverName,omitempty"`
 	Enabled    *bool  `json:"enabled,omitempty"`
+
+	// Task lifecycle fields (SDK 0.2.51+ — task_started, task_progress, task_stopped)
+	TaskId       string                 `json:"taskId,omitempty"`
+	LastToolName string                 `json:"lastToolName,omitempty"`
+
+	// Files persisted fields (SDK 0.2.51+)
+	Files       []FilePersistedEntry `json:"files,omitempty"`
+	Failed      []FileFailedEntry    `json:"failed,omitempty"`
+	ProcessedAt string               `json:"processedAt,omitempty"`
+
+	// Generic payload passthrough for new/unknown event types forwarded from agent-runner
+	RawPayload map[string]interface{} `json:"rawPayload,omitempty"`
 }
 
 // PermissionDenial represents a tool use that was denied by the permission system
 type PermissionDenial struct {
 	ToolName  string `json:"toolName"`
 	ToolUseId string `json:"toolUseId"`
+}
+
+// FilePersistedEntry represents a file that was successfully checkpointed (SDK 0.2.51+)
+type FilePersistedEntry struct {
+	Filename string `json:"filename"`
+	FileId   string `json:"file_id"`
+}
+
+// FileFailedEntry represents a file that failed to checkpoint (SDK 0.2.51+)
+type FileFailedEntry struct {
+	Filename string `json:"filename"`
+	Error    string `json:"error"`
 }
 
 // McpServerStatus represents MCP server connection status
@@ -293,6 +317,13 @@ const (
 
 	// Sub-agent usage stats (from SDK task_notification)
 	EventTypeSubagentUsage = "subagent_usage"
+
+	// New event types from SDK 0.2.51+
+	EventTypeRateLimit      = "rate_limit"
+	EventTypeTaskStarted    = "task_started"
+	EventTypeTaskProgress   = "task_progress"
+	EventTypeTaskStopped    = "task_stopped"
+	EventTypeFilesPersisted = "files_persisted"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

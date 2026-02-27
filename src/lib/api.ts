@@ -2146,6 +2146,40 @@ export async function setMcpServers(workspaceId: string, servers: McpServerConfi
 }
 
 // =========================================================================
+// AI Agents Configuration
+// =========================================================================
+
+export interface AvailableAgentDTO {
+  name: string;
+  description: string;
+  model: string;
+  tools: string[];
+  enabledDefault: boolean;
+}
+
+export async function getAvailableAgents(): Promise<AvailableAgentDTO[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/available-agents`);
+  return handleResponse<AvailableAgentDTO[]>(res);
+}
+
+export async function getEnabledAgents(workspaceId: string): Promise<string[]> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/repos/${workspaceId}/settings/enabled-agents`);
+  return handleResponse<string[]>(res);
+}
+
+export async function setEnabledAgents(workspaceId: string, agents: string[]): Promise<string[]> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/settings/enabled-agents`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(agents),
+    }
+  );
+  return handleResponse<string[]>(res);
+}
+
+// =========================================================================
 // GitHub Repos
 // =========================================================================
 

@@ -314,6 +314,12 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.McpServersJSON = mcpJSON
 	}
 
+	// Build programmatic agent definitions from workspace settings
+	agentsJSON := BuildAgentDefinitions(ctx, m.store.GetSetting, session.WorkspaceID, sessionWithWs.EffectiveTargetBranch())
+	if agentsJSON != "" {
+		procOpts.AgentsJSON = agentsJSON
+	}
+
 	// Create and start process
 	proc := NewProcessWithOptions(procOpts)
 
@@ -909,6 +915,26 @@ outer:
 					sa.Output = event.AgentOutput
 					markSnapshotDirty()
 				}
+
+			case EventTypeRateLimit:
+				// Forward rate limit info to frontend for user notification banner
+				markSnapshotDirty()
+
+			case EventTypeTaskStarted:
+				// Background task (sub-agent) started — forward to frontend for progress tracking
+				markSnapshotDirty()
+
+			case EventTypeTaskProgress:
+				// Background task (sub-agent) progress update — forward to frontend
+				markSnapshotDirty()
+
+			case EventTypeTaskStopped:
+				// Background task was stopped by user request
+				markSnapshotDirty()
+
+			case EventTypeFilesPersisted:
+				// File checkpoint persisted to disk — additional checkpoint confirmation signal
+				logger.Manager.Debugf("[%s] Files persisted for session %s", convID, event.SessionID)
 
 			case EventTypeUserQuestionRequest:
 				// Track pending question for snapshot recovery after app restart
@@ -1715,6 +1741,14 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 		logger.Manager.Errorf("Failed to load MCP servers for resume %s: %v", convID, err)
 	}
 	opts.McpServersJSON = mcpServersJSON
+
+	// Build programmatic agent definitions from workspace settings
+	if sessionWithWs != nil {
+		agentsJSON := BuildAgentDefinitions(ctx, m.store.GetSetting, session.WorkspaceID, sessionWithWs.EffectiveTargetBranch())
+		if agentsJSON != "" {
+			opts.AgentsJSON = agentsJSON
+		}
+	}
 
 	// Build system instructions from session context
 	opts.Instructions = m.buildSystemInstructions(ctx, session, sessionWithWs, "")
