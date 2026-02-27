@@ -86,6 +86,7 @@ export const SETTINGS_DEFAULTS = {
   maxThinkingTokens: 16000,
   showThinkingBlocks: true,
   reviewModel: 'claude-opus-4-6',
+  reviewActionableOnly: false,
   defaultPlanMode: false,
   autoApproveSafeCommands: true,
   // Git
@@ -116,6 +117,7 @@ interface SettingsState {
   suggestionsEnabled: boolean;
   autoSubmitPillSuggestion: boolean;
   reviewModel: string;
+  reviewActionableOnly: boolean; // Only include actionable feedback (errors/warnings/suggestions) in code reviews
   defaultPlanMode: boolean;
   autoConvertLongText: boolean;
   showChatCost: boolean;
@@ -189,6 +191,7 @@ interface SettingsState {
   setSuggestionsEnabled: (value: boolean) => void;
   setAutoSubmitPillSuggestion: (value: boolean) => void;
   setReviewModel: (value: string) => void;
+  setReviewActionableOnly: (value: boolean) => void;
   setDefaultPlanMode: (value: boolean) => void;
   setAutoConvertLongText: (value: boolean) => void;
   setShowChatCost: (value: boolean) => void;
@@ -283,6 +286,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSuggestionsEnabled: (value) => set({ suggestionsEnabled: value }),
       setAutoSubmitPillSuggestion: (value) => set({ autoSubmitPillSuggestion: value }),
       setReviewModel: (value) => set({ reviewModel: value }),
+      setReviewActionableOnly: (value) => set({ reviewActionableOnly: value }),
       setDefaultPlanMode: (value) => set({ defaultPlanMode: value }),
       setAutoConvertLongText: (value) => set({ autoConvertLongText: value }),
       setShowChatCost: (value) => set({ showChatCost: value }),

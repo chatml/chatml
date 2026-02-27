@@ -3,9 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { getGlobalReviewPrompts, setGlobalReviewPrompts, getGlobalPRTemplate, setGlobalPRTemplate } from '@/lib/api';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
+import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
+import { SettingsRow } from '../shared/SettingsRow';
+import { SettingsGroup } from '../shared/SettingsGroup';
 
 function OverridableBadge() {
   return (
@@ -16,6 +20,8 @@ function OverridableBadge() {
 }
 
 export function ReviewSettings() {
+  const reviewActionableOnly = useSettingsStore((s) => s.reviewActionableOnly);
+  const setReviewActionableOnly = useSettingsStore((s) => s.setReviewActionableOnly);
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, string>>({});
   const [prTemplate, setPRTemplate] = useState('');
@@ -73,7 +79,23 @@ export function ReviewSettings() {
         Per-workspace and per-session overrides can be set in their respective settings.
       </p>
 
-      <div data-setting-id="reviewPrompts" className="space-y-5">
+      <SettingsGroup label="Review Preferences">
+        <SettingsRow
+          settingId="reviewActionableOnly"
+          title="Actionable feedback only"
+          description="Only include actionable review comments (errors, warnings, suggestions). Hides informational and positive feedback."
+          isModified={reviewActionableOnly !== SETTINGS_DEFAULTS.reviewActionableOnly}
+          onReset={() => setReviewActionableOnly(SETTINGS_DEFAULTS.reviewActionableOnly)}
+        >
+          <Switch
+            checked={reviewActionableOnly}
+            onCheckedChange={setReviewActionableOnly}
+            aria-label="Actionable feedback only"
+          />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <div data-setting-id="reviewPrompts" className="space-y-5 mt-6">
         {REVIEW_TYPE_META.map(({ key, label, placeholder }) => (
           <div key={key}>
             <label className="text-sm font-medium block mb-1.5">{label}</label>
