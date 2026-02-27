@@ -58,6 +58,7 @@ type ProcessOptions struct {
 	TargetBranch        string // Target branch for PR base and sync (e.g. "origin/develop")
 	EnvVars             map[string]string // Custom environment variables to inject
 	McpServersJSON      string            // JSON array of MCP server configs
+	AgentsJSON          string            // JSON object of programmatic agent definitions (SDK 0.2.62+)
 }
 
 type Process struct {
@@ -77,6 +78,7 @@ type Process struct {
 	droppedMessages    atomic.Uint64 // Count of messages dropped due to full output buffer
 	instructionsFile   string        // Temp file for instructions, cleaned up on stop
 	mcpServersFile     string        // Temp file for MCP server configs, cleaned up on stop
+	agentsFile         string        // Temp file for agent definitions, cleaned up on stop
 	opts               ProcessOptions // Original options for restart
 	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
 	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
@@ -105,6 +107,8 @@ type InputMessage struct {
 	// MCP server management fields (SDK v0.2.21+)
 	ServerName    string `json:"serverName,omitempty"`
 	ServerEnabled *bool  `json:"serverEnabled,omitempty"`
+	// Task management (SDK v0.2.51+)
+	TaskId string `json:"taskId,omitempty"`
 }
 
 // findAgentRunner locates the agent-runner executable
@@ -229,8 +233,10 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 				logger.Process.Errorf("[%s] Failed to write instructions to temp file: %v", opts.ID, writeErr)
 				tmpFile.Close()
 				_ = os.Remove(tmpFile.Name())
+			} else if closeErr := tmpFile.Close(); closeErr != nil {
+				logger.Process.Errorf("[%s] Failed to close instructions temp file: %v", opts.ID, closeErr)
+				_ = os.Remove(tmpFile.Name())
 			} else {
-				tmpFile.Close()
 				instructionsFile = tmpFile.Name()
 				args = append(args, "--instructions-file", instructionsFile)
 			}
@@ -248,10 +254,33 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 				logger.Process.Errorf("[%s] Failed to write MCP servers to temp file: %v", opts.ID, writeErr)
 				tmpFile.Close()
 				_ = os.Remove(tmpFile.Name())
+			} else if closeErr := tmpFile.Close(); closeErr != nil {
+				logger.Process.Errorf("[%s] Failed to close MCP servers temp file: %v", opts.ID, closeErr)
+				_ = os.Remove(tmpFile.Name())
 			} else {
-				tmpFile.Close()
 				mcpServersFile = tmpFile.Name()
 				args = append(args, "--mcp-servers-file", mcpServersFile)
+			}
+		}
+	}
+
+	// Add programmatic agent definitions (write to temp file like MCP servers)
+	var agentsFile string
+	if opts.AgentsJSON != "" {
+		tmpFile, err := os.CreateTemp("", "chatml-agents-*.json")
+		if err != nil {
+			logger.Process.Errorf("[%s] Failed to create agents temp file: %v", opts.ID, err)
+		} else {
+			if _, writeErr := tmpFile.WriteString(opts.AgentsJSON); writeErr != nil {
+				logger.Process.Errorf("[%s] Failed to write agents to temp file: %v", opts.ID, writeErr)
+				tmpFile.Close()
+				_ = os.Remove(tmpFile.Name())
+			} else if closeErr := tmpFile.Close(); closeErr != nil {
+				logger.Process.Errorf("[%s] Failed to close agents temp file: %v", opts.ID, closeErr)
+				_ = os.Remove(tmpFile.Name())
+			} else {
+				agentsFile = tmpFile.Name()
+				args = append(args, "--agents-file", agentsFile)
 			}
 		}
 	}
@@ -303,6 +332,7 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 		planModeActive:   opts.PlanMode,
 		instructionsFile: instructionsFile,
 		mcpServersFile:   mcpServersFile,
+		agentsFile:       agentsFile,
 		opts:             opts,
 	}
 }
@@ -554,6 +584,14 @@ func (p *Process) SetMaxThinkingTokens(tokens int) error {
 	})
 }
 
+// StopTask sends a message to stop a specific background task (sub-agent) (SDK 0.2.51+)
+func (p *Process) StopTask(taskId string) error {
+	return p.sendInput(InputMessage{
+		Type:   "stop_task",
+		TaskId: taskId,
+	})
+}
+
 // IsPlanModeActive returns whether the process is currently in plan mode
 func (p *Process) IsPlanModeActive() bool {
 	p.mu.Lock()
@@ -689,6 +727,12 @@ func (p *Process) doStopLocked() {
 	if p.mcpServersFile != "" {
 		_ = os.Remove(p.mcpServersFile)
 		p.mcpServersFile = ""
+	}
+
+	// Clean up agents temp file
+	if p.agentsFile != "" {
+		_ = os.Remove(p.agentsFile)
+		p.agentsFile = ""
 	}
 
 	// Try graceful shutdown with SIGTERM first

@@ -89,6 +89,7 @@ const workspaceSubPages: WorkspaceSubPage[] = [
   { id: 'repository', label: 'Repository', icon: <FolderOpen className="w-3.5 h-3.5" /> },
   { id: 'review', label: 'Review', icon: <Eye className="w-3.5 h-3.5" /> },
   { id: 'actions', label: 'Actions', icon: <Zap className="w-3.5 h-3.5" /> },
+  { id: 'agents', label: 'AI Agents', icon: <Bot className="w-3.5 h-3.5" /> },
 ];
 
 export function SettingsPage({

@@ -17,6 +17,10 @@ import {
   getGlobalActionTemplates,
   getWorkspaceActionTemplates,
   setWorkspaceActionTemplates,
+  getAvailableAgents,
+  getEnabledAgents,
+  setEnabledAgents,
+  type AvailableAgentDTO,
 } from '@/lib/api';
 import type { Workspace } from '@/lib/types';
 import { REVIEW_PROMPTS, REVIEW_TYPE_META } from '@/hooks/useReviewTrigger';
@@ -43,6 +47,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Switch } from '@/components/ui/switch';
+import { SettingsGroup } from './shared/SettingsGroup';
+import { SettingsRow } from './shared/SettingsRow';
 import type { WorkspaceSettingsSection } from './settingsRegistry';
 
 /**
@@ -81,6 +88,9 @@ export function WorkspaceSettingsContent({ workspaceId, section }: {
       )}
       {section === 'actions' && (
         <WorkspaceActionSettings workspaceId={workspaceId} />
+      )}
+      {section === 'agents' && (
+        <WorkspaceAgentSettings workspaceId={workspaceId} />
       )}
     </>
   );
@@ -685,6 +695,132 @@ export function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }
       {hasChanges && (
         <div className="mt-4 flex justify-end">
           <Button size="sm" disabled={saving} onClick={handleSave}>
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AI Agents Settings
+// ---------------------------------------------------------------------------
+
+const MODEL_LABELS: Record<string, string> = {
+  haiku: 'Haiku',
+  sonnet: 'Sonnet',
+  opus: 'Opus',
+};
+
+function WorkspaceAgentSettings({ workspaceId }: { workspaceId: string }) {
+  const [available, setAvailable] = useState<AvailableAgentDTO[]>([]);
+  const [enabled, setEnabled] = useState<string[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const { error: showError } = useToast();
+  const showErrorRef = useRef(showError);
+  useEffect(() => { showErrorRef.current = showError; }, [showError]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      getAvailableAgents(),
+      getEnabledAgents(workspaceId),
+    ]).then(([avail, en]) => {
+      if (cancelled) return;
+      setAvailable(avail);
+      setEnabled(en);
+      setSaved(en);
+    }).catch(() => {
+      if (cancelled) return;
+      showErrorRef.current('Failed to load agent settings');
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const hasChanges = JSON.stringify([...enabled].sort()) !== JSON.stringify([...saved].sort());
+
+  const handleToggle = useCallback((name: string, checked: boolean) => {
+    setEnabled((prev) =>
+      checked ? [...prev, name] : prev.filter((n) => n !== name)
+    );
+  }, []);
+
+  const handleSave = useCallback(async (agentsToSave?: string[]) => {
+    setSaving(true);
+    try {
+      const updated = await setEnabledAgents(workspaceId, agentsToSave ?? enabled);
+      setSaved(updated);
+    } catch {
+      showErrorRef.current('Failed to save agent settings');
+    } finally {
+      setSaving(false);
+    }
+  }, [workspaceId, enabled]);
+
+  // Auto-save unsaved changes when navigating away
+  const enabledRef = useRef(enabled);
+  const savedRef = useRef(saved);
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { savedRef.current = saved; }, [saved]);
+  useEffect(() => {
+    return () => {
+      const cur = [...enabledRef.current].sort();
+      const sav = [...savedRef.current].sort();
+      if (JSON.stringify(cur) !== JSON.stringify(sav)) {
+        void setEnabledAgents(workspaceId, enabledRef.current).catch(() => {});
+      }
+    };
+  }, [workspaceId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+        Loading agents...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-1">AI Agents</h2>
+      <p className="text-sm text-muted-foreground mb-5">
+        Specialized agents that Claude can delegate to for different phases of development.
+        Changes apply to new conversations.
+      </p>
+
+      <SettingsGroup label="Built-in Agents">
+        {available.map((agent) => (
+          <SettingsRow
+            key={agent.name}
+            title={agent.name}
+            description={
+              <span>
+                {agent.description}
+                <span className="ml-1.5 text-muted-foreground/70">
+                  ({MODEL_LABELS[agent.model] || agent.model})
+                </span>
+              </span>
+            }
+          >
+            <Switch
+              checked={enabled.includes(agent.name)}
+              onCheckedChange={(checked) => handleToggle(agent.name, checked)}
+              aria-label={`Enable ${agent.name} agent`}
+            />
+          </SettingsRow>
+        ))}
+      </SettingsGroup>
+
+      {hasChanges && (
+        <div className="mt-4 flex justify-end">
+          <Button size="sm" disabled={saving} onClick={() => handleSave()}>
             {saving ? 'Saving...' : 'Save'}
           </Button>
         </div>

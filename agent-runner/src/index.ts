@@ -10,6 +10,11 @@ import {
   type SDKToolProgressMessage,
   type SDKAuthStatusMessage,
   type SDKTaskNotificationMessage,
+  // New message types (SDK 0.2.51+)
+  type SDKTaskStartedMessage,
+  type SDKTaskProgressMessage,
+  type SDKFilesPersistedEvent,
+  type AgentDefinition,
   type Query,
   type HookCallback,
   type PreToolUseHookInput,
@@ -105,6 +110,9 @@ const targetBranch = getArg("--target-branch");
 
 // MCP servers configuration file (JSON array of server configs from backend)
 const mcpServersFilePath = getArg("--mcp-servers-file");
+
+// Programmatic agent definitions file (JSON object of agent definitions from backend)
+const agentsFilePath = getArg("--agents-file");
 
 // Task 5: Budget Controls
 const maxBudgetUsd = getNumericArg("--max-budget-usd");
@@ -205,7 +213,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -223,6 +231,8 @@ interface InputMessage {
   // MCP server management fields (SDK v0.2.21+)
   serverName?: string;
   serverEnabled?: boolean;
+  // Task management (SDK v0.2.51+)
+  taskId?: string;
 }
 
 // Escape a string for use in XML attribute values
@@ -499,6 +509,7 @@ function setupInputQueue(): void {
       if (input.type === "set_max_thinking_tokens" && input.maxThinkingTokens) {
         if (queryRef) {
           debug(`Setting max thinking tokens: ${input.maxThinkingTokens}`);
+          // TODO: migrate to setThinking() when SDK exposes it as a Query method
           void queryRef.setMaxThinkingTokens(input.maxThinkingTokens).then(() => {
             emit({ type: "max_thinking_tokens_changed", maxThinkingTokens: input.maxThinkingTokens! });
           }).catch((cmdErr: unknown) => {
@@ -506,6 +517,20 @@ function setupInputQueue(): void {
           });
         } else {
           emit({ type: "command_error", command: "set_max_thinking_tokens", error: "No active query" });
+        }
+        return;
+      }
+
+      if (input.type === "stop_task" && input.taskId) {
+        if (queryRef) {
+          debug(`Stopping task: ${input.taskId}`);
+          void queryRef.stopTask(input.taskId).then(() => {
+            emit({ type: "task_stopped", taskId: input.taskId! });
+          }).catch((cmdErr: unknown) => {
+            emit({ type: "command_error", command: "stop_task", error: String(cmdErr) });
+          });
+        } else {
+          emit({ type: "command_error", command: "stop_task", error: "No active query" });
         }
         return;
       }
@@ -1607,6 +1632,18 @@ async function main(): Promise<void> {
       }
     }
 
+    // Load programmatic agent definitions from backend (via temp file)
+    let programmaticAgents: Record<string, AgentDefinition> | undefined;
+    if (agentsFilePath) {
+      try {
+        const agentsContent = readFileSync(agentsFilePath, "utf-8");
+        programmaticAgents = JSON.parse(agentsContent) as Record<string, AgentDefinition>;
+        debug(`Loaded ${Object.keys(programmaticAgents).length} programmatic agents: ${Object.keys(programmaticAgents).join(", ")}`);
+      } catch (e) {
+        console.error(`Failed to load agents file: ${e}`);
+      }
+    }
+
     // Resolve tool preset to allowedTools/disallowedTools
     const presetConfig = resolveToolPreset(toolPreset);
 
@@ -1635,16 +1672,21 @@ async function main(): Promise<void> {
       outputFormat,
       maxBudgetUsd,
       maxTurns,
-      maxThinkingTokens,
+      // Use new thinking config (SDK 0.2.57+) instead of deprecated maxThinkingTokens
+      thinking: maxThinkingTokens !== undefined
+        ? { type: "enabled" as const, budgetTokens: maxThinkingTokens }
+        : undefined,
       settingSources,
       betas,
       model,
-      // Pass effort level to SDK if specified (Opus 4.6+)
-      ...(effort ? { extraArgs: { "--effort": effort } } : {}),
+      // Pass effort level to SDK as first-class option (SDK 0.2.57+)
+      ...(effort ? { effort: effort as "low" | "medium" | "high" | "max" } : {}),
       fallbackModel,
       // Custom session ID — aligns SDK session with our conversation ID (SDK v0.2.33+)
       ...(customSessionId ? { sessionId: customSessionId } : {}),
       forkSession,
+      // Programmatic agent definitions (SDK 0.2.62+)
+      ...(programmaticAgents ? { agents: programmaticAgents } : {}),
       // Debug options (SDK v0.2.30+)
       debug: sdkDebug || !!process.env.DEBUG_CLAUDE_AGENT_SDK,
       debugFile: sdkDebugFile,
@@ -2205,7 +2247,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -2292,6 +2334,38 @@ function handleMessage(message: SDKMessage): void {
             },
           });
         }
+      } else if (sysMsg.subtype === "task_started") {
+        // Background task (sub-agent) started (SDK 0.2.51+)
+        const taskMsg = sysMsg as SDKTaskStartedMessage;
+        emit({
+          type: "task_started",
+          taskId: taskMsg.task_id,
+          toolUseId: taskMsg.tool_use_id,
+          description: taskMsg.description,
+          sessionId: taskMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "task_progress") {
+        // Background task (sub-agent) progress with cumulative usage (SDK 0.2.51+)
+        const taskMsg = sysMsg as SDKTaskProgressMessage;
+        emit({
+          type: "task_progress",
+          taskId: taskMsg.task_id,
+          toolUseId: taskMsg.tool_use_id,
+          description: taskMsg.description,
+          usage: taskMsg.usage,
+          lastToolName: taskMsg.last_tool_name,
+          sessionId: taskMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "files_persisted") {
+        // File checkpoint persisted to disk (SDK 0.2.51+)
+        const fpMsg = sysMsg as SDKFilesPersistedEvent;
+        emit({
+          type: "files_persisted",
+          files: fpMsg.files,
+          failed: fpMsg.failed,
+          processedAt: fpMsg.processed_at,
+          sessionId: fpMsg.session_id,
+        });
       }
       break;
     }
@@ -2317,6 +2391,21 @@ function handleMessage(message: SDKMessage): void {
         output: authMsg.output,
         error: authMsg.error,
         sessionId: authMsg.session_id,
+      });
+      break;
+    }
+
+    default: {
+      // Forward new/unknown message types to the Go backend (SDK 0.2.51+).
+      // This handles SDKRateLimitEvent, SDKPromptSuggestionMessage, SDKToolUseSummaryMessage
+      // and any future types added by newer SDK versions without code changes.
+      // Prefix with "sdk_" to avoid collisions with internal event types.
+      const anyMsg = message as { type: string; session_id?: string; [key: string]: unknown };
+      debug(`Forwarding unhandled SDK message type: ${anyMsg.type}`);
+      emit({
+        type: `sdk_${anyMsg.type}`,
+        sessionId: anyMsg.session_id,
+        data: anyMsg,
       });
       break;
     }
