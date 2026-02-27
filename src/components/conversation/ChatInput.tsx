@@ -860,17 +860,28 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     };
     const handleTogglePlanMode = () => handlePlanModeToggle();
 
+    // Handle template selection from SessionHomeState quick actions
+    const handleTemplateSelected = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail.text;
+      plateInputRef.current?.setText(text);
+      setMessage(text);
+      // Use requestAnimationFrame to ensure the editor has updated before focusing
+      requestAnimationFrame(() => plateInputRef.current?.focus());
+    };
+
     document.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('focus-input', handleFocusInput);
     window.addEventListener('toggle-thinking', handleToggleThinking);
     window.addEventListener('toggle-plan-mode', handleTogglePlanMode);
+    window.addEventListener('session-home-template-selected', handleTemplateSelected);
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('focus-input', handleFocusInput);
       window.removeEventListener('toggle-thinking', handleToggleThinking);
       window.removeEventListener('toggle-plan-mode', handleTogglePlanMode);
+      window.removeEventListener('session-home-template-selected', handleTemplateSelected);
     };
-  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, MODELS]);
+  }, [handlePlanModeToggle, handleOpenFilePicker, selectedModel, MODELS, setMessage]);
 
   const handleSubmit = async () => {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };

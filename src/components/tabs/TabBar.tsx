@@ -24,6 +24,7 @@ import { TabItem } from './TabItem';
 import { TabScrollArea } from './TabScrollArea';
 import { useTabScroll } from './useTabScroll';
 import { useTabAnimation } from './useTabAnimation';
+import { RecentlyClosedPopover } from './RecentlyClosedPopover';
 import type { TabBarProps, TabItemData } from './tab.types';
 
 /**
@@ -114,6 +115,8 @@ export function TabBar({
   onGenerateSummary,
   onViewSummary,
   getSummaryStatus,
+  onRestoreConversation,
+  sessionId,
 }: TabBarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const {
@@ -260,8 +263,14 @@ export function TabBar({
         </SortableContext>
       </DndContext>
 
-      {/* Fixed action area - Plus button */}
+      {/* Fixed action area - Recently closed + Plus button */}
       <div className="flex items-center px-1 border-l border-border shrink-0">
+        {onRestoreConversation && (
+          <RecentlyClosedPopover
+            sessionId={sessionId ?? null}
+            onRestore={onRestoreConversation}
+          />
+        )}
         <Button
           variant="ghost"
           size="icon"
