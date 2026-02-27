@@ -170,6 +170,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         return 'Update tasks';
       case 'ExitPlanMode':
         return isActive ? 'Propose Plan' : 'Exiting Plan mode';
+      case 'Skill':
+        return 'Loading Skill';
       default:
         return mcpInfo ? mcpInfo.displayLabel : tool;
     }
@@ -186,6 +188,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
   const isWriteTool = ['Write', 'write_file'].includes(tool);
   const isReadTool = ['Read', 'read_file'].includes(tool);
   const isTodoTool = tool === 'TodoWrite';
+  const isSkillTool = tool === 'Skill';
   const isWorkspaceDiffTool = tool === 'mcp__chatml__get_workspace_diff';
 
   const editStats = useMemo(() => {
@@ -213,7 +216,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
       params.command ||
       params.url ||
       params.pattern ||
-      params.query;
+      params.query ||
+      params.skill;
 
     if (typeof other === 'string') {
       return other;
@@ -376,7 +380,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
               <TooltipTrigger asChild>
                 <code
                   className={cn(
-                    'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate min-w-0',
+                    'text-2xs px-1 py-0.5 rounded font-mono truncate min-w-0',
+                    isSkillTool ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground',
                     handleFileClick ? 'cursor-pointer hover:underline hover:text-foreground' : 'cursor-help'
                   )}
                   onClick={handleFileClick}
@@ -394,7 +399,8 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
           ) : (
             <code
               className={cn(
-                'text-2xs px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono truncate min-w-0',
+                'text-2xs px-1 py-0.5 rounded font-mono truncate min-w-0',
+                isSkillTool ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground',
                 handleFileClick && 'cursor-pointer hover:underline hover:text-foreground'
               )}
               onClick={handleFileClick}
