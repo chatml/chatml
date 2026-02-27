@@ -39,6 +39,8 @@ export interface TabBarProps {
   onGenerateSummary?: (conversationId: string) => void;
   onViewSummary?: (conversationId: string) => void;
   getSummaryStatus?: (conversationId: string) => 'generating' | 'completed' | 'failed' | null;
+  onRestoreConversation?: (convId: string) => Promise<void>;
+  sessionId?: string | null;
 }
 
 /**

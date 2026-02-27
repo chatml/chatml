@@ -140,6 +140,13 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'Navigation',
   },
   {
+    id: 'reopenClosedTab',
+    key: 't',
+    modifiers: ['meta', 'shift'],
+    label: 'Reopen last closed tab',
+    category: 'Navigation',
+  },
+  {
     id: 'sidebarFilesTab',
     key: 'f',
     modifiers: ['alt'],

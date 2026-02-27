@@ -30,12 +30,14 @@ import { useMenuState } from '@/hooks/useMenuState';
 import { useMessagePrefetch } from '@/hooks/useMessagePrefetch';
 import { useToast } from '@/components/ui/toast';
 import {
-  createSession, createConversation, deleteConversation, addRepo,
-  mapSessionDTO, listConversations,
-  type RepoDTO,
+  createSession, createConversation, addRepo,
+  mapSessionDTO, listConversations, type RepoDTO,
 } from '@/lib/api';
 import { registerSession, getSessionDirName, openFolderDialog } from '@/lib/tauri';
 import { useBranchCacheStore } from '@/stores/branchCacheStore';
+import { useRecentlyClosedStore } from '@/stores/recentlyClosedStore';
+import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
+import { useShortcut } from '@/hooks/useShortcut';
 import type { SetupInfo } from '@/lib/types';
 
 import { OnboardingScreen } from '@/components/shared/OnboardingScreen';
@@ -305,9 +307,15 @@ export default function Home() {
   const doCloseTab = useCallback(async (convId: string) => {
     const currentConvs = conversations.filter((c) => c.sessionId === selectedSessionId);
     const currentIndex = currentConvs.findIndex((c) => c.id === convId);
+    const conv = conversations.find((c) => c.id === convId);
 
     try {
-      await deleteConversation(convId);
+      // Capture metadata for recently-closed before removing from store
+      if (conv && selectedWorkspaceId) {
+        captureClosedConversation(conv, selectedWorkspaceId);
+      }
+
+      // Remove from local store (do NOT delete from backend — keep for restore)
       removeConversation(convId);
 
       if (currentConvs.length > 1) {
@@ -320,7 +328,7 @@ export default function Home() {
       console.error('Failed to close tab:', error);
       showError('Failed to close conversation. Please try again.');
     }
-  }, [selectedSessionId, conversations, removeConversation, showError]);
+  }, [selectedSessionId, selectedWorkspaceId, conversations, removeConversation, showError]);
 
   const handleCloseTab = useCallback(async () => {
     if (!selectedConversationId) return;
@@ -341,6 +349,17 @@ export default function Home() {
       setPendingCloseConvId(null);
     }
   }, [pendingCloseConvId, doCloseTab]);
+
+  // ─── Restore Closed Conversation Handler ────────────────────────────────
+  const handleRestoreConversation = useRestoreConversation(showError);
+
+  // ─── Reopen Last Closed Tab Shortcut (Cmd+Shift+T) ─────────────────────
+  useShortcut('reopenClosedTab', useCallback(() => {
+    if (!selectedSessionId) return;
+    const entry = useRecentlyClosedStore.getState().closedConversations
+      .find((c) => c.sessionId === selectedSessionId);
+    if (entry) handleRestoreConversation(entry.id);
+  }, [selectedSessionId, handleRestoreConversation]));
 
   // ─── Workspace Registration Helper ────────────────────────────────────
   const registerAndNavigateWorkspace = useCallback(async (repo: RepoDTO) => {

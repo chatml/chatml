@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, startTransition } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '@/stores/appStore';
+import { captureClosedConversation, useRestoreConversation } from '@/hooks/useRecentlyClosed';
 import {
   useConversationState,
   useFileTabState,
@@ -34,6 +35,11 @@ import {
   CheckCircle2,
   Terminal,
   FileCode,
+  Bug,
+  TestTube2,
+  Eye,
+  RefreshCw,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileTab, Conversation } from '@/lib/types';
@@ -900,11 +906,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         // startTransition defers Pierre's heavy Shadow DOM cleanup so the tab disappears instantly
         startTransition(() => closeFileTab(id));
       } else {
+        // Capture metadata for recently-closed before removing from store
+        const conv = conversations.find((c) => c.id === id);
+        if (conv && selectedWorkspaceId) {
+          captureClosedConversation(conv, selectedWorkspaceId);
+        }
         startTransition(() => removeConversation(id));
       }
     },
-    [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId]
+    [fileTabs, closeFileTab, removeConversation, setPendingCloseFileTabId, conversations, selectedWorkspaceId]
   );
+
+  // Restore a recently closed conversation
+  const handleRestoreConversation = useRestoreConversation(showError);
 
   // Rename conversation handler for TabBar
   const handleRenameConversation = useCallback(
@@ -1028,6 +1042,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         onGenerateSummary={handleGenerateSummary}
         onViewSummary={handleViewSummary}
         getSummaryStatus={getSummaryStatus}
+        onRestoreConversation={handleRestoreConversation}
+        sessionId={selectedSessionId}
       />
 
       {/* Content Area - File viewer and messages are BOTH rendered but only one is visible.
@@ -1179,7 +1195,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             emptyState={
               (!selectedConversationId || conversationMessages.length === 0) ? (
                 sessionConversations.length === 0
-                  ? <SessionPreparingState sessionName={currentSession?.branch || currentSession?.name} />
+                  ? <SessionHomeState sessionName={currentSession?.branch || currentSession?.name} />
                   : <ConversationEmptyState sessionName={currentSession?.name} />
               ) : undefined
             }
@@ -1273,23 +1289,50 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   );
 }
 
-function SessionPreparingState({ sessionName }: { sessionName?: string }) {
+const QUICK_ACTIONS = [
+  { icon: Bug, label: 'Fix a bug', prompt: 'Fix a bug: ' },
+  { icon: TestTube2, label: 'Write tests', prompt: 'Write tests for ' },
+  { icon: Sparkles, label: 'Add a feature', prompt: 'Add a feature: ' },
+  { icon: Eye, label: 'Review code', prompt: 'Review the code in ' },
+  { icon: RefreshCw, label: 'Refactor', prompt: 'Refactor ' },
+  { icon: FileText, label: 'Documentation', prompt: 'Write documentation for ' },
+];
+
+function SessionHomeState({ sessionName }: { sessionName?: string }) {
+  const handleTemplateClick = useCallback((prompt: string) => {
+    window.dispatchEvent(
+      new CustomEvent('session-home-template-selected', { detail: { text: prompt } }),
+    );
+  }, []);
+
   return (
     <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
-      <div className="max-w-lg mx-auto text-center">
+      <div className="max-w-md mx-auto text-center">
         {sessionName && (
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
             <GitBranch className="w-4 h-4" />
             {sessionName}
           </div>
         )}
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-          <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display">Preparing session</h2>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Setting up your workspace and git branch...
+        <h2 className="font-display text-[1.375rem] leading-[1.25] tracking-display mb-2">
+          What would you like to work on?
+        </h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Type below to start, or pick a quick action
         </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {QUICK_ACTIONS.map(({ icon: Icon, label, prompt }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => handleTemplateClick(prompt)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer text-left"
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
