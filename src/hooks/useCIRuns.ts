@@ -45,6 +45,13 @@ export function useCIRuns(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track whether the tab has ever been active (for deferred loading).
+  // Skip initial fetch until the Checks tab is opened at least once.
+  const hasBeenActiveRef = useRef(active);
+  useEffect(() => {
+    if (active) hasBeenActiveRef.current = true;
+  }, [active]);
+
   // Stable refs for the current workspaceId/sessionId so fetchRuns
   // used in polling doesn't need to be recreated on every change.
   const workspaceIdRef = useRef(workspaceId);
@@ -147,8 +154,11 @@ export function useCIRuns(
     [workspaceId, sessionId]
   );
 
-  // Initial fetch and fetch on session change
+  // Initial fetch and fetch on session change.
+  // Deferred: skip fetch until the Checks tab has been opened at least once.
   useEffect(() => {
+    if (!hasBeenActiveRef.current) return;
+
     const abortController = new AbortController();
 
     if (workspaceId && sessionId) {
@@ -161,7 +171,7 @@ export function useCIRuns(
     return () => {
       abortController.abort();
     };
-  }, [fetchRuns, workspaceId, sessionId]);
+  }, [fetchRuns, workspaceId, sessionId, active]);
 
   // Periodic polling when there are in-progress runs
   useEffect(() => {
