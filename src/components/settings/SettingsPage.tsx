@@ -333,7 +333,7 @@ export function SettingsPage({
           </Button>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="py-2 px-2">
             {/* Sidebar Title */}
             <div className="px-1 pt-1 pb-2">
@@ -523,7 +523,7 @@ export function SettingsPage({
         {/* Spacer to match toolbar height */}
         <div className="h-10 shrink-0" />
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="max-w-2xl mx-auto py-8 px-8">
             {/* Hidden focusable element for keyboard focus management */}
             <h2 ref={contentRef} tabIndex={-1} className="sr-only">
