@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/chatml/chatml-backend/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1040,4 +1041,120 @@ func TestNewProcessWithOptions_Effort(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Expected --effort high in args: %v", args)
+}
+
+func TestProcess_InActiveTurn_DefaultFalse(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+	assert.False(t, p.IsInActiveTurn())
+}
+
+func TestProcess_InActiveTurn_SetAndGet(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	p.SetInActiveTurn(true)
+	assert.True(t, p.IsInActiveTurn())
+
+	p.SetInActiveTurn(false)
+	assert.False(t, p.IsInActiveTurn())
+}
+
+func TestProcess_StoreOrDeferMessage_WhenIdle(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+	// inActiveTurn defaults to false (idle)
+
+	msg := &models.Message{ID: "msg-1", Role: "user", Content: "hello"}
+	storeNow := p.StoreOrDeferMessage(msg)
+
+	assert.True(t, storeNow, "should return true when process is idle")
+	// No pending message should be set
+	assert.Nil(t, p.TakePendingUserMessage(), "should not defer message when idle")
+}
+
+func TestProcess_StoreOrDeferMessage_WhenActive(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+	p.SetInActiveTurn(true)
+
+	msg := &models.Message{ID: "msg-1", Role: "user", Content: "hello"}
+	storeNow := p.StoreOrDeferMessage(msg)
+
+	assert.False(t, storeNow, "should return false when process is in active turn")
+	// Message should be deferred as pending
+	pending := p.TakePendingUserMessage()
+	require.NotNil(t, pending)
+	assert.Equal(t, "msg-1", pending.ID)
+}
+
+func TestProcess_StoreOrDeferMessage_ConcurrentAccess(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Run concurrent set/check operations and track results to verify
+	// that every call either deferred or returned store-now.
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	storeCount := 0
+	deferCount := 0
+
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			p.SetInActiveTurn(true)
+		}()
+		go func(id int) {
+			defer wg.Done()
+			msg := &models.Message{ID: fmt.Sprintf("msg-%d", id), Role: "user", Content: "test"}
+			if p.StoreOrDeferMessage(msg) {
+				mu.Lock()
+				storeCount++
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				deferCount++
+				mu.Unlock()
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Every call must have returned a definitive result
+	assert.Equal(t, 100, storeCount+deferCount, "every StoreOrDeferMessage call must return store or defer")
+}
+
+func TestProcess_StoreOrDeferMessage_TransitionFromActiveToIdle(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+
+	// Simulate active turn
+	p.SetInActiveTurn(true)
+	msg1 := &models.Message{ID: "msg-1", Role: "user", Content: "queued during turn"}
+	assert.False(t, p.StoreOrDeferMessage(msg1), "should defer during active turn")
+
+	// Simulate turn ending — atomically clear flag and take pending
+	pending := p.EndTurnAndTakePending()
+	require.NotNil(t, pending)
+	assert.Equal(t, "msg-1", pending.ID)
+	assert.False(t, p.IsInActiveTurn(), "should be idle after EndTurnAndTakePending")
+
+	// Now idle — next message should be stored immediately
+	msg2 := &models.Message{ID: "msg-2", Role: "user", Content: "new prompt"}
+	assert.True(t, p.StoreOrDeferMessage(msg2), "should store immediately when idle")
+	assert.Nil(t, p.TakePendingUserMessage(), "should not have pending message")
+}
+
+func TestProcess_EndTurnAndTakePending_NoPending(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+	p.SetInActiveTurn(true)
+
+	// End turn with no deferred message
+	pending := p.EndTurnAndTakePending()
+	assert.Nil(t, pending, "should return nil when no message was deferred")
+	assert.False(t, p.IsInActiveTurn(), "should be idle after EndTurnAndTakePending")
+}
+
+func TestProcess_EndTurnAndTakePending_AlreadyIdle(t *testing.T) {
+	p := NewProcess("test-id", "/tmp", "conv-123")
+	// Already idle (default state)
+
+	pending := p.EndTurnAndTakePending()
+	assert.Nil(t, pending, "should return nil when already idle")
+	assert.False(t, p.IsInActiveTurn())
 }
