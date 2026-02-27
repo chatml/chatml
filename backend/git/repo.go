@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chatml/chatml-backend/logger"
@@ -636,37 +637,51 @@ func (rm *RepoManager) GetStatus(ctx context.Context, worktreePath, baseBranch s
 		Conflicts:  ConflictStatus{Files: []string{}},
 	}
 
-	// Get working directory status
-	wdStatus, err := rm.getWorkingDirectoryStatus(ctx, worktreePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory status: %w", err)
+	// Run all git operations in parallel — they are independent read-only queries.
+	// Each uses gitCmdWithContext which derives from ctx, so parent cancellation propagates.
+	var (
+		wdStatus   *WorkingDirectoryStatus
+		syncStatus *SyncStatus
+		ipStatus   *InProgressStatus
+		confStatus *ConflictStatus
+		stashCount int
+		wdErr, syncErr, ipErr, confErr, stashErr error
+		wg sync.WaitGroup
+	)
+
+	wg.Add(5)
+	go func() { defer wg.Done(); wdStatus, wdErr = rm.getWorkingDirectoryStatus(ctx, worktreePath) }()
+	go func() { defer wg.Done(); syncStatus, syncErr = rm.getSyncStatus(ctx, worktreePath, baseBranch) }()
+	go func() { defer wg.Done(); ipStatus, ipErr = rm.getInProgressStatus(ctx, worktreePath) }()
+	go func() { defer wg.Done(); confStatus, confErr = rm.getConflictStatus(ctx, worktreePath) }()
+	go func() { defer wg.Done(); stashCount, stashErr = rm.getStashCount(ctx, worktreePath) }()
+	wg.Wait()
+
+	if wdErr != nil {
+		return nil, fmt.Errorf("failed to get working directory status: %w", wdErr)
 	}
 	status.WorkingDirectory = *wdStatus
 
-	// Get sync status
-	syncStatus, err := rm.getSyncStatus(ctx, worktreePath, baseBranch)
-	if err != nil {
-		// Don't fail completely if sync status fails
+	if syncErr != nil {
+		logger.Main.Warn("failed to get sync status, using defaults", "path", worktreePath, "err", syncErr)
 		status.Sync = SyncStatus{BaseBranch: baseBranch}
 	} else {
 		status.Sync = *syncStatus
 	}
 
-	// Get in-progress operation status
-	inProgress, err := rm.getInProgressStatus(ctx, worktreePath)
-	if err == nil {
-		status.InProgress = *inProgress
+	if ipErr != nil {
+		logger.Main.Warn("failed to get in-progress status", "path", worktreePath, "err", ipErr)
+	} else {
+		status.InProgress = *ipStatus
 	}
-
-	// Get conflict status
-	conflicts, err := rm.getConflictStatus(ctx, worktreePath)
-	if err == nil {
-		status.Conflicts = *conflicts
+	if confErr != nil {
+		logger.Main.Warn("failed to get conflict status", "path", worktreePath, "err", confErr)
+	} else {
+		status.Conflicts = *confStatus
 	}
-
-	// Get stash count
-	stashCount, err := rm.getStashCount(ctx, worktreePath)
-	if err == nil {
+	if stashErr != nil {
+		logger.Main.Warn("failed to get stash count", "path", worktreePath, "err", stashErr)
+	} else {
 		status.Stash = StashStatus{Count: stashCount}
 	}
 
