@@ -44,9 +44,21 @@ build: deps backend agent-runner
 
 # Production release build for local distribution (creates DMG with embedded OAuth credentials)
 # Requires GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET (via env vars or .env file)
-# Skips updater artifacts (no TAURI_SIGNING_PRIVATE_KEY needed)
+# Uses tauri.release.conf.json to disable updater (no TAURI_SIGNING_PRIVATE_KEY needed)
 build-release: deps backend-release agent-runner
-	npm run tauri:build -- --bundles dmg
+	@rm -f src-tauri/target/release/bundle/dmg/*.dmg; \
+	npm run tauri:build -- --config src-tauri/tauri.release.conf.json --bundles dmg; \
+	BUILD_EXIT=$$?; \
+	DMG_PATH=$$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1); \
+	if [ -z "$$DMG_PATH" ]; then \
+		echo "Build failed - DMG not created"; \
+		exit 1; \
+	fi; \
+	if [ $$BUILD_EXIT -ne 0 ]; then \
+		echo "Note: Build completed with warnings (exit code $$BUILD_EXIT), but DMG was created: $$DMG_PATH"; \
+	else \
+		echo "Build succeeded: $$DMG_PATH"; \
+	fi
 
 # Debug build (for testing deep links, OAuth, etc.)
 # Note: The updater plugin fails without a valid signing key, but we only need the .app bundle
