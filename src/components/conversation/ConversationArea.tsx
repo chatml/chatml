@@ -57,8 +57,8 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
 import { InterruptedBanner } from '@/components/conversation/InterruptedBanner';
-import { BranchSyncConflictDialog } from '@/components/BranchSyncConflictDialog';
 import { useBranchSync } from '@/hooks/useBranchSync';
+import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDialog';
 import { useToast } from '@/components/ui/toast';
@@ -130,8 +130,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const queuedMessage = useAppStore(
     (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] : null
   );
-  const addMessage = useAppStore((s) => s.addMessage);
-
   const claudeAuthStatus = useClaudeAuthStatus();
   const claudeAuthConfigured = claudeAuthStatus?.configured ?? null;
 
@@ -214,48 +212,34 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Branch sync for updating from origin/main
   const {
     status: branchSyncStatus,
-    // loading: branchSyncLoading, // Available if needed for loading indicator
-    syncing: branchSyncing,
-    aborting: branchAborting,
     dismissed: branchSyncDismissed,
-    conflictFiles: branchConflictFiles,
-    lastOperation: branchLastOperation,
-    rebase: doBranchRebase,
-    merge: doBranchMerge,
-    abort: handleBranchAbort,
     dismiss: handleBranchDismiss,
-    clearConflicts: clearBranchConflicts,
   } = useBranchSync(selectedWorkspaceId, selectedSessionId);
 
-  // Show conflict dialog when there are conflicts
-  const showConflictDialog = branchConflictFiles.length > 0;
+  // Dispatch to agent via typed custom events (SessionToolbarContent handles these)
+  const [branchSyncing, setBranchSyncing] = useState(false);
 
-  // Wrapped handlers that add a success message to the chat
-  const handleBranchRebase = useCallback(async () => {
-    const result = await doBranchRebase();
-    if (result?.success && selectedConversationId) {
-      addMessage({
-        id: `sync-${Date.now()}`,
-        conversationId: selectedConversationId,
-        role: 'system',
-        content: 'Branch rebased successfully. Your branch is now up-to-date with origin.',
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }, [doBranchRebase, selectedConversationId, addMessage]);
+  const handleBranchRebase = useCallback(() => {
+    if (!branchSyncStatus) return;
+    setBranchSyncing(true);
+    dispatchAppEvent('branch-sync-rebase', { baseBranch: branchSyncStatus.baseBranch });
+  }, [branchSyncStatus]);
 
-  const handleBranchMerge = useCallback(async () => {
-    const result = await doBranchMerge();
-    if (result?.success && selectedConversationId) {
-      addMessage({
-        id: `sync-${Date.now()}`,
-        conversationId: selectedConversationId,
-        role: 'system',
-        content: 'Branch merged successfully. Your branch is now up-to-date with origin.',
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }, [doBranchMerge, selectedConversationId, addMessage]);
+  const handleBranchMerge = useCallback(() => {
+    if (!branchSyncStatus) return;
+    setBranchSyncing(true);
+    dispatchAppEvent('branch-sync-merge', { baseBranch: branchSyncStatus.baseBranch });
+  }, [branchSyncStatus]);
+
+  // Listen for response events from SessionToolbarContent
+  useAppEventListener('branch-sync-accepted', () => {
+    setBranchSyncing(false);
+    handleBranchDismiss();
+  }, [handleBranchDismiss]);
+
+  useAppEventListener('branch-sync-rejected', () => {
+    setBranchSyncing(false);
+  }, []);
 
   // Rename dialog state for conversations
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -1011,18 +995,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       {selectedConversationId && (
         <InterruptedBanner conversationId={selectedConversationId} />
       )}
-
-      {/* Branch sync conflict dialog */}
-      <BranchSyncConflictDialog
-        open={showConflictDialog}
-        onOpenChange={(open) => {
-          if (!open) clearBranchConflicts();
-        }}
-        operation={branchLastOperation || 'rebase'}
-        conflictFiles={branchConflictFiles}
-        onAbort={handleBranchAbort}
-        aborting={branchAborting}
-      />
 
       {/* VS Code-style unified TabBar */}
       <TabBar
