@@ -820,7 +820,7 @@ function WorkspaceAgentSettings({ workspaceId }: { workspaceId: string }) {
 
       {hasChanges && (
         <div className="mt-4 flex justify-end">
-          <Button size="sm" disabled={saving} onClick={handleSave}>
+          <Button size="sm" disabled={saving} onClick={() => handleSave()}>
             {saving ? 'Saving...' : 'Save'}
           </Button>
         </div>
