@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/__mocks__/server';
 import { useReviewTrigger } from '../useReviewTrigger';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const API_BASE = 'http://localhost:9876';
 
@@ -276,6 +277,149 @@ describe('useReviewTrigger', () => {
 
       const streamingState = useAppStore.getState().streamingState['new-review-conv'];
       expect(streamingState?.isStreaming).toBe(true);
+    });
+  });
+
+  describe('actionable-only feedback preference', () => {
+    it('excludes actionable-only instruction by default (store defaults to false)', async () => {
+      // Verify the store default is false so this test breaks loudly if the default changes
+      expect(useSettingsStore.getState().reviewActionableOnly).toBe(false);
+
+      let requestBody: Record<string, unknown> | null = null;
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          requestBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'conv-default',
+            sessionId: 'session-1',
+            type: 'review',
+            name: 'Code Review',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      // Do NOT set reviewActionableOnly — rely on store default (false)
+      setupSelectedContext();
+      renderHook(() => useReviewTrigger());
+
+      await act(async () => {
+        dispatchStartReview('quick');
+      });
+
+      expect(requestBody).not.toBeNull();
+      expect(requestBody!.message).not.toContain('Only report actionable findings');
+    });
+
+    it('includes actionable-only instruction when reviewActionableOnly is explicitly true', async () => {
+      let requestBody: Record<string, unknown> | null = null;
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          requestBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'conv-actionable',
+            sessionId: 'session-1',
+            type: 'review',
+            name: 'Code Review',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      useSettingsStore.setState({ reviewActionableOnly: true });
+
+      setupSelectedContext();
+      renderHook(() => useReviewTrigger());
+
+      await act(async () => {
+        dispatchStartReview('quick');
+      });
+
+      expect(requestBody).not.toBeNull();
+      expect(requestBody!.message).toContain('Only report actionable findings');
+    });
+
+    it('excludes actionable-only instruction when reviewActionableOnly is false', async () => {
+      let requestBody: Record<string, unknown> | null = null;
+      server.use(
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          requestBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'conv-all-feedback',
+            sessionId: 'session-1',
+            type: 'review',
+            name: 'Code Review',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      useSettingsStore.setState({ reviewActionableOnly: false });
+
+      setupSelectedContext();
+      renderHook(() => useReviewTrigger());
+
+      await act(async () => {
+        dispatchStartReview('deep');
+      });
+
+      expect(requestBody).not.toBeNull();
+      expect(requestBody!.message).not.toContain('Only report actionable findings');
+    });
+
+    it('places actionable-only instruction before custom overrides so user overrides take precedence', async () => {
+      let requestBody: Record<string, unknown> | null = null;
+
+      // Mock both the conversation creation and the review prompt overrides
+      server.use(
+        http.get(`${API_BASE}/api/settings/review-prompts`, () => {
+          return HttpResponse.json({ prompts: { quick: 'Custom global override' } });
+        }),
+        http.get(`${API_BASE}/api/repos/:workspaceId/settings/review-prompts`, () => {
+          return HttpResponse.json({ prompts: {} });
+        }),
+        http.post(`${API_BASE}/api/repos/:workspaceId/sessions/:sessionId/conversations`, async ({ request }) => {
+          requestBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 'conv-override',
+            sessionId: 'session-1',
+            type: 'review',
+            name: 'Code Review',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        })
+      );
+
+      useSettingsStore.setState({ reviewActionableOnly: true });
+
+      setupSelectedContext();
+      renderHook(() => useReviewTrigger());
+
+      await act(async () => {
+        dispatchStartReview('quick');
+      });
+
+      // The handler chain is: dispatch → fetchMergedOverrides → createConversation.
+      // act() may not resolve the full chain, so wait for the request to complete.
+      await waitFor(() => {
+        expect(requestBody).not.toBeNull();
+      });
+
+      const message = requestBody!.message as string;
+      // Actionable instruction should appear before custom override
+      const actionableIndex = message.indexOf('Only report actionable findings');
+      const overrideIndex = message.indexOf('Custom global override');
+      expect(actionableIndex).toBeGreaterThan(-1);
+      expect(overrideIndex).toBeGreaterThan(-1);
+      expect(actionableIndex).toBeLessThan(overrideIndex);
     });
   });
 

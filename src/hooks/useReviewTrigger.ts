@@ -11,6 +11,9 @@ import { useSettingsStore } from '@/stores/settingsStore';
 const MARKDOWN_INSTRUCTION =
   '\nWhen writing comment content, use Markdown formatting for detailed comments that include code examples, lists, or structured explanations (use fenced code blocks for code, bullet lists for multiple points, **bold** for emphasis). Keep simple one-sentence comments as plain text.';
 
+const ACTIONABLE_ONLY_INSTRUCTION =
+  '\n\nIMPORTANT: Only report actionable findings. Every comment must identify something that needs to be changed, fixed, or improved. Do NOT include positive feedback, praise, or purely informational observations like "Good implementation", "Nice pattern", "Well structured", or "This looks correct". If a file has no actionable issues, skip it silently.';
+
 const REVIEW_PROMPTS: Record<string, string> = {
   quick:
     'Review the changes in this session. Use get_workspace_diff to see what changed, then use add_review_comment to leave inline comments. Focus on bugs, errors, and obvious issues. Be concise.' + MARKDOWN_INSTRUCTION,
@@ -90,12 +93,18 @@ export function useReviewTrigger() {
         // Use base prompt without overrides
       }
 
-      const message = extra
-        ? `${basePrompt}\n\nAdditional instructions:\n${extra}`
-        : basePrompt;
-
       try {
-        const { reviewModel } = useSettingsStore.getState();
+        const { reviewModel, reviewActionableOnly } = useSettingsStore.getState();
+
+        let prompt = basePrompt;
+        if (reviewActionableOnly) {
+          prompt += ACTIONABLE_ONLY_INSTRUCTION;
+        }
+
+        const message = extra
+          ? `${prompt}\n\nAdditional instructions:\n${extra}`
+          : prompt;
+
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: 'review',
           message,

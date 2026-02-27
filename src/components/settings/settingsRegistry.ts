@@ -256,6 +256,14 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     categoryLabel: 'Review & PRs',
   },
   {
+    id: 'reviewActionableOnly',
+    title: 'Actionable feedback only',
+    description: 'Only include actionable review comments (errors, warnings, suggestions). Hides informational and positive feedback.',
+    keywords: ['review', 'feedback', 'actionable', 'info', 'informational', 'positive', 'noise', 'filter', 'severity'],
+    category: 'review',
+    categoryLabel: 'Review & PRs',
+  },
+  {
     id: 'prTemplate',
     title: 'PR Description Prompt',
     description: 'Custom instructions for AI-generated PR descriptions',
