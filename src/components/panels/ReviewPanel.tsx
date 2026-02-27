@@ -260,7 +260,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
         <Button
           variant={filter === 'info' ? 'secondary' : 'ghost'}
           size="sm"
-          className={cn('h-5 text-xs px-1.5', filter === 'info' ? 'text-text-info' : 'text-muted-foreground')}
+          className={cn('h-5 text-xs px-1.5', filter === 'info' ? 'text-slate-500 dark:text-slate-400' : 'text-muted-foreground')}
           onClick={() => setFilter('info')}
         >
           <Info className="h-3 w-3 mr-0.5" />
@@ -435,18 +435,34 @@ function ReviewCommentCard({
     suggestion: MessageSquare,
   }[severity];
 
-  const severityColor = {
-    error: 'text-text-error bg-red-500/10 border-red-500/20',
-    warning: 'text-text-warning bg-yellow-500/10 border-yellow-500/20',
-    info: 'text-text-info bg-blue-500/10 border-blue-500/20',
-    suggestion: 'text-purple-500 bg-purple-500/10 border-purple-500/20',
+  const severityStyles = {
+    error: {
+      card: 'bg-red-500/10 border-red-500/20',
+      icon: 'text-text-error',
+      title: 'font-medium text-text-error',
+    },
+    warning: {
+      card: 'bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/20',
+      icon: 'text-amber-600 dark:text-amber-400',
+      title: 'font-semibold text-foreground',
+    },
+    info: {
+      card: 'bg-slate-100/60 border-slate-200 dark:bg-slate-500/8 dark:border-slate-400/20',
+      icon: 'text-slate-400',
+      title: 'font-medium text-muted-foreground',
+    },
+    suggestion: {
+      card: 'bg-purple-500/10 border-purple-500/20',
+      icon: 'text-purple-500',
+      title: 'font-medium text-purple-500',
+    },
   }[severity];
 
   return (
     <div
       className={cn(
         'rounded-lg border p-2 transition-colors cursor-pointer',
-        isResolved ? 'bg-muted/40 border-border/50' : severityColor
+        isResolved ? 'bg-muted/40 border-border/50' : severityStyles?.card
       )}
       onClick={onNavigate}
     >
@@ -455,11 +471,11 @@ function ReviewCommentCard({
         {isResolved ? (
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-green-500" />
         ) : (
-          <SeverityIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <SeverityIcon className={cn('h-3.5 w-3.5 shrink-0 mt-0.5', severityStyles?.icon)} />
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className={cn('font-medium text-xs leading-tight truncate', isResolved && 'text-muted-foreground')}>{title}</span>
+            <span className={cn('text-xs leading-tight truncate', isResolved ? 'font-medium text-muted-foreground' : severityStyles?.title)}>{title}</span>
             {isResolved && <ResolutionBadge type={comment.resolutionType} />}
           </div>
         </div>
