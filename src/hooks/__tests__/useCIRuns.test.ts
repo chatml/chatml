@@ -284,7 +284,7 @@ describe('useCIRuns', () => {
       expect(mockedGetCIRuns).toHaveBeenCalledTimes(2);
     });
 
-    it('does not poll when active is false', async () => {
+    it('does not fetch or poll when active is false', async () => {
       mockedGetCIRuns.mockResolvedValue([
         makeRun({ status: 'in_progress', conclusion: '' }),
       ]);
@@ -292,11 +292,12 @@ describe('useCIRuns', () => {
       renderHook(() => useCIRuns('ws-1', 'session-1', false));
       await flushAndAdvance();
 
-      expect(mockedGetCIRuns).toHaveBeenCalledTimes(1);
+      // Deferred: no initial fetch when active=false
+      expect(mockedGetCIRuns).not.toHaveBeenCalled();
 
       await flushAndAdvance(30_000);
-      // No additional poll because active=false
-      expect(mockedGetCIRuns).toHaveBeenCalledTimes(1);
+      // No poll either because active=false
+      expect(mockedGetCIRuns).not.toHaveBeenCalled();
     });
 
     it('does not poll when workspaceId or sessionId is null', async () => {
