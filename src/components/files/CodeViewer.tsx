@@ -20,7 +20,7 @@ interface CodeViewerProps {
   /** Review comments to display in diff view */
   comments?: ReviewComment[];
   /** Callback when a comment is resolved/unresolved */
-  onResolveComment?: (id: string, resolved: boolean) => void;
+  onResolveComment?: (id: string, resolved: boolean, resolutionType?: 'fixed' | 'ignored') => void;
   /** Callback when a comment is deleted */
   onDeleteComment?: (id: string) => void;
   /** Callback when a user creates a new comment on a diff line */

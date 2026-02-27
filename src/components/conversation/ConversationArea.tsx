@@ -824,14 +824,14 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }, [fileTabs, selectFileTab, updateFileTab]);
 
   // Handle resolving/unresolving a review comment
-  const handleResolveComment = useCallback(async (commentId: string, resolved: boolean) => {
+  const handleResolveComment = useCallback(async (commentId: string, resolved: boolean, resolutionType?: 'fixed' | 'ignored') => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
     try {
       const updatedComment = await updateReviewComment(
         selectedWorkspaceId,
         selectedSessionId,
         commentId,
-        { resolved, resolvedBy: resolved ? 'You' : undefined }
+        { resolved, resolvedBy: resolved ? 'You' : undefined, resolutionType }
       );
       updateReviewCommentInStore(selectedSessionId, commentId, updatedComment);
     } catch (error) {

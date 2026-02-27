@@ -1,25 +1,34 @@
 'use client';
 
 /**
- * CommentThread - Inline comment display for Monaco view zones
+ * CommentThread - Inline comment display for Pierre diff annotations
  *
  * Displays a review comment with:
  * - Author and timestamp
  * - Severity indicator (error/warning/info/suggestion)
- * - Markdown content
- * - Resolve/delete actions
+ * - Markdown content (compact prose rendering)
+ * - Resolution dropdown (Fixed/Ignored) and status badge
+ * - Delete action for user-created comments
  */
 
 import { memo, useCallback } from 'react';
-import { AlertCircle, AlertTriangle, Info, Lightbulb, CheckCircle2, Circle, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, Lightbulb, CheckCircle2, Circle, MinusCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ResolutionBadge } from '@/components/comments/ResolutionBadge';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
+import { PROSE_CLASSES_COMPACT } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { ReviewComment } from '@/lib/types';
 
 interface CommentThreadProps {
   comment: ReviewComment;
-  onResolve: (id: string, resolved: boolean) => void;
+  onResolve: (id: string, resolved: boolean, resolutionType?: 'fixed' | 'ignored') => void;
   onDelete?: (id: string) => void;
 }
 
@@ -29,7 +38,6 @@ interface CommentThreadProps {
 function formatRelativeTime(isoTimestamp: string): string {
   try {
     const date = new Date(isoTimestamp);
-    // Check for Invalid Date
     if (isNaN(date.getTime())) {
       return 'unknown';
     }
@@ -88,6 +96,21 @@ function getSeverityBorderClass(severity?: 'error' | 'warning' | 'suggestion' | 
 }
 
 /**
+ * Status badge showing open/resolved state for inline comment threads.
+ */
+function StatusBadge({ comment }: { comment: ReviewComment }) {
+  if (comment.resolved) {
+    return <ResolutionBadge type={comment.resolutionType} size="sm" />;
+  }
+
+  return (
+    <span className="inline-flex items-center text-xs px-1.5 py-0 rounded-full border font-medium shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">
+      Open
+    </span>
+  );
+}
+
+/**
  * CommentThread component - memoized for performance in view zones.
  */
 export const CommentThread = memo(function CommentThread({
@@ -95,15 +118,19 @@ export const CommentThread = memo(function CommentThread({
   onResolve,
   onDelete,
 }: CommentThreadProps) {
-  const handleResolve = useCallback(() => {
-    onResolve(comment.id, !comment.resolved);
-  }, [comment.id, comment.resolved, onResolve]);
+  const handleResolveAs = useCallback((resolutionType: 'fixed' | 'ignored') => {
+    onResolve(comment.id, true, resolutionType);
+  }, [comment.id, onResolve]);
+
+  const handleUnresolve = useCallback(() => {
+    onResolve(comment.id, false);
+  }, [comment.id, onResolve]);
 
   const handleDelete = useCallback(() => {
     onDelete?.(comment.id);
   }, [comment.id, onDelete]);
 
-  const borderClass = getSeverityBorderClass(comment.severity);
+  const borderClass = comment.resolved ? 'border-l-muted-foreground/30' : getSeverityBorderClass(comment.severity);
 
   return (
     <div
@@ -122,26 +149,43 @@ export const CommentThread = memo(function CommentThread({
           <span className="text-muted-foreground text-xs shrink-0">
             {formatRelativeTime(comment.createdAt)}
           </span>
-          {comment.resolved && (
-            <span className="text-xs text-text-success shrink-0">
-              Resolved
-            </span>
-          )}
+          <StatusBadge comment={comment} />
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={handleResolve}
-            title={comment.resolved ? 'Mark as unresolved' : 'Mark as resolved'}
-          >
-            {comment.resolved ? (
+          {comment.resolved ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={handleUnresolve}
+              title="Mark as open"
+            >
               <CheckCircle2 className="w-4 h-4 text-text-success" />
-            ) : (
-              <Circle className="w-4 h-4 text-muted-foreground" />
-            )}
-          </Button>
+            </Button>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  title="Resolve comment"
+                >
+                  <Circle className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onClick={() => handleResolveAs('fixed')}>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                  Mark as Fixed
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleResolveAs('ignored')}>
+                  <MinusCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                  Mark as Ignored
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {/* Only show delete for user-created comments */}
           {comment.source === 'user' && onDelete && (
             <Button
@@ -157,8 +201,8 @@ export const CommentThread = memo(function CommentThread({
         </div>
       </div>
 
-      {/* Content - rendered as markdown */}
-      <div className="prose prose-sm dark:prose-invert max-w-none text-sm text-foreground/90 break-words [&_pre]:my-1 [&_pre]:bg-muted/50 [&_pre]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1">
+      {/* Content - rendered as compact markdown */}
+      <div className={cn(PROSE_CLASSES_COMPACT, 'text-foreground/90 break-words')}>
         <CachedMarkdown cacheKey={`review-comment:${comment.id}`} content={comment.content} />
       </div>
     </div>

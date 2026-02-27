@@ -28,7 +28,7 @@ interface PierreDiffEditorProps {
   newContent: string;
   filename: string;
   comments?: ReviewComment[];
-  onResolveComment?: (id: string, resolved: boolean) => void;
+  onResolveComment?: (id: string, resolved: boolean, resolutionType?: 'fixed' | 'ignored') => void;
   onDeleteComment?: (id: string) => void;
   onCreateComment?: (lineNumber: number, content: string) => void;
   /** Line number to scroll to (e.g. from review comment click) */

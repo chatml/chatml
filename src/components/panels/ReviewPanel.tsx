@@ -9,11 +9,11 @@ import {
   Info,
   CheckCircle2,
   MessageSquare,
-  Clock,
   FileCode,
   ChevronRight,
   ChevronDown,
-  Check,
+  Circle,
+  MinusCircle,
   Loader2,
   List,
   ListTree,
@@ -24,6 +24,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ResolutionBadge } from '@/components/comments/ResolutionBadge';
 import { formatTimeAgo } from '@/lib/format';
 import { useAppStore } from '@/stores/appStore';
 import {
@@ -103,8 +110,10 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
       return c.severity === filter;
     });
 
-    // Sort by severity priority (error > warning > suggestion > info), then by line number
+    // Sort: unresolved first, then by severity priority, file path, line number
     return filtered.sort((a, b) => {
+      // Resolved comments go to the bottom
+      if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
       const aPriority = SEVERITY_PRIORITY[a.severity || 'info'] ?? 3;
       const bPriority = SEVERITY_PRIORITY[b.severity || 'info'] ?? 3;
       if (aPriority !== bPriority) return aPriority - bPriority;
@@ -139,26 +148,53 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
     suggestion: unresolvedComments.filter((c) => c.severity === 'suggestion').length,
   };
 
-  const handleResolve = useCallback(
-    async (commentId: string) => {
+  const handleResolveAs = useCallback(
+    async (commentId: string, resolutionType: 'fixed' | 'ignored') => {
       if (!workspaceId || !sessionId) return;
 
       // Optimistically update the store immediately
       updateReviewComment(sessionId, commentId, {
         resolved: true,
         resolvedBy: 'user',
+        resolutionType,
       });
 
       try {
         await apiUpdateReviewComment(workspaceId, sessionId, commentId, {
           resolved: true,
           resolvedBy: 'user',
+          resolutionType,
         });
       } catch {
         // Revert optimistic update on failure
         updateReviewComment(sessionId, commentId, {
           resolved: false,
           resolvedBy: undefined,
+          resolutionType: undefined,
+        });
+      }
+    },
+    [workspaceId, sessionId, updateReviewComment]
+  );
+
+  const handleUnresolve = useCallback(
+    async (commentId: string) => {
+      if (!workspaceId || !sessionId) return;
+
+      updateReviewComment(sessionId, commentId, {
+        resolved: false,
+        resolvedBy: undefined,
+        resolutionType: undefined,
+      });
+
+      try {
+        await apiUpdateReviewComment(workspaceId, sessionId, commentId, {
+          resolved: false,
+        });
+      } catch {
+        updateReviewComment(sessionId, commentId, {
+          resolved: true,
+          resolvedBy: 'user',
         });
       }
     },
@@ -326,8 +362,8 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                             key={comment.id}
                             comment={comment}
                             onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
-                            onResolve={() => handleResolve(comment.id)}
-                            isResolved={comment.resolved}
+                            onResolveAs={(type) => handleResolveAs(comment.id, type)}
+                            onUnresolve={() => handleUnresolve(comment.id)}
                           />
                         ))}
                       </div>
@@ -341,8 +377,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                   key={comment.id}
                   comment={comment}
                   onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
-                  onResolve={() => handleResolve(comment.id)}
-                  isResolved={comment.resolved}
+                  onResolveAs={(type) => handleResolveAs(comment.id, type)}
                   showFilePath
                 />
               ))
@@ -371,17 +406,18 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
 function ReviewCommentCard({
   comment,
   onNavigate,
-  onResolve,
-  isResolved,
+  onResolveAs,
+  onUnresolve,
   showFilePath,
 }: {
   comment: ReviewComment;
   onNavigate: () => void;
-  onResolve?: () => void;
-  isResolved?: boolean;
+  onResolveAs?: (type: 'fixed' | 'ignored') => void;
+  onUnresolve?: () => void;
   showFilePath?: boolean;
 }) {
   const title = comment.title || comment.content.split('\n')[0];
+  const isResolved = comment.resolved;
 
   // Refresh relative timestamps every 60s
   const [, setTick] = useState(0);
@@ -410,43 +446,70 @@ function ReviewCommentCard({
     <div
       className={cn(
         'rounded-lg border p-2 transition-colors cursor-pointer',
-        isResolved ? 'opacity-50 border-border bg-surface-1' : severityColor
+        isResolved ? 'bg-muted/40 border-border/50' : severityColor
       )}
       onClick={onNavigate}
     >
       {/* Header row */}
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-2 min-w-0">
         {isResolved ? (
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-green-500" />
         ) : (
           <SeverityIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
         )}
         <div className="flex-1 min-w-0">
-          <div className={cn('font-medium text-xs leading-tight', isResolved && 'line-through')}>{title}</div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={cn('font-medium text-xs leading-tight truncate', isResolved && 'text-muted-foreground')}>{title}</span>
+            {isResolved && <ResolutionBadge type={comment.resolutionType} />}
+          </div>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          {!isResolved && (
+          {isResolved ? (
             <Button
               variant="ghost"
               size="sm"
-              className="h-5 w-5 p-0 hover:bg-green-500/20 hover:text-green-500"
+              className="h-5 w-5 p-0 hover:bg-foreground/10"
               onClick={(e) => {
                 e.stopPropagation();
-                onResolve?.();
+                onUnresolve?.();
               }}
-              title="Resolve comment"
+              title="Mark as open"
             >
-              <Check className="h-3 w-3" />
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
             </Button>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 hover:bg-foreground/10"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Resolve comment"
+                >
+                  <Circle className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuItem onClick={() => onResolveAs?.('fixed')}>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                  Mark as Fixed
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onResolveAs?.('ignored')}>
+                  <MinusCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                  Mark as Ignored
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
 
       {/* Footer row - location and time */}
-      <div className="flex items-center gap-2 mt-1 ml-5.5 text-2xs text-muted-foreground">
+      <div className="flex items-center gap-2 mt-1 ml-5.5 text-2xs text-muted-foreground min-w-0">
         {comment.lineNumber > 0 && (
           <span
-            className="truncate"
+            className="truncate min-w-0"
             title={showFilePath ? `${comment.filePath}:${comment.lineNumber}` : undefined}
           >
             {showFilePath
@@ -455,8 +518,7 @@ function ReviewCommentCard({
             }
           </span>
         )}
-        <span className="ml-auto flex items-center gap-0.5 shrink-0">
-          <Clock className="h-2.5 w-2.5" />
+        <span className="ml-auto shrink-0">
           {formatTimeAgo(comment.createdAt)}
         </span>
       </div>
