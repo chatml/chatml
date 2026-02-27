@@ -187,7 +187,6 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     addMessage,
     setStreaming,
     setQueuedMessage,
-    commitQueuedMessage,
     clearPendingPlanApproval,
     setApprovedPlanContent,
     clearApprovedPlanContent,
@@ -774,14 +773,12 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       // Compute elapsed time for the stopped run (must read before finalize clears state)
       const startTime = useAppStore.getState().streamingState[selectedConversationId]?.startTime;
       const durationMs = startTime ? Date.now() - startTime : undefined;
-      // Finalize streaming content first, then commit queued message.
-      // Order matters: assistant message must be appended before the queued
-      // user message to maintain correct timeline ordering. Also,
+      // Finalize streaming content and atomically commit any queued user
+      // message before the assistant message so the user bubble renders first.
       // finalizeStreamingMessage checks for queued message to keep
       // isStreaming=true, preventing a visual flash between turns.
       // toolUsage is auto-derived from activeTools inside finalizeStreamingMessage.
-      finalizeStreamingMessage(selectedConversationId, { durationMs });
-      commitQueuedMessage(selectedConversationId);
+      finalizeStreamingMessage(selectedConversationId, { durationMs, commitQueuedFirst: true });
       // Add system message indicating the agent was stopped
       addMessage({
         id: `msg-stopped-${Date.now()}`,
@@ -796,7 +793,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to stop conversation:', error);
       showError('Failed to stop conversation. Please try again.');
     }
-  }, [selectedConversationId, isStreaming, commitQueuedMessage, finalizeStreamingMessage, addMessage, updateConversation, showError]);
+  }, [selectedConversationId, isStreaming, finalizeStreamingMessage, addMessage, updateConversation, showError]);
 
   useShortcut('stopAgent', handleStop, { enabled: isStreaming });
 

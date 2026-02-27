@@ -159,6 +159,18 @@ export interface QueuedMessage {
   timestamp: string;
 }
 
+/** Convert a QueuedMessage into a store Message for a given conversation. */
+function queuedToMessage(queued: QueuedMessage, conversationId: string): Message {
+  return {
+    id: queued.id,
+    conversationId,
+    role: 'user' as const,
+    content: queued.content,
+    attachments: queued.attachments,
+    timestamp: queued.timestamp,
+  };
+}
+
 // Streaming state for conversations
 interface StreamingState {
   text: string; // Legacy: full accumulated text for compatibility
@@ -431,6 +443,7 @@ interface AppState {
       durationMs?: number;
       toolUsage?: ToolUsage[];
       runSummary?: RunSummary;
+      commitQueuedFirst?: boolean;
     }
   ) => void;
 
@@ -1812,8 +1825,10 @@ updateFileTabContent: (id, content) => set((state) => ({
         approvedPlanTimestamp: undefined,
       };
 
-      // If no streaming text, just clear the state
+      // If no streaming text, just clear the state (but still commit queued message if requested)
       if (!streaming?.text) {
+        const queued = metadata.commitQueuedFirst ? state.queuedMessage[conversationId] : null;
+        const convPagination = state.messagePagination[conversationId];
         return {
           streamingState: {
             ...state.streamingState,
@@ -1827,6 +1842,23 @@ updateFileTabContent: (id, content) => set((state) => ({
             ...state.subAgents,
             [conversationId]: [],
           },
+          // Commit queued user message even with no streaming text (e.g. turn_complete after result)
+          ...(queued ? {
+            messagesByConversation: {
+              ...state.messagesByConversation,
+              [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), queuedToMessage(queued, conversationId)],
+            },
+            queuedMessage: { ...state.queuedMessage, [conversationId]: null },
+            ...(convPagination ? {
+              messagePagination: {
+                ...state.messagePagination,
+                [conversationId]: {
+                  ...convPagination,
+                  totalCount: convPagination.totalCount + 1,
+                },
+              },
+            } : {}),
+          } : {}),
         };
       }
 
@@ -1906,11 +1938,19 @@ updateFileTabContent: (id, content) => set((state) => ({
       };
 
       // Atomically: add message AND clear streaming state
+      // When commitQueuedFirst is set, place the queued user message BEFORE the assistant message
+      const queued = metadata.commitQueuedFirst ? state.queuedMessage[conversationId] : null;
+      const existing = state.messagesByConversation[conversationId] ?? [];
+      const updatedMessages = queued
+        ? [...existing, queuedToMessage(queued, conversationId), newMessage]
+        : [...existing, newMessage];
+
+      const convPagination = state.messagePagination[conversationId];
       const { [conversationId]: _removedCp, ...remainingPendingCp } = state.pendingCheckpointUuid;
       return {
         messagesByConversation: {
           ...state.messagesByConversation,
-          [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), newMessage],
+          [conversationId]: updatedMessages,
         },
         streamingState: {
           ...state.streamingState,
@@ -1925,6 +1965,20 @@ updateFileTabContent: (id, content) => set((state) => ({
           [conversationId]: [],
         },
         pendingCheckpointUuid: remainingPendingCp,
+        // Clear queued message if it was committed
+        ...(queued ? {
+          queuedMessage: { ...state.queuedMessage, [conversationId]: null },
+        } : {}),
+        // Keep pagination totalCount in sync when queued message was committed
+        ...(queued && convPagination ? {
+          messagePagination: {
+            ...state.messagePagination,
+            [conversationId]: {
+              ...convPagination,
+              totalCount: convPagination.totalCount + 1,
+            },
+          },
+        } : {}),
       };
     });
   },
@@ -1936,19 +1990,11 @@ updateFileTabContent: (id, content) => set((state) => ({
   commitQueuedMessage: (conversationId) => set((state) => {
     const queued = state.queuedMessage[conversationId];
     if (!queued) return state;
-    const msg: Message = {
-      id: queued.id,
-      conversationId,
-      role: 'user',
-      content: queued.content,
-      attachments: queued.attachments,
-      timestamp: queued.timestamp,
-    };
     const convPagination = state.messagePagination[conversationId];
     return {
       messagesByConversation: {
         ...state.messagesByConversation,
-        [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), msg],
+        [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), queuedToMessage(queued, conversationId)],
       },
       queuedMessage: { ...state.queuedMessage, [conversationId]: null },
       // Keep totalCount in sync (same pattern as addMessage)

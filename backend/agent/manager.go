@@ -953,6 +953,15 @@ outer:
 				}
 
 			case EventTypeTurnComplete, EventTypeComplete, EventTypeResult:
+				// Atomically clear the active turn flag and take any deferred
+				// user message. Store BEFORE the assistant message so the DB
+				// position ordering is: [queued_user_N, assistant_N+1].
+				// This must be atomic so a concurrent SendConversationMessage
+				// cannot slip a new message between clearing the flag and
+				// flushing the old deferred one.
+				pending := proc.EndTurnAndTakePending()
+				m.storePendingUserMessage(ctx, convID, pending)
+
 				// Store accumulated message and reset streaming state.
 				if currentAssistantMessage != "" {
 					// Seal final text segment
@@ -1104,15 +1113,6 @@ outer:
 					currentAssistantMessage = ""
 				}
 
-				// Atomically clear the active turn flag and take any deferred
-				// user message. This must be atomic so a concurrent
-				// SendConversationMessage cannot slip a new message between
-				// clearing the flag and flushing the old deferred one.
-				// Must happen AFTER storing the assistant message so the DB
-				// position ordering is correct: [assistant_N, queued_user_N+1].
-				pending := proc.EndTurnAndTakePending()
-				m.storePendingUserMessage(ctx, convID, pending)
-
 				// Reset per-turn accumulation state
 				currentThinking = ""
 				pendingPlanContent = ""
@@ -1232,6 +1232,12 @@ outer:
 		}
 	}
 
+	// Atomically clear active turn flag and flush any remaining deferred user
+	// message. Store BEFORE the assistant message so the DB position ordering
+	// is: [queued_user_N, assistant_N+1].
+	pendingFinal := proc.EndTurnAndTakePending()
+	m.storePendingUserMessage(ctx, convID, pendingFinal)
+
 	// Store any remaining assistant message (with full enrichment)
 	if currentAssistantMessage != "" {
 		// Seal any in-progress text segment
@@ -1307,12 +1313,6 @@ outer:
 			logger.Manager.Errorf("Failed to store final assistant message for conv %s: %v", convID, err)
 		}
 	}
-
-	// Atomically clear active turn flag and flush any remaining deferred user
-	// message so it is not lost when the process exits without a turn_complete
-	// event (e.g. crash, forced stop).
-	pending := proc.EndTurnAndTakePending()
-	m.storePendingUserMessage(ctx, convID, pending)
 
 	// Clear snapshot on process exit — but only if this process is still the current
 	// one in the map. If a new process has already been started (via SendConversationMessage),
@@ -1604,9 +1604,9 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 	//  2. needsRestart=false, process idle between turns — store immediately.
 	//     Same reasoning as case 1.
 	//  3. needsRestart=false, process mid-turn (inActiveTurn=true) — defer storage
-	//     until the current turn completes. The assistant response for the current
-	//     turn is stored first, then this queued user message is flushed after it.
-	//     This preserves chronological order: [assistant_N, queued_user_N+1].
+	//     until the current turn completes. The queued user message is flushed
+	//     before the assistant response so the user bubble renders first:
+	//     [queued_user_N, assistant_N+1].
 	msg := models.Message{
 		ID:          uuid.New().String()[:8],
 		Role:        "user",
