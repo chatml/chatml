@@ -32,7 +32,7 @@ describe('useWebSocket — streaming snapshot recovery', () => {
       streamingState: {},
       activeTools: {},
       conversations: [],
-      messages: [],
+      messagesByConversation: {},
     });
   });
 
@@ -348,7 +348,7 @@ describe('useWebSocket — streaming snapshot recovery', () => {
       const finishedConv = useAppStore.getState().conversations.find(c => c.id === CONV_FINISHED);
       expect(finishedConv?.status).toBe('completed');
 
-      const msgs = useAppStore.getState().messages.filter(m => m.conversationId === CONV_FINISHED);
+      const msgs = useAppStore.getState().messagesByConversation[CONV_FINISHED] ?? [];
       expect(msgs).toHaveLength(1);
     });
 
@@ -385,7 +385,7 @@ describe('useWebSocket — streaming snapshot recovery', () => {
       await reconcileStreamingState();
 
       // Messages should be reloaded as fallback
-      const msgs = useAppStore.getState().messages.filter(m => m.conversationId === CONV_ACTIVE);
+      const msgs = useAppStore.getState().messagesByConversation[CONV_ACTIVE] ?? [];
       expect(msgs).toHaveLength(1);
 
       // Streaming should still be active (agent process hasn't exited)

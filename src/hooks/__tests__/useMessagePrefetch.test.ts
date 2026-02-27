@@ -79,7 +79,7 @@ function setupStore(overrides: Record<string, unknown> = {}) {
     selectedWorkspaceId: 'ws-1',
     sessions: [makeSession()],
     conversations: [],
-    messages: [],
+    messagesByConversation: {},
     messagePagination: {},
     ...overrides,
   });
@@ -156,7 +156,7 @@ describe('useMessagePrefetch', () => {
       selectedWorkspaceId: null,
       sessions: [],
       conversations: [],
-      messages: [],
+      messagesByConversation: {},
       messagePagination: {},
     });
   });
@@ -438,7 +438,7 @@ describe('useMessagePrefetch', () => {
       setupStore({
         selectedConversationId: null,
         conversations: [conv1],
-        messages: [makeMessage('conv-with-msgs')],
+        messagesByConversation: { 'conv-with-msgs': [makeMessage('conv-with-msgs')] },
         messagePagination: {},
       });
 
@@ -666,7 +666,7 @@ describe('useMessagePrefetch', () => {
 
       // Verify messages ended up in the store
       const state = useAppStore.getState();
-      const storedMessages = state.messages.filter((m) => m.conversationId === 'conv-store');
+      const storedMessages = state.messagesByConversation['conv-store'] ?? [];
       expect(storedMessages).toHaveLength(1);
       expect(storedMessages[0].id).toBe('dto-1');
 

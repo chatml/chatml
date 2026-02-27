@@ -44,7 +44,7 @@ import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
-import { usePendingUserQuestion, useStreamingState } from '@/stores/selectors';
+import { usePendingUserQuestion, useStreamingState, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { THINKING_LEVELS, type ThinkingLevel, resolveThinkingParams, clampThinkingLevel, canDisableThinking } from '@/lib/thinkingLevels';
 import { useSlashCommandStore, type UnifiedSlashCommand } from '@/stores/slashCommandStore';
@@ -178,16 +178,13 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   messageRef.current = message;
   const currentSessionIdRef = useRef<string | null>(null);
 
+  // Scoped selectors — avoids subscribing to the entire store.
+  // ChatInput only re-renders when selected IDs, conversations, or the
+  // inline selectors below actually change.
+  const { selectedWorkspaceId, selectedSessionId, selectedConversationId } = useSelectedIds();
+  const { conversations, selectConversation, addConversation, removeConversation, updateConversation } = useConversationState();
   const {
-    selectedConversationId,
-    selectedWorkspaceId,
-    selectedSessionId,
-    conversations,
     addMessage,
-    addConversation,
-    removeConversation,
-    updateConversation,
-    selectConversation,
     setStreaming,
     setQueuedMessage,
     commitQueuedMessage,
@@ -201,7 +198,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     setSessionToggleState,
     setDraftInput,
     clearDraftInput,
-  } = useAppStore();
+  } = useChatInputActions();
   currentSessionIdRef.current = selectedSessionId;
   // Session-scoped streaming state — prevents cross-session plan/state leakage
   const streaming = useStreamingState(selectedConversationId);
@@ -429,9 +426,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const planModeActive = streaming?.planModeActive ?? false;
 
   // Check if conversation has messages (for ghost text vs placeholder)
-  const conversationHasMessages = useAppStore(
-    (s) => selectedConversationId ? s.messages.some(m => m.conversationId === selectedConversationId) : false
-  );
+  const conversationHasMessages = useConversationHasMessages(selectedConversationId);
 
   // Suggestions older than 5 minutes are considered stale and auto-hidden
   const SUGGESTION_MAX_AGE_MS = 5 * 60 * 1000;
@@ -891,7 +886,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     // Can't queue a message to a conversation that doesn't exist yet — check before clearing input
     const conversationMessagesEarly = currentConversation
-      ? useAppStore.getState().messages.filter(m => m.conversationId === currentConversation.id)
+      ? useAppStore.getState().messagesByConversation[currentConversation.id] ?? []
       : [];
     const isNewConversation = !selectedConversationId || conversationMessagesEarly.length === 0;
     if (isNewConversation && isStreaming) return;
@@ -1341,8 +1336,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             onSlashCommandExecute={handleSlashCommandExecute}
             onInput={(text) => {
               setMessage(text);
-              // Clear suggestion when user starts typing
-              if (text.trim() && selectedConversationId) {
+              // Clear suggestion when user starts typing (skip no-op store writes)
+              if (text.trim() && selectedConversationId && useAppStore.getState().inputSuggestions[selectedConversationId]) {
                 clearInputSuggestion(selectedConversationId);
               }
             }}

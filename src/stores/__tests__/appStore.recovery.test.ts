@@ -8,7 +8,7 @@ describe('appStore - agent recovery', () => {
   beforeEach(() => {
     useAppStore.setState({
       streamingState: {},
-      messages: [],
+      messagesByConversation: {},
     });
   });
 

@@ -103,7 +103,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { Workspace, WorktreeSession, SessionTaskStatus } from '@/lib/types';
-import { useSessionActivityState, useIsSessionUnread } from '@/stores/selectors';
+import { useSessionActivityState, useIsSessionUnread, useWorkspaceSelection, useSidebarActions } from '@/stores/selectors';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -138,17 +138,10 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
     github: onGitHubRepos,
   };
 
-  const {
-    workspaces,
-    sessions,
-    selectedWorkspaceId,
-    selectedSessionId,
-    addSession,
-    addConversation,
-    reorderWorkspaces,
-    removeWorkspace,
-    updateSession,
-  } = useAppStore();
+  // Scoped selectors — avoids subscribing to the entire store.
+  // Sidebar only re-renders when workspaces, sessions, or selected IDs change.
+  const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
+  const { addSession, addConversation, reorderWorkspaces, removeWorkspace, updateSession } = useSidebarActions();
   const { requestArchive, dialogProps: archiveDialogProps } = useArchiveSession({
     onError: () => showError('Failed to archive session'),
   });

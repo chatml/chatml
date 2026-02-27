@@ -200,18 +200,29 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     return content;
   }, [onResolveComment, onDeleteComment, onCreateComment, activeCommentLine, wordWrap, containerWidth]);
 
-  // Track visible container width so annotations can be clamped in scroll mode
+  // Track visible container width so annotations can be clamped in scroll mode.
+  // Uses RAF to debounce — avoids setting state on every resize frame.
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    let rafId: number | null = null;
+    let latestWidth = 0;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
+        latestWidth = entry.contentRect.width;
       }
+      if (rafId !== null) return; // Already scheduled — will use latestWidth
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        setContainerWidth(latestWidth);
+      });
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   // Scroll to target line when scrollToLine or diff content changes (e.g. review comment click)

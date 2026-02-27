@@ -7,7 +7,7 @@ import {
   useWorkspaceSelection,
   useConversationState,
   useFileTabState,
-  useMessages,
+  useConversationHasMessages,
 } from '@/stores/selectors';
 import { useSettingsStore, getBranchPrefix, getWorkspaceBranchPrefix } from '@/stores/settingsStore';
 import { navigate } from '@/lib/navigation';
@@ -157,7 +157,9 @@ export default function Home() {
   const { workspaces, sessions, selectedWorkspaceId, selectedSessionId } = useWorkspaceSelection();
   const { conversations, selectedConversationId, removeConversation } = useConversationState();
   const { fileTabs, closeFileTab, pendingCloseFileTabId, setPendingCloseFileTabId } = useFileTabState();
-  const conversationMessages = useMessages(selectedConversationId);
+  // Boolean check only — avoids subscribing to the full messages array,
+  // which would cause page-level re-renders on every message during streaming.
+  const conversationHasMessages = useConversationHasMessages(selectedConversationId);
   const selectNextTab = useAppStore((s) => s.selectNextTab);
   const selectPreviousTab = useAppStore((s) => s.selectPreviousTab);
   const confirmCloseActiveTab = useSettingsStore((s) => s.confirmCloseActiveTab);
@@ -333,15 +335,14 @@ export default function Home() {
   const handleCloseTab = useCallback(async () => {
     if (!selectedConversationId) return;
 
-    const hasMessages = conversationMessages.length > 0;
-    if (hasMessages && confirmCloseActiveTab) {
+    if (conversationHasMessages && confirmCloseActiveTab) {
       setPendingCloseConvId(selectedConversationId);
       setShowCloseConfirm(true);
       return;
     }
 
     await doCloseTab(selectedConversationId);
-  }, [selectedConversationId, conversationMessages, confirmCloseActiveTab, doCloseTab]);
+  }, [selectedConversationId, conversationHasMessages, confirmCloseActiveTab, doCloseTab]);
 
   const handleConfirmClose = useCallback(async () => {
     if (pendingCloseConvId) {

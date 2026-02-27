@@ -10,7 +10,7 @@ describe('appStore - thinking content preservation', () => {
 
     // Reset store state
     useAppStore.setState({
-      messages: [],
+      messagesByConversation: {},
       streamingState: {},
       activeTools: {},
     });
@@ -44,7 +44,7 @@ describe('appStore - thinking content preservation', () => {
     });
 
     // Check the finalized message has thinking content
-    const messages = useAppStore.getState().messages;
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('The answer is 42.');
     expect(messages[0].thinkingContent).toBe('Let me reason through this step by step...');
@@ -71,7 +71,7 @@ describe('appStore - thinking content preservation', () => {
       durationMs: 500,
     });
 
-    const messages = useAppStore.getState().messages;
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('Simple response.');
     expect(messages[0].thinkingContent).toBeUndefined();
@@ -98,7 +98,7 @@ describe('appStore - thinking content preservation', () => {
       durationMs: 500,
     });
 
-    const messages = useAppStore.getState().messages;
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
     expect(messages).toHaveLength(1);
     expect(messages[0].thinkingContent).toBeUndefined();
   });
@@ -155,7 +155,7 @@ describe('appStore - thinking content preservation', () => {
       durationMs: 3000,
     });
 
-    const messages = useAppStore.getState().messages;
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
     expect(messages[0].thinkingContent).toBe(longThinking);
   });
 
@@ -181,7 +181,7 @@ describe('appStore - thinking content preservation', () => {
     });
 
     // No message should be created since there's no text
-    const messages = useAppStore.getState().messages;
+    const messages = useAppStore.getState().messagesByConversation[conversationId] ?? [];
     expect(messages).toHaveLength(0);
   });
 
@@ -210,7 +210,7 @@ describe('appStore - thinking content preservation', () => {
       runSummary: { success: true, durationMs: 5000, turns: 2 },
     });
 
-    const msg = useAppStore.getState().messages[0];
+    const msg = (useAppStore.getState().messagesByConversation[conversationId] ?? [])[0];
     expect(msg.thinkingContent).toBe('Reasoning about the problem...');
     expect(msg.durationMs).toBe(5000);
     expect(msg.toolUsage).toHaveLength(1);

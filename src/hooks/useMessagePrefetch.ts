@@ -22,24 +22,25 @@ export function useMessagePrefetch(enabled: boolean) {
       const state = useAppStore.getState();
       const initialConvId = state.selectedConversationId;
 
-      // Wait until the initial conversation's messages are loaded
+      // Wait until the initial conversation's messages are loaded.
+      // Uses Zustand subscribe() instead of polling — resolves immediately
+      // when messagePagination is set, with no wasted CPU in between.
       if (initialConvId && !state.messagePagination[initialConvId]) {
         await new Promise<void>((resolve) => {
-          const check = () => {
-            if (useAppStore.getState().messagePagination[initialConvId!] || abortRef.current) {
+          if (abortRef.current) { resolve(); return; }
+          const unsub = useAppStore.subscribe((s) => {
+            if (s.messagePagination[initialConvId!] || abortRef.current) {
+              unsub();
               resolve();
-            } else {
-              setTimeout(check, 200);
             }
-          };
-          check();
+          });
         });
       }
 
       if (abortRef.current) return;
 
       // Collect all conversation IDs that need prefetching
-      const { conversations, sessions, messagePagination, messages,
+      const { conversations, sessions, messagePagination, messagesByConversation,
         selectedWorkspaceId } = useAppStore.getState();
 
       const archivedSessionIds = new Set(
@@ -47,7 +48,7 @@ export function useMessagePrefetch(enabled: boolean) {
       );
 
       // Build a set of conversation IDs that already have messages loaded
-      const convsWithMessages = new Set(messages.map(m => m.conversationId));
+      const convsWithMessages = new Set(Object.keys(messagesByConversation).filter(id => messagesByConversation[id].length > 0));
 
       const needsFetch = conversations.filter(c => {
         if (archivedSessionIds.has(c.sessionId)) return false;

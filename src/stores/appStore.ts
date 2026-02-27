@@ -193,7 +193,7 @@ interface AppState {
   workspaces: Workspace[];
   sessions: WorktreeSession[];
   conversations: Conversation[];
-  messages: Message[];
+  messagesByConversation: Record<string, Message[]>;
   fileChanges: FileChange[];
 
   selectedWorkspaceId: string | null;
@@ -338,9 +338,8 @@ interface AppState {
   clearInputSuggestion: (conversationId: string) => void;
 
   // Message actions
-  setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
-  updateMessage: (id: string, updates: Partial<Message>) => void;
+  updateMessage: (conversationId: string, id: string, updates: Partial<Message>) => void;
   // Message pagination state & actions
   messagePagination: Record<string, {
     hasMore: boolean;
@@ -522,7 +521,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspaces: [],
   sessions: [],
   conversations: [],
-  messages: [],
+  messagesByConversation: {},
   fileChanges: [],
   selectedWorkspaceId: null,
   selectedSessionId: null,
@@ -685,7 +684,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       workspaces: state.workspaces.filter((w) => w.id !== id),
       sessions: state.sessions.filter((s) => s.workspaceId !== id),
       conversations: state.conversations.filter((c) => !workspaceSessionIds.includes(c.sessionId)),
-      messages: state.messages.filter((m) => !workspaceConvIds.includes(m.conversationId)),
+      messagesByConversation: Object.fromEntries(
+        Object.entries(state.messagesByConversation).filter(([convId]) => !workspaceConvIds.includes(convId))
+      ),
       selectedWorkspaceId: state.selectedWorkspaceId === id ? null : state.selectedWorkspaceId,
       selectedSessionId: workspaceSessionIds.includes(state.selectedSessionId || '')
         ? null
@@ -789,7 +790,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sessions: state.sessions.filter((s) => s.id !== id),
         conversations: state.conversations.filter((c) => c.sessionId !== id),
-        messages: state.messages.filter((m) => !convIds.includes(m.conversationId)),
+        messagesByConversation: Object.fromEntries(
+          Object.entries(state.messagesByConversation).filter(([convId]) => !convIds.includes(convId))
+        ),
         selectedSessionId: state.selectedSessionId === id ? null : state.selectedSessionId,
         selectedConversationId: convIds.includes(state.selectedConversationId || '')
           ? null
@@ -931,9 +934,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   addConversation: (conversation) => set((state) => ({
     conversations: [...state.conversations, conversation],
     // Also add any initial messages (e.g., system setup message from createConversation)
-    messages: conversation.messages.length > 0
-      ? [...state.messages, ...conversation.messages]
-      : state.messages,
+    messagesByConversation: conversation.messages.length > 0
+      ? {
+          ...state.messagesByConversation,
+          [conversation.id]: [
+            ...(state.messagesByConversation[conversation.id] ?? []),
+            ...conversation.messages,
+          ],
+        }
+      : state.messagesByConversation,
   })),
   updateConversation: (id, updates) => set((state) => ({
     conversations: state.conversations.map((c) =>
@@ -989,7 +998,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return {
       conversations: newConversations,
-      messages: state.messages.filter((m) => m.conversationId !== id),
+      messagesByConversation: (() => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { [id]: _removedMsgs, ...rest } = state.messagesByConversation;
+        return rest;
+      })(),
       selectedConversationId: newSelectedConversationId,
       lastActiveConversationPerSession: updatedLastActive,
       streamingState: remainingStreamingState,
@@ -1035,22 +1048,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     inputSuggestions: { ...state.inputSuggestions, [conversationId]: { ...suggestion, timestamp: Date.now() } },
   })),
   clearInputSuggestion: (conversationId) => set((state) => {
+    if (!state.inputSuggestions[conversationId]) return state; // No-op if already cleared
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [conversationId]: _removed, ...rest } = state.inputSuggestions;
     return { inputSuggestions: rest };
   }),
 
   // Message actions
-  setMessages: (messages) => set({ messages }),
   addMessage: (message) => set((state) => {
-    const convPagination = state.messagePagination[message.conversationId];
+    const convId = message.conversationId;
+    const existing = state.messagesByConversation[convId] ?? [];
+    const convPagination = state.messagePagination[convId];
     return {
-      messages: [...state.messages, message],
+      messagesByConversation: {
+        ...state.messagesByConversation,
+        [convId]: [...existing, message],
+      },
       // Keep totalCount in sync so firstItemIndex stays stable
       ...(convPagination ? {
         messagePagination: {
           ...state.messagePagination,
-          [message.conversationId]: {
+          [convId]: {
             ...convPagination,
             totalCount: convPagination.totalCount + 1,
           },
@@ -1058,33 +1076,38 @@ export const useAppStore = create<AppState>((set, get) => ({
       } : {}),
     };
   }),
-  updateMessage: (id, updates) => set((state) => ({
-    messages: state.messages.map((m) =>
-      m.id === id ? { ...m, ...updates } : m
-    ),
-  })),
+  updateMessage: (conversationId, id, updates) => set((state) => {
+    const existing = state.messagesByConversation[conversationId];
+    if (!existing) return state;
+    return {
+      messagesByConversation: {
+        ...state.messagesByConversation,
+        [conversationId]: existing.map((m) =>
+          m.id === id ? { ...m, ...updates } : m
+        ),
+      },
+    };
+  }),
   // Message pagination actions
   setMessagePage: (convId, messages, hasMore, oldestPosition, totalCount) => set((state) => ({
-    // Replace any existing messages for this conversation with the new page
-    messages: [
-      ...state.messages.filter((m) => m.conversationId !== convId),
-      ...messages,
-    ],
+    messagesByConversation: {
+      ...state.messagesByConversation,
+      [convId]: messages,
+    },
     messagePagination: {
       ...state.messagePagination,
       [convId]: { hasMore, oldestPosition, isLoadingMore: false, totalCount },
     },
   })),
   prependMessages: (convId, messages, hasMore, oldestPosition) => set((state) => {
-    // Find where this conversation's messages start and prepend
-    const existingIds = new Set(state.messages.filter((m) => m.conversationId === convId).map((m) => m.id));
+    const existing = state.messagesByConversation[convId] ?? [];
+    const existingIds = new Set(existing.map((m) => m.id));
     const newMessages = messages.filter((m) => !existingIds.has(m.id));
     return {
-      messages: [
-        ...state.messages.filter((m) => m.conversationId !== convId),
-        ...newMessages,
-        ...state.messages.filter((m) => m.conversationId === convId),
-      ],
+      messagesByConversation: {
+        ...state.messagesByConversation,
+        [convId]: [...newMessages, ...existing],
+      },
       messagePagination: {
         ...state.messagePagination,
         [convId]: {
@@ -1885,7 +1908,10 @@ updateFileTabContent: (id, content) => set((state) => ({
       // Atomically: add message AND clear streaming state
       const { [conversationId]: _removedCp, ...remainingPendingCp } = state.pendingCheckpointUuid;
       return {
-        messages: [...state.messages, newMessage],
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), newMessage],
+        },
         streamingState: {
           ...state.streamingState,
           [conversationId]: clearedStreaming,
@@ -1920,7 +1946,10 @@ updateFileTabContent: (id, content) => set((state) => ({
     };
     const convPagination = state.messagePagination[conversationId];
     return {
-      messages: [...state.messages, msg],
+      messagesByConversation: {
+        ...state.messagesByConversation,
+        [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), msg],
+      },
       queuedMessage: { ...state.queuedMessage, [conversationId]: null },
       // Keep totalCount in sync (same pattern as addMessage)
       ...(convPagination ? {

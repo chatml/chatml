@@ -192,7 +192,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     if (existingPagination) return;
 
     // Also skip if messages were already added inline (e.g., via addConversation with messages)
-    const hasInlineMessages = state.messages.some((m) => m.conversationId === selectedConversationId);
+    const hasInlineMessages = (state.messagesByConversation[selectedConversationId]?.length ?? 0) > 0;
     if (hasInlineMessages) return;
 
     let cancelled = false;

@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertCircle, ArrowDownToLine, ArrowUpFromLine, Gauge } from 'lucide-react';
@@ -8,10 +9,21 @@ import { formatTokens, formatCost } from '@/lib/format';
 import { getModelInfo, getModelDisplayName } from '@/lib/models';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useShallow } from 'zustand/react/shallow';
-import type { TokenUsage } from '@/lib/types';
+import type { Message, TokenUsage } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
-// Hooks
+// Shared: O(1) selector to get conversation message bucket reference
+// ---------------------------------------------------------------------------
+
+const EMPTY_MESSAGES: readonly Message[] = [];
+
+const useConversationMessages = (conversationId: string | null) =>
+  useAppStore((s) =>
+    conversationId ? s.messagesByConversation[conversationId] ?? EMPTY_MESSAGES : EMPTY_MESSAGES
+  );
+
+// ---------------------------------------------------------------------------
+// Hooks — O(n) scans are in useMemo, only re-run when bucket ref changes
 // ---------------------------------------------------------------------------
 
 interface CumulativeTokens {
@@ -24,12 +36,11 @@ interface CumulativeTokens {
 
 const EMPTY_CUMULATIVE: CumulativeTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 
-const useCumulativeTokens = (conversationId: string | null): CumulativeTokens =>
-  useAppStore(useShallow((s) => {
-    if (!conversationId) return EMPTY_CUMULATIVE;
+const useCumulativeTokens = (conversationId: string | null): CumulativeTokens => {
+  const messages = useConversationMessages(conversationId);
+  return useMemo(() => {
     let input = 0, output = 0, cacheRead = 0, cacheWrite = 0;
-    for (const msg of s.messages) {
-      if (msg.conversationId !== conversationId) continue;
+    for (const msg of messages) {
       const usage: TokenUsage | undefined = msg.runSummary?.usage;
       if (usage) {
         input += usage.inputTokens;
@@ -40,7 +51,8 @@ const useCumulativeTokens = (conversationId: string | null): CumulativeTokens =>
     }
     if (input === 0 && output === 0) return EMPTY_CUMULATIVE;
     return { input, output, cacheRead, cacheWrite, total: input + output };
-  }));
+  }, [messages]);
+};
 
 interface ConversationUsage {
   model?: string;
@@ -53,19 +65,24 @@ interface ConversationUsage {
 
 const EMPTY_USAGE: ConversationUsage = {};
 
-const useConversationUsage = (conversationId: string | null): ConversationUsage =>
-  useAppStore(useShallow((s) => {
-    if (!conversationId) return EMPTY_USAGE;
-    const conv = s.conversations.find(c => c.id === conversationId);
+const useConversationUsage = (conversationId: string | null): ConversationUsage => {
+  const messages = useConversationMessages(conversationId);
+  const conv = useAppStore(useShallow((s) => {
+    if (!conversationId) return null;
+    const c = s.conversations.find(c => c.id === conversationId);
+    if (!c) return null;
+    return { model: c.model, budgetConfig: c.budgetConfig, thinkingConfig: c.thinkingConfig };
+  }));
+
+  return useMemo(() => {
     if (!conv) return EMPTY_USAGE;
 
     // Walk messages backwards to find the latest runSummary
     let cost: number | undefined;
     let turns: number | undefined;
     let limitExceeded: 'budget' | 'turns' | undefined;
-    for (let i = s.messages.length - 1; i >= 0; i--) {
-      const msg = s.messages[i];
-      if (msg.conversationId !== conversationId) continue;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
       if (msg.runSummary) {
         cost = msg.runSummary.cost;
         turns = msg.runSummary.turns;
@@ -74,15 +91,9 @@ const useConversationUsage = (conversationId: string | null): ConversationUsage 
       }
     }
 
-    return {
-      model: conv.model,
-      budgetConfig: conv.budgetConfig,
-      thinkingConfig: conv.thinkingConfig,
-      cost,
-      turns,
-      limitExceeded,
-    };
-  }));
+    return { ...conv, cost, turns, limitExceeded };
+  }, [messages, conv]);
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

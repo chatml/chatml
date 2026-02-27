@@ -30,7 +30,7 @@ describe('useWebSocket — sub-agent event handling', () => {
           updatedAt: '',
         },
       ],
-      messages: [],
+      messagesByConversation: {},
     });
   });
 
