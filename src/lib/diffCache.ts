@@ -6,8 +6,8 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
-const MAX_ENTRIES = 50;
-const MAX_AGE_MS = 10_000; // 10s TTL — matches backend DiffCache TTL
+const MAX_ENTRIES = 100;
+const MAX_AGE_MS = 5 * 60 * 1000; // 5 min — staleness handled by explicit invalidation
 
 function makeKey(workspaceId: string, sessionId: string, path: string): string {
   return `${workspaceId}:${sessionId}:${path}`;

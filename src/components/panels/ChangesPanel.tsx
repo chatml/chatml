@@ -76,31 +76,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-
-// Common binary file extensions
-const BINARY_EXTENSIONS = new Set([
-  // Images
-  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'ico', 'webp', 'svg', 'tiff', 'tif', 'avif',
-  // Videos
-  'mp4', 'webm', 'avi', 'mov', 'mkv', 'flv', 'wmv',
-  // Audio
-  'mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a',
-  // Archives
-  'zip', 'tar', 'gz', 'rar', '7z', 'bz2', 'xz',
-  // Documents
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-  // Executables/Binaries
-  'exe', 'dll', 'so', 'dylib', 'bin', 'app', 'dmg', 'pkg', 'deb', 'rpm',
-  // Fonts
-  'ttf', 'otf', 'woff', 'woff2', 'eot',
-  // Other
-  'sqlite', 'db', 'dat', 'class', 'pyc', 'pyo', 'o', 'a',
-]);
-
-function isBinaryFile(filename: string): boolean {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
-  return BINARY_EXTENSIONS.has(ext);
-}
+import { isBinaryFile } from '@/lib/fileUtils';
+import { useDiffPrefetch } from '@/hooks/useDiffPrefetch';
 
 // Maximum file size for diff viewing (2MB)
 const MAX_DIFF_SIZE = 2 * 1024 * 1024;
@@ -126,7 +103,6 @@ export function ChangesPanel() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [changes, setChanges] = useState<FileChangeDTO[]>([]);
-  const prevChangesKeyRef = useRef<string>('');
   const [changesLoading, setChangesLoading] = useState(false);
   const [allChanges, setAllChanges] = useState<FileChangeDTO[]>([]);
   const [branchStats, setBranchStats] = useState<BranchStatsDTO | null>(null);
@@ -139,6 +115,13 @@ export function ChangesPanel() {
   const checksPanelRef = useRef<ChecksPanelHandle>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const bottomPanelRef = useRef<PanelImperativeHandle>(null);
+
+  // Prefetch diffs for top changed files during idle time
+  useDiffPrefetch(
+    selectedWorkspaceId,
+    selectedSessionId,
+    changesView === 'all' ? allChanges : changes,
+  );
 
   // Immediately clear stale data when session changes.
   // Without this, the previous session's files/changes render for 150ms+
@@ -171,7 +154,7 @@ export function ChangesPanel() {
           setChangesLoading(false);
           setFilesError(null);
           setPrUrl(null);
-          prevChangesKeyRef.current = '';
+
           return; // Background fetch effects will still revalidate
         }
       }
@@ -185,7 +168,6 @@ export function ChangesPanel() {
       setChangesLoading(true);
       setFilesError(null);
       setPrUrl(null);
-      prevChangesKeyRef.current = '';
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only react to session change
   }, [selectedSessionId]);
@@ -210,12 +192,10 @@ export function ChangesPanel() {
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
       setChanges(data || []);
-      // Only invalidate diff cache when the set of changed files actually differs
-      const newKey = (data || []).map(f => `${f.path}:${f.status}:${f.additions}:${f.deletions}`).sort().join('\n');
-      if (newKey !== prevChangesKeyRef.current) {
-        prevChangesKeyRef.current = newKey;
-        invalidateDiffCache(selectedWorkspaceId, selectedSessionId);
-      }
+      // Always invalidate diff cache when changes are refetched — the additions/
+      // deletions counts alone can't detect content changes within the same line
+      // count. The prefetch hook re-populates the cache quickly via idle callbacks.
+      invalidateDiffCache(selectedWorkspaceId, selectedSessionId);
     } catch (error) {
       console.error('Failed to fetch changes:', error);
     } finally {

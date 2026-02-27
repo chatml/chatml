@@ -102,28 +102,28 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
 
-  // Defer heavy file tab rendering on session switch for instant UI response.
-  // Shadow DOM + Shiki tokenization in the code viewer blocks startTransition;
-  // rendering a placeholder first lets the session switch paint immediately.
-  // We track a deferred session ID that catches up after a double-rAF, and
-  // derive readiness by comparing it to the current selected session.
+  // Defer file tab rendering on session switch so the tab bar paints first.
+  // Only the active + previous tab mount their editors (max 2), so a single
+  // rAF is sufficient — the previous double-rAF was needed when ALL tabs mounted.
   const [deferredSessionId, setDeferredSessionId] = useState(selectedSessionId);
   const fileTabsReady = deferredSessionId === selectedSessionId;
 
+  // Track the previously active file tab so we can keep it mounted alongside
+  // the current one. This avoids a visible remount flash when switching tabs.
+  // Uses "setState during render" pattern — React supports this and synchronously
+  // re-renders before committing, avoiding refs (forbidden by React Compiler).
+  const [prevFileTabId, setPrevFileTabId] = useState<string | null>(null);
+  const [trackedFileTabId, setTrackedFileTabId] = useState(selectedFileTabId);
+  if (selectedFileTabId !== trackedFileTabId) {
+    setPrevFileTabId(trackedFileTabId);
+    setTrackedFileTabId(selectedFileTabId);
+  }
+
   useEffect(() => {
-    // Double-rAF ensures the placeholder paints before we re-enable heavy
-    // rendering. A single rAF fires before the paint, so React may batch
-    // both state updates into one render, skipping the placeholder entirely.
-    const outerRafId = requestAnimationFrame(() => {
-      innerRafId = requestAnimationFrame(() => {
-        setDeferredSessionId(selectedSessionId);
-      });
+    const rafId = requestAnimationFrame(() => {
+      setDeferredSessionId(selectedSessionId);
     });
-    let innerRafId: number;
-    return () => {
-      cancelAnimationFrame(outerRafId);
-      cancelAnimationFrame(innerRafId);
-    };
+    return () => cancelAnimationFrame(rafId);
   }, [selectedSessionId]);
   // Session-scoped streaming state for the selected conversation only
   const selectedStreaming = useStreamingState(selectedConversationId);
@@ -1019,15 +1019,17 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         sessionId={selectedSessionId}
       />
 
-      {/* Content Area - File viewer and messages are BOTH rendered but only one is visible.
-           This keeps Pierre's Shadow DOM alive even when viewing a conversation,
-           avoiding expensive Shiki re-tokenization when switching back. */}
+      {/* Content Area - The active tab and the previously active tab are mounted
+           to avoid Shiki re-tokenization flash on tab switch. Other tabs are
+           unmounted to keep session switch fast. */}
 
-      {/* File viewer — always rendered when tabs exist, hidden when conversation is active */}
+      {/* File viewer — active + previous tab mount their editors, hidden when conversation is active */}
       {visibleTabs.length > 0 && (
         <div className={isFileActive ? 'flex-1 min-h-0 relative' : 'hidden'}>
           {visibleTabs.map((tab) => {
             const isActive = tab.id === selectedFileTabId;
+            const isPrevious = tab.id === prevFileTabId && tab.id !== selectedFileTabId;
+            const shouldMount = isActive || isPrevious;
             const tabComments = tab.path === currentFilePath ? fileComments : [];
 
             return (
@@ -1035,98 +1037,103 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                 key={tab.id}
                 className={isActive ? 'h-full' : 'hidden'}
               >
-                {!fileTabsReady && isActive ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">Loading file...</span>
-                    </div>
-                  </div>
-                ) : tab.loadError ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center max-w-md">
-                      <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
-                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
-                      <p className="text-xs text-muted-foreground mb-2">Failed to load file</p>
-                      <p className="text-xs text-destructive/70 mb-3">{tab.loadError}</p>
-                      <button
-                        className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
-                        onClick={() => updateFileTab(tab.id, {
-                          loadError: undefined,
-                          content: undefined,
-                          diff: undefined,
-                        })}
+                {/* Mount the editor for the active tab and the previous tab */}
+                {shouldMount && (
+                  <>
+                    {!fileTabsReady ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span className="text-sm">Loading file...</span>
+                        </div>
+                      </div>
+                    ) : tab.loadError ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="text-center max-w-md">
+                          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-destructive/50" />
+                          <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                          <p className="text-xs text-muted-foreground mb-2">Failed to load file</p>
+                          <p className="text-xs text-destructive/70 mb-3">{tab.loadError}</p>
+                          <button
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors underline"
+                            onClick={() => updateFileTab(tab.id, {
+                              loadError: undefined,
+                              content: undefined,
+                              diff: undefined,
+                            })}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      </div>
+                    ) : tab.isBinary ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="text-center">
+                          <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                          <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                          <p className="text-xs text-muted-foreground">Binary file cannot be displayed</p>
+                        </div>
+                      </div>
+                    ) : tab.isTooLarge ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="text-center">
+                          <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                          <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                          <p className="text-xs text-muted-foreground">File is too large to display</p>
+                        </div>
+                      </div>
+                    ) : tab.isEmpty ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="text-center">
+                          <File className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                          <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                          <p className="text-xs text-muted-foreground">This file is empty</p>
+                        </div>
+                      </div>
+                    ) : tab.viewMode === 'diff' && tab.diff ? (
+                      <ErrorBoundary
+                        resetKeys={[tab.id]}
+                        section="CodeViewer"
+                        fallback={
+                          <BlockErrorFallback
+                            icon={FileCode}
+                            title="Unable to load diff"
+                            description="There was an error rendering the file diff"
+                          />
+                        }
                       >
-                        Retry
-                      </button>
-                    </div>
-                  </div>
-                ) : tab.isBinary ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
-                      <p className="text-xs text-muted-foreground">Binary file cannot be displayed</p>
-                    </div>
-                  </div>
-                ) : tab.isTooLarge ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
-                      <p className="text-xs text-muted-foreground">File is too large to display</p>
-                    </div>
-                  </div>
-                ) : tab.isEmpty ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <File className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
-                      <p className="text-xs text-muted-foreground">This file is empty</p>
-                    </div>
-                  </div>
-                ) : tab.viewMode === 'diff' && tab.diff ? (
-                  <ErrorBoundary
-                    resetKeys={[tab.id]}
-                    section="CodeViewer"
-                    fallback={
-                      <BlockErrorFallback
-                        icon={FileCode}
-                        title="Unable to load diff"
-                        description="There was an error rendering the file diff"
-                      />
-                    }
-                  >
-                    <CodeViewer
-                      content={tab.diff.newContent}
-                      oldContent={tab.diff.oldContent}
-                      filename={tab.name}
-                      isLoading={tab.isLoading}
-                      comments={tabComments}
-                      onResolveComment={handleResolveComment}
-                      onDeleteComment={handleDeleteComment}
-                      onCreateComment={handleCreateComment}
-                      scrollToLine={tab.cursorPosition?.line}
-                    />
-                  </ErrorBoundary>
-                ) : (
-                  <ErrorBoundary
-                    resetKeys={[tab.id]}
-                    section="CodeViewer"
-                    fallback={
-                      <BlockErrorFallback
-                        icon={FileCode}
-                        title="Unable to load file"
-                        description="There was an error rendering the file content"
-                      />
-                    }
-                  >
-                    <CodeViewer
-                      content={tab.content || ''}
-                      filename={tab.name}
-                      isLoading={tab.isLoading}
-                    />
-                  </ErrorBoundary>
+                        <CodeViewer
+                          content={tab.diff.newContent}
+                          oldContent={tab.diff.oldContent}
+                          filename={tab.name}
+                          isLoading={tab.isLoading}
+                          comments={tabComments}
+                          onResolveComment={handleResolveComment}
+                          onDeleteComment={handleDeleteComment}
+                          onCreateComment={handleCreateComment}
+                          scrollToLine={tab.cursorPosition?.line}
+                        />
+                      </ErrorBoundary>
+                    ) : (
+                      <ErrorBoundary
+                        resetKeys={[tab.id]}
+                        section="CodeViewer"
+                        fallback={
+                          <BlockErrorFallback
+                            icon={FileCode}
+                            title="Unable to load file"
+                            description="There was an error rendering the file content"
+                          />
+                        }
+                      >
+                        <CodeViewer
+                          content={tab.content || ''}
+                          filename={tab.name}
+                          isLoading={tab.isLoading}
+                        />
+                      </ErrorBoundary>
+                    )}
+                  </>
                 )}
               </div>
             );

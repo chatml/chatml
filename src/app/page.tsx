@@ -28,6 +28,7 @@ import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useMenuState } from '@/hooks/useMenuState';
 import { useMessagePrefetch } from '@/hooks/useMessagePrefetch';
+import { PierreWarmup } from '@/components/shared/PierreWarmup';
 import { useToast } from '@/components/ui/toast';
 import {
   createSession, createConversation, addRepo,
@@ -528,6 +529,7 @@ export default function Home() {
     <>
       <StreamingWarningHandler />
       <ConnectionStatusHandler />
+      <PierreWarmup />
       <TooltipProvider>
         <div className="h-screen overflow-hidden flex relative bg-background">
         {/* OUTER GROUP: Left Sidebar | Main Content */}

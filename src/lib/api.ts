@@ -238,11 +238,13 @@ export async function getFileDiff(repoId: string, filePath: string, baseBranch?:
 export async function getSessionFileDiff(
   workspaceId: string,
   sessionId: string,
-  filePath: string
+  filePath: string,
+  signal?: AbortSignal,
 ): Promise<FileDiffDTO> {
   const params = new URLSearchParams({ path: filePath });
   const res = await fetchWithAuth(
-    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`
+    `${getApiBase()}/api/repos/${workspaceId}/sessions/${sessionId}/diff?${params.toString()}`,
+    signal ? { signal } : undefined,
   );
   return handleResponse<FileDiffDTO>(res);
 }
