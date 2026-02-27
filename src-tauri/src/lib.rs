@@ -102,7 +102,6 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_pty::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_decorum::init())
         .plugin(
@@ -184,6 +183,25 @@ pub fn run() {
                         .level(log::LevelFilter::Debug)
                         .build(),
                 )?;
+            }
+
+            // Only initialize the updater plugin when a pubkey is configured.
+            // build-release uses tauri.release.conf.json which clears the pubkey,
+            // so the updater plugin won't be loaded for local release builds.
+            {
+                let has_updater = app
+                    .config()
+                    .plugins
+                    .0
+                    .get("updater")
+                    .and_then(|v| v.get("pubkey"))
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty());
+
+                if has_updater {
+                    app.handle()
+                        .plugin(tauri_plugin_updater::Builder::new().build())?;
+                }
             }
 
             // Spawn the Go backend sidecar with proper error handling
