@@ -308,12 +308,11 @@ export function useWebSocket(enabled: boolean = true) {
         if (data.payload === 'idle' && store.streamingState[conversationId]?.isStreaming) {
           const startTime = store.streamingState[conversationId]?.startTime;
           const durationMs = startTime ? Date.now() - startTime : undefined;
-          // Must finalize BEFORE committing queued message so the assistant
-          // message is appended first (correct timeline ordering).
-          // Also: finalizeStreamingMessage checks for queued message to keep
-          // isStreaming=true, preventing a visual flash between turns.
-          store.finalizeStreamingMessage(conversationId, { durationMs });
-          store.commitQueuedMessage(conversationId);
+          // Finalize streaming and commit any queued user message atomically.
+          // commitQueuedFirst places the user message BEFORE the assistant message
+          // so the user bubble appears above its response. Also keeps
+          // isStreaming=true when a queued message exists, preventing visual flash.
+          store.finalizeStreamingMessage(conversationId, { durationMs, commitQueuedFirst: true });
           store.clearAgentTodos(conversationId);
         }
       } else {
@@ -630,14 +629,13 @@ export function useWebSocket(enabled: boolean = true) {
           stderr: t.stderr,
         }));
 
-        // Atomic finalization - creates message and clears streaming/activeTools
+        // Atomic finalization - creates message and clears streaming/activeTools.
+        // commitQueuedFirst places the queued user message BEFORE the assistant message.
         turnStore.finalizeStreamingMessage(conversationId, {
           durationMs: turnDurationMs,
           toolUsage: turnToolUsage.length > 0 ? turnToolUsage : undefined,
+          commitQueuedFirst: true,
         });
-        // Commit queued message to messages array (if any).
-        // Must happen AFTER finalize (which checked for queued to keep isStreaming).
-        turnStore.commitQueuedMessage(conversationId);
         // Explicitly set status to active — finalizeStreamingMessage only clears
         // streaming/activeTools state but does NOT update conversation status.
         // The process is still alive and ready for the next message.
@@ -656,11 +654,9 @@ export function useWebSocket(enabled: boolean = true) {
 
       case 'complete': {
         // Complete event signals the entire conversation ended (stdin closed)
-        // Finalize streaming content first, then commit queued message.
-        // Order matters: assistant message must be appended before the queued
-        // user message to maintain correct timeline ordering.
-        store.finalizeStreamingMessage(conversationId, {});
-        store.commitQueuedMessage(conversationId);
+        // Finalize streaming content and atomically commit any queued user
+        // message before the assistant message so the user bubble renders first.
+        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true });
         store.setStreaming(conversationId, false);
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);
@@ -761,10 +757,9 @@ export function useWebSocket(enabled: boolean = true) {
           break;
         }
 
-        // Finalize any partial assistant content before committing the queued
-        // user message — preserves correct timeline ordering.
-        store.finalizeStreamingMessage(conversationId, {});
-        store.commitQueuedMessage(conversationId);
+        // Finalize any partial assistant content and atomically commit any
+        // queued user message before the assistant message.
+        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true });
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
@@ -971,11 +966,9 @@ export function useWebSocket(enabled: boolean = true) {
       // Group F: Interrupted + User Question Timeout
       // ====================================================================
       case 'interrupted':
-        // Finalize streaming content first, then commit queued message.
-        // Order matters: assistant message must be appended before the queued
-        // user message to maintain correct timeline ordering.
-        store.finalizeStreamingMessage(conversationId, {});
-        store.commitQueuedMessage(conversationId);
+        // Finalize streaming content and atomically commit any queued user
+        // message before the assistant message so the user bubble renders first.
+        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true });
         addSystemMessage(conversationId, 'Agent was stopped by user.')
           .then(({ id }) => {
             store.addMessage({
@@ -1183,12 +1176,11 @@ export function useWebSocket(enabled: boolean = true) {
 
       for (const convId of locallyStreaming) {
         if (!serverActiveSet.has(convId)) {
-          // Agent finished while we were disconnected — clear orphaned state
-          store.commitQueuedMessage(convId);
-          store.clearStreamingText(convId);
-          store.clearActiveTools(convId);
+          // Agent finished while we were disconnected — clear orphaned state.
+          // commitQueuedFirst places the user message before any partial
+          // assistant content (consistent with all other finalization paths).
+          store.finalizeStreamingMessage(convId, { commitQueuedFirst: true });
           store.clearThinking(convId);
-          store.clearSubAgents(convId);
           store.updateConversation(convId, { status: 'completed' });
 
           // Reload messages to pick up any assistant responses we missed
