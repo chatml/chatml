@@ -420,17 +420,36 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	// Check 2: ANTHROPIC_API_KEY environment variable
 	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
 
-	// Check 3: Claude Code CLI credentials (validates token contents + expiration)
+	// Check 3: Claude Code CLI credentials via OS keychain (validates token contents + expiration)
 	_, cliErr := ai.ReadClaudeCodeOAuthToken()
 	hasCliCredentials := cliErr == nil
 
+	// Check 4: ~/.claude/.credentials.json file fallback (only if keychain failed)
+	if !hasCliCredentials {
+		_, fileErr := ai.ReadClaudeCodeCredentialsFile()
+		if fileErr == nil {
+			hasCliCredentials = true
+		}
+	}
+
 	configured := hasStoredKey || hasEnvKey || hasCliCredentials
+
+	// Determine the primary credential source for UI display
+	credentialSource := ""
+	if hasStoredKey {
+		credentialSource = "api_key"
+	} else if hasEnvKey {
+		credentialSource = "env_var"
+	} else if hasCliCredentials {
+		credentialSource = "claude_subscription"
+	}
 
 	writeJSON(w, map[string]interface{}{
 		"configured":       configured,
 		"hasStoredKey":     hasStoredKey,
 		"hasEnvKey":        hasEnvKey,
 		"hasCliCredentials": hasCliCredentials,
+		"credentialSource": credentialSource,
 	})
 }
 

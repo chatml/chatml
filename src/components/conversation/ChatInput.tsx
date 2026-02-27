@@ -133,8 +133,8 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onMessageSubmit }: ChatInputProps) {
-  const claudeAuthConfigured = useClaudeAuthStatus();
-  const authDisabled = claudeAuthConfigured === false;
+  const claudeAuthStatus = useClaudeAuthStatus();
+  const authDisabled = claudeAuthStatus?.configured === false;
   const [message, setMessage] = useState('');
   // Read store defaults once at mount time — these initialize per-conversation
   // state and intentionally don't sync if the user changes settings mid-session.

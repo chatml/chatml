@@ -80,7 +80,8 @@ type Process struct {
 	opts               ProcessOptions // Original options for restart
 	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
 	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
-	producedOutput     bool          // Whether any assistant text was emitted during this process lifetime
+	producedOutput     bool            // Whether any assistant text was emitted during this process lifetime
+	inActiveTurn       bool            // Whether the agent is currently processing a turn (producing output)
 	pendingUserMessage *models.Message // User message deferred until turn completes (correct DB position ordering)
 }
 
@@ -783,6 +784,55 @@ func (p *Process) ProducedOutput() bool {
 	return p.producedOutput
 }
 
+// SetInActiveTurn marks whether the agent is currently processing a turn.
+// Set to true when the first output event of a turn arrives (assistant_text,
+// tool_start, thinking_start). Set to false when a turn-ending event fires
+// (turn_complete, complete, result) or when the process exits.
+func (p *Process) SetInActiveTurn(active bool) {
+	p.mu.Lock()
+	p.inActiveTurn = active
+	p.mu.Unlock()
+}
+
+// IsInActiveTurn returns whether the agent is currently processing a turn.
+func (p *Process) IsInActiveTurn() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.inActiveTurn
+}
+
+// StoreOrDeferMessage atomically checks whether the process is in an active turn.
+// If active, the message is deferred (stored as pending) and false is returned.
+// If idle, true is returned and the caller should store the message immediately.
+// This atomic check-and-set prevents a TOCTOU race between checking inActiveTurn
+// and setting pendingUserMessage.
+func (p *Process) StoreOrDeferMessage(msg *models.Message) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.inActiveTurn {
+		if p.pendingUserMessage != nil {
+			logger.Process.Warnf("Overwriting pending user message %s with %s — previous message will be lost",
+				p.pendingUserMessage.ID, msg.ID)
+		}
+		p.pendingUserMessage = msg
+		return false
+	}
+	return true
+}
+
+// EndTurnAndTakePending atomically clears the active turn flag and returns
+// the pending user message (if any). This prevents a race where a concurrent
+// SendConversationMessage sees inActiveTurn=false and stores a new message
+// before the old deferred message is flushed.
+func (p *Process) EndTurnAndTakePending() *models.Message {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.inActiveTurn = false
+	msg := p.pendingUserMessage
+	p.pendingUserMessage = nil
+	return msg
+}
+
 // SetRunningForTest sets the running flag. Intended for testing only.
 func (p *Process) SetRunningForTest(running bool) {
 	p.mu.Lock()
@@ -852,21 +902,6 @@ func (p *Process) SetOptionsPlanMode(enabled bool) {
 	defer p.mu.Unlock()
 	p.opts.PlanMode = enabled
 	p.planModeActive = enabled
-}
-
-// SetPendingUserMessage stores a user message to be flushed to the DB after
-// the current assistant turn completes. This ensures correct position ordering
-// when a user submits a message while the agent is still streaming.
-// If a pending message already exists (rapid double-send), the old message is
-// logged as a warning — this should not happen in normal UI flow.
-func (p *Process) SetPendingUserMessage(msg *models.Message) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.pendingUserMessage != nil {
-		logger.Process.Warnf("Overwriting pending user message %s with %s — previous message will be lost",
-			p.pendingUserMessage.ID, msg.ID)
-	}
-	p.pendingUserMessage = msg
 }
 
 // TakePendingUserMessage returns and clears the pending user message.
