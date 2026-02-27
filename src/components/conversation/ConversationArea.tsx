@@ -132,7 +132,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   );
   const addMessage = useAppStore((s) => s.addMessage);
 
-  const claudeAuthConfigured = useClaudeAuthStatus();
+  const claudeAuthStatus = useClaudeAuthStatus();
+  const claudeAuthConfigured = claudeAuthStatus?.configured ?? null;
 
   // Use messages selector scoped to the selected conversation
   const allConversationMessages = useMessages(selectedConversationId);
@@ -981,7 +982,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-amber-500 shrink-0" />
             <span className="text-xs text-amber-200/90">
-              No Anthropic API key configured. Agents cannot run without credentials.
+              No credentials configured. Agents cannot run without an API key or Claude subscription.
             </span>
             <button
               className="ml-auto flex items-center gap-1 text-xs text-amber-300 hover:text-amber-100 transition-colors shrink-0"

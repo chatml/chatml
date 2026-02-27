@@ -1965,13 +1965,21 @@ func (m *Manager) newAIClient() ai.Provider {
 		return ai.NewClient(apiKey)
 	}
 
-	// Source 3: Claude Code OAuth token from macOS Keychain
+	// Source 3: Claude Code OAuth token from OS keychain
 	token, err := ai.ReadClaudeCodeOAuthToken()
 	if err != nil {
-		logger.Manager.Debugf("No Claude Code OAuth token available: %v", err)
-		return nil
+		logger.Manager.Debugf("No Claude Code OAuth token from keychain: %v", err)
+
+		// Source 4: Credentials file fallback (~/.claude/.credentials.json)
+		token, err = ai.ReadClaudeCodeCredentialsFile()
+		if err != nil {
+			logger.Manager.Debugf("No Claude Code credentials file available: %v", err)
+			return nil
+		}
+		logger.Manager.Debugf("Using OAuth token from Claude Code credentials file")
+	} else {
+		logger.Manager.Debugf("Using OAuth token from Claude Code keychain")
 	}
-	logger.Manager.Debugf("Using OAuth token from Claude Code keychain")
 	return ai.NewClientWithOAuth(token)
 }
 
