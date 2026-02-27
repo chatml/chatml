@@ -56,6 +56,13 @@ var gitPushCommandPattern = regexp.MustCompile(`git\s+push\b`)
 // These operations could break the worktree-based session model or destroy work.
 var dangerousSuggestionPattern = regexp.MustCompile(`(?i)(delete\s.*branch|git\s+branch\s+-[dD]|rm\s+-rf|git\s+push\s+--force|git\s+reset\s+--hard|git\s+clean\s+-[fd])`)
 
+// bashCommandPattern matches pill values or ghost text that look like terminal commands.
+// Users are chatting with an AI assistant, not typing in a terminal, so suggestions
+// should be natural language instructions, not CLI commands.
+// Note: short ambiguous words (go, make, cat, ls, cd, rm, mv, cp) are matched with
+// subcommand patterns to avoid false positives on natural language like "Make a PR".
+var bashCommandPattern = regexp.MustCompile(`(?i)^(git|gh|npm|yarn|pnpm|bun|docker|kubectl|cargo|pip|curl|wget|mkdir|chmod|chown|sudo|brew|apt|yum)\s|(?i)^make\s+(build|dev|test|clean|install|run|all|backend|frontend)\b|(?i)^go\s+(build|test|run|mod|get|install|vet|fmt|generate|clean)\b`)
+
 // Legacy handlers (for backwards compatibility)
 type OutputHandler func(agentID string, line string)
 type StatusHandler func(agentID string, status models.AgentStatus)
@@ -2243,13 +2250,15 @@ func (m *Manager) generateInputSuggestion(convID string) {
 		return
 	}
 
-	// Filter out dangerous suggestions (defense in depth)
-	if dangerousSuggestionPattern.MatchString(suggestion.GhostText) {
+	// Filter out dangerous or command-like suggestions (defense in depth)
+	if dangerousSuggestionPattern.MatchString(suggestion.GhostText) || bashCommandPattern.MatchString(suggestion.GhostText) {
 		suggestion.GhostText = ""
 	}
 	var safePills []ai.SuggestionPill
 	for _, pill := range suggestion.Pills {
-		if !dangerousSuggestionPattern.MatchString(pill.Value) {
+		labelSafe := !dangerousSuggestionPattern.MatchString(pill.Label) && !bashCommandPattern.MatchString(pill.Label)
+		valueSafe := !dangerousSuggestionPattern.MatchString(pill.Value) && !bashCommandPattern.MatchString(pill.Value)
+		if labelSafe && valueSafe {
 			safePills = append(safePills, pill)
 		}
 	}
