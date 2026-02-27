@@ -398,7 +398,7 @@ export default function Home() {
       await registerAndNavigateWorkspace(repo);
     } catch (error) {
       console.error('Failed to add workspace directly:', error);
-      dialogRef.current?.showAddWorkspace();
+      showError(error instanceof Error ? error.message : 'Failed to add workspace. Please try again.', 'Workspace Error');
     }
   }, [registerAndNavigateWorkspace]);
 
