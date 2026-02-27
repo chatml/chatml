@@ -36,6 +36,13 @@ export function useGitStatus(
   // Subscribe to centralized file change events from the store
   const lastFileChange = useAppStore((s) => s.lastFileChange);
 
+  // Track whether the hook's consumer has ever been active (for deferred loading).
+  // Skip initial fetch until the caller signals active at least once.
+  const hasBeenActiveRef = useRef(active);
+  useEffect(() => {
+    if (active) hasBeenActiveRef.current = true;
+  }, [active]);
+
   // Refs for debouncing and cleanup
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(false);
@@ -117,9 +124,20 @@ export function useGitStatus(
     return () => clearTimeout(id);
   }, [workspaceId, sessionId]);
 
-  // Initial fetch and fetch on session change
+  // Initial fetch and fetch on session change.
+  // Deferred: skip fetch until the caller has been active at least once.
   useEffect(() => {
     isMountedRef.current = true;
+
+    if (!hasBeenActiveRef.current) {
+      return () => {
+        isMountedRef.current = false;
+        if (debounceTimeoutRef.current) {
+          clearTimeout(debounceTimeoutRef.current);
+        }
+      };
+    }
+
     // Use setTimeout to avoid synchronous setState within the effect body
     // (satisfies react-hooks/set-state-in-effect)
     const id = setTimeout(() => fetchStatus(), 0);
@@ -131,7 +149,7 @@ export function useGitStatus(
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [fetchStatus]);
+  }, [fetchStatus, active]);
 
   // Periodic polling
   useEffect(() => {

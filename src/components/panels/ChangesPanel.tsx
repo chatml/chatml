@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments, useSessionActivityState } from '@/stores/selectors';
 import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache, invalidateDiffCache } from '@/lib/diffCache';
+import { getSessionData, setSessionData, invalidateSessionData } from '@/lib/sessionDataCache';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
@@ -141,9 +142,72 @@ export function ChangesPanel() {
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const bottomPanelRef = useRef<PanelImperativeHandle>(null);
 
+  // Immediately clear stale data when session changes.
+  // Without this, the previous session's files/changes render for 150ms+
+  // while the debounced fetch effects are waiting.
+  // Uses a per-session cache to show previously-loaded data instantly
+  // (stale-while-revalidate: background fetch still runs).
+  const prevSessionIdRef = useRef(selectedSessionId);
+  useEffect(() => {
+    if (prevSessionIdRef.current !== selectedSessionId) {
+      // Save outgoing session's data to cache before switching.
+      // files/changes/allChanges/branchStats are intentionally read from the
+      // closure — they still hold the outgoing session's data at this point
+      // because the effect runs before the fetch effects update them.
+      if (prevSessionIdRef.current && selectedWorkspaceId) {
+        setSessionData(selectedWorkspaceId, prevSessionIdRef.current, {
+          files, changes, allChanges, branchStats,
+        });
+      }
+      prevSessionIdRef.current = selectedSessionId;
+
+      // Try to restore cached data for the new session
+      if (selectedWorkspaceId && selectedSessionId) {
+        const cached = getSessionData(selectedWorkspaceId, selectedSessionId);
+        if (cached) {
+          setFiles(cached.files);
+          setChanges(cached.changes);
+          setAllChanges(cached.allChanges);
+          setBranchStats(cached.branchStats);
+          setFilesLoading(false);
+          setChangesLoading(false);
+          setFilesError(null);
+          setPrUrl(null);
+          prevChangesKeyRef.current = '';
+          return; // Background fetch effects will still revalidate
+        }
+      }
+
+      // No cache — clear and show loading
+      setFiles([]);
+      setChanges([]);
+      setAllChanges([]);
+      setBranchStats(null);
+      setFilesLoading(true);
+      setChangesLoading(true);
+      setFilesError(null);
+      setPrUrl(null);
+      prevChangesKeyRef.current = '';
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only react to session change
+  }, [selectedSessionId]);
+
+  // In-flight guards to prevent duplicate concurrent requests from overlapping triggers.
+  // When a fetch is requested while one is already running, we set a pending flag
+  // and re-run once the current fetch completes, so updates are never silently dropped.
+  const changesFetchInFlightRef = useRef(false);
+  const changesPendingRefetchRef = useRef(false);
+  const branchFetchInFlightRef = useRef(false);
+  const branchPendingRefetchRef = useRef(false);
+
   // Fetch working changes (truly uncommitted files only — diff against HEAD)
   const fetchChanges = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
+    if (changesFetchInFlightRef.current) {
+      changesPendingRefetchRef.current = true;
+      return;
+    }
+    changesFetchInFlightRef.current = true;
 
     try {
       const data = await getSessionChanges(selectedWorkspaceId, selectedSessionId);
@@ -156,12 +220,24 @@ export function ChangesPanel() {
       }
     } catch (error) {
       console.error('Failed to fetch changes:', error);
+    } finally {
+      changesFetchInFlightRef.current = false;
+      if (changesPendingRefetchRef.current) {
+        changesPendingRefetchRef.current = false;
+        fetchChanges();
+      }
     }
   }, [selectedWorkspaceId, selectedSessionId]);
 
   // Fetch branch-level data (all changes + stats)
   const fetchBranchData = useCallback(async () => {
     if (!selectedWorkspaceId || !selectedSessionId) return;
+    if (branchFetchInFlightRef.current) {
+      branchPendingRefetchRef.current = true;
+      return;
+    }
+    branchFetchInFlightRef.current = true;
+
     try {
       const data = await getSessionBranchCommits(selectedWorkspaceId, selectedSessionId);
       setBranchStats(data?.branchStats || null);
@@ -182,6 +258,12 @@ export function ChangesPanel() {
       }
     } catch (error) {
       console.error('Failed to fetch branch data:', error);
+    } finally {
+      branchFetchInFlightRef.current = false;
+      if (branchPendingRefetchRef.current) {
+        branchPendingRefetchRef.current = false;
+        fetchBranchData();
+      }
     }
   }, [selectedWorkspaceId, selectedSessionId, updateSession]);
 
@@ -475,18 +557,19 @@ export function ChangesPanel() {
   // Fetch files from session's worktree when session changes.
   // Decoupled from tab visibility so data is ready when the user switches tabs.
   // Debounced to avoid redundant API calls when rapidly switching sessions.
+  // Uses AbortController to suppress stale state updates when session changes mid-flight.
   useEffect(() => {
     if (selectedWorkspaceId && selectedSessionId) {
-      let cancelled = false;
+      const abortController = new AbortController();
       setFilesLoading(true);
       setFilesError(null);
       const timeout = setTimeout(() => {
         listSessionFiles(selectedWorkspaceId, selectedSessionId, 'all')
           .then((data) => {
-            if (!cancelled) setFiles(data as FileNode[]);
+            if (!abortController.signal.aborted) setFiles(data as FileNode[]);
           })
           .catch((err) => {
-            if (!cancelled) {
+            if (!abortController.signal.aborted) {
               if (err instanceof ApiError && err.code === ErrorCode.WORKTREE_NOT_FOUND) {
                 setFilesError('worktree_missing');
               } else {
@@ -495,18 +578,19 @@ export function ChangesPanel() {
               console.error(err);
             }
           })
-          .finally(() => { if (!cancelled) setFilesLoading(false); });
+          .finally(() => { if (!abortController.signal.aborted) setFilesLoading(false); });
       }, 150);
-      return () => { cancelled = true; clearTimeout(timeout); };
+      return () => { abortController.abort(); clearTimeout(timeout); };
     }
   }, [selectedWorkspaceId, selectedSessionId]);
 
   // Fetch changes and branch commits when session changes or branch is renamed.
   // Decoupled from tab visibility so data is ready when the user switches tabs.
   // Debounced to avoid redundant API calls when rapidly switching sessions.
+  // Uses AbortController to suppress stale state updates when session changes mid-flight.
   useEffect(() => {
     if (selectedWorkspaceId && selectedSessionId) {
-      let cancelled = false;
+      const abortController = new AbortController();
       setChangesLoading(true);
       const timeout = setTimeout(() => {
         Promise.all([
@@ -514,25 +598,26 @@ export function ChangesPanel() {
           getSessionBranchCommits(selectedWorkspaceId, selectedSessionId),
         ])
           .then(([changesData, commitsData]) => {
-            if (!cancelled) {
+            if (!abortController.signal.aborted) {
               setChanges(changesData || []);
               setBranchStats(commitsData?.branchStats || null);
               setAllChanges(commitsData?.allChanges || []);
             }
           })
-          .catch(console.error)
-          .finally(() => { if (!cancelled) setChangesLoading(false); });
+          .catch((err) => {
+            if (!abortController.signal.aborted) console.error(err);
+          })
+          .finally(() => { if (!abortController.signal.aborted) setChangesLoading(false); });
       }, 150);
-      return () => { cancelled = true; clearTimeout(timeout); };
+      return () => { abortController.abort(); clearTimeout(timeout); };
     }
   }, [selectedWorkspaceId, selectedSessionId, currentBranch, currentTargetBranch]);
 
-  // Refetch changes when branch sync completes (rebase/merge)
+  // Refetch changes when branch sync completes (rebase/merge).
+  // Routed through debounce to avoid cascading with other concurrent triggers.
   useEffect(() => {
     if (branchSyncCompletedAt && selectedWorkspaceId && selectedSessionId) {
-      // Refetch changes after sync - the BaseCommitSHA has been updated
-      fetchChanges();
-      fetchBranchData();
+      debouncedFetchChanges();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchSyncCompletedAt]);
@@ -554,19 +639,6 @@ export function ChangesPanel() {
       debouncedFetchChanges();
     }
   }, [lastFileChange, selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
-
-  // React to session stats updates (WebSocket push from backend git index watcher).
-  // When the agent commits or stages files, the backend detects git index changes and
-  // broadcasts session_stats_update. Use this as an additional trigger to refetch changes.
-  const sessionStats = useAppStore((s) => {
-    if (!selectedSessionId) return undefined;
-    const session = s.sessions.find((sess) => sess.id === selectedSessionId);
-    return session?.stats;
-  });
-  useEffect(() => {
-    if (!selectedWorkspaceId || !selectedSessionId || !sessionStats) return;
-    debouncedFetchChanges();
-  }, [sessionStats, selectedWorkspaceId, selectedSessionId, debouncedFetchChanges]);
 
   // Polling fallback — catch changes that event-driven paths might miss (active sessions only)
   const selectedSessionStatus = useAppStore((s) => {
@@ -590,14 +662,21 @@ export function ChangesPanel() {
   const menuContext = useMemo<TopPanelMenuContext>(() => ({
     onCollapseAllFiles: () => fileTreeRef.current?.collapseAll(),
     onExpandAllFiles: () => fileTreeRef.current?.expandAll(),
-    onRefreshChanges: () => { fetchChanges(); fetchBranchData(); },
+    onRefreshChanges: () => {
+      // Invalidate cache on explicit refresh so stale data isn't re-shown
+      if (selectedWorkspaceId && selectedSessionId) {
+        invalidateSessionData(selectedWorkspaceId, selectedSessionId);
+      }
+      fetchChanges();
+      fetchBranchData();
+    },
     onRefreshChecks: () => checksPanelRef.current?.refreshAll(),
     prUrl,
     onResolveAll: handleResolveAll,
     unresolvedCount,
     showResolved,
     onToggleShowResolved: () => setShowResolved((prev) => !prev),
-  }), [fetchChanges, fetchBranchData, handleResolveAll, prUrl, unresolvedCount, showResolved]);
+  }), [fetchChanges, fetchBranchData, handleResolveAll, prUrl, unresolvedCount, showResolved, selectedWorkspaceId, selectedSessionId]);
 
   // Wrap tab selection to trigger changes refresh when switching to the changes tab
   const handleTabSelect = useCallback((tabId: string) => {

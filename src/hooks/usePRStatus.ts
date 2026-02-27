@@ -32,6 +32,13 @@ export function usePRStatus(
 
   const isMountedRef = useRef(false);
 
+  // Track whether the hook's consumer has ever been active (for deferred loading).
+  // Skip initial fetch until the caller signals active at least once.
+  const hasBeenActiveRef = useRef(active);
+  useEffect(() => {
+    if (active) hasBeenActiveRef.current = true;
+  }, [active]);
+
   // Fetch PR status
   const fetchStatus = useCallback(async () => {
     // Only fetch if we have a session with a PR
@@ -89,9 +96,14 @@ export function usePRStatus(
     return () => clearTimeout(id);
   }, [workspaceId, sessionId]);
 
-  // Initial fetch and fetch on session change
+  // Initial fetch and fetch on session change.
+  // Deferred: skip fetch until the caller has been active at least once.
   useEffect(() => {
     isMountedRef.current = true;
+
+    if (!hasBeenActiveRef.current) {
+      return () => { isMountedRef.current = false; };
+    }
 
     if (prStatus && prStatus !== 'none') {
       setLoading(true);
@@ -112,7 +124,7 @@ export function usePRStatus(
     return () => {
       isMountedRef.current = false;
     };
-  }, [fetchStatus, prStatus, workspaceId, sessionId]);
+  }, [fetchStatus, prStatus, workspaceId, sessionId, active]);
 
   // Slow fallback poll when PR is open (WebSocket is the primary update mechanism)
   useEffect(() => {
