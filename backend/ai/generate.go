@@ -679,10 +679,14 @@ CONVERSATION TYPE (from "Conv:" field):
 FORMAT:
 - ghost_text: 5-15 words, imperative mood, natural language
 - pill labels: 2-4 words
-- pill values: complete sentences the user would type
+- pill values: natural language instructions to the AI assistant (e.g., "Run the test suite and fix any failures", "Create a pull request with a summary of the changes"). NEVER use terminal commands, CLI syntax, or code as pill values — the user is chatting with an AI, not typing in a terminal.
 - 1-3 pills maximum
 - Output valid JSON only, no markdown fences
 - If no suggestion fits, return empty ghost_text and empty pills
+
+NEVER use shell commands, CLI syntax, or code in pill values or ghost_text:
+- Bad: "git diff HEAD~1", "npm test", "gh pr create --title '...'"
+- Good: "Show me the diff", "Run the tests", "Create a pull request for these changes"
 
 NEVER suggest destructive operations:
 - Deleting branches, worktree cleanup, git push --force, git reset --hard, git clean -f, rm -rf
