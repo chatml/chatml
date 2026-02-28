@@ -38,11 +38,12 @@ type GitHubConfig struct {
 	ClientSecret string
 }
 
-// Build-time variables for GitHub OAuth (set via -ldflags)
+// Build-time variables (set via -ldflags)
 // Example: go build -ldflags "-X github.com/chatml/chatml-backend/server.githubClientID=xxx"
 var (
 	githubClientID     string
 	githubClientSecret string
+	buildVersion       = "dev"
 )
 
 // LinearConfig holds Linear OAuth configuration
