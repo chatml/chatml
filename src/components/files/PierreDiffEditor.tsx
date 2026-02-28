@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { memo, useMemo, useDeferredValue, useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { FileDiff } from '@pierre/diffs/react';
 import type { FileContents, DiffLineAnnotation } from '@pierre/diffs/react';
 import type { FileDiffOptions, FileDiffMetadata, OnDiffLineClickProps } from '@pierre/diffs';
@@ -22,6 +22,35 @@ const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 // Injected into Pierre's Shadow DOM to prevent annotation slots from causing horizontal overflow
 // when the diff viewer is in scroll mode (line wrap off).
 const ANNOTATION_OVERFLOW_CSS = '[data-overflow="scroll"] [data-annotation-slot] { overflow: hidden; }';
+
+// Pierre renders all lines eagerly into the DOM (no virtualization).
+// Truncate large diffs to keep the UI responsive — matches PierreEditor's limit.
+const MAX_DIFF_LINES = 10000;
+
+function countNewlines(s: string): number {
+  let count = 0;
+  let idx = -1;
+  // eslint-disable-next-line no-cond-assign
+  while ((idx = s.indexOf('\n', idx + 1)) !== -1) count++;
+  return count;
+}
+
+function truncateDiffContent(
+  oldContent: string,
+  newContent: string,
+): { old: string; new: string; truncated: boolean } {
+  // Fast path: count newlines without allocating arrays
+  const maxLines = Math.max(countNewlines(oldContent), countNewlines(newContent)) + 1;
+  if (maxLines <= MAX_DIFF_LINES) {
+    return { old: oldContent, new: newContent, truncated: false };
+  }
+  // Slow path: only split when we actually need to truncate
+  return {
+    old: oldContent.split('\n').slice(0, MAX_DIFF_LINES).join('\n'),
+    new: newContent.split('\n').slice(0, MAX_DIFF_LINES).join('\n'),
+    truncated: true,
+  };
+}
 
 interface PierreDiffEditorProps {
   oldContent: string;
@@ -61,24 +90,33 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
 
   const language = getShikiLanguage(filename);
 
+  // Truncate very large diffs to prevent unbounded DOM rendering
+  const { old: truncatedOld, new: truncatedNew, truncated: isDiffTruncated } = useMemo(
+    () => truncateDiffContent(oldContent, newContent),
+    [oldContent, newContent],
+  );
+
   const oldFile: FileContents = useMemo(() => ({
     name: filename,
-    contents: oldContent,
+    contents: truncatedOld,
     lang: language as FileContents['lang'],
-    cacheKey: `old:${filename}:${oldContent.length}:${oldContent.slice(0, 64)}`,
-  }), [filename, oldContent, language]);
+    cacheKey: `old:${filename}:${truncatedOld.length}:${truncatedOld.slice(0, 64)}`,
+  }), [filename, truncatedOld, language]);
 
   const newFile: FileContents = useMemo(() => ({
     name: filename,
-    contents: newContent,
+    contents: truncatedNew,
     lang: language as FileContents['lang'],
-    cacheKey: `new:${filename}:${newContent.length}:${newContent.slice(0, 64)}`,
-  }), [filename, newContent, language]);
+    cacheKey: `new:${filename}:${truncatedNew.length}:${truncatedNew.slice(0, 64)}`,
+  }), [filename, truncatedNew, language]);
 
-  // Parse diff synchronously — separates computation from rendering
+  // Parse diff — computation is memoized but may be expensive for large files.
+  // useDeferredValue lets React keep the UI interactive during the transition
+  // by showing the previous diff until the new one is ready.
   const fileDiff: FileDiffMetadata = useMemo(() => {
     return parseDiffFromFile(oldFile, newFile);
   }, [oldFile, newFile]);
+  const deferredFileDiff = useDeferredValue(fileDiff);
 
   // Handle line number click to open comment input
   const handleLineNumberClick = useCallback((props: OnDiffLineClickProps) => {
@@ -225,23 +263,33 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     };
   }, []);
 
-  // Scroll to target line when scrollToLine or diff content changes (e.g. review comment click)
+  // Scroll to target line when scrollToLine or diff content changes (e.g. review comment click).
+  // Pierre renders into Shadow DOM asynchronously, so poll until the element appears
+  // instead of relying on a hard-coded delay.
   useEffect(() => {
     if (scrollToLine == null || !scrollContainerRef.current) return;
-    // Pierre renders inside a Shadow DOM — query through it
     const container = scrollContainerRef.current;
-    const pierreEl = container.querySelector('diffs-container');
-    const shadowRoot = pierreEl?.shadowRoot;
-    if (!shadowRoot) return;
-    // Delay to allow Pierre to finish rendering after diff content loads
-    const timer = setTimeout(() => {
+    let attempts = 0;
+    const maxAttempts = 10;
+    const intervalMs = 50;
+    const timerId = setInterval(() => {
+      attempts++;
+      const pierreEl = container.querySelector('diffs-container');
+      const shadowRoot = pierreEl?.shadowRoot;
+      if (!shadowRoot) {
+        if (attempts >= maxAttempts) clearInterval(timerId);
+        return;
+      }
       const lineEl = shadowRoot.querySelector(`[data-line="${scrollToLine}"]`);
       if (lineEl) {
+        clearInterval(timerId);
         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (attempts >= maxAttempts) {
+        clearInterval(timerId);
       }
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [scrollToLine, fileDiff]);
+    }, intervalMs);
+    return () => clearInterval(timerId);
+  }, [scrollToLine, deferredFileDiff]);
 
   return (
     <ErrorBoundary
@@ -256,12 +304,17 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
     >
       <div ref={scrollContainerRef} className="h-full overflow-auto overscroll-contain relative z-0">
         <FileDiff<CommentAnnotationData>
-          fileDiff={fileDiff}
+          fileDiff={deferredFileDiff}
           options={options}
           lineAnnotations={lineAnnotations}
           renderAnnotation={renderAnnotation}
           renderHeaderMetadata={renderHeaderMetadata}
         />
+        {isDiffTruncated && (
+          <div className="text-center py-3 text-xs text-muted-foreground border-t bg-muted/30">
+            Diff truncated to {MAX_DIFF_LINES.toLocaleString()} lines for performance
+          </div>
+        )}
       </div>
     </ErrorBoundary>
   );
