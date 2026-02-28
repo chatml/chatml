@@ -1,4 +1,4 @@
-.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html release release-tag
+.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html release
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -53,10 +53,9 @@ install-debug: build-debug
 	@cp -r src-tauri/target/debug/bundle/macos/chatml.app /Applications/
 	@echo "Installed! Run 'open /Applications/chatml.app' to test deep links"
 
-# Prepare a release: bumps version, creates a PR. After merge, tag main to trigger CI.
-# Step 1: make release VERSION=0.2.0        → creates branch + PR
-# Step 2: merge the PR on GitHub
-# Step 3: make release-tag VERSION=0.2.0    → tags main and pushes to trigger CI
+# Prepare a release: bumps version and creates a PR.
+# Merging the PR auto-tags main (via auto-tag-release workflow) which triggers the release build.
+# Usage: make release VERSION=0.2.0
 release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
 	git checkout main && git pull origin main
@@ -70,15 +69,7 @@ release:
 	git commit -m "release: v$(VERSION)"
 	git push -u origin release/v$(VERSION)
 	gh pr create --title "release: v$(VERSION)" --body "Bump version to $(VERSION)."
-	@echo "PR created. Merge it, then run: make release-tag VERSION=$(VERSION)"
-
-# Tag main after the release PR is merged — triggers CI build + publish
-release-tag:
-	@if [ -z "$(VERSION)" ]; then echo "Usage: make release-tag VERSION=x.y.z"; exit 1; fi
-	git checkout main && git pull origin main
-	git tag "v$(VERSION)"
-	git push origin "v$(VERSION)"
-	@echo "Tag v$(VERSION) pushed. CI will build and publish."
+	@echo "PR created. Merge it to trigger the release build."
 
 # Initialize fresh worktree - explicit setup command
 init: deps backend agent-runner
