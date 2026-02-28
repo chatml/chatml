@@ -1,4 +1,4 @@
-.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html release
+.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html release release-tag
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -53,25 +53,32 @@ install-debug: build-debug
 	@cp -r src-tauri/target/debug/bundle/macos/chatml.app /Applications/
 	@echo "Installed! Run 'open /Applications/chatml.app' to test deep links"
 
-# Tag a release: bumps version in all files, commits, tags, and pushes to trigger CI
-# Usage: make release VERSION=0.2.0
+# Prepare a release: bumps version, creates a PR. After merge, tag main to trigger CI.
+# Step 1: make release VERSION=0.2.0        → creates branch + PR
+# Step 2: merge the PR on GitHub
+# Step 3: make release-tag VERSION=0.2.0    → tags main and pushes to trigger CI
 release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
+	git checkout main && git pull origin main
+	git checkout -b release/v$(VERSION)
 	@echo "Bumping version to $(VERSION)..."
-	@# Update package.json
 	@sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
-	@# Update tauri.conf.json (only the top-level version field)
 	@sed -i '' '/"version":/{s/"version": "[^"]*"/"version": "$(VERSION)"/;};' src-tauri/tauri.conf.json
-	@# Update Cargo.toml version
 	@sed -i '' '/^\[package\]/,/^\[/{s/^version = "[^"]*"/version = "$(VERSION)"/;}' src-tauri/Cargo.toml
-	@# Sync package-lock.json
 	npm install --package-lock-only
-	@# Commit and tag
 	git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
 	git commit -m "release: v$(VERSION)"
+	git push -u origin release/v$(VERSION)
+	gh pr create --title "release: v$(VERSION)" --body "Bump version to $(VERSION)."
+	@echo "PR created. Merge it, then run: make release-tag VERSION=$(VERSION)"
+
+# Tag main after the release PR is merged — triggers CI build + publish
+release-tag:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release-tag VERSION=x.y.z"; exit 1; fi
+	git checkout main && git pull origin main
 	git tag "v$(VERSION)"
-	git push origin HEAD "v$(VERSION)"
-	@echo "Release v$(VERSION) tagged and pushed. CI will build and publish."
+	git push origin "v$(VERSION)"
+	@echo "Tag v$(VERSION) pushed. CI will build and publish."
 
 # Initialize fresh worktree - explicit setup command
 init: deps backend agent-runner
