@@ -59,6 +59,8 @@ install-debug: build-debug
 release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
 	git checkout main && git pull origin main
+	@git branch -D release/v$(VERSION) 2>/dev/null || true
+	@git push origin --delete release/v$(VERSION) 2>/dev/null || true
 	git checkout -b release/v$(VERSION)
 	@echo "Bumping version to $(VERSION)..."
 	@sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
