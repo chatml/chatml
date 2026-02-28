@@ -1,4 +1,4 @@
-.PHONY: build build-release build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html sign-sidecar
+.PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html release
 
 # Load .env file if it exists (for OAuth credentials, API keys)
 -include .env
@@ -6,23 +6,6 @@ export
 
 # Get the Rust target triple for the current platform
 TARGET := $(shell rustc -vV | grep host | cut -d' ' -f2)
-
-# Sign the Go sidecar binary (required for macOS app bundle integrity).
-# Uses Developer ID from keychain if available (for distribution), otherwise ad-hoc.
-# For fully distributable builds (notarized + signed), use the CI release workflow.
-sign-sidecar:
-	@if security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then \
-		IDENTITY=$$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | awk -F'"' '{print $$2}'); \
-		echo "Signing sidecar with: $$IDENTITY"; \
-		codesign --force --options runtime --sign "$$IDENTITY" \
-			--entitlements src-tauri/entitlements.plist \
-			src-tauri/binaries/chatml-backend-$(TARGET); \
-	else \
-		echo "No Developer ID found, ad-hoc signing sidecar..."; \
-		codesign --force --sign - \
-			--entitlements src-tauri/entitlements.plist \
-			src-tauri/binaries/chatml-backend-$(TARGET); \
-	fi
 
 # Install npm dependencies if node_modules is missing
 deps:
@@ -39,45 +22,15 @@ backend:
 agent-runner:
 	cd agent-runner && npm install && npm run build
 
-# Build Go backend with embedded credentials (production - uses build-time vars)
-# Requires GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET env vars
-backend-release:
-	@if [ -z "$$GITHUB_CLIENT_ID" ]; then echo "Error: GITHUB_CLIENT_ID not set"; exit 1; fi
-	@if [ -z "$$GITHUB_CLIENT_SECRET" ]; then echo "Error: GITHUB_CLIENT_SECRET not set"; exit 1; fi
-	cd backend && go build -ldflags "\
-		-X 'github.com/chatml/chatml-backend/server.githubClientID=$$GITHUB_CLIENT_ID' \
-		-X 'github.com/chatml/chatml-backend/server.githubClientSecret=$$GITHUB_CLIENT_SECRET'" \
-		-o ../src-tauri/binaries/chatml-backend-$(TARGET)
-	$(MAKE) sign-sidecar
-
 # Development mode (auto-installs deps if needed)
 # Trap SIGINT/SIGTERM to kill all child processes in the process group
 # Note: .env file is auto-loaded and exported (see -include .env above)
 dev: deps backend agent-runner
 	@trap 'kill 0' INT TERM; npm run tauri:dev & wait
 
-# Production build (auto-installs deps if needed)
+# Production build for local dev testing (no signing — use CI for distributable builds)
 build: deps backend agent-runner
-	$(MAKE) sign-sidecar
 	npm run tauri:build
-
-# Production release build for local distribution (creates DMG with embedded OAuth credentials)
-# Requires GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET (via env vars or .env file)
-# Uses tauri.release.conf.json to disable updater (no TAURI_SIGNING_PRIVATE_KEY needed)
-build-release: deps backend-release agent-runner
-	@rm -f src-tauri/target/release/bundle/dmg/*.dmg; \
-	npm run tauri:build -- --config src-tauri/tauri.release.conf.json --bundles dmg; \
-	BUILD_EXIT=$$?; \
-	DMG_PATH=$$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1); \
-	if [ -z "$$DMG_PATH" ]; then \
-		echo "Build failed - DMG not created"; \
-		exit 1; \
-	fi; \
-	if [ $$BUILD_EXIT -ne 0 ]; then \
-		echo "Note: Build completed with warnings (exit code $$BUILD_EXIT), but DMG was created: $$DMG_PATH"; \
-	else \
-		echo "Build succeeded: $$DMG_PATH"; \
-	fi
 
 # Debug build (for testing deep links, OAuth, etc.)
 # Note: The updater plugin fails without a valid signing key, but we only need the .app bundle
@@ -99,6 +52,24 @@ install-debug: build-debug
 	@rm -rf /Applications/chatml.app
 	@cp -r src-tauri/target/debug/bundle/macos/chatml.app /Applications/
 	@echo "Installed! Run 'open /Applications/chatml.app' to test deep links"
+
+# Prepare a release: bumps version and creates a PR.
+# Merging the PR auto-tags main (via auto-tag-release workflow) which triggers the release build.
+# Usage: make release VERSION=0.2.0
+release:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
+	git checkout main && git pull origin main
+	git checkout -b release/v$(VERSION)
+	@echo "Bumping version to $(VERSION)..."
+	@sed -i '' 's/"version": "[^"]*"/"version": "$(VERSION)"/' package.json
+	@sed -i '' '/"version":/{s/"version": "[^"]*"/"version": "$(VERSION)"/;};' src-tauri/tauri.conf.json
+	@sed -i '' '/^\[package\]/,/^\[/{s/^version = "[^"]*"/version = "$(VERSION)"/;}' src-tauri/Cargo.toml
+	npm install --package-lock-only
+	git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+	git commit -m "release: v$(VERSION)"
+	git push -u origin release/v$(VERSION)
+	gh pr create --title "release: v$(VERSION)" --body "Bump version to $(VERSION)."
+	@echo "PR created. Merge it to trigger the release build."
 
 # Initialize fresh worktree - explicit setup command
 init: deps backend agent-runner

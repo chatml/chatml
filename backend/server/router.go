@@ -30,7 +30,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Use(TokenAuthMiddleware)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]string{"status": "ok"})
+		writeJSON(w, map[string]string{"status": "ok", "version": buildVersion})
 	})
 
 	// Provider capabilities endpoint

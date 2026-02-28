@@ -94,13 +94,12 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
-          # Build with embedded OAuth credentials if available, otherwise plain build
-          # (plain builds fall back to environment variables at runtime)
-          LDFLAGS=""
+          LDFLAGS="-X 'github.com/chatml/chatml-backend/server.buildVersion=$BUILD_VERSION'"
           if [ -n "$GITHUB_CLIENT_ID" ]; then
-            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
           fi
           GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" \
@@ -111,12 +110,12 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
-          # Build with embedded OAuth credentials if available, otherwise plain build
-          LDFLAGS=""
+          LDFLAGS="-X 'github.com/chatml/chatml-backend/server.buildVersion=$BUILD_VERSION'"
           if [ -n "$GITHUB_CLIENT_ID" ]; then
-            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
           fi
           GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" \
@@ -127,11 +126,12 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
-          LDFLAGS=""
+          LDFLAGS="-X 'github.com/chatml/chatml-backend/server.buildVersion=$BUILD_VERSION'"
           if [ -n "$GITHUB_CLIENT_ID" ]; then
-            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
           fi
           GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" \
@@ -143,44 +143,16 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
-          LDFLAGS=""
+          LDFLAGS="-X 'github.com/chatml/chatml-backend/server.buildVersion=$BUILD_VERSION'"
           if [ -n "$GITHUB_CLIENT_ID" ]; then
-            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
           fi
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-pc-windows-msvc.exe .
-
-      - name: Sign Go backend sidecar (macOS)
-        if: env.APPLE_CERTIFICATE != ''
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: |
-          # Import certificate to keychain
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          echo "$APPLE_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # Sign the sidecar with hardened runtime
-          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
-            --entitlements src-tauri/entitlements.plist \
-            src-tauri/binaries/chatml-backend-${{ matrix.target }}
-
-          # Cleanup keychain
-          security delete-keychain $KEYCHAIN_PATH
 
       - name: Install npm dependencies
         run: npm ci
