@@ -68,7 +68,8 @@ release:
 	@sed -i '' '/^\[package\]/,/^\[/{s/^version = "[^"]*"/version = "$(VERSION)"/;}' src-tauri/Cargo.toml
 	npm install --package-lock-only
 	git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
-	git commit -m "release: v$(VERSION)"
+	git diff --cached --quiet && echo "Version already at $(VERSION)" || true
+	git commit --allow-empty -m "release: v$(VERSION)"
 	git push -u origin release/v$(VERSION)
 	gh pr create --title "release: v$(VERSION)" --body "Bump version to $(VERSION)."
 	@echo "PR created. Merge it to trigger the release build."
