@@ -26,6 +26,8 @@ jobs:
 
       - name: Create and push tag
         run: |
+          git tag -d "${{ steps.version.outputs.tag }}" 2>/dev/null || true
+          git push origin ":refs/tags/${{ steps.version.outputs.tag }}" 2>/dev/null || true
           git tag "${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
