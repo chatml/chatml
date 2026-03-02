@@ -199,7 +199,10 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
         {
             let user_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !user_path.is_empty() {
-                log::info!("Resolved user PATH for sidecar ({} entries)", user_path.matches(':').count() + 1);
+                log::info!(
+                    "Resolved user PATH for sidecar ({} entries)",
+                    user_path.matches(':').count() + 1
+                );
                 sidecar_command = sidecar_command.env("PATH", &user_path);
             }
         }
