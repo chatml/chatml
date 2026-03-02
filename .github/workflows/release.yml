@@ -170,6 +170,20 @@ jobs:
       - name: Build agent-runner
         run: cd agent-runner && npm ci && npm run build && npm prune --production
 
+      - name: Sign native binaries in agent-runner (macOS)
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          # Find all Mach-O binaries (executables, dylibs, .node files) in agent-runner/node_modules
+          # and codesign them so Apple notarization doesn't reject the bundle.
+          find agent-runner/node_modules -type f \( -name "*.node" -o -name "*.dylib" -o -perm +111 \) | while read -r file; do
+            if file "$file" | grep -q "Mach-O"; then
+              echo "Signing: $file"
+              codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp "$file"
+            fi
+          done
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
