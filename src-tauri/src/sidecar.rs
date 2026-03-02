@@ -188,6 +188,23 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // Tell the Go backend which port to prefer
     sidecar_command = sidecar_command.env("PORT", port.to_string());
 
+    // macOS apps launched from Finder have a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
+    // The Go backend needs `node` to run agent-runner, which is typically in /opt/homebrew/bin,
+    // /usr/local/bin, or an nvm/fnm-managed path. Resolve the user's login shell PATH.
+    {
+        let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        if let Ok(output) = Command::new(&shell_path)
+            .args(["-l", "-c", "echo $PATH"])
+            .output()
+        {
+            let user_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !user_path.is_empty() {
+                log::info!("Resolved user PATH for sidecar ({} entries)", user_path.matches(':').count() + 1);
+                sidecar_command = sidecar_command.env("PATH", &user_path);
+            }
+        }
+    }
+
     // Point the backend to the bundled agent-runner.
     // Tauri places "../agent-runner" resources under _up_/agent-runner/ in Contents/Resources.
     // In dev, the backend finds it via relative paths from the working directory.
