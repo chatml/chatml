@@ -166,6 +166,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build agent-runner
+        run: cd agent-runner && npm ci && npm run build && npm prune --production
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:

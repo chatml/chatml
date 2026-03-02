@@ -39,6 +39,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "../agent-runner/dist",
+      "../agent-runner/node_modules",
+      "../agent-runner/package.json"
+    ],
     "createUpdaterArtifacts": true,
     "macOS": {
       "minimumSystemVersion": "10.15",

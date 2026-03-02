@@ -188,6 +188,25 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // Tell the Go backend which port to prefer
     sidecar_command = sidecar_command.env("PORT", port.to_string());
 
+    // Point the backend to the bundled agent-runner.
+    // Tauri places "../agent-runner" resources under _up_/agent-runner/ in Contents/Resources.
+    // In dev, the backend finds it via relative paths from the working directory.
+    {
+        if let Ok(resource_dir) = app.path().resource_dir() {
+            let agent_runner_path = resource_dir
+                .join("_up_")
+                .join("agent-runner")
+                .join("dist")
+                .join("index.js");
+            if agent_runner_path.exists() {
+                sidecar_command = sidecar_command.env(
+                    "CHATML_AGENT_RUNNER",
+                    agent_runner_path.to_string_lossy().as_ref(),
+                );
+            }
+        }
+    }
+
     // In dev builds, isolate the data directory so dev and production don't share state
     #[cfg(debug_assertions)]
     {
