@@ -59,10 +59,7 @@ export async function getCurrentWindow() {
  * Close the current window (used after confirmation)
  */
 export async function closeWindow(): Promise<void> {
-  const window = await getCurrentWindow();
-  if (window) {
-    await window.destroy();
-  }
+  await safeInvoke('close_window');
 }
 
 /**

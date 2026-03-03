@@ -16,6 +16,8 @@ const BENIGN_ERROR_PATTERNS = [
   'AbortError',
   'The operation was aborted',
   'NotAllowedError',
+  'not allowed by ACL',
+  'not allowed. Permissions associated with this command',
 ];
 
 function isBenignError(message: string): boolean {

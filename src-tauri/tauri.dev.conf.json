@@ -5,6 +5,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "ChatML",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
