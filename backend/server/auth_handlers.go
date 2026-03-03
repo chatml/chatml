@@ -154,12 +154,18 @@ func (h *AuthHandlers) GetStatus(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	h.ghClient.ClearAuth()
 
-	// Clear persisted tokens
+	// Clear persisted tokens (best-effort — in-memory auth is already cleared)
 	ctx := r.Context()
-	h.store.DeleteSetting(ctx, settingGitHubAccessToken)
-	h.store.DeleteSetting(ctx, settingGitHubRefreshToken)
-	h.store.DeleteSetting(ctx, settingGitHubTokenExpiry)
-	h.store.DeleteSetting(ctx, settingGitHubUser)
+	for _, key := range []string{
+		settingGitHubAccessToken,
+		settingGitHubRefreshToken,
+		settingGitHubTokenExpiry,
+		settingGitHubUser,
+	} {
+		if err := h.store.DeleteSetting(ctx, key); err != nil {
+			logger.GitHub.Warnf("Failed to delete setting %q during logout: %v", key, err)
+		}
+	}
 
 	logger.GitHub.Info("GitHub auth cleared")
 	writeJSON(w, map[string]bool{"ok": true})

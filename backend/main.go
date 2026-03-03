@@ -478,7 +478,8 @@ func main() {
 		},
 	)
 
-	router := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
+	router, routerCleanup := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
+	defer routerCleanup()
 
 	// Pre-warm session stats cache in background so the first getDashboardData
 	// returns stats from cache instead of computing them on-the-fly.
