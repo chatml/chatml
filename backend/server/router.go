@@ -18,7 +18,7 @@ import (
 	"github.com/rs/cors"
 )
 
-func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, aiClient ai.Provider, scriptRunner *scripts.Runner) http.Handler {
+func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient *github.Client, linearClient *linear.Client, bw *branch.Watcher, prw *branch.PRWatcher, prCache *github.PRCache, issueCache *github.IssueCache, statsCache *SessionStatsCache, diffCache *DiffCache, aiClient ai.Provider, scriptRunner *scripts.Runner) (http.Handler, func()) {
 	r := chi.NewRouter()
 	dirCacheConfig := LoadDirListingCacheConfig()
 	h := NewHandlers(s, agentMgr, dirCacheConfig, bw, prw, hub, ghClient, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
@@ -305,5 +305,5 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		AllowCredentials: false, // Not needed for this app
 	}).Handler(r)
 
-	return handler
+	return handler, h.Close
 }

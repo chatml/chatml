@@ -79,6 +79,7 @@ type Process struct {
 	instructionsFile   string        // Temp file for instructions, cleaned up on stop
 	mcpServersFile     string        // Temp file for MCP server configs, cleaned up on stop
 	agentsFile         string        // Temp file for agent definitions, cleaned up on stop
+	imageTempFiles     []string      // Temp files for image attachments, cleaned up on stop
 	opts               ProcessOptions // Original options for restart
 	lastStderrLines    []string      // Ring buffer of last N stderr lines for crash diagnostics
 	sawErrorEvent      bool          // Whether the agent emitted an error/auth_error event
@@ -518,6 +519,11 @@ func (p *Process) SendMessageWithAttachments(content string, attachments []model
 			continue // Fall back to inline base64
 		}
 
+		// Track for cleanup on stop immediately so doStopLocked always sees it
+		p.mu.Lock()
+		p.imageTempFiles = append(p.imageTempFiles, tmpFile.Name())
+		p.mu.Unlock()
+
 		if _, err := tmpFile.Write(raw); err != nil {
 			tmpFile.Close()
 			_ = os.Remove(tmpFile.Name())
@@ -734,6 +740,12 @@ func (p *Process) doStopLocked() {
 		_ = os.Remove(p.agentsFile)
 		p.agentsFile = ""
 	}
+
+	// Clean up image temp files
+	for _, f := range p.imageTempFiles {
+		_ = os.Remove(f)
+	}
+	p.imageTempFiles = nil
 
 	// Try graceful shutdown with SIGTERM first
 	if p.cmd != nil && p.cmd.Process != nil && p.running {

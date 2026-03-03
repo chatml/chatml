@@ -39,7 +39,8 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	linearClient := linear.NewClient("")
 
 	// Create router without branch watcher, pr watcher, stats cache, or diff cache
-	router := NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, nil, prCache, nil, nil, nil, nil, nil)
+	router, cleanup := NewRouter(s, hub, agentMgr, ghClient, linearClient, nil, nil, prCache, nil, nil, nil, nil, nil)
+	t.Cleanup(cleanup)
 
 	return router, s
 }

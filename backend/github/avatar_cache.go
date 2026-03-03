@@ -19,6 +19,7 @@ type AvatarCache struct {
 	mu      sync.RWMutex
 	entries map[string]*AvatarEntry
 	ttl     time.Duration
+	done    chan struct{}
 }
 
 // NewAvatarCache creates a new avatar cache with the given TTL
@@ -26,6 +27,7 @@ func NewAvatarCache(ttl time.Duration) *AvatarCache {
 	cache := &AvatarCache{
 		entries: make(map[string]*AvatarEntry),
 		ttl:     ttl,
+		done:    make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -125,13 +127,27 @@ func (c *AvatarCache) Clear() {
 	c.entries = make(map[string]*AvatarEntry)
 }
 
+// Close stops the cleanup goroutine. Safe to call multiple times.
+func (c *AvatarCache) Close() {
+	select {
+	case <-c.done:
+	default:
+		close(c.done)
+	}
+}
+
 // cleanupLoop periodically removes expired entries
 func (c *AvatarCache) cleanupLoop() {
 	ticker := time.NewTicker(c.ttl)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		c.cleanup()
+	for {
+		select {
+		case <-ticker.C:
+			c.cleanup()
+		case <-c.done:
+			return
+		}
 	}
 }
 

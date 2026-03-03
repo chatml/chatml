@@ -547,6 +547,13 @@ type Handlers struct {
 	scriptRunner     *scripts.Runner
 }
 
+// Close releases resources owned by Handlers (caches with background goroutines).
+func (h *Handlers) Close() {
+	h.dirCache.Close()
+	h.branchCache.Close()
+	h.avatarCache.Close()
+}
+
 // getAIClient returns an AI provider, checking the static client first,
 // then falling back to the agent manager's multi-source credential cascade
 // (stored API key → env var → Claude Code OAuth token).
