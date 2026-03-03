@@ -81,7 +81,7 @@ export function FileHistoryPanel() {
     try {
       const data = await getFileCommitHistory(selectedWorkspaceId, selectedSessionId, currentFilePath);
       if (isMountedRef.current) {
-        setCommits(data.commits);
+        setCommits(data.commits ?? []);
       }
     } catch (err) {
       if (isMountedRef.current) {
