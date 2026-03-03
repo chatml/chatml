@@ -2031,6 +2031,13 @@ func (m *Manager) newAIClient() ai.Provider {
 	return ai.NewClientWithOAuth(token)
 }
 
+// CreateAIClient returns an AI provider from the best available credential source,
+// or nil if no credentials are configured. This is the public entry point for
+// packages that need an AI client (e.g. server handlers).
+func (m *Manager) CreateAIClient() ai.Provider {
+	return m.newAIClient()
+}
+
 // generateAndApplySessionTitle uses the AI client to generate a session title
 // from the user's first message, then applies it to the conversation and session.
 func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage string) {

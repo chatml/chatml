@@ -652,8 +652,9 @@ func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Re
 	}
 
 	// Check AI client is available
-	if h.aiClient == nil {
-		writeServiceUnavailable(w, "AI features not configured (missing ANTHROPIC_API_KEY)")
+	aiClient := h.getAIClient()
+	if aiClient == nil {
+		writeServiceUnavailable(w, "AI features not configured (no API key or Claude subscription found)")
 		return
 	}
 
@@ -732,7 +733,7 @@ func (h *Handlers) GenerateConversationSummary(w http.ResponseWriter, r *http.Re
 	// Generate asynchronously
 	go func() {
 		bgCtx := context.Background()
-		result, err := h.aiClient.GenerateConversationSummary(bgCtx, ai.GenerateSummaryRequest{
+		result, err := aiClient.GenerateConversationSummary(bgCtx, ai.GenerateSummaryRequest{
 			ConversationName: conv.Name,
 			Messages:         summaryMessages,
 		})
