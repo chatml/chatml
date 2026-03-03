@@ -8,8 +8,9 @@ interface MentionTextProps {
   className?: string;
 }
 
-// Regex pattern to match @filepath mentions (supports paths with slashes, dots, hyphens, underscores)
-const MENTION_PATTERN = /@([\w./-]+)/g;
+// Regex pattern to match @filepath mentions. Lookbehind ensures @ is not preceded by a word character,
+// aligning with MentionPlugin's triggerPreviousCharPattern which requires start-of-input, whitespace, or quote.
+const MENTION_PATTERN = /(?<!\w)@([\w./-]+)/g;
 
 /**
  * Renders text content with @mentions styled as pills.
