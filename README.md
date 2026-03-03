@@ -16,10 +16,7 @@
   <a href="https://x.com/chatmlx"><img src="https://img.shields.io/badge/follow-%40chatmlx-black?style=flat-square&logo=x" alt="Follow @chatmlx" /></a>
 </p>
 
-<!-- TODO: Replace with actual screenshot or demo GIF -->
-<!-- Ideal: a ~30s GIF showing: create session → describe task → watch AI work → review diff → create PR -->
-<!-- Dimensions: 800-900px wide, 16:10 aspect ratio -->
-<!-- <p align="center"><img src="docs/assets/hero.gif" width="880" alt="ChatML demo" /></p> -->
+<p align="center"><img src="docs/assets/screenshot-readme-1.png" width="880" alt="ChatML — AI coding agents running in parallel with isolated worktrees" /></p>
 
 ---
 
