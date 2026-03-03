@@ -10,7 +10,7 @@ import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
 import { switchToTab } from '@/components/navigation/BrowserTabBar';
 import { refreshClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
-import { safeListen, closeWindow, openInVSCode, copyToClipboard, openUrlInBrowser, getCurrentWindow } from '@/lib/tauri';
+import { safeListen, openInVSCode, copyToClipboard, openUrlInBrowser, getCurrentWindow } from '@/lib/tauri';
 
 interface MenuHandlersOptions {
   handleNewSession: () => void;
@@ -286,17 +286,24 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle window close confirmation
+  // Handle window close: intercept the default Tauri close flow (which calls
+  // window.destroy() and requires ACL permission) and use process.exit() instead.
   useEffect(() => {
     let cleanup: (() => void) | null = null;
 
-    safeListen('window-close-requested', () => {
-      // For now, just close the window
-      // In the future, check for unsaved changes and show confirmation
-      closeWindow();
-    }).then((unlisten) => {
-      cleanup = unlisten;
-    });
+    (async () => {
+      try {
+        const win = await getCurrentWindow();
+        if (!win) return;
+        cleanup = await win.onCloseRequested(async (event) => {
+          event.preventDefault();
+          const { exit } = await import('@tauri-apps/plugin-process');
+          await exit(0);
+        });
+      } catch (e) {
+        console.error('Failed to register close handler', e);
+      }
+    })();
 
     return () => {
       cleanup?.();

@@ -19,6 +19,12 @@ pub fn mark_app_ready(state: State<'_, Arc<AppState>>) {
     state.mark_ready();
 }
 
+/// Close/destroy the current window (called from frontend after close confirmation)
+#[tauri::command]
+pub fn close_window(window: tauri::WebviewWindow) {
+    let _ = window.destroy();
+}
+
 /// Restart the sidecar process (async to avoid blocking)
 #[tauri::command]
 pub async fn restart_sidecar(

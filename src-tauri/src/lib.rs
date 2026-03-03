@@ -156,7 +156,8 @@ pub fn run() {
             // Shell detection
             commands::get_user_shell,
             // App detection
-            commands::detect_installed_apps
+            commands::detect_installed_apps,
+            commands::close_window
         ])
         .setup(move |app| {
             // Create and set the menu
@@ -275,19 +276,14 @@ pub fn run() {
                 }
             }
         })
-        .on_window_event(move |window, event| {
+        .on_window_event(move |_window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // If app is not ready (still in startup), allow immediate close
-                if !state_for_window_event.is_ready() {
-                    log::info!("Window close during startup - allowing immediate close");
-                    return;
-                }
-
-                // App is ready - prevent close and let frontend handle confirmation
+                let _ = &state_for_window_event; // keep the state reference for future use
+                // Prevent Tauri's default JS-side close flow (which calls window.destroy()
+                // and requires core:window:allow-destroy ACL permission).
+                // Instead, exit the process directly from Rust.
                 api.prevent_close();
-                if let Err(e) = window.emit("window-close-requested", ()) {
-                    log::warn!("Failed to emit window-close-requested event: {}", e);
-                }
+                std::process::exit(0);
             }
         })
         .run(tauri::generate_context!())
