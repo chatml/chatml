@@ -7,6 +7,8 @@ import {
   RefreshCw,
   Loader2,
   CheckCircle2,
+  Download,
+  RotateCcw,
 } from 'lucide-react';
 import { useUpdateStore } from '@/stores/updateStore';
 
@@ -15,11 +17,14 @@ export function AboutSettings() {
   const [checkedOnce, setCheckedOnce] = useState(false);
 
   const updateStatus = useUpdateStore((s) => s.status);
+  const updateVersion = useUpdateStore((s) => s.version);
+  const progress = useUpdateStore((s) => s.progress);
   const checkForUpdates = useUpdateStore((s) => s.checkForUpdates);
+  const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
+  const relaunch = useUpdateStore((s) => s.relaunch);
 
   const isChecking = updateStatus === 'checking';
   const isUpToDate = checkedOnce && updateStatus === 'idle';
-  const isUpdateAvailable = updateStatus === 'available' || updateStatus === 'downloading' || updateStatus === 'ready';
 
   useEffect(() => {
     // Get app version from Tauri
@@ -37,6 +42,55 @@ export function AboutSettings() {
     setCheckedOnce(true);
   }, [checkForUpdates]);
 
+  const handleClick = useCallback(() => {
+    switch (updateStatus) {
+      case 'available':
+      case 'error':
+        downloadAndInstall();
+        break;
+      case 'ready':
+        relaunch();
+        break;
+      default:
+        handleCheckForUpdates();
+    }
+  }, [updateStatus, downloadAndInstall, relaunch, handleCheckForUpdates]);
+
+  const buttonLabel = (() => {
+    switch (updateStatus) {
+      case 'checking':
+        return 'Checking...';
+      case 'available':
+        return updateVersion ? `Download v${updateVersion}` : 'Download update';
+      case 'downloading':
+        return `Downloading ${Math.round(progress)}%`;
+      case 'ready':
+        return 'Restart to update';
+      case 'error':
+        return 'Retry download';
+      default:
+        return isUpToDate ? 'Up to date' : 'Check for updates';
+    }
+  })();
+
+  const buttonIcon = (() => {
+    switch (updateStatus) {
+      case 'checking':
+      case 'downloading':
+        return <Loader2 className="w-3.5 h-3.5 animate-spin" />;
+      case 'available':
+        return <Download className="w-3.5 h-3.5 text-blue-400" />;
+      case 'ready':
+        return <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'error':
+        return <RotateCcw className="w-3.5 h-3.5 text-red-400" />;
+      default:
+        return isUpToDate
+          ? <CheckCircle2 className="w-3.5 h-3.5 text-text-success" />
+          : <RefreshCw className="w-3.5 h-3.5" />;
+    }
+  })();
+
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">About</h2>
@@ -53,19 +107,11 @@ export function AboutSettings() {
           variant="outline"
           size="sm"
           className="gap-1.5"
-          disabled={isChecking}
-          onClick={handleCheckForUpdates}
+          disabled={isChecking || updateStatus === 'downloading'}
+          onClick={handleClick}
         >
-          {isChecking ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : isUpToDate ? (
-            <CheckCircle2 className="w-3.5 h-3.5 text-text-success" />
-          ) : isUpdateAvailable ? (
-            <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
-          ) : (
-            <RefreshCw className="w-3.5 h-3.5" />
-          )}
-          {isChecking ? 'Checking...' : isUpToDate ? 'Up to date' : isUpdateAvailable ? 'Update available' : 'Check for updates'}
+          {buttonIcon}
+          {buttonLabel}
         </Button>
       </div>
 
