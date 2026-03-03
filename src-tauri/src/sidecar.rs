@@ -193,15 +193,27 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // /usr/local/bin, or an nvm/fnm-managed path. Resolve the user's login shell PATH.
     {
         let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let is_fish = shell_path.ends_with("/fish");
+
+        // Fish shell outputs $PATH as space-separated list; other shells use colon-separated.
+        // Use a printf that always produces colon-separated output regardless of shell.
+        let path_cmd = if is_fish {
+            // In fish, $PATH is a list. Use string join to produce colon-separated output.
+            "string join : $PATH"
+        } else {
+            "echo $PATH"
+        };
+
         if let Ok(output) = Command::new(&shell_path)
-            .args(["-l", "-c", "echo $PATH"])
+            .args(["-l", "-c", path_cmd])
             .output()
         {
             let user_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !user_path.is_empty() {
                 log::info!(
-                    "Resolved user PATH for sidecar ({} entries)",
-                    user_path.matches(':').count() + 1
+                    "Resolved user PATH for sidecar ({} entries, shell={})",
+                    user_path.matches(':').count() + 1,
+                    shell_path
                 );
                 sidecar_command = sidecar_command.env("PATH", &user_path);
             }
