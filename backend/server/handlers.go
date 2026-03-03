@@ -547,6 +547,19 @@ type Handlers struct {
 	scriptRunner     *scripts.Runner
 }
 
+// getAIClient returns an AI provider, checking the static client first,
+// then falling back to the agent manager's multi-source credential cascade
+// (stored API key → env var → Claude Code OAuth token).
+func (h *Handlers) getAIClient() ai.Provider {
+	if h.aiClient != nil {
+		return h.aiClient
+	}
+	if h.agentManager != nil {
+		return h.agentManager.CreateAIClient()
+	}
+	return nil
+}
+
 // GetProviderCapabilities returns the current AI agent provider's capabilities.
 func (h *Handlers) GetProviderCapabilities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, agent.DefaultProvider())

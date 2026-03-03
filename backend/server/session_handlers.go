@@ -651,15 +651,17 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger archive summary generation when session is being archived
-	if req.Archived != nil && *req.Archived && h.aiClient != nil {
-		// Set generating status synchronously so the frontend sees it immediately
-		if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
-			s.ArchiveSummaryStatus = models.SummaryStatusGenerating
-		}); err != nil {
-			logger.Error.Errorf("Failed to set generating status for session %s: %v", id, err)
-		} else {
-			session.ArchiveSummaryStatus = models.SummaryStatusGenerating
-			go h.generateArchiveSummary(id)
+	if req.Archived != nil && *req.Archived {
+		if aiClient := h.getAIClient(); aiClient != nil {
+			// Set generating status synchronously so the frontend sees it immediately
+			if err := h.store.UpdateSession(ctx, id, func(s *models.Session) {
+				s.ArchiveSummaryStatus = models.SummaryStatusGenerating
+			}); err != nil {
+				logger.Error.Errorf("Failed to set generating status for session %s: %v", id, err)
+			} else {
+				session.ArchiveSummaryStatus = models.SummaryStatusGenerating
+				go h.generateArchiveSummary(id, aiClient)
+			}
 		}
 	}
 
@@ -710,7 +712,7 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateArchiveSummary fetches all conversations for a session and generates a combined summary.
-func (h *Handlers) generateArchiveSummary(sessionID string) {
+func (h *Handlers) generateArchiveSummary(sessionID string, aiClient ai.Provider) {
 	bgCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
@@ -775,7 +777,7 @@ func (h *Handlers) generateArchiveSummary(sessionID string) {
 		task = sess.Task
 	}
 
-	result, err := h.aiClient.GenerateSessionSummary(bgCtx, ai.GenerateSessionSummaryRequest{
+	result, err := aiClient.GenerateSessionSummary(bgCtx, ai.GenerateSessionSummaryRequest{
 		SessionName:   sessionName,
 		Task:          task,
 		Conversations: convMessages,
