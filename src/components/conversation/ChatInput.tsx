@@ -186,7 +186,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   const {
     addMessage,
     setStreaming,
-    setQueuedMessage,
+    addQueuedMessage,
+    clearQueuedMessages,
     clearPendingPlanApproval,
     setApprovedPlanContent,
     clearApprovedPlanContent,
@@ -201,8 +202,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
   currentSessionIdRef.current = selectedSessionId;
   // Session-scoped streaming state — prevents cross-session plan/state leakage
   const streaming = useStreamingState(selectedConversationId);
-  const hasQueuedMessage = useAppStore(
-    (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] != null : false
+  const queuedCount = useAppStore(
+    (s) => selectedConversationId ? (s.queuedMessages[selectedConversationId]?.length ?? 0) : 0
   );
   const inputSuggestion = useAppStore(
     (s) => selectedConversationId ? s.inputSuggestions[selectedConversationId] : undefined
@@ -412,12 +413,11 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
   // Derive compose button mode from streaming + text + queue state
   const hasText = message.trim().length > 0;
-  const buttonMode: 'send' | 'stop' | 'queue' | 'queue-disabled' | 'send-disabled' = (() => {
+  const buttonMode: 'send' | 'stop' | 'queue' | 'send-disabled' = (() => {
     if (!isStreaming) return hasText ? 'send' : 'send-disabled';
     // When plan approval is pending, show "send" instead of "queue" —
     // the message will deny the plan and be treated as a new turn, not queued.
     if (pendingPlanApproval) return hasText ? 'send' : 'stop';
-    if (hasQueuedMessage) return hasText ? 'queue-disabled' : 'stop';
     return hasText ? 'queue' : 'stop';
   })();
 
@@ -775,10 +775,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       const durationMs = startTime ? Date.now() - startTime : undefined;
       // Finalize streaming content and atomically commit any queued user
       // message before the assistant message so the user bubble renders first.
-      // finalizeStreamingMessage checks for queued message to keep
-      // isStreaming=true, preventing a visual flash between turns.
+      // terminal clears remaining queue and forces isStreaming=false.
       // toolUsage is auto-derived from activeTools inside finalizeStreamingMessage.
-      finalizeStreamingMessage(selectedConversationId, { durationMs, commitQueuedFirst: true });
+      finalizeStreamingMessage(selectedConversationId, { durationMs, commitQueuedFirst: true, terminal: true });
       // Add system message indicating the agent was stopped
       addMessage({
         id: `msg-stopped-${Date.now()}`,
@@ -879,7 +878,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     const { text: content, mentionedFiles } = plateInputRef.current?.getContent() ?? { text: '', mentionedFiles: [] };
     const hasContent = !!content.trim();
     const hasAttachments = attachments.length > 0;
-    if ((!hasContent && !hasAttachments) || !selectedWorkspaceId || !selectedSessionId || isSending || hasQueuedMessage) return;
+    if ((!hasContent && !hasAttachments) || !selectedWorkspaceId || !selectedSessionId || isSending) return;
 
     // Can't queue a message to a conversation that doesn't exist yet — check before clearing input
     const conversationMessagesEarly = currentConversation
@@ -1019,7 +1018,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           });
         } else if (isStreaming) {
           // Queue the message — don't add to messages[] yet (it renders in the footer)
-          setQueuedMessage(selectedConversationId, {
+          addQueuedMessage(selectedConversationId, {
             id: messageId,
             content: trimmedContent,
             attachments: messageAttachments,
@@ -1063,8 +1062,8 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       console.error('Failed to send message:', error);
       const convId = selectedConversationId;
       if (convId) {
-        // Clear any queued message so the UI doesn't get stuck
-        setQueuedMessage(convId, null);
+        // Clear any queued messages so the UI doesn't get stuck
+        clearQueuedMessages(convId);
         addMessage({
           id: crypto.randomUUID(),
           conversationId: convId,
@@ -1602,7 +1601,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                   <ArrowUp className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Queue message — sent after current response</TooltipContent>
+              <TooltipContent side="top">{queuedCount > 0 ? `Queue message (${queuedCount} queued)` : 'Queue message — sent after current response'}</TooltipContent>
             </Tooltip>
           ) : (
             <Button

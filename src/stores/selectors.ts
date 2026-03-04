@@ -453,8 +453,9 @@ export const useChatInputActions = () =>
     useShallow((s) => ({
       addMessage: s.addMessage,
       setStreaming: s.setStreaming,
-      setQueuedMessage: s.setQueuedMessage,
-      commitQueuedMessage: s.commitQueuedMessage,
+      addQueuedMessage: s.addQueuedMessage,
+      removeQueuedMessage: s.removeQueuedMessage,
+      clearQueuedMessages: s.clearQueuedMessages,
       clearPendingPlanApproval: s.clearPendingPlanApproval,
       setApprovedPlanContent: s.setApprovedPlanContent,
       clearApprovedPlanContent: s.clearApprovedPlanContent,

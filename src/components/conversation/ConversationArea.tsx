@@ -64,6 +64,11 @@ import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDi
 import { useToast } from '@/components/ui/toast';
 import { KeyRound, Settings2 } from 'lucide-react';
 
+import type { QueuedMessage } from '@/stores/appStore';
+
+// Stable empty array to avoid re-renders from selector
+const EMPTY_QUEUED_MESSAGES: readonly QueuedMessage[] = [];
+
 // Module-level scroll position cache (singleton — ConversationArea is only rendered once).
 // Stored outside the component to avoid ref-in-render lint issues since we read it during
 // render to compute initialTopMostItemIndex for Virtuoso.
@@ -127,9 +132,10 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }, [selectedSessionId]);
   // Session-scoped streaming state for the selected conversation only
   const selectedStreaming = useStreamingState(selectedConversationId);
-  const queuedMessage = useAppStore(
-    (s) => selectedConversationId ? s.queuedMessage[selectedConversationId] : null
+  const queuedMessages = useAppStore(
+    (s) => selectedConversationId ? s.queuedMessages[selectedConversationId] ?? EMPTY_QUEUED_MESSAGES : EMPTY_QUEUED_MESSAGES
   );
+  const removeQueuedMessage = useAppStore((s) => s.removeQueuedMessage);
   const claudeAuthStatus = useClaudeAuthStatus();
   const claudeAuthConfigured = claudeAuthStatus?.configured ?? null;
 
@@ -613,12 +619,19 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         >
           <StreamingMessage conversationId={selectedConversationId} worktreePath={currentSession?.worktreePath} />
         </ErrorBoundary>
-        {queuedMessage && (
-          <QueuedMessageBubble message={queuedMessage} />
+        {queuedMessages.length > 0 && (
+          <QueuedMessageBubble
+            messages={queuedMessages}
+            onDelete={(messageId) => {
+              if (selectedConversationId) {
+                removeQueuedMessage(selectedConversationId, messageId);
+              }
+            }}
+          />
         )}
       </div>
     );
-  }, [selectedConversationId, queuedMessage, currentSession?.worktreePath]);
+  }, [selectedConversationId, queuedMessages, removeQueuedMessage, currentSession?.worktreePath]);
 
   // Listen for message submit events to force scroll to bottom
   useEffect(() => {
