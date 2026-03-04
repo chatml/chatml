@@ -108,6 +108,16 @@ type Manager struct {
 	// (e.g., in release builds where the binary lacks keychain ACL permissions).
 	cachedOAuthToken   string
 	cachedOAuthTokenMu sync.RWMutex
+
+	// credReadyCh is closed when the first AI credential becomes available.
+	// Title generation goroutines wait on this channel instead of failing
+	// immediately when newAIClient() returns nil during early startup.
+	credReadyCh   chan struct{}
+	credReadyOnce sync.Once
+
+	// titleGenSem limits concurrent title generation API calls to avoid
+	// bursting when multiple goroutines unblock after credReadyCh closes.
+	titleGenSem chan struct{}
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager, backendPort int) *Manager {
@@ -118,6 +128,8 @@ func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManag
 		backendPort:     backendPort,
 		processes:       make(map[string]*Process),
 		convProcesses:   make(map[string]*Process),
+		credReadyCh:     make(chan struct{}),
+		titleGenSem:     make(chan struct{}, 3),
 	}
 }
 
@@ -2021,6 +2033,7 @@ func (m *Manager) newAIClient() ai.Provider {
 	if envVars != nil {
 		if apiKey := envVars["ANTHROPIC_API_KEY"]; apiKey != "" {
 			logger.Manager.Debugf("AI client: using API key from settings")
+			m.signalCredentialsReady()
 			return ai.NewClient(apiKey)
 		}
 	}
@@ -2028,6 +2041,7 @@ func (m *Manager) newAIClient() ai.Provider {
 	// Source 2: Process environment variable
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		logger.Manager.Debugf("AI client: using API key from environment")
+		m.signalCredentialsReady()
 		return ai.NewClient(apiKey)
 	}
 
@@ -2036,6 +2050,7 @@ func (m *Manager) newAIClient() ai.Provider {
 	token, keychainErr := ai.ReadClaudeCodeOAuthToken()
 	if keychainErr == nil {
 		logger.Manager.Debugf("AI client: using OAuth token from keychain")
+		m.signalCredentialsReady()
 		return ai.NewClientWithOAuth(token)
 	}
 
@@ -2043,6 +2058,7 @@ func (m *Manager) newAIClient() ai.Provider {
 	token, credFileErr = ai.ReadClaudeCodeCredentialsFile()
 	if credFileErr == nil {
 		logger.Manager.Debugf("AI client: using OAuth token from credentials file")
+		m.signalCredentialsReady()
 		return ai.NewClientWithOAuth(token)
 	}
 
@@ -2071,6 +2087,7 @@ func (m *Manager) setCachedOAuthToken(token string) {
 	m.cachedOAuthTokenMu.Lock()
 	defer m.cachedOAuthTokenMu.Unlock()
 	m.cachedOAuthToken = token
+	m.signalCredentialsReady()
 }
 
 // getCachedOAuthToken returns the cached OAuth token, if any.
@@ -2086,6 +2103,12 @@ func (m *Manager) clearCachedOAuthToken() {
 	m.cachedOAuthTokenMu.Lock()
 	defer m.cachedOAuthTokenMu.Unlock()
 	m.cachedOAuthToken = ""
+}
+
+// signalCredentialsReady closes credReadyCh, unblocking goroutines waiting
+// for AI credentials to become available (e.g. session title generation).
+func (m *Manager) signalCredentialsReady() {
+	m.credReadyOnce.Do(func() { close(m.credReadyCh) })
 }
 
 // refreshCachedCredentials attempts to populate (or refresh) the credential
@@ -2125,7 +2148,33 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 
 	client := m.newAIClient()
 	if client == nil {
-		logger.Manager.Warnf("Skipping session title generation for %s: no API key configured", sessionID)
+		// Credentials may not be available yet — the agent-runner SDK's init
+		// event triggers refreshCachedCredentials which typically takes 2-4s
+		// after process start. Wait for the signal rather than giving up.
+		logger.Manager.Infof("Waiting for AI credentials for session %s title generation", sessionID)
+		timer := time.NewTimer(10 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-m.credReadyCh:
+			client = m.newAIClient()
+		case <-timer.C:
+			logger.Manager.Warnf("Timed out waiting for credentials for session %s title generation", sessionID)
+		case <-m.ctx.Done():
+			m.resetAutoNamed(sessionID)
+			return
+		}
+		if client == nil {
+			logger.Manager.Warnf("Skipping session title generation for %s: no credentials after wait", sessionID)
+			m.resetAutoNamed(sessionID)
+			return
+		}
+	}
+
+	// Acquire semaphore to limit concurrent title generation API calls.
+	select {
+	case m.titleGenSem <- struct{}{}:
+		defer func() { <-m.titleGenSem }()
+	case <-m.ctx.Done():
 		m.resetAutoNamed(sessionID)
 		return
 	}
