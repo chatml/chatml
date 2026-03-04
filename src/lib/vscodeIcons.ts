@@ -1,7 +1,14 @@
 /**
  * Maps filenames to VS Code icon names from @iconify-json/vscode-icons
  * Icon names follow the pattern: vscode-icons:file-type-{type} or vscode-icons:folder-type-{type}
+ *
+ * @sideeffect Importing this module registers the vscode-icons collection via
+ * addCollection() at load time, so it should only be imported where icons are
+ * actually rendered.
  */
+
+import { addCollection } from '@iconify/react';
+import vscodeIconsData from '@iconify-json/vscode-icons/icons.json';
 
 // File extension to icon mapping
 const FILE_EXTENSION_ICONS: Record<string, string> = {
@@ -345,6 +352,27 @@ const FOLDER_ICONS: Record<string, string> = {
   ios: 'folder-type-ios',
   'src-tauri': 'folder-type-src',
 };
+
+// Register only the icon subset we actually reference (instead of all ~1,475).
+// Collect every icon name from the three mappings above, plus defaults and
+// opened variants for folders.
+const _usedIcons = new Set<string>();
+for (const name of Object.values(FILE_EXTENSION_ICONS)) _usedIcons.add(name);
+for (const name of Object.values(SPECIAL_FILE_ICONS)) _usedIcons.add(name);
+for (const name of Object.values(FOLDER_ICONS)) {
+  _usedIcons.add(name);
+  _usedIcons.add(`${name}-opened`);
+}
+_usedIcons.add('default-file');
+_usedIcons.add('default-folder');
+_usedIcons.add('default-folder-opened');
+
+addCollection({
+  ...vscodeIconsData,
+  icons: Object.fromEntries(
+    Object.entries(vscodeIconsData.icons).filter(([name]) => _usedIcons.has(name)),
+  ),
+});
 
 /**
  * Get the VS Code icon name for a file
