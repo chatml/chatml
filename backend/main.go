@@ -14,7 +14,6 @@ import (
 
 	"github.com/chatml/chatml-backend/appdir"
 	"github.com/chatml/chatml-backend/agent"
-	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/branch"
 	"github.com/chatml/chatml-backend/git"
 	"github.com/chatml/chatml-backend/github"
@@ -439,13 +438,6 @@ func main() {
 	issueCache := github.NewIssueCache(2*time.Minute, 10*time.Minute)
 	defer issueCache.Close()
 
-	// AI client for PR description generation, summarization, and suggestions.
-	// Returns nil if ANTHROPIC_API_KEY is not set; features gracefully degrade.
-	var aiClient ai.Provider
-	if c := ai.NewClient(os.Getenv("ANTHROPIC_API_KEY")); c != nil {
-		aiClient = c
-	}
-
 	// Script runner for setup/run scripts with WebSocket output streaming
 	scriptRunner := scripts.NewRunner(
 		func(sessionID, runID, line string) {
@@ -478,7 +470,10 @@ func main() {
 		},
 	)
 
-	router, routerCleanup := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, aiClient, scriptRunner)
+	// AI client: nil at init — handlers.getAIClient() resolves dynamically via
+	// agentMgr.CreateAIClient() on each call, picking up credentials as they
+	// become available (env var, keychain, credentials file, cached SDK token).
+	router, routerCleanup := server.NewRouter(s, hub, agentMgr, ghClient, linearClient, branchWatcher, prWatcher, prCache, issueCache, statsCache, diffCache, nil, scriptRunner)
 	defer routerCleanup()
 
 	// Pre-warm session stats cache in background so the first getDashboardData

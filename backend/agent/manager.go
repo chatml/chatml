@@ -102,6 +102,12 @@ type Manager struct {
 
 	// Callback fired when agent merges a PR via bash (sessionID)
 	onPRMerged func(sessionID string)
+
+	// cachedOAuthToken stores an OAuth token propagated from the agent-runner SDK.
+	// This serves as a fallback when direct keychain/credentials file access fails
+	// (e.g., in release builds where the binary lacks keychain ACL permissions).
+	cachedOAuthToken   string
+	cachedOAuthTokenMu sync.RWMutex
 }
 
 func NewManager(ctx context.Context, s *store.SQLiteStore, wm *git.WorktreeManager, backendPort int) *Manager {
@@ -1203,6 +1209,16 @@ outer:
 				if event.PermissionMode != "" {
 					turnPermissionMode = event.PermissionMode
 				}
+
+				// When the SDK authenticates, try to cache its credentials so
+				// the Go backend can also make lightweight AI calls (session
+				// titles, suggestions). In release builds, the backend's own
+				// credential discovery often fails (no env var, keychain ACL
+				// blocked), but the SDK may have refreshed the credentials file.
+				if event.ApiKeySource != "" {
+					go m.refreshCachedCredentials(event.ApiKeySource)
+				}
+
 				if err := proc.GetSupportedCommands(); err != nil {
 					logger.Manager.Errorf("Conversation %s: failed to request supported commands: %v", convID, err)
 				}
@@ -1993,6 +2009,8 @@ func formatSessionName(name string) string {
 // 1. Encrypted API key stored in SQLite settings
 // 2. ANTHROPIC_API_KEY environment variable
 // 3. Claude Code OAuth token from macOS Keychain
+// 4. Claude Code credentials file (~/.claude/.credentials.json)
+// 5. Cached OAuth token from agent-runner SDK
 // Returns nil if no credentials are available.
 func (m *Manager) newAIClient() ai.Provider {
 	// Source 1: SQLite settings (explicit user-configured API key)
@@ -2002,33 +2020,43 @@ func (m *Manager) newAIClient() ai.Provider {
 	}
 	if envVars != nil {
 		if apiKey := envVars["ANTHROPIC_API_KEY"]; apiKey != "" {
-			logger.Manager.Debugf("Using API key from settings")
+			logger.Manager.Debugf("AI client: using API key from settings")
 			return ai.NewClient(apiKey)
 		}
 	}
 
 	// Source 2: Process environment variable
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
-		logger.Manager.Debugf("Using API key from environment")
+		logger.Manager.Debugf("AI client: using API key from environment")
 		return ai.NewClient(apiKey)
 	}
 
 	// Source 3: Claude Code OAuth token from OS keychain
-	token, err := ai.ReadClaudeCodeOAuthToken()
-	if err != nil {
-		logger.Manager.Debugf("No Claude Code OAuth token from keychain: %v", err)
-
-		// Source 4: Credentials file fallback (~/.claude/.credentials.json)
-		token, err = ai.ReadClaudeCodeCredentialsFile()
-		if err != nil {
-			logger.Manager.Debugf("No Claude Code credentials file available: %v", err)
-			return nil
-		}
-		logger.Manager.Debugf("Using OAuth token from Claude Code credentials file")
-	} else {
-		logger.Manager.Debugf("Using OAuth token from Claude Code keychain")
+	var keychainErr, credFileErr error
+	token, keychainErr := ai.ReadClaudeCodeOAuthToken()
+	if keychainErr == nil {
+		logger.Manager.Debugf("AI client: using OAuth token from keychain")
+		return ai.NewClientWithOAuth(token)
 	}
-	return ai.NewClientWithOAuth(token)
+
+	// Source 4: Credentials file fallback (~/.claude/.credentials.json)
+	token, credFileErr = ai.ReadClaudeCodeCredentialsFile()
+	if credFileErr == nil {
+		logger.Manager.Debugf("AI client: using OAuth token from credentials file")
+		return ai.NewClientWithOAuth(token)
+	}
+
+	// Source 5: Cached OAuth token from agent-runner SDK
+	// In release builds, sources 1-4 often fail (no env var from Finder launch,
+	// keychain ACL blocks access). The SDK authenticates independently and we
+	// cache its credentials on the first init event.
+	if cached := m.getCachedOAuthToken(); cached != "" {
+		logger.Manager.Debugf("AI client: using cached OAuth token from SDK")
+		return ai.NewClientWithOAuth(cached)
+	}
+
+	logger.Manager.Warnf("AI client unavailable: no credentials found (keychain: %v, credfile: %v)", keychainErr, credFileErr)
+	return nil
 }
 
 // CreateAIClient returns an AI provider from the best available credential source,
@@ -2036,6 +2064,58 @@ func (m *Manager) newAIClient() ai.Provider {
 // packages that need an AI client (e.g. server handlers).
 func (m *Manager) CreateAIClient() ai.Provider {
 	return m.newAIClient()
+}
+
+// setCachedOAuthToken stores an OAuth access token discovered by the agent-runner SDK.
+func (m *Manager) setCachedOAuthToken(token string) {
+	m.cachedOAuthTokenMu.Lock()
+	defer m.cachedOAuthTokenMu.Unlock()
+	m.cachedOAuthToken = token
+}
+
+// getCachedOAuthToken returns the cached OAuth token, if any.
+func (m *Manager) getCachedOAuthToken() string {
+	m.cachedOAuthTokenMu.RLock()
+	defer m.cachedOAuthTokenMu.RUnlock()
+	return m.cachedOAuthToken
+}
+
+// clearCachedOAuthToken removes the cached OAuth token so that the next
+// credential lookup re-evaluates all sources.
+func (m *Manager) clearCachedOAuthToken() {
+	m.cachedOAuthTokenMu.Lock()
+	defer m.cachedOAuthTokenMu.Unlock()
+	m.cachedOAuthToken = ""
+}
+
+// refreshCachedCredentials attempts to populate (or refresh) the credential
+// cache after the agent-runner SDK has authenticated successfully. The SDK may
+// refresh the OAuth token in ~/.claude/.credentials.json, making it available
+// to the Go backend even when direct keychain access is blocked by ACL
+// restrictions. This is called on every init event so that expired or revoked
+// tokens are replaced with fresh ones.
+func (m *Manager) refreshCachedCredentials(apiKeySource string) {
+	// Give the SDK a moment to finish writing the credentials file —
+	// the init event may arrive before the file write is complete.
+	time.Sleep(500 * time.Millisecond)
+
+	// Try the credentials file (the SDK may have just refreshed it)
+	token, err := ai.ReadClaudeCodeCredentialsFile()
+	if err == nil && token != "" {
+		m.setCachedOAuthToken(token)
+		logger.Manager.Infof("Cached AI credentials from credentials file (SDK source: %s)", apiKeySource)
+		return
+	}
+
+	// Retry keychain (may succeed now if the SDK updated the ACL)
+	token, err = ai.ReadClaudeCodeOAuthToken()
+	if err == nil && token != "" {
+		m.setCachedOAuthToken(token)
+		logger.Manager.Infof("Cached AI credentials from keychain (SDK source: %s)", apiKeySource)
+		return
+	}
+
+	logger.Manager.Debugf("SDK authenticated (source: %s) but Go backend could not obtain token from credentials file or keychain", apiKeySource)
 }
 
 // generateAndApplySessionTitle uses the AI client to generate a session title

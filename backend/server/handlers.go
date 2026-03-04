@@ -554,9 +554,11 @@ func (h *Handlers) Close() {
 	h.avatarCache.Close()
 }
 
-// getAIClient returns an AI provider, checking the static client first,
-// then falling back to the agent manager's multi-source credential cascade
-// (stored API key → env var → Claude Code OAuth token).
+// getAIClient returns an AI provider using the agent manager's multi-source
+// credential cascade (settings → env → keychain → credentials file → cached
+// SDK token). Each call re-evaluates credentials so expired tokens are
+// automatically replaced. If h.aiClient is set (e.g. in tests), it is
+// returned directly.
 func (h *Handlers) getAIClient() ai.Provider {
 	if h.aiClient != nil {
 		return h.aiClient
