@@ -4,7 +4,7 @@ ChatML is a native macOS desktop app for AI-assisted development. It uses isolat
 
 ## Task Management (MANDATORY)
 
-**Before starting any work, ALWAYS create a task list using TaskCreate.** This provides visibility into what you're doing.
+**Before starting any work, ALWAYS create a task list using TodoWrite.** This provides visibility into what you're doing.
 
 ### When to Create Tasks
 
@@ -15,7 +15,7 @@ ChatML is a native macOS desktop app for AI-assisted development. It uses isolat
 ### Task Workflow
 
 1. **Analyze the request** - Break it down into discrete steps
-2. **Create tasks** - Use `TaskCreate` for each step with clear `subject` and `activeForm`
+2. **Create tasks** - Use `TodoWrite` for each step with clear `subject` and `activeForm`
 3. **Work sequentially** - Update task to `in_progress` before starting, `completed` when done
 4. **Add discovered tasks** - If you find additional work needed, create new tasks
 
@@ -24,8 +24,8 @@ ChatML is a native macOS desktop app for AI-assisted development. It uses isolat
 User: "Make the font larger and add a blue pill style"
 
 ```
-TaskCreate: "Increase font size" (activeForm: "Increasing font size")
-TaskCreate: "Add blue pill styling" (activeForm: "Adding blue pill styling")
+TodoWrite: "Increase font size" (activeForm: "Increasing font size")
+TodoWrite: "Add blue pill styling" (activeForm: "Adding blue pill styling")
 ```
 
 Then work through each task, updating status as you go.
@@ -108,10 +108,10 @@ git branch --show-current
 **If the output is `main` or `master`, STOP and do this:**
 
 ```bash
-git stash
 git checkout -b fix/description-of-change   # or feature/
-git stash pop
 ```
+
+> **Note:** Do NOT use `git stash` — stash is shared across all worktrees and can corrupt other sessions. Just create the branch directly (uncommitted changes carry over to the new branch).
 
 **Only then proceed with commit.**
 
