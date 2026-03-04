@@ -367,11 +367,25 @@ _usedIcons.add('default-file');
 _usedIcons.add('default-folder');
 _usedIcons.add('default-folder-opened');
 
+// Filter aliases to only those we reference, and pull in their parent icons.
+// Broken alias targets (pointing to filtered-out icons) cause addCollection to
+// silently discard the entire icon set.
+const { aliases: _allAliases, icons: _allIcons, ...iconsMeta } = vscodeIconsData;
+const _filteredAliases: Record<string, { parent: string }> = {};
+if (_allAliases) {
+  for (const [name, alias] of Object.entries(_allAliases) as [string, { parent: string }][]) {
+    if (_usedIcons.has(name)) {
+      _filteredAliases[name] = alias;
+      _usedIcons.add(alias.parent); // ensure the target icon is included
+    }
+  }
+}
 addCollection({
-  ...vscodeIconsData,
+  ...iconsMeta,
   icons: Object.fromEntries(
-    Object.entries(vscodeIconsData.icons).filter(([name]) => _usedIcons.has(name)),
+    Object.entries(_allIcons).filter(([name]) => _usedIcons.has(name)),
   ),
+  ...(Object.keys(_filteredAliases).length > 0 ? { aliases: _filteredAliases } : {}),
 });
 
 /**
