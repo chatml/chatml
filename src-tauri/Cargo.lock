@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "chatml"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -6498,9 +6498,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-pty"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f171506c49f603fd9c15b819e78b31a0016a447cfff8260af97801236930d1d"
+checksum = "5da8233d3c7b3581ff7da274d32b9145396da9d68bd16cedbbcb9a6908438be6"
 dependencies = [
  "portable-pty",
  "serde",

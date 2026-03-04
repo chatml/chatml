@@ -38,6 +38,13 @@ async function getShellFallbackChain(): Promise<string[]> {
   return defaults;
 }
 
+// On macOS/Linux, spawn shells as login shells so they read profile files
+// (e.g. ~/.zprofile, ~/.bash_profile) which set up PATH, Homebrew, etc.
+// This matches the behavior of Terminal.app, iTerm2, and other macOS terminals.
+function getShellArgs(): string[] {
+  return detectPlatform() === 'windows' ? [] : ['-l'];
+}
+
 // Terminal theme matching the app's dark theme
 const terminalTheme = {
   background: '#0f1111', // matches --background in dark mode
@@ -167,7 +174,24 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
         if (cleanupCalled) return;
 
         const shellChain = await getShellFallbackChain();
+        const shellArgs = getShellArgs();
+        let cwd = initialWorkspacePathRef.current || undefined;
         let lastError: unknown = null;
+
+        // Validate CWD exists — if not, fall back to no CWD (inherits parent process CWD).
+        // A non-existent CWD would cause ALL shell fallbacks to fail.
+        if (cwd) {
+          try {
+            const meta = await invoke<{ isDirectory: boolean }>('read_file_metadata', { path: cwd });
+            if (!meta.isDirectory) {
+              console.warn(`[PTY] CWD "${cwd}" is not a directory, falling back`);
+              cwd = undefined;
+            }
+          } catch {
+            console.warn(`[PTY] CWD "${cwd}" does not exist or is inaccessible, falling back`);
+            cwd = undefined;
+          }
+        }
 
         for (const shell of shellChain) {
           if (cleanupCalled) return;
@@ -175,10 +199,10 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
           try {
             // spawnPty is truly async — rejects if spawn fails,
             // enabling the fallback chain to catch and try the next shell
-            const pty = await spawnPty(shell, [], {
+            const pty = await spawnPty(shell, shellArgs, {
               cols: terminal.cols || 80,
               rows: terminal.rows || 24,
-              cwd: initialWorkspacePathRef.current || undefined,
+              cwd,
             });
 
             if (cleanupCalled) {
