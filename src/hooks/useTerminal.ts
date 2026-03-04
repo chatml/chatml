@@ -4,8 +4,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { spawn, type IPty } from 'tauri-pty';
 import { invoke } from '@tauri-apps/api/core';
+import { spawnPty, startPtyReading, type PtyHandle } from '@/lib/pty';
 
 // Platform detection with modern API fallback
 function detectPlatform(): 'windows' | 'unix' {
@@ -89,7 +89,8 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
-  const ptyRef = useRef<IPty | null>(null);
+  const ptyRef = useRef<PtyHandle | null>(null);
+  const stopReadingRef = useRef<(() => void) | null>(null);
   const isInitializedRef = useRef(false);
 
   // Use refs to avoid effect reruns when props change
@@ -172,7 +173,9 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
           if (cleanupCalled) return;
 
           try {
-            const pty = await spawn(shell, [], {
+            // spawnPty is truly async — rejects if spawn fails,
+            // enabling the fallback chain to catch and try the next shell
+            const pty = await spawnPty(shell, [], {
               cols: terminal.cols || 80,
               rows: terminal.rows || 24,
               cwd: initialWorkspacePathRef.current || undefined,
@@ -185,32 +188,36 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
 
             ptyRef.current = pty;
 
-            // PTY output -> Terminal
-            pty.onData((data) => {
-              if (!cleanupCalled) {
-                terminal.write(data);
-              }
-            });
-
-            // PTY exit event
-            pty.onExit((event: { exitCode: number }) => {
-              if (!cleanupCalled) {
-                terminal.write('\r\n[Process exited]\r\n');
-                onExitRef.current?.(event.exitCode);
-              }
+            // Start read + wait loops
+            stopReadingRef.current = startPtyReading(pty, {
+              onData: (data) => {
+                if (!cleanupCalled) {
+                  terminal.write(data);
+                }
+              },
+              onExit: (exitCode) => {
+                if (!cleanupCalled) {
+                  terminal.write('\r\n[Process exited]\r\n');
+                  onExitRef.current?.(exitCode);
+                }
+              },
             });
 
             // Terminal input -> PTY
             terminal.onData((data: string) => {
               if (!cleanupCalled && ptyRef.current) {
-                pty.write(data);
+                pty.write(data).catch((e) => {
+                  console.warn('PTY write error:', e);
+                });
               }
             });
 
             // Handle terminal resize
             terminal.onResize(({ cols, rows }) => {
               if (!cleanupCalled && ptyRef.current) {
-                pty.resize(cols, rows);
+                pty.resize(cols, rows).catch((e) => {
+                  console.warn('PTY resize error:', e);
+                });
               }
             });
 
@@ -251,12 +258,11 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     return () => {
       cleanupCalled = true;
       resizeObserver?.disconnect();
-      // PTY might already be dead (user typed 'exit'), so wrap in try-catch
-      try {
-        ptyRef.current?.kill();
-      } catch {
-        // Ignore "No such process" errors - PTY already exited
-      }
+      // Stop the read loop first
+      stopReadingRef.current?.();
+      stopReadingRef.current = null;
+      // PTY might already be dead (user typed 'exit'), so kill() handles that gracefully
+      ptyRef.current?.kill();
       ptyRef.current = null;
       if (terminalRef.current) {
         terminalRef.current.dispose();
