@@ -140,6 +140,17 @@ code.hljs { padding: 3px 5px; }
   --text-lg--line-height: 1.5rem;
   --text-xl: 1.125rem;
   --text-xl--line-height: 1.5rem;
+
+  /* Custom animations — registered as theme tokens so Tailwind v4 generates
+     the full animation shorthand instead of a bare keyframe name. */
+  --animate-agent-bar-1: agent-bar-1 0.8s ease-in-out infinite;
+  --animate-agent-bar-2: agent-bar-2 0.8s ease-in-out infinite 0.15s;
+  --animate-agent-bar-3: agent-bar-3 0.8s ease-in-out infinite 0.3s;
+  --animate-slide-up-fade: slide-up-fade 0.3s ease-out forwards;
+  --animate-scale-in: scale-in 0.2s ease-out forwards;
+  --animate-fade-in: fade-in 0.2s ease-out forwards;
+  --animate-thinking-pulse: thinking-pulse 2s ease-in-out infinite;
+  --animate-action-enter: action-button-enter 150ms ease-out;
 }
 
 :root {
@@ -841,23 +852,6 @@ code.hljs { padding: 3px 5px; }
   }
 }
 
-/* Animation Utility Classes */
-.animate-slide-up-fade {
-  animation: slide-up-fade 0.3s ease-out forwards;
-}
-
-.animate-scale-in {
-  animation: scale-in 0.2s ease-out forwards;
-}
-
-.animate-fade-in {
-  animation: fade-in 0.2s ease-out forwards;
-}
-
-.animate-thinking-pulse {
-  animation: thinking-pulse 2s ease-in-out infinite;
-}
-
 /* Stagger children animation */
 .stagger-children > * {
   opacity: 0;
@@ -885,10 +879,6 @@ code.hljs { padding: 3px 5px; }
     opacity: 1;
     transform: scale(1);
   }
-}
-
-.animate-action-enter {
-  animation: action-button-enter 150ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1124,18 +1114,6 @@ code.hljs { padding: 3px 5px; }
   height: 100%;
   transform-origin: center bottom;
   will-change: transform;
-}
-
-.animate-agent-bar-1 {
-  animation: agent-bar-1 0.8s ease-in-out infinite;
-}
-
-.animate-agent-bar-2 {
-  animation: agent-bar-2 0.8s ease-in-out infinite 0.15s;
-}
-
-.animate-agent-bar-3 {
-  animation: agent-bar-3 0.8s ease-in-out infinite 0.3s;
 }
 
 @media (prefers-reduced-motion: reduce) {
