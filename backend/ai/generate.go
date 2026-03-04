@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	defaultModel  = "claude-sonnet-4-6"
-	haikuModel    = "claude-haiku-4-5-20251001"
-	anthropicURL  = "https://api.anthropic.com/v1/messages"
-	apiVersion    = "2023-06-01"
-	maxTokens     = 1024
-	clientTimeout = 60 * time.Second
+	defaultModel    = "claude-sonnet-4-6"
+	haikuModel      = "claude-haiku-4-5-20251001"
+	anthropicURL    = "https://api.anthropic.com/v1/messages"
+	apiVersion      = "2023-06-01"
+	oauthBetaHeader = "oauth-2025-04-20" // Required when authenticating with OAuth tokens
+	maxTokens       = 1024
+	clientTimeout   = 60 * time.Second
 )
 
 // Client is the Anthropic implementation of the Provider interface.
@@ -28,6 +29,7 @@ type Client struct {
 	httpClient *http.Client
 	model      string
 	apiURL     string // Override for testing; defaults to anthropicURL
+	isOAuth    bool   // When true, include the oauth beta header in requests
 }
 
 // AuthHeader returns the HTTP header name used for authentication (for testing).
@@ -38,6 +40,16 @@ func (c *Client) AuthValue() string { return c.authValue }
 
 // Name returns the provider name.
 func (c *Client) Name() string { return "anthropic" }
+
+// setCommonHeaders sets authentication, API version, and beta headers on an HTTP request.
+func (c *Client) setCommonHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(c.authHeader, c.authValue)
+	req.Header.Set("anthropic-version", apiVersion)
+	if c.isOAuth {
+		req.Header.Set("anthropic-beta", oauthBetaHeader)
+	}
+}
 
 // NewClient creates a new AI client using an API key (x-api-key header).
 // Returns nil if apiKey is empty.
@@ -55,6 +67,7 @@ func NewClient(apiKey string) *Client {
 }
 
 // NewClientWithOAuth creates a new AI client using an OAuth access token (Authorization: Bearer header).
+// The Anthropic API requires the "anthropic-beta: oauth-2025-04-20" header for OAuth authentication.
 // Returns nil if token is empty.
 func NewClientWithOAuth(accessToken string) *Client {
 	if accessToken == "" {
@@ -66,6 +79,7 @@ func NewClientWithOAuth(accessToken string) *Client {
 		httpClient: &http.Client{Timeout: clientTimeout},
 		model:      defaultModel,
 		apiURL:     anthropicURL,
+		isOAuth:    true,
 	}
 }
 
@@ -186,9 +200,7 @@ func (c *Client) GeneratePRDescription(ctx context.Context, req GeneratePRReques
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(c.authHeader, c.authValue)
-	httpReq.Header.Set("anthropic-version", apiVersion)
+	c.setCommonHeaders(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -308,9 +320,7 @@ func (c *Client) GenerateConversationSummary(ctx context.Context, req GenerateSu
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(c.authHeader, c.authValue)
-	httpReq.Header.Set("anthropic-version", apiVersion)
+	c.setCommonHeaders(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -378,9 +388,7 @@ func (c *Client) GenerateSessionTitle(ctx context.Context, userMessage string) (
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(c.authHeader, c.authValue)
-	httpReq.Header.Set("anthropic-version", apiVersion)
+	c.setCommonHeaders(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -569,9 +577,7 @@ func (c *Client) GenerateSessionSummary(ctx context.Context, req GenerateSession
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(c.authHeader, c.authValue)
-	httpReq.Header.Set("anthropic-version", apiVersion)
+	c.setCommonHeaders(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -765,9 +771,7 @@ func (c *Client) GenerateInputSuggestion(ctx context.Context, req SuggestionRequ
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(c.authHeader, c.authValue)
-	httpReq.Header.Set("anthropic-version", apiVersion)
+	c.setCommonHeaders(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
