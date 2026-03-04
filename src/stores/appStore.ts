@@ -227,8 +227,8 @@ interface AppState {
   activeTools: { [conversationId: string]: ActiveTool[] };
   subAgents: { [conversationId: string]: SubAgent[] };
 
-  // Queued message per conversation (max one, submitted while agent is streaming)
-  queuedMessage: { [conversationId: string]: QueuedMessage | null };
+  // Queued messages per conversation (submitted while agent is streaming)
+  queuedMessages: { [conversationId: string]: QueuedMessage[] };
 
   // Todo state
   agentTodos: { [conversationId: string]: AgentTodoItem[] };
@@ -444,12 +444,16 @@ interface AppState {
       toolUsage?: ToolUsage[];
       runSummary?: RunSummary;
       commitQueuedFirst?: boolean;
+      /** When true, force isStreaming=false and clear all remaining queued messages.
+       *  Use for terminal events (complete, error, interrupted, stop). */
+      terminal?: boolean;
     }
   ) => void;
 
   // Queued message actions
-  setQueuedMessage: (conversationId: string, message: QueuedMessage | null) => void;
-  commitQueuedMessage: (conversationId: string) => void;
+  addQueuedMessage: (conversationId: string, message: QueuedMessage) => void;
+  removeQueuedMessage: (conversationId: string, messageId: string) => void;
+  clearQueuedMessages: (conversationId: string) => void;
 
   // Session handoff dialog state
   showSessionHandoff: boolean;
@@ -549,7 +553,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   streamingState: {},
   activeTools: {},
   subAgents: {},
-  queuedMessage: {},
+  queuedMessages: {},
   agentTodos: {},
   customTodos: {},
   terminalInstances: {},
@@ -771,13 +775,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const cleanedActiveTools = { ...state.activeTools };
       const cleanedAgentTodos = { ...state.agentTodos };
       const cleanedContextUsage = { ...state.contextUsage };
-      const cleanedQueuedMessage = { ...state.queuedMessage };
+      const cleanedQueuedMessages = { ...state.queuedMessages };
       for (const convId of convIds) {
         delete cleanedStreamingState[convId];
         delete cleanedActiveTools[convId];
         delete cleanedAgentTodos[convId];
         delete cleanedContextUsage[convId];
-        delete cleanedQueuedMessage[convId];
+        delete cleanedQueuedMessages[convId];
       }
 
       // Clean up custom todos, session outputs, review comments, and last active conversation
@@ -814,7 +818,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeTools: cleanedActiveTools,
         agentTodos: cleanedAgentTodos,
         contextUsage: cleanedContextUsage,
-        queuedMessage: cleanedQueuedMessage,
+        queuedMessages: cleanedQueuedMessages,
         customTodos: remainingCustomTodos,
         sessionOutputs: remainingSessionOutputs,
         reviewComments: remainingReviewComments,
@@ -981,7 +985,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [id]: _context, ...remainingContextUsage } = state.contextUsage;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { [id]: _queued, ...remainingQueuedMessage } = state.queuedMessage;
+    const { [id]: _queued, ...remainingQueuedMessages } = state.queuedMessages;
 
     const removedConv = state.conversations.find((c) => c.id === id);
     const newConversations = state.conversations.filter((c) => c.id !== id);
@@ -1024,7 +1028,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       pendingUserQuestion: remainingPendingQuestions,
       interruptedState: remainingInterruptedState,
       contextUsage: remainingContextUsage,
-      queuedMessage: remainingQueuedMessage,
+      queuedMessages: remainingQueuedMessages,
     };
   });
   },
@@ -1806,28 +1810,33 @@ updateFileTabContent: (id, content) => set((state) => ({
 
     return set((state) => {
       const streaming = state.streamingState[conversationId];
-      const hasQueuedMessage = state.queuedMessage[conversationId] != null;
+      const queuedQueue = state.queuedMessages[conversationId] ?? [];
+      const hasQueuedMessages = queuedQueue.length > 0;
+      // When terminal, force streaming off and clear queue regardless
+      const keepStreaming = !metadata.terminal && hasQueuedMessages;
 
       // Build cleared streaming state (preserve planModeActive)
-      // If there's a queued message, keep isStreaming true to avoid flash
+      // If there are remaining queued messages (non-terminal), keep isStreaming true to avoid flash
       const clearedStreaming = {
         text: '',
         segments: [],
         currentSegmentId: null,
-        isStreaming: hasQueuedMessage,
+        isStreaming: keepStreaming,
         error: null,
         thinking: null,
         isThinking: false,
-        startTime: hasQueuedMessage ? Date.now() : undefined,
+        startTime: keepStreaming ? Date.now() : undefined,
         planModeActive: streaming?.planModeActive || false,
         pendingPlanApproval: null,
         approvedPlanContent: undefined,
         approvedPlanTimestamp: undefined,
       };
 
-      // If no streaming text, just clear the state (but still commit queued message if requested)
+      // If no streaming text, just clear the state (but still commit first queued message if requested)
       if (!streaming?.text) {
-        const queued = metadata.commitQueuedFirst ? state.queuedMessage[conversationId] : null;
+        const queued = metadata.commitQueuedFirst && queuedQueue.length > 0 ? queuedQueue[0] : null;
+        // Terminal: clear entire queue after committing first; otherwise preserve remaining
+        const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
         const convPagination = state.messagePagination[conversationId];
         return {
           streamingState: {
@@ -1842,13 +1851,13 @@ updateFileTabContent: (id, content) => set((state) => ({
             ...state.subAgents,
             [conversationId]: [],
           },
-          // Commit queued user message even with no streaming text (e.g. turn_complete after result)
+          // Commit first queued user message even with no streaming text (e.g. turn_complete after result)
           ...(queued ? {
             messagesByConversation: {
               ...state.messagesByConversation,
               [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), queuedToMessage(queued, conversationId)],
             },
-            queuedMessage: { ...state.queuedMessage, [conversationId]: null },
+            queuedMessages: { ...state.queuedMessages, [conversationId]: remaining },
             ...(convPagination ? {
               messagePagination: {
                 ...state.messagePagination,
@@ -1938,8 +1947,10 @@ updateFileTabContent: (id, content) => set((state) => ({
       };
 
       // Atomically: add message AND clear streaming state
-      // When commitQueuedFirst is set, place the queued user message BEFORE the assistant message
-      const queued = metadata.commitQueuedFirst ? state.queuedMessage[conversationId] : null;
+      // When commitQueuedFirst is set, place the first queued user message BEFORE the assistant message
+      const queued = metadata.commitQueuedFirst && queuedQueue.length > 0 ? queuedQueue[0] : null;
+      // Terminal: clear entire queue after committing first; otherwise preserve remaining
+      const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
       const existing = state.messagesByConversation[conversationId] ?? [];
       const updatedMessages = queued
         ? [...existing, queuedToMessage(queued, conversationId), newMessage]
@@ -1965,9 +1976,9 @@ updateFileTabContent: (id, content) => set((state) => ({
           [conversationId]: [],
         },
         pendingCheckpointUuid: remainingPendingCp,
-        // Clear queued message if it was committed
-        ...(queued ? {
-          queuedMessage: { ...state.queuedMessage, [conversationId]: null },
+        // Update queued messages if first was committed or terminal flag clears the queue
+        ...((queued || metadata.terminal) ? {
+          queuedMessages: { ...state.queuedMessages, [conversationId]: remaining },
         } : {}),
         // Keep pagination totalCount in sync when queued message was committed
         ...(queued && convPagination ? {
@@ -1984,31 +1995,21 @@ updateFileTabContent: (id, content) => set((state) => ({
   },
 
   // Queued message actions
-  setQueuedMessage: (conversationId, message) => set((state) => ({
-    queuedMessage: { ...state.queuedMessage, [conversationId]: message },
+  addQueuedMessage: (conversationId, message) => set((state) => ({
+    queuedMessages: {
+      ...state.queuedMessages,
+      [conversationId]: [...(state.queuedMessages[conversationId] ?? []), message],
+    },
   })),
-  commitQueuedMessage: (conversationId) => set((state) => {
-    const queued = state.queuedMessage[conversationId];
-    if (!queued) return state;
-    const convPagination = state.messagePagination[conversationId];
-    return {
-      messagesByConversation: {
-        ...state.messagesByConversation,
-        [conversationId]: [...(state.messagesByConversation[conversationId] ?? []), queuedToMessage(queued, conversationId)],
-      },
-      queuedMessage: { ...state.queuedMessage, [conversationId]: null },
-      // Keep totalCount in sync (same pattern as addMessage)
-      ...(convPagination ? {
-        messagePagination: {
-          ...state.messagePagination,
-          [conversationId]: {
-            ...convPagination,
-            totalCount: convPagination.totalCount + 1,
-          },
-        },
-      } : {}),
-    };
-  }),
+  removeQueuedMessage: (conversationId, messageId) => set((state) => ({
+    queuedMessages: {
+      ...state.queuedMessages,
+      [conversationId]: (state.queuedMessages[conversationId] ?? []).filter(m => m.id !== messageId),
+    },
+  })),
+  clearQueuedMessages: (conversationId) => set((state) => ({
+    queuedMessages: { ...state.queuedMessages, [conversationId]: [] },
+  })),
 
   // Session handoff dialog state
   showSessionHandoff: false,

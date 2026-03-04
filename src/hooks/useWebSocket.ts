@@ -310,9 +310,9 @@ export function useWebSocket(enabled: boolean = true) {
           const durationMs = startTime ? Date.now() - startTime : undefined;
           // Finalize streaming and commit any queued user message atomically.
           // commitQueuedFirst places the user message BEFORE the assistant message
-          // so the user bubble appears above its response. Also keeps
-          // isStreaming=true when a queued message exists, preventing visual flash.
-          store.finalizeStreamingMessage(conversationId, { durationMs, commitQueuedFirst: true });
+          // so the user bubble appears above its response.
+          // terminal clears remaining queue and forces isStreaming=false.
+          store.finalizeStreamingMessage(conversationId, { durationMs, commitQueuedFirst: true, terminal: true });
           store.clearAgentTodos(conversationId);
         }
       } else {
@@ -656,8 +656,8 @@ export function useWebSocket(enabled: boolean = true) {
         // Complete event signals the entire conversation ended (stdin closed)
         // Finalize streaming content and atomically commit any queued user
         // message before the assistant message so the user bubble renders first.
-        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true });
-        store.setStreaming(conversationId, false);
+        // terminal clears remaining queue and forces isStreaming=false.
+        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true, terminal: true });
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);
         // Update conversation status to idle (ready for new input)
@@ -759,7 +759,8 @@ export function useWebSocket(enabled: boolean = true) {
 
         // Finalize any partial assistant content and atomically commit any
         // queued user message before the assistant message.
-        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true });
+        // terminal clears remaining queue and forces isStreaming=false.
+        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true, terminal: true });
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
@@ -968,7 +969,8 @@ export function useWebSocket(enabled: boolean = true) {
       case 'interrupted':
         // Finalize streaming content and atomically commit any queued user
         // message before the assistant message so the user bubble renders first.
-        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true });
+        // terminal clears remaining queue and forces isStreaming=false.
+        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true, terminal: true });
         addSystemMessage(conversationId, 'Agent was stopped by user.')
           .then(({ id }) => {
             store.addMessage({
@@ -980,7 +982,6 @@ export function useWebSocket(enabled: boolean = true) {
             });
           })
           .catch((err) => console.warn('Failed to persist stopped message:', err));
-        store.setStreaming(conversationId, false);
         store.clearPendingUserQuestion(conversationId);
         store.updateConversation(conversationId, { status: 'idle' });
         break;
@@ -1179,7 +1180,8 @@ export function useWebSocket(enabled: boolean = true) {
           // Agent finished while we were disconnected — clear orphaned state.
           // commitQueuedFirst places the user message before any partial
           // assistant content (consistent with all other finalization paths).
-          store.finalizeStreamingMessage(convId, { commitQueuedFirst: true });
+          // terminal clears remaining queue and forces isStreaming=false.
+          store.finalizeStreamingMessage(convId, { commitQueuedFirst: true, terminal: true });
           store.clearThinking(convId);
           store.updateConversation(convId, { status: 'completed' });
 
