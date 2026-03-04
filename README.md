@@ -104,36 +104,7 @@ Set cost limits, turn limits, and thinking token budgets. Monitor context window
 
 ## Architecture
 
-ChatML is a polyglot app with four layers:
-
-```
-┌─────────────────────────────────────────────┐
-│              Tauri 2 (Rust)                 │
-│         Native macOS Desktop Shell          │
-│                                             │
-│  ┌───────────────┐  ┌───────────────────┐   │
-│  │  Next.js 15   │  │   Go Backend      │   │
-│  │  React 19     │◄─►  REST + WebSocket │   │
-│  │  Tailwind 4   │  │  SQLite           │   │
-│  │  Zustand      │  │  Git Operations   │   │
-│  └───────────────┘  └────────┬──────────┘   │
-│                              │              │
-│                     ┌────────▼──────────┐   │
-│                     │  Agent Runner     │   │
-│                     │  Node.js + Claude │   │
-│                     │  Agent SDK        │   │
-│                     └───────────────────┘   │
-└─────────────────────────────────────────────┘
-```
-
-| Layer | Tech | Role |
-|-------|------|------|
-| **Desktop Shell** | Tauri 2, Rust | Native window, menus, PTY, secure storage, auto-update |
-| **Frontend** | Next.js 15, React 19, Tailwind CSS 4 | UI, state management, WebSocket client |
-| **Backend** | Go, SQLite | REST API, WebSocket, git operations, agent lifecycle |
-| **Agent Runner** | Node.js, Claude Agent SDK | AI agent processes, tool execution, streaming |
-
-For deeper technical details, see the [architecture documentation](docs/overview.md).
+Tauri 2 (Rust) desktop shell, Next.js/React frontend, Go backend with SQLite, and Node.js agent runners powered by the Claude Agent SDK. See the [architecture documentation](docs/overview.md) for details.
 
 ## Contributing
 
