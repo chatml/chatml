@@ -121,8 +121,10 @@ func TestNewClientWithOAuth_ValidToken(t *testing.T) {
 
 func TestNewClientWithOAuth_SendsBearerHeader(t *testing.T) {
 	var capturedAuthHeader string
+	var capturedBetaHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAuthHeader = r.Header.Get("Authorization")
+		capturedBetaHeader = r.Header.Get("anthropic-beta")
 		// x-api-key should NOT be set when using OAuth
 		assert.Empty(t, r.Header.Get("x-api-key"), "x-api-key should not be set for OAuth client")
 
@@ -145,6 +147,7 @@ func TestNewClientWithOAuth_SendsBearerHeader(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Fix login bug", title)
 	assert.Equal(t, "Bearer sk-ant-oat01-test-token", capturedAuthHeader)
+	assert.Equal(t, "oauth-2025-04-20", capturedBetaHeader, "OAuth clients must send the oauth beta header")
 }
 
 func TestNewClient_SendsApiKeyHeader(t *testing.T) {
@@ -153,6 +156,8 @@ func TestNewClient_SendsApiKeyHeader(t *testing.T) {
 		capturedApiKey = r.Header.Get("x-api-key")
 		// Authorization should NOT be set when using API key
 		assert.Empty(t, r.Header.Get("Authorization"), "Authorization should not be set for API key client")
+		// OAuth beta header should NOT be set when using API key
+		assert.Empty(t, r.Header.Get("anthropic-beta"), "anthropic-beta should not be set for API key client")
 
 		resp := anthropicResponse{
 			Content: []struct {
