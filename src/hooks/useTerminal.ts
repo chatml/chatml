@@ -140,6 +140,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   onExitRef.current = onExit;
 
   const themeTypeRef = useRef(themeType);
+  // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest theme
   themeTypeRef.current = themeType;
 
   // Capture initial workspacePath - we don't want to reinit if it changes
@@ -404,6 +405,7 @@ export function useTerminalOutput(options: UseTerminalOutputOptions = {}) {
   const isInitializedRef = useRef(false);
 
   const themeTypeRef = useRef(themeType);
+  // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest theme
   themeTypeRef.current = themeType;
 
   // Initialize read-only terminal
