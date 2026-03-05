@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, Loader2, RefreshCw, Cpu, ExternalLink } from 'lucide-react';
 import { OnboardingWizardStep } from '../OnboardingWizardStep';
 import { checkPrerequisites, openUrlInBrowser, type PrerequisitesResult, type PrerequisiteStatus } from '@/lib/tauri';
@@ -70,8 +70,6 @@ function ToolRow({ tool }: { tool: PrerequisiteStatus }) {
 export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) {
   const [result, setResult] = useState<PrerequisitesResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const onAllCriticalMetRef = useRef(onAllCriticalMet);
-  onAllCriticalMetRef.current = onAllCriticalMet;
 
   // Fetch prerequisites on mount
   useEffect(() => {
@@ -81,18 +79,21 @@ export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) 
       if (cancelled) return;
       setResult(res);
       setLoading(false);
-      // In browser dev mode, res is null — treat as all met
-      onAllCriticalMetRef.current(res?.allCriticalMet ?? true);
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Sync parent state when result changes
+  useEffect(() => {
+    // In browser dev mode, result is null — treat as all met
+    onAllCriticalMet(result?.allCriticalMet ?? true);
+  }, [result, onAllCriticalMet]);
 
   async function runChecks() {
     setLoading(true);
     const res = await checkPrerequisites();
     setResult(res);
     setLoading(false);
-    onAllCriticalMetRef.current(res?.allCriticalMet ?? true);
   }
 
   if (loading) {
