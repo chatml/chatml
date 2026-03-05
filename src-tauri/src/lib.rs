@@ -157,7 +157,9 @@ pub fn run() {
             commands::get_user_shell,
             // App detection
             commands::detect_installed_apps,
-            commands::close_window
+            commands::close_window,
+            // System prerequisites
+            commands::check_prerequisites
         ])
         .setup(move |app| {
             // Create and set the menu

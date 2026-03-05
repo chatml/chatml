@@ -169,6 +169,41 @@ pub fn kill_stored_sidecar(state: &AppState) {
     }
 }
 
+/// Resolve the user's login shell PATH.
+///
+/// macOS apps launched from Finder have a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`).
+/// Tools like `node`, `git`, and `gh` are typically in paths managed by Homebrew, nvm, fnm, etc.
+/// This function spawns the user's login shell to capture the full PATH.
+pub fn resolve_user_path() -> String {
+    let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let is_fish = shell_path.ends_with("/fish");
+
+    // Fish shell outputs $PATH as space-separated list; other shells use colon-separated.
+    let path_cmd = if is_fish {
+        "string join : $PATH"
+    } else {
+        "echo $PATH"
+    };
+
+    if let Ok(output) = Command::new(&shell_path)
+        .args(["-l", "-c", path_cmd])
+        .output()
+    {
+        let user_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !user_path.is_empty() {
+            log::info!(
+                "Resolved user PATH ({} entries, shell={})",
+                user_path.matches(':').count() + 1,
+                shell_path
+            );
+            return user_path;
+        }
+    }
+
+    // Fallback to process PATH
+    std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string())
+}
+
 /// Spawn the sidecar and set up monitoring
 pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult<CommandChild> {
     let port = default_port();
@@ -188,36 +223,10 @@ pub fn spawn_sidecar(app: &tauri::AppHandle, state: &Arc<AppState>) -> AppResult
     // Tell the Go backend which port to prefer
     sidecar_command = sidecar_command.env("PORT", port.to_string());
 
-    // macOS apps launched from Finder have a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
-    // The Go backend needs `node` to run agent-runner, which is typically in /opt/homebrew/bin,
-    // /usr/local/bin, or an nvm/fnm-managed path. Resolve the user's login shell PATH.
+    // Resolve the user's login shell PATH so the Go backend can find `node`, `git`, etc.
     {
-        let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let is_fish = shell_path.ends_with("/fish");
-
-        // Fish shell outputs $PATH as space-separated list; other shells use colon-separated.
-        // Use a printf that always produces colon-separated output regardless of shell.
-        let path_cmd = if is_fish {
-            // In fish, $PATH is a list. Use string join to produce colon-separated output.
-            "string join : $PATH"
-        } else {
-            "echo $PATH"
-        };
-
-        if let Ok(output) = Command::new(&shell_path)
-            .args(["-l", "-c", path_cmd])
-            .output()
-        {
-            let user_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !user_path.is_empty() {
-                log::info!(
-                    "Resolved user PATH for sidecar ({} entries, shell={})",
-                    user_path.matches(':').count() + 1,
-                    shell_path
-                );
-                sidecar_command = sidecar_command.env("PATH", &user_path);
-            }
-        }
+        let user_path = resolve_user_path();
+        sidecar_command = sidecar_command.env("PATH", &user_path);
     }
 
     // Point the backend to the bundled agent-runner.
