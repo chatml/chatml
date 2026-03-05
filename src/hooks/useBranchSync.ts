@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getBranchSyncStatus, syncBranch, abortBranchSync, BranchSyncStatusDTO, BranchSyncResultDTO } from '@/lib/api';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 // Cache TTL in milliseconds (30 seconds)
 const SYNC_STATUS_CACHE_TTL = 30_000;
@@ -58,6 +59,9 @@ export function useBranchSync(
   // Check sync status (with cache) - stable reference, no status dependency
   const checkStatus = useCallback(async (force = false) => {
     if (!workspaceId || !sessionId) return;
+
+    // Skip network calls when branch sync banner is disabled in settings
+    if (!useSettingsStore.getState().branchSyncBanner) return;
 
     // Skip if this session was just synced (prevents re-fetch after successful sync)
     if (justSyncedRef.current.has(sessionId)) {
@@ -202,6 +206,17 @@ export function useBranchSync(
       isMountedRef.current = false;
     };
   }, []);
+
+  // Re-check when the setting is toggled ON so the banner appears immediately
+  const branchSyncBanner = useSettingsStore((s) => s.branchSyncBanner);
+  const prevBannerRef = useRef(branchSyncBanner);
+  useEffect(() => {
+    if (branchSyncBanner && !prevBannerRef.current) {
+      checkStatus(true);
+    }
+    prevBannerRef.current = branchSyncBanner;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchSyncBanner]);
 
   // Check status on session change only (not on checkStatus change)
   // Deferred via requestIdleCallback so it doesn't block the initial render

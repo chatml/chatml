@@ -16,6 +16,8 @@ function OverridableBadge() {
 }
 
 export function GitSettings() {
+  const branchSyncBanner = useSettingsStore((s) => s.branchSyncBanner);
+  const setBranchSyncBanner = useSettingsStore((s) => s.setBranchSyncBanner);
   const branchPrefixType = useSettingsStore((s) => s.branchPrefixType);
   const setBranchPrefixType = useSettingsStore((s) => s.setBranchPrefixType);
   const customPrefix = useSettingsStore((s) => s.branchPrefixCustom);
@@ -31,6 +33,22 @@ export function GitSettings() {
   return (
     <div>
       <h2 className="text-xl font-semibold mb-5">Git</h2>
+
+      <SettingsGroup label="Sync">
+        <SettingsRow
+          settingId="branchSyncBanner"
+          title="Branch sync notifications"
+          description="Show a banner when your branch is behind the base branch"
+          isModified={branchSyncBanner !== SETTINGS_DEFAULTS.branchSyncBanner}
+          onReset={() => setBranchSyncBanner(SETTINGS_DEFAULTS.branchSyncBanner)}
+        >
+          <Switch
+            checked={branchSyncBanner}
+            onCheckedChange={setBranchSyncBanner}
+            aria-label="Branch sync notifications"
+          />
+        </SettingsRow>
+      </SettingsGroup>
 
       <SettingsGroup label="Branches">
         <SettingsRow

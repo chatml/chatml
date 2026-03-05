@@ -58,6 +58,7 @@ import { BlockErrorFallback, InlineErrorFallback } from '@/components/shared/Err
 import { BranchSyncBanner } from '@/components/BranchSyncBanner';
 import { InterruptedBanner } from '@/components/conversation/InterruptedBanner';
 import { useBranchSync } from '@/hooks/useBranchSync';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { useClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
 import { SessionHandoffDialog } from '@/components/conversation/SessionHandoffDialog';
@@ -216,6 +217,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   }, [selectedConversationId, setMessagePage]);
 
   // Branch sync for updating from origin/main
+  const branchSyncBanner = useSettingsStore((s) => s.branchSyncBanner);
   const {
     status: branchSyncStatus,
     dismissed: branchSyncDismissed,
@@ -963,7 +965,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-chat-background">
       {/* Branch sync banner - shows when origin/main has updates */}
-      {branchSyncStatus && branchSyncStatus.behindBy > 0 && !branchSyncDismissed && (
+      {branchSyncBanner && branchSyncStatus && branchSyncStatus.behindBy > 0 && !branchSyncDismissed && (
         <BranchSyncBanner
           status={branchSyncStatus}
           loading={branchSyncing}

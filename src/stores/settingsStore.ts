@@ -92,6 +92,7 @@ export const SETTINGS_DEFAULTS = {
   // Git
   branchPrefixType: 'github' as BranchPrefixType,
   branchPrefixCustom: '',
+  branchSyncBanner: true,
   deleteBranchOnArchive: false,
   archiveOnMerge: false,
   // Account
@@ -125,6 +126,7 @@ interface SettingsState {
   theme: ThemeOption; // App theme (system, light, dark)
   fontSize: FontSize;
   // Git settings
+  branchSyncBanner: boolean;
   branchPrefixType: BranchPrefixType;
   branchPrefixCustom: string;
   deleteBranchOnArchive: boolean;
@@ -197,6 +199,7 @@ interface SettingsState {
   setShowChatCost: (value: boolean) => void;
   setTheme: (value: ThemeOption) => void;
   setFontSize: (value: FontSize) => void;
+  setBranchSyncBanner: (value: boolean) => void;
   setBranchPrefixType: (value: BranchPrefixType) => void;
   setBranchPrefixCustom: (value: string) => void;
   setDeleteBranchOnArchive: (value: boolean) => void;
@@ -292,6 +295,7 @@ export const useSettingsStore = create<SettingsState>()(
       setShowChatCost: (value) => set({ showChatCost: value }),
       setTheme: (value) => set({ theme: value }),
       setFontSize: (value) => set({ fontSize: value }),
+      setBranchSyncBanner: (value) => set({ branchSyncBanner: value }),
       setBranchPrefixType: (value) => set({ branchPrefixType: value }),
       setBranchPrefixCustom: (value) => set({ branchPrefixCustom: value }),
       setDeleteBranchOnArchive: (value) => set({ deleteBranchOnArchive: value }),

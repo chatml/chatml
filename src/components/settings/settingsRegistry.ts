@@ -218,6 +218,16 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     categoryLabel: 'Instructions',
   },
 
+  // ── Git: Sync ──
+  {
+    id: 'branchSyncBanner',
+    title: 'Branch sync notifications',
+    description: 'Show a banner when your branch is behind the base branch',
+    keywords: ['branch', 'sync', 'rebase', 'merge', 'banner', 'notification', 'behind'],
+    category: 'git',
+    categoryLabel: 'Git',
+  },
+
   // ── Git: Branches ──
   {
     id: 'branchPrefixType',
