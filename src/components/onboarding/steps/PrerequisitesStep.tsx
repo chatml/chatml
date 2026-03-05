@@ -76,9 +76,13 @@ export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) 
     const res = await checkPrerequisites();
     setResult(res);
     setLoading(false);
-    // In browser dev mode, res is null — treat as all met
-    onAllCriticalMet(res?.allCriticalMet ?? true);
-  }, [onAllCriticalMet]);
+  }, []);
+
+  // Sync parent state when result changes (avoids setState-in-effect lint error)
+  useEffect(() => {
+    // In browser dev mode, result is null — treat as all met
+    onAllCriticalMet(result?.allCriticalMet ?? true);
+  }, [result, onAllCriticalMet]);
 
   useEffect(() => {
     runChecks();

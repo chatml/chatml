@@ -391,7 +391,7 @@ fn check_tool(
         // Extract version number from various formats:
         // "v20.11.0" (node), "git version 2.39.3" (git), "gh version 2.40.1 (2024-01-01)" (gh)
         v.split_whitespace()
-            .find(|s| s.starts_with('v') || s.chars().next().map_or(false, |c| c.is_ascii_digit()))
+            .find(|s| s.starts_with('v') || s.chars().next().is_some_and(|c| c.is_ascii_digit()))
             .unwrap_or(v.as_str())
             .trim_start_matches('v')
             .to_string()
@@ -402,7 +402,7 @@ fn check_tool(
         ver.split('.')
             .next()
             .and_then(|s| s.parse::<u32>().ok())
-            .map_or(false, |major| major >= min)
+            .is_some_and(|major| major >= min)
     } else {
         // No minimum version required → OK if found; tool not found → not OK
         found
