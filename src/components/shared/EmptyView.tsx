@@ -1,16 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
+import Image from 'next/image';
 import { useWorkspaceSelection } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { isMacOS } from '@/lib/platform';
 import { FullContentLayout } from '@/components/layout/FullContentLayout';
 import { QuickActions } from './smart-launcher/QuickActions';
 import { RecentSessions } from './smart-launcher/RecentSessions';
-import { PRSummary } from './smart-launcher/PRSummary';
 import { LiveActivityStrip } from './smart-launcher/LiveActivityStrip';
-import { getGreeting } from './smart-launcher/useGreeting';
-import { useLauncherPRSummary } from './smart-launcher/useLauncherPRSummary';
 
 interface EmptyViewProps {
   onOpenProject: () => void;
@@ -33,8 +31,6 @@ export function EmptyView({
 }: EmptyViewProps) {
   const { workspaces, sessions, selectedWorkspaceId } = useWorkspaceSelection();
   const workspaceColors = useSettingsStore((s) => s.workspaceColors);
-  const prSummary = useLauncherPRSummary();
-  const greeting = getGreeting();
 
   const nonArchivedSessions = useMemo(
     () => sessions.filter((s) => !s.archived),
@@ -60,12 +56,34 @@ export function EmptyView({
       showLeftSidebar={showLeftSidebar}
     >
       <div className="h-full overflow-y-auto bg-content-background">
-        <div className="max-w-2xl mx-auto px-6 pt-10 pb-16 stagger-children">
-          {/* Greeting */}
-          <div className="mb-8">
-            <h2 className="font-display text-[1.75rem] leading-[1.25] tracking-display text-foreground">
-              {greeting}
-            </h2>
+        <div className="max-w-2xl mx-auto px-6 pt-14 pb-16 stagger-children">
+          {/* Mascot + Brand Hero */}
+          <div className="flex flex-col items-center text-center mb-10">
+            {/* Mascot with ambient glow */}
+            <div className="relative mb-6">
+              <div className="absolute inset-0 rounded-full bg-primary/15 blur-[40px] pointer-events-none" />
+              <div className="relative w-20 h-20 rounded-full ring-[2.5px] ring-primary/40 ring-offset-[3px] ring-offset-background overflow-hidden shadow-xl shadow-primary/15">
+                <Image
+                  src="/mascot.png"
+                  alt="ChatML mascot"
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-cover"
+                  priority
+                />
+              </div>
+            </div>
+
+            {/* Brand wordmark */}
+            <h1 className="font-mono font-bold text-2xl tracking-[-0.05em] mb-2">
+              <span className="text-foreground/60">chat</span>
+              <span className="text-primary">ml</span>
+            </h1>
+
+            {/* Contextual subtitle */}
+            <p className="text-sm text-muted-foreground">
+              What would you like to work on?
+            </p>
           </div>
 
           {/* Hero Action Grid */}
@@ -94,15 +112,6 @@ export function EmptyView({
               sessions={recentSessions}
               workspaces={workspaces}
               workspaceColors={workspaceColors}
-            />
-          </div>
-
-          {/* Pull Requests Summary */}
-          <div className="mb-8">
-            <PRSummary
-              summary={prSummary.summary}
-              loading={prSummary.loading}
-              error={prSummary.error}
             />
           </div>
 
