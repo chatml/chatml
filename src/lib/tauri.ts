@@ -398,6 +398,34 @@ export async function readFromClipboard(): Promise<string | null> {
 }
 
 // ============================================
+// System Prerequisites Check
+// ============================================
+
+export interface PrerequisiteStatus {
+  name: string;
+  found: boolean;
+  version: string | null;
+  required: boolean;
+  minVersion: string | null;
+  versionOk: boolean;
+  installHint: string;
+  installUrl: string | null;
+}
+
+export interface PrerequisitesResult {
+  tools: PrerequisiteStatus[];
+  allCriticalMet: boolean;
+}
+
+/**
+ * Check system prerequisites (Node.js, git, gh).
+ * Uses the user's login shell PATH to find tools.
+ */
+export async function checkPrerequisites(): Promise<PrerequisitesResult | null> {
+  return safeInvoke<PrerequisitesResult>('check_prerequisites');
+}
+
+// ============================================
 // File Attachment Functions
 // ============================================
 

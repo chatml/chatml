@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::process::Command;
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -332,6 +333,138 @@ fn find_in_submenu<R: tauri::Runtime>(
         }
     }
     None
+}
+
+// ============================================================================
+// System prerequisites check
+// ============================================================================
+
+/// Status of a single prerequisite tool
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrerequisiteStatus {
+    pub name: String,
+    pub found: bool,
+    pub version: Option<String>,
+    pub required: bool,
+    pub min_version: Option<String>,
+    pub version_ok: bool,
+    pub install_hint: String,
+    pub install_url: Option<String>,
+}
+
+/// Result of checking all prerequisites
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrerequisitesResult {
+    pub tools: Vec<PrerequisiteStatus>,
+    pub all_critical_met: bool,
+}
+
+/// Check if a tool exists in the given PATH and get its version.
+/// Runs the tool directly (no shell) using the resolved user PATH.
+fn check_tool(
+    user_path: &str,
+    name: &str,
+    version_args: &[&str],
+    required: bool,
+    min_major: Option<u32>,
+    install_hint: &str,
+    install_url: Option<&str>,
+) -> PrerequisiteStatus {
+    // Run the tool directly — no shell needed since we set PATH explicitly
+    let found_output = Command::new(name)
+        .args(version_args)
+        .env("PATH", user_path)
+        .output();
+
+    let (found, version_str) = match found_output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            (true, Some(stdout))
+        }
+        _ => (false, None),
+    };
+
+    // Parse version and check minimum
+    let version = version_str.as_ref().map(|v| {
+        // Extract version number from various formats:
+        // "v20.11.0" (node), "git version 2.39.3" (git), "gh version 2.40.1 (2024-01-01)" (gh)
+        v.split_whitespace()
+            .find(|s| s.starts_with('v') || s.chars().next().map_or(false, |c| c.is_ascii_digit()))
+            .unwrap_or(v.as_str())
+            .trim_start_matches('v')
+            .to_string()
+    });
+
+    let version_ok = if let (Some(min), Some(ref ver)) = (min_major, &version) {
+        // Parse major version number
+        ver.split('.')
+            .next()
+            .and_then(|s| s.parse::<u32>().ok())
+            .map_or(false, |major| major >= min)
+    } else {
+        // No minimum version required → OK if found; tool not found → not OK
+        found
+    };
+
+    PrerequisiteStatus {
+        name: name.to_string(),
+        found,
+        version,
+        required,
+        min_version: min_major.map(|v| format!("{}", v)),
+        version_ok,
+        install_hint: install_hint.to_string(),
+        install_url: install_url.map(|s| s.to_string()),
+    }
+}
+
+/// Check system prerequisites (Node.js, git, gh).
+/// Uses the user's login shell PATH to find tools.
+#[tauri::command]
+pub fn check_prerequisites() -> PrerequisitesResult {
+    let user_path = sidecar::resolve_user_path();
+
+    let tools = vec![
+        check_tool(
+            &user_path,
+            "node",
+            &["--version"],
+            true,
+            Some(20),
+            "Install Node.js 20+ via Homebrew:\n  brew install node@20\n\nOr download from nodejs.org",
+            Some("https://nodejs.org"),
+        ),
+        check_tool(
+            &user_path,
+            "git",
+            &["--version"],
+            true,
+            None,
+            "Install Xcode Command Line Tools:\n  xcode-select --install",
+            None,
+        ),
+        check_tool(
+            &user_path,
+            "gh",
+            &["--version"],
+            false,
+            None,
+            "Install GitHub CLI via Homebrew:\n  brew install gh\n\nOr download from cli.github.com",
+            Some("https://cli.github.com"),
+        ),
+    ];
+
+    let all_critical_met = tools
+        .iter()
+        .filter(|t| t.required)
+        .all(|t| t.found && t.version_ok);
+
+    PrerequisitesResult {
+        tools,
+        all_critical_met,
+    }
 }
 
 /// Count lines in a text file

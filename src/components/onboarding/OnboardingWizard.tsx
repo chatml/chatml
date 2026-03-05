@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getClaudeAuthStatus } from '@/lib/api';
 import { DEFAULT_AUTH_STATUS, type ClaudeAuthStatus } from '@/hooks/useClaudeAuthStatus';
+import { PrerequisitesStep } from './steps/PrerequisitesStep';
 import { WelcomeStep } from './steps/WelcomeStep';
 import { WorkspacesStep } from './steps/WorkspacesStep';
 import { SessionsStep } from './steps/SessionsStep';
@@ -19,12 +20,14 @@ interface OnboardingWizardProps {
 }
 
 const CONCEPT_STEPS = [WelcomeStep, WorkspacesStep, SessionsStep, ConversationsStep, ShortcutsStep];
-const TOTAL_STEPS = CONCEPT_STEPS.length + 1; // +1 for ApiKeyStep (always shown)
+// +1 for PrerequisitesStep (step 0), +1 for ApiKeyStep (last step)
+const TOTAL_STEPS = CONCEPT_STEPS.length + 2;
 
 export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const keyboardReady = useRef(false);
   const [authStatus, setAuthStatus] = useState<ClaudeAuthStatus | null>(null);
+  const [prereqsMet, setPrereqsMet] = useState(true);
 
   // Check auth status once when component mounts
   useEffect(() => {
@@ -79,7 +82,10 @@ export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: Onboard
   }, [handleNext, handlePrev, onSkip]);
 
   const getButtonLabel = () => {
-    if (currentStep === 0) return 'Get Started';
+    if (currentStep === 0) {
+      return prereqsMet ? 'Continue' : 'Continue anyway';
+    }
+    if (currentStep === 1) return 'Get Started';
     if (isLastStep) {
       return authStatus?.configured ? 'Start Using ChatML' : 'Open Settings';
     }
@@ -95,10 +101,15 @@ export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: Onboard
   };
 
   const renderStep = () => {
+    if (currentStep === 0) {
+      // Note: passing the state setter directly is intentional — React guarantees
+      // stable identity for setState, avoiding re-render loops in PrerequisitesStep's useCallback.
+      return <PrerequisitesStep onAllCriticalMet={setPrereqsMet} />;
+    }
     if (isLastStep) {
       return <ApiKeyStep authStatus={authStatus} />;
     }
-    const StepComponent = CONCEPT_STEPS[currentStep];
+    const StepComponent = CONCEPT_STEPS[currentStep - 1];
     return <StepComponent />;
   };
 
