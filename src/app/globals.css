@@ -95,7 +95,7 @@ code.hljs { padding: 3px 5px; }
 /* MesloLGS NF - Nerd Font for terminal (SIL Open Font License) */
 @font-face {
   font-family: 'MesloLGS NF';
-  src: url('/fonts/MesloLGS NF Regular.ttf') format('truetype');
+  src: url('/fonts/MesloLGS-NF-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -103,7 +103,7 @@ code.hljs { padding: 3px 5px; }
 
 @font-face {
   font-family: 'MesloLGS NF';
-  src: url('/fonts/MesloLGS NF Bold.ttf') format('truetype');
+  src: url('/fonts/MesloLGS-NF-Bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -111,7 +111,7 @@ code.hljs { padding: 3px 5px; }
 
 @font-face {
   font-family: 'MesloLGS NF';
-  src: url('/fonts/MesloLGS NF Italic.ttf') format('truetype');
+  src: url('/fonts/MesloLGS-NF-Italic.ttf') format('truetype');
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -119,7 +119,7 @@ code.hljs { padding: 3px 5px; }
 
 @font-face {
   font-family: 'MesloLGS NF';
-  src: url('/fonts/MesloLGS NF Bold Italic.ttf') format('truetype');
+  src: url('/fonts/MesloLGS-NF-Bold-Italic.ttf') format('truetype');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -735,37 +735,67 @@ code.hljs { padding: 3px 5px; }
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* Xterm background fix - match app background */
-.xterm,
-.xterm-viewport,
-.xterm-screen,
-.xterm-rows,
-.xterm-helper-textarea,
-.xterm-cursor-layer,
-.xterm-text-layer {
+/* Xterm background fix - match terminal theme per app theme */
+.dark .xterm,
+.dark .xterm-viewport,
+.dark .xterm-screen,
+.dark .xterm-rows,
+.dark .xterm-helper-textarea,
+.dark .xterm-cursor-layer,
+.dark .xterm-text-layer {
   background-color: #0f1111 !important;
 }
 
-/* Ensure canvas elements have correct background */
-.xterm canvas {
+.dark .xterm canvas {
   background-color: #0f1111 !important;
 }
 
-/* Style xterm's custom scrollbar to look more native */
-.xterm .scrollbar {
+html:not(.dark) .xterm,
+html:not(.dark) .xterm-viewport,
+html:not(.dark) .xterm-screen,
+html:not(.dark) .xterm-rows,
+html:not(.dark) .xterm-helper-textarea,
+html:not(.dark) .xterm-cursor-layer,
+html:not(.dark) .xterm-text-layer {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) .xterm canvas {
+  background-color: #ffffff !important;
+}
+
+/* Style xterm's custom scrollbar - dark mode */
+.dark .xterm .scrollbar {
   width: 8px !important;
   background: transparent !important;
 }
 
-.xterm .scrollbar .slider {
+.dark .xterm .scrollbar .slider {
   background: rgba(255, 255, 255, 0.15) !important;
   border-radius: 4px !important;
   width: 6px !important;
   margin-left: 1px !important;
 }
 
-.xterm .scrollbar .slider:hover {
+.dark .xterm .scrollbar .slider:hover {
   background: rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Style xterm's custom scrollbar - light mode */
+html:not(.dark) .xterm .scrollbar {
+  width: 8px !important;
+  background: transparent !important;
+}
+
+html:not(.dark) .xterm .scrollbar .slider {
+  background: rgba(0, 0, 0, 0.15) !important;
+  border-radius: 4px !important;
+  width: 6px !important;
+  margin-left: 1px !important;
+}
+
+html:not(.dark) .xterm .scrollbar .slider:hover {
+  background: rgba(0, 0, 0, 0.25) !important;
 }
 
 /* Plan mode animated border - marching ants SVG animation */

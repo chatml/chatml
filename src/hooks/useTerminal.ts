@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { invoke } from '@tauri-apps/api/core';
 import { spawnPty, startPtyReading, type PtyHandle } from '@/lib/pty';
+import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 
 // Platform detection with modern API fallback
 function detectPlatform(): 'windows' | 'unix' {
@@ -45,14 +46,17 @@ function getShellArgs(): string[] {
   return detectPlatform() === 'windows' ? [] : ['-l'];
 }
 
-// Terminal theme matching the app's dark theme
-const terminalTheme = {
-  background: '#0f1111', // matches --background in dark mode
+// Terminal font stack — mirrors the --font-terminal CSS variable
+const TERMINAL_FONT_FAMILY =
+  '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
+
+// Dark terminal theme
+const darkTerminalTheme = {
+  background: '#0f1111',
   foreground: '#4ade80', // green-400
   cursor: '#4ade80',
   cursorAccent: '#000000',
   selectionBackground: 'rgba(139, 92, 246, 0.3)',
-  // Standard 16 ANSI colors
   black: '#000000',
   red: '#ef4444',
   green: '#22c55e',
@@ -70,6 +74,35 @@ const terminalTheme = {
   brightCyan: '#22d3ee',
   brightWhite: '#ffffff',
 };
+
+// Light terminal theme (GitHub-style ANSI palette)
+const lightTerminalTheme = {
+  background: '#ffffff',
+  foreground: '#1a1a1a',
+  cursor: '#1a1a1a',
+  cursorAccent: '#ffffff',
+  selectionBackground: 'rgba(139, 92, 246, 0.2)',
+  black: '#000000',
+  red: '#d73a49',
+  green: '#22863a',
+  yellow: '#b08800',
+  blue: '#005cc5',
+  magenta: '#6f42c1',
+  cyan: '#0598bc',
+  white: '#d1d5db',
+  brightBlack: '#6a737d',
+  brightRed: '#cb2431',
+  brightGreen: '#28a745',
+  brightYellow: '#dbab09',
+  brightBlue: '#2188ff',
+  brightMagenta: '#8a63d2',
+  brightCyan: '#3192aa',
+  brightWhite: '#fafbfc',
+};
+
+function getTerminalTheme(themeType: 'dark' | 'light') {
+  return themeType === 'dark' ? darkTerminalTheme : lightTerminalTheme;
+}
 
 export interface UseTerminalOptions {
   workspacePath?: string;
@@ -91,6 +124,7 @@ export interface UseTerminalReturn {
 
 export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn {
   const { workspacePath, onExit } = options;
+  const themeType = useResolvedThemeType();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -104,6 +138,10 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
   const onExitRef = useRef(onExit);
   // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest callback
   onExitRef.current = onExit;
+
+  const themeTypeRef = useRef(themeType);
+  // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest theme
+  themeTypeRef.current = themeType;
 
   // Capture initial workspacePath - we don't want to reinit if it changes
   const initialWorkspacePathRef = useRef(workspacePath);
@@ -128,8 +166,8 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
 
       // Create xterm.js terminal
       const terminal = new Terminal({
-        theme: terminalTheme,
-        fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+        theme: getTerminalTheme(themeTypeRef.current),
+        fontFamily: TERMINAL_FONT_FAMILY,
         fontSize: 11,
         lineHeight: 1.2,
         cursorBlink: true,
@@ -298,6 +336,13 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     };
   }, []);
 
+  // Sync terminal theme when app theme changes
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.options.theme = getTerminalTheme(themeType);
+    }
+  }, [themeType]);
+
   // Fit terminal to container (skip when container has 0 dimensions to avoid resizing PTY to 0x0)
   const fit = useCallback(() => {
     const container = containerRef.current;
@@ -351,6 +396,7 @@ export interface UseTerminalOutputOptions {
 
 export function useTerminalOutput(options: UseTerminalOutputOptions = {}) {
   const { initialContent } = options;
+  const themeType = useResolvedThemeType();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -358,14 +404,18 @@ export function useTerminalOutput(options: UseTerminalOutputOptions = {}) {
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const isInitializedRef = useRef(false);
 
+  const themeTypeRef = useRef(themeType);
+  // eslint-disable-next-line react-hooks/refs -- intentional: keep ref in sync with latest theme
+  themeTypeRef.current = themeType;
+
   // Initialize read-only terminal
   useEffect(() => {
     if (!containerRef.current || isInitializedRef.current) return;
     isInitializedRef.current = true;
 
     const terminal = new Terminal({
-      theme: terminalTheme,
-      fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+      theme: getTerminalTheme(themeTypeRef.current),
+      fontFamily: TERMINAL_FONT_FAMILY,
       fontSize: 11,
       lineHeight: 1.2,
       cursorBlink: false,
@@ -398,6 +448,13 @@ export function useTerminalOutput(options: UseTerminalOutputOptions = {}) {
       isInitializedRef.current = false;
     };
   }, [initialContent]);
+
+  // Sync terminal theme when app theme changes
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.options.theme = getTerminalTheme(themeType);
+    }
+  }, [themeType]);
 
   const fit = useCallback(() => {
     fitAddonRef.current?.fit();
