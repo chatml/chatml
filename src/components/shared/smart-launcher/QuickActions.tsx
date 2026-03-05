@@ -68,7 +68,7 @@ export function QuickActions({
   };
 
   return (
-    <div className="grid grid-cols-4 gap-6">
+    <div className="grid grid-cols-4 gap-4">
       {ACTION_CARDS.map(({ icon: Icon, label, key, bgClass, iconClass, ...rest }) => {
         const disabled = 'requiresWorkspace' in rest && rest.requiresWorkspace && !hasWorkspace;
         return (
@@ -77,26 +77,28 @@ export function QuickActions({
             onClick={() => !disabled && handleCardClick(key)}
             disabled={disabled}
             className={cn(
-              'group flex flex-col items-center gap-3 py-2 transition-all duration-200',
-              disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              'group flex flex-col items-center gap-3 py-4 px-2 rounded-2xl transition-all duration-200',
+              disabled
+                ? 'opacity-40 cursor-not-allowed'
+                : 'cursor-pointer hover:bg-muted/50'
             )}
             {...(key === 'open' ? { 'data-tour-target': 'add-workspace' } : {})}
           >
             {/* Icon container */}
             <div
               className={cn(
-                'w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-200',
+                'w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-200',
                 bgClass,
                 !disabled && 'group-hover:scale-[1.08] group-active:scale-[0.95]'
               )}
             >
-              <Icon className={cn('size-7', iconClass)} />
+              <Icon className={cn('size-8', iconClass)} />
             </div>
 
             {/* Label */}
             <span
               className={cn(
-                'text-xs font-medium text-muted-foreground transition-colors duration-200',
+                'text-sm font-medium text-muted-foreground transition-colors duration-200',
                 !disabled && 'group-hover:text-foreground'
               )}
             >
