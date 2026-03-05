@@ -101,6 +101,18 @@ const BUILTIN_COMMANDS: UnifiedSlashCommand[] = [
     executionType: 'prompt',
     execute: (ctx) => ctx.setMessage('Explain '),
   },
+  {
+    id: 'builtin:remember',
+    trigger: 'remember',
+    label: 'Remember',
+    description: 'Save something to project memory across sessions',
+    keywords: ['memory', 'save', 'note', 'persist', 'remember'],
+    icon: Sparkles,
+    source: 'builtin',
+    executionType: 'prompt',
+    available: requiresSession,
+    execute: (ctx) => ctx.setMessage('Save the following to your project memory (in MEMORY.md): '),
+  },
 
   // Git commands (fire actions)
   {

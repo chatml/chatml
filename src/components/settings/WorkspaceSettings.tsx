@@ -51,6 +51,7 @@ import { Switch } from '@/components/ui/switch';
 import { SettingsGroup } from './shared/SettingsGroup';
 import { SettingsRow } from './shared/SettingsRow';
 import type { WorkspaceSettingsSection } from './settingsRegistry';
+import { MemorySettings } from './sections/MemorySettings';
 
 /**
  * Standalone content component for rendering workspace settings sections.
@@ -91,6 +92,9 @@ export function WorkspaceSettingsContent({ workspaceId, section }: {
       )}
       {section === 'agents' && (
         <WorkspaceAgentSettings workspaceId={workspaceId} />
+      )}
+      {section === 'memory' && (
+        <MemorySettings workspaceId={workspaceId} />
       )}
     </>
   );
