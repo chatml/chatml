@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/command';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useUpdateStore } from '@/stores/updateStore';
 import { useShortcut } from '@/hooks/useShortcut';
 import { navigate } from '@/lib/navigation';
 import { copyToClipboard } from '@/lib/tauri';
@@ -44,6 +45,7 @@ import {
   ExternalLink,
   Terminal,
   RefreshCw,
+  Download,
   // Review
   Search,
   Shield,
@@ -399,6 +401,14 @@ const COMMANDS: Command[] = [
       const store = useSettingsStore.getState();
       store.setSoundEffects(!store.soundEffects);
     },
+  },
+  {
+    id: 'check-for-updates',
+    category: 'Settings',
+    label: 'Check for Updates',
+    icon: Download,
+    keywords: ['update', 'upgrade', 'version', 'release'],
+    action: () => useUpdateStore.getState().checkForUpdates(),
   },
 ];
 
