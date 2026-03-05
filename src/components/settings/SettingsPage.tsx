@@ -24,6 +24,7 @@ import {
   X,
   ChevronDown,
   FolderOpen,
+  Brain,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isMacOS } from '@/lib/platform';
@@ -90,6 +91,7 @@ const workspaceSubPages: WorkspaceSubPage[] = [
   { id: 'review', label: 'Review', icon: <Eye className="w-3.5 h-3.5" /> },
   { id: 'actions', label: 'Actions', icon: <Zap className="w-3.5 h-3.5" /> },
   { id: 'agents', label: 'AI Agents', icon: <Bot className="w-3.5 h-3.5" /> },
+  { id: 'memory', label: 'Memory', icon: <Brain className="w-3.5 h-3.5" /> },
 ];
 
 export function SettingsPage({

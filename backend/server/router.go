@@ -178,6 +178,11 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		r.Get("/{id}/issues", h.ListIssues)
 		r.With(searchRateLimiter).Get("/{id}/issues/search", h.SearchIssues)
 		r.Get("/{id}/issues/{number}", h.GetIssueDetails)
+		// Memory file endpoints (workspace-level)
+		r.Get("/{id}/memory", h.ListMemoryFiles)
+		r.Get("/{id}/memory/file", h.GetMemoryFile)
+		r.Put("/{id}/memory/file", h.SaveMemoryFile)
+		r.Delete("/{id}/memory/file", h.DeleteMemoryFile)
 		// MCP server config endpoints
 		r.Get("/{id}/mcp-servers", h.GetMcpServers)
 		r.Put("/{id}/mcp-servers", h.SetMcpServers)
