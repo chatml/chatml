@@ -724,3 +724,231 @@ func TestParseEnvVars(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// GetClaudeAuthStatus tests
+// ---------------------------------------------------------------------------
+
+func TestGetClaudeAuthStatus_NothingConfigured(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	// Ensure no env vars or credentials are present
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	dir := t.TempDir()
+	t.Setenv("HOME", dir) // Empty home — no Claude settings or credentials
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, false, result["configured"])
+	assert.Equal(t, false, result["hasStoredKey"])
+	assert.Equal(t, false, result["hasEnvKey"])
+	assert.Equal(t, false, result["hasCliCredentials"])
+	assert.Equal(t, false, result["hasBedrock"])
+	assert.Equal(t, "", result["credentialSource"])
+}
+
+func TestGetClaudeAuthStatus_EnvKeyPresent(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasEnvKey"])
+	assert.Equal(t, false, result["hasBedrock"])
+	assert.Equal(t, "env_var", result["credentialSource"])
+}
+
+func TestGetClaudeAuthStatus_BedrockViaClaudeSettings(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	// Create ~/.claude/settings.json with Bedrock config
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+
+	settings := `{
+		"awsAuthRefresh": "aws sso login --profile core-dev",
+		"env": {
+			"CLAUDE_CODE_USE_BEDROCK": "true",
+			"AWS_PROFILE": "core-dev",
+			"ANTHROPIC_DEFAULT_SONNET_MODEL": "arn:aws:bedrock:us-east-1:123:application-inference-profile/abc"
+		}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(settings), 0o600))
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasBedrock"])
+	assert.Equal(t, false, result["hasStoredKey"])
+	assert.Equal(t, false, result["hasEnvKey"])
+	assert.Equal(t, "aws_bedrock", result["credentialSource"])
+}
+
+func TestGetClaudeAuthStatus_BedrockViaChatMLEnvVars(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	dir := t.TempDir()
+	t.Setenv("HOME", dir) // No Claude settings
+
+	// Store env vars in ChatML settings
+	ctx := context.Background()
+	envVarsRaw := "CLAUDE_CODE_USE_BEDROCK=true\nANTHROPIC_DEFAULT_SONNET_MODEL=arn:aws:bedrock:us-east-1:123:model"
+	require.NoError(t, st.SetSetting(ctx, "env-vars", envVarsRaw))
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasBedrock"])
+	assert.Equal(t, "aws_bedrock", result["credentialSource"])
+}
+
+func TestGetClaudeAuthStatus_BedrockPriorityHigherThanApiKey(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	// Both API key env var AND Bedrock are present
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+	settings := `{"env": {"CLAUDE_CODE_USE_BEDROCK": "true"}}`
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(settings), 0o600))
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasEnvKey"])
+	assert.Equal(t, true, result["hasBedrock"])
+	// Bedrock takes priority in credentialSource (matches newAIClient order)
+	assert.Equal(t, "aws_bedrock", result["credentialSource"])
+}
+
+func TestGetClaudeAuthStatus_BedrockFalseNotConfigured(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	// Settings with CLAUDE_CODE_USE_BEDROCK=false
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+	settings := `{"env": {"CLAUDE_CODE_USE_BEDROCK": "false"}}`
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(settings), 0o600))
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, false, result["configured"])
+	assert.Equal(t, false, result["hasBedrock"])
+	assert.Equal(t, "", result["credentialSource"])
+}
+
+func TestGetClaudeAuthStatus_ClaudeSettingsSkipsChatMLEnvVars(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	// Both Claude settings AND ChatML env vars have bedrock
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+	settings := `{"env": {"CLAUDE_CODE_USE_BEDROCK": "true"}}`
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(settings), 0o600))
+	t.Setenv("HOME", dir)
+
+	ctx := context.Background()
+	require.NoError(t, st.SetSetting(ctx, "env-vars", "CLAUDE_CODE_USE_BEDROCK=true"))
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	// Claude settings detected first; check 6 is skipped
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasBedrock"])
+}
+
+func TestGetClaudeAuthStatus_CliCredentialsFallbackToFile(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	// Create a valid credentials file with far-future expiry (year 3000)
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+
+	credContent := []byte(`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-test","expiresAt":32503680000000}}`)
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, ".credentials.json"), credContent, 0o600))
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/auth-status", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeAuthStatus(w, req)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, true, result["configured"])
+	assert.Equal(t, true, result["hasCliCredentials"])
+	assert.Equal(t, "claude_subscription", result["credentialSource"])
+}

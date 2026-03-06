@@ -16,6 +16,8 @@ function getSourceLabel(source: string): string {
       return 'API key configured in settings';
     case 'env_var':
       return 'API key found in environment';
+    case 'aws_bedrock':
+      return 'AWS Bedrock configured';
     default:
       return 'Credentials configured';
   }

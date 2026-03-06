@@ -311,7 +311,7 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 	procOpts.Instructions = m.buildSystemInstructions(ctx, session, sessionWithWs, existingInstructions)
 
 	// Load custom environment variables from settings
-	envVars, err := m.loadEnvVars(ctx)
+	envVars, err := m.loadEnvVars(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load env vars from settings: %w", err)
 	}
@@ -1758,7 +1758,7 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 	}
 
 	// Load env vars and MCP servers (same as StartConversation)
-	envVars, err := m.loadEnvVars(ctx)
+	envVars, err := m.loadEnvVars(ctx, nil)
 	if err != nil {
 		logger.Manager.Errorf("Failed to load env vars for resume %s: %v", convID, err)
 	}
@@ -2018,6 +2018,7 @@ func formatSessionName(name string) string {
 }
 
 // newAIClient creates a fresh AI client by checking multiple credential sources in order:
+// 0. AWS Bedrock via Claude Code settings.json or ChatML env vars
 // 1. Encrypted API key stored in SQLite settings
 // 2. ANTHROPIC_API_KEY environment variable
 // 3. Claude Code OAuth token from macOS Keychain
@@ -2025,11 +2026,27 @@ func formatSessionName(name string) string {
 // 5. Cached OAuth token from agent-runner SDK
 // Returns nil if no credentials are available.
 func (m *Manager) newAIClient() ai.Provider {
-	// Source 1: SQLite settings (explicit user-configured API key)
-	envVars, err := m.loadEnvVars(m.ctx)
+	// Read Claude Code settings once — shared by Bedrock check and env var merge.
+	claudeSettings, settingsErr := ai.ReadClaudeCodeSettings()
+	if settingsErr != nil {
+		logger.Manager.Debugf("Could not read Claude Code settings: %v", settingsErr)
+	}
+
+	// Source 0a: AWS Bedrock via Claude Code settings.json
+	if client := m.tryBedrockFromClaudeSettings(claudeSettings); client != nil {
+		return client
+	}
+
+	// Source 0b: AWS Bedrock via ChatML env vars (user-configured in Settings → Advanced)
+	envVars, err := m.loadEnvVars(m.ctx, claudeSettings)
 	if err != nil {
 		logger.Manager.Warnf("Failed to load env vars for AI client: %v", err)
 	}
+	if client := m.tryBedrockFromEnvVars(envVars, claudeSettings); client != nil {
+		return client
+	}
+
+	// Source 1: SQLite settings (explicit user-configured API key)
 	if envVars != nil {
 		if apiKey := envVars["ANTHROPIC_API_KEY"]; apiKey != "" {
 			logger.Manager.Debugf("AI client: using API key from settings")
@@ -2080,6 +2097,69 @@ func (m *Manager) newAIClient() ai.Provider {
 // packages that need an AI client (e.g. server handlers).
 func (m *Manager) CreateAIClient() ai.Provider {
 	return m.newAIClient()
+}
+
+// tryBedrockFromClaudeSettings checks pre-loaded Claude Code settings for Bedrock configuration.
+func (m *Manager) tryBedrockFromClaudeSettings(settings *ai.ClaudeCodeSettings) ai.Provider {
+	if settings == nil || !ai.IsBedRockConfigured(settings) {
+		return nil
+	}
+
+	env := settings.Env
+	profile := env["AWS_PROFILE"]
+	region := ai.ExtractRegionFromARN(env["ANTHROPIC_DEFAULT_SONNET_MODEL"])
+	if region == "" {
+		region = env["AWS_REGION"]
+		if region == "" {
+			region = "us-east-1"
+		}
+	}
+
+	client, err := ai.NewBedRockClient(m.ctx, profile, region,
+		env["ANTHROPIC_DEFAULT_SONNET_MODEL"],
+		env["ANTHROPIC_DEFAULT_HAIKU_MODEL"],
+		settings.AwsAuthRefresh)
+	if err != nil {
+		logger.Manager.Warnf("Failed to create Bedrock client from Claude settings: %v", err)
+		return nil
+	}
+	logger.Manager.Debugf("AI client: using AWS Bedrock from Claude Code settings (profile=%s, region=%s)", profile, region)
+	m.signalCredentialsReady()
+	return client
+}
+
+// tryBedrockFromEnvVars checks ChatML env vars for Bedrock configuration.
+func (m *Manager) tryBedrockFromEnvVars(envVars map[string]string, claudeSettings *ai.ClaudeCodeSettings) ai.Provider {
+	if envVars == nil || envVars["CLAUDE_CODE_USE_BEDROCK"] != "true" {
+		return nil
+	}
+
+	profile := envVars["AWS_PROFILE"]
+	region := ai.ExtractRegionFromARN(envVars["ANTHROPIC_DEFAULT_SONNET_MODEL"])
+	if region == "" {
+		region = envVars["AWS_REGION"]
+		if region == "" {
+			region = "us-east-1"
+		}
+	}
+
+	// Fall back to Claude Code settings.json awsAuthRefresh when not set in env vars.
+	authRefreshCmd := envVars["AWS_AUTH_REFRESH"]
+	if authRefreshCmd == "" && claudeSettings != nil {
+		authRefreshCmd = claudeSettings.AwsAuthRefresh
+	}
+
+	client, err := ai.NewBedRockClient(m.ctx, profile, region,
+		envVars["ANTHROPIC_DEFAULT_SONNET_MODEL"],
+		envVars["ANTHROPIC_DEFAULT_HAIKU_MODEL"],
+		authRefreshCmd)
+	if err != nil {
+		logger.Manager.Warnf("Failed to create Bedrock client from env vars: %v", err)
+		return nil
+	}
+	logger.Manager.Debugf("AI client: using AWS Bedrock from env vars (profile=%s, region=%s)", profile, region)
+	m.signalCredentialsReady()
+	return client
 }
 
 // setCachedOAuthToken stores an OAuth access token discovered by the agent-runner SDK.
@@ -2758,7 +2838,7 @@ func (m *Manager) SetConversationMaxThinkingTokens(convID string, tokens int) er
 }
 
 // loadEnvVars reads custom environment variables from the settings store.
-func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
+func (m *Manager) loadEnvVars(ctx context.Context, claudeSettings *ai.ClaudeCodeSettings) (map[string]string, error) {
 	raw, found, err := m.store.GetSetting(ctx, "env-vars")
 	if err != nil {
 		return nil, err
@@ -2767,6 +2847,23 @@ func (m *Manager) loadEnvVars(ctx context.Context) (map[string]string, error) {
 	var envMap map[string]string
 	if found && raw != "" {
 		envMap = store.ParseEnvVars(raw)
+	}
+
+	// If no settings passed in, read them now (for callers outside newAIClient).
+	if claudeSettings == nil {
+		claudeSettings, _ = ai.ReadClaudeCodeSettings()
+	}
+
+	// Merge env vars from Claude Code settings.json (ChatML settings take precedence)
+	if claudeSettings != nil && len(claudeSettings.Env) > 0 {
+		if envMap == nil {
+			envMap = make(map[string]string)
+		}
+		for k, v := range claudeSettings.Env {
+			if _, exists := envMap[k]; !exists {
+				envMap[k] = v
+			}
+		}
 	}
 
 	// Load encrypted Anthropic API key if configured

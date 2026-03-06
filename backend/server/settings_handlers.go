@@ -12,6 +12,7 @@ import (
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/crypto"
 	"github.com/chatml/chatml-backend/models"
+	"github.com/chatml/chatml-backend/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -406,6 +407,7 @@ func maskAPIKey(key string) string {
 //   - Settings-stored encrypted API key
 //   - ANTHROPIC_API_KEY environment variable
 //   - Claude Code CLI credentials (macOS Keychain or ~/.claude/.credentials.json)
+//   - AWS Bedrock via Claude Code settings.json or ChatML env vars
 func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -433,11 +435,31 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	configured := hasStoredKey || hasEnvKey || hasCliCredentials
+	// Check 5: AWS Bedrock via Claude Code settings.json
+	hasBedrock := false
+	claudeSettings, _ := ai.ReadClaudeCodeSettings()
+	if claudeSettings != nil && ai.IsBedRockConfigured(claudeSettings) {
+		hasBedrock = true
+	}
 
-	// Determine the primary credential source for UI display
+	// Check 6: AWS Bedrock via ChatML env vars (Settings → Advanced)
+	if !hasBedrock {
+		raw, found, _ := h.store.GetSetting(ctx, "env-vars")
+		if found && raw != "" {
+			if store.ParseEnvVars(raw)["CLAUDE_CODE_USE_BEDROCK"] == "true" {
+				hasBedrock = true
+			}
+		}
+	}
+
+	configured := hasStoredKey || hasEnvKey || hasCliCredentials || hasBedrock
+
+	// Determine the primary credential source for UI display.
+	// Order must match newAIClient() priority: Bedrock > stored key > env key > CLI credentials.
 	credentialSource := ""
-	if hasStoredKey {
+	if hasBedrock {
+		credentialSource = "aws_bedrock"
+	} else if hasStoredKey {
 		credentialSource = "api_key"
 	} else if hasEnvKey {
 		credentialSource = "env_var"
@@ -446,11 +468,12 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]interface{}{
-		"configured":       configured,
-		"hasStoredKey":     hasStoredKey,
-		"hasEnvKey":        hasEnvKey,
+		"configured":        configured,
+		"hasStoredKey":      hasStoredKey,
+		"hasEnvKey":         hasEnvKey,
 		"hasCliCredentials": hasCliCredentials,
-		"credentialSource": credentialSource,
+		"hasBedrock":        hasBedrock,
+		"credentialSource":  credentialSource,
 	})
 }
 

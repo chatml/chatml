@@ -1036,7 +1036,7 @@ PORT=8080`
 	require.NoError(t, err)
 
 	// Load env vars
-	envMap, err := m.loadEnvVars(ctx)
+	envMap, err := m.loadEnvVars(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, envMap)
 
@@ -1053,7 +1053,7 @@ func TestManager_LoadEnvVars_Empty(t *testing.T) {
 
 	// Don't store any env vars
 	// loadEnvVars should return nil, nil when no settings exist
-	envMap, err := m.loadEnvVars(ctx)
+	envMap, err := m.loadEnvVars(ctx, nil)
 	assert.NoError(t, err)
 	assert.Nil(t, envMap)
 }
@@ -1078,7 +1078,7 @@ API_SECRET=topsecret
 	require.NoError(t, err)
 
 	// Load env vars
-	envMap, err := m.loadEnvVars(ctx)
+	envMap, err := m.loadEnvVars(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, envMap)
 

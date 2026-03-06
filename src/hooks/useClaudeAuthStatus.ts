@@ -7,6 +7,7 @@ export interface ClaudeAuthStatus {
   hasStoredKey: boolean;
   hasEnvKey: boolean;
   hasCliCredentials: boolean;
+  hasBedrock: boolean;
   credentialSource: string;
 }
 
@@ -15,6 +16,7 @@ export const DEFAULT_AUTH_STATUS: ClaudeAuthStatus = {
   hasStoredKey: false,
   hasEnvKey: false,
   hasCliCredentials: false,
+  hasBedrock: false,
   credentialSource: '',
 };
 
