@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  transpilePackages: [],
+  transpilePackages: ['@pierre/diffs', '@shikijs/core', '@shikijs/engine-javascript', '@shikijs/langs'],
 };
 
 export default nextConfig;

@@ -25,6 +25,7 @@
     "@iconify-json/vscode-icons": "^1.2.40",
     "@iconify/react": "^6.0.2",
     "@pierre/diffs": "^1.0.11",
+    "@shikijs/langs": "^3.22.0",
     "@platejs/combobox": "^52.0.15",
     "@platejs/mention": "^52.0.15",
     "@platejs/slash-command": "^52.0.15",

@@ -1,14 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { File as PierreFile } from '@pierre/diffs/react';
-import type { FileContents, FileOptions } from '@pierre/diffs/react';
+import { File as PierreFile } from '@/lib/pierre';
+import type { FileContents, FileOptions } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
-
-// Pre-load Pierre themes and common language grammars statically so they're
-// bundled at build time — avoids dynamic import() calls that fail in Tauri
-// release builds (same pattern as vscodeIcons.ts addCollection fix).
-import '@/lib/pierrePreload';
 
 const PIERRE_THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
 

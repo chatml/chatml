@@ -1,10 +1,8 @@
 'use client';
 
 import { memo, useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { FileDiff } from '@pierre/diffs/react';
-import type { FileContents } from '@pierre/diffs/react';
-import type { FileDiffMetadata } from '@pierre/diffs';
-import { parseDiffFromFile } from '@pierre/diffs';
+import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import {
   ChevronRight,
