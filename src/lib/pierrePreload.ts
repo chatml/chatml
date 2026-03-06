@@ -40,10 +40,14 @@ if (!ResolvedThemes.has('pierre-light')) {
 
 // Also override the registered loaders so any code path that bypasses the
 // ResolvedThemes cache still gets static data instead of a failing import().
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-RegisteredCustomThemes.set('pierre-dark', () => Promise.resolve(pierreDarkRaw as any));
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-RegisteredCustomThemes.set('pierre-light', () => Promise.resolve(pierreLightRaw as any));
+if (!RegisteredCustomThemes.has('pierre-dark')) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RegisteredCustomThemes.set('pierre-dark', () => Promise.resolve(pierreDarkRaw as any));
+}
+if (!RegisteredCustomThemes.has('pierre-light')) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RegisteredCustomThemes.set('pierre-light', () => Promise.resolve(pierreLightRaw as any));
+}
 
 // --- Languages: statically import grammars for the languages we use ---
 // Each @shikijs/langs/* module default-exports a LanguageRegistration[].
