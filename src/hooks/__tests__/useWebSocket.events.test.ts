@@ -467,6 +467,19 @@ describe('useWebSocket — missing event handling', () => {
 
       expect(useAppStore.getState().supportedModels).toEqual(models);
     });
+
+    it('stores supportsFastMode field from SDK models', () => {
+      const models = [
+        { value: 'claude-opus-4-6', displayName: 'Opus 4.6', description: 'Most capable', supportsFastMode: true },
+        { value: 'claude-haiku-4-5', displayName: 'Haiku 4.5', description: 'Fast', supportsFastMode: false },
+      ];
+
+      useAppStore.getState().setSupportedModels(models);
+
+      const stored = useAppStore.getState().supportedModels;
+      expect(stored[0].supportsFastMode).toBe(true);
+      expect(stored[1].supportsFastMode).toBe(false);
+    });
   });
 
   describe('supported_commands event (Group J)', () => {

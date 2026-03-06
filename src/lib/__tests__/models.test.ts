@@ -73,6 +73,45 @@ describe('getModelInfo', () => {
     expect(getModelInfo(arn)).toBeUndefined();
   });
 
+  it('returns supportsFastMode from dynamic SDK models', async () => {
+    const { useAppStore } = await import('@/stores/appStore');
+
+    const spy = vi.spyOn(useAppStore, 'getState').mockReturnValue({
+      ...useAppStore.getState(),
+      supportedModels: [
+        {
+          value: 'claude-opus-4-6',
+          displayName: 'Claude Opus 4.6',
+          description: 'Most capable',
+          supportsAdaptiveThinking: true,
+          supportsEffort: true,
+          supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+          supportsFastMode: true,
+        },
+        {
+          value: 'claude-haiku-4-5-20251001',
+          displayName: 'Claude Haiku 4.5',
+          description: 'Fast',
+          supportsAdaptiveThinking: false,
+          supportsEffort: false,
+          supportsFastMode: false,
+        },
+      ],
+    } as ReturnType<typeof useAppStore.getState>);
+
+    try {
+      const opus = getModelInfo('claude-opus-4-6');
+      expect(opus).toBeDefined();
+      expect(opus!.supportsFastMode).toBe(true);
+
+      const haiku = getModelInfo('claude-haiku-4-5-20251001');
+      expect(haiku).toBeDefined();
+      expect(haiku!.supportsFastMode).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('returns correct capabilities for each static model', () => {
     for (const model of MODELS) {
       const info = getModelInfo(model.id);

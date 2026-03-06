@@ -1076,6 +1076,7 @@ export function useWebSocket(enabled: boolean = true) {
             supportsEffort?: boolean;
             supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
             supportsAdaptiveThinking?: boolean;
+            supportsFastMode?: boolean;
           }>);
         }
         break;
