@@ -980,9 +980,16 @@ function resetRunStats(): void {
 // HOOKS - All hooks are always enabled for comprehensive logging/tracking
 // ============================================================================
 
+// Extract agent_id / agent_type from hook inputs (SDK 0.2.69+ provides these on ALL hooks)
+function extractAgentFields(input: unknown): { agentId?: string; agentType?: string } {
+  const i = input as { agent_id?: string; agent_type?: string };
+  return { agentId: i.agent_id, agentType: i.agent_type };
+}
+
 const preToolUseHook: HookCallback = async (input, toolUseId) => {
   const hookInput = input as PreToolUseHookInput;
-  const agentId = sessionToAgentId.get(hookInput.session_id);
+  const agentFields = extractAgentFields(input);
+  const agentId = sessionToAgentId.get(hookInput.session_id) || agentFields.agentId;
 
   emit({
     type: "hook_pre_tool",
@@ -990,6 +997,7 @@ const preToolUseHook: HookCallback = async (input, toolUseId) => {
     tool: hookInput.tool_name,
     input: hookInput.tool_input,
     sessionId: hookInput.session_id,
+    ...agentFields,
   });
 
   // Capture Task tool descriptions for sub-agent description plumbing (Issue 3)
@@ -1041,6 +1049,7 @@ const postToolUseHook: HookCallback = async (input, toolUseId) => {
     tool: hookInput.tool_name,
     response: responseSummary,
     sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
   });
 
   // When ExitPlanMode completes, the SDK internally changes the permission mode
@@ -1128,6 +1137,7 @@ const postToolUseFailureHook: HookCallback = async (input, toolUseId) => {
     error: hookInput.error,
     isInterrupt: hookInput.is_interrupt,
     sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
   });
 
   // If this is a sub-agent tool, emit a tool_end event with success: false
@@ -1162,6 +1172,7 @@ const notificationHook: HookCallback = async (input) => {
     message: hookInput.message,
     notificationType: hookInput.notification_type,
     sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
   });
   return {};
 };
@@ -1174,6 +1185,7 @@ const sessionStartHook: HookCallback = async (input) => {
     sessionId: hookInput.session_id,
     source: hookInput.source,
     cwd: hookInput.cwd,
+    ...extractAgentFields(input),
   });
   return {};
 };
@@ -1184,6 +1196,7 @@ const sessionEndHook: HookCallback = async (input) => {
     type: "session_ended",
     reason: hookInput.reason,
     sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
   });
   return {};
 };
@@ -1194,6 +1207,7 @@ const stopHook: HookCallback = async (input) => {
     type: "agent_stop",
     stopHookActive: hookInput.stop_hook_active,
     sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
   });
   return {};
 };
@@ -1205,6 +1219,7 @@ const preCompactHook: HookCallback = async (input) => {
     trigger: hookInput.trigger,
     customInstructions: hookInput.custom_instructions,
     sessionId: hookInput.session_id,
+    ...extractAgentFields(input),
   });
   return {};
 };

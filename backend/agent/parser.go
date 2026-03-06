@@ -219,6 +219,7 @@ type ModelInfo struct {
 	SupportsEffort           *bool    `json:"supportsEffort,omitempty"`
 	SupportedEffortLevels    []string `json:"supportedEffortLevels,omitempty"`
 	SupportsAdaptiveThinking *bool    `json:"supportsAdaptiveThinking,omitempty"`
+	SupportsFastMode         *bool    `json:"supportsFastMode,omitempty"`
 }
 
 // SlashCmd represents a slash command/skill

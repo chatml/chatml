@@ -290,6 +290,7 @@ interface AppState {
     supportsEffort?: boolean;
     supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
     supportsAdaptiveThinking?: boolean;
+    supportsFastMode?: boolean;
   }>;
   supportedCommands: Array<{ name: string; description: string; argumentHint: string }>;
   accountInfo: Record<string, unknown> | null;

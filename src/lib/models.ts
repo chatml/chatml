@@ -16,6 +16,7 @@ export interface DynamicModelInfo {
   supportsThinking: boolean;
   supportsEffort: boolean;
   supportedEffortLevels?: ('low' | 'medium' | 'high' | 'max')[];
+  supportsFastMode?: boolean;
 }
 
 /**
@@ -34,6 +35,7 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
       supportsThinking: sdkModel.supportsAdaptiveThinking ?? true,
       supportsEffort: sdkModel.supportsEffort ?? false,
       supportedEffortLevels: sdkModel.supportedEffortLevels,
+      supportsFastMode: sdkModel.supportsFastMode,
     };
   }
 
