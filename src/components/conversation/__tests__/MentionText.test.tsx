@@ -91,12 +91,91 @@ describe('MentionText', () => {
       expect(pills).toHaveLength(0);
     });
 
+    it('does not match npm scoped package in import statement', () => {
+      const { container } = render(
+        <MentionText content="import { File } from '@pierre/diffs'" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(0);
+    });
+
+    it('does not match npm scoped package with deep path', () => {
+      const { container } = render(
+        <MentionText content="from '@hooks/useResolvedThemeType'" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(0);
+    });
+
+    it('does not match bare npm scope', () => {
+      const { container } = render(
+        <MentionText content="@angular/core is a package" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(0);
+    });
+
+    it('does not match TypeScript path alias without extension', () => {
+      const { container } = render(
+        <MentionText content="import foo from '@/lib/utils'" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(0);
+    });
+
     it('does not match full pnpm dependency string from log', () => {
       const content =
         'node_modules/.pnpm/next@16.1.6_babel+core@7.29.0_react-dom@19.2.4_react@19.2.4__react-dom@19.2.4/node_modules/react-dom/cjs/react-dom-client.development.js';
       const { container } = render(<MentionText content={content} />);
       const pills = container.querySelectorAll('.inline-flex');
       expect(pills).toHaveLength(0);
+    });
+  });
+
+  describe('mixed content', () => {
+    it('renders pill for file mention but not npm scoped package', () => {
+      const { container } = render(
+        <MentionText content="Check @src/Button.tsx but not @angular/core" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(1);
+      expect(pills[0]).toHaveTextContent('Button.tsx');
+    });
+
+    it('preserves npm scoped package text when not rendering as pill', () => {
+      const { container } = render(
+        <MentionText content="import from '@pierre/diffs'" />
+      );
+      expect(container.textContent).toBe("import from '@pierre/diffs'");
+    });
+  });
+
+  describe('extensionless files', () => {
+    it('renders pill for @Makefile', () => {
+      const { container } = render(
+        <MentionText content="check @Makefile for build targets" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(1);
+      expect(pills[0]).toHaveTextContent('Makefile');
+    });
+
+    it('renders pill for @Dockerfile', () => {
+      const { container } = render(
+        <MentionText content="see @Dockerfile" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(1);
+      expect(pills[0]).toHaveTextContent('Dockerfile');
+    });
+
+    it('renders pill for extensionless file in a path', () => {
+      const { container } = render(
+        <MentionText content="check @src/Makefile" />
+      );
+      const pills = container.querySelectorAll('.inline-flex');
+      expect(pills).toHaveLength(1);
+      expect(pills[0]).toHaveTextContent('Makefile');
     });
   });
 
