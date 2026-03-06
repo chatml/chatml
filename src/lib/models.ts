@@ -53,7 +53,16 @@ export function getModelInfo(modelId: string): DynamicModelInfo | undefined {
 }
 
 export function getModelDisplayName(modelId: string): string {
-  return getModelInfo(modelId)?.name ?? modelId;
+  const info = getModelInfo(modelId);
+  if (info) return info.name;
+
+  // Handle Bedrock inference profile ARNs (e.g. "arn:aws:bedrock:us-east-1:...:application-inference-profile/abc123")
+  if (modelId.startsWith('arn:aws:bedrock:')) {
+    const parts = modelId.split('/');
+    return `Bedrock (${parts[parts.length - 1]})`;
+  }
+
+  return modelId;
 }
 
 /** Build the turn-start config label from init event metadata. */
