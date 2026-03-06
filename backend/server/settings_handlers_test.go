@@ -952,3 +952,59 @@ func TestGetClaudeAuthStatus_CliCredentialsFallbackToFile(t *testing.T) {
 	assert.Equal(t, true, result["hasCliCredentials"])
 	assert.Equal(t, "claude_subscription", result["credentialSource"])
 }
+
+func TestGetClaudeEnv_NoFile(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	// HOME points to temp dir with no .claude/settings.json
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/claude-env", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeEnv(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	env, ok := result["env"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Empty(t, env)
+}
+
+func TestGetClaudeEnv_WithEnvVars(t *testing.T) {
+	h, st := setupTestHandlers(t)
+	defer st.Close()
+
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	require.NoError(t, os.MkdirAll(claudeDir, 0o700))
+
+	settings := `{
+		"env": {
+			"CLAUDE_CODE_USE_BEDROCK": "true",
+			"AWS_PROFILE": "core-dev",
+			"AWS_REGION": "us-east-1"
+		}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(claudeDir, "settings.json"), []byte(settings), 0o600))
+	t.Setenv("HOME", dir)
+
+	req := httptest.NewRequest("GET", "/api/settings/claude-env", nil)
+	w := httptest.NewRecorder()
+	h.GetClaudeEnv(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	env, ok := result["env"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "true", env["CLAUDE_CODE_USE_BEDROCK"])
+	assert.Equal(t, "core-dev", env["AWS_PROFILE"])
+	assert.Equal(t, "us-east-1", env["AWS_REGION"])
+}

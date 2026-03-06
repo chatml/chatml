@@ -477,6 +477,25 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetClaudeEnv reads ~/.claude/settings.json and returns the env vars defined there.
+// Returns an empty map if the file does not exist.
+func (h *Handlers) GetClaudeEnv(w http.ResponseWriter, r *http.Request) {
+	settings, err := ai.ReadClaudeCodeSettings()
+	if err != nil {
+		writeInternalError(w, "failed to read Claude settings", err)
+		return
+	}
+
+	env := map[string]string{}
+	if settings != nil && settings.Env != nil {
+		env = settings.Env
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"env": env,
+	})
+}
+
 // settingKeyMcpServers returns the settings key for MCP servers in a workspace
 func settingKeyMcpServers(workspaceID string) string {
 	return "mcp-servers:" + workspaceID

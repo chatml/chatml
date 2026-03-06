@@ -1580,6 +1580,12 @@ export async function getEnvSettings(): Promise<string> {
   return data.envVars;
 }
 
+export async function getClaudeEnv(): Promise<Record<string, string>> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/claude-env`);
+  const data = await handleResponse<{ env: Record<string, string> }>(res);
+  return data.env;
+}
+
 export async function setEnvSettings(envVars: string): Promise<void> {
   const res = await fetchWithAuth(
     `${getApiBase()}/api/settings/env`,
