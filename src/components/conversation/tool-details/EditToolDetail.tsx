@@ -1,10 +1,8 @@
 'use client';
 
 import { memo, useMemo, useState, useCallback } from 'react';
-import { FileDiff } from '@pierre/diffs/react';
-import type { FileContents } from '@pierre/diffs/react';
-import type { FileDiffMetadata } from '@pierre/diffs';
-import { parseDiffFromFile } from '@pierre/diffs';
+import { FileDiff, parseDiffFromFile } from '@/lib/pierre';
+import type { FileContents, FileDiffMetadata } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, Rows, SplitSquareHorizontal, WrapText } from 'lucide-react';
 import { Button } from '@/components/ui/button';

@@ -1,8 +1,8 @@
 'use client';
 
 import { memo, useMemo, useState, useCallback } from 'react';
-import { File as PierreFile } from '@pierre/diffs/react';
-import type { FileContents, FileOptions } from '@pierre/diffs/react';
+import { File as PierreFile } from '@/lib/pierre';
+import type { FileContents, FileOptions } from '@/lib/pierre';
 import { useResolvedThemeType } from '@/hooks/useResolvedThemeType';
 import { FileCode, WrapText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
