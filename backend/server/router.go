@@ -237,6 +237,7 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Get("/api/settings/action-templates", h.GetActionTemplates)
 	r.Put("/api/settings/action-templates", h.SetActionTemplates)
 	r.Get("/api/settings/claude-auth-status", h.GetClaudeAuthStatus)
+	r.Get("/api/settings/claude-env", h.GetClaudeEnv)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { FolderOpen, ExternalLink, Download, Upload } from 'lucide-react';
 import { openFolderDialog } from '@/lib/tauri';
-import { getWorkspacesBasePath, setWorkspacesBasePath, getEnvSettings, setEnvSettings } from '@/lib/api';
+import { getWorkspacesBasePath, setWorkspacesBasePath, getEnvSettings, setEnvSettings, getClaudeEnv } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useTheme } from 'next-themes';
@@ -312,8 +312,10 @@ function EnvSection() {
   const [envVars, setEnvVarsLocal] = useState('');
   const [savedEnvVars, setSavedEnvVars] = useState('');
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const toasts = useToast();
 
   useEffect(() => {
     getEnvSettings()
@@ -342,6 +344,76 @@ function EnvSection() {
       setSaving(false);
     }
   }, [envVars, hasUnsavedChanges]);
+
+  const handleImportFromClaude = useCallback(async () => {
+    setImporting(true);
+    setSaveError(null);
+    try {
+      const claudeEnv = await getClaudeEnv();
+      const claudeKeys = Object.keys(claudeEnv);
+
+      if (claudeKeys.length === 0) {
+        toasts.info('No environment variables found in ~/.claude/settings.json');
+        return;
+      }
+
+      // Parse existing vars into a map so we can detect overwrites
+      const existingMap: Record<string, string> = {};
+      for (const line of envVars.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          existingMap[trimmed.substring(0, eqIdx).trim()] = trimmed.substring(eqIdx + 1);
+        }
+      }
+
+      // Track what actually changes
+      let added = 0;
+      let overwritten = 0;
+      const remaining = new Set(claudeKeys);
+
+      // Rebuild lines: update existing var lines in-place, preserve comments/blanks
+      const lines = envVars.split('\n');
+      const updatedLines = lines.map((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return line; // preserve comments and blanks
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx <= 0) return line;
+        const key = trimmed.substring(0, eqIdx).trim();
+        if (remaining.has(key)) {
+          remaining.delete(key);
+          if (existingMap[key] !== claudeEnv[key]) {
+            overwritten++;
+          }
+          return `${key}=${claudeEnv[key]}`;
+        }
+        return line;
+      });
+
+      // Append new vars that didn't exist yet
+      for (const key of remaining) {
+        added++;
+        updatedLines.push(`${key}=${claudeEnv[key]}`);
+      }
+
+      setEnvVarsLocal(updatedLines.join('\n'));
+
+      // Build a descriptive toast
+      const parts: string[] = [];
+      if (added > 0) parts.push(`${added} added`);
+      if (overwritten > 0) parts.push(`${overwritten} updated`);
+      if (parts.length === 0) {
+        toasts.info('All Claude env vars already match — no changes made');
+      } else {
+        toasts.success(`Imported from Claude settings: ${parts.join(', ')}`);
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to import Claude env vars');
+    } finally {
+      setImporting(false);
+    }
+  }, [envVars, toasts]);
 
   return (
     <SettingsRow
@@ -373,7 +445,17 @@ function EnvSection() {
       />
 
       <div className="flex items-center justify-between mt-3">
-        <div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={importing || loading}
+            onClick={handleImportFromClaude}
+          >
+            <Download className="w-3.5 h-3.5" />
+            {importing ? 'Importing...' : 'Import from Claude'}
+          </Button>
           <p className="text-xs text-muted-foreground">
             One per line:{' '}
             <code className="px-1 py-0.5 bg-muted rounded text-xs font-mono">VAR_NAME=value</code>
