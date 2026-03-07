@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBranchSync } from '../useBranchSync';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { BranchSyncStatusDTO, BranchSyncResultDTO } from '@/lib/api';
 
 // vi.mock is hoisted above imports by Vitest's transform, so the import
@@ -65,6 +66,9 @@ describe('useBranchSync', () => {
       branchSyncDismissed: {},
       branchSyncCompletedAt: {},
     });
+
+    // Enable branch sync banner (default is false, but tests need it on)
+    useSettingsStore.setState({ branchSyncBanner: true });
 
     // Default: API returns a status behind by 3 commits
     mockedGetBranchSyncStatus.mockResolvedValue(makeSyncStatus());
