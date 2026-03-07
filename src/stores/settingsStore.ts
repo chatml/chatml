@@ -92,7 +92,7 @@ export const SETTINGS_DEFAULTS = {
   // Git
   branchPrefixType: 'github' as BranchPrefixType,
   branchPrefixCustom: '',
-  branchSyncBanner: true,
+  branchSyncBanner: false,
   deleteBranchOnArchive: false,
   archiveOnMerge: false,
   // Account
