@@ -223,6 +223,11 @@ export function SessionToolbarContent() {
   // Shared handler for branch-sync events (rebase & merge)
   const handleBranchSyncEvent = useCallback((baseBranch: string, message: string) => {
     if (isAgentWorking || !selectedConversationId || !selectedWorkspaceId) {
+      if (isAgentWorking) {
+        showWarning('Wait for the agent to finish before syncing');
+      } else if (!selectedConversationId || !selectedWorkspaceId) {
+        showWarning('No active session to sync');
+      }
       dispatchAppEvent('branch-sync-rejected');
       return;
     }
