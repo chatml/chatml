@@ -28,6 +28,7 @@ import { useFontSize } from '@/hooks/useFontSize';
 import { useReviewTrigger } from '@/hooks/useReviewTrigger';
 import { useMenuState } from '@/hooks/useMenuState';
 import { useMessagePrefetch } from '@/hooks/useMessagePrefetch';
+import { useDotMcpTrustCheck } from '@/hooks/useDotMcpTrustCheck';
 import { PierreWarmup } from '@/components/shared/PierreWarmup';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -182,6 +183,9 @@ export default function Home() {
   const selectedSession = selectedSessionId
     ? sessions.find((s) => s.id === selectedSessionId)
     : null;
+
+  // ─── .mcp.json Trust Check ───────────────────────────────────────────
+  useDotMcpTrustCheck(workspaces, selectedWorkspaceId, dialogRef);
 
   // ─── Onboarding Window Size ───────────────────────────────────────────
   useOnboardingFlow(isInOnboarding, authLoading);

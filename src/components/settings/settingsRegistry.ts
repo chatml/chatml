@@ -350,6 +350,16 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     categoryLabel: 'Advanced',
   },
 
+  // ── Advanced: Security ──
+  {
+    id: 'neverLoadDotMcp',
+    title: 'Block workspace MCP configs',
+    description: 'Never auto-load .mcp.json from workspace repositories. Prevents repo-provided MCP servers from running commands.',
+    keywords: ['mcp', 'trust', 'security', 'workspace', 'block', 'json', 'server', 'untrusted'],
+    category: 'advanced',
+    categoryLabel: 'Advanced',
+  },
+
   // ── Advanced: Configuration ──
   {
     id: 'exportSettings',

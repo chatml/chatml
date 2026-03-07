@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/chatml/chatml-backend/agent"
@@ -632,4 +633,147 @@ func (h *Handlers) SetEnabledAgents(w http.ResponseWriter, r *http.Request) {
 // GetAvailableAgents returns metadata about all built-in agents for the settings UI.
 func (h *Handlers) GetAvailableAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, agent.AvailableAgents())
+}
+
+// GetNeverLoadDotMcp returns the global "never load .mcp.json" setting.
+func (h *Handlers) GetNeverLoadDotMcp(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	raw, _, err := h.store.GetSetting(ctx, "never-load-dot-mcp")
+	if err != nil {
+		writeInternalError(w, "failed to get never-load-dot-mcp setting", err)
+		return
+	}
+	writeJSON(w, map[string]bool{"enabled": raw == "true"})
+}
+
+// SetNeverLoadDotMcp updates the global "never load .mcp.json" setting.
+func (h *Handlers) SetNeverLoadDotMcp(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+	value := "false"
+	if body.Enabled {
+		value = "true"
+	}
+	if err := h.store.SetSetting(ctx, "never-load-dot-mcp", value); err != nil {
+		writeInternalError(w, "failed to save never-load-dot-mcp setting", err)
+		return
+	}
+	writeJSON(w, map[string]bool{"enabled": body.Enabled})
+}
+
+// settingKeyDotMcpTrust returns the settings key for .mcp.json trust status in a workspace.
+func settingKeyDotMcpTrust(workspaceID string) string {
+	return "dot-mcp-trust:" + workspaceID
+}
+
+// GetDotMcpTrust returns the .mcp.json trust status for a workspace.
+func (h *Handlers) GetDotMcpTrust(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	raw, found, err := h.store.GetSetting(ctx, settingKeyDotMcpTrust(repoID))
+	if err != nil {
+		writeInternalError(w, "failed to get dot-mcp trust status", err)
+		return
+	}
+
+	status := "unknown"
+	if found && (raw == "trusted" || raw == "denied") {
+		status = raw
+	}
+
+	writeJSON(w, map[string]string{"status": status})
+}
+
+// SetDotMcpTrust updates the .mcp.json trust status for a workspace.
+func (h *Handlers) SetDotMcpTrust(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	if body.Status != "trusted" && body.Status != "denied" {
+		writeValidationError(w, "status must be \"trusted\" or \"denied\"")
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyDotMcpTrust(repoID), body.Status); err != nil {
+		writeInternalError(w, "failed to save dot-mcp trust status", err)
+		return
+	}
+
+	writeJSON(w, map[string]string{"status": body.Status})
+}
+
+// DotMcpServerInfo describes a single server entry from a .mcp.json file.
+type DotMcpServerInfo struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Command string `json:"command,omitempty"`
+}
+
+// GetDotMcpInfo checks whether a .mcp.json file exists in the workspace and returns its server list.
+func (h *Handlers) GetDotMcpInfo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	repoID := chi.URLParam(r, "id")
+
+	repo, err := h.store.GetRepo(ctx, repoID)
+	if err != nil {
+		writeInternalError(w, "failed to get repo", err)
+		return
+	}
+	if repo == nil {
+		http.Error(w, "repo not found", http.StatusNotFound)
+		return
+	}
+
+	dotMcpPath := repo.Path + "/.mcp.json"
+	data, err := os.ReadFile(dotMcpPath)
+	if err != nil {
+		// File doesn't exist or is unreadable
+		writeJSON(w, map[string]interface{}{"exists": false, "servers": []DotMcpServerInfo{}})
+		return
+	}
+
+	var config struct {
+		McpServers map[string]struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		writeJSON(w, map[string]interface{}{"exists": true, "servers": []DotMcpServerInfo{}})
+		return
+	}
+
+	servers := make([]DotMcpServerInfo, 0, len(config.McpServers))
+	for name, s := range config.McpServers {
+		serverType := s.Type
+		if serverType == "" {
+			serverType = "stdio"
+		}
+		servers = append(servers, DotMcpServerInfo{
+			Name:    name,
+			Type:    serverType,
+			Command: s.Command,
+		})
+	}
+
+	slices.SortFunc(servers, func(a, b DotMcpServerInfo) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	writeJSON(w, map[string]interface{}{"exists": true, "servers": servers})
 }
