@@ -22,7 +22,7 @@ Thank you for your interest in contributing to ChatML! This guide will help you 
    ```bash
    cp .env.example .env
    ```
-   Edit `.env` with your API keys and OAuth credentials (see [OAuth Setup](#oauth-setup) below).
+   Edit `.env` with your Anthropic API key. GitHub OAuth works out of the box (see [OAuth Setup](#oauth-setup)).
 
 3. **Start development**
    ```bash
@@ -58,16 +58,17 @@ npm run build              # TypeScript type checking + build
 
 ## OAuth Setup
 
-ChatML integrates with GitHub and Linear via OAuth. For development, you need your own OAuth apps.
+ChatML integrates with GitHub and Linear via OAuth.
 
-### GitHub OAuth App
+### GitHub OAuth
 
-1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
-2. Click "New OAuth App"
-3. Set **Authorization callback URL** to: `chatml://oauth/callback`
-4. Copy the Client ID and Client Secret to your `.env` file
+`.env.example` ships with a shared development OAuth App — just `cp .env.example .env` and GitHub OAuth works out of the box. No setup needed.
 
-### Linear OAuth App
+The dev OAuth App is separate from production. Production credentials are injected at build time via GitHub Actions secrets.
+
+### Linear OAuth
+
+Linear requires your own OAuth app:
 
 1. Go to [Linear API Applications](https://linear.app/settings/api/applications)
 2. Create a new application
