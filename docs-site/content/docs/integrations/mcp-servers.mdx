@@ -1,0 +1,55 @@
+---
+title: MCP Servers
+description: Configure custom Model Context Protocol servers for additional tools.
+---
+
+ChatML supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) for extending Claude's capabilities with custom tools.
+
+## Built-In MCP Server
+
+ChatML runs a built-in MCP server that provides tools to Claude:
+
+| Tool | Description |
+|------|-------------|
+| `get_session_status` | Current session information and git state |
+| `get_workspace_diff` | Git diff from the base branch |
+| `get_recent_activity` | Recent git commits |
+| `add_review_comment` | Add inline code review comments |
+| `list_review_comments` | List existing review comments |
+| `get_review_comment_stats` | Comment statistics per file |
+| `get_linear_context` | Linear issue context for the current session |
+| `start_linear_issue` | Start working on a Linear issue |
+| `update_linear_status` | Update Linear issue status |
+| `report_pr_created` | Report that a PR was created |
+| `report_pr_merged` | Report that a PR was merged |
+| `get_workspace_scripts_config` | Get workspace scripts configuration |
+| `propose_scripts_config` | Propose scripts configuration changes |
+
+## Custom MCP Servers
+
+You can add your own MCP servers to extend Claude's toolset:
+
+1. Go to **Settings** (`Cmd+,`) > **Advanced** > **MCP Servers**
+2. Add a server configuration
+
+### Transport Types
+
+| Transport | Use Case |
+|-----------|----------|
+| **stdio** | Local processes (most common) |
+| **SSE** | Server-Sent Events over HTTP |
+| **HTTP** | Standard HTTP endpoints |
+
+### Example: stdio Server
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+  "transport": "stdio"
+}
+```
+
+## Workspace-Level Configuration
+
+MCP servers can also be configured per-workspace using a `.mcp.json` file in the repository root. This allows teams to share MCP configurations.

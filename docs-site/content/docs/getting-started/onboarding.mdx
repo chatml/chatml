@@ -1,0 +1,56 @@
+---
+title: Onboarding Wizard
+description: A walkthrough of ChatML's first-run setup experience.
+---
+
+When you launch ChatML for the first time, an onboarding wizard guides you through initial setup in 6 steps.
+
+## Step 1: Welcome
+
+Introduction to ChatML's capabilities — isolated git worktrees, parallel AI sessions, and the integrated development workflow.
+
+## Step 2: API Key Configuration
+
+Configure your Claude API access:
+
+- **Anthropic API key** — Enter a key directly (stored encrypted with AES-256-GCM)
+- **Claude authentication** — Use existing Claude credentials
+
+The API key is validated with a test request before proceeding.
+
+## Step 3: Add Workspaces
+
+Register your git repositories as workspaces:
+
+- Browse your filesystem to select repositories
+- ChatML detects the git configuration automatically
+- Multiple workspaces can be added
+
+## Step 4: Create First Session
+
+Create your first isolated coding session:
+
+- Select a workspace
+- Choose or accept a session name
+- A git worktree and branch are created automatically
+
+## Step 5: Start First Conversation
+
+Send your first message to Claude:
+
+- Type a request in the message input
+- Watch the agent stream its response in real time
+- See tool execution (file reads, writes, commands) as it happens
+
+## Step 6: Keyboard Shortcuts
+
+Quick reference of essential shortcuts to get you productive:
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+K` | Command palette |
+| `Enter` | Send message |
+| `Cmd+Shift+S` | Stop agent |
+| `Cmd+N` | New session |
+
+After completing onboarding, you're ready to use ChatML. See the full [keyboard shortcuts reference](/docs/configuration/keyboard-shortcuts) for more.

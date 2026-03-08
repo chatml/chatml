@@ -1,0 +1,34 @@
+---
+title: Git Integration
+description: Deep git integration for branch management, status, and cleanup.
+---
+
+ChatML provides deep integration with git operations beyond the worktree isolation.
+
+## Branch Management
+
+- **View all branches** — See branches with commit info, ahead/behind counts, and which session they belong to
+- **Branch cleanup** — Analyze and clean up stale branches that are no longer needed
+- **Protected branch detection** — ChatML prevents creating sessions on `main`, `master`, or `develop`
+
+## Git Status
+
+View uncommitted changes per session:
+
+- Modified, added, and deleted files
+- Staged vs. unstaged changes
+- Visual indicators on session cards
+
+## Commit History
+
+- **Branch-specific commits** — View the commit history for the session's branch
+- **File history** — See the change history for individual files
+- **Ahead/behind counts** — Track how your branch relates to the remote
+
+## Branch Cleanup
+
+Over time, branches from completed sessions accumulate. The branch cleanup feature:
+
+1. Analyzes all branches to identify stale ones
+2. Shows which branches are merged, unmerged, or orphaned
+3. Lets you batch-delete branches you no longer need

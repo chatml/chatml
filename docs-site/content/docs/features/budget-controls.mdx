@@ -1,0 +1,38 @@
+---
+title: Budget Controls
+description: Manage costs with spending limits, turn caps, and thinking budgets.
+---
+
+Budget controls help you manage the cost and scope of AI operations.
+
+## Available Controls
+
+| Control | Description |
+|---------|-------------|
+| **Cost limit** | Maximum USD budget per conversation (`maxBudgetUsd`) |
+| **Turn limit** | Maximum number of agent turns per conversation (`maxTurns`) |
+| **Thinking budget** | Maximum tokens for extended thinking (`maxThinkingTokens`) |
+
+## Real-Time Tracking
+
+During streaming, ChatML displays:
+
+- Current cost for the conversation
+- Number of turns used
+- Token usage (input, output, cache read, cache creation)
+- Context window utilization percentage
+
+## Setting Limits
+
+Configure budget controls in **Settings > AI**:
+
+1. Set your desired limits
+2. Limits apply per conversation
+3. When a limit is reached, the agent stops and notifies you
+
+## Tips
+
+- Start with conservative limits when exploring unfamiliar tasks
+- Increase limits for complex, multi-step work
+- Use turn limits to prevent runaway agent loops
+- Monitor context window usage — high utilization can affect response quality

@@ -1,0 +1,36 @@
+---
+title: Checkpoints
+description: File checkpointing and rewind for undo support.
+---
+
+ChatML automatically creates checkpoints as Claude modifies files, giving you the ability to rewind changes at any point.
+
+## How Checkpoints Work
+
+- **Automatic creation** — Checkpoints are created whenever files are modified during a conversation
+- **Git stash-based** — Uses `git stash create` under the hood for reliable snapshots
+- **Per-conversation** — Checkpoints are scoped to individual conversations
+- **Metadata tracking** — Each checkpoint records the timestamp, message index, and affected files
+
+## Rewinding Changes
+
+If Claude takes a wrong turn or you want to undo recent changes:
+
+1. Browse the checkpoint history for the conversation
+2. Select the checkpoint you want to revert to
+3. ChatML restores the files to that state
+
+This is particularly useful when:
+
+- Claude makes an incorrect refactoring
+- You want to try a different approach
+- An experiment didn't work out
+
+## Checkpoint vs. Git
+
+Checkpoints complement git commits:
+
+- **Checkpoints** are lightweight, automatic, and conversation-scoped — great for fine-grained undo within a work session
+- **Git commits** are explicit, permanent records — use them to save meaningful progress
+
+You can rewind to a checkpoint and then continue working from that point, without affecting git history.

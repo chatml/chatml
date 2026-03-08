@@ -1,0 +1,55 @@
+---
+title: Installation
+description: Download and install ChatML on macOS.
+---
+
+## System Requirements
+
+- **macOS 10.15 (Catalina)** or later
+- **Git** installed (comes pre-installed on macOS)
+- An **Anthropic API key** for Claude access
+
+## Download
+
+Download the latest version of ChatML from the [GitHub Releases](https://github.com/chatml/chatml/releases) page.
+
+1. Download the `.dmg` file for your Mac (Apple Silicon or Intel)
+2. Open the `.dmg` file
+3. Drag **ChatML** to your **Applications** folder
+4. Launch ChatML from Applications
+
+## First Launch
+
+On first launch, macOS may show a security prompt since ChatML is distributed outside the App Store:
+
+1. If you see "ChatML can't be opened", go to **System Settings > Privacy & Security**
+2. Scroll down and click **Open Anyway** next to the ChatML message
+3. Click **Open** in the confirmation dialog
+
+ChatML will start the [onboarding wizard](/docs/getting-started/onboarding) to walk you through initial setup.
+
+## Auto-Updates
+
+ChatML checks for updates automatically. When a new version is available:
+
+1. A notification appears in the app
+2. Click to download and install the update
+3. Restart ChatML to apply the update
+
+## What Gets Installed
+
+ChatML is a self-contained application that includes:
+
+- **Frontend** — Next.js-based UI
+- **Backend** — Go sidecar for API, git operations, and data management
+- **Agent Runner** — Node.js process that manages Claude AI sessions
+- **SQLite database** — Local data stored at `~/Library/Application Support/ChatML/state/chatml.db`
+- **Session worktrees** — Created at `~/Library/Application Support/ChatML/workspaces/` (configurable)
+
+## Uninstalling
+
+To uninstall ChatML:
+
+1. Quit ChatML
+2. Delete `ChatML.app` from your Applications folder
+3. Optionally, remove data: `rm -rf ~/Library/Application\ Support/ChatML`

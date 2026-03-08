@@ -1,0 +1,46 @@
+---
+title: Workspace Configuration
+description: Configure per-workspace settings, scripts, and hooks.
+---
+
+Each workspace can be individually configured with scripts, settings, and automation.
+
+## Setup Scripts
+
+Setup scripts run when a new session is created in the workspace. Common uses:
+
+```bash
+npm install          # Install Node.js dependencies
+bundle install       # Install Ruby gems
+pip install -r requirements.txt  # Install Python packages
+```
+
+Configure in **Settings > Advanced > Workspace Configuration** or per-workspace settings.
+
+## Run Scripts
+
+Run scripts are available on-demand from the session context. Define commands you frequently run:
+
+```bash
+npm run dev          # Start dev server
+npm test             # Run tests
+npm run build        # Build project
+```
+
+## Branch Prefix
+
+Override the global branch prefix for specific workspaces:
+
+- A shared open-source project might use `feat/` prefix
+- Your personal projects might use your GitHub username
+- Some projects might use no prefix at all
+
+## Environment Variables
+
+Set workspace-specific environment variables that are passed to agent processes. Useful for:
+
+- API keys specific to a project
+- Feature flags
+- Build configuration
+
+Configure in **Settings > Advanced > Environment Variables**.

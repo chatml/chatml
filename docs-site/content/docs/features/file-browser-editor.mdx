@@ -1,0 +1,45 @@
+---
+title: File Browser & Editor
+description: Built-in file browser and Monaco code editor with diff view.
+---
+
+ChatML includes a built-in file browser and code editor so you can view and edit files without leaving the app.
+
+## File Tabs
+
+Each session maintains its own set of open file tabs:
+
+- **Session-scoped** — Tabs are independent per session
+- **LRU eviction** — Oldest tabs are automatically closed when the limit is reached (default: 10)
+- **Pin support** — Pin important tabs to prevent auto-closing
+- **Dirty detection** — Modified files show an unsaved indicator
+
+## Code Editor
+
+The editor is powered by Monaco (the same engine as VS Code):
+
+- **Syntax highlighting** — Language-aware highlighting for all major languages
+- **File saving** — Edit and save files directly (`Cmd+S`)
+- **Find and replace** — Search within files (`Cmd+F`)
+- **Go to line** — Jump to a specific line (`Cmd+G`)
+- **Undo/Redo** — Standard undo (`Cmd+Z`) and redo (`Cmd+Shift+Z`)
+
+## Diff View
+
+Toggle between viewing file content and viewing changes:
+
+- **Side-by-side diff** — See the original and modified versions side by side
+- **Inline diff** — See additions and removals inline
+- **Base branch comparison** — Diffs are calculated against the session's base branch
+
+Switch between file and diff view using the toggle in the editor toolbar or `Cmd+Shift+D`.
+
+## File Browser
+
+The file explorer shows the session's worktree contents:
+
+- Navigate the directory tree
+- Open files in editor tabs
+- View file change status (modified, added, deleted)
+
+Toggle the file explorer with `Cmd+Shift+E`.

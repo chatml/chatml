@@ -1,0 +1,42 @@
+---
+title: Plan Mode
+description: AI plans before executing, with user approval flow.
+---
+
+Plan Mode lets Claude research and design an approach before making any changes, giving you control over the implementation strategy.
+
+## How It Works
+
+1. **Enter Plan Mode** — Claude switches to a read-only planning mode
+2. **Research** — Claude explores the codebase, reads files, and understands the current state
+3. **Design** — Claude creates a detailed implementation plan
+4. **Present** — The plan is presented to you with a clear summary
+5. **Approve or Reject** — You decide whether to proceed with the plan
+6. **Execute** — If approved, Claude implements the plan
+
+## When to Use Plan Mode
+
+Plan Mode is valuable for:
+
+- **Complex features** that touch multiple files or systems
+- **Refactoring** where understanding the current state is critical
+- **Unfamiliar codebases** where you want Claude to explore first
+- **High-risk changes** where you want to review the approach before execution
+
+## Plan Mode Indicators
+
+When Plan Mode is active:
+
+- A banner appears at the top of the conversation
+- Claude's actions are restricted to read-only operations
+- The plan file is displayed when Claude calls `ExitPlanMode`
+
+## Extended Thinking
+
+Plan Mode pairs well with Extended Thinking. Enable both to let Claude:
+
+1. Think deeply about the problem (Extended Thinking)
+2. Research the codebase (Plan Mode read-only actions)
+3. Present a well-reasoned plan for your approval
+
+Configure Extended Thinking in **Settings > AI > Extended Thinking**.

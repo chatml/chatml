@@ -1,0 +1,30 @@
+---
+title: Terminal
+description: Built-in terminal with per-session instances.
+---
+
+ChatML includes a built-in terminal for running commands in your session's environment.
+
+## Features
+
+- **Full terminal emulation** — PTY-based terminal with complete shell support
+- **Per-session terminals** — Each session can have up to 5 terminal instances
+- **Working directory** — Terminals open in the session's worktree path automatically
+- **Multiple tabs** — Open several terminal tabs per session
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+J` | Toggle terminal panel |
+| `Cmd+T` | New terminal tab |
+| `Cmd+Shift+T` | Close terminal tab |
+
+## Session Scripts
+
+Configure scripts that run automatically or on demand per workspace:
+
+- **Setup scripts** — Run when a session is created (e.g., `npm install`, `bundle install`)
+- **Run scripts** — Available from the session context for common tasks
+
+Configure scripts in **Settings > Advanced > Workspace Configuration** or per-workspace settings.
