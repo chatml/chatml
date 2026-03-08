@@ -108,6 +108,9 @@ if (structuredOutputSchema) {
 // Target branch for PR base and sync operations
 const targetBranch = getArg("--target-branch");
 
+// Skip loading .mcp.json from workspace root (security: untrusted repo MCP config)
+const skipDotMcp = hasFlag("--skip-dot-mcp");
+
 // MCP servers configuration file (JSON array of server configs from backend)
 const mcpServersFilePath = getArg("--mcp-servers-file");
 
@@ -1591,18 +1594,23 @@ async function main(): Promise<void> {
     const mergedMcpServers: Record<string, McpServerConfig> = { chatml: chatmlMcp };
 
     // Load .mcp.json from worktree root (project-level config)
-    try {
-      const dotMcpPath = `${cwd}/.mcp.json`;
-      const dotMcpContent = readFileSync(dotMcpPath, "utf-8");
-      const dotMcpConfig = JSON.parse(dotMcpContent) as { mcpServers?: Record<string, McpServerConfig> };
-      if (dotMcpConfig.mcpServers) {
-        for (const [name, config] of Object.entries(dotMcpConfig.mcpServers)) {
-          mergedMcpServers[name] = config;
-          debug(`Loaded MCP server from .mcp.json: ${name}`);
+    // Gated by --skip-dot-mcp flag to prevent untrusted repos from executing commands
+    if (!skipDotMcp) {
+      try {
+        const dotMcpPath = `${cwd}/.mcp.json`;
+        const dotMcpContent = readFileSync(dotMcpPath, "utf-8");
+        const dotMcpConfig = JSON.parse(dotMcpContent) as { mcpServers?: Record<string, McpServerConfig> };
+        if (dotMcpConfig.mcpServers) {
+          for (const [name, config] of Object.entries(dotMcpConfig.mcpServers)) {
+            mergedMcpServers[name] = config;
+            debug(`Loaded MCP server from .mcp.json: ${name}`);
+          }
         }
+      } catch {
+        // .mcp.json doesn't exist or is invalid — that's fine
       }
-    } catch {
-      // .mcp.json doesn't exist or is invalid — that's fine
+    } else {
+      debug("Skipping .mcp.json loading (--skip-dot-mcp flag set)");
     }
 
     // Load user-configured MCP servers from backend (via temp file)

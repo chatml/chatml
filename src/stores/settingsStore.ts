@@ -95,6 +95,8 @@ export const SETTINGS_DEFAULTS = {
   branchSyncBanner: false,
   deleteBranchOnArchive: false,
   archiveOnMerge: false,
+  // Security
+  neverLoadDotMcp: false,
   // Account
   strictPrivacy: false,
   // Sidebar
@@ -133,6 +135,8 @@ interface SettingsState {
   archiveOnMerge: boolean;
   // Claude Code settings
   autoApproveSafeCommands: boolean;
+  // Security settings
+  neverLoadDotMcp: boolean;
   // Account settings
   strictPrivacy: boolean;
   // UI state
@@ -205,6 +209,7 @@ interface SettingsState {
   setDeleteBranchOnArchive: (value: boolean) => void;
   setArchiveOnMerge: (value: boolean) => void;
   setAutoApproveSafeCommands: (value: boolean) => void;
+  setNeverLoadDotMcp: (value: boolean) => void;
   setStrictPrivacy: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
   setSidebarBottomPanelMinimized: (value: boolean) => void;
@@ -301,6 +306,13 @@ export const useSettingsStore = create<SettingsState>()(
       setDeleteBranchOnArchive: (value) => set({ deleteBranchOnArchive: value }),
       setArchiveOnMerge: (value) => set({ archiveOnMerge: value }),
       setAutoApproveSafeCommands: (value) => set({ autoApproveSafeCommands: value }),
+      setNeverLoadDotMcp: (value) => {
+        set({ neverLoadDotMcp: value });
+        // Sync to backend so agent manager respects the global kill switch
+        import('@/lib/api').then(({ setNeverLoadDotMcp }) => {
+          setNeverLoadDotMcp(value).catch(() => {});
+        });
+      },
       setStrictPrivacy: (value) => set({ strictPrivacy: value }),
       setZenMode: (value) => set({ zenMode: value }),
       setSidebarBottomPanelMinimized: (value) => set({ sidebarBottomPanelMinimized: value }),

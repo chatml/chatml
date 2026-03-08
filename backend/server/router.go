@@ -186,6 +186,10 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 		// MCP server config endpoints
 		r.Get("/{id}/mcp-servers", h.GetMcpServers)
 		r.Put("/{id}/mcp-servers", h.SetMcpServers)
+		// Workspace .mcp.json trust endpoints
+		r.Get("/{id}/dot-mcp-trust", h.GetDotMcpTrust)
+		r.Put("/{id}/dot-mcp-trust", h.SetDotMcpTrust)
+		r.Get("/{id}/dot-mcp-info", h.GetDotMcpInfo)
 		// Scripts config endpoints
 		r.Get("/{id}/config", h.GetWorkspaceConfig)
 		r.Put("/{id}/config", h.UpdateWorkspaceConfig)
@@ -238,6 +242,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Put("/api/settings/action-templates", h.SetActionTemplates)
 	r.Get("/api/settings/claude-auth-status", h.GetClaudeAuthStatus)
 	r.Get("/api/settings/claude-env", h.GetClaudeEnv)
+	r.Get("/api/settings/never-load-dot-mcp", h.GetNeverLoadDotMcp)
+	r.Put("/api/settings/never-load-dot-mcp", h.SetNeverLoadDotMcp)
 
 	// Attachment endpoints
 	r.Get("/api/attachments/{attachmentId}/data", h.GetAttachmentData)

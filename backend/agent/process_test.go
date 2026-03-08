@@ -1158,3 +1158,60 @@ func TestProcess_EndTurnAndTakePending_AlreadyIdle(t *testing.T) {
 	assert.Nil(t, pending, "should return nil when already idle")
 	assert.False(t, p.IsInActiveTurn())
 }
+
+// ============================================================================
+// SkipDotMcp flag tests
+// ============================================================================
+
+func TestNewProcessWithOptions_SkipDotMcp(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-skip-dot-mcp",
+		Workdir:        "/tmp",
+		ConversationID: "conv-skip",
+		SkipDotMcp:     true,
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	assert.Contains(t, p.cmd.Args, "--skip-dot-mcp", "args should contain --skip-dot-mcp when SkipDotMcp is true")
+}
+
+func TestNewProcessWithOptions_NoSkipDotMcp(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-no-skip-dot-mcp",
+		Workdir:        "/tmp",
+		ConversationID: "conv-no-skip",
+		SkipDotMcp:     false,
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	assert.NotContains(t, p.cmd.Args, "--skip-dot-mcp", "args should NOT contain --skip-dot-mcp when SkipDotMcp is false")
+}
+
+func TestNewProcessWithOptions_SkipDotMcpPreservedInOptions(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-opts-preserve",
+		Workdir:        "/tmp",
+		ConversationID: "conv-preserve",
+		SkipDotMcp:     true,
+	}
+
+	p := NewProcessWithOptions(opts)
+	retrievedOpts := p.Options()
+
+	assert.True(t, retrievedOpts.SkipDotMcp, "SkipDotMcp should be preserved in Options()")
+}
+
+func TestNewProcessWithOptions_SkipDotMcpDefaultFalse(t *testing.T) {
+	opts := ProcessOptions{
+		ID:             "test-default",
+		Workdir:        "/tmp",
+		ConversationID: "conv-default",
+	}
+
+	p := NewProcessWithOptions(opts)
+
+	assert.False(t, p.Options().SkipDotMcp, "SkipDotMcp should default to false")
+	assert.NotContains(t, p.cmd.Args, "--skip-dot-mcp")
+}

@@ -332,6 +332,14 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		procOpts.McpServersJSON = mcpJSON
 	}
 
+	// Check .mcp.json trust for this workspace — skip loading unless explicitly trusted.
+	// Also respect the global "never load" kill switch.
+	neverLoadDotMcp, _, _ := m.store.GetSetting(ctx, "never-load-dot-mcp")
+	dotMcpTrust, _, _ := m.store.GetSetting(ctx, "dot-mcp-trust:"+session.WorkspaceID)
+	if neverLoadDotMcp == "true" || dotMcpTrust != "trusted" {
+		procOpts.SkipDotMcp = true
+	}
+
 	// Build programmatic agent definitions from workspace settings
 	agentsJSON := BuildAgentDefinitions(ctx, m.store.GetSetting, session.WorkspaceID, sessionWithWs.EffectiveTargetBranch())
 	if agentsJSON != "" {
@@ -1769,6 +1777,14 @@ func (m *Manager) ResumeConversation(ctx context.Context, convID string) error {
 		logger.Manager.Errorf("Failed to load MCP servers for resume %s: %v", convID, err)
 	}
 	opts.McpServersJSON = mcpServersJSON
+
+	// Check .mcp.json trust for this workspace — skip loading unless explicitly trusted.
+	// Also respect the global "never load" kill switch.
+	neverLoadDotMcp, _, _ := m.store.GetSetting(ctx, "never-load-dot-mcp")
+	dotMcpTrust, _, _ := m.store.GetSetting(ctx, "dot-mcp-trust:"+session.WorkspaceID)
+	if neverLoadDotMcp == "true" || dotMcpTrust != "trusted" {
+		opts.SkipDotMcp = true
+	}
 
 	// Build programmatic agent definitions from workspace settings
 	if sessionWithWs != nil {

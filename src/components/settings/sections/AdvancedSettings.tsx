@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
 
@@ -145,6 +146,21 @@ export function AdvancedSettings() {
 
       <SettingsGroup label="Environment">
         <EnvSection />
+      </SettingsGroup>
+
+      <SettingsGroup label="Security">
+        <SettingsRow
+          settingId="neverLoadDotMcp"
+          title="Block workspace MCP configs"
+          description="Never auto-load .mcp.json from workspace repositories. Prevents repo-provided MCP servers from running commands."
+          isModified={useSettingsStore((s) => s.neverLoadDotMcp) !== SETTINGS_DEFAULTS.neverLoadDotMcp}
+          onReset={() => useSettingsStore.getState().setNeverLoadDotMcp(SETTINGS_DEFAULTS.neverLoadDotMcp)}
+        >
+          <Switch
+            checked={useSettingsStore((s) => s.neverLoadDotMcp)}
+            onCheckedChange={useSettingsStore((s) => s.setNeverLoadDotMcp)}
+          />
+        </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup label="Configuration">

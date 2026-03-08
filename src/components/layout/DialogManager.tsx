@@ -13,10 +13,12 @@ import { GitHubReposDialog } from '@/components/dialogs/GitHubReposDialog';
 import { CloseTabConfirmDialog } from '@/components/dialogs/CloseTabConfirmDialog';
 import { CloseFileConfirmDialog } from '@/components/dialogs/CloseFileConfirmDialog';
 import { KeyboardShortcutsDialog } from '@/components/dialogs/KeyboardShortcutsDialog';
+import { DotMcpTrustDialog } from '@/components/dialogs/DotMcpTrustDialog';
 import { FilePicker } from '@/components/dialogs/FilePicker';
 import { WorkspaceSearch } from '@/components/dialogs/WorkspaceSearch';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
-import type { RepoDTO } from '@/lib/api';
+import type { RepoDTO, DotMcpServerInfo } from '@/lib/api';
+import { setDotMcpTrust } from '@/lib/api';
 
 interface DialogManagerProps {
   selectedWorkspaceId: string | null;
@@ -65,6 +67,12 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
   const [showCloneFromUrl, setShowCloneFromUrl] = useState(false);
   const [showGitHubRepos, setShowGitHubRepos] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [dotMcpTrustState, setDotMcpTrustState] = useState<{
+    open: boolean;
+    workspaceId: string;
+    workspaceName: string;
+    servers: DotMcpServerInfo[];
+  }>({ open: false, workspaceId: '', workspaceName: '', servers: [] });
 
   // Listen for open-settings events from other components (e.g. auth error display)
   useEffect(() => {
@@ -113,6 +121,28 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
     setShowSettings(true);
   }, [expandWorkspace]);
 
+  const showDotMcpTrust = useCallback((workspaceId: string, workspaceName: string, servers: DotMcpServerInfo[]) => {
+    setDotMcpTrustState({ open: true, workspaceId, workspaceName, servers });
+  }, []);
+
+  const handleDotMcpAllow = useCallback(async () => {
+    try {
+      await setDotMcpTrust(dotMcpTrustState.workspaceId, 'trusted');
+      setDotMcpTrustState((s) => ({ ...s, open: false }));
+    } catch (err) {
+      console.error('Failed to save .mcp.json trust status:', err);
+    }
+  }, [dotMcpTrustState.workspaceId]);
+
+  const handleDotMcpDeny = useCallback(async () => {
+    try {
+      await setDotMcpTrust(dotMcpTrustState.workspaceId, 'denied');
+      setDotMcpTrustState((s) => ({ ...s, open: false }));
+    } catch (err) {
+      console.error('Failed to save .mcp.json trust status:', err);
+    }
+  }, [dotMcpTrustState.workspaceId]);
+
   // Expose dialog openers to parent via ref
   useImperativeHandle(ref, () => ({
     openSettings,
@@ -123,7 +153,8 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
     showGitHubRepos: () => setShowGitHubRepos(true),
     showShortcuts: () => setShowShortcuts(true),
     openWorkspaceSettings,
-  }), [openSettings, closeSettings, openWorkspaceSettings]);
+    showDotMcpTrust,
+  }), [openSettings, closeSettings, openWorkspaceSettings, showDotMcpTrust]);
 
   return (
     <>
@@ -200,6 +231,16 @@ export const DialogManager = forwardRef<DialogManagerHandles, DialogManagerProps
 
       {/* Command Palette (Cmd+K) */}
       <CommandPalette />
+
+      {/* .mcp.json Trust Dialog */}
+      <DotMcpTrustDialog
+        open={dotMcpTrustState.open}
+        onOpenChange={(open) => setDotMcpTrustState((s) => ({ ...s, open }))}
+        workspaceName={dotMcpTrustState.workspaceName}
+        servers={dotMcpTrustState.servers}
+        onAllow={handleDotMcpAllow}
+        onDeny={handleDotMcpDeny}
+      />
     </>
   );
 });
@@ -214,4 +255,5 @@ export type DialogManagerHandles = {
   showGitHubRepos: () => void;
   showShortcuts: () => void;
   openWorkspaceSettings: (workspaceId: string) => void;
+  showDotMcpTrust: (workspaceId: string, workspaceName: string, servers: DotMcpServerInfo[]) => void;
 };

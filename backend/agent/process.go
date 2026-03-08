@@ -56,6 +56,7 @@ type ProcessOptions struct {
 	Model               string // Model name override
 	FallbackModel       string // Fallback model name
 	TargetBranch        string // Target branch for PR base and sync (e.g. "origin/develop")
+	SkipDotMcp          bool              // Skip loading .mcp.json from workspace root (untrusted repo)
 	EnvVars             map[string]string // Custom environment variables to inject
 	McpServersJSON      string            // JSON array of MCP server configs
 	AgentsJSON          string            // JSON object of programmatic agent definitions (SDK 0.2.62+)
@@ -304,6 +305,9 @@ func NewProcessWithOptions(opts ProcessOptions) *Process {
 	}
 	if opts.TargetBranch != "" {
 		args = append(args, "--target-branch", opts.TargetBranch)
+	}
+	if opts.SkipDotMcp {
+		args = append(args, "--skip-dot-mcp")
 	}
 
 	// Spawn the Node agent runner
