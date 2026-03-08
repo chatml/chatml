@@ -95,9 +95,9 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default();
 
-    // Enable single-instance in release builds (all platforms) or dev builds on Windows
-    // (Windows requires single-instance for deep link URL forwarding to existing instance)
-    #[cfg(any(not(debug_assertions), target_os = "windows"))]
+    // Enable single-instance in release builds (all platforms) or dev builds on Windows/Linux
+    // (Windows/Linux require single-instance for deep link URL forwarding to existing instance)
+    #[cfg(any(not(debug_assertions), not(target_os = "macos")))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance tries to launch
@@ -144,7 +144,7 @@ pub fn run() {
     let state_for_window_event = Arc::clone(&app_state);
     let state_for_setup = Arc::clone(&app_state);
     let state_for_deep_link = Arc::clone(&app_state);
-    #[cfg(target_os = "windows")]
+    #[cfg(not(target_os = "macos"))]
     let state_for_cold_start = Arc::clone(&app_state);
 
     builder
@@ -241,13 +241,14 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
 
-                // On Windows, register URL scheme in the registry so the OS can route deep links
-                #[cfg(target_os = "windows")]
+                // On Windows/Linux, register URL scheme so the OS can route deep links
+                // (macOS handles this automatically via Info.plist in the app bundle)
+                #[cfg(not(target_os = "macos"))]
                 {
                     if let Err(e) = app.deep_link().register_all() {
-                        log::error!("Failed to register deep link schemes in Windows registry: {}", e);
+                        log::error!("Failed to register deep link schemes: {}", e);
                     } else {
-                        log::info!("Deep link schemes registered in Windows registry");
+                        log::info!("Deep link schemes registered with OS");
                     }
                 }
 
@@ -290,9 +291,10 @@ pub fn run() {
                 let scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
                 log::info!("Deep link handler registered for {}:// URLs", scheme);
 
-                // On Windows, check for a deep link URL that cold-launched the app
-                // (on_open_url only fires for URLs received while already running)
-                #[cfg(target_os = "windows")]
+                // On Windows/Linux, check for a deep link URL that cold-launched the app
+                // (on_open_url only fires for URLs received while already running;
+                //  macOS delivers launch URLs via on_open_url automatically)
+                #[cfg(not(target_os = "macos"))]
                 {
                     if let Ok(Some(urls)) = app.deep_link().get_current() {
                         println!("[DEEP-LINK] get_current() found {} URLs on cold start", urls.len());
