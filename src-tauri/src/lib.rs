@@ -14,6 +14,16 @@ use tauri_plugin_decorum::WebviewWindowExt;
 
 use state::AppState;
 
+/// Check if a URL is an OAuth callback for the current build (dev or release).
+fn is_oauth_callback(scheme: &str, host: Option<&str>) -> bool {
+    let expected_scheme = if cfg!(debug_assertions) {
+        "chatml-dev"
+    } else {
+        "chatml"
+    };
+    scheme == expected_scheme && host == Some("oauth")
+}
+
 /// Fixed application-specific salt for Stronghold key derivation.
 ///
 /// IMPORTANT: This salt value is PERMANENT and must NEVER be changed.
@@ -85,8 +95,9 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default();
 
-    // Only enforce single-instance in release builds so dev and production can run side-by-side
-    #[cfg(not(debug_assertions))]
+    // Enable single-instance in release builds (all platforms) or dev builds on Windows
+    // (Windows requires single-instance for deep link URL forwarding to existing instance)
+    #[cfg(any(not(debug_assertions), target_os = "windows"))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the main window when a second instance tries to launch
@@ -133,6 +144,8 @@ pub fn run() {
     let state_for_window_event = Arc::clone(&app_state);
     let state_for_setup = Arc::clone(&app_state);
     let state_for_deep_link = Arc::clone(&app_state);
+    #[cfg(target_os = "windows")]
+    let state_for_cold_start = Arc::clone(&app_state);
 
     builder
         .invoke_handler(tauri::generate_handler![
@@ -227,6 +240,17 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+
+                // On Windows, register URL scheme in the registry so the OS can route deep links
+                #[cfg(target_os = "windows")]
+                {
+                    if let Err(e) = app.deep_link().register_all() {
+                        log::error!("Failed to register deep link schemes in Windows registry: {}", e);
+                    } else {
+                        log::info!("Deep link schemes registered in Windows registry");
+                    }
+                }
+
                 let app_handle = app.handle().clone();
                 let deep_link_state = Arc::clone(&state_for_deep_link);
                 app.deep_link().on_open_url(move |event| {
@@ -235,8 +259,7 @@ pub fn run() {
                     println!("[DEEP-LINK] on_open_url called with {} URLs", urls.len());
                     for url in urls {
                         println!("[DEEP-LINK] URL: {}", url);
-                        let expected_scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
-                        if url.scheme() == expected_scheme && url.host_str() == Some("oauth") {
+                        if is_oauth_callback(url.scheme(), url.host_str()) {
                             println!("[DEEP-LINK] OAuth callback matched!");
                             log::info!("Received OAuth callback URL: {}", url);
                             let url_string = url.to_string();
@@ -266,6 +289,23 @@ pub fn run() {
                 });
                 let scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
                 log::info!("Deep link handler registered for {}:// URLs", scheme);
+
+                // On Windows, check for a deep link URL that cold-launched the app
+                // (on_open_url only fires for URLs received while already running)
+                #[cfg(target_os = "windows")]
+                {
+                    if let Ok(Some(urls)) = app.deep_link().get_current() {
+                        println!("[DEEP-LINK] get_current() found {} URLs on cold start", urls.len());
+                        for url in urls {
+                            println!("[DEEP-LINK] Cold start URL: {}", url);
+                            if is_oauth_callback(url.scheme(), url.host_str()) {
+                                println!("[DEEP-LINK] Cold start OAuth callback matched!");
+                                log::info!("Cold start OAuth callback URL: {}", url);
+                                state_for_cold_start.set_pending_oauth_callback(url.to_string());
+                            }
+                        }
+                    }
+                }
             }
 
             Ok(())
