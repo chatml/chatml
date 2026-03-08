@@ -175,13 +175,13 @@ export function AppSettingsMenu({
           Check for Updates
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => window.open('https://docs.chatml.dev', '_blank')}>
+        <DropdownMenuItem onClick={() => window.open('https://docs.chatml.com', '_blank')}>
           <BookOpen className="size-4" />
           Documentation
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => window.open('https://chatml.dev/changelog', '_blank')}>
+        <DropdownMenuItem onClick={() => window.open('https://chatml.com/changelog', '_blank')}>
           <FileText className="size-4" />
           Changelog
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
