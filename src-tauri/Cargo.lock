@@ -772,7 +772,7 @@ dependencies = [
 
 [[package]]
 name = "chatml"
-version = "0.1.5"
+version = "0.1.8"
 dependencies = [
  "argon2",
  "base64 0.22.1",
