@@ -1,0 +1,101 @@
+---
+title: Common Issues
+description: Solutions to frequently encountered issues in ChatML.
+---
+
+## App Won't Start
+
+### Backend fails to connect
+
+**Symptoms:** App opens but shows "Connecting..." indefinitely.
+
+**Solutions:**
+1. Check if another ChatML instance is running — quit it first
+2. Restart ChatML
+3. If the issue persists, check if ports 9876-9899 are available
+
+### macOS security prompt
+
+**Symptoms:** "ChatML can't be opened because it is from an unidentified developer."
+
+**Solution:** Go to **System Settings > Privacy & Security** and click **Open Anyway**.
+
+## API Key Issues
+
+### "API key not configured" error
+
+**Solutions:**
+1. Go to **Settings > Account > Anthropic API Key**
+2. Enter a valid API key (starts with `sk-ant-api03-...`)
+3. The key is validated automatically
+
+## Agent Issues
+
+### Agent not responding
+
+**Symptoms:** Message sent but no response appears.
+
+**Solutions:**
+1. Click the **Stop** button or press `Cmd+Shift+S`
+2. Send a new message — a fresh agent process will spawn
+3. Check your API key is valid and has available credits
+
+### Extended thinking not working
+
+**Solutions:**
+1. Check **Settings > AI > Extended Thinking** is enabled
+2. Ensure **Max Thinking Tokens** is set (default: 50,000)
+3. Verify your selected model supports extended thinking
+
+## Git Issues
+
+### "Branch already checked out in another worktree"
+
+**Solutions:**
+1. Use a different branch name for the new session
+2. Delete the session that has the branch checked out
+3. If the worktree is stale: `git worktree remove <path>` then `git worktree prune`
+
+### Session worktree directory missing
+
+**Solutions:**
+1. Delete the session from ChatML and create a new one
+2. To diagnose: run `git worktree list` in your repository to see all worktrees
+
+### Too many worktrees consuming disk space
+
+**Solutions:**
+1. Archive or delete sessions you're done with
+2. Use the branch cleanup feature to find stale branches
+3. Note: worktrees share git objects with the main repo, so they're smaller than full clones
+
+## Authentication Issues
+
+### GitHub OAuth callback fails
+
+**Symptoms:** After authorizing on GitHub, ChatML doesn't receive the callback.
+
+**Solutions:**
+1. Restart ChatML — the `chatml://` protocol is registered on launch
+2. If the issue persists, reinstall the app
+
+### GitHub token expired
+
+**Solutions:**
+1. Go to **Settings > Account > GitHub**
+2. Click **Disconnect**, then **Connect GitHub** to re-authorize
+
+## UI Issues
+
+### Keyboard shortcuts not working
+
+**Solutions:**
+1. Click outside any input/editor/terminal to restore global shortcut handling
+2. Some shortcuts only work in specific contexts
+
+### Dark mode not applying
+
+**Solutions:**
+1. Go to **Settings > Appearance > Theme**
+2. Set explicitly to "Dark" instead of "System"
+3. If using "System", check macOS System Settings > Appearance

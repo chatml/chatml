@@ -1,0 +1,63 @@
+---
+title: Skills
+description: Specialized prompt templates that augment Claude's capabilities.
+---
+
+Skills are specialized prompt templates that give Claude domain-specific expertise for particular types of work.
+
+## How Skills Work
+
+A skill is a Markdown document with structured guidance. When installed for a session, its content is injected into the system prompt, giving Claude a methodology to follow for that type of task.
+
+Skills don't add new tools — they augment Claude's behavior through prompt engineering. A "Code Review" skill, for example, provides a structured checklist covering correctness, security, performance, and maintainability.
+
+## Installing Skills
+
+1. Open the Skills panel in your session
+2. Browse or search available skills by category
+3. Click **Install** to activate a skill for the current session
+
+Skills can be installed and uninstalled per-session as needed.
+
+## Built-In Skills
+
+ChatML ships with 19 built-in skills across four categories:
+
+### Development
+
+| Skill | Description |
+|-------|-------------|
+| **Test-Driven Development** | Red-Green-Refactor cycle guidance |
+| **Unit Testing Guide** | Patterns, test doubles, async testing |
+| **Systematic Debugging** | Hypothesis-driven bug finding |
+| **Code Review Assistant** | Correctness, security, maintainability checks |
+| **API Design** | REST/GraphQL conventions and patterns |
+| **Refactoring Guide** | Safe, phased refactoring strategies |
+| **Performance Optimization** | Profiling and bottleneck identification |
+
+### Security
+
+| Skill | Description |
+|-------|-------------|
+| **Security Audit** | OWASP Top 10 vulnerability scanning |
+| **Dependency Review** | License, maintenance, and security evaluation |
+
+### Documentation
+
+| Skill | Description |
+|-------|-------------|
+| **Brainstorming** | Structured idea exploration |
+| **Writing Plans** | Implementation plan creation |
+| **Architecture Decision Records** | Structured decision capture |
+| **Technical Writing** | Documentation authoring |
+| **Project Scaffolding** | New project setup guidance |
+
+### Version Control
+
+| Skill | Description |
+|-------|-------------|
+| **Git Commit Helper** | Conventional commit messages |
+| **PR Creation** | Well-documented pull requests |
+| **Branch Management** | Naming, merging, and cleanup |
+| **Code Migration** | Framework and library migration |
+| **Accessibility Audit** | WCAG compliance checking |

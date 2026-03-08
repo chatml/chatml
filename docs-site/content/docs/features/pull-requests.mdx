@@ -1,0 +1,47 @@
+---
+title: Pull Requests
+description: Create and track GitHub pull requests directly from sessions.
+---
+
+ChatML integrates with GitHub to let you create and monitor pull requests without leaving the app.
+
+## Creating a PR
+
+After Claude has made changes in a session:
+
+1. Ask Claude to create a pull request, or use the PR creation UI
+2. Claude pushes the session branch to the remote
+3. Claude generates a PR title and description based on the changes
+4. The PR is created on GitHub
+
+## PR Descriptions
+
+Claude generates PR descriptions that include:
+
+- A summary of changes
+- Key modifications explained
+- Test plan suggestions
+
+You can also use **PR templates** — either global or per-workspace — to enforce a consistent format.
+
+## Status Tracking
+
+Once a PR is created, ChatML tracks its status in real time:
+
+- **Status** — Open, Merged, or Closed
+- **Check failures** — CI/CD check results shown on the session card
+- **Merge conflicts** — Detected and highlighted
+- **Polling** — Status is refreshed every 30 seconds
+
+## Branch Sync
+
+When other work gets merged into `main`, your session branch can fall behind. ChatML detects this and offers:
+
+- **Rebase** — Replay your changes on top of the latest main
+- **Merge** — Merge main into your branch
+
+Both operations happen within the session's isolated worktree.
+
+## Requirements
+
+PR features require [GitHub integration](/docs/integrations/github) to be connected.

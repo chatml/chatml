@@ -1,0 +1,44 @@
+---
+title: Anthropic API
+description: Configure your Anthropic API key for Claude access.
+---
+
+ChatML requires an Anthropic API key to communicate with Claude.
+
+## Getting an API Key
+
+1. Sign up at [console.anthropic.com](https://console.anthropic.com/)
+2. Navigate to **API Keys** in the Anthropic Console
+3. Create a new API key
+4. Copy the key (starts with `sk-ant-api03-...`)
+
+## Configuring in ChatML
+
+1. Go to **Settings** (`Cmd+,`) > **Account** > **Anthropic API Key**
+2. Paste your API key
+3. ChatML validates the key with a test request
+4. The key is stored encrypted (AES-256-GCM)
+
+## Security
+
+Your API key is never exposed to the frontend:
+
+- Stored encrypted in the local SQLite database
+- Only the Go backend decrypts and uses the key
+- Validated on save to catch typos or expired keys
+
+## Models
+
+With your API key, you can choose from:
+
+| Model | Best For |
+|-------|----------|
+| **Claude Opus** | Complex reasoning, large codebases, multi-step tasks |
+| **Claude Sonnet** | Balanced capability and speed for most tasks |
+| **Claude Haiku** | Quick tasks, simple questions, fast iteration |
+
+Select your model in **Settings > AI > Model**. You can also configure a fallback model.
+
+## Cost Management
+
+API usage is billed by Anthropic based on token consumption. Use [budget controls](/docs/features/budget-controls) to manage costs.

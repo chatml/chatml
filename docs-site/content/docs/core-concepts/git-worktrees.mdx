@@ -1,0 +1,72 @@
+---
+title: Git Worktrees
+description: How ChatML uses git worktrees for session isolation.
+---
+
+Git worktrees are the core isolation mechanism in ChatML. They solve a fundamental problem: how do you run multiple AI agents working on different tasks in the same repository without them interfering with each other?
+
+## The Problem
+
+Traditional git workflows use a single working directory per repository. If you want to work on two tasks simultaneously, you either:
+
+1. **Stash and switch branches** — Tedious, error-prone, and impossible when both tasks need to run build processes
+2. **Clone the repository twice** — Wastes disk space (full history duplicated) and creates management complexity
+3. **Use separate branches in one directory** — Impossible. Git only allows one branch checked out per working directory.
+
+For AI-assisted development, this is even more critical. You might want one agent refactoring the authentication system while another adds a new API endpoint. Without isolation, they'd overwrite each other's changes.
+
+## The Solution
+
+Git worktrees (`git worktree add`) create additional working directories that share the same `.git` repository. Each worktree has its own checked-out branch and working copy, but they all share the same commit history, objects, and refs.
+
+```
+Repository (.git)
+├── main worktree (main branch)
+├── Session A worktree (feature/auth-refactor)
+├── Session B worktree (feature/new-api-endpoint)
+└── Session C worktree (fix/login-bug)
+```
+
+### Benefits
+
+- **Shared history** — No duplicate objects, minimal disk overhead
+- **Full isolation** — Each worktree has independent file state
+- **Independent builds** — Each worktree can run its own dev server or test suite
+- **Branch safety** — Git prevents the same branch from being checked out in multiple worktrees
+
+## How ChatML Uses Worktrees
+
+### Directory Layout
+
+Session worktrees are stored under `~/Library/Application Support/ChatML/workspaces/` (configurable):
+
+```
+~/Library/Application Support/ChatML/workspaces/
+├── my-project/
+│   ├── sparkling-nebula/     # Session A
+│   ├── crimson-aurora/       # Session B
+│   └── midnight-cascade/     # Session C
+└── other-project/
+    └── ...
+```
+
+### Branch Naming
+
+Branch names are constructed based on your workspace's branch prefix setting:
+
+| Setting | Branch Name Example |
+|---------|-------------------|
+| GitHub username | `username/sparkling-nebula` |
+| Custom prefix | `feat/sparkling-nebula` |
+| No prefix | `sparkling-nebula` |
+
+### Lifecycle
+
+1. **Session created** — `git worktree add -b <branch> <path> origin/main`
+2. **Work happens** — Claude reads, writes, and commits in the worktree
+3. **PR created** — Branch is pushed to remote
+4. **Session deleted** — Worktree removed, branch deleted, git entries pruned
+
+### Protected Branches
+
+ChatML prevents creating sessions on protected branches (`main`, `master`, `develop`) to avoid accidentally modifying shared branches.

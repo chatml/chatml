@@ -1,0 +1,55 @@
+---
+title: GitHub
+description: Connect GitHub for pull requests, CI monitoring, and issue tracking.
+---
+
+GitHub integration enables PR creation, CI/CD monitoring, and issue tracking directly within ChatML.
+
+## Connecting GitHub
+
+1. Go to **Settings** (`Cmd+,`) > **Account** > **GitHub**
+2. Click **Connect GitHub**
+3. Authorize the ChatML application in your browser
+4. ChatML receives the authorization via the `chatml://` deep link
+
+### Scopes
+
+ChatML requests the following GitHub permissions:
+
+- `repo` — Full repository access (read/write code, create PRs, manage issues)
+- `read:user` — Read your GitHub profile for avatar and username
+
+## Features Enabled
+
+Once connected, you can:
+
+- **Create pull requests** from sessions
+- **Track PR status** with live polling (open, merged, closed, check failures)
+- **View CI/CD runs** — GitHub Actions workflow runs, job details, and logs
+- **Rerun workflows** — Trigger CI reruns from within ChatML
+- **AI failure analysis** — Claude analyzes CI failures and suggests fixes
+
+## Disconnecting
+
+To disconnect GitHub:
+
+1. Go to **Settings > Account > GitHub**
+2. Click **Disconnect**
+3. The OAuth token is removed from secure storage
+
+## Troubleshooting
+
+### Callback fails after authorization
+
+If the browser doesn't redirect back to ChatML:
+
+1. Restart ChatML — the `chatml://` protocol is registered on launch
+2. Try authorizing again
+3. If the issue persists, reinstall the app to re-register the deep link protocol
+
+### Token expired
+
+If GitHub operations fail with authentication errors:
+
+1. Go to **Settings > Account > GitHub**
+2. Click **Disconnect**, then **Connect GitHub** to re-authorize

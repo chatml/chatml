@@ -1,0 +1,41 @@
+---
+title: Code Review
+description: Structured code review with inline comments and severity levels.
+---
+
+ChatML's code review feature provides structured analysis of your session's changes.
+
+## Starting a Review
+
+1. In a session with changes, create a new **Review** conversation
+2. Claude examines the diff between your session branch and the base branch
+3. Feedback is provided as inline comments on specific file lines
+
+## Inline Comments
+
+Review comments are attached to specific lines in specific files:
+
+- **File and line reference** — Each comment points to an exact location in the code
+- **Severity levels** — Comments are categorized by importance:
+
+| Severity | Use |
+|----------|-----|
+| **Error** | Bugs, security issues, or correctness problems that must be fixed |
+| **Warning** | Potential issues that should be addressed |
+| **Suggestion** | Improvements that would be nice to have |
+| **Info** | Observations or explanations, no action needed |
+
+## Resolution Tracking
+
+- Mark comments as **resolved** when addressed
+- Resolution is attributed to the user who resolved it
+- Per-file statistics show total and unresolved comment counts
+
+## Custom Review Prompts
+
+Customize what Claude focuses on during reviews:
+
+- **Global review prompt** — Applied to all workspaces (Settings > Review)
+- **Per-workspace prompt** — Override for specific repositories
+
+This lets you tailor reviews to your team's standards, coding guidelines, or areas of concern.

@@ -1,0 +1,42 @@
+---
+title: PR Templates
+description: Configure pull request description templates.
+---
+
+PR templates help maintain consistent pull request descriptions across your team.
+
+## Global Template
+
+Set a default PR template that applies to all workspaces:
+
+1. Go to **Settings** (`Cmd+,`) > **Advanced** > **PR Templates**
+2. Enter your template using Markdown
+3. Claude uses this template when generating PR descriptions
+
+## Per-Workspace Templates
+
+Override the global template for specific repositories:
+
+1. Open the workspace settings
+2. Add a custom PR template
+3. This template takes priority over the global one
+
+## Template Variables
+
+Templates can include sections that Claude fills in:
+
+```markdown
+## Summary
+<!-- Brief description of changes -->
+
+## Changes
+<!-- Detailed list of modifications -->
+
+## Test Plan
+<!-- How to verify the changes -->
+
+## Screenshots
+<!-- If applicable -->
+```
+
+Claude generates content for each section based on the actual code changes in the session.

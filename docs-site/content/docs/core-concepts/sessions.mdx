@@ -1,0 +1,57 @@
+---
+title: Sessions
+description: Sessions are isolated development environments with their own git worktree and AI agent.
+---
+
+**Sessions** are the heart of ChatML. Each session represents an isolated development task with its own git worktree, branch, and AI agent process.
+
+## How Sessions Work
+
+When you create a session, ChatML:
+
+1. Creates a new directory under `~/Library/Application Support/ChatML/workspaces/`
+2. Runs `git worktree add` to create an isolated working copy
+3. Creates a new branch based on the workspace's default branch
+4. Spawns an AI agent process dedicated to that session
+
+This isolation means multiple sessions can work on different parts of your codebase simultaneously. One session can refactor the authentication system while another adds a new API endpoint — each on its own branch with its own working directory.
+
+## Session Management
+
+Sessions have several organizational features:
+
+| Feature | Description |
+|---------|-------------|
+| **Priority** | Urgent, High, Medium, Low, None |
+| **Task Status** | Backlog, In Progress, In Review, Done, Cancelled |
+| **Pinning** | Keep important sessions visible at the top |
+| **Archiving** | Archive completed sessions with AI-generated summaries |
+| **PR Status** | None, Open, Merged, Closed — with live updates |
+| **Branch Sync** | Shows how far behind `origin/main` a session is |
+| **Auto-naming** | Claude suggests session names based on conversation context |
+
+## Creating Sessions
+
+Use `Cmd+N` or click **New Session** to create a session:
+
+1. Select the workspace (repository)
+2. Enter a name or accept the auto-generated one
+3. ChatML creates the worktree and branch
+
+### Session from a PR
+
+You can also create a session from an existing pull request. ChatML checks out the PR's branch into a new worktree, letting you review, modify, or continue work on the PR.
+
+## Session Lifecycle
+
+1. **Create** — New worktree and branch, agent process ready
+2. **Work** — Send messages, Claude makes changes in the isolated worktree
+3. **Review** — Start a review conversation for structured code analysis
+4. **PR** — Push the branch and create a pull request
+5. **Archive/Delete** — Clean up the worktree when done
+
+## Disk Space
+
+Session worktrees share git objects with the main repository, so they're much smaller than full clones. However, completed sessions still consume some disk space. Archive or delete sessions you're done with to reclaim space.
+
+The worktrees base directory is configurable in **Settings > General > Workspaces Base Directory** (default: `~/Library/Application Support/ChatML/workspaces`).

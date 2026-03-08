@@ -1,0 +1,60 @@
+---
+title: FAQ
+description: Frequently asked questions about ChatML.
+---
+
+## General
+
+### What is ChatML?
+
+ChatML is a native macOS desktop application that gives Claude direct access to your codebase through isolated git worktrees. It's an AI-native IDE for software development.
+
+### What models does ChatML support?
+
+ChatML works with Claude models from Anthropic: Claude Opus, Claude Sonnet, and Claude Haiku. You need an Anthropic API key.
+
+### Is ChatML free?
+
+ChatML itself is free. You pay for Claude API usage through your Anthropic account based on token consumption.
+
+### What operating systems are supported?
+
+ChatML currently supports **macOS 13 (Ventura)** and later. Windows and Linux support is planned.
+
+## Sessions & Worktrees
+
+### Can I have multiple sessions working at the same time?
+
+Yes. Each session has its own git worktree and branch, so multiple AI agents can work on different tasks simultaneously without interfering with each other.
+
+### How much disk space do sessions use?
+
+Session worktrees share git objects with the main repository, so they use significantly less space than full clones. However, each worktree contains a full copy of the working files. Delete or archive sessions you no longer need.
+
+### Can I use an existing branch for a session?
+
+Yes. You can create a session from an existing pull request or branch. ChatML checks out the branch into a new worktree.
+
+## AI & Usage
+
+### How do I control costs?
+
+Use [budget controls](/docs/features/budget-controls) to set cost limits, turn limits, and thinking token budgets per conversation.
+
+### What is Extended Thinking?
+
+Extended Thinking lets Claude reason through complex problems before responding. It shows Claude's internal thought process in a collapsible section. Enable it in **Settings > AI > Extended Thinking**.
+
+### What is Plan Mode?
+
+[Plan Mode](/docs/features/plan-mode) puts Claude in a read-only state where it researches and designs an approach before making any changes. You review and approve the plan before Claude executes it.
+
+## Integrations
+
+### Do I need GitHub connected to use ChatML?
+
+No. GitHub integration is optional. You can use ChatML for AI-assisted coding without it. GitHub is needed for PR creation, CI monitoring, and issue tracking features.
+
+### Can I use custom MCP servers?
+
+Yes. ChatML supports custom [MCP servers](/docs/integrations/mcp-servers) with stdio, SSE, or HTTP transport. Configure them in Settings or via a `.mcp.json` file in your repository.

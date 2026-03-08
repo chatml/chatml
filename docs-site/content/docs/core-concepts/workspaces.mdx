@@ -1,0 +1,42 @@
+---
+title: Workspaces
+description: Understanding workspaces — registered git repositories in ChatML.
+---
+
+A **workspace** is a git repository registered with ChatML. When you add a repository, it becomes a workspace that independently manages its own sessions, branches, and configuration.
+
+## Adding a Workspace
+
+1. Click the **+** button in the sidebar, or use `Cmd+K` and search "Add Workspace"
+2. Browse to your repository folder using the native file picker
+3. ChatML detects the git configuration: default branch, remote name, and repository metadata
+
+## What ChatML Stores
+
+For each workspace, ChatML tracks:
+
+- **Repository path** — Location on disk
+- **Default branch** — Typically `main` or `master`, used as the base for new sessions
+- **Remote name** — Usually `origin`, used for push/pull operations
+- **Branch prefix** — Configurable prefix for session branches (e.g., `username/`, `feat/`, or none)
+
+## Multiple Workspaces
+
+You can register multiple repositories as workspaces. Each workspace:
+
+- Appears in the sidebar with its sessions grouped underneath
+- Has independent session management
+- Can have its own branch prefix, review prompts, and PR templates
+- Shares the global AI settings (model, API key, budget controls)
+
+## Workspace Configuration
+
+Each workspace can be customized:
+
+- **Branch prefix** — How session branch names are formatted (GitHub username, custom prefix, or none)
+- **Setup scripts** — Commands to run when a new session is created (e.g., `npm install`)
+- **Run scripts** — Commands available from the session context
+- **Review prompts** — Custom prompts for code review conversations
+- **PR templates** — Templates for pull request descriptions
+
+See [Workspace Configuration](/docs/configuration/workspace-config) for details.

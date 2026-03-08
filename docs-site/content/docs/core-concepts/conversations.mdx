@@ -1,0 +1,55 @@
+---
+title: Conversations
+description: The three types of conversations in ChatML — Task, Review, and Chat.
+---
+
+Each session can have multiple conversations. Conversations are where you interact with Claude to accomplish work.
+
+## Conversation Types
+
+### Task
+
+The primary conversation type for coding work. Claude has full tool access and can:
+
+- Read, write, and edit files in the session's worktree
+- Run shell commands and scripts
+- Search the codebase
+- Create commits and manage git operations
+
+Use Task conversations for implementing features, fixing bugs, refactoring code, and any hands-on development work.
+
+### Review
+
+A structured code review conversation. Claude examines the session's changes and provides feedback:
+
+- Inline comments on specific file lines
+- Severity levels (Error, Warning, Suggestion, Info)
+- Resolution tracking for each comment
+- Per-file comment statistics
+
+Start a Review conversation when you want Claude to analyze your changes before creating a PR.
+
+### Chat
+
+A general discussion without full tool access. Useful for:
+
+- Brainstorming approaches
+- Asking questions about architecture
+- Discussing trade-offs without modifying code
+
+## Conversation Features
+
+All conversation types support:
+
+- **Real-time streaming** — See Claude's response as it's generated
+- **Extended thinking** — View Claude's reasoning process in collapsible sections
+- **Tool execution display** — Each tool call shows its name, parameters, status, and duration
+- **Sub-agent tracking** — When Claude spawns parallel sub-agents, each is tracked independently
+- **Summaries** — Generate AI summaries of any conversation
+- **Search** — Search within conversation history (`Cmd+Shift+F`)
+
+## Managing Conversations
+
+- `Cmd+Shift+N` — New conversation in the current session
+- `Cmd+[` / `Cmd+]` — Navigate between conversations
+- Conversations track their status: Active, Idle, or Completed
