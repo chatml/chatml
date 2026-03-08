@@ -172,6 +172,13 @@ const fallbackModel = getArg("--fallback-model");
 const sdkDebug = hasFlag("--sdk-debug");
 const sdkDebugFile = getArg("--sdk-debug-file");
 
+// Bedrock diagnostic logging — appears in Go backend stderr logs
+if (process.env.CLAUDE_CODE_USE_BEDROCK === "true") {
+  console.error(`[Bedrock] Enabled. AWS_PROFILE=${process.env.AWS_PROFILE ? "(set)" : "(unset)"}, AWS_REGION=${process.env.AWS_REGION || "(unset)"}`);
+  console.error(`[Bedrock] ANTHROPIC_DEFAULT_SONNET_MODEL=${process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || "(unset)"}`);
+  console.error(`[Bedrock] ANTHROPIC_DEFAULT_HAIKU_MODEL=${process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL || "(unset)"}`);
+}
+
 // Instructions (e.g., from conversation summaries)
 import { readFileSync, writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
@@ -1829,7 +1836,7 @@ async function main(): Promise<void> {
               if (detectAuthError(errorText)) {
                 emit({
                   type: "auth_error",
-                  message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+                  message: getAuthErrorMessage(),
                 });
                 // Auth errors are fatal — break out to stop the session
                 stopMainLoop();
@@ -1884,6 +1891,7 @@ async function main(): Promise<void> {
 }
 
 const AUTH_ERROR_PATTERNS = [
+  // Anthropic API patterns
   "authentication_error",
   "oauth token has expired",
   "oauth token expired",
@@ -1895,11 +1903,28 @@ const AUTH_ERROR_PATTERNS = [
   "request unauthorized",
   "unauthorized request",
   "token has been revoked",
+  // AWS Bedrock patterns
+  "expiredtoken",
+  "expired token",
+  "the security token included in the request is expired",
+  "accessdeniedexception: unable to locate credentials",
+  "accessdeniedexception: unable to assume role",
+  "accessdeniedexception: expired",
+  "unable to locate credentials",
+  "could not resolve credentials",
+  "invalid identity token",
 ];
 
 function detectAuthError(text: string): boolean {
   const lower = text.toLowerCase();
   return AUTH_ERROR_PATTERNS.some((p) => lower.includes(p));
+}
+
+function getAuthErrorMessage(): string {
+  if (process.env.CLAUDE_CODE_USE_BEDROCK === "true") {
+    return "AWS credentials expired or invalid. Run 'aws sso login' (or your configured auth refresh command) in a terminal, then retry.";
+  }
+  return "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.";
 }
 
 function handleMessage(message: SDKMessage): void {
@@ -2240,7 +2265,7 @@ function handleMessage(message: SDKMessage): void {
         if (detectAuthError(errorText)) {
           emit({
             type: "auth_error",
-            message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+            message: getAuthErrorMessage(),
           });
         }
       }
@@ -2592,7 +2617,7 @@ main().catch(async (err) => {
   if (detectAuthError(errorMessage)) {
     emit({
       type: "auth_error",
-      message: "Authentication failed. Your OAuth token may have expired or your API key is invalid. Check your API key in Settings > Claude Code.",
+      message: getAuthErrorMessage(),
     });
   }
 
