@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg", "nsis", "msi", "deb"],
     "externalBin": ["binaries/chatml-backend"],
     "icon": [
       "icons/32x32.png",
