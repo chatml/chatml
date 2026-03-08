@@ -16,7 +16,11 @@ use state::AppState;
 
 /// Check if a URL is an OAuth callback for the current build (dev or release).
 fn is_oauth_callback(scheme: &str, host: Option<&str>) -> bool {
-    let expected_scheme = if cfg!(debug_assertions) { "chatml-dev" } else { "chatml" };
+    let expected_scheme = if cfg!(debug_assertions) {
+        "chatml-dev"
+    } else {
+        "chatml"
+    };
     scheme == expected_scheme && host == Some("oauth")
 }
 
