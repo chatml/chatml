@@ -1029,7 +1029,31 @@ export function useWebSocket(enabled: boolean = true) {
         }
         break;
 
-      case 'auth_status':
+      case 'auth_status': {
+        // Show notification when SDK is authenticating (e.g., AWS SSO browser flow)
+        const isAuthenticating = event?.isAuthenticating;
+        if (isAuthenticating) {
+          window.dispatchEvent(new CustomEvent('agent-notification', {
+            detail: {
+              title: 'Authenticating',
+              message: event?.output?.[0] || 'Authenticating with provider...',
+              type: 'info',
+              conversationId,
+            }
+          }));
+        } else if (event?.error) {
+          window.dispatchEvent(new CustomEvent('agent-notification', {
+            detail: {
+              title: 'Authentication failed',
+              message: String(event.error),
+              type: 'error',
+              conversationId,
+            }
+          }));
+        }
+        break;
+      }
+
       case 'status_update':
         // Diagnostic — no UI action needed
         break;
