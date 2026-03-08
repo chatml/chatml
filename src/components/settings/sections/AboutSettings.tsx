@@ -118,7 +118,7 @@ export function AboutSettings() {
       {/* Links */}
       <div className="py-4 space-y-3">
         <a
-          href="https://docs.chatml.dev"
+          href="https://docs.chatml.com"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-between py-2 text-sm hover:text-foreground text-muted-foreground transition-colors"
@@ -127,7 +127,7 @@ export function AboutSettings() {
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
         <a
-          href="https://chatml.dev/changelog"
+          href="https://chatml.com/changelog"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-between py-2 text-sm hover:text-foreground text-muted-foreground transition-colors"

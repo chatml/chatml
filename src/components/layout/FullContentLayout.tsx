@@ -90,7 +90,7 @@ export function FullContentLayout({
                   <span className="ml-auto text-xs text-muted-foreground">⌘/</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => window.open('https://docs.chatml.dev', '_blank')}>
+                <DropdownMenuItem onClick={() => window.open('https://docs.chatml.com', '_blank')}>
                   <BookOpen className="size-4" />
                   Documentation
                   <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
