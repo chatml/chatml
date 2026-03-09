@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   MessageSquare,
   MessageSquarePlus,
+  Check,
   FileCode,
   ChevronRight,
   ChevronDown,
@@ -67,6 +68,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   const [fetchSession, setFetchSession] = useState<string | null>(null);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [groupByFile, setGroupByFile] = useState(false);
+  const [addedToChatIds, setAddedToChatIds] = useState<Set<string>>(new Set());
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -213,6 +215,11 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
       }
       return next;
     });
+  }, []);
+
+  const handleAddToChatTracked = useCallback((comment: ReviewComment) => {
+    handleAddToChat(comment);
+    setAddedToChatIds((prev) => new Set(prev).add(comment.id));
   }, []);
 
   if (!sessionId) {
@@ -366,6 +373,8 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                             onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
                             onResolveAs={(type) => handleResolveAs(comment.id, type)}
                             onUnresolve={() => handleUnresolve(comment.id)}
+                            onAddToChat={handleAddToChatTracked}
+                            addedToChat={addedToChatIds.has(comment.id)}
                           />
                         ))}
                       </div>
@@ -381,6 +390,8 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                   onNavigate={() => onFileSelect?.(comment.filePath, comment.lineNumber)}
                   onResolveAs={(type) => handleResolveAs(comment.id, type)}
                   showFilePath
+                  onAddToChat={handleAddToChatTracked}
+                  addedToChat={addedToChatIds.has(comment.id)}
                 />
               ))
             )}
@@ -407,19 +418,23 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
 
 /** Create an instruction attachment from a review comment. */
 function commentToAttachment(comment: ReviewComment): Attachment {
+  const title = comment.title || comment.content.split('\n')[0].slice(0, 60);
   const content = [
-    `## Review Comment: ${comment.title || comment.content.split('\n')[0]}`,
+    `## Review Comment: ${title}`,
     '',
+    `**Comment ID:** \`${comment.id}\``,
     `**File:** \`${comment.filePath}:${comment.lineNumber}\``,
     `**Severity:** ${comment.severity || 'info'}`,
     '',
     comment.content,
+    '',
+    `**Action:** After fixing, call \`resolve_review_comment\` with commentId \`${comment.id}\`.`,
   ].join('\n');
 
   return {
     id: `review-${comment.id}-${Date.now()}`,
     type: 'file',
-    name: 'Review Comment',
+    name: title,
     mimeType: 'text/markdown',
     size: new Blob([content]).size,
     lineCount: content.split('\n').length,
@@ -443,12 +458,16 @@ function ReviewCommentCard({
   onResolveAs,
   onUnresolve,
   showFilePath,
+  onAddToChat,
+  addedToChat,
 }: {
   comment: ReviewComment;
   onNavigate: () => void;
   onResolveAs?: (type: 'fixed' | 'ignored') => void;
   onUnresolve?: () => void;
   showFilePath?: boolean;
+  onAddToChat?: (comment: ReviewComment) => void;
+  addedToChat?: boolean;
 }) {
   const title = comment.title || comment.content.split('\n')[0];
   const isResolved = comment.resolved;
@@ -495,7 +514,7 @@ function ReviewCommentCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-2 transition-colors cursor-pointer',
+        'group/comment rounded-lg border p-2 transition-colors cursor-pointer',
         isResolved ? 'bg-muted/40 border-border/50' : severityStyles?.card
       )}
       onClick={onNavigate}
@@ -520,16 +539,27 @@ function ReviewCommentCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-5 w-5 p-0 hover:bg-foreground/10"
+                  className={cn(
+                    'h-5 w-5 p-0 transition-opacity duration-150',
+                    addedToChat
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover/comment:opacity-40 hover:!opacity-100 hover:bg-foreground/10'
+                  )}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleAddToChat(comment);
+                    onAddToChat?.(comment);
                   }}
                 >
-                  <MessageSquarePlus className="h-3 w-3" />
+                  {addedToChat ? (
+                    <Check className="h-3 w-3 text-green-500" />
+                  ) : (
+                    <MessageSquarePlus className="h-3 w-3" />
+                  )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Add to chat</TooltipContent>
+              <TooltipContent side="bottom">
+                {addedToChat ? 'Add to chat again' : 'Add to chat'}
+              </TooltipContent>
             </Tooltip>
           )}
           {isResolved ? (
