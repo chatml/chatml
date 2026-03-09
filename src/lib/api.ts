@@ -2208,6 +2208,7 @@ export interface DotMcpServerInfo {
   name: string;
   type: string;
   command?: string;
+  source?: string; // 'dot-mcp' | 'claude-cli-project'
 }
 
 export interface DotMcpInfoResponse {

@@ -405,6 +405,10 @@ export function useWebSocket(enabled: boolean = true) {
           }
           store.setMcpToolsByServer(toolsByServer);
         }
+        // Extract MCP server source origins
+        if (event?.mcpServerSources && typeof event.mcpServerSources === 'object') {
+          store.setMcpServerSources(event.mcpServerSources as Record<string, string>);
+        }
         break;
 
       case 'assistant_text':
@@ -1377,11 +1381,14 @@ export function useWebSocket(enabled: boolean = true) {
           return;
         }
 
-        // Handle init event for MCP server status
+        // Handle init event for MCP server status and source tracking
         if (data.type === 'init') {
           const payload = data.payload as Record<string, unknown> | undefined;
           if (payload?.mcpServers && Array.isArray(payload.mcpServers)) {
             getStore().setMcpServers(payload.mcpServers);
+          }
+          if (payload?.mcpServerSources && typeof payload.mcpServerSources === 'object') {
+            getStore().setMcpServerSources(payload.mcpServerSources as Record<string, string>);
           }
           return;
         }

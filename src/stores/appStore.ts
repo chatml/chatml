@@ -244,6 +244,7 @@ interface AppState {
   mcpServerConfigs: McpServerConfig[];
   mcpConfigLoading: boolean;
   mcpToolsByServer: Record<string, string[]>; // server name → tool names
+  mcpServerSources: Record<string, string>;   // server name → source origin
 
   // Checkpoint timeline state
   checkpoints: CheckpointInfo[];
@@ -479,6 +480,7 @@ interface AppState {
   updateMcpServerStatus: (serverName: string, status: McpServerStatus['status']) => void;
   removeMcpServer: (serverName: string) => void;
   setMcpToolsByServer: (tools: Record<string, string[]>) => void;
+  setMcpServerSources: (sources: Record<string, string>) => void;
   fetchMcpServerConfigs: (workspaceId: string) => Promise<void>;
   saveMcpServerConfigs: (workspaceId: string, configs: McpServerConfig[]) => Promise<void>;
 
@@ -564,6 +566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mcpServerConfigs: [],
   mcpConfigLoading: false,
   mcpToolsByServer: {},
+  mcpServerSources: {},
   checkpoints: [],
   pendingCheckpointUuid: {},
   contextUsage: {},
@@ -2158,6 +2161,7 @@ updateFileTabContent: (id, content) => set((state) => ({
     mcpServers: state.mcpServers.filter((s) => s.name !== serverName),
   })),
   setMcpToolsByServer: (tools) => set({ mcpToolsByServer: tools }),
+  setMcpServerSources: (sources) => set({ mcpServerSources: sources }),
   fetchMcpServerConfigs: async (workspaceId) => {
     set({ mcpConfigLoading: true });
     try {

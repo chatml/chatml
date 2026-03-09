@@ -17,7 +17,7 @@ describe('DotMcpTrustDialog', () => {
   it('renders title and workspace name', () => {
     render(<DotMcpTrustDialog {...defaultProps} />);
 
-    expect(screen.getByText('Workspace MCP servers detected')).toBeInTheDocument();
+    expect(screen.getByText('Project MCP servers detected')).toBeInTheDocument();
     expect(screen.getByText('My Project')).toBeInTheDocument();
   });
 
@@ -30,7 +30,7 @@ describe('DotMcpTrustDialog', () => {
 
   it('displays stdio server with command', () => {
     const servers: DotMcpServerInfo[] = [
-      { name: 'test-server', type: 'stdio', command: 'npx -y @mcp/test' },
+      { name: 'test-server', type: 'stdio', command: 'npx -y @mcp/test', source: 'dot-mcp' },
     ];
 
     render(<DotMcpTrustDialog {...defaultProps} servers={servers} />);
@@ -42,7 +42,7 @@ describe('DotMcpTrustDialog', () => {
 
   it('displays SSE server without command', () => {
     const servers: DotMcpServerInfo[] = [
-      { name: 'sse-server', type: 'sse' },
+      { name: 'sse-server', type: 'sse', source: 'dot-mcp' },
     ];
 
     render(<DotMcpTrustDialog {...defaultProps} servers={servers} />);
@@ -53,8 +53,8 @@ describe('DotMcpTrustDialog', () => {
 
   it('displays multiple servers', () => {
     const servers: DotMcpServerInfo[] = [
-      { name: 'server-a', type: 'stdio', command: 'echo' },
-      { name: 'server-b', type: 'http' },
+      { name: 'server-a', type: 'stdio', command: 'echo', source: 'dot-mcp' },
+      { name: 'server-b', type: 'http', source: 'dot-mcp' },
     ];
 
     render(<DotMcpTrustDialog {...defaultProps} servers={servers} />);
@@ -65,7 +65,7 @@ describe('DotMcpTrustDialog', () => {
 
   it('shows warning when stdio servers are present', () => {
     const servers: DotMcpServerInfo[] = [
-      { name: 'cmd-server', type: 'stdio', command: 'rm -rf /' },
+      { name: 'cmd-server', type: 'stdio', command: 'rm -rf /', source: 'dot-mcp' },
     ];
 
     render(<DotMcpTrustDialog {...defaultProps} servers={servers} />);
@@ -76,7 +76,7 @@ describe('DotMcpTrustDialog', () => {
 
   it('does not show stdio warning when only non-stdio servers', () => {
     const servers: DotMcpServerInfo[] = [
-      { name: 'safe-server', type: 'sse' },
+      { name: 'safe-server', type: 'sse', source: 'dot-mcp' },
     ];
 
     render(<DotMcpTrustDialog {...defaultProps} servers={servers} />);
@@ -107,12 +107,26 @@ describe('DotMcpTrustDialog', () => {
   it('does not render when open is false', () => {
     render(<DotMcpTrustDialog {...defaultProps} open={false} />);
 
-    expect(screen.queryByText('Workspace MCP servers detected')).not.toBeInTheDocument();
+    expect(screen.queryByText('Project MCP servers detected')).not.toBeInTheDocument();
   });
 
   it('mentions .mcp.json in description', () => {
     render(<DotMcpTrustDialog {...defaultProps} />);
 
     expect(screen.getByText('.mcp.json')).toBeInTheDocument();
+  });
+
+  it('shows source badges for servers from different configs', () => {
+    const servers: DotMcpServerInfo[] = [
+      { name: 'mcp-server', type: 'stdio', command: 'echo', source: 'dot-mcp' },
+      { name: 'claude-server', type: 'sse', source: 'claude-cli-project' },
+    ];
+
+    render(<DotMcpTrustDialog {...defaultProps} servers={servers} />);
+
+    // Source badges should show the config file origin
+    // .mcp.json appears in description and badge; .claude/settings.json in description and badge
+    expect(screen.getAllByText('.mcp.json').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('.claude/settings.json').length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -381,6 +381,12 @@ export const useFileChanges = () => useAppStore((s) => s.fileChanges);
  */
 export const useMcpServers = () => useAppStore((s) => s.mcpServers);
 
+/**
+ * MCP server source origins (server name → source).
+ * Use in: McpServersPanel
+ */
+export const useMcpServerSources = () => useAppStore((s) => s.mcpServerSources);
+
 // ============================================================================
 // Review Comments State
 // ============================================================================
