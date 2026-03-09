@@ -4,9 +4,11 @@ import {
   createConversation,
   getGlobalReviewPrompts,
   getWorkspaceReviewPrompts,
+  type AttachmentDTO,
 } from '@/lib/api';
 import { useSelectedIds } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { toBase64 } from '@/lib/utils';
 
 const MARKDOWN_INSTRUCTION =
   '\nWhen writing comment content, use Markdown formatting for detailed comments that include code examples, lists, or structured explanations (use fenced code blocks for code, bullet lists for multiple points, **bold** for emphasis). Keep simple one-sentence comments as plain text.';
@@ -37,6 +39,10 @@ const REVIEW_TYPE_META: { key: string; label: string; placeholder: string }[] = 
   { key: 'architecture', label: 'Architecture', placeholder: 'e.g., We follow hexagonal architecture' },
   { key: 'premerge', label: 'Pre-merge Check', placeholder: 'e.g., Ensure all TODO comments reference a ticket' },
 ];
+
+const REVIEW_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  REVIEW_TYPE_META.map(({ key, label }) => [key, label])
+);
 
 /**
  * Fetches global and per-workspace overrides and merges them.
@@ -105,10 +111,28 @@ export function useReviewTrigger() {
           ? `${prompt}\n\nAdditional instructions:\n${extra}`
           : prompt;
 
+        // Build short display text + instruction attachment (matching PrimaryActionButton pattern)
+        const label = REVIEW_TYPE_LABELS[reviewType] || REVIEW_TYPE_LABELS['quick'] || 'Review';
+        const shortContent = `Review: ${label}`;
+        const attachmentName = `${label} Instructions`;
+
+        const templateAttachment: AttachmentDTO = {
+          id: crypto.randomUUID(),
+          type: 'file',
+          name: attachmentName,
+          mimeType: 'text/markdown',
+          size: new Blob([message]).size,
+          lineCount: message.split('\n').length,
+          base64Data: toBase64(message),
+          preview: message.slice(0, 200),
+          isInstruction: true,
+        };
+
         const conv = await createConversation(selectedWorkspaceId, selectedSessionId, {
           type: 'review',
-          message,
+          message: shortContent,
           model: reviewModel,
+          attachments: [templateAttachment],
         });
 
         // Always add the conversation and message to the store, even if the
@@ -131,8 +155,9 @@ export function useReviewTrigger() {
           id: crypto.randomUUID(),
           conversationId: conv.id,
           role: 'user',
-          content: message,
+          content: shortContent,
           timestamp: new Date().toISOString(),
+          attachments: [templateAttachment],
         });
 
         // Always mark streaming so WebSocket reconnection reconciliation
