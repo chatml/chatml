@@ -33,6 +33,7 @@ import type { StreamingSnapshotDTO, SnapshotSubAgent } from '@/lib/api';
 import { useSettingsStore } from './settingsStore';
 import { refreshPRStatus } from '@/lib/api';
 import { buildTurnConfigLabel } from '@/lib/models';
+import { cleanupConversationState } from '@/hooks/useWebSocket';
 
 // Throttle on-select PR refresh to avoid excessive API calls.
 // Entries are pruned when the map exceeds MAX_PR_REFRESH_ENTRIES to prevent unbounded growth.
@@ -764,6 +765,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .map((c) => c.id);
     clearScriptOutputBuffers(id);
     clearToolTimeoutsForConversations(sessionConvIds);
+    sessionConvIds.forEach(cleanupConversationState);
 
     set((state) => {
       // Re-derive conv IDs inside set() for consistency with latest state

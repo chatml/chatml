@@ -12,19 +12,10 @@
  */
 
 import { isTauri, safeListen, safeInvoke } from '@/lib/tauri';
-import { getBackendPortSync } from '@/lib/backend-port';
 import { generateRandomString, generateCodeChallenge } from '@/lib/pkce';
 import { LINEAR_STATE_PREFIX, handleLinearOAuthCallback } from '@/lib/linearAuth';
 import type { LinearUser } from '@/lib/linearAuth';
-
-// Get API base URL dynamically based on the backend port
-function getApiBase(): string {
-  if (typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__) {
-    const port = getBackendPortSync();
-    return `http://localhost:${port}`;
-  }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
-}
+import { getApiBase } from '@/lib/api';
 
 // GitHub OAuth configuration
 const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || '';

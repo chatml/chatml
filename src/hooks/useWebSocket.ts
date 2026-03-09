@@ -81,6 +81,16 @@ export function markPlanModeExited(conversationId: string) {
 }
 
 /**
+ * Clean up module-level state for a conversation that is being removed.
+ * Call this when deleting sessions to prevent stale entries from lingering
+ * in reconcilingConversations and recentlyExitedPlanMode maps.
+ */
+export function cleanupConversationState(conversationId: string) {
+  reconcilingConversations.delete(conversationId);
+  recentlyExitedPlanMode.delete(conversationId);
+}
+
+/**
  * Mark a session as unread and play an in-app sound when a background session
  * has a notable event (turn complete, question, plan approval).
  * Only fires if the conversation belongs to a session that is NOT currently selected.

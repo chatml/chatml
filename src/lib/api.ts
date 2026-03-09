@@ -15,15 +15,6 @@ export function getApiBase(): string {
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876';
 }
 
-/**
- * @deprecated Use `getApiBase()` instead. This static export is evaluated at module
- * load time with the default port and will NOT reflect dynamically allocated ports
- * in Tauri builds. Only kept for backwards compatibility with external consumers.
- */
-export const API_BASE = typeof window !== 'undefined' && (window as Window & { __TAURI__?: unknown }).__TAURI__
-  ? 'http://localhost:9876'  // Default - does NOT update for dynamic ports!
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9876');
-
 // Custom error class for API errors
 export class ApiError extends Error {
   public code?: string;
