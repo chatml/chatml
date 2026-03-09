@@ -146,7 +146,7 @@ describe('useReviewTrigger', () => {
       expect(attachments[0].isInstruction).toBe(true);
       expect(attachments[0].name).toBe('Quick Scan Instructions');
       const decoded = atob(attachments[0].base64Data as string);
-      expect(decoded).toContain('Review the changes');
+      expect(decoded).toContain('quick scan');
     });
 
     it('sends deep review prompt for type=deep', async () => {
@@ -208,7 +208,7 @@ describe('useReviewTrigger', () => {
       expect(requestBody!.message).toBe('Review: Security Audit');
       const attachments = requestBody!.attachments as Array<Record<string, unknown>>;
       const decoded = atob(attachments[0].base64Data as string);
-      expect(decoded).toContain('security audit');
+      expect(decoded).toContain('security-focused review');
     });
 
     it('defaults to quick review when no type specified', async () => {
@@ -239,7 +239,7 @@ describe('useReviewTrigger', () => {
       expect(requestBody!.message).toBe('Review: Quick Scan');
       const attachments = requestBody!.attachments as Array<Record<string, unknown>>;
       const decoded = atob(attachments[0].base64Data as string);
-      expect(decoded).toContain('Review the changes');
+      expect(decoded).toContain('quick scan');
     });
   });
 
