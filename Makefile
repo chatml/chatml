@@ -1,6 +1,8 @@
 .PHONY: build build-debug dev backend agent-runner clean init deps install-debug test test-cover test-cover-html release
 
 # Load .env file if it exists (for OAuth credentials, API keys)
+# Required: ANTHROPIC_API_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, NEXT_PUBLIC_GITHUB_CLIENT_ID
+# Optional: LINEAR_CLIENT_ID, NEXT_PUBLIC_LINEAR_CLIENT_ID (enables Linear integration)
 -include .env
 export
 

@@ -275,8 +275,12 @@ func (c *Client) GetViewer(ctx context.Context) (*User, error) {
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("Linear returned %d: %s", resp.StatusCode, respBody)
 	}
 
@@ -295,7 +299,7 @@ func (c *Client) GetViewer(ctx context.Context) (*User, error) {
 		} `json:"errors"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
@@ -415,8 +419,12 @@ func (c *Client) ListMyIssues(ctx context.Context) ([]Issue, error) {
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("Linear returned %d: %s", resp.StatusCode, respBody)
 	}
 
@@ -433,7 +441,7 @@ func (c *Client) ListMyIssues(ctx context.Context) ([]Issue, error) {
 		} `json:"errors"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
@@ -477,8 +485,12 @@ func (c *Client) SearchIssues(ctx context.Context, query string) ([]Issue, error
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("Linear returned %d: %s", resp.StatusCode, respBody)
 	}
 
@@ -493,7 +505,7 @@ func (c *Client) SearchIssues(ctx context.Context, query string) ([]Issue, error
 		} `json:"errors"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 

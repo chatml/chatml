@@ -480,6 +480,223 @@ func TestLinearAuthHandlers_RestoreFromStore_WithoutUser(t *testing.T) {
 // PersistLinearTokens Tests
 // ============================================================================
 
+func TestLinearAuthHandlers_RestoreFromStore_MissingExpiry(t *testing.T) {
+	lc := linear.NewClient("")
+	s, _ := store.NewSQLiteStoreInMemory()
+	defer s.Close()
+	h := NewLinearAuthHandlers(lc, s)
+
+	ctx := context.Background()
+
+	// Store valid access token but no expiry
+	encAccess, _ := crypto.Encrypt("access-no-expiry")
+	s.SetSetting(ctx, settingLinearAccessToken, encAccess)
+
+	h.RestoreFromStore(ctx)
+
+	if !lc.IsAuthenticated() {
+		t.Fatal("Expected client to be authenticated even without expiry")
+	}
+
+	tokens := lc.GetTokens()
+	// With missing expiry, expiresAt should be set to ~now (forcing immediate refresh)
+	if tokens.ExpiresAt.IsZero() {
+		t.Error("Expected expiresAt to NOT be zero when expiry is missing")
+	}
+	// Should be approximately now (within 5 seconds)
+	if time.Until(tokens.ExpiresAt) > 5*time.Second {
+		t.Error("Expected expiresAt to be approximately now to force refresh")
+	}
+}
+
+func TestLinearAuthHandlers_RestoreFromStore_MalformedExpiry(t *testing.T) {
+	lc := linear.NewClient("")
+	s, _ := store.NewSQLiteStoreInMemory()
+	defer s.Close()
+	h := NewLinearAuthHandlers(lc, s)
+
+	ctx := context.Background()
+
+	encAccess, _ := crypto.Encrypt("access-bad-expiry")
+	s.SetSetting(ctx, settingLinearAccessToken, encAccess)
+	// Store a malformed expiry string
+	s.SetSetting(ctx, settingLinearTokenExpiry, "not-a-valid-date")
+
+	h.RestoreFromStore(ctx)
+
+	if !lc.IsAuthenticated() {
+		t.Fatal("Expected client to be authenticated despite malformed expiry")
+	}
+
+	tokens := lc.GetTokens()
+	// Should default to ~now (forcing immediate refresh)
+	if tokens.ExpiresAt.IsZero() {
+		t.Error("Expected expiresAt to NOT be zero when expiry is malformed")
+	}
+	if time.Until(tokens.ExpiresAt) > 5*time.Second {
+		t.Error("Expected expiresAt to be approximately now to force refresh")
+	}
+}
+
+func TestLinearAuthHandlers_RestoreFromStore_CorruptedRefreshToken(t *testing.T) {
+	lc := linear.NewClient("")
+	s, _ := store.NewSQLiteStoreInMemory()
+	defer s.Close()
+	h := NewLinearAuthHandlers(lc, s)
+
+	ctx := context.Background()
+
+	// Valid access token
+	encAccess, _ := crypto.Encrypt("valid-access")
+	s.SetSetting(ctx, settingLinearAccessToken, encAccess)
+	s.SetSetting(ctx, settingLinearTokenExpiry, time.Now().Add(1*time.Hour).Format(time.RFC3339))
+
+	// Corrupted refresh token
+	s.SetSetting(ctx, settingLinearRefreshToken, "corrupted-encrypted-data")
+
+	h.RestoreFromStore(ctx)
+
+	// Should still authenticate with valid access token
+	if !lc.IsAuthenticated() {
+		t.Fatal("Expected client to be authenticated despite corrupted refresh token")
+	}
+
+	tokens := lc.GetTokens()
+	if tokens.AccessToken != "valid-access" {
+		t.Errorf("Expected access token valid-access, got %s", tokens.AccessToken)
+	}
+	// Refresh token should be empty since decryption failed
+	if tokens.RefreshToken != "" {
+		t.Errorf("Expected empty refresh token after decryption failure, got %s", tokens.RefreshToken)
+	}
+}
+
+func TestLinearAuthHandlers_RestoreFromStore_CorruptedUser(t *testing.T) {
+	lc := linear.NewClient("")
+	s, _ := store.NewSQLiteStoreInMemory()
+	defer s.Close()
+	h := NewLinearAuthHandlers(lc, s)
+
+	ctx := context.Background()
+
+	encAccess, _ := crypto.Encrypt("access-tok")
+	s.SetSetting(ctx, settingLinearAccessToken, encAccess)
+	s.SetSetting(ctx, settingLinearTokenExpiry, time.Now().Add(1*time.Hour).Format(time.RFC3339))
+
+	// Corrupted user data (not decryptable)
+	s.SetSetting(ctx, settingLinearUser, "corrupted-user-data")
+
+	h.RestoreFromStore(ctx)
+
+	// Should still be authenticated
+	if !lc.IsAuthenticated() {
+		t.Fatal("Expected client to be authenticated despite corrupted user data")
+	}
+	// But user should be nil
+	if lc.GetStoredUser() != nil {
+		t.Error("Expected no user when user data is corrupted")
+	}
+}
+
+// ============================================================================
+// persistTokens Tests (verifies DRY delegation to PersistLinearTokens)
+// ============================================================================
+
+func TestLinearAuthHandlers_persistTokens_DelegatesToPersistLinearTokens(t *testing.T) {
+	mockServer := setupMockLinearServer(t)
+	defer mockServer.Close()
+
+	h, _, s := newTestLinearAuthHandlers(t, mockServer)
+
+	ctx := context.Background()
+	tokens := &linear.TokenSet{
+		AccessToken:  "delegated-access",
+		RefreshToken: "delegated-refresh",
+		ExpiresAt:    time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC),
+	}
+	user := &linear.User{
+		ID: "u-del", Name: "Delegated", Email: "del@test.com", DisplayName: "D",
+	}
+
+	err := h.persistTokens(ctx, tokens, user)
+	if err != nil {
+		t.Fatalf("persistTokens failed: %v", err)
+	}
+
+	// Verify tokens persisted (via PersistLinearTokens)
+	enc, found, _ := s.GetSetting(ctx, settingLinearAccessToken)
+	if !found {
+		t.Fatal("Expected access token to be persisted")
+	}
+	dec, _ := crypto.Decrypt(enc)
+	if dec != "delegated-access" {
+		t.Errorf("Expected delegated-access, got %s", dec)
+	}
+
+	enc, found, _ = s.GetSetting(ctx, settingLinearRefreshToken)
+	if !found {
+		t.Fatal("Expected refresh token to be persisted")
+	}
+	dec, _ = crypto.Decrypt(enc)
+	if dec != "delegated-refresh" {
+		t.Errorf("Expected delegated-refresh, got %s", dec)
+	}
+
+	expiryStr, found, _ := s.GetSetting(ctx, settingLinearTokenExpiry)
+	if !found {
+		t.Fatal("Expected expiry to be persisted")
+	}
+	if expiryStr != "2026-06-15T12:00:00Z" {
+		t.Errorf("Expected 2026-06-15T12:00:00Z, got %s", expiryStr)
+	}
+
+	// Verify user also persisted
+	encUser, found, _ := s.GetSetting(ctx, settingLinearUser)
+	if !found {
+		t.Fatal("Expected user to be persisted")
+	}
+	decUser, _ := crypto.Decrypt(encUser)
+	var persistedUser linear.User
+	json.Unmarshal([]byte(decUser), &persistedUser)
+	if persistedUser.Email != "del@test.com" {
+		t.Errorf("Expected del@test.com, got %s", persistedUser.Email)
+	}
+}
+
+func TestLinearAuthHandlers_persistTokens_NilUser(t *testing.T) {
+	mockServer := setupMockLinearServer(t)
+	defer mockServer.Close()
+
+	h, _, s := newTestLinearAuthHandlers(t, mockServer)
+
+	ctx := context.Background()
+	tokens := &linear.TokenSet{
+		AccessToken: "access-no-user",
+		ExpiresAt:   time.Now().Add(1 * time.Hour),
+	}
+
+	err := h.persistTokens(ctx, tokens, nil)
+	if err != nil {
+		t.Fatalf("persistTokens failed: %v", err)
+	}
+
+	// Access token should be stored
+	_, found, _ := s.GetSetting(ctx, settingLinearAccessToken)
+	if !found {
+		t.Fatal("Expected access token to be persisted")
+	}
+
+	// User should NOT be stored
+	_, found, _ = s.GetSetting(ctx, settingLinearUser)
+	if found {
+		t.Error("Expected user to NOT be persisted when nil")
+	}
+}
+
+// ============================================================================
+// PersistLinearTokens Tests
+// ============================================================================
+
 func TestPersistLinearTokens(t *testing.T) {
 	s, _ := store.NewSQLiteStoreInMemory()
 	defer s.Close()
