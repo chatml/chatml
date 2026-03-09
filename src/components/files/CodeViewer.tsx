@@ -39,7 +39,8 @@ function isMarkdownFile(filename: string): boolean {
   return ext === 'md' || ext === 'mdx';
 }
 
-function getDefaultViewMode(filename: string): ViewMode {
+function getDefaultViewMode(filename: string, hasOldContent?: boolean): ViewMode {
+  if (hasOldContent) return 'diff';
   return isMarkdownFile(filename) ? 'rendered' : 'code';
 }
 
@@ -55,13 +56,13 @@ export const CodeViewer = memo(function CodeViewer({
   scrollToLine,
   onChange,
 }: CodeViewerProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>(getDefaultViewMode(filename));
+  const [viewMode, setViewMode] = useState<ViewMode>(getDefaultViewMode(filename, typeof oldContent === 'string'));
 
   // Reset view mode when switching files
   const [prevFilename, setPrevFilename] = useState(filename);
   if (prevFilename !== filename) {
     setPrevFilename(filename);
-    setViewMode(getDefaultViewMode(filename));
+    setViewMode(getDefaultViewMode(filename, typeof oldContent === 'string'));
   }
 
   const isMarkdown = isMarkdownFile(filename);
