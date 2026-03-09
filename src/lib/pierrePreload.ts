@@ -13,7 +13,6 @@
 import {
   ResolvedThemes,
   ResolvedLanguages,
-  RegisteredCustomThemes,
 } from '@pierre/diffs';
 import { normalizeTheme } from 'shiki';
 import type { LanguageRegistration } from '@shikijs/types';
@@ -36,17 +35,6 @@ if (!ResolvedThemes.has('pierre-light')) {
     'pierre-light',
     normalizeTheme(pierreLightRaw as Parameters<typeof normalizeTheme>[0]),
   );
-}
-
-// Also override the registered loaders so any code path that bypasses the
-// ResolvedThemes cache still gets static data instead of a failing import().
-if (!RegisteredCustomThemes.has('pierre-dark')) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RegisteredCustomThemes.set('pierre-dark', () => Promise.resolve(pierreDarkRaw as any));
-}
-if (!RegisteredCustomThemes.has('pierre-light')) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  RegisteredCustomThemes.set('pierre-light', () => Promise.resolve(pierreLightRaw as any));
 }
 
 // --- Languages: statically import grammars for the languages we use ---
