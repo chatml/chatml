@@ -319,10 +319,10 @@ export function useWebSocket(enabled: boolean = true) {
           const startTime = store.streamingState[conversationId]?.startTime;
           const durationMs = startTime ? Date.now() - startTime : undefined;
           // Finalize streaming and commit any queued user message atomically.
-          // commitQueuedFirst places the user message BEFORE the assistant message
-          // so the user bubble appears above its response.
+          // commitQueued commits the user message AFTER the assistant message
+          // so the conversation order is chronologically correct.
           // terminal clears remaining queue and forces isStreaming=false.
-          store.finalizeStreamingMessage(conversationId, { durationMs, commitQueuedFirst: true, terminal: true });
+          store.finalizeStreamingMessage(conversationId, { durationMs, commitQueued: true, terminal: true });
           store.clearAgentTodos(conversationId);
         }
       } else {
@@ -644,11 +644,11 @@ export function useWebSocket(enabled: boolean = true) {
         }));
 
         // Atomic finalization - creates message and clears streaming/activeTools.
-        // commitQueuedFirst places the queued user message BEFORE the assistant message.
+        // commitQueued commits the queued user message AFTER the assistant message.
         turnStore.finalizeStreamingMessage(conversationId, {
           durationMs: turnDurationMs,
           toolUsage: turnToolUsage.length > 0 ? turnToolUsage : undefined,
-          commitQueuedFirst: true,
+          commitQueued: true,
         });
         // Explicitly set status to active — finalizeStreamingMessage only clears
         // streaming/activeTools state but does NOT update conversation status.
@@ -669,9 +669,9 @@ export function useWebSocket(enabled: boolean = true) {
       case 'complete': {
         // Complete event signals the entire conversation ended (stdin closed)
         // Finalize streaming content and atomically commit any queued user
-        // message before the assistant message so the user bubble renders first.
+        // message after the assistant message so the conversation order is correct.
         // terminal clears remaining queue and forces isStreaming=false.
-        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true, terminal: true });
+        store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         store.clearAgentTodos(conversationId);
         store.clearPendingUserQuestion(conversationId);
         // Update conversation status to idle (ready for new input)
@@ -774,7 +774,7 @@ export function useWebSocket(enabled: boolean = true) {
         // Finalize any partial assistant content and atomically commit any
         // queued user message before the assistant message.
         // terminal clears remaining queue and forces isStreaming=false.
-        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true, terminal: true });
+        store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         store.setStreamingError(conversationId, errorMessage);
         // Update conversation status to idle
         store.updateConversation(conversationId, { status: 'idle' });
@@ -982,9 +982,9 @@ export function useWebSocket(enabled: boolean = true) {
       // ====================================================================
       case 'interrupted':
         // Finalize streaming content and atomically commit any queued user
-        // message before the assistant message so the user bubble renders first.
+        // message after the assistant message so the conversation order is correct.
         // terminal clears remaining queue and forces isStreaming=false.
-        store.finalizeStreamingMessage(conversationId, { commitQueuedFirst: true, terminal: true });
+        store.finalizeStreamingMessage(conversationId, { commitQueued: true, terminal: true });
         addSystemMessage(conversationId, 'Agent was stopped by user.')
           .then(({ id }) => {
             store.addMessage({
@@ -1217,10 +1217,10 @@ export function useWebSocket(enabled: boolean = true) {
       for (const convId of locallyStreaming) {
         if (!serverActiveSet.has(convId)) {
           // Agent finished while we were disconnected — clear orphaned state.
-          // commitQueuedFirst places the user message before any partial
+          // commitQueued commits the user message after any partial
           // assistant content (consistent with all other finalization paths).
           // terminal clears remaining queue and forces isStreaming=false.
-          store.finalizeStreamingMessage(convId, { commitQueuedFirst: true, terminal: true });
+          store.finalizeStreamingMessage(convId, { commitQueued: true, terminal: true });
           store.clearThinking(convId);
           store.updateConversation(convId, { status: 'completed' });
 

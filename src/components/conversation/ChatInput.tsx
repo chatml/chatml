@@ -791,10 +791,10 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       const startTime = useAppStore.getState().streamingState[selectedConversationId]?.startTime;
       const durationMs = startTime ? Date.now() - startTime : undefined;
       // Finalize streaming content and atomically commit any queued user
-      // message before the assistant message so the user bubble renders first.
+      // message after the assistant message so the conversation order is correct.
       // terminal clears remaining queue and forces isStreaming=false.
       // toolUsage is auto-derived from activeTools inside finalizeStreamingMessage.
-      finalizeStreamingMessage(selectedConversationId, { durationMs, commitQueuedFirst: true, terminal: true });
+      finalizeStreamingMessage(selectedConversationId, { durationMs, commitQueued: true, terminal: true });
       // Add system message indicating the agent was stopped
       addMessage({
         id: `msg-stopped-${Date.now()}`,
