@@ -92,6 +92,9 @@ importers:
       '@shikijs/langs':
         specifier: ^3.22.0
         version: 3.22.0
+      '@shikijs/types':
+        specifier: ^3.22.0
+        version: 3.22.0
       '@tailwindcss/typography':
         specifier: ^0.5.19
         version: 0.5.19(tailwindcss@4.1.18)
