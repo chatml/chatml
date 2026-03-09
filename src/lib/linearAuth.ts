@@ -16,6 +16,9 @@ const LINEAR_CLIENT_ID = process.env.NEXT_PUBLIC_LINEAR_CLIENT_ID || '';
 const LINEAR_REDIRECT_URI = 'chatml://oauth/callback';
 const LINEAR_SCOPES = 'read';
 
+/** Whether Linear OAuth is configured (client ID available at build time). */
+export const isLinearConfigured = LINEAR_CLIENT_ID !== '';
+
 // State prefix for routing callbacks
 export const LINEAR_STATE_PREFIX = 'linear:';
 
@@ -59,6 +62,10 @@ export function cancelLinearOAuthFlow(): void {
 
 /** Start the Linear OAuth flow with PKCE. Opens browser to Linear authorization page. */
 export async function startLinearOAuthFlow(): Promise<void> {
+  if (!LINEAR_CLIENT_ID) {
+    throw new Error('Linear integration is not configured for this build.');
+  }
+
   const random = generateRandomString(32);
   pendingOAuthState = LINEAR_STATE_PREFIX + random;
   pendingCodeVerifier = generateRandomString(32);
@@ -161,11 +168,27 @@ export async function handleLinearOAuthCallback(url: string): Promise<{ user: Li
 
 /** Check Linear auth status from backend. */
 export async function getLinearAuthStatus(): Promise<LinearAuthStatus> {
-  const res = await fetch(`${getApiBase()}/api/auth/linear/status`);
-  return res.json();
+  try {
+    const res = await fetch(`${getApiBase()}/api/auth/linear/status`);
+    if (!res.ok) {
+      console.error('[Linear Auth] Status check failed:', res.status);
+      return { authenticated: false };
+    }
+    return res.json();
+  } catch (err) {
+    console.error('[Linear Auth] Status check failed:', err);
+    return { authenticated: false };
+  }
 }
 
 /** Logout from Linear. */
 export async function linearLogout(): Promise<void> {
-  await fetch(`${getApiBase()}/api/auth/linear/logout`, { method: 'POST' });
+  try {
+    const res = await fetch(`${getApiBase()}/api/auth/linear/logout`, { method: 'POST' });
+    if (!res.ok) {
+      console.error('[Linear Auth] Logout failed:', res.status);
+    }
+  } catch (err) {
+    console.error('[Linear Auth] Logout failed:', err);
+  }
 }
