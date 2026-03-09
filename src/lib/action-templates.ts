@@ -22,6 +22,16 @@ export interface ActionTemplateOverride {
 }
 
 /**
+ * Safety guardrails appended to every action template.
+ * Prevents the agent from checking out protected branches or retrying endlessly.
+ */
+const SAFETY_FOOTER = `
+
+IMPORTANT:
+- Never switch to or check out main, master, or any base/protected branch. Always stay on the current feature branch.
+- If you encounter an error you cannot resolve after two attempts, stop and explain the situation to the user rather than retrying the same approach.`;
+
+/**
  * Built-in default templates for each action.
  * These provide detailed instructions to the agent beyond the short label.
  */
@@ -33,9 +43,10 @@ export const ACTION_TEMPLATES: Record<ActionTemplateKey, string> = {
    - Read the file to understand both sides of the conflict
    - Determine the correct resolution based on the intent of both changes
    - Resolve the conflict markers (<<<<<<, =======, >>>>>>>)
+   - For lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock): accept either side, then regenerate by running the appropriate install command — never manually edit lock file contents
 3. Stage all resolved files with \`git add\`
 4. If this is a rebase, run \`git rebase --continue\`; if a merge, commit the resolution
-5. Verify the build still passes after resolution`,
+5. Verify the code compiles and types check after resolution` + SAFETY_FOOTER,
 
   'fix-issues': `## Fix CI Failures
 
@@ -44,15 +55,19 @@ export const ACTION_TEMPLATES: Record<ActionTemplateKey, string> = {
 3. Fix each issue in priority order: build errors > type errors > test failures > lint
 4. Run the relevant checks locally to verify fixes before pushing
 5. If a test needs updating due to intentional behavior changes, update the test expectations
-6. Push the fixes`,
+6. Commit the fixes with a clear message describing what was fixed
+7. Verify you are on the correct feature branch, then push` + SAFETY_FOOTER,
 
   'continue-operation': `## Continue Git Operation
 
-1. Check \`git status\` to see the current state of the operation
-2. If there are remaining conflicts, resolve them
-3. Stage resolved files
-4. Continue the operation with the appropriate command (rebase --continue, merge --continue, etc.)
-5. If the operation cannot be continued cleanly, explain the situation and suggest options`,
+1. Run \`git status\` to identify the in-progress operation and its current state
+2. If there are conflicted files, resolve each one:
+   - Read the file to understand both sides
+   - Resolve conflict markers
+   - Stage resolved files with \`git add\`
+3. If all conflicts are resolved but nothing changed (the resolution matches existing code), use \`--skip\` to skip this step
+4. Continue with the appropriate command: \`git rebase --continue\`, \`git merge --continue\`, \`git cherry-pick --continue\`, or \`git revert --continue\`
+5. If the operation cannot be continued cleanly, explain the situation and offer to abort` + SAFETY_FOOTER,
 
   'sync-branch': `## Sync Branch
 
@@ -61,24 +76,28 @@ export const ACTION_TEMPLATES: Record<ActionTemplateKey, string> = {
 3. If conflicts arise during rebase, resolve them carefully:
    - Preserve the intent of our branch's changes
    - Incorporate the upstream changes correctly
-4. Force-push the rebased branch (since history was rewritten)
-5. Verify the build passes after sync`,
+4. Push the updated branch:
+   - Use \`git push --force-with-lease\` (not \`--force\`) to avoid overwriting others' work
+   - Never force-push to main, master, or shared/protected branches
+5. Verify the build passes after sync` + SAFETY_FOOTER,
 
   'create-pr': `## Create Pull Request
 
-1. Ensure all changes are committed and pushed
-2. Create the pull request with a clear title and description
-3. The PR title should be concise and describe the change
-4. The PR description should explain what changed and why
-5. Link any related issues`,
+1. Ensure all changes are committed
+2. Push the branch to the remote if not already pushed
+3. Create the pull request using \`gh pr create\`:
+   - Title: concise, under 72 characters, describes the change
+   - Description: explain what changed, why, and how to test
+   - Link related issues using "Closes #N" or "Fixes #N" syntax
+4. Return the PR URL` + SAFETY_FOOTER,
 
   'merge-pr': `## Merge Pull Request
 
-1. Verify all CI checks have passed
+1. Verify all CI checks have passed using \`gh pr checks\`
 2. Verify the branch is up to date with the base branch
-3. If the branch is behind, rebase or merge the base branch first
-4. Perform the merge using the requested strategy (squash, merge commit, or rebase)
-5. Confirm the merge was successful`,
+3. If the branch is behind, rebase onto the base branch and push first
+4. Merge using \`gh pr merge\` with the appropriate flag (--squash, --merge, or --rebase)
+5. Confirm the merge was successful and report the result` + SAFETY_FOOTER,
 };
 
 /**
@@ -188,7 +207,9 @@ export async function fetchMergedActionTemplates(
 
   const merged = { ...ACTION_TEMPLATES };
   for (const key of Object.keys(ACTION_TEMPLATES) as ActionTemplateKey[]) {
-    let base = ACTION_TEMPLATES[key];
+    // Start from the built-in template without the safety footer — we'll
+    // re-append it unconditionally at the end so it survives 'replace' overrides.
+    let base = ACTION_TEMPLATES[key].replace(SAFETY_FOOTER, '');
     const global = globalOverrides[key];
     const workspace = workspaceOverrides[key];
 
@@ -210,7 +231,9 @@ export async function fetchMergedActionTemplates(
       }
     }
 
-    merged[key] = base;
+    // Always append safety guardrails after all overrides so they can't be
+    // accidentally removed by a 'replace' override.
+    merged[key] = base + SAFETY_FOOTER;
   }
   return merged;
 }
