@@ -14,13 +14,6 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Settings,
   Keyboard,
   RefreshCw,
@@ -63,17 +56,6 @@ export function AppSettingsMenu({
       reset();
     } catch (error) {
       console.error('Failed to sign out:', error);
-    }
-  };
-
-  const getThemeIcon = () => {
-    switch (theme) {
-      case 'light':
-        return <Sun className="h-3.5 w-3.5" />;
-      case 'dark':
-        return <Moon className="h-3.5 w-3.5" />;
-      default:
-        return <Monitor className="h-3.5 w-3.5" />;
     }
   };
 
@@ -127,20 +109,28 @@ export function AppSettingsMenu({
 
         {/* Theme Selector */}
         <div className="flex items-center justify-between px-2 py-1.5">
-          <div className="flex items-center gap-2">
-            {getThemeIcon()}
-            <span className="text-sm">Theme</span>
+          <span className="text-sm">Theme</span>
+          <div className="flex items-center gap-0.5 rounded-lg border bg-muted/50 p-0.5">
+            {[
+              { value: 'system', icon: Monitor },
+              { value: 'light', icon: Sun },
+              { value: 'dark', icon: Moon },
+            ].map(({ value, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                aria-label={`${value} theme`}
+                className={cn(
+                  'rounded-md p-1.5 transition-colors',
+                  (theme ?? 'system') === value
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
           </div>
-          <Select value={theme || 'system'} onValueChange={setTheme}>
-            <SelectTrigger className="h-7 w-24 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="system">System</SelectItem>
-              <SelectItem value="light">Light</SelectItem>
-              <SelectItem value="dark">Dark</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         {/* Zen Mode Toggle */}
