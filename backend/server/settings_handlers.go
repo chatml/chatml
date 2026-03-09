@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"slices"
@@ -412,6 +413,14 @@ func maskAPIKey(key string) string {
 func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// Read external config sources once (reused across multiple checks below).
+	claudeSettings, _ := ai.ReadClaudeCodeSettings()
+
+	var chatmlEnvVars map[string]string
+	if raw, found, err := h.store.GetSetting(ctx, "env-vars"); err == nil && found && raw != "" {
+		chatmlEnvVars = store.ParseEnvVars(raw)
+	}
+
 	// Check 1: Settings-stored API key
 	hasStoredKey := false
 	encrypted, found, err := h.store.GetSetting(ctx, settingKeyAnthropicAPIKey)
@@ -423,6 +432,31 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Check 2: ANTHROPIC_API_KEY environment variable
 	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
+
+	// Auto-import: if no stored key, discover ANTHROPIC_API_KEY from external
+	// sources and persist it into ChatML's encrypted settings store so the
+	// banner resolves and the key is available for non-agent tasks (e.g. title
+	// generation). This runs once — subsequent calls find the stored key above.
+	if !hasStoredKey {
+		discoveredKey := ""
+		if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+			discoveredKey = k
+		} else if claudeSettings != nil && claudeSettings.Env["ANTHROPIC_API_KEY"] != "" {
+			discoveredKey = claudeSettings.Env["ANTHROPIC_API_KEY"]
+		} else if chatmlEnvVars["ANTHROPIC_API_KEY"] != "" {
+			discoveredKey = chatmlEnvVars["ANTHROPIC_API_KEY"]
+		}
+
+		if discoveredKey != "" {
+			if enc, encErr := crypto.Encrypt(discoveredKey); encErr != nil {
+				log.Printf("WARN: auto-import ANTHROPIC_API_KEY encrypt failed: %v", encErr)
+			} else if setErr := h.store.SetSetting(ctx, settingKeyAnthropicAPIKey, enc); setErr != nil {
+				log.Printf("WARN: auto-import ANTHROPIC_API_KEY store failed: %v", setErr)
+			} else {
+				hasStoredKey = true
+			}
+		}
+	}
 
 	// Check 3: Claude Code CLI credentials via OS keychain (validates token contents + expiration)
 	_, cliErr := ai.ReadClaudeCodeOAuthToken()
@@ -438,18 +472,14 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Check 5: AWS Bedrock via Claude Code settings.json
 	hasBedrock := false
-	claudeSettings, _ := ai.ReadClaudeCodeSettings()
 	if claudeSettings != nil && ai.IsBedRockConfigured(claudeSettings) {
 		hasBedrock = true
 	}
 
 	// Check 6: AWS Bedrock via ChatML env vars (Settings → Advanced)
 	if !hasBedrock {
-		raw, found, _ := h.store.GetSetting(ctx, "env-vars")
-		if found && raw != "" {
-			if store.ParseEnvVars(raw)["CLAUDE_CODE_USE_BEDROCK"] == "true" {
-				hasBedrock = true
-			}
+		if chatmlEnvVars["CLAUDE_CODE_USE_BEDROCK"] == "true" {
+			hasBedrock = true
 		}
 	}
 
