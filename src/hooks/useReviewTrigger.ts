@@ -16,19 +16,42 @@ const MARKDOWN_INSTRUCTION =
 const ACTIONABLE_ONLY_INSTRUCTION =
   '\n\nIMPORTANT: Only report actionable findings. Every comment must identify something that needs to be changed, fixed, or improved. Do NOT include positive feedback, praise, or purely informational observations like "Good implementation", "Nice pattern", "Well structured", or "This looks correct". If a file has no actionable issues, skip it silently.';
 
+const REVIEW_TOOL_INSTRUCTIONS =
+  'Use get_workspace_diff to examine all changes in this session. ' +
+  'If the diff is large or truncated, use get_workspace_diff with the file parameter to examine specific files in detail. ' +
+  'For each issue found, use add_review_comment with a short descriptive title and appropriate severity (error for bugs/critical issues, warning for potential problems, suggestion for improvements, info for notes). ';
+
+const REVIEW_SUMMARY =
+  'Call get_review_comment_stats at the end to summarize your findings. ';
+
 const REVIEW_PROMPTS: Record<string, string> = {
   quick:
-    'Review the changes in this session. Use get_workspace_diff to see what changed, then use add_review_comment to leave inline comments. Focus on bugs, errors, and obvious issues. Be concise.' + MARKDOWN_INSTRUCTION,
+    'Do a quick scan of the changes. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Focus only on bugs, correctness errors, and obvious issues. Aim for at most 5-7 comments. Skip style, naming, and minor improvements. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   deep:
-    'Do a thorough code review of all changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue found. Check for bugs, performance problems, security issues, error handling gaps, and code quality. Be detailed and specific.' + MARKDOWN_INSTRUCTION,
+    'Do a thorough code review of all changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Check for bugs, performance problems, security issues, error handling gaps, and code quality. Be detailed and specific. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   security:
-    'Perform a security audit on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each security concern. Look for injection vulnerabilities, authentication/authorization issues, data exposure, insecure defaults, and other OWASP top 10 risks.' + MARKDOWN_INSTRUCTION,
+    'Perform a security-focused review of the changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Read full source files when needed to understand security context (e.g., whether inputs are validated upstream, whether auth is enforced at the route level). ' +
+    'Look for injection vulnerabilities (SQL, command, XSS), authentication/authorization gaps, data exposure (secrets, PII in logs), insecure defaults, path traversal, and other OWASP top 10 risks. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   performance:
-    'Review the changes in this session for performance issues. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Look for unnecessary re-renders, memory leaks, expensive computations in hot paths, missing memoization, N+1 queries, and blocking operations. Call get_review_comment_stats at the end to summarize.' + MARKDOWN_INSTRUCTION,
+    'Review the changes in this session for performance issues. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Look for unnecessary re-renders, memory leaks, expensive computations in hot paths, missing memoization, N+1 queries, and blocking operations. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   architecture:
-    'Review the changes in this session for architectural quality. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each concern. Evaluate separation of concerns, coupling between modules, adherence to existing patterns in the codebase, SOLID principles, and appropriate abstractions. Call get_review_comment_stats at the end to summarize.' + MARKDOWN_INSTRUCTION,
+    'Review the changes in this session for architectural quality. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Read existing code in the same or similar modules to verify the changes follow established patterns. ' +
+    'Evaluate separation of concerns, coupling between modules, adherence to existing codebase patterns, SOLID principles, and appropriate abstractions. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
   premerge:
-    'Perform a final pre-merge check on the changes in this session. Use get_workspace_diff to see the full diff, then use add_review_comment to leave inline comments for each issue. Check for leftover TODOs, console.logs, debug code, commented-out code, missing error handling, incomplete implementations, and anything that should not be merged. Call get_review_comment_stats at the end to summarize.' + MARKDOWN_INSTRUCTION,
+    'Perform a final pre-merge check on the changes in this session. ' + REVIEW_TOOL_INSTRUCTIONS +
+    'Check for leftover TODOs, console.logs, debug code, commented-out code, missing error handling, incomplete implementations, ' +
+    'accidentally committed secrets or .env files, and anything that should not be merged. ' +
+    REVIEW_SUMMARY + MARKDOWN_INSTRUCTION,
 };
 
 const REVIEW_TYPE_META: { key: string; label: string; placeholder: string }[] = [
