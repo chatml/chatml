@@ -68,7 +68,7 @@ export const SETTINGS_DEFAULTS = {
   confirmCloseActiveTab: true,
   confirmArchiveDirtySession: true,
   desktopNotifications: true,
-  soundEffects: false,
+  soundEffects: true,
   soundEffectType: 'chime',
   sendWithEnter: true,
   suggestionsEnabled: true,
