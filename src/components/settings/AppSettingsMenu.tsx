@@ -36,6 +36,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logout } from '@/lib/auth';
+import { openUrlInBrowser } from '@/lib/tauri';
+import { useUpdateStore } from '@/stores/updateStore';
+import { useToast } from '@/components/ui/toast';
 
 interface AppSettingsMenuProps {
   onOpenSettings: () => void;
@@ -53,6 +56,7 @@ export function AppSettingsMenu({
   const { theme, setTheme } = useTheme();
   const zenMode = useSettingsStore((s) => s.zenMode);
   const setZenMode = useSettingsStore((s) => s.setZenMode);
+  const { info: toastInfo } = useToast();
   const handleSignOut = async () => {
     try {
       await logout();
@@ -170,24 +174,29 @@ export function AppSettingsMenu({
         <DropdownMenuSeparator />
 
         {/* Updates & Help */}
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={async () => {
+          const result = await useUpdateStore.getState().checkForUpdates();
+          if (result === 'up-to-date') {
+            toastInfo("You're on the latest version");
+          }
+        }}>
           <RefreshCw className="size-4" />
           Check for Updates
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => window.open('https://docs.chatml.com', '_blank')}>
+        <DropdownMenuItem onClick={() => openUrlInBrowser('https://docs.chatml.com')}>
           <BookOpen className="size-4" />
           Documentation
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => window.open('https://chatml.com/changelog', '_blank')}>
+        <DropdownMenuItem onClick={() => openUrlInBrowser('https://chatml.com/changelog')}>
           <FileText className="size-4" />
           Changelog
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
         </DropdownMenuItem>
 
-        <DropdownMenuItem onClick={() => window.open('https://github.com/chatml/chatml/issues', '_blank')}>
+        <DropdownMenuItem onClick={() => openUrlInBrowser('https://github.com/chatml/chatml/issues')}>
           <MessageCircle className="size-4" />
           Send Feedback
           <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
