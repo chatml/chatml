@@ -86,6 +86,25 @@ export function startPtyReading(
 ): () => void {
   const MAX_BACKOFF_MS = 1000;
 
+  // RAF-based batching: accumulate chunks and flush once per frame
+  // to avoid per-chunk xterm.js render passes that cause visual stuttering.
+  let pending: Uint8Array[] = [];
+  let rafId: number | null = null;
+
+  const flush = () => {
+    rafId = null;
+    if (pending.length === 0) return;
+    const total = pending.reduce((sum, a) => sum + a.length, 0);
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of pending) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    pending = [];
+    callbacks.onData(merged);
+  };
+
   // Read loop: polls plugin:pty|read until EOF or stopped
   const readLoop = async () => {
     let backoff = 50;
@@ -94,7 +113,10 @@ export function startPtyReading(
         const data = await invoke<number[]>('plugin:pty|read', { pid: pty.pid });
         backoff = 50; // reset on success
         if (!pty.stopped) {
-          callbacks.onData(new Uint8Array(data));
+          pending.push(new Uint8Array(data));
+          if (rafId === null) {
+            rafId = requestAnimationFrame(flush);
+          }
         }
       } catch (e: unknown) {
         if (pty.stopped) break;
@@ -109,6 +131,8 @@ export function startPtyReading(
         backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
       }
     }
+    // Flush any remaining data after loop exits
+    if (pending.length > 0) flush();
   };
 
   // Wait loop: blocks until process exits, then fires onExit
@@ -132,6 +156,13 @@ export function startPtyReading(
 
   return () => {
     pty.stopped = true;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    // Discard any buffered data — the consumer's onData callback
+    // is guarded by cleanupCalled and would drop it anyway.
+    pending = [];
   };
 }
 
