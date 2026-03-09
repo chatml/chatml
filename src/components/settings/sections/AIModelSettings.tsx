@@ -18,14 +18,6 @@ import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
 
-function ComingSoonBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-      Coming soon
-    </span>
-  );
-}
-
 export function AIModelSettings() {
   const defaultModel = useSettingsStore((s) => s.defaultModel);
   const setDefaultModel = useSettingsStore((s) => s.setDefaultModel);
@@ -140,17 +132,6 @@ export function AIModelSettings() {
             </Select>
           </SettingsRow>
         )}
-      </SettingsGroup>
-
-      <SettingsGroup label="Automation">
-        <SettingsRow
-          title="Auto-approve safe commands"
-          description="Automatically approve read-only commands"
-          badge={<ComingSoonBadge />}
-          className="opacity-60"
-        >
-          <Switch checked={false} disabled aria-label="Auto-approve safe commands" />
-        </SettingsRow>
       </SettingsGroup>
 
       <SettingsGroup label="Authentication">
