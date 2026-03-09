@@ -32,6 +32,8 @@ interface CodeViewerProps {
   scrollToLine?: number;
   /** Callback when file content is edited. Enables the Edit toggle button. */
   onChange?: (content: string) => void;
+  /** Initial word-wrap state for the code viewer (default: false) */
+  defaultWordWrap?: boolean;
 }
 
 function isMarkdownFile(filename: string): boolean {
@@ -55,6 +57,7 @@ export const CodeViewer = memo(function CodeViewer({
   onCreateComment,
   scrollToLine,
   onChange,
+  defaultWordWrap,
 }: CodeViewerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(getDefaultViewMode(filename, typeof oldContent === 'string'));
 
@@ -228,6 +231,7 @@ export const CodeViewer = memo(function CodeViewer({
         filename={filename}
         onToggleMarkdownView={isMarkdown ? () => setViewMode(v => v === 'code' ? 'rendered' : 'code') : undefined}
         headerMetadata={toggleButtons}
+        defaultWordWrap={defaultWordWrap}
       />
     </div>
   );
