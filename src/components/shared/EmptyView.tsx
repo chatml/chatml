@@ -61,8 +61,8 @@ export function EmptyView({
           <div className="flex flex-col items-center text-center mb-10">
             {/* Mascot with ambient glow */}
             <div className="relative mb-6">
-              <div className="absolute inset-0 rounded-full bg-primary/15 blur-[40px] pointer-events-none" />
-              <div className="relative w-20 h-20 rounded-full ring-[2.5px] ring-primary/40 ring-offset-[3px] ring-offset-background overflow-hidden shadow-xl shadow-primary/15">
+              <div className="absolute inset-0 rounded-full bg-brand/15 blur-[40px] pointer-events-none" />
+              <div className="relative w-20 h-20 rounded-full ring-[2.5px] ring-brand/40 ring-offset-[3px] ring-offset-background overflow-hidden shadow-xl shadow-brand/15">
                 <Image
                   src="/mascot.png"
                   alt="ChatML mascot"
@@ -77,7 +77,7 @@ export function EmptyView({
             {/* Brand wordmark */}
             <h1 className="font-mono font-bold text-2xl tracking-[-0.05em] mb-2">
               <span className="text-foreground/60">chat</span>
-              <span className="text-primary">ml</span>
+              <span className="text-brand">ml</span>
             </h1>
 
             {/* Contextual subtitle */}

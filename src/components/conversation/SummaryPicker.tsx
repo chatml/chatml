@@ -77,8 +77,8 @@ export function SummaryPicker({
                   className={cn(
                     'w-full text-left p-3 rounded-lg border transition-colors',
                     isSelected
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                      ? 'border-brand bg-brand/5'
+                      : 'border-border hover:border-brand/50 hover:bg-muted/50'
                   )}
                 >
                   <div className="flex items-start gap-2">

@@ -54,7 +54,7 @@ export function SidebarToolbar() {
         }}
       >
         <span className="text-muted-foreground">chat</span>
-        <span className="text-purple-600">ml</span>
+        <span className="text-brand">ml</span>
         {process.env.NODE_ENV === 'development' && (
           <span className="text-red-500 ml-1 text-[13px]">Dev</span>
         )}

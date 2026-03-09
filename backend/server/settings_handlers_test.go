@@ -774,8 +774,9 @@ func TestGetClaudeAuthStatus_EnvKeyPresent(t *testing.T) {
 
 	assert.Equal(t, true, result["configured"])
 	assert.Equal(t, true, result["hasEnvKey"])
+	assert.Equal(t, true, result["hasStoredKey"]) // auto-imported from env
 	assert.Equal(t, false, result["hasBedrock"])
-	assert.Equal(t, "env_var", result["credentialSource"])
+	assert.Equal(t, "api_key", result["credentialSource"]) // stored key takes priority after auto-import
 }
 
 func TestGetClaudeAuthStatus_BedrockViaClaudeSettings(t *testing.T) {

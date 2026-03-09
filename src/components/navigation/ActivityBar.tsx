@@ -59,7 +59,7 @@ export function ActivityBar({ activeView, onViewChange }: ActivityBarProps) {
                   onClick={() => onViewChange(activity.id)}
                 >
                   {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-gradient-to-b from-primary to-purple-500 rounded-r" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-gradient-to-b from-brand to-purple-500 rounded-r" />
                   )}
                   <Icon className="h-5 w-5" />
                 </Button>

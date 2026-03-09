@@ -19,6 +19,7 @@ import {
   type WorkflowJobDTO,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { openUrlInBrowser } from '@/lib/tauri';
 import {
   X,
   AlertTriangle,
@@ -453,7 +454,7 @@ function PRHeaderSection({
         variant="ghost"
         size="icon"
         className="h-5 w-5 shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
-        onClick={() => window.open(pr.htmlUrl, '_blank')}
+        onClick={() => openUrlInBrowser(pr.htmlUrl)}
         title="View on GitHub"
       >
         <ExternalLink className="h-3 w-3" />
@@ -655,7 +656,7 @@ function CIChecksSection({
               variant="ghost"
               size="icon"
               className="h-4 w-4 text-muted-foreground/50 hover:text-muted-foreground"
-              onClick={() => window.open(latestRun.htmlUrl, '_blank')}
+              onClick={() => openUrlInBrowser(latestRun.htmlUrl)}
               title="View on GitHub"
             >
               <ExternalLink className="h-2 w-2" />
@@ -714,7 +715,7 @@ function CIChecksSection({
                         variant="ghost"
                         size="icon"
                         className="h-4 w-4 shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
-                        onClick={() => window.open(job.htmlUrl, '_blank')}
+                        onClick={() => openUrlInBrowser(job.htmlUrl)}
                       >
                         <ExternalLink className="h-2 w-2" />
                       </Button>

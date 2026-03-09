@@ -153,7 +153,7 @@ export function OnboardingWizard({ onComplete, onSkip, onOpenSettings }: Onboard
               className={cn(
                 'w-2 h-2 rounded-full transition-all duration-200',
                 index === currentStep
-                  ? 'bg-primary w-6'
+                  ? 'bg-brand w-6'
                   : 'bg-foreground/20 hover:bg-foreground/40'
               )}
               aria-label={`Go to step ${index + 1}`}

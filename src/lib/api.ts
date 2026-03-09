@@ -1624,6 +1624,27 @@ export async function setAnthropicApiKey(apiKey: string): Promise<{ configured: 
 }
 
 // =============================================================================
+// GitHub Personal Access Token
+// =============================================================================
+
+export async function getGitHubPersonalToken(): Promise<{ configured: boolean; maskedToken: string; username: string }> {
+  const res = await fetchWithAuth(`${getApiBase()}/api/settings/github-personal-token`);
+  return handleResponse<{ configured: boolean; maskedToken: string; username: string }>(res);
+}
+
+export async function setGitHubPersonalToken(token: string): Promise<{ configured: boolean; maskedToken: string; username: string }> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/settings/github-personal-token`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }
+  );
+  return handleResponse<{ configured: boolean; maskedToken: string; username: string }>(res);
+}
+
+// =============================================================================
 // CI / GitHub Actions Types and Functions
 // =============================================================================
 

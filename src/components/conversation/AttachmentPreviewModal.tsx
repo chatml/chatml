@@ -317,7 +317,7 @@ export function AttachmentPreviewModal({
       case 'markup':
       case 'data':
       default:
-        return <CodeViewer content={content} filename={attachment.name} />;
+        return <CodeViewer content={content} filename={attachment.name} defaultWordWrap />;
     }
   }
 

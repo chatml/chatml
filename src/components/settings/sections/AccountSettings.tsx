@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, LogOut, Loader2 } from 'lucide-react';
+import { CheckCircle2, LogOut, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useSettingsStore, SETTINGS_DEFAULTS } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
 import { logout } from '@/lib/auth';
 import { startLinearOAuthFlow, linearLogout, cancelLinearOAuthFlow } from '@/lib/linearAuth';
 import { checkGhAuthStatus, openUrlInBrowser, type GhCliStatus } from '@/lib/tauri';
+import { getGitHubPersonalToken, setGitHubPersonalToken } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
 
@@ -177,6 +179,9 @@ export function AccountSettings() {
           )}
         </SettingsRow>
 
+        {/* GitHub Personal Access Token */}
+        <GitHubPatSection />
+
         {/* Linear Integration */}
         <SettingsRow
           settingId="linearIntegration"
@@ -249,5 +254,126 @@ export function AccountSettings() {
         </SettingsRow>
       </SettingsGroup>
     </div>
+  );
+}
+
+function GitHubPatSection() {
+  const [tokenInput, setTokenInput] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [maskedToken, setMaskedToken] = useState('');
+  const [username, setUsername] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const toasts = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    getGitHubPersonalToken().then((data) => {
+      if (cancelled) return;
+      setConfigured(data.configured);
+      setMaskedToken(data.maskedToken);
+      setUsername(data.username);
+    }).catch(() => {
+      // ignore -- settings page should still render
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const result = await setGitHubPersonalToken(tokenInput);
+      setConfigured(result.configured);
+      setMaskedToken(result.maskedToken);
+      setUsername(result.username);
+      setTokenInput('');
+      toasts.success('New sessions will use this token.', 'GitHub token saved');
+    } catch (err) {
+      // ApiError already extracts JSON error messages into err.message
+      const msg = err instanceof Error ? err.message : 'Failed to save token';
+      setError(msg);
+      toasts.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await setGitHubPersonalToken('');
+      setConfigured(false);
+      setMaskedToken('');
+      setUsername('');
+      toasts.success('GitHub token removed');
+    } catch {
+      toasts.error('Failed to remove token');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const description = configured && username
+    ? `Authenticated as @${username}`
+    : 'Optional. Used as GITHUB_TOKEN for agent operations.';
+
+  return (
+    <SettingsRow
+      settingId="githubPersonalToken"
+      variant="stacked"
+      title="Personal access token"
+      description={description}
+      badge={configured ? <CheckCircle2 className="w-4 h-4 text-text-success" /> : undefined}
+    >
+      {configured && (
+        <p className="text-xs text-muted-foreground mb-2">
+          Current token: <code className="text-xs bg-muted px-1 py-0.5 rounded">{maskedToken}</code>
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-xs">
+          <input
+            type={showToken ? 'text' : 'password'}
+            value={tokenInput}
+            onChange={(e) => { setTokenInput(e.target.value); setError(''); }}
+            placeholder={configured ? 'Enter new token to replace' : 'ghp_xxxxxxxxxxxx'}
+            aria-label="GitHub Personal Access Token"
+            className="w-full px-3 py-1.5 pr-8 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <button
+            type="button"
+            onClick={() => setShowToken(!showToken)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label={showToken ? 'Hide token' : 'Show token'}
+          >
+            {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <Button
+          size="sm"
+          disabled={!tokenInput.trim() || saving}
+          onClick={handleSave}
+        >
+          {saving ? 'Validating...' : 'Save'}
+        </Button>
+        {configured && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={saving}
+            onClick={handleRemove}
+          >
+            Remove
+          </Button>
+        )}
+      </div>
+      {error && (
+        <p className="text-xs text-destructive mt-1">{error}</p>
+      )}
+    </SettingsRow>
   );
 }

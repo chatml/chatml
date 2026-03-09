@@ -262,7 +262,7 @@ export function RepositorySection({
                     href={repoDetails.remoteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:text-primary/80 transition-colors"
+                    className="text-brand hover:text-brand/80 transition-colors"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -472,7 +472,7 @@ export function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }
               <div className="flex items-center gap-2 mb-1.5">
                 <label className="text-sm font-medium">{label}</label>
                 {hasOverride && (
-                  <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+                  <span className="inline-flex items-center rounded-full bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
                     Overridden
                   </span>
                 )}
@@ -495,7 +495,7 @@ export function WorkspaceReviewSettings({ workspaceId }: { workspaceId: string }
         <div className="flex items-center gap-2 mb-1">
           <h3 className="text-lg font-semibold">PR Creation</h3>
           {prTemplate.trim() && (
-            <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+            <span className="inline-flex items-center rounded-full bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
               Overridden
             </span>
           )}
@@ -636,7 +636,7 @@ export function WorkspaceActionSettings({ workspaceId }: { workspaceId: string }
               <div className="flex items-center gap-2 mb-2">
                 <label className="text-sm font-medium">{label}</label>
                 {hasText && (
-                  <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+                  <span className="inline-flex items-center rounded-full bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand">
                     Overridden ({override?.mode === 'replace' ? 'replaced' : 'appended'})
                   </span>
                 )}

@@ -51,7 +51,7 @@ function StatPill({ icon: Icon, value, label }: { icon: LucideIcon; value: numbe
   if (value <= 0) return null;
   return (
     <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/60 dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.06] text-2xs text-muted-foreground">
-      <Icon className="w-3 h-3 text-primary/70" />
+      <Icon className="w-3 h-3 text-brand/70" />
       <span className="font-semibold text-foreground/80">{value}</span>
       <span className="text-muted-foreground/80">{label}</span>
     </div>
@@ -61,7 +61,7 @@ function StatPill({ icon: Icon, value, label }: { icon: LucideIcon; value: numbe
 function ToolPill({ icon: Icon, name, count }: { icon: LucideIcon; name: string; count: number }) {
   return (
     <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/60 dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.06] text-2xs text-muted-foreground">
-      <Icon className="w-3 h-3 text-primary/60" />
+      <Icon className="w-3 h-3 text-brand/60" />
       <span className="font-medium text-foreground/70">{name}</span>
       <span className="text-muted-foreground/70">{'\u00D7'}{count}</span>
     </div>

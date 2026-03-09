@@ -14,6 +14,7 @@ import {
   useReviewCommentActions,
   useStreamingState,
 } from '@/stores/selectors';
+import { ConversationMarkers } from '@/components/conversation/ConversationMarkers';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -396,6 +397,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     messageListRef.current?.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
   }, [clampedMatchIndex, searchQuery, searchMatches]);
 
+  // Scroll handler for conversation markers minimap
+  const handleMarkerScrollToIndex = useCallback((index: number) => {
+    messageListRef.current?.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
+  }, []);
+
   // Register keyboard shortcuts for search
   useShortcut('searchChat', useCallback(() => {
     setSearchOpen(true);
@@ -492,9 +498,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       if (isConvStreaming) {
         return (
           <div className="flex items-end gap-[1.5px] h-2.5 w-2.5">
-            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-1" />
-            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-2" />
-            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-3" />
+            <div className="w-[2px] bg-brand rounded-full animate-agent-bar-1" />
+            <div className="w-[2px] bg-brand rounded-full animate-agent-bar-2" />
+            <div className="w-[2px] bg-brand rounded-full animate-agent-bar-3" />
           </div>
         );
       }
@@ -576,6 +582,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // We track the first visible data index per conversation via Virtuoso's rangeChanged.
   // On remount (key change), Virtuoso uses initialTopMostItemIndex — no animation, no flash.
   const isAtBottomRef = useRef(true);
+  const forceFollowRef = useRef(false);
 
   // Continuously track the visible range — called by Virtuoso on every scroll
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
@@ -589,6 +596,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Compute initialTopMostItemIndex for the current conversation.
   // Read from the module-level map — this is computed fresh each render when
   // selectedConversationId changes (which triggers Virtuoso remount via key).
+  // Clear forceFollow on conversation switch to avoid stale state
+  useEffect(() => {
+    forceFollowRef.current = false;
+  }, [selectedConversationId]);
+
   const initialTopMostItemIndex = useMemo(() => {
     if (!selectedConversationId) return { index: 'LAST' as const, align: 'end' as const };
     const saved = scrollPositions.get(selectedConversationId);
@@ -603,12 +615,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     setShowScrollButton(!atBottom);
     isAtBottomRef.current = atBottom;
+    if (atBottom) {
+      forceFollowRef.current = false;
+    }
   }, []);
 
   // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
     setShowScrollButton(false);
-    messageListRef.current?.scrollToBottom('smooth');
+    messageListRef.current?.scrollToBottom('auto');
   }, []);
 
   // Stable footer for VirtualizedMessageList (avoids remounting on every render)
@@ -639,6 +654,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Listen for message submit events to force scroll to bottom
   useEffect(() => {
     const handleMessageSubmit = () => {
+      forceFollowRef.current = true;
       forceScrollToBottom();
     };
 
@@ -1195,7 +1211,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             footer={messageListFooter}
             isStreaming={selectedStreaming?.isStreaming ?? false}
             pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
+            forceFollowRef={forceFollowRef}
           />
+          {/* Conversation markers minimap */}
+          {conversationMessages.length > 3 && (
+            <ConversationMarkers
+              messages={conversationMessages}
+              onScrollToIndex={handleMarkerScrollToIndex}
+            />
+          )}
           {/* Fade overlay at bottom of messages */}
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
         </div>
@@ -1302,7 +1326,7 @@ function SessionHomeState({ sessionName }: { sessionName?: string }) {
     <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
       <div className="max-w-md mx-auto text-center">
         {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
             <GitBranch className="w-4 h-4" />
             {sessionName}
           </div>
@@ -1336,7 +1360,7 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
     <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
       <div className="max-w-lg mx-auto text-center">
         {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
             <GitBranch className="w-4 h-4" />
             {sessionName}
           </div>

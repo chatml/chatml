@@ -36,7 +36,7 @@ export const VerificationBlock = memo(function VerificationBlock({ results }: Ve
         )}
         <span>Verification</span>
         {isRunning ? (
-          <Loader2 className="w-3 h-3 animate-spin text-primary" />
+          <Loader2 className="w-3 h-3 animate-spin text-brand" />
         ) : allPassed ? (
           <CheckCircle2 className="w-3 h-3 text-text-success" />
         ) : hasFailed ? (
@@ -57,7 +57,7 @@ export const VerificationBlock = memo(function VerificationBlock({ results }: Ve
                 <XCircle className="w-3.5 h-3.5 text-text-error shrink-0" />
               )}
               {result.status === 'running' && (
-                <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
+                <Loader2 className="w-3.5 h-3.5 text-brand animate-spin shrink-0" />
               )}
               {result.status === 'skipped' && (
                 <Circle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />

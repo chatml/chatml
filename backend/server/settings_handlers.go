@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"slices"
@@ -403,6 +404,115 @@ func maskAPIKey(key string) string {
 	return key[:prefixEnd] + "..." + suffix
 }
 
+// GetGitHubPersonalToken returns whether a GitHub PAT is configured, its masked form, and the associated username.
+// The masked token is read from a pre-computed setting to avoid decrypting the real token on every GET.
+func (h *Handlers) GetGitHubPersonalToken(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, found, err := h.store.GetSetting(ctx, settingKeyGitHubPersonalToken)
+	if err != nil {
+		writeInternalError(w, "failed to get GitHub personal token setting", err)
+		return
+	}
+	if !found {
+		writeJSON(w, map[string]interface{}{"configured": false, "maskedToken": "", "username": ""})
+		return
+	}
+
+	// Read pre-computed masked token and username (best-effort)
+	maskedToken, _, _ := h.store.GetSetting(ctx, settingKeyGitHubPersonalTokenMasked)
+	username, _, _ := h.store.GetSetting(ctx, settingKeyGitHubPersonalTokenUser)
+
+	writeJSON(w, map[string]interface{}{
+		"configured":  true,
+		"maskedToken": maskedToken,
+		"username":    username,
+	})
+}
+
+// SetGitHubPersonalToken validates, encrypts, and stores (or removes) a GitHub personal access token.
+func (h *Handlers) SetGitHubPersonalToken(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeValidationError(w, "invalid request body")
+		return
+	}
+
+	// Empty token = remove
+	if req.Token == "" {
+		if err := h.store.DeleteSetting(ctx, settingKeyGitHubPersonalToken); err != nil {
+			writeInternalError(w, "failed to remove GitHub personal token", err)
+			return
+		}
+		if err := h.store.DeleteSetting(ctx, settingKeyGitHubPersonalTokenUser); err != nil {
+			writeInternalError(w, "failed to remove GitHub personal token user", err)
+			return
+		}
+		_ = h.store.DeleteSetting(ctx, settingKeyGitHubPersonalTokenMasked)
+		writeJSON(w, map[string]interface{}{"configured": false, "maskedToken": "", "username": ""})
+		return
+	}
+
+	// Validate the token by calling the GitHub API
+	user, err := h.ghClient.GetUser(ctx, req.Token)
+	if err != nil {
+		writeValidationError(w, "Invalid GitHub token. Please check the token and try again.")
+		return
+	}
+
+	encrypted, err := crypto.Encrypt(req.Token)
+	if err != nil {
+		writeInternalError(w, "failed to encrypt GitHub personal token", err)
+		return
+	}
+
+	if err := h.store.SetSetting(ctx, settingKeyGitHubPersonalToken, encrypted); err != nil {
+		writeInternalError(w, "failed to save GitHub personal token", err)
+		return
+	}
+
+	// Store the username and masked token for display (no need to encrypt — they're non-sensitive)
+	username := user.Login
+	masked := maskGitHubToken(req.Token)
+	_ = h.store.SetSetting(ctx, settingKeyGitHubPersonalTokenUser, username)
+	_ = h.store.SetSetting(ctx, settingKeyGitHubPersonalTokenMasked, masked)
+
+	writeJSON(w, map[string]interface{}{
+		"configured":  true,
+		"maskedToken": masked,
+		"username":    username,
+	})
+}
+
+// maskGitHubToken returns a masked version of a GitHub token.
+// Shows the known prefix + "..." + last 4 chars, ensuring at least 4 chars are masked.
+func maskGitHubToken(token string) string {
+	// Known GitHub token prefixes (longest first for correct matching)
+	knownPrefixes := []string{"github_pat_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"}
+
+	prefixEnd := 0
+	for _, p := range knownPrefixes {
+		if len(token) > len(p) && token[:len(p)] == p {
+			prefixEnd = len(p)
+			break
+		}
+	}
+
+	// Need at least prefix + 4 masked chars + 4 suffix = prefix + 8
+	if prefixEnd == 0 || len(token) < prefixEnd+8 {
+		// Unknown format or too short: show nothing recognizable
+		if len(token) <= 8 {
+			return "****"
+		}
+		return token[:4] + "..." + token[len(token)-4:]
+	}
+
+	return token[:prefixEnd] + "..." + token[len(token)-4:]
+}
+
 // GetClaudeAuthStatus checks all possible sources of Claude/Anthropic credentials
 // and returns which ones are available. Sources checked:
 //   - Settings-stored encrypted API key
@@ -411,6 +521,14 @@ func maskAPIKey(key string) string {
 //   - AWS Bedrock via Claude Code settings.json or ChatML env vars
 func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	// Read external config sources once (reused across multiple checks below).
+	claudeSettings, _ := ai.ReadClaudeCodeSettings()
+
+	var chatmlEnvVars map[string]string
+	if raw, found, err := h.store.GetSetting(ctx, "env-vars"); err == nil && found && raw != "" {
+		chatmlEnvVars = store.ParseEnvVars(raw)
+	}
 
 	// Check 1: Settings-stored API key
 	hasStoredKey := false
@@ -423,6 +541,31 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Check 2: ANTHROPIC_API_KEY environment variable
 	hasEnvKey := os.Getenv("ANTHROPIC_API_KEY") != ""
+
+	// Auto-import: if no stored key, discover ANTHROPIC_API_KEY from external
+	// sources and persist it into ChatML's encrypted settings store so the
+	// banner resolves and the key is available for non-agent tasks (e.g. title
+	// generation). This runs once — subsequent calls find the stored key above.
+	if !hasStoredKey {
+		discoveredKey := ""
+		if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+			discoveredKey = k
+		} else if claudeSettings != nil && claudeSettings.Env["ANTHROPIC_API_KEY"] != "" {
+			discoveredKey = claudeSettings.Env["ANTHROPIC_API_KEY"]
+		} else if chatmlEnvVars["ANTHROPIC_API_KEY"] != "" {
+			discoveredKey = chatmlEnvVars["ANTHROPIC_API_KEY"]
+		}
+
+		if discoveredKey != "" {
+			if enc, encErr := crypto.Encrypt(discoveredKey); encErr != nil {
+				log.Printf("WARN: auto-import ANTHROPIC_API_KEY encrypt failed: %v", encErr)
+			} else if setErr := h.store.SetSetting(ctx, settingKeyAnthropicAPIKey, enc); setErr != nil {
+				log.Printf("WARN: auto-import ANTHROPIC_API_KEY store failed: %v", setErr)
+			} else {
+				hasStoredKey = true
+			}
+		}
+	}
 
 	// Check 3: Claude Code CLI credentials via OS keychain (validates token contents + expiration)
 	_, cliErr := ai.ReadClaudeCodeOAuthToken()
@@ -438,18 +581,14 @@ func (h *Handlers) GetClaudeAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Check 5: AWS Bedrock via Claude Code settings.json
 	hasBedrock := false
-	claudeSettings, _ := ai.ReadClaudeCodeSettings()
 	if claudeSettings != nil && ai.IsBedRockConfigured(claudeSettings) {
 		hasBedrock = true
 	}
 
 	// Check 6: AWS Bedrock via ChatML env vars (Settings → Advanced)
 	if !hasBedrock {
-		raw, found, _ := h.store.GetSetting(ctx, "env-vars")
-		if found && raw != "" {
-			if store.ParseEnvVars(raw)["CLAUDE_CODE_USE_BEDROCK"] == "true" {
-				hasBedrock = true
-			}
+		if chatmlEnvVars["CLAUDE_CODE_USE_BEDROCK"] == "true" {
+			hasBedrock = true
 		}
 	}
 

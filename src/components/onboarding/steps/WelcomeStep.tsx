@@ -7,7 +7,7 @@ export function WelcomeStep() {
     <div className="flex flex-col items-center text-center max-w-md mx-auto">
       {/* Mascot */}
       <div className="mb-8">
-        <div className="w-28 h-28 rounded-full ring-[3px] ring-primary/50 ring-offset-4 ring-offset-background overflow-hidden shadow-2xl shadow-primary/20">
+        <div className="w-28 h-28 rounded-full ring-[3px] ring-brand/50 ring-offset-4 ring-offset-background overflow-hidden shadow-2xl shadow-brand/20">
           <Image
             src="/mascot.png"
             alt="ChatML mascot"
@@ -22,7 +22,7 @@ export function WelcomeStep() {
       {/* Brand */}
       <h1 className="font-mono font-bold text-3xl tracking-[-0.05em] mb-6">
         <span className="text-foreground/60">chat</span>
-        <span className="text-primary">ml</span>
+        <span className="text-brand">ml</span>
       </h1>
 
       {/* Tagline */}

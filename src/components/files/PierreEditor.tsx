@@ -32,6 +32,8 @@ interface PierreEditorProps {
   onToggleMarkdownView?: () => void;
   /** Extra elements to render in the header bar (e.g. Diff/Edit toggle buttons) */
   headerMetadata?: React.ReactNode;
+  /** Initial word-wrap state (default: false) */
+  defaultWordWrap?: boolean;
 }
 
 function truncateContent(content: string): { text: string; truncated: boolean; totalLines: number } {
@@ -47,10 +49,11 @@ export const PierreEditor = memo(function PierreEditor({
   filename,
   onToggleMarkdownView,
   headerMetadata,
+  defaultWordWrap = false,
 }: PierreEditorProps) {
   const themeType = useResolvedThemeType();
   const [showAll, setShowAll] = useState(false);
-  const [wordWrap, setWordWrap] = useState(false);
+  const [wordWrap, setWordWrap] = useState(defaultWordWrap);
 
   const getContent = useCallback(() => content, [content]);
 
@@ -134,7 +137,7 @@ export const PierreEditor = memo(function PierreEditor({
             <span>Showing {MAX_LINES.toLocaleString()} of {totalLines.toLocaleString()} lines</span>
             <button
               onClick={handleShowAll}
-              className="text-primary hover:underline font-medium"
+              className="text-brand hover:underline font-medium"
             >
               Show all
             </button>

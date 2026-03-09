@@ -16,7 +16,7 @@ interface LiveActivityCardProps {
 const STATUS_CONFIG = {
   working: {
     label: 'Working...',
-    textClass: 'text-primary',
+    textClass: 'text-brand',
   },
   awaiting_input: {
     label: 'Needs input',

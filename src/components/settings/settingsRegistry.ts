@@ -309,6 +309,14 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
     category: 'account',
     categoryLabel: 'Account',
   },
+  {
+    id: 'githubPersonalToken',
+    title: 'Personal access token',
+    description: 'GitHub personal access token for agent operations',
+    keywords: ['github', 'token', 'pat', 'personal', 'access', 'ghp', 'authentication'],
+    category: 'account',
+    categoryLabel: 'Account',
+  },
 
   // ── Account: Privacy ──
   {

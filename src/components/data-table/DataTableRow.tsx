@@ -109,7 +109,7 @@ function DataTableRowComponent<T>(
         'group grid cursor-pointer transition-colors h-[44px] items-center',
         showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
-        isSelected && 'bg-primary/15 hover:bg-primary/20',
+        isSelected && 'bg-brand/15 hover:bg-brand/20',
         isFocused && 'bg-white/[0.02]'
       )}
       style={{ gridTemplateColumns }}
@@ -241,7 +241,7 @@ export function DataTableSimpleRow<T>({
         'group grid cursor-pointer transition-colors h-[44px] items-center',
         showSeparator ? 'border-b border-border/20' : 'border-b-0',
         'hover:bg-white/[0.02]',
-        isSelected && 'bg-primary/15 hover:bg-primary/20',
+        isSelected && 'bg-brand/15 hover:bg-brand/20',
         isFocused && 'bg-white/[0.02]'
       )}
       style={{ gridTemplateColumns }}

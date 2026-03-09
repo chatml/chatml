@@ -6,7 +6,7 @@ import { OnboardingWizardStep } from '../OnboardingWizardStep';
 export function WorkspacesStep() {
   return (
     <OnboardingWizardStep
-      icon={<FolderGit2 className="w-8 h-8 text-primary" />}
+      icon={<FolderGit2 className="w-8 h-8 text-brand" />}
       title="Workspaces"
     >
       <p>

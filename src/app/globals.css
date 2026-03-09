@@ -185,18 +185,18 @@ code.hljs { padding: 3px 5px; }
   --card-foreground: oklch(0.141 0.005 285.823);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.58 0.22 280);
+  --primary: oklch(0.141 0.005 285.823);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
   --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.95 0.05 280);
+  --accent: oklch(0.967 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.58 0.22 280);
+  --ring: oklch(0.552 0.016 285.938);
 
   /* Semantic AI Colors */
   --ai-thinking: oklch(0.75 0.15 85);
@@ -205,11 +205,11 @@ code.hljs { padding: 3px 5px; }
   --ai-error: oklch(0.65 0.2 25);
 
   /* Surface Hierarchy (light mode) — darker = more elevation */
-  --surface-0: oklch(0.97 0.003 280);
-  --surface-1: oklch(0.94 0.01 280);
-  --surface-2: oklch(0.91 0.015 280);
-  --surface-3: oklch(0.88 0.02 280);
-  --surface-4: oklch(0.85 0.025 280);
+  --surface-0: oklch(0.97 0 0);
+  --surface-1: oklch(0.94 0 0);
+  --surface-2: oklch(0.91 0 0);
+  --surface-3: oklch(0.88 0 0);
+  --surface-4: oklch(0.85 0 0);
 
   --chart-1: oklch(0.58 0.22 280);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -218,12 +218,12 @@ code.hljs { padding: 3px 5px; }
   --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.98 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.58 0.22 280);
+  --sidebar-primary: oklch(0.141 0.005 285.823);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.94 0.01 280);
+  --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.58 0.22 280);
+  --sidebar-ring: oklch(0.552 0.016 285.938);
 
   /* Navigation Icon Colors (light mode) */
   --nav-icon-dashboard: oklch(0.55 0.15 250);
@@ -251,9 +251,9 @@ code.hljs { padding: 3px 5px; }
   --popover: oklch(0.14 0 0);               /* Slightly elevated for menus */
   --popover-foreground: oklch(0.9 0 0);
 
-  /* Accent - Muted Purple (keep brand color) */
-  --primary: oklch(0.55 0.12 280);          /* Muted purple */
-  --primary-foreground: oklch(0.98 0 0);
+  /* Primary - Near white (shadcn/ui zinc default) */
+  --primary: oklch(0.985 0 0);              /* Near-white */
+  --primary-foreground: oklch(0.21 0.006 285.885);
 
   /* Secondary/Muted - For hover states */
   --secondary: oklch(0.20 0 0);
@@ -262,18 +262,18 @@ code.hljs { padding: 3px 5px; }
   --muted-foreground: oklch(0.55 0 0);      /* ~#808080 secondary text */
 
   /* Accent for selections/hover */
-  --accent: oklch(0.22 0.04 280);           /* Very subtle purple on hover */
-  --accent-foreground: oklch(0.9 0 0);
+  --accent: oklch(0.269 0.006 286.033);     /* Neutral dark */
+  --accent-foreground: oklch(0.985 0 0);
 
   /* Menu Colors */
-  --menu-hover: oklch(0.28 0.03 280);       /* More visible menu hover */
+  --menu-hover: oklch(0.28 0 0);            /* Neutral menu hover */
 
   --destructive: oklch(0.704 0.191 22.216);
 
   /* Borders - Very subtle like Cursor */
   --border: #26282d;               /* RGB(38,40,45) - layout borders */
   --input: #212121;                         /* RGB(33,33,33) */
-  --ring: oklch(0.50 0.10 280);             /* Focus ring keeps purple */
+  --ring: oklch(0.442 0.017 285.786);        /* Neutral zinc focus ring */
 
   /* Semantic AI Colors (dark mode) */
   --ai-thinking: oklch(0.75 0.15 85);
@@ -297,12 +297,12 @@ code.hljs { padding: 3px 5px; }
   /* Sidebar - Matches main background */
   --sidebar: #090909;                       /* Same as --background */
   --sidebar-foreground: oklch(0.75 0 0);    /* Slightly dimmer text */
-  --sidebar-primary: oklch(0.55 0.12 280);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.21 0.006 285.885);
   --sidebar-accent: #1D1D1D;                /* Subtle hover - RGB(29,29,29) */
   --sidebar-accent-foreground: oklch(0.9 0 0);
   --sidebar-border: #2a2a2a;
-  --sidebar-ring: oklch(0.50 0.10 280);
+  --sidebar-ring: oklch(0.442 0.017 285.786);
 
   /* Navigation Icon Colors (dark mode) */
   --nav-icon-dashboard: #60a5fa;
@@ -461,7 +461,7 @@ code.hljs { padding: 3px 5px; }
 .prose {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
-  --tw-prose-links: var(--primary);
+  --tw-prose-links: var(--brand);
   --tw-prose-bold: var(--foreground);
   --tw-prose-counters: var(--muted-foreground);
   --tw-prose-bullets: var(--muted-foreground);
@@ -544,7 +544,7 @@ code.hljs { padding: 3px 5px; }
 }
 
 .prose li::marker {
-  @apply text-primary/70;
+  @apply text-muted-foreground;
 }
 
 /* Nested lists */
@@ -578,7 +578,7 @@ code.hljs { padding: 3px 5px; }
 
 /* Better blockquote styling */
 .prose blockquote {
-  @apply border-l-2 border-primary/40 pl-3 py-0.5 my-2 text-muted-foreground not-italic;
+  @apply border-l-2 border-brand/40 pl-3 py-0.5 my-2 text-muted-foreground not-italic;
 }
 
 .prose blockquote p {
@@ -595,7 +595,7 @@ code.hljs { padding: 3px 5px; }
 }
 
 .prose input[type="checkbox"] {
-  @apply mt-1 accent-primary;
+  @apply mt-1 accent-brand;
 }
 
 /* Animated dashed border for streaming state */

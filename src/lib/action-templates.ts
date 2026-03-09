@@ -97,7 +97,8 @@ export const ACTION_TEMPLATES: Record<ActionTemplateKey, string> = {
 2. Verify the branch is up to date with the base branch
 3. If the branch is behind, rebase onto the base branch and push first
 4. Merge using \`gh pr merge\` with the appropriate flag (--squash, --merge, or --rebase)
-5. Confirm the merge was successful and report the result` + SAFETY_FOOTER,
+5. If the merge is blocked by branch protection rules (required reviews, status checks, etc.), automatically enable auto-merge using \`gh pr merge --auto\` with the same merge strategy so the PR merges once requirements are satisfied
+6. Confirm the merge was successful, or confirm that auto-merge has been enabled` + SAFETY_FOOTER,
 };
 
 /**

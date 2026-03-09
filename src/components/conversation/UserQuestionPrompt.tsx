@@ -341,7 +341,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                       className={cn(
                         'w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150',
                         effectiveSelected
-                          ? 'bg-primary/10 text-foreground'
+                          ? 'bg-brand/10 text-foreground'
                           : 'text-foreground/80 hover:bg-muted/30 hover:text-foreground',
                         isOtherTextActive && !currentQuestion.multiSelect && 'opacity-50'
                       )}
@@ -352,7 +352,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                         <div className={cn(
                           'flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors',
                           effectiveSelected
-                            ? 'border-primary bg-primary'
+                            ? 'border-brand bg-brand'
                             : 'border-muted-foreground/30'
                         )}>
                           {effectiveSelected && <Check className="h-3 w-3 text-primary-foreground" />}
@@ -389,7 +389,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                   nested inside <button>). */}
               {otherSelected ? (
                 <div
-                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 bg-primary/10 cursor-pointer"
+                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 bg-brand/10 cursor-pointer"
                   data-testid="other-option"
                   onClick={(e) => {
                     // Toggle off when clicking anywhere except the text input
@@ -400,7 +400,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                 >
                   {/* Left icon */}
                   {currentQuestion.multiSelect ? (
-                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 border-primary bg-primary shrink-0 transition-colors">
+                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 border-brand bg-brand shrink-0 transition-colors">
                       <Check className="h-3 w-3 text-primary-foreground" />
                     </div>
                   ) : (
@@ -504,7 +504,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
               className={cn(
                 'h-8 w-8 rounded-lg',
                 isOtherTextActive
-                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground border-primary'
+                  ? 'bg-brand hover:bg-brand/90 text-primary-foreground border-brand'
                   : 'bg-foreground hover:bg-foreground/90 text-background border-foreground'
               )}
               disabled={!canSubmit || isSubmitting}

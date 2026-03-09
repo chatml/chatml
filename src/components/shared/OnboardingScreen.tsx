@@ -79,13 +79,13 @@ export function OnboardingScreen() {
       <div data-tauri-drag-region className="absolute top-0 left-0 right-0 h-11 z-50" />
 
       {/* Subtle ambient glow behind mascot — very muted */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[58%] w-[500px] h-[500px] rounded-full bg-primary/10 blur-[150px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[58%] w-[500px] h-[500px] rounded-full bg-brand/10 blur-[150px] pointer-events-none" />
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center w-full max-w-sm animate-scale-in">
         {/* Mascot — circular with purple ring, matching website brand */}
         <div className="mb-8">
-          <div className="w-32 h-32 rounded-full ring-[3px] ring-primary/50 ring-offset-4 ring-offset-background overflow-hidden shadow-2xl shadow-primary/20">
+          <div className="w-32 h-32 rounded-full ring-[3px] ring-brand/50 ring-offset-4 ring-offset-background overflow-hidden shadow-2xl shadow-brand/20">
             <Image
               src="/mascot.png"
               alt="ChatML mascot"
@@ -99,7 +99,7 @@ export function OnboardingScreen() {
 
         {/* Brand wordmark — monospace: gray "chat" + purple "ml" */}
         <h1 className="font-mono font-bold text-4xl tracking-[-0.05em]">
-          <span className="text-foreground/60">chat</span><span className="text-primary">ml</span>
+          <span className="text-foreground/60">chat</span><span className="text-brand">ml</span>
         </h1>
 
         {/* Tagline — matching website hero */}

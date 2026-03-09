@@ -45,7 +45,7 @@ export function WorkspaceTreeItem({
       return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
     }
     if (session.prStatus === 'merged') {
-      return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
+      return { text: 'Merged', color: 'text-brand', icon: CheckCircle2 };
     }
     if (session.prStatus === 'open') {
       if (session.checkStatus === 'pending') {
@@ -67,7 +67,7 @@ export function WorkspaceTreeItem({
               'hover:bg-surface-1 transition-colors'
             )}
           >
-            <Folder className="w-4 h-4 text-primary/60 shrink-0" />
+            <Folder className="w-4 h-4 text-brand/60 shrink-0" />
             <span className="text-sm font-medium truncate flex-1">
               {workspace.name}
             </span>

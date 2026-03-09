@@ -146,6 +146,58 @@ export function createCommentTools(context: WorkspaceContext) {
       { annotations: { readOnlyHint: true } }
     ),
 
+    // Resolve a review comment (mark as fixed or ignored)
+    tool(
+      "resolve_review_comment",
+      "Mark a review comment as fixed or ignored after addressing it. Use this after you've made the code changes to address a review comment.",
+      {
+        commentId: z.string().describe("The ID of the review comment to resolve"),
+        resolutionType: z.enum(["fixed", "ignored"]).default("fixed")
+          .describe("How the comment was resolved: 'fixed' if code was changed, 'ignored' if intentionally skipped"),
+      },
+      async ({ commentId, resolutionType }) => {
+        try {
+          const response = await fetchWithRetry(
+            `${BACKEND_URL}/api/repos/${context.workspaceId}/sessions/${context.sessionId}/comments/${commentId}`,
+            {
+              method: "PATCH",
+              headers: buildHeaders(true),
+              body: JSON.stringify({
+                resolved: true,
+                resolvedBy: "Claude",
+                resolutionType,
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const error = await response.text();
+            return {
+              content: [{
+                type: "text" as const,
+                text: `Failed to resolve review comment: ${response.status} ${error}`,
+              }],
+            };
+          }
+
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Marked review comment ${commentId} as ${resolutionType}`,
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Error resolving review comment: ${error}`,
+            }],
+          };
+        }
+      },
+      { annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }
+    ),
+
     // Get comment statistics for the session
     tool(
       "get_review_comment_stats",

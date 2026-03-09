@@ -45,7 +45,7 @@ export function SettingsSearchResults({ results, query, onNavigate }: SettingsSe
             <button
               type="button"
               onClick={() => onNavigate(category)}
-              className="text-xs font-medium text-primary hover:underline uppercase tracking-wider mb-2 block"
+              className="text-xs font-medium text-brand hover:underline uppercase tracking-wider mb-2 block"
             >
               {settings[0].categoryLabel}
             </button>

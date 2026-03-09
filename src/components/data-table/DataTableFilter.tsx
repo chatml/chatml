@@ -118,7 +118,7 @@ export function DataTableFilter({
           size="sm"
           className={cn(
             'h-8 gap-1.5',
-            activeFilterCount > 0 && 'text-primary'
+            activeFilterCount > 0 && 'text-brand'
           )}
         >
           <Filter className="h-3.5 w-3.5" />
@@ -162,13 +162,13 @@ export function DataTableFilter({
                   <DropdownMenuSubTrigger
                     className={cn(
                       'px-3 py-2 text-sm',
-                      hasSelections && 'text-primary'
+                      hasSelections && 'text-brand'
                     )}
                   >
                     <span className="text-muted-foreground">{icon}</span>
                     <span className="flex-1">{option.label}</span>
                     {hasSelections && (
-                      <span className="text-xs text-primary mr-1">
+                      <span className="text-xs text-brand mr-1">
                         {selectedValues.length}
                       </span>
                     )}
@@ -225,13 +225,13 @@ export function DataTableFilter({
                 <DropdownMenuSubTrigger
                   className={cn(
                     'px-3 py-2 text-sm',
-                    hasSelections && 'text-primary'
+                    hasSelections && 'text-brand'
                   )}
                 >
                   <span className="text-muted-foreground">{icon}</span>
                   <span className="flex-1">{option.label}</span>
                   {hasSelections && (
-                    <span className="text-xs text-primary mr-1">
+                    <span className="text-xs text-brand mr-1">
                       {selectedValues.length}
                     </span>
                   )}
@@ -339,7 +339,7 @@ export function DataTableFilterButton({
     <Button
       variant="ghost"
       size="sm"
-      className={cn('h-8 gap-1.5', filterCount > 0 && 'text-primary')}
+      className={cn('h-8 gap-1.5', filterCount > 0 && 'text-brand')}
       onClick={onClick}
     >
       <Filter className="h-3.5 w-3.5" />

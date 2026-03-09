@@ -603,6 +603,15 @@ const settingKeyEnvVars = "env-vars"
 // settingKeyAnthropicAPIKey is the settings key for the encrypted Anthropic API key
 const settingKeyAnthropicAPIKey = "anthropic-api-key"
 
+// settingKeyGitHubPersonalToken is the settings key for the encrypted GitHub personal access token
+const settingKeyGitHubPersonalToken = "github-personal-token"
+
+// settingKeyGitHubPersonalTokenUser is the settings key for the GitHub username associated with the PAT
+const settingKeyGitHubPersonalTokenUser = "github-personal-token-user"
+
+// settingKeyGitHubPersonalTokenMasked is the settings key for the pre-computed masked token display string
+const settingKeyGitHubPersonalTokenMasked = "github-personal-token-masked"
+
 // getWorkspacesBaseDir returns the configured workspaces base directory,
 // falling back to the default (~/Library/Application Support/ChatML/workspaces) if not configured.
 func (h *Handlers) getWorkspacesBaseDir(ctx context.Context) (string, error) {

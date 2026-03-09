@@ -419,9 +419,10 @@ func (m *Manager) StartConversation(ctx context.Context, sessionID, conversation
 		}
 
 		// Generate session title from the user's first message.
-		// claimAutoName atomically checks+sets AutoNamed to prevent concurrent
-		// conversations (e.g. review chats) from also triggering a rename.
-		if m.claimAutoName(ctx, sessionID) {
+		// Only task conversations should name the session — review/chat messages
+		// would produce misleading branch names (e.g. "review-code-quality").
+		// claimAutoName atomically checks+sets AutoNamed to prevent duplicates.
+		if conversationType == models.ConversationTypeTask && m.claimAutoName(ctx, sessionID) {
 			go m.generateAndApplySessionTitle(sessionID, convID, initialMessage)
 		}
 	}
@@ -1583,9 +1584,9 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		}
 
 		// Check if we should generate a title for this session.
-		// claimAutoName atomically checks+sets AutoNamed to prevent concurrent
-		// conversations (e.g. review chats) from also triggering a rename.
-		if message != "" && m.claimAutoName(ctx, conv.SessionID) {
+		// Only task conversations should name the session — review/chat messages
+		// would produce misleading branch names (e.g. "review-code-quality").
+		if message != "" && conv.Type == models.ConversationTypeTask && m.claimAutoName(ctx, conv.SessionID) {
 			shouldGenerateTitle = true
 			titleSessionID = conv.SessionID
 			logger.Manager.Infof("Will generate title for session %s (conv %s)", conv.SessionID, convID)
@@ -1657,6 +1658,25 @@ func (m *Manager) SendConversationMessage(ctx context.Context, convID, message s
 		}
 	} else {
 		m.mu.Unlock()
+	}
+
+	// Retry title generation if a previous attempt failed and reset AutoNamed.
+	// The needsRestart path above only checks claimAutoName during process restart,
+	// so subsequent messages to an already-running process would never retry.
+	// Only task conversations should name the session — review/chat messages
+	// would produce misleading branch names (e.g. "review-code-quality").
+	if !shouldGenerateTitle && message != "" {
+		convMeta, err := m.store.GetConversationMeta(ctx, convID)
+		if err != nil {
+			logger.Manager.Debugf("Failed to get conversation meta for title retry (conv %s): %v", convID, err)
+		} else if convMeta != nil && convMeta.Type == models.ConversationTypeTask {
+			sessionID := convMeta.SessionID
+			if sessionID != "" && m.claimAutoName(ctx, sessionID) {
+				shouldGenerateTitle = true
+				titleSessionID = sessionID
+				logger.Manager.Infof("Will retry title generation for session %s (conv %s)", sessionID, convID)
+			}
+		}
 	}
 
 	// Store user message with attachments.
@@ -2235,6 +2255,9 @@ func (m *Manager) refreshCachedCredentials(apiKeySource string) {
 	}
 
 	logger.Manager.Debugf("SDK authenticated (source: %s) but Go backend could not obtain token from credentials file or keychain", apiKeySource)
+	// Don't signal credReadyCh here — no usable credentials were obtained.
+	// The ticker in generateAndApplySessionTitle will poll newAIClient()
+	// periodically, picking up credentials once they become available.
 }
 
 // generateAndApplySessionTitle uses the AI client to generate a session title
@@ -2246,18 +2269,33 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	if client == nil {
 		// Credentials may not be available yet — the agent-runner SDK's init
 		// event triggers refreshCachedCredentials which typically takes 2-4s
-		// after process start. Wait for the signal rather than giving up.
+		// after process start. Poll periodically rather than doing a single
+		// wait-and-retry, since the credential file may be written asynchronously
+		// after credReadyCh is signalled.
 		logger.Manager.Infof("Waiting for AI credentials for session %s title generation", sessionID)
-		timer := time.NewTimer(10 * time.Second)
-		defer timer.Stop()
-		select {
-		case <-m.credReadyCh:
-			client = m.newAIClient()
-		case <-timer.C:
-			logger.Manager.Warnf("Timed out waiting for credentials for session %s title generation", sessionID)
-		case <-m.ctx.Done():
-			m.resetAutoNamed(sessionID)
-			return
+		deadline := time.NewTimer(15 * time.Second)
+		defer deadline.Stop()
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		credReady := m.credReadyCh
+	credLoop:
+		for {
+			select {
+			case <-credReady:
+				client = m.newAIClient()
+				credReady = nil // closed channel returns immediately; nil blocks forever — let ticker drive retries
+			case <-ticker.C:
+				client = m.newAIClient()
+			case <-deadline.C:
+				logger.Manager.Warnf("Timed out waiting for credentials for session %s title generation", sessionID)
+				break credLoop
+			case <-m.ctx.Done():
+				m.resetAutoNamed(sessionID)
+				return
+			}
+			if client != nil {
+				break
+			}
 		}
 		if client == nil {
 			logger.Manager.Warnf("Skipping session title generation for %s: no credentials after wait", sessionID)
@@ -2899,6 +2937,26 @@ func (m *Manager) loadEnvVars(ctx context.Context, claudeSettings *ai.ClaudeCode
 		envMap["ANTHROPIC_API_KEY"] = decrypted
 	}
 
+	// Load encrypted GitHub personal access token if configured.
+	// Only set GITHUB_TOKEN if not already present (e.g. from custom env vars or gh auth).
+	if _, hasGHToken := envMap["GITHUB_TOKEN"]; !hasGHToken {
+		encrypted, found, err = m.store.GetSetting(ctx, "github-personal-token")
+		if err != nil {
+			return envMap, nil // non-fatal: proceed without the token
+		}
+		if found && encrypted != "" {
+			decrypted, err := crypto.Decrypt(encrypted)
+			if err != nil {
+				logger.Manager.Errorf("failed to decrypt GitHub personal token: %v", err)
+				return envMap, nil
+			}
+			if envMap == nil {
+				envMap = make(map[string]string)
+			}
+			envMap["GITHUB_TOKEN"] = decrypted
+		}
+	}
+
 	return envMap, nil
 }
 
@@ -2960,12 +3018,15 @@ You have access to ChatML MCP tools:
 - `+"`"+`mcp__chatml__get_recent_activity`+"`"+` — recent git log
 - `+"`"+`mcp__chatml__add_review_comment`+"`"+` — leave inline code review comments visible in the ChatML UI
 - `+"`"+`mcp__chatml__list_review_comments`+"`"+` / `+"`"+`mcp__chatml__get_review_comment_stats`+"`"+` — read review comments
+- `+"`"+`mcp__chatml__resolve_review_comment`+"`"+` — mark a review comment as fixed or ignored after addressing it
 - `+"`"+`mcp__chatml__report_pr_created`+"`"+` — report PR creation to update the ChatML sidebar
 - `+"`"+`mcp__chatml__report_pr_merged`+"`"+` — report PR merge to update session status
 
 **After creating a PR** (with `+"`"+`gh pr create`+"`"+` or any other method), ALWAYS call `+"`"+`mcp__chatml__report_pr_created`+"`"+` with the PR number and URL. This ensures the PR badge appears immediately in the sidebar.
 
 **After merging a PR** (with `+"`"+`gh pr merge`+"`"+` or any other method), ALWAYS call `+"`"+`mcp__chatml__report_pr_merged`+"`"+` to update the session status.
+
+**After fixing a review comment**, call `+"`"+`mcp__chatml__resolve_review_comment`+"`"+` with the comment's ID to mark it as resolved. The comment ID is provided in the review comment attachment.
 
 Do NOT use `+"`"+`mcp__chatml__start_linear_issue`+"`"+` — it creates git branches inside the worktree, which conflicts with the session model. Use the Linear MCP server directly for Linear operations.`,
 		session.Name,
