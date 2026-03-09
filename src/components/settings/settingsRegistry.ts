@@ -304,7 +304,7 @@ export const SETTINGS_REGISTRY: SettingMeta[] = [
   {
     id: 'githubCli',
     title: 'GitHub CLI',
-    description: 'GitHub CLI authentication status',
+    description: 'GitHub CLI installation and authentication status',
     keywords: ['github', 'cli', 'auth', 'integration', 'connect'],
     category: 'account',
     categoryLabel: 'Account',

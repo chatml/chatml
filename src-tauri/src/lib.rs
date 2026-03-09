@@ -172,7 +172,8 @@ pub fn run() {
             commands::detect_installed_apps,
             commands::close_window,
             // System prerequisites
-            commands::check_prerequisites
+            commands::check_prerequisites,
+            commands::check_gh_auth_status
         ])
         .setup(move |app| {
             // Create and set the menu

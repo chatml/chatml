@@ -426,6 +426,24 @@ export async function checkPrerequisites(): Promise<PrerequisitesResult | null> 
 }
 
 // ============================================
+// GitHub CLI Status Check
+// ============================================
+
+export interface GhCliStatus {
+  installed: boolean;
+  version: string | null;
+  authenticated: boolean;
+  username: string | null;
+}
+
+/**
+ * Check GitHub CLI installation and authentication status.
+ */
+export async function checkGhAuthStatus(): Promise<GhCliStatus | null> {
+  return safeInvoke<GhCliStatus>('check_gh_auth_status');
+}
+
+// ============================================
 // File Attachment Functions
 // ============================================
 
