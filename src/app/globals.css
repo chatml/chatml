@@ -746,10 +746,6 @@ code.hljs { padding: 3px 5px; }
   background-color: #0f1111 !important;
 }
 
-.dark .xterm canvas {
-  background-color: #0f1111 !important;
-}
-
 html:not(.dark) .xterm,
 html:not(.dark) .xterm-viewport,
 html:not(.dark) .xterm-screen,
@@ -757,10 +753,6 @@ html:not(.dark) .xterm-rows,
 html:not(.dark) .xterm-helper-textarea,
 html:not(.dark) .xterm-cursor-layer,
 html:not(.dark) .xterm-text-layer {
-  background-color: #ffffff !important;
-}
-
-html:not(.dark) .xterm canvas {
   background-color: #ffffff !important;
 }
 
