@@ -520,15 +520,10 @@ function ReviewCommentCard({
       onClick={onNavigate}
     >
       {/* Header row */}
-      <div className="flex items-start gap-2 min-w-0">
-        {isResolved ? (
-          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-green-500" />
-        ) : (
-          <SeverityIcon className={cn('h-3.5 w-3.5 shrink-0 mt-0.5', severityStyles?.icon)} />
-        )}
+      <div className="flex items-start gap-1.5 min-w-0">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className={cn('text-xs leading-tight truncate', isResolved ? 'font-medium text-muted-foreground' : severityStyles?.title)}>{title}</span>
+          <div className="flex items-start gap-1.5 min-w-0">
+            <span className={cn('text-xs leading-tight line-clamp-2', isResolved ? 'font-medium text-muted-foreground' : severityStyles?.title)}>{title}</span>
             {isResolved && <ResolutionBadge type={comment.resolutionType} />}
           </div>
         </div>
@@ -604,7 +599,10 @@ function ReviewCommentCard({
       </div>
 
       {/* Footer row - location and time */}
-      <div className="flex items-center gap-2 mt-1 ml-5.5 text-2xs text-muted-foreground min-w-0">
+      <div className="flex items-center gap-1.5 mt-1 text-2xs text-muted-foreground min-w-0">
+        {!isResolved && (
+          <SeverityIcon className={cn('h-3 w-3 shrink-0', severityStyles?.icon)} />
+        )}
         {comment.lineNumber > 0 && (
           <span
             className="truncate min-w-0"
