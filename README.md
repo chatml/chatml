@@ -186,6 +186,8 @@ ChatML is licensed under the [GNU General Public License v3.0](LICENSE). You are
 
 ---
 
+<p align="center">⭐ If you find this interesting, please star the repo.</p>
+
 <p align="center">
   Built with obsessive attention to developer workflow.<br />
   <a href="https://github.com/chatml/chatml/issues">Report a Bug</a> · <a href="https://github.com/chatml/chatml/issues">Request a Feature</a> · <a href="https://github.com/chatml/chatml/discussions">Discussions</a> · <a href="https://x.com/chatmlx">@chatmlx</a>
