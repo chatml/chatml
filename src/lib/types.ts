@@ -311,6 +311,7 @@ export interface AgentEvent {
   model?: string;
   tools?: string[];
   mcpServers?: McpServerStatus[];
+  mcpServerSources?: Record<string, McpServerSource>;
   slashCommands?: string[];
   skills?: string[];
   plugins?: PluginInfo[];
@@ -425,10 +426,14 @@ export interface AgentEvent {
   maxAttempts?: number;
 }
 
+// MCP server source — where the server configuration originated
+export type McpServerSource = 'builtin' | 'dot-mcp' | 'claude-cli-user' | 'claude-cli-project' | 'chatml';
+
 // MCP server status
 export interface McpServerStatus {
   name: string;
   status: 'connected' | 'failed' | 'needs-auth' | 'pending' | 'idle';
+  source?: McpServerSource;
 }
 
 // MCP server configuration (user-managed)

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useMcpServers } from '@/stores/selectors';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMcpServers, useMcpServerSources } from '@/stores/selectors';
 import { useAppStore } from '@/stores/appStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -31,12 +31,11 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Settings2,
   Wrench,
   Minus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { McpServerStatus, McpServerConfig } from '@/lib/types';
+import type { McpServerStatus, McpServerConfig, McpServerSource } from '@/lib/types';
 
 const STATUS_CONFIG = {
   connected: {
@@ -71,6 +70,24 @@ const STATUS_CONFIG = {
   },
 } as const;
 
+const SOURCE_BADGE_CONFIG: Record<string, { label: string; className: string }> = {
+  builtin: { label: 'Built-in', className: 'bg-muted text-muted-foreground' },
+  'dot-mcp': { label: '.mcp.json', className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+  'claude-cli-user': { label: 'Claude Code', className: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
+  'claude-cli-project': { label: 'Claude Code (Project)', className: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
+  chatml: { label: 'ChatML', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+};
+
+interface UnifiedServer {
+  name: string;
+  status: McpServerStatus['status'];
+  source: McpServerSource | string;
+  toolCount?: number;
+  isEditable: boolean;
+  configIndex?: number; // index into mcpServerConfigs for editable servers
+  config?: McpServerConfig;
+}
+
 const EMPTY_SERVER: McpServerConfig = {
   name: '',
   type: 'stdio',
@@ -88,13 +105,13 @@ export function McpServersPanel() {
   const fetchMcpServerConfigs = useAppStore((s) => s.fetchMcpServerConfigs);
   const saveMcpServerConfigs = useAppStore((s) => s.saveMcpServerConfigs);
   const mcpToolsByServer = useAppStore((s) => s.mcpToolsByServer);
+  const mcpServerSources = useMcpServerSources();
 
-  const [showConfig, setShowConfig] = useState(false);
   const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null);
   const [editingIndex, setEditingIndex] = useState<number>(-1);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Load configs when workspace changes (needed for both status and config views)
+  // Load configs when workspace changes
   useEffect(() => {
     if (workspaceId) {
       fetchMcpServerConfigs(workspaceId);
@@ -139,98 +156,108 @@ export function McpServersPanel() {
     setDialogOpen(false);
   }, [workspaceId, mcpServerConfigs, editingIndex, saveMcpServerConfigs]);
 
-  // Build a status lookup from runtime status
-  const statusMap = new Map<string, McpServerStatus>();
-  for (const s of mcpServers) {
-    statusMap.set(s.name, s);
-  }
+  // Build unified server list
+  const unifiedServers = useMemo(() => {
+    const servers: UnifiedServer[] = [];
+    const seen = new Set<string>();
 
-  const hasContent = mcpServers.length > 0 || mcpServerConfigs.length > 0;
+    // Runtime status map
+    const statusMap = new Map<string, McpServerStatus>();
+    for (const s of mcpServers) {
+      statusMap.set(s.name, s);
+    }
+
+    // Config index map for editable servers
+    const configIndexMap = new Map<string, number>();
+    for (let i = 0; i < mcpServerConfigs.length; i++) {
+      configIndexMap.set(mcpServerConfigs[i].name, i);
+    }
+
+    // Add runtime servers first (these are actively connected/failed/pending)
+    for (const server of mcpServers) {
+      seen.add(server.name);
+      const source = mcpServerSources[server.name] || 'builtin';
+      const isEditable = source === 'chatml';
+      const configIdx = configIndexMap.get(server.name);
+      servers.push({
+        name: server.name,
+        status: server.status,
+        source,
+        toolCount: mcpToolsByServer[server.name]?.length,
+        isEditable,
+        configIndex: isEditable ? configIdx : undefined,
+        config: configIdx != null ? mcpServerConfigs[configIdx] : undefined,
+      });
+    }
+
+    // Add configured ChatML servers not in runtime status as "idle"
+    for (let i = 0; i < mcpServerConfigs.length; i++) {
+      const config = mcpServerConfigs[i];
+      if (!seen.has(config.name)) {
+        seen.add(config.name);
+        servers.push({
+          name: config.name,
+          status: 'idle',
+          source: 'chatml',
+          isEditable: true,
+          configIndex: i,
+          config,
+        });
+      }
+    }
+
+    return servers;
+  }, [mcpServers, mcpServerConfigs, mcpServerSources, mcpToolsByServer]);
+
+  const hasContent = unifiedServers.length > 0;
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header with toggle */}
+      {/* Header */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/50">
-        <button
-          className={cn(
-            'flex items-center gap-1.5 text-xs font-medium transition-colors',
-            showConfig ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setShowConfig(!showConfig)}
+        <span className="text-xs font-medium text-muted-foreground">
+          MCP Servers
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0"
+          onClick={handleAdd}
+          disabled={!workspaceId}
+          title="Add ChatML MCP server"
         >
-          <Settings2 className="w-3.5 h-3.5" />
-          Configure
-        </button>
-        {showConfig && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={handleAdd}
-            disabled={!workspaceId}
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </Button>
-        )}
+          <Plus className="w-3.5 h-3.5" />
+        </Button>
       </div>
 
       <ScrollArea className="flex-1">
-        {showConfig ? (
-          // Configuration view
-          <div className="p-2 space-y-1">
-            {mcpConfigLoading && mcpServerConfigs.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
-            )}
-            {!mcpConfigLoading && mcpServerConfigs.length === 0 && (
-              <EmptyState
-                icon={Server}
-                title="No MCP servers configured"
-                description="Add servers to extend agent capabilities"
-              />
-            )}
-            {mcpServerConfigs.map((config, i) => {
-              const status = statusMap.get(config.name);
-              return (
-                <ConfigRow
-                  key={`${config.name}-${i}`}
-                  config={config}
-                  status={status}
-                  toolCount={mcpToolsByServer[config.name]?.length}
-                  onEdit={() => handleEdit(config, i)}
-                  onDelete={() => handleDelete(i)}
-                  onToggle={() => handleToggle(i)}
-                />
-              );
-            })}
-          </div>
-        ) : (
-          // Runtime status view — shows live servers + configured idle ones
-          <div className="p-2 space-y-1">
-            {!hasContent && (
-              <EmptyState
-                icon={Server}
-                title="No MCP servers"
-                description="Servers will appear when agent starts"
-              />
-            )}
-            {mcpServers.map((server) => (
-              <StatusRow
-                key={server.name}
-                server={server}
-                toolCount={mcpToolsByServer[server.name]?.length}
-              />
-            ))}
-            {/* Show configured servers that aren't in runtime status as "idle" */}
-            {mcpServerConfigs
-              .filter((c) => c.enabled && !statusMap.has(c.name))
-              .map((config) => (
-                <StatusRow
-                  key={`idle-${config.name}`}
-                  server={{ name: config.name, status: 'idle' }}
-                />
-              ))}
-          </div>
-        )}
+        <div className="p-2 space-y-1">
+          {mcpConfigLoading && !hasContent && (
+            <p className="text-xs text-muted-foreground text-center py-4">Loading...</p>
+          )}
+          {!mcpConfigLoading && !hasContent && (
+            <EmptyState
+              icon={Server}
+              title="No MCP servers"
+              description="Servers will appear when agent starts"
+            />
+          )}
+          {unifiedServers.map((server) => (
+            <ServerRow
+              key={server.name}
+              server={server}
+              onEdit={server.isEditable && server.configIndex != null && server.config
+                ? () => handleEdit(server.config!, server.configIndex!)
+                : undefined}
+              onDelete={server.isEditable && server.configIndex != null
+                ? () => handleDelete(server.configIndex!)
+                : undefined}
+              onToggle={server.isEditable && server.configIndex != null
+                ? () => handleToggle(server.configIndex!)
+                : undefined}
+            />
+          ))}
+        </div>
       </ScrollArea>
 
       {/* Edit/Add dialog */}
@@ -246,82 +273,83 @@ export function McpServersPanel() {
   );
 }
 
-function StatusRow({ server, toolCount }: { server: McpServerStatus; toolCount?: number }) {
-  const config = STATUS_CONFIG[server.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
-  const Icon = config.icon;
-
+function SourceBadge({ source }: { source: string }) {
+  const badge = SOURCE_BADGE_CONFIG[source] || SOURCE_BADGE_CONFIG.builtin;
   return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-2 py-1.5 rounded-md',
-        config.bgColor
-      )}
-    >
-      <Icon className={cn('w-3.5 h-3.5 shrink-0', config.color)} />
-      <span className="text-sm font-medium flex-1 truncate">{server.name}</span>
-      {toolCount != null && toolCount > 0 && (
-        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${toolCount} tools`}>
-          <Wrench className="w-2.5 h-2.5" />
-          {toolCount}
-        </span>
-      )}
-      <span className={cn('text-xs', config.color)}>{config.label}</span>
-    </div>
+    <span className={cn('text-[9px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap', badge.className)}>
+      {badge.label}
+    </span>
   );
 }
 
-function ConfigRow({
-  config,
-  status,
-  toolCount,
+function ServerRow({
+  server,
   onEdit,
   onDelete,
   onToggle,
 }: {
-  config: McpServerConfig;
-  status?: McpServerStatus;
-  toolCount?: number;
-  onEdit: () => void;
-  onDelete: () => void;
-  onToggle: () => void;
+  server: UnifiedServer;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onToggle?: () => void;
 }) {
-  const statusConfig = status ? STATUS_CONFIG[status.status] : null;
-  const StatusIcon = statusConfig?.icon;
+  const statusConfig = STATUS_CONFIG[server.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
+  const StatusIcon = statusConfig.icon;
+  const isDisabled = server.config && !server.config.enabled;
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/30 group">
-      <Switch
-        checked={config.enabled}
-        onCheckedChange={onToggle}
-        className="scale-75"
-      />
+    <div className={cn(
+      'flex items-center gap-2 px-2 py-1.5 rounded-md group',
+      statusConfig.bgColor
+    )}>
+      {/* Toggle switch for editable servers */}
+      {onToggle ? (
+        <Switch
+          checked={server.config?.enabled ?? true}
+          onCheckedChange={onToggle}
+          className="scale-75 shrink-0"
+        />
+      ) : (
+        <StatusIcon className={cn('w-3.5 h-3.5 shrink-0', statusConfig.color)} />
+      )}
+
+      {/* Server info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className={cn('text-sm font-medium truncate', !config.enabled && 'text-muted-foreground')}>
-            {config.name}
+          <span className={cn('text-sm font-medium truncate', isDisabled && 'text-muted-foreground')}>
+            {server.name}
           </span>
-          {StatusIcon && (
-            <StatusIcon className={cn('w-3 h-3 shrink-0', statusConfig?.color)} />
+          {onToggle && (
+            <StatusIcon className={cn('w-3 h-3 shrink-0', statusConfig.color)} />
           )}
-          {toolCount != null && toolCount > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${toolCount} tools`}>
+          {server.toolCount != null && server.toolCount > 0 && (
+            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${server.toolCount} tools`}>
               <Wrench className="w-2.5 h-2.5" />
-              {toolCount}
+              {server.toolCount}
             </span>
           )}
         </div>
-        <span className="text-[10px] text-muted-foreground">
-          {config.type === 'stdio' ? config.command : config.url}
-        </span>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <SourceBadge source={server.source} />
+          <span className={cn('text-xs', statusConfig.color)}>{statusConfig.label}</span>
+        </div>
       </div>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onEdit}>
-          <Pencil className="w-3 h-3" />
-        </Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-text-error" onClick={onDelete}>
-          <Trash2 className="w-3 h-3" />
-        </Button>
-      </div>
+
+      {/* Edit/delete controls for ChatML servers */}
+      {(onEdit || onDelete) && (
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          {onEdit && (
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onEdit}>
+              <Pencil className="w-3 h-3" />
+            </Button>
+          )}
+          {onDelete && (
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-text-error" onClick={onDelete}>
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

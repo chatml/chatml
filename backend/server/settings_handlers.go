@@ -717,14 +717,16 @@ func (h *Handlers) SetDotMcpTrust(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": body.Status})
 }
 
-// DotMcpServerInfo describes a single server entry from a .mcp.json file.
+// DotMcpServerInfo describes a single server entry from a project-level MCP config file.
 type DotMcpServerInfo struct {
 	Name    string `json:"name"`
 	Type    string `json:"type"`
 	Command string `json:"command,omitempty"`
+	Source  string `json:"source,omitempty"` // "dot-mcp" or "claude-cli-project"
 }
 
-// GetDotMcpInfo checks whether a .mcp.json file exists in the workspace and returns its server list.
+// GetDotMcpInfo checks whether project-level MCP config files exist in the workspace
+// and returns their combined server list. Checks both .mcp.json and .claude/settings.json.
 func (h *Handlers) GetDotMcpInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	repoID := chi.URLParam(r, "id")
@@ -739,36 +741,71 @@ func (h *Handlers) GetDotMcpInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use a map to dedup — later sources (claude-cli-project) override earlier (dot-mcp),
+	// matching the agent-runner merge priority.
+	serverMap := make(map[string]DotMcpServerInfo)
+	anyExists := false
+
+	// Check .mcp.json
 	dotMcpPath := repo.Path + "/.mcp.json"
-	data, err := os.ReadFile(dotMcpPath)
-	if err != nil {
-		// File doesn't exist or is unreadable
+	if data, err := os.ReadFile(dotMcpPath); err == nil {
+		anyExists = true
+		var config struct {
+			McpServers map[string]struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"mcpServers"`
+		}
+		if err := json.Unmarshal(data, &config); err == nil {
+			for name, s := range config.McpServers {
+				serverType := s.Type
+				if serverType == "" {
+					serverType = "stdio"
+				}
+				serverMap[name] = DotMcpServerInfo{
+					Name:    name,
+					Type:    serverType,
+					Command: s.Command,
+					Source:  "dot-mcp",
+				}
+			}
+		}
+	}
+
+	// Check .claude/settings.json for mcpServers
+	claudeSettingsPath := repo.Path + "/.claude/settings.json"
+	if data, err := os.ReadFile(claudeSettingsPath); err == nil {
+		var config struct {
+			McpServers map[string]struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"mcpServers"`
+		}
+		if err := json.Unmarshal(data, &config); err == nil && len(config.McpServers) > 0 {
+			anyExists = true
+			for name, s := range config.McpServers {
+				serverType := s.Type
+				if serverType == "" {
+					serverType = "stdio"
+				}
+				serverMap[name] = DotMcpServerInfo{
+					Name:    name,
+					Type:    serverType,
+					Command: s.Command,
+					Source:  "claude-cli-project",
+				}
+			}
+		}
+	}
+
+	if !anyExists {
 		writeJSON(w, map[string]interface{}{"exists": false, "servers": []DotMcpServerInfo{}})
 		return
 	}
 
-	var config struct {
-		McpServers map[string]struct {
-			Type    string `json:"type"`
-			Command string `json:"command"`
-		} `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(data, &config); err != nil {
-		writeJSON(w, map[string]interface{}{"exists": true, "servers": []DotMcpServerInfo{}})
-		return
-	}
-
-	servers := make([]DotMcpServerInfo, 0, len(config.McpServers))
-	for name, s := range config.McpServers {
-		serverType := s.Type
-		if serverType == "" {
-			serverType = "stdio"
-		}
-		servers = append(servers, DotMcpServerInfo{
-			Name:    name,
-			Type:    serverType,
-			Command: s.Command,
-		})
+	servers := make([]DotMcpServerInfo, 0, len(serverMap))
+	for _, s := range serverMap {
+		servers = append(servers, s)
 	}
 
 	slices.SortFunc(servers, func(a, b DotMcpServerInfo) int {

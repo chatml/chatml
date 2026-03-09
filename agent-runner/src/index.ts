@@ -181,7 +181,7 @@ if (process.env.CLAUDE_CODE_USE_BEDROCK === "true") {
 
 // Instructions (e.g., from conversation summaries)
 import { readFileSync, writeFileSync, unlinkSync } from "fs";
-import { tmpdir } from "os";
+import { tmpdir, homedir } from "os";
 import { join } from "path";
 let instructions: string | undefined;
 {
@@ -332,6 +332,9 @@ let queryRef: Query | null = null;
 
 // Track current session ID
 let currentSessionId: string | undefined = undefined;
+
+// MCP server source tracking — maps server name to its origin for the UI
+let mcpServerSources: Record<string, string> = {};
 
 // Pending user question requests (for AskUserQuestion tool)
 const ASK_USER_QUESTION_HOOK_TIMEOUT_S = 86400; // 24 hours — lets users take as long as they need
@@ -1597,8 +1600,10 @@ async function main(): Promise<void> {
     // Create ChatML MCP server
     const chatmlMcp = createChatMLMcpServer({ context: workspaceContext });
 
-    // Build merged MCP servers map: built-in + .mcp.json + user-configured
+    // Build merged MCP servers map: built-in + .mcp.json + claude-cli + user-configured
+    // Merge priority (later wins): builtin → dot-mcp → claude-cli-user → claude-cli-project → chatml
     const mergedMcpServers: Record<string, McpServerConfig> = { chatml: chatmlMcp };
+    mcpServerSources = { chatml: "builtin" };
 
     // Load .mcp.json from worktree root (project-level config)
     // Gated by --skip-dot-mcp flag to prevent untrusted repos from executing commands
@@ -1610,6 +1615,7 @@ async function main(): Promise<void> {
         if (dotMcpConfig.mcpServers) {
           for (const [name, config] of Object.entries(dotMcpConfig.mcpServers)) {
             mergedMcpServers[name] = config;
+            mcpServerSources[name] = "dot-mcp";
             debug(`Loaded MCP server from .mcp.json: ${name}`);
           }
         }
@@ -1618,6 +1624,42 @@ async function main(): Promise<void> {
       }
     } else {
       debug("Skipping .mcp.json loading (--skip-dot-mcp flag set)");
+    }
+
+    // Load Claude Code CLI user-level MCP servers (~/.claude/settings.json)
+    // Always trusted — this is the user's own global config
+    try {
+      const userSettingsPath = join(homedir(), ".claude", "settings.json");
+      const userSettingsContent = readFileSync(userSettingsPath, "utf-8");
+      const userSettings = JSON.parse(userSettingsContent) as { mcpServers?: Record<string, McpServerConfig> };
+      if (userSettings.mcpServers) {
+        for (const [name, config] of Object.entries(userSettings.mcpServers)) {
+          mergedMcpServers[name] = config;
+          mcpServerSources[name] = "claude-cli-user";
+          debug(`Loaded MCP server from ~/.claude/settings.json: ${name}`);
+        }
+      }
+    } catch {
+      // ~/.claude/settings.json doesn't exist or is invalid — that's fine
+    }
+
+    // Load Claude Code CLI project-level MCP servers (<cwd>/.claude/settings.json)
+    // Gated by same trust mechanism as .mcp.json
+    if (!skipDotMcp) {
+      try {
+        const projectSettingsPath = join(cwd, ".claude", "settings.json");
+        const projectSettingsContent = readFileSync(projectSettingsPath, "utf-8");
+        const projectSettings = JSON.parse(projectSettingsContent) as { mcpServers?: Record<string, McpServerConfig> };
+        if (projectSettings.mcpServers) {
+          for (const [name, config] of Object.entries(projectSettings.mcpServers)) {
+            mergedMcpServers[name] = config;
+            mcpServerSources[name] = "claude-cli-project";
+            debug(`Loaded MCP server from .claude/settings.json: ${name}`);
+          }
+        }
+      } catch {
+        // .claude/settings.json doesn't exist or is invalid — that's fine
+      }
     }
 
     // Load user-configured MCP servers from backend (via temp file)
@@ -1654,6 +1696,10 @@ async function main(): Promise<void> {
               url: server.url,
               headers: server.headers || {},
             };
+            mcpServerSources[server.name] = "chatml";
+          } else {
+            debug(`Skipped user MCP server with unsupported config: ${server.name} (${server.type})`);
+            continue;
           }
           debug(`Loaded user MCP server: ${server.name} (${server.type})`);
         }
@@ -2305,6 +2351,7 @@ function handleMessage(message: SDKMessage): void {
           model: initMsg.model,
           tools: initMsg.tools,
           mcpServers: initMsg.mcp_servers,
+          mcpServerSources,
           slashCommands: initMsg.slash_commands,
           skills: initMsg.skills,
           plugins: initMsg.plugins,

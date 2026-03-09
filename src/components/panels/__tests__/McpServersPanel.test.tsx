@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { McpServersPanel } from '../McpServersPanel';
 import { useAppStore } from '@/stores/appStore';
 
@@ -19,6 +18,7 @@ describe('McpServersPanel', () => {
       mcpServerConfigs: [],
       mcpConfigLoading: false,
       mcpToolsByServer: {},
+      mcpServerSources: {},
       fetchMcpServerConfigs: fetchMcpServerConfigsMock,
       saveMcpServerConfigs: saveMcpServerConfigsMock,
     });
@@ -71,44 +71,44 @@ describe('McpServersPanel', () => {
   });
 
   // --------------------------------------------------------------------------
-  // Configure toggle
+  // Unified view with source badges
   // --------------------------------------------------------------------------
 
-  it('shows Configure button', () => {
+  it('shows source badges for servers', () => {
+    useAppStore.setState({
+      mcpServers: [
+        { name: 'chatml', status: 'connected' },
+        { name: 'tauri', status: 'connected' },
+      ],
+      mcpServerSources: {
+        chatml: 'builtin',
+        tauri: 'dot-mcp',
+      },
+    });
+
     render(<McpServersPanel />);
-    expect(screen.getByText('Configure')).toBeInTheDocument();
+
+    expect(screen.getByText('Built-in')).toBeInTheDocument();
+    expect(screen.getByText('.mcp.json')).toBeInTheDocument();
   });
 
-  it('toggles to config view', async () => {
-    const user = userEvent.setup();
-    render(<McpServersPanel />);
-
-    await user.click(screen.getByText('Configure'));
-
-    expect(screen.getByText('No MCP servers configured')).toBeInTheDocument();
-  });
-
-  it('shows configured servers in config view', async () => {
+  it('shows configured servers in unified view', () => {
     useAppStore.setState({
       mcpServerConfigs: [
         { name: 'my-server', type: 'stdio', command: 'npx', enabled: true },
       ],
     });
 
-    const user = userEvent.setup();
     render(<McpServersPanel />);
 
-    await user.click(screen.getByText('Configure'));
-
     expect(screen.getByText('my-server')).toBeInTheDocument();
-    expect(screen.getByText('npx')).toBeInTheDocument();
   });
 
   // --------------------------------------------------------------------------
-  // Idle servers in status view
+  // Idle servers
   // --------------------------------------------------------------------------
 
-  it('shows idle servers in status view', () => {
+  it('shows idle servers from config', () => {
     useAppStore.setState({
       mcpServers: [],
       mcpServerConfigs: [
@@ -122,7 +122,7 @@ describe('McpServersPanel', () => {
     expect(screen.getByText('Idle')).toBeInTheDocument();
   });
 
-  it('disabled servers not shown as idle', () => {
+  it('shows disabled servers with toggle off', () => {
     useAppStore.setState({
       mcpServers: [],
       mcpServerConfigs: [
@@ -132,9 +132,8 @@ describe('McpServersPanel', () => {
 
     render(<McpServersPanel />);
 
-    // Disabled servers should not appear in the status view
-    expect(screen.queryByText('disabled-server')).not.toBeInTheDocument();
-    expect(screen.queryByText('Idle')).not.toBeInTheDocument();
+    // Disabled servers still appear in unified view (with toggle switch off)
+    expect(screen.getByText('disabled-server')).toBeInTheDocument();
   });
 
   // --------------------------------------------------------------------------
@@ -153,6 +152,37 @@ describe('McpServersPanel', () => {
 
     expect(screen.getByText('github')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  // --------------------------------------------------------------------------
+  // Edit controls only for ChatML servers
+  // --------------------------------------------------------------------------
+
+  it('shows edit controls for ChatML-managed servers', () => {
+    useAppStore.setState({
+      mcpServers: [{ name: 'my-server', status: 'connected' }],
+      mcpServerConfigs: [
+        { name: 'my-server', type: 'stdio', command: 'npx', enabled: true },
+      ],
+      mcpServerSources: { 'my-server': 'chatml' },
+    });
+
+    render(<McpServersPanel />);
+
+    // ChatML servers should have a toggle switch
+    expect(screen.getByRole('switch')).toBeInTheDocument();
+  });
+
+  it('does not show edit controls for external servers', () => {
+    useAppStore.setState({
+      mcpServers: [{ name: 'chatml', status: 'connected' }],
+      mcpServerSources: { chatml: 'builtin' },
+    });
+
+    render(<McpServersPanel />);
+
+    // Built-in servers should not have edit controls
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
 
   // --------------------------------------------------------------------------
