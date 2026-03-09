@@ -446,7 +446,7 @@ interface AppState {
       durationMs?: number;
       toolUsage?: ToolUsage[];
       runSummary?: RunSummary;
-      commitQueuedFirst?: boolean;
+      commitQueued?: boolean;
       /** When true, force isStreaming=false and clear all remaining queued messages.
        *  Use for terminal events (complete, error, interrupted, stop). */
       terminal?: boolean;
@@ -1840,7 +1840,7 @@ updateFileTabContent: (id, content) => set((state) => ({
 
       // If no streaming text, just clear the state (but still commit first queued message if requested)
       if (!streaming?.text) {
-        const queued = metadata.commitQueuedFirst && queuedQueue.length > 0 ? queuedQueue[0] : null;
+        const queued = metadata.commitQueued && queuedQueue.length > 0 ? queuedQueue[0] : null;
         // Terminal: clear entire queue after committing first; otherwise preserve remaining
         const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
         const convPagination = state.messagePagination[conversationId];
@@ -1953,13 +1953,13 @@ updateFileTabContent: (id, content) => set((state) => ({
       };
 
       // Atomically: add message AND clear streaming state
-      // When commitQueuedFirst is set, place the first queued user message BEFORE the assistant message
-      const queued = metadata.commitQueuedFirst && queuedQueue.length > 0 ? queuedQueue[0] : null;
+      // When commitQueued is set, commit the first queued user message AFTER the assistant message
+      const queued = metadata.commitQueued && queuedQueue.length > 0 ? queuedQueue[0] : null;
       // Terminal: clear entire queue after committing first; otherwise preserve remaining
       const remaining = metadata.terminal ? [] : (queued ? queuedQueue.slice(1) : queuedQueue);
       const existing = state.messagesByConversation[conversationId] ?? [];
       const updatedMessages = queued
-        ? [...existing, queuedToMessage(queued, conversationId), newMessage]
+        ? [...existing, newMessage, queuedToMessage(queued, conversationId)]
         : [...existing, newMessage];
 
       const convPagination = state.messagePagination[conversationId];
