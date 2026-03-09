@@ -67,13 +67,38 @@ import shellGrammar from '@shikijs/langs/shellscript';
 import diffGrammar from '@shikijs/langs/diff';
 import dockerfileGrammar from '@shikijs/langs/dockerfile';
 import graphqlGrammar from '@shikijs/langs/graphql';
+import luaGrammar from '@shikijs/langs/lua';
+import csharpGrammar from '@shikijs/langs/csharp';
+import dartGrammar from '@shikijs/langs/dart';
+import elixirGrammar from '@shikijs/langs/elixir';
+import haskellGrammar from '@shikijs/langs/haskell';
+import perlGrammar from '@shikijs/langs/perl';
+import rGrammar from '@shikijs/langs/r';
+import scalaGrammar from '@shikijs/langs/scala';
+import zigGrammar from '@shikijs/langs/zig';
+import xmlGrammar from '@shikijs/langs/xml';
+import vueGrammar from '@shikijs/langs/vue';
+import svelteGrammar from '@shikijs/langs/svelte';
+import makeGrammar from '@shikijs/langs/makefile';
+import powershellGrammar from '@shikijs/langs/powershell';
+import latexGrammar from '@shikijs/langs/latex';
+import objcGrammar from '@shikijs/langs/objective-c';
+import jsoncGrammar from '@shikijs/langs/jsonc';
+import iniGrammar from '@shikijs/langs/ini';
+import hclGrammar from '@shikijs/langs/hcl';
+import protobufGrammar from '@shikijs/langs/proto';
 
+// Languages that are statically bundled and available in Tauri release builds.
+// Any language NOT listed here will fail to highlight because the shiki shim
+// stubs out bundledLanguages with an empty object, preventing dynamic imports.
+// To add a new language: import its grammar above and add an entry below.
 const LANGS: Array<[string, unknown]> = [
   ['typescript', tsGrammar],
   ['javascript', jsGrammar],
   ['tsx', tsxGrammar],
   ['jsx', jsxGrammar],
   ['json', jsonGrammar],
+  ['jsonc', jsoncGrammar],
   ['html', htmlGrammar],
   ['css', cssGrammar],
   ['python', pythonGrammar],
@@ -96,6 +121,25 @@ const LANGS: Array<[string, unknown]> = [
   ['diff', diffGrammar],
   ['dockerfile', dockerfileGrammar],
   ['graphql', graphqlGrammar],
+  ['lua', luaGrammar],
+  ['csharp', csharpGrammar],
+  ['dart', dartGrammar],
+  ['elixir', elixirGrammar],
+  ['haskell', haskellGrammar],
+  ['perl', perlGrammar],
+  ['r', rGrammar],
+  ['scala', scalaGrammar],
+  ['zig', zigGrammar],
+  ['xml', xmlGrammar],
+  ['vue', vueGrammar],
+  ['svelte', svelteGrammar],
+  ['makefile', makeGrammar],
+  ['powershell', powershellGrammar],
+  ['latex', latexGrammar],
+  ['objective-c', objcGrammar],
+  ['ini', iniGrammar],
+  ['hcl', hclGrammar],
+  ['proto', protobufGrammar],
 ];
 
 interface ResolvedLang {
