@@ -100,13 +100,6 @@ export function setBackendPort(port: number): void {
 }
 
 /**
- * Get the API base URL for the backend.
- */
-export function getApiBaseUrl(port: number = getBackendPortSync()): string {
-  return `http://localhost:${port}`;
-}
-
-/**
  * Get the WebSocket URL for the backend.
  */
 export function getWsUrl(port: number = getBackendPortSync()): string {
