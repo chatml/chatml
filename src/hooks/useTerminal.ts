@@ -154,7 +154,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     let resizeObserver: ResizeObserver | null = null;
     let cleanupCalled = false;
 
-    const initTerminal = () => {
+    const initTerminal = async () => {
       if (isInitializedRef.current || cleanupCalled) return;
 
       // Check dimensions
@@ -162,7 +162,20 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
         return; // ResizeObserver will call us again when dimensions change
       }
 
+      // Set before the async font load to prevent re-entry from ResizeObserver.
+      // Cleanup resets this at teardown so re-mount works correctly.
       isInitializedRef.current = true;
+
+      // Wait for the terminal font to load before creating the Terminal instance.
+      // xterm.js measures glyph dimensions at init using a canvas — if the font
+      // hasn't loaded yet, it measures with a fallback and never re-measures.
+      try {
+        await document.fonts.load('11px "MesloLGS NF"');
+      } catch {
+        // Font unavailable — xterm.js will use the next font in the stack
+      }
+
+      if (cleanupCalled) return;
 
       // Create xterm.js terminal
       const terminal = new Terminal({
@@ -189,6 +202,21 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
 
       // Open terminal in container
       terminal.open(container);
+
+      // Try WebGL renderer for hardware-accelerated rendering (must be after open)
+      try {
+        const { WebglAddon } = await import('@xterm/addon-webgl');
+        if (!cleanupCalled) {
+          const webgl = new WebglAddon();
+          webgl.onContextLoss(() => {
+            console.warn('[Terminal] WebGL context lost, falling back to canvas renderer');
+            webgl.dispose();
+          });
+          terminal.loadAddon(webgl);
+        }
+      } catch {
+        // WebGL unavailable — canvas renderer is fine
+      }
 
       // Handle Cmd+K to clear terminal (macOS standard)
       terminal.attachCustomKeyEventHandler((event) => {
@@ -241,6 +269,13 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
               cols: terminal.cols || 80,
               rows: terminal.rows || 24,
               cwd,
+              // Merged with inherited process env by portable-pty —
+              // PATH, HOME, etc. are preserved.
+              env: {
+                COLORTERM: 'truecolor',
+                TERM_PROGRAM: 'ChatML',
+                LANG: 'en_US.UTF-8',
+              },
             });
 
             if (cleanupCalled) {
@@ -308,13 +343,13 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
     // Use ResizeObserver to detect when container has dimensions
     resizeObserver = new ResizeObserver(() => {
       if (!isInitializedRef.current) {
-        initTerminal();
+        initTerminal().catch(console.error);
       }
     });
     resizeObserver.observe(container);
 
     // Try immediately in case container already has dimensions
-    initTerminal();
+    initTerminal().catch(console.error);
 
     // Cleanup
     return () => {
