@@ -1282,17 +1282,14 @@ function TopPanelTabs({
                 <CheckCheck className="size-4" />
                 Resolve All
               </DropdownMenuItem>
-              <DropdownMenuCheckboxItem
-                checked={menuContext.showResolved}
-                onCheckedChange={menuContext.onToggleShowResolved}
-              >
+              <DropdownMenuItem onSelect={menuContext.onToggleShowResolved}>
                 {menuContext.showResolved ? (
                   <EyeOff className="size-4" />
                 ) : (
                   <Eye className="size-4" />
                 )}
-                Show Resolved
-              </DropdownMenuCheckboxItem>
+                {menuContext.showResolved ? 'Hide Resolved' : 'Show Resolved'}
+              </DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>
