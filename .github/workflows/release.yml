@@ -76,11 +76,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -180,8 +183,8 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-pc-windows-msvc.exe .
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build agent-runner
         run: cd agent-runner && npm ci && npm run build && npm prune --production

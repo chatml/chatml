@@ -3,6 +3,7 @@
   "version": "0.1.11",
   "private": true,
   "license": "GPL-3.0-only",
+  "packageManager": "pnpm@10.30.3",
   "scripts": {
     "copy-monaco": "[ -d public/vs ] || cp -r node_modules/monaco-editor/min/vs public/vs",
     "dev": "npm run copy-monaco && next dev --turbopack --port 3100",
