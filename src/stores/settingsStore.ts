@@ -88,7 +88,6 @@ export const SETTINGS_DEFAULTS = {
   reviewModel: 'claude-opus-4-6',
   reviewActionableOnly: false,
   defaultPlanMode: false,
-  autoApproveSafeCommands: true,
   // Git
   branchPrefixType: 'github' as BranchPrefixType,
   branchPrefixCustom: '',
@@ -133,8 +132,6 @@ interface SettingsState {
   branchPrefixCustom: string;
   deleteBranchOnArchive: boolean;
   archiveOnMerge: boolean;
-  // Claude Code settings
-  autoApproveSafeCommands: boolean;
   // Security settings
   neverLoadDotMcp: boolean;
   // Account settings
@@ -208,7 +205,6 @@ interface SettingsState {
   setBranchPrefixCustom: (value: string) => void;
   setDeleteBranchOnArchive: (value: boolean) => void;
   setArchiveOnMerge: (value: boolean) => void;
-  setAutoApproveSafeCommands: (value: boolean) => void;
   setNeverLoadDotMcp: (value: boolean) => void;
   setStrictPrivacy: (value: boolean) => void;
   setZenMode: (value: boolean) => void;
@@ -305,7 +301,6 @@ export const useSettingsStore = create<SettingsState>()(
       setBranchPrefixCustom: (value) => set({ branchPrefixCustom: value }),
       setDeleteBranchOnArchive: (value) => set({ deleteBranchOnArchive: value }),
       setArchiveOnMerge: (value) => set({ archiveOnMerge: value }),
-      setAutoApproveSafeCommands: (value) => set({ autoApproveSafeCommands: value }),
       setNeverLoadDotMcp: (value) => {
         set({ neverLoadDotMcp: value });
         // Sync to backend so agent manager respects the global kill switch

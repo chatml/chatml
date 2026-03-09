@@ -336,34 +336,6 @@ describe('settingsStore', () => {
     });
   });
 
-  describe('autoApproveSafeCommands', () => {
-    beforeEach(() => {
-      useSettingsStore.setState({ autoApproveSafeCommands: true });
-    });
-
-    it('should have a default value of true', () => {
-      const { autoApproveSafeCommands } = useSettingsStore.getState();
-      expect(autoApproveSafeCommands).toBe(true);
-    });
-
-    it('should update autoApproveSafeCommands when setAutoApproveSafeCommands is called', () => {
-      const { setAutoApproveSafeCommands } = useSettingsStore.getState();
-      setAutoApproveSafeCommands(false);
-      expect(useSettingsStore.getState().autoApproveSafeCommands).toBe(false);
-    });
-
-    it('should not affect other settings when setAutoApproveSafeCommands is called', () => {
-      const initialState = useSettingsStore.getState();
-      const { setAutoApproveSafeCommands } = useSettingsStore.getState();
-      setAutoApproveSafeCommands(false);
-      const newState = useSettingsStore.getState();
-      
-      expect(newState.showThinkingBlocks).toBe(initialState.showThinkingBlocks);
-      expect(newState.reviewModel).toBe(initialState.reviewModel);
-      expect(newState.archiveOnMerge).toBe(initialState.archiveOnMerge);
-    });
-  });
-
   describe('strictPrivacy', () => {
     beforeEach(() => {
       useSettingsStore.setState({ strictPrivacy: false });
@@ -388,7 +360,7 @@ describe('settingsStore', () => {
       
       expect(newState.showThinkingBlocks).toBe(initialState.showThinkingBlocks);
       expect(newState.reviewModel).toBe(initialState.reviewModel);
-      expect(newState.autoApproveSafeCommands).toBe(initialState.autoApproveSafeCommands);
+      expect(newState.archiveOnMerge).toBe(initialState.archiveOnMerge);
     });
   });
 
