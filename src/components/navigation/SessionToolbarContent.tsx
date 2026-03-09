@@ -16,12 +16,13 @@ import {
   getWorkspaceActionTemplates,
   type AttachmentDTO,
 } from '@/lib/api';
-import { ACTION_TEMPLATES, fetchMergedActionTemplates } from '@/lib/action-templates';
+import { ACTION_TEMPLATES, ACTION_TEMPLATE_NAMES, fetchMergedActionTemplates } from '@/lib/action-templates';
+import type { ActionTemplateKey } from '@/lib/action-templates';
 import { dispatchAppEvent, useAppEventListener } from '@/lib/custom-events';
 import { formatCIFailureMessage } from '@/lib/check-utils';
 import { useToast } from '@/components/ui/toast';
 import { copyToClipboard, openInApp } from '@/lib/tauri';
-import { cn } from '@/lib/utils';
+import { cn, toBase64 } from '@/lib/utils';
 import { ArchiveSessionDialog } from '@/components/dialogs/ArchiveSessionDialog';
 import { useArchiveSession } from '@/hooks/useArchiveSession';
 import { PRHoverCard } from '@/components/shared/PRHoverCard';
@@ -68,16 +69,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { getAppById, getAppName, CATEGORY_LABELS } from '@/lib/openApps';
 import type { AppCategory } from '@/lib/openApps';
 import { getAppIcon } from '@/components/icons/AppIcons';
-
-/** Encode a UTF-8 string to base64, safe for non-Latin1 characters. */
-function toBase64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 // ---------------------------------------------------------------------------
 // Review type options for the split button popover
@@ -175,35 +166,39 @@ export function SessionToolbarContent() {
   }, [selectedConversationId, showWarning, showError, updateConversation, setStreaming, isAgentWorking]);
 
   // Wrapper that adds a user bubble + sends template content as attachment
-  const handleActionWithBubbleAndTemplate = useCallback((content: string, templateContent: string) => {
+  const handleActionWithBubbleAndTemplate = useCallback((content: string, templateContent: string, templateKey?: ActionTemplateKey) => {
     if (isAgentWorking) return;
     if (!selectedConversationId) {
       showWarning('No active conversation');
       return;
     }
-    // User bubble shows only the short instruction
+
+    // Create template attachment (before addMessage so it appears in the bubble)
+    const attachmentName = templateKey ? ACTION_TEMPLATE_NAMES[templateKey] : 'Action Instructions';
+    const templateAttachment: AttachmentDTO = {
+      id: crypto.randomUUID(),
+      type: 'file',
+      name: attachmentName,
+      mimeType: 'text/markdown',
+      size: new Blob([templateContent]).size,
+      lineCount: templateContent.split('\n').length,
+      base64Data: toBase64(templateContent),
+      preview: templateContent.slice(0, 200),
+      isInstruction: true,
+    };
+
+    // User bubble shows the short instruction + instruction attachment card
     addMessage({
       id: crypto.randomUUID(),
       conversationId: selectedConversationId,
       role: 'user',
       content,
       timestamp: new Date().toISOString(),
+      attachments: [templateAttachment],
     });
     window.dispatchEvent(new CustomEvent('chat-message-submitted'));
     updateConversation(selectedConversationId, { status: 'active' });
     setStreaming(selectedConversationId, true);
-
-    // Create template attachment
-    const templateAttachment: AttachmentDTO = {
-      id: crypto.randomUUID(),
-      type: 'file',
-      name: 'action-instructions.md',
-      mimeType: 'text/markdown',
-      size: new Blob([templateContent]).size,
-      lineCount: templateContent.split('\n').length,
-      base64Data: toBase64(templateContent),
-      preview: templateContent.slice(0, 200),
-    };
 
     sendConversationMessage(selectedConversationId, content, [templateAttachment]).catch((error) => {
       console.error('Failed to send action message:', error);
@@ -233,11 +228,11 @@ export function SessionToolbarContent() {
     }
     fetchMergedActionTemplates(selectedWorkspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates)
       .then((templates) => {
-        handleActionWithBubbleAndTemplate(message, templates['sync-branch']);
+        handleActionWithBubbleAndTemplate(message, templates['sync-branch'], 'sync-branch');
         dispatchAppEvent('branch-sync-accepted');
       })
       .catch(() => {
-        handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES['sync-branch']);
+        handleActionWithBubbleAndTemplate(message, ACTION_TEMPLATES['sync-branch'], 'sync-branch');
         dispatchAppEvent('branch-sync-accepted');
       });
   }, [selectedWorkspaceId, selectedConversationId, isAgentWorking, handleActionWithBubbleAndTemplate]);

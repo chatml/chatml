@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'rea
 import { useAppStore } from '@/stores/appStore';
 import { createConversation, sendConversationMessage, stopConversation, setConversationPlanMode, approvePlan } from '@/lib/api';
 import { markPlanModeExited } from '@/hooks/useWebSocket';
+import { useAppEventListener } from '@/lib/custom-events';
 import { useShortcut } from '@/hooks/useShortcut';
 import { Button } from '@/components/ui/button';
 import {
@@ -625,6 +626,22 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
       unlistenLeave = safeUnlisten(unlistenLeave);
     };
   }, []);
+
+  // Listen for compose-action events (e.g., Fix All review, Add to Chat)
+  // Inserts text and/or instruction attachments into the composer without auto-submitting.
+  useAppEventListener('compose-action', ({ text, attachments: incoming }) => {
+    // Only set text if the composer is empty to avoid overwriting a user's draft
+    if (text) {
+      const existing = plateInputRef.current?.getText() ?? '';
+      if (!existing.trim()) {
+        plateInputRef.current?.setText(text);
+      }
+    }
+    if (incoming && incoming.length > 0) {
+      setAttachments(prev => [...prev, ...incoming]);
+    }
+    plateInputRef.current?.focus();
+  });
 
   // Handler for toggling plan mode - also notifies the backend
   const handlePlanModeToggle = useCallback(async () => {

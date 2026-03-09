@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import type { Attachment } from '@/lib/types';
 
 /**
  * Typed custom event map. Add new events here for compile-time safety
@@ -11,6 +12,8 @@ export interface AppCustomEventMap {
   'branch-sync-rejected': void;
   'git-create-pr': void;
   'chat-message-submitted': void;
+  /** Insert text and/or instruction attachments into the composer without auto-submitting */
+  'compose-action': { text: string; attachments?: Attachment[] };
 }
 
 type EventDetail<K extends keyof AppCustomEventMap> =

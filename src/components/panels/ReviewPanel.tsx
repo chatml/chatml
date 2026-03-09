@@ -9,6 +9,7 @@ import {
   Info,
   CheckCircle2,
   MessageSquare,
+  MessageSquarePlus,
   FileCode,
   ChevronRight,
   ChevronDown,
@@ -18,7 +19,7 @@ import {
   List,
   ListTree,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, toBase64 } from '@/lib/utils';
 import {
   Tooltip,
   TooltipContent,
@@ -37,7 +38,8 @@ import {
   listReviewComments,
   updateReviewComment as apiUpdateReviewComment,
 } from '@/lib/api';
-import type { ReviewComment } from '@/lib/types';
+import type { Attachment, ReviewComment } from '@/lib/types';
+import { dispatchAppEvent } from '@/lib/custom-events';
 
 type CommentSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 
@@ -403,6 +405,38 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   );
 }
 
+/** Create an instruction attachment from a review comment. */
+function commentToAttachment(comment: ReviewComment): Attachment {
+  const content = [
+    `## Review Comment: ${comment.title || comment.content.split('\n')[0]}`,
+    '',
+    `**File:** \`${comment.filePath}:${comment.lineNumber}\``,
+    `**Severity:** ${comment.severity || 'info'}`,
+    '',
+    comment.content,
+  ].join('\n');
+
+  return {
+    id: `review-${comment.id}-${Date.now()}`,
+    type: 'file',
+    name: 'Review Comment',
+    mimeType: 'text/markdown',
+    size: new Blob([content]).size,
+    lineCount: content.split('\n').length,
+    base64Data: toBase64(content),
+    preview: content.slice(0, 200),
+    isInstruction: true,
+  };
+}
+
+function handleAddToChat(comment: ReviewComment) {
+  const attachment = commentToAttachment(comment);
+  dispatchAppEvent('compose-action', {
+    text: `Fix this review comment in ${comment.filePath}:${comment.lineNumber}`,
+    attachments: [attachment],
+  });
+}
+
 function ReviewCommentCard({
   comment,
   onNavigate,
@@ -480,6 +514,24 @@ function ReviewCommentCard({
           </div>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          {!isResolved && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 hover:bg-foreground/10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddToChat(comment);
+                  }}
+                >
+                  <MessageSquarePlus className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Add to chat</TooltipContent>
+            </Tooltip>
+          )}
           {isResolved ? (
             <Button
               variant="ghost"

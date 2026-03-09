@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, File, FileText, FileCode, Image, FileJson, Terminal, FileType, type LucideIcon } from 'lucide-react';
+import { X, File, FileText, FileCode, Image, FileJson, Terminal, FileType, ScrollText, type LucideIcon } from 'lucide-react';
 import type { Attachment } from '@/lib/types';
 import { getFileCategory, getAttachmentSubtitle } from '@/lib/attachments';
 import { cn } from '@/lib/utils';
@@ -35,8 +35,9 @@ export function AttachmentCard({ attachment, onRemove, onClick, readOnly = false
   // Determine file path for category detection - use path if available, otherwise fall back to name
   const filePath = attachment.path || attachment.name;
   const category = useMemo(() => getFileCategory(filePath), [filePath]);
-  const Icon = CATEGORY_ICONS[category] || FileType;
-  const subtitle = getAttachmentSubtitle(attachment);
+  const isInstruction = attachment.isInstruction;
+  const Icon = isInstruction ? ScrollText : (CATEGORY_ICONS[category] || FileType);
+  const subtitle = isInstruction ? 'Instructions' : getAttachmentSubtitle(attachment);
 
   // CSS truncate on the span handles ellipsis; full name shown via title tooltip
   const displayName = attachment.name;
@@ -44,8 +45,11 @@ export function AttachmentCard({ attachment, onRemove, onClick, readOnly = false
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1.5',
-        'hover:bg-muted/80 transition-colors',
+        'group relative flex items-center gap-2 rounded-md border px-2.5 py-1.5',
+        isInstruction
+          ? 'border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/15'
+          : 'border-border bg-muted/50 hover:bg-muted/80',
+        'transition-colors',
         'min-w-0 max-w-[220px]',
         onClick && 'cursor-pointer'
       )}
@@ -54,7 +58,7 @@ export function AttachmentCard({ attachment, onRemove, onClick, readOnly = false
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Icon */}
-      <div className="flex-shrink-0 text-muted-foreground">
+      <div className={cn('flex-shrink-0', isInstruction ? 'text-purple-500' : 'text-muted-foreground')}>
         <Icon className="h-4 w-4" />
       </div>
 

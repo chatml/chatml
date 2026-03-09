@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAppStore } from '@/stores/appStore';
 import { useSelectedIds, useFileTabState, useTodoState, useFileCommentStats, useReviewComments } from '@/stores/selectors';
-import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, createConversation, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
+import { listSessionFiles, getSessionFileContent, getSessionChanges, getSessionBranchCommits, getSessionFileDiff, sendConversationMessage, updateReviewComment as apiUpdateReviewComment, ApiError, ErrorCode, type FileChangeDTO, type BranchStatsDTO } from '@/lib/api';
 import { getDiffFromCache, setDiffInCache, invalidateDiffCache } from '@/lib/diffCache';
 import { getSessionData, setSessionData, invalidateSessionData } from '@/lib/sessionDataCache';
 import { formatReviewFeedback } from '@/lib/formatReviewFeedback';
+import { dispatchAppEvent } from '@/lib/custom-events';
+import type { Attachment } from '@/lib/types';
 import { FileTree, FileIcon, type FileNode, type FileTreeHandle } from '@/components/files/FileTree';
 import { TodoPanel } from '@/components/panels/TodoPanel';
 import { BudgetStatusPanel } from '@/components/panels/BudgetStatusPanel';
@@ -66,7 +68,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, toBase64 } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { InlineErrorFallback } from '@/components/shared/ErrorFallbacks';
 import type { FileTab } from '@/lib/types';
@@ -489,23 +491,28 @@ export function ChangesPanel() {
     sendConversationMessage(selectedConversationId, content).catch(console.error);
   }, [selectedConversationId]);
 
-  // Send unresolved review comments as feedback to AI via a dedicated review conversation
-  const handleSendFeedback = useCallback(async () => {
-    if (!selectedWorkspaceId || !selectedSessionId) return;
+  // Send unresolved review comments as feedback — opens in composer so user can add context
+  const handleSendFeedback = useCallback(() => {
+    const feedbackText = formatReviewFeedback(reviewComments);
+    if (!feedbackText) return;
 
-    const message = formatReviewFeedback(reviewComments);
-    if (!message) return;
+    const attachment: Attachment = {
+      id: `review-feedback-${Date.now()}`,
+      type: 'file',
+      name: 'Review Feedback',
+      mimeType: 'text/markdown',
+      size: new Blob([feedbackText]).size,
+      lineCount: feedbackText.split('\n').length,
+      base64Data: toBase64(feedbackText),
+      preview: feedbackText.slice(0, 200),
+      isInstruction: true,
+    };
 
-    try {
-      await createConversation(selectedWorkspaceId, selectedSessionId, {
-        type: 'review',
-        message,
-      });
-    } catch (error) {
-      // TODO: Show a toast notification once a toast library is added
-      console.error('Failed to send review feedback:', error);
-    }
-  }, [selectedWorkspaceId, selectedSessionId, reviewComments]);
+    dispatchAppEvent('compose-action', {
+      text: 'Fix the following review feedback',
+      attachments: [attachment],
+    });
+  }, [reviewComments]);
 
   // Resolve all unresolved review comments
   const updateReviewComment = useAppStore((s) => s.updateReviewComment);

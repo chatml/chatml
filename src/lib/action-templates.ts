@@ -115,6 +115,18 @@ export function getTemplateKey(actionType: string): ActionTemplateKey | null {
   return ACTION_TYPE_TO_TEMPLATE[actionType] ?? null;
 }
 
+/**
+ * Human-readable display names for template attachments.
+ */
+export const ACTION_TEMPLATE_NAMES: Record<ActionTemplateKey, string> = {
+  'resolve-conflicts': 'Resolve Conflicts Instructions',
+  'fix-issues': 'Fix Issues Instructions',
+  'continue-operation': 'Continue Operation Instructions',
+  'sync-branch': 'Sync Branch Instructions',
+  'create-pr': 'Create PR Instructions',
+  'merge-pr': 'Merge PR Instructions',
+};
+
 const VALID_MODES: Set<string> = new Set<string>(['append', 'replace']);
 
 /**

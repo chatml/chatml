@@ -25,7 +25,7 @@ interface PrimaryActionButtonProps {
   workspaceId: string | null;
   session: WorktreeSession | null | undefined;
   onSendMessage: (content: string) => void;
-  onSendMessageWithTemplate: (content: string, templateContent: string) => void;
+  onSendMessageWithTemplate: (content: string, templateContent: string, templateKey: ActionTemplateKey) => void;
   onFixIssues?: () => void;
   onArchiveSession?: (sessionId: string) => void;
   // Optional: pass pre-fetched data to avoid duplicate fetches
@@ -142,8 +142,8 @@ export function PrimaryActionButton({
   const handleSendWithTemplate = useCallback((content: string, actionType: PrimaryActionType) => {
     const templateKey = getTemplateKey(actionType);
     const templateContent = templateKey ? mergedTemplates[templateKey] : null;
-    if (templateContent) {
-      onSendMessageWithTemplate(content, templateContent);
+    if (templateContent && templateKey) {
+      onSendMessageWithTemplate(content, templateContent, templateKey);
     } else {
       onSendMessage(content);
     }
