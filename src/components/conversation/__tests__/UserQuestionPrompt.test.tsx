@@ -426,9 +426,24 @@ describe('UserQuestionPrompt', () => {
       expect(pending?.answers['Database']).toBe('PostgreSQL');
     });
 
-    it('submit is disabled until all questions are answered', () => {
+    it('footer button acts as next when current question answered but not all', () => {
       setPending(makeMultiPending());
       useAppStore.getState().updateUserQuestionAnswer(CONV_ID, 'Framework', 'React');
+
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+
+      // Button should be enabled (acts as "Next", not "Submit")
+      const button = screen.getByTestId('submit-question');
+      expect(button).not.toBeDisabled();
+
+      // Clicking it should advance to next question
+      fireEvent.click(button);
+      const pending = useAppStore.getState().pendingUserQuestion[CONV_ID];
+      expect(pending?.currentIndex).toBe(1);
+    });
+
+    it('footer button is disabled when current question has no answer', () => {
+      setPending(makeMultiPending());
 
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
 

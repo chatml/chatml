@@ -186,6 +186,16 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
     });
   }, [pending]);
 
+  // Check if the current question has an answer (for advancing in multi-question flows)
+  const currentQuestionAnswered = useMemo(() => {
+    if (!pending || !currentQuestion) return false;
+    const answer = pending.answers[currentQuestion.header];
+    return !!answer && answer.length > 0;
+  }, [pending, currentQuestion]);
+
+  const isLastQuestion = currentIndex === totalQuestions - 1;
+  const shouldAdvance = !isLastQuestion && currentQuestionAnswered && !canSubmit;
+
   // Sync free-text state when the current question changes
   const currentHeader = currentQuestion?.header;
   const hasFreeText = currentQuestion && currentQuestion.options.length === 0;
@@ -507,8 +517,8 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                   ? 'bg-brand hover:bg-brand/90 text-primary-foreground border-brand'
                   : 'bg-foreground hover:bg-foreground/90 text-background border-foreground'
               )}
-              disabled={!canSubmit || isSubmitting}
-              onClick={handleSubmit}
+              disabled={!(shouldAdvance || canSubmit) || isSubmitting}
+              onClick={shouldAdvance ? handleNext : handleSubmit}
               data-testid="submit-question"
             >
               {isSubmitting ? (
