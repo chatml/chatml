@@ -5,8 +5,8 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "copy-monaco": "[ -d public/vs ] || cp -r node_modules/monaco-editor/min/vs public/vs",
-    "dev": "pnpm run copy-monaco && next dev --turbopack --port 3100",
-    "build": "pnpm run copy-monaco && next build",
+    "dev": "npm run copy-monaco && next dev --turbopack --port 3100",
+    "build": "npm run copy-monaco && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
