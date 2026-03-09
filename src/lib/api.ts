@@ -960,6 +960,7 @@ export interface AttachmentDTO {
   height?: number;
   base64Data?: string;
   preview?: string;
+  isInstruction?: boolean; // Frontend-only: not persisted by the backend
 }
 
 export interface ToolUsageDTO {

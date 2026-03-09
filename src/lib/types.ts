@@ -223,6 +223,7 @@ export interface Attachment {
   height?: number;           // For images
   base64Data?: string;       // Loaded on demand before send
   preview?: string;          // Text preview (first N chars)
+  isInstruction?: boolean;   // Frontend-only: visual distinction for template/instruction attachments (not persisted by backend)
 }
 
 // SuggestionPill = A clickable suggestion option
