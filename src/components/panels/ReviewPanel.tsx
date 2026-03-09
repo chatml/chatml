@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import {
@@ -68,8 +68,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
   const [fetchSession, setFetchSession] = useState<string | null>(null);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const [groupByFile, setGroupByFile] = useState(false);
-  const addedToChatIdsRef = useRef<Set<string>>(new Set());
-  const [, forceUpdate] = useState(0);
+  const [addedToChatIds, setAddedToChatIds] = useState<Set<string>>(new Set());
 
   const comments = useAppStore((s) =>
     sessionId ? s.reviewComments[sessionId] || EMPTY : EMPTY
@@ -220,8 +219,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
 
   const handleAddToChatTracked = useCallback((comment: ReviewComment) => {
     handleAddToChat(comment);
-    addedToChatIdsRef.current.add(comment.id);
-    forceUpdate((n) => n + 1);
+    setAddedToChatIds((prev) => new Set(prev).add(comment.id));
   }, []);
 
   if (!sessionId) {
@@ -376,7 +374,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                             onResolveAs={(type) => handleResolveAs(comment.id, type)}
                             onUnresolve={() => handleUnresolve(comment.id)}
                             onAddToChat={handleAddToChatTracked}
-                            addedToChat={addedToChatIdsRef.current.has(comment.id)}
+                            addedToChat={addedToChatIds.has(comment.id)}
                           />
                         ))}
                       </div>
@@ -393,7 +391,7 @@ export function ReviewPanel({ workspaceId, sessionId, onFileSelect, onSendFeedba
                   onResolveAs={(type) => handleResolveAs(comment.id, type)}
                   showFilePath
                   onAddToChat={handleAddToChatTracked}
-                  addedToChat={addedToChatIdsRef.current.has(comment.id)}
+                  addedToChat={addedToChatIds.has(comment.id)}
                 />
               ))
             )}
