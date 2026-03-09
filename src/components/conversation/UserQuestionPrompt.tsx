@@ -5,7 +5,7 @@ import { usePendingUserQuestion, useUserQuestionActions } from '@/stores/selecto
 import { useAppStore } from '@/stores/appStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, ArrowUp, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight, Loader2, X, Pencil, Check } from 'lucide-react';
 import { answerConversationQuestion } from '@/lib/api';
 import { useToast } from '@/components/ui/toast';
 import type { UserQuestion } from '@/lib/types';
@@ -266,85 +266,199 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [currentQuestion, isSubmitting, otherNumber, handleOptionToggle]);
 
+  // Whether user is actively typing custom "Other" text
+  const isOtherTextActive = otherSelected && otherTextValue.length > 0;
+
+  // Selected count for multi-select footer
+  const selectedCount = useMemo(() => {
+    if (!currentQuestion?.multiSelect) return 0;
+    return selectedValues.size + (isOtherTextActive ? 1 : 0);
+  }, [currentQuestion?.multiSelect, selectedValues.size, isOtherTextActive]);
+
   if (!pending || !currentQuestion) return null;
 
   return (
     <div ref={containerRef} className="pt-1 px-3 pb-3">
-      <div className="relative rounded-lg border border-border bg-card dark:bg-input">
+      <div className="relative rounded-xl border border-border bg-card dark:bg-input">
         {/* Question Header */}
-        <div className="flex items-start justify-between px-4 pt-4 pb-2">
-          <p className="text-base font-medium text-foreground leading-relaxed pr-8">{currentQuestion.question}</p>
-          {totalQuestions > 1 && (
-            <span className="text-sm text-muted-foreground shrink-0 mt-0.5" data-testid="question-counter">
-              {currentIndex + 1}/{totalQuestions}
-            </span>
-          )}
+        <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
+          <p className="text-base font-semibold text-foreground leading-relaxed">{currentQuestion.question}</p>
+          <div className="flex items-center gap-1 shrink-0 mt-0.5">
+            {totalQuestions > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous question"
+                  className="p-0.5 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-30 transition-colors"
+                  disabled={currentIndex === 0}
+                  onClick={handlePrev}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="text-sm text-muted-foreground/60 tabular-nums" data-testid="question-counter">
+                  {currentIndex + 1} of {totalQuestions}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next question"
+                  className="p-0.5 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-30 transition-colors"
+                  disabled={currentIndex === totalQuestions - 1}
+                  onClick={handleNext}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              aria-label="Dismiss question"
+              className={cn(
+                'p-1 text-muted-foreground/60 hover:text-muted-foreground transition-colors',
+                totalQuestions > 1 && 'ml-1'
+              )}
+              onClick={handleDismiss}
+              disabled={isSubmitting}
+              data-testid="dismiss-question"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Options List or Free-text Input — key forces remount when question changes */}
-        <div key={currentQuestion.header} className="px-4 pb-2">
+        <div key={currentQuestion.header} className="px-2 pb-1">
           {currentQuestion.options.length > 0 ? (
-            <div className="rounded-lg border border-border/60 overflow-hidden">
+            <>
+              {/* Option rows with dividers */}
               {currentQuestion.options.map((option, index) => {
                 const isSelected = selectedValues.has(option.label);
+                const effectiveSelected = isSelected && (!otherSelected || currentQuestion.multiSelect);
                 return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    onClick={() => handleOptionToggle(option.label)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors duration-150 border-b border-border/40',
-                      isSelected && (!otherSelected || currentQuestion.multiSelect)
-                        ? 'bg-brand/10 text-foreground'
-                        : 'text-foreground/80 hover:bg-surface-1/40 hover:text-foreground'
-                    )}
-                    data-testid={`option-${index}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium block">{option.label}</span>
-                      {option.description && (
-                        <span className="text-xs text-muted-foreground block mt-0.5">{option.description}</span>
+                  <div key={option.label}>
+                    <button
+                      type="button"
+                      onClick={() => handleOptionToggle(option.label)}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150',
+                        effectiveSelected
+                          ? 'bg-brand/10 text-foreground'
+                          : 'text-foreground/80 hover:bg-muted/30 hover:text-foreground',
+                        isOtherTextActive && !currentQuestion.multiSelect && 'opacity-50'
                       )}
-                    </div>
-                    <span className={cn(
-                      'inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded text-xs font-mono shrink-0 transition-colors duration-150',
-                      isSelected && (!otherSelected || currentQuestion.multiSelect)
-                        ? 'bg-brand/20 text-brand'
-                        : 'bg-muted/50 text-muted-foreground'
-                    )}>
-                      {index + 1}
-                    </span>
-                  </button>
+                      data-testid={`option-${index}`}
+                    >
+                      {/* Left indicator: checkbox for multi-select, number circle for single-select */}
+                      {currentQuestion.multiSelect ? (
+                        <div className={cn(
+                          'flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors',
+                          effectiveSelected
+                            ? 'border-brand bg-brand'
+                            : 'border-muted-foreground/30'
+                        )}>
+                          {effectiveSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                        </div>
+                      ) : (
+                        <span className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 text-xs font-medium text-muted-foreground shrink-0">
+                          {index + 1}
+                        </span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium block">{option.label}</span>
+                        {option.description && (
+                          <span className="text-xs text-muted-foreground block mt-0.5">{option.description}</span>
+                        )}
+                      </div>
+                      {/* Right arrow for selected single-select option */}
+                      {!currentQuestion.multiSelect && effectiveSelected && (
+                        <ArrowRight className="h-4 w-4 text-foreground/60 shrink-0" />
+                      )}
+                    </button>
+                    {/* Divider between options */}
+                    {index < currentQuestion.options.length - 1 && (
+                      <div className="h-px bg-border/40 mx-3" />
+                    )}
+                  </div>
                 );
               })}
 
-              {/* "Other" option — always last in the list */}
-              <button
-                type="button"
-                onClick={() => handleOptionToggle(OTHER_OPTION_LABEL)}
-                className={cn(
-                  'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors duration-150',
-                  otherSelected
-                    ? 'bg-brand/10 text-foreground'
-                    : 'text-foreground/60 hover:bg-surface-1/40 hover:text-foreground'
-                )}
-                data-testid="other-option"
-              >
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm block">Type something else...</span>
+              {/* Divider before "Something else" */}
+              <div className="h-px bg-border/40 mx-3" />
+
+              {/* "Something else" row — renders as <button> when collapsed,
+                  <div> when expanded to avoid invalid HTML (interactive <input>
+                  nested inside <button>). */}
+              {otherSelected ? (
+                <div
+                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 bg-brand/10 cursor-pointer"
+                  data-testid="other-option"
+                  onClick={(e) => {
+                    // Toggle off when clicking anywhere except the text input
+                    if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                      handleOptionToggle(OTHER_OPTION_LABEL);
+                    }
+                  }}
+                >
+                  {/* Left icon */}
+                  {currentQuestion.multiSelect ? (
+                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 border-brand bg-brand shrink-0 transition-colors">
+                      <Check className="h-3 w-3 text-primary-foreground" />
+                    </div>
+                  ) : (
+                    <span className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 shrink-0">
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="text"
+                      className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+                      placeholder="Something else"
+                      value={otherTextValue}
+                      onChange={(e) => {
+                        setOtherTextValue(e.target.value);
+                        if (!currentQuestion.multiSelect) {
+                          updateUserQuestionAnswer(conversationId, currentQuestion.header, e.target.value);
+                        } else {
+                          const currentAnswer = useAppStore.getState().pendingUserQuestion[conversationId]?.answers[currentQuestion.header] || '';
+                          const optionLabels = new Set(currentQuestion.options.map(o => o.label));
+                          const regularSelections = currentAnswer.split(',').filter(v => v && optionLabels.has(v));
+                          if (e.target.value) {
+                            regularSelections.push(e.target.value);
+                          }
+                          updateUserQuestionAnswer(conversationId, currentQuestion.header, regularSelections.join(','));
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && otherTextValue.trim() && !isSubmitting) {
+                          e.preventDefault();
+                          handleSubmit();
+                        }
+                      }}
+                      autoFocus
+                      data-testid="other-text-input"
+                    />
+                  </div>
                 </div>
-                <span className={cn(
-                  'inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded text-xs font-mono shrink-0 transition-colors duration-150',
-                  otherSelected
-                    ? 'bg-brand/20 text-brand'
-                    : 'bg-muted/50 text-muted-foreground'
-                )}>
-                  {otherNumber}
-                </span>
-              </button>
-            </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleOptionToggle(OTHER_OPTION_LABEL)}
+                  className="w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-all duration-150 hover:bg-muted/30"
+                  data-testid="other-option"
+                >
+                  {currentQuestion.multiSelect ? (
+                    <div className="flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors border-muted-foreground/30" />
+                  ) : (
+                    <span className="flex items-center justify-center h-7 w-7 rounded-full bg-muted/50 shrink-0">
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </span>
+                  )}
+                  <span className="text-sm text-muted-foreground/50">Something else</span>
+                </button>
+              )}
+            </>
           ) : (
-            <div className="py-1">
+            <div className="px-3 py-1">
               <input
                 type="text"
                 className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -365,105 +479,45 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
               />
             </div>
           )}
-
-          {/* Inline text input when "Other" is selected */}
-          {otherSelected && currentQuestion.options.length > 0 && (
-            <div className="mt-2 animate-fade-in">
-              <input
-                type="text"
-                className="w-full px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Type your answer..."
-                value={otherTextValue}
-                onChange={(e) => {
-                  setOtherTextValue(e.target.value);
-                  if (!currentQuestion.multiSelect) {
-                    updateUserQuestionAnswer(conversationId, currentQuestion.header, e.target.value);
-                  } else {
-                    // Combine regular selections with the custom text
-                    const currentAnswer = useAppStore.getState().pendingUserQuestion[conversationId]?.answers[currentQuestion.header] || '';
-                    const optionLabels = new Set(currentQuestion.options.map(o => o.label));
-                    const regularSelections = currentAnswer.split(',').filter(v => v && optionLabels.has(v));
-                    if (e.target.value) {
-                      regularSelections.push(e.target.value);
-                    }
-                    updateUserQuestionAnswer(conversationId, currentQuestion.header, regularSelections.join(','));
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && otherTextValue.trim() && !isSubmitting) {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
-                }}
-                autoFocus
-                data-testid="other-text-input"
-              />
-            </div>
-          )}
         </div>
 
-        {/* Footer with skip, pagination, and submit */}
-        <div className="flex items-center justify-between px-4 pb-3 pt-1">
-          {/* Skip button */}
-          <Button
-            variant="ghost"
-            className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
-            onClick={handleDismiss}
-            disabled={isSubmitting}
-            data-testid="skip-question"
-          >
-            Skip
-          </Button>
+        {/* Footer with selected count, skip, and submit */}
+        <div className="flex items-center justify-between px-5 pb-3 pt-1">
+          {/* Left: selected count for multi-select */}
+          <div className="text-sm text-muted-foreground">
+            {currentQuestion.multiSelect && selectedCount > 0 && `${selectedCount} selected`}
+          </div>
 
-          {/* Pagination (multi-question wizard) */}
-          {totalQuestions > 1 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                disabled={currentIndex === 0}
-                onClick={handlePrev}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="flex items-center gap-1.5">
-                {Array.from({ length: totalQuestions }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'w-2 h-2 rounded-full transition-colors',
-                      i === currentIndex ? 'bg-foreground' : 'bg-muted-foreground/40'
-                    )}
-                  />
-                ))}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                disabled={currentIndex === totalQuestions - 1}
-                onClick={handleNext}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-
-          {/* Submit Button */}
-          <Button
-            size="icon"
-            className="h-8 w-8 rounded-md"
-            disabled={!canSubmit || isSubmitting}
-            onClick={handleSubmit}
-            data-testid="submit-question"
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </Button>
+          {/* Right: Skip + Submit */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="h-8 px-4 text-sm"
+              onClick={handleDismiss}
+              disabled={isSubmitting}
+              data-testid="skip-question"
+            >
+              Skip
+            </Button>
+            <Button
+              size="icon"
+              className={cn(
+                'h-8 w-8 rounded-lg',
+                isOtherTextActive
+                  ? 'bg-brand hover:bg-brand/90 text-primary-foreground border-brand'
+                  : 'bg-foreground hover:bg-foreground/90 text-background border-foreground'
+              )}
+              disabled={!canSubmit || isSubmitting}
+              onClick={handleSubmit}
+              data-testid="submit-question"
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowRight className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
