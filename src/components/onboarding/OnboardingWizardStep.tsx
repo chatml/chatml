@@ -12,7 +12,7 @@ export function OnboardingWizardStep({ icon, title, children }: OnboardingWizard
   return (
     <div className="flex flex-col items-center text-center max-w-md mx-auto">
       {icon && (
-        <div className="mb-6 min-w-16 h-16 px-4 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-lg shadow-primary/5">
+        <div className="mb-6 min-w-16 h-16 px-4 rounded-2xl bg-brand/10 border border-brand/20 flex items-center justify-center shadow-lg shadow-brand/5">
           {icon}
         </div>
       )}

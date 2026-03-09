@@ -100,7 +100,7 @@ function ConversationSkeleton() {
         <div className="flex gap-3 justify-end">
           <div className="flex-1 max-w-[80%] space-y-2">
             <div className="h-3 w-16 bg-muted-foreground/20 rounded animate-pulse ml-auto" />
-            <div className="h-12 w-full bg-primary/10 rounded-lg animate-pulse" />
+            <div className="h-12 w-full bg-muted rounded-lg animate-pulse" />
           </div>
         </div>
 

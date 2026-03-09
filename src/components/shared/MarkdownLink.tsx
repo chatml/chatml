@@ -39,7 +39,7 @@ export function MarkdownLink({
       {...props}
       href={href}
       onClick={handleClick}
-      className="text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer"
+      className="text-brand underline underline-offset-2 hover:text-brand/80 cursor-pointer"
     >
       {children}
     </a>

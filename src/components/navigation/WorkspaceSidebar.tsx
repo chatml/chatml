@@ -1371,7 +1371,7 @@ function SessionRow({
       return { text: 'Checks failing', color: 'text-text-error', icon: XCircle };
     }
     if (session.prStatus === 'merged') {
-      return { text: 'Merged', color: 'text-primary', icon: CheckCircle2 };
+      return { text: 'Merged', color: 'text-brand', icon: CheckCircle2 };
     }
     if (session.prStatus === 'open') {
       if (session.checkStatus === 'pending') {
@@ -1399,7 +1399,7 @@ function SessionRow({
         >
           {/* Unread indicator dot — absolutely positioned in left padding area */}
           {isSessionUnread && !isSessionSelected && (
-            <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary" />
+            <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-brand" />
           )}
           {/* Content column */}
           <div className="flex flex-col flex-1 min-w-0">

@@ -120,7 +120,7 @@ export function BackendStatus({
       <div className="text-center max-w-md px-6">
         {state === 'connecting' && (
           <>
-            <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-4" />
+            <Loader2 className="w-10 h-10 animate-spin text-brand mx-auto mb-4" />
             <h2 className="text-lg font-semibold mb-2">Starting ChatML</h2>
             <p className="text-sm text-muted-foreground mb-2">
               Connecting to backend service...

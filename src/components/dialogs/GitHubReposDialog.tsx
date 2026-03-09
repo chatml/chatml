@@ -119,7 +119,7 @@ function RepoRow({
         'w-full text-left flex items-center gap-3 px-4 py-1.5 transition-colors cursor-pointer outline-none',
         'border-l-2 border-l-transparent',
         'hover:bg-muted/40',
-        isSelected && 'bg-primary/8 dark:bg-primary/12 border-l-primary',
+        isSelected && 'bg-brand/8 dark:bg-brand/12 border-l-brand',
         isFocused && !isSelected && 'bg-muted/30',
       )}
     >

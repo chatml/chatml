@@ -47,7 +47,7 @@ export function ApiKeyStep({ authStatus }: ApiKeyStepProps) {
 
   return (
     <OnboardingWizardStep
-      icon={<KeyRound className="w-8 h-8 text-primary" />}
+      icon={<KeyRound className="w-8 h-8 text-brand" />}
       title="Connect credentials"
     >
       <p>
@@ -59,7 +59,7 @@ export function ApiKeyStep({ authStatus }: ApiKeyStepProps) {
         href="https://console.anthropic.com/settings/keys"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-brand hover:text-brand/80 transition-colors"
       >
         Get an API key
         <ExternalLink className="w-3.5 h-3.5" />

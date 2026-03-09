@@ -31,7 +31,7 @@ export const TodoToolDetail = memo(function TodoToolDetail({ todos }: TodoToolDe
             {todo.status === 'completed' ? (
               <CheckCircle2 className="w-3 h-3 text-text-success" />
             ) : todo.status === 'in_progress' ? (
-              <Circle className="w-3 h-3 text-primary" />
+              <Circle className="w-3 h-3 text-brand" />
             ) : (
               <Circle className="w-3 h-3 text-muted-foreground/50" />
             )}

@@ -6,7 +6,7 @@ import { OnboardingWizardStep } from '../OnboardingWizardStep';
 export function SessionsStep() {
   return (
     <OnboardingWizardStep
-      icon={<GitBranch className="w-8 h-8 text-primary" />}
+      icon={<GitBranch className="w-8 h-8 text-brand" />}
       title="Sessions"
     >
       <p>
@@ -19,7 +19,7 @@ export function SessionsStep() {
             key={name}
             className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg bg-muted/50 border border-border"
           >
-            <GitBranch className="w-4 h-4 text-primary/70" />
+            <GitBranch className="w-4 h-4 text-brand/70" />
             <span className="text-xs text-muted-foreground">{name}</span>
           </div>
         ))}

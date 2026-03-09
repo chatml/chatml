@@ -55,7 +55,7 @@ function ToolRow({ tool }: { tool: PrerequisiteStatus }) {
           {tool.installUrl && (
             <button
               onClick={() => openUrlInBrowser(tool.installUrl!)}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors mt-1"
+              className="inline-flex items-center gap-1 text-xs text-brand hover:text-brand/80 transition-colors mt-1"
             >
               Learn more
               <ExternalLink className="w-3 h-3" />
@@ -99,7 +99,7 @@ export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) 
   if (loading) {
     return (
       <OnboardingWizardStep
-        icon={<Cpu className="w-8 h-8 text-primary" />}
+        icon={<Cpu className="w-8 h-8 text-brand" />}
         title="Checking system"
       >
         <div className="flex items-center justify-center gap-2 text-muted-foreground">
@@ -114,7 +114,7 @@ export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) 
   if (!result) {
     return (
       <OnboardingWizardStep
-        icon={<Cpu className="w-8 h-8 text-primary" />}
+        icon={<Cpu className="w-8 h-8 text-brand" />}
         title="System requirements"
       >
         <p className="text-muted-foreground">
@@ -129,7 +129,7 @@ export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) 
 
   return (
     <OnboardingWizardStep
-      icon={<Cpu className="w-8 h-8 text-primary" />}
+      icon={<Cpu className="w-8 h-8 text-brand" />}
       title={allOk ? 'System ready' : 'System requirements'}
     >
       <div className="space-y-3 w-full">
@@ -141,7 +141,7 @@ export function PrerequisitesStep({ onAllCriticalMet }: PrerequisitesStepProps) 
       {!allOk && (
         <button
           onClick={runChecks}
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors mt-2"
+          className="inline-flex items-center gap-1.5 text-sm text-brand hover:text-brand/80 transition-colors mt-2"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Re-check

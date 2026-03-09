@@ -101,7 +101,7 @@ export const CodeViewerDetail = memo(function CodeViewerDetail({
             <span>Showing {MAX_LINES.toLocaleString()} of {totalLines.toLocaleString()} lines</span>
             <button
               onClick={() => setShowAll(true)}
-              className="text-primary hover:underline font-medium"
+              className="text-brand hover:underline font-medium"
             >
               Show all
             </button>

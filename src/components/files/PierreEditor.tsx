@@ -137,7 +137,7 @@ export const PierreEditor = memo(function PierreEditor({
             <span>Showing {MAX_LINES.toLocaleString()} of {totalLines.toLocaleString()} lines</span>
             <button
               onClick={handleShowAll}
-              className="text-primary hover:underline font-medium"
+              className="text-brand hover:underline font-medium"
             >
               Show all
             </button>

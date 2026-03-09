@@ -113,7 +113,7 @@ export function RecentSessionItem({ session, workspace, workspaceColors }: Recen
           {session.prNumber && session.prStatus === 'open' && (
             <>
               <span className="text-border">·</span>
-              <span className="shrink-0 text-primary">#{session.prNumber}</span>
+              <span className="shrink-0 text-brand">#{session.prNumber}</span>
             </>
           )}
         </div>

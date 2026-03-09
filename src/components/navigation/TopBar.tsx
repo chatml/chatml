@@ -125,7 +125,7 @@ export function TopBar({
       <div className="flex items-center gap-1.5 ml-2 text-sm">
         <HoverCard>
           <HoverCardTrigger asChild>
-            <span className="text-base text-primary font-semibold cursor-default hover:text-primary/80 transition-colors">
+            <span className="text-base text-brand font-semibold cursor-default hover:text-brand/80 transition-colors">
               {selectedWorkspace.name}
             </span>
           </HoverCardTrigger>

@@ -153,8 +153,8 @@ export function SettingsPage({
         const el = document.querySelector(`[data-setting-id="${settingId}"]`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('bg-primary/5');
-          setTimeout(() => el.classList.remove('bg-primary/5'), 1500);
+          el.classList.add('bg-brand/5');
+          setTimeout(() => el.classList.remove('bg-brand/5'), 1500);
           return;
         }
       }

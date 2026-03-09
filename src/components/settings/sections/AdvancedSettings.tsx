@@ -443,7 +443,7 @@ function EnvSection() {
             href="https://docs.anthropic.com/en/docs/claude-code"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary hover:underline inline-flex items-center gap-0.5"
+            className="text-brand hover:underline inline-flex items-center gap-0.5"
           >
             View docs
             <ExternalLink className="w-3 h-3" />
