@@ -10,6 +10,13 @@ const mockLogout = vi.fn().mockResolvedValue(undefined);
 const mockStartLinearOAuthFlow = vi.fn().mockResolvedValue(undefined);
 const mockLinearLogout = vi.fn().mockResolvedValue(undefined);
 const mockCancelLinearOAuthFlow = vi.fn();
+const mockCheckGhAuthStatus = vi.fn().mockResolvedValue({
+  installed: true,
+  version: '2.40.1',
+  authenticated: true,
+  username: 'jdoe',
+});
+const mockOpenUrlInBrowser = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/lib/auth', () => ({
   logout: (...args: unknown[]) => mockLogout(...args),
@@ -19,6 +26,11 @@ vi.mock('@/lib/linearAuth', () => ({
   startLinearOAuthFlow: (...args: unknown[]) => mockStartLinearOAuthFlow(...args),
   linearLogout: (...args: unknown[]) => mockLinearLogout(...args),
   cancelLinearOAuthFlow: (...args: unknown[]) => mockCancelLinearOAuthFlow(...args),
+}));
+
+vi.mock('@/lib/tauri', () => ({
+  checkGhAuthStatus: (...args: unknown[]) => mockCheckGhAuthStatus(...args),
+  openUrlInBrowser: (...args: unknown[]) => mockOpenUrlInBrowser(...args),
 }));
 
 describe('AccountSettings', () => {

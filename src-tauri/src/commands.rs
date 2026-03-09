@@ -467,6 +467,79 @@ pub fn check_prerequisites() -> PrerequisitesResult {
     }
 }
 
+/// Status of GitHub CLI installation and authentication
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GhCliStatus {
+    pub installed: bool,
+    pub version: Option<String>,
+    pub authenticated: bool,
+    pub username: Option<String>,
+}
+
+/// Check GitHub CLI installation and authentication status.
+/// Uses the user's login shell PATH to find `gh`.
+#[tauri::command]
+pub fn check_gh_auth_status() -> GhCliStatus {
+    let user_path = sidecar::resolve_user_path();
+
+    // Check if gh is installed
+    let version_output = Command::new("gh")
+        .args(["--version"])
+        .env("PATH", &user_path)
+        .output();
+
+    let version = match version_output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            // Parse version from "gh version 2.40.1 (2024-01-01)" format
+            stdout
+                .split_whitespace()
+                .find(|s| {
+                    s.starts_with('v') || s.chars().next().is_some_and(|c| c.is_ascii_digit())
+                })
+                .map(|v| v.trim_start_matches('v').to_string())
+        }
+        _ => {
+            return GhCliStatus {
+                installed: false,
+                version: None,
+                authenticated: false,
+                username: None,
+            };
+        }
+    };
+
+    // Check authentication: exit code 0 = authenticated, 1 = not
+    let auth_output = Command::new("gh")
+        .args(["auth", "status"])
+        .env("PATH", &user_path)
+        .output();
+
+    let authenticated = matches!(&auth_output, Ok(output) if output.status.success());
+
+    // Get username reliably via the API (works regardless of gh output format)
+    let username = if authenticated {
+        Command::new("gh")
+            .args(["api", "user", "--jq", ".login"])
+            .env("PATH", &user_path)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+    } else {
+        None
+    };
+
+    GhCliStatus {
+        installed: true,
+        version,
+        authenticated,
+        username,
+    }
+}
+
 /// Count lines in a text file
 #[tauri::command]
 pub fn count_file_lines(path: String) -> Result<usize, String> {

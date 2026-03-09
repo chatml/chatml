@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, LogOut, Loader2 } from 'lucide-react';
@@ -8,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
 import { logout } from '@/lib/auth';
 import { startLinearOAuthFlow, linearLogout, cancelLinearOAuthFlow } from '@/lib/linearAuth';
+import { checkGhAuthStatus, openUrlInBrowser, type GhCliStatus } from '@/lib/tauri';
 import { SettingsRow } from '../shared/SettingsRow';
 import { SettingsGroup } from '../shared/SettingsGroup';
 
@@ -53,6 +55,39 @@ export function AccountSettings() {
       console.error('Failed to disconnect Linear:', error);
     }
   };
+
+  // GitHub CLI status
+  const [ghStatus, setGhStatus] = useState<GhCliStatus | null>(null);
+  const [ghLoading, setGhLoading] = useState(true);
+  const [ghError, setGhError] = useState(false);
+
+  const recheckGhStatus = useCallback(async () => {
+    setGhLoading(true);
+    setGhError(false);
+    try {
+      const status = await checkGhAuthStatus();
+      if (status === null) {
+        setGhError(true);
+      }
+      setGhStatus(status);
+    } finally {
+      setGhLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    recheckGhStatus();
+  }, [recheckGhStatus]);
+
+  const ghDescription = ghLoading
+    ? 'Checking...'
+    : ghError
+      ? 'Unable to check GitHub CLI status.'
+      : !ghStatus?.installed
+        ? 'GitHub CLI is not installed.'
+        : ghStatus.authenticated && ghStatus.username
+          ? `Authenticated as @${ghStatus.username}`
+          : `Installed${ghStatus.version ? ` (v${ghStatus.version})` : ''} but not authenticated.`;
 
   return (
     <div>
@@ -101,6 +136,45 @@ export function AccountSettings() {
       </SettingsGroup>
 
       <SettingsGroup label="Integrations">
+        {/* GitHub CLI Integration */}
+        <SettingsRow
+          settingId="githubCli"
+          title="GitHub CLI"
+          description={ghDescription}
+          badge={
+            ghLoading
+              ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              : ghStatus?.authenticated
+                ? <CheckCircle2 className="w-4 h-4 text-text-success" />
+                : undefined
+          }
+        >
+          {ghLoading ? (
+            <span />
+          ) : ghError ? (
+            <Button variant="ghost" size="sm" onClick={recheckGhStatus}>
+              Re-check
+            </Button>
+          ) : !ghStatus?.installed ? (
+            <Button variant="outline" size="sm" onClick={() => openUrlInBrowser('https://cli.github.com')}>
+              Install
+            </Button>
+          ) : !ghStatus.authenticated ? (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => openUrlInBrowser('https://cli.github.com/manual/gh_auth_login')}>
+                How to authenticate
+              </Button>
+              <Button variant="ghost" size="sm" onClick={recheckGhStatus}>
+                Re-check
+              </Button>
+            </div>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={recheckGhStatus}>
+              Re-check
+            </Button>
+          )}
+        </SettingsRow>
+
         {/* Linear Integration */}
         <SettingsRow
           settingId="linearIntegration"
@@ -135,20 +209,6 @@ export function AccountSettings() {
               )}
             </div>
           )}
-        </SettingsRow>
-
-        {/* GitHub CLI Integration */}
-        <SettingsRow
-          settingId="githubCli"
-          title="GitHub CLI"
-          description={
-            user
-              ? `Authenticated as @${user.login}`
-              : 'Not connected. Sign in to enable GitHub integration.'
-          }
-          badge={user ? <CheckCircle2 className="w-4 h-4 text-text-success" /> : undefined}
-        >
-          <span />
         </SettingsRow>
       </SettingsGroup>
 
