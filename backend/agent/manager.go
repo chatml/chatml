@@ -2960,12 +2960,15 @@ You have access to ChatML MCP tools:
 - `+"`"+`mcp__chatml__get_recent_activity`+"`"+` — recent git log
 - `+"`"+`mcp__chatml__add_review_comment`+"`"+` — leave inline code review comments visible in the ChatML UI
 - `+"`"+`mcp__chatml__list_review_comments`+"`"+` / `+"`"+`mcp__chatml__get_review_comment_stats`+"`"+` — read review comments
+- `+"`"+`mcp__chatml__resolve_review_comment`+"`"+` — mark a review comment as fixed or ignored after addressing it
 - `+"`"+`mcp__chatml__report_pr_created`+"`"+` — report PR creation to update the ChatML sidebar
 - `+"`"+`mcp__chatml__report_pr_merged`+"`"+` — report PR merge to update session status
 
 **After creating a PR** (with `+"`"+`gh pr create`+"`"+` or any other method), ALWAYS call `+"`"+`mcp__chatml__report_pr_created`+"`"+` with the PR number and URL. This ensures the PR badge appears immediately in the sidebar.
 
 **After merging a PR** (with `+"`"+`gh pr merge`+"`"+` or any other method), ALWAYS call `+"`"+`mcp__chatml__report_pr_merged`+"`"+` to update the session status.
+
+**After fixing a review comment**, call `+"`"+`mcp__chatml__resolve_review_comment`+"`"+` with the comment's ID to mark it as resolved. The comment ID is provided in the review comment attachment.
 
 Do NOT use `+"`"+`mcp__chatml__start_linear_issue`+"`"+` — it creates git branches inside the worktree, which conflicts with the session model. Use the Linear MCP server directly for Linear operations.`,
 		session.Name,
