@@ -104,6 +104,7 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
           BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
@@ -111,6 +112,9 @@ jobs:
           if [ -n "$GITHUB_CLIENT_ID" ]; then
             LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          if [ -n "$LINEAR_CLIENT_ID" ]; then
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.linearClientID=$LINEAR_CLIENT_ID'"
           fi
           GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-aarch64-apple-darwin .
@@ -120,6 +124,7 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
           BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
@@ -127,6 +132,9 @@ jobs:
           if [ -n "$GITHUB_CLIENT_ID" ]; then
             LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          if [ -n "$LINEAR_CLIENT_ID" ]; then
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.linearClientID=$LINEAR_CLIENT_ID'"
           fi
           GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-apple-darwin .
@@ -136,6 +144,7 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
           BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
@@ -143,6 +152,9 @@ jobs:
           if [ -n "$GITHUB_CLIENT_ID" ]; then
             LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          if [ -n "$LINEAR_CLIENT_ID" ]; then
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.linearClientID=$LINEAR_CLIENT_ID'"
           fi
           GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu .
@@ -153,6 +165,7 @@ jobs:
         env:
           GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
           BUILD_VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           cd backend
@@ -160,6 +173,9 @@ jobs:
           if [ -n "$GITHUB_CLIENT_ID" ]; then
             LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.githubClientID=$GITHUB_CLIENT_ID' \
               -X 'github.com/chatml/chatml-backend/server.githubClientSecret=$GITHUB_CLIENT_SECRET'"
+          fi
+          if [ -n "$LINEAR_CLIENT_ID" ]; then
+            LDFLAGS="$LDFLAGS -X 'github.com/chatml/chatml-backend/server.linearClientID=$LINEAR_CLIENT_ID'"
           fi
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" \
             -o ../src-tauri/binaries/chatml-backend-x86_64-pc-windows-msvc.exe .
@@ -206,6 +222,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GitHub OAuth (embedded in frontend at build time)
           NEXT_PUBLIC_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          # Linear OAuth (embedded in frontend at build time)
+          NEXT_PUBLIC_LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
           # Tauri update signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

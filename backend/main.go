@@ -139,6 +139,9 @@ func main() {
 
 	// Linear OAuth client
 	linearConfig := server.LoadLinearConfig()
+	if linearConfig.ClientID == "" {
+		logger.Linear.Warn("LINEAR_CLIENT_ID not configured — Linear integration disabled")
+	}
 	linearClient := linear.NewClient(linearConfig.ClientID)
 
 	// Set up token refresh persistence callback

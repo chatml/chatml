@@ -14,7 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { listMyLinearIssues, searchLinearIssues, type LinearIssueDTO } from '@/lib/api';
 import { useLinearAuthStore } from '@/stores/linearAuthStore';
-import { startLinearOAuthFlow } from '@/lib/linearAuth';
+import { startLinearOAuthFlow, isLinearConfigured } from '@/lib/linearAuth';
 
 interface LinearIssuePickerProps {
   open: boolean;
@@ -108,12 +108,16 @@ export function LinearIssuePicker({
           <div className="flex flex-col items-center gap-3 py-8">
             <Link className="size-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground text-center">
-              Connect your Linear account to link issues to conversations.
+              {isLinearConfigured
+                ? 'Connect your Linear account to link issues to conversations.'
+                : 'Linear integration is not configured for this build.'}
             </p>
-            <Button onClick={handleConnectLinear} size="sm">
-              <ExternalLink className="size-3.5 mr-1.5" />
-              Connect Linear
-            </Button>
+            {isLinearConfigured && (
+              <Button onClick={handleConnectLinear} size="sm">
+                <ExternalLink className="size-3.5 mr-1.5" />
+                Connect Linear
+              </Button>
+            )}
           </div>
         ) : (
           <>

@@ -141,7 +141,14 @@ jobs:
 
       - name: Build
         working-directory: backend
-        run: go build -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu .
+        env:
+          LINEAR_CLIENT_ID: ${{ secrets.OAUTH_LINEAR_CLIENT_ID }}
+        run: |
+          LDFLAGS=""
+          if [ -n "$LINEAR_CLIENT_ID" ]; then
+            LDFLAGS="-X 'github.com/chatml/chatml-backend/server.linearClientID=$LINEAR_CLIENT_ID'"
+          fi
+          go build -ldflags "$LDFLAGS" -o ../src-tauri/binaries/chatml-backend-x86_64-unknown-linux-gnu .
 
   # Rust/Tauri format check (fast, no dependencies needed)
   tauri-fmt:

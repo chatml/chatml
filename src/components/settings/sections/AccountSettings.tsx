@@ -40,7 +40,9 @@ export function AccountSettings() {
       await startLinearOAuthFlow();
     } catch (error) {
       console.error('Failed to start Linear OAuth:', error);
-      cancelLinearOAuth();
+      useLinearAuthStore.getState().failOAuth(
+        error instanceof Error ? error.message : 'Failed to connect'
+      );
       cancelLinearOAuthFlow();
     }
   };
