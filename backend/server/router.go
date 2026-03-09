@@ -238,6 +238,8 @@ func NewRouter(s *store.SQLiteStore, hub *Hub, agentMgr *agent.Manager, ghClient
 	r.Put("/api/settings/pr-template", h.SetGlobalPRTemplate)
 	r.Get("/api/settings/anthropic-api-key", h.GetAnthropicApiKey)
 	r.Put("/api/settings/anthropic-api-key", h.SetAnthropicApiKey)
+	r.Get("/api/settings/github-personal-token", h.GetGitHubPersonalToken)
+	r.Put("/api/settings/github-personal-token", h.SetGitHubPersonalToken)
 	r.Get("/api/settings/action-templates", h.GetActionTemplates)
 	r.Put("/api/settings/action-templates", h.SetActionTemplates)
 	r.Get("/api/settings/claude-auth-status", h.GetClaudeAuthStatus)

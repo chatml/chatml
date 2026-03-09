@@ -2937,6 +2937,26 @@ func (m *Manager) loadEnvVars(ctx context.Context, claudeSettings *ai.ClaudeCode
 		envMap["ANTHROPIC_API_KEY"] = decrypted
 	}
 
+	// Load encrypted GitHub personal access token if configured.
+	// Only set GITHUB_TOKEN if not already present (e.g. from custom env vars or gh auth).
+	if _, hasGHToken := envMap["GITHUB_TOKEN"]; !hasGHToken {
+		encrypted, found, err = m.store.GetSetting(ctx, "github-personal-token")
+		if err != nil {
+			return envMap, nil // non-fatal: proceed without the token
+		}
+		if found && encrypted != "" {
+			decrypted, err := crypto.Decrypt(encrypted)
+			if err != nil {
+				logger.Manager.Errorf("failed to decrypt GitHub personal token: %v", err)
+				return envMap, nil
+			}
+			if envMap == nil {
+				envMap = make(map[string]string)
+			}
+			envMap["GITHUB_TOKEN"] = decrypted
+		}
+	}
+
 	return envMap, nil
 }
 
