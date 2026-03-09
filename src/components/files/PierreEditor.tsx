@@ -30,6 +30,8 @@ interface PierreEditorProps {
   content: string;
   filename: string;
   onToggleMarkdownView?: () => void;
+  /** Extra elements to render in the header bar (e.g. Diff/Edit toggle buttons) */
+  headerMetadata?: React.ReactNode;
 }
 
 function truncateContent(content: string): { text: string; truncated: boolean; totalLines: number } {
@@ -44,6 +46,7 @@ export const PierreEditor = memo(function PierreEditor({
   content,
   filename,
   onToggleMarkdownView,
+  headerMetadata,
 }: PierreEditorProps) {
   const themeType = useResolvedThemeType();
   const [showAll, setShowAll] = useState(false);
@@ -69,6 +72,7 @@ export const PierreEditor = memo(function PierreEditor({
 
   const renderHeaderMetadata = useCallback(() => (
     <div className="flex items-center gap-1">
+      {headerMetadata}
       {onToggleMarkdownView && (
         <Button
           variant="ghost"
@@ -91,7 +95,7 @@ export const PierreEditor = memo(function PierreEditor({
       </Button>
       <CopyButton getText={getContent} />
     </div>
-  ), [onToggleMarkdownView, wordWrap, getContent]);
+  ), [headerMetadata, onToggleMarkdownView, wordWrap, getContent]);
 
   const file: FileContents = useMemo(() => ({
     name: filename,

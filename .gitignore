@@ -54,3 +54,6 @@ backend/chatml-backend
 src-tauri/target/
 src-tauri/binaries/
 .worktrees/
+
+# Monaco Editor (copied at build time from node_modules)
+public/vs/
