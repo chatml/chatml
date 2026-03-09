@@ -113,22 +113,30 @@ describe('UserQuestionPrompt', () => {
       expect(screen.getByText('No')).toBeInTheDocument();
     });
 
-    it('renders number badges for each option (1-indexed)', () => {
+    it('renders number badges for each option in single-select (1-indexed)', () => {
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
       expect(screen.getByText('1')).toBeInTheDocument();
       expect(screen.getByText('2')).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument();
       expect(screen.getByText('4')).toBeInTheDocument();
-      // "Other" gets number 5
-      expect(screen.getByText('5')).toBeInTheDocument();
     });
 
-    it('renders the "Other" option as "Type something else..." with a number badge', () => {
+    it('renders checkboxes instead of numbers for multi-select', () => {
+      setPending(makePending({
+        questions: [makeQuestion({ multiSelect: true })],
+      }));
+      render(<UserQuestionPrompt conversationId={CONV_ID} />);
+      // Should NOT have number badges
+      expect(screen.queryByText('1')).not.toBeInTheDocument();
+      expect(screen.queryByText('2')).not.toBeInTheDocument();
+    });
+
+    it('renders the "Other" option as "Something else"', () => {
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
       expect(screen.getByTestId('other-option')).toBeInTheDocument();
-      expect(screen.getByText('Type something else...')).toBeInTheDocument();
+      expect(screen.getByText('Something else')).toBeInTheDocument();
     });
 
     it('does not render "Other" for free-text-only questions', () => {
@@ -139,11 +147,12 @@ describe('UserQuestionPrompt', () => {
       expect(screen.queryByTestId('other-option')).not.toBeInTheDocument();
     });
 
-    it('renders a Skip button instead of X dismiss', () => {
+    it('renders Skip button and X dismiss button', () => {
       setPending(makePending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
       expect(screen.getByTestId('skip-question')).toBeInTheDocument();
       expect(screen.getByText('Skip')).toBeInTheDocument();
+      expect(screen.getByTestId('dismiss-question')).toBeInTheDocument();
     });
 
     it('renders question counter in header for multi-question wizard', () => {
@@ -151,7 +160,7 @@ describe('UserQuestionPrompt', () => {
       const q2 = makeQuestion({ question: 'Q2', header: 'H2', options: [{ label: 'A', description: '' }] });
       setPending(makePending({ questions: [q1, q2] }));
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
-      expect(screen.getByTestId('question-counter')).toHaveTextContent('1/2');
+      expect(screen.getByTestId('question-counter')).toHaveTextContent('1 of 2');
     });
 
     it('does not render question counter for single question', () => {
@@ -375,7 +384,7 @@ describe('UserQuestionPrompt', () => {
     it('shows pagination dots for multi-question wizard', () => {
       setPending(makeMultiPending());
       render(<UserQuestionPrompt conversationId={CONV_ID} />);
-      expect(screen.getByTestId('question-counter')).toHaveTextContent('1/3');
+      expect(screen.getByTestId('question-counter')).toHaveTextContent('1 of 3');
     });
 
     it('shows first question initially', () => {
