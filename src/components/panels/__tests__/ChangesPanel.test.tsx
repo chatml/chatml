@@ -170,7 +170,7 @@ describe('ChangesFileList', () => {
     expect(screen.queryByText('across')).not.toBeInTheDocument();
   });
 
-  it('calls onFileSelect for untracked files (not diff view)', async () => {
+  it('calls onChangedFileSelect for untracked files (diff view)', async () => {
     const onFileSelect = vi.fn();
     const onChangedFileSelect = vi.fn();
     const user = userEvent.setup();
@@ -186,8 +186,8 @@ describe('ChangesFileList', () => {
     );
 
     await user.click(screen.getByText('new-file.txt'));
-    expect(onFileSelect).toHaveBeenCalledWith('new-file.txt');
-    expect(onChangedFileSelect).not.toHaveBeenCalled();
+    expect(onChangedFileSelect).toHaveBeenCalledWith('new-file.txt');
+    expect(onFileSelect).not.toHaveBeenCalled();
   });
 
   it('calls onChangedFileSelect for non-untracked files', async () => {

@@ -1506,11 +1506,7 @@ export function ChangesFileList({
                 <FileChangeRow
                   key={file.path}
                   change={file}
-                  onSelect={() =>
-                    file.status === 'untracked'
-                      ? onFileSelect(file.path)
-                      : onChangedFileSelect(file.path)
-                  }
+                  onSelect={() => onChangedFileSelect(file.path)}
                   containerWidth={containerWidth}
                   commentStats={commentStats.get(file.path)}
                 />
