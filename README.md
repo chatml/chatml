@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/mascot.png" width="120" alt="ChatML mascot" />
+  <img src="public/mascot.png" width="300" alt="ChatML mascot" />
 </p>
 
 <h1 align="center">ChatML</h1>
