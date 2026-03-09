@@ -272,6 +272,7 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
               // Merged with inherited process env by portable-pty —
               // PATH, HOME, etc. are preserved.
               env: {
+                TERM: 'xterm-256color',
                 COLORTERM: 'truecolor',
                 TERM_PROGRAM: 'ChatML',
                 LANG: 'en_US.UTF-8',
@@ -301,8 +302,21 @@ export function useTerminal(options: UseTerminalOptions = {}): UseTerminalReturn
             });
 
             // Terminal input -> PTY
+            // Dedup guard: WKWebView on custom protocols (release builds) may fire
+            // onData twice per keystroke via both keydown and input events.
+            // Real key repeat is ~30-50ms; duplicate events arrive within <2ms.
+            let lastData = '';
+            let lastDataTime = 0;
+            const DEDUP_WINDOW_MS = 10;
+
             terminal.onData((data: string) => {
               if (!cleanupCalled && ptyRef.current) {
+                const now = performance.now();
+                if (data.length === 1 && data === lastData && (now - lastDataTime) < DEDUP_WINDOW_MS) {
+                  return; // Skip WKWebView duplicate
+                }
+                lastData = data;
+                lastDataTime = now;
                 pty.write(data).catch((e) => {
                   console.warn('PTY write error:', e);
                 });
