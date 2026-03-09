@@ -9,7 +9,7 @@ interface UpdateState {
   progress: number;
   error: string | null;
 
-  checkForUpdates: () => Promise<void>;
+  checkForUpdates: () => Promise<'up-to-date' | 'available' | null>;
   downloadAndInstall: () => Promise<void>;
   relaunch: () => Promise<void>;
 }
@@ -28,10 +28,10 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
   error: null,
 
   checkForUpdates: async () => {
-    if (!isTauri()) return;
+    if (!isTauri()) return null;
 
     const { status } = get();
-    if (status === 'checking' || status === 'downloading') return;
+    if (status === 'checking' || status === 'downloading') return null;
 
     try {
       set({ status: 'checking', error: null });
@@ -41,14 +41,17 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       if (result) {
         pendingUpdate = result;
         set({ status: 'available', version: result.version });
+        return 'available';
       } else {
         pendingUpdate = null;
         set({ status: 'idle', version: null });
+        return 'up-to-date';
       }
     } catch (err) {
       console.debug('Update check failed:', err);
       // Silently return to idle on check failure — not actionable for users
       set({ status: 'idle' });
+      return null;
     }
   },
 

@@ -5,6 +5,7 @@ import { useTheme } from 'next-themes';
 import { useAppStore } from '@/stores/appStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useUpdateStore } from '@/stores/updateStore';
+import { useToast } from '@/components/ui/toast';
 import { useNavigationStore } from '@/stores/navigationStore';
 import { useTabStore } from '@/stores/tabStore';
 import { ENABLE_BROWSER_TABS } from '@/lib/constants';
@@ -43,10 +44,14 @@ interface MenuHandlersOptions {
  */
 export function useMenuHandlers(options: MenuHandlersOptions) {
   const { resolvedTheme, setTheme } = useTheme();
+  const { info: toastInfo } = useToast();
 
   // Refs for menu-event handler callbacks — prevents safeListen re-registration race condition.
   // Without refs, unstable callbacks cause the useEffect to re-run, tearing down the Tauri
   // listener and asynchronously re-registering it. During the async gap, menu events are lost.
+  const toastInfoRef = useRef(toastInfo);
+  useEffect(() => { toastInfoRef.current = toastInfo; }, [toastInfo]);
+
   const handleNewSessionRef = useRef(options.handleNewSession);
   const handleNewConversationRef = useRef(options.handleNewConversation);
   const handleCloseTabRef = useRef(options.handleCloseTab);
@@ -78,7 +83,11 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
       switch (menuId) {
         // App menu
         case 'check_for_updates':
-          useUpdateStore.getState().checkForUpdates();
+          useUpdateStore.getState().checkForUpdates().then((result) => {
+            if (result === 'up-to-date') {
+              toastInfoRef.current("You're on the latest version");
+            }
+          });
           break;
         case 'settings':
           options.onOpenSettings();
