@@ -132,11 +132,31 @@ func (h *LinearAuthHandlers) RestoreFromStore(ctx context.Context) {
 		return
 	}
 
-	encRefresh, _, _ := h.store.GetSetting(ctx, settingLinearRefreshToken)
-	refreshToken, _ := crypto.Decrypt(encRefresh)
+	encRefresh, _, err := h.store.GetSetting(ctx, settingLinearRefreshToken)
+	var refreshToken string
+	if err != nil {
+		logger.Linear.Warnf("Failed to load Linear refresh token setting: %v", err)
+	} else if encRefresh != "" {
+		refreshToken, err = crypto.Decrypt(encRefresh)
+		if err != nil {
+			logger.Linear.Warnf("Failed to decrypt Linear refresh token: %v", err)
+		}
+	}
 
-	expiryStr, _, _ := h.store.GetSetting(ctx, settingLinearTokenExpiry)
-	expiresAt, _ := time.Parse(time.RFC3339, expiryStr)
+	expiryStr, _, err := h.store.GetSetting(ctx, settingLinearTokenExpiry)
+	var expiresAt time.Time
+	if err != nil {
+		logger.Linear.Warnf("Failed to load Linear token expiry setting: %v", err)
+	} else if expiryStr != "" {
+		expiresAt, err = time.Parse(time.RFC3339, expiryStr)
+		if err != nil {
+			logger.Linear.Warnf("Failed to parse Linear token expiry %q: %v", expiryStr, err)
+		}
+	}
+	// If expiry is zero/missing, set to now to force an immediate refresh
+	if expiresAt.IsZero() {
+		expiresAt = time.Now()
+	}
 
 	tokens := &linear.TokenSet{
 		AccessToken:  accessToken,
@@ -147,8 +167,10 @@ func (h *LinearAuthHandlers) RestoreFromStore(ctx context.Context) {
 	h.linearClient.SetTokens(tokens)
 
 	// Restore user info
-	encUser, found, _ := h.store.GetSetting(ctx, settingLinearUser)
-	if found {
+	encUser, found, err := h.store.GetSetting(ctx, settingLinearUser)
+	if err != nil {
+		logger.Linear.Warnf("Failed to load Linear user setting: %v", err)
+	} else if found {
 		userJSON, err := crypto.Decrypt(encUser)
 		if err == nil {
 			var user linear.User
@@ -185,25 +207,7 @@ func PersistLinearTokens(ctx context.Context, s *store.SQLiteStore, tokens *line
 
 // persistTokens encrypts and stores tokens + user in the settings table.
 func (h *LinearAuthHandlers) persistTokens(ctx context.Context, tokens *linear.TokenSet, user *linear.User) error {
-	encAccess, err := crypto.Encrypt(tokens.AccessToken)
-	if err != nil {
-		return err
-	}
-	if err := h.store.SetSetting(ctx, settingLinearAccessToken, encAccess); err != nil {
-		return err
-	}
-
-	if tokens.RefreshToken != "" {
-		encRefresh, err := crypto.Encrypt(tokens.RefreshToken)
-		if err != nil {
-			return err
-		}
-		if err := h.store.SetSetting(ctx, settingLinearRefreshToken, encRefresh); err != nil {
-			return err
-		}
-	}
-
-	if err := h.store.SetSetting(ctx, settingLinearTokenExpiry, tokens.ExpiresAt.Format(time.RFC3339)); err != nil {
+	if err := PersistLinearTokens(ctx, h.store, tokens); err != nil {
 		return err
 	}
 

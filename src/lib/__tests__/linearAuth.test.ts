@@ -21,6 +21,9 @@ beforeEach(async () => {
   // Clear sessionStorage between tests
   sessionStorage.clear();
 
+  // Set Linear client ID for tests (guard requires it)
+  vi.stubEnv('NEXT_PUBLIC_LINEAR_CLIENT_ID', 'test_linear_client_id');
+
   // Re-import to reset module-level state (pendingOAuthState, pendingCodeVerifier)
   vi.resetModules();
 
@@ -38,6 +41,21 @@ afterEach(() => {
 describe('LINEAR_STATE_PREFIX', () => {
   it('is "linear:"', () => {
     expect(linearAuth.LINEAR_STATE_PREFIX).toBe('linear:');
+  });
+});
+
+describe('isLinearConfigured', () => {
+  it('returns true when client ID is set', () => {
+    expect(linearAuth.isLinearConfigured).toBe(true);
+  });
+
+  it('returns false when client ID is empty', async () => {
+    vi.stubEnv('NEXT_PUBLIC_LINEAR_CLIENT_ID', '');
+    vi.resetModules();
+    vi.doMock('@/lib/tauri', () => ({ isTauri: () => false }));
+    vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE }));
+    const mod = await import('../linearAuth');
+    expect(mod.isLinearConfigured).toBe(false);
   });
 });
 
@@ -66,6 +84,18 @@ describe('cancelLinearOAuthFlow', () => {
 });
 
 describe('startLinearOAuthFlow', () => {
+  it('throws when client ID is not configured', async () => {
+    vi.stubEnv('NEXT_PUBLIC_LINEAR_CLIENT_ID', '');
+    vi.resetModules();
+    vi.doMock('@/lib/tauri', () => ({ isTauri: () => false }));
+    vi.doMock('@/lib/api', () => ({ getApiBase: () => API_BASE }));
+    const mod = await import('../linearAuth');
+
+    await expect(mod.startLinearOAuthFlow())
+      .rejects
+      .toThrow('Linear integration is not configured for this build.');
+  });
+
   it('opens a browser window with correct OAuth params', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
@@ -239,6 +269,43 @@ describe('getLinearAuthStatus', () => {
     expect(status.authenticated).toBe(false);
     expect(status.user).toBeUndefined();
   });
+
+  it('returns unauthenticated on non-OK response', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    server.use(
+      http.get(`${API_BASE}/api/auth/linear/status`, () => {
+        return new HttpResponse('Internal Server Error', { status: 500 });
+      }),
+    );
+
+    const status = await linearAuth.getLinearAuthStatus();
+    expect(status.authenticated).toBe(false);
+    expect(status.user).toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith('[Linear Auth] Status check failed:', 500);
+
+    errorSpy.mockRestore();
+  });
+
+  it('returns unauthenticated on network error', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    server.use(
+      http.get(`${API_BASE}/api/auth/linear/status`, () => {
+        return HttpResponse.error();
+      }),
+    );
+
+    const status = await linearAuth.getLinearAuthStatus();
+    expect(status.authenticated).toBe(false);
+    expect(status.user).toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Linear Auth] Status check failed:',
+      expect.any(Error),
+    );
+
+    errorSpy.mockRestore();
+  });
 });
 
 describe('linearLogout', () => {
@@ -254,5 +321,40 @@ describe('linearLogout', () => {
 
     await linearAuth.linearLogout();
     expect(logoutCalled).toBe(true);
+  });
+
+  it('logs error on non-OK response but does not throw', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    server.use(
+      http.post(`${API_BASE}/api/auth/linear/logout`, () => {
+        return new HttpResponse('Internal Server Error', { status: 500 });
+      }),
+    );
+
+    // Should not throw
+    await linearAuth.linearLogout();
+    expect(errorSpy).toHaveBeenCalledWith('[Linear Auth] Logout failed:', 500);
+
+    errorSpy.mockRestore();
+  });
+
+  it('does not throw on network error', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    server.use(
+      http.post(`${API_BASE}/api/auth/linear/logout`, () => {
+        return HttpResponse.error();
+      }),
+    );
+
+    // Should not throw
+    await linearAuth.linearLogout();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Linear Auth] Logout failed:',
+      expect.any(Error),
+    );
+
+    errorSpy.mockRestore();
   });
 });
