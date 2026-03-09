@@ -139,7 +139,14 @@ describe('useReviewTrigger', () => {
 
       expect(requestBody).not.toBeNull();
       expect(requestBody!.type).toBe('review');
-      expect(requestBody!.message).toContain('Review the changes');
+      expect(requestBody!.message).toBe('Review: Quick Scan');
+      // Full prompt should be in the instruction attachment
+      const attachments = requestBody!.attachments as Array<Record<string, unknown>>;
+      expect(attachments).toHaveLength(1);
+      expect(attachments[0].isInstruction).toBe(true);
+      expect(attachments[0].name).toBe('Quick Scan Instructions');
+      const decoded = atob(attachments[0].base64Data as string);
+      expect(decoded).toContain('Review the changes');
     });
 
     it('sends deep review prompt for type=deep', async () => {
@@ -167,7 +174,10 @@ describe('useReviewTrigger', () => {
       });
 
       expect(requestBody).not.toBeNull();
-      expect(requestBody!.message).toContain('thorough code review');
+      expect(requestBody!.message).toBe('Review: Deep Review');
+      const attachments = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded = atob(attachments[0].base64Data as string);
+      expect(decoded).toContain('thorough code review');
     });
 
     it('sends security review prompt for type=security', async () => {
@@ -195,7 +205,10 @@ describe('useReviewTrigger', () => {
       });
 
       expect(requestBody).not.toBeNull();
-      expect(requestBody!.message).toContain('security audit');
+      expect(requestBody!.message).toBe('Review: Security Audit');
+      const attachments = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded = atob(attachments[0].base64Data as string);
+      expect(decoded).toContain('security audit');
     });
 
     it('defaults to quick review when no type specified', async () => {
@@ -223,7 +236,10 @@ describe('useReviewTrigger', () => {
       });
 
       expect(requestBody).not.toBeNull();
-      expect(requestBody!.message).toContain('Review the changes');
+      expect(requestBody!.message).toBe('Review: Quick Scan');
+      const attachments = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded = atob(attachments[0].base64Data as string);
+      expect(decoded).toContain('Review the changes');
     });
   });
 
@@ -253,7 +269,9 @@ describe('useReviewTrigger', () => {
       const reviewMessages = useAppStore.getState().messagesByConversation['new-review-conv'] ?? [];
       expect(reviewMessages).toHaveLength(1);
       expect(reviewMessages[0].role).toBe('user');
-      expect(reviewMessages[0].content).toContain('Review the changes');
+      expect(reviewMessages[0].content).toBe('Review: Quick Scan');
+      expect(reviewMessages[0].attachments).toHaveLength(1);
+      expect(reviewMessages[0].attachments[0].isInstruction).toBe(true);
     });
 
     it('selects the new conversation', async () => {
@@ -310,7 +328,9 @@ describe('useReviewTrigger', () => {
       });
 
       expect(requestBody).not.toBeNull();
-      expect(requestBody!.message).not.toContain('Only report actionable findings');
+      const attachments0 = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded0 = atob(attachments0[0].base64Data as string);
+      expect(decoded0).not.toContain('Only report actionable findings');
     });
 
     it('includes actionable-only instruction when reviewActionableOnly is explicitly true', async () => {
@@ -340,7 +360,9 @@ describe('useReviewTrigger', () => {
       });
 
       expect(requestBody).not.toBeNull();
-      expect(requestBody!.message).toContain('Only report actionable findings');
+      const attachments1 = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded1 = atob(attachments1[0].base64Data as string);
+      expect(decoded1).toContain('Only report actionable findings');
     });
 
     it('excludes actionable-only instruction when reviewActionableOnly is false', async () => {
@@ -370,7 +392,9 @@ describe('useReviewTrigger', () => {
       });
 
       expect(requestBody).not.toBeNull();
-      expect(requestBody!.message).not.toContain('Only report actionable findings');
+      const attachments2 = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded2 = atob(attachments2[0].base64Data as string);
+      expect(decoded2).not.toContain('Only report actionable findings');
     });
 
     it('places actionable-only instruction before custom overrides so user overrides take precedence', async () => {
@@ -413,10 +437,11 @@ describe('useReviewTrigger', () => {
         expect(requestBody).not.toBeNull();
       });
 
-      const message = requestBody!.message as string;
+      const attachments3 = requestBody!.attachments as Array<Record<string, unknown>>;
+      const decoded3 = atob(attachments3[0].base64Data as string);
       // Actionable instruction should appear before custom override
-      const actionableIndex = message.indexOf('Only report actionable findings');
-      const overrideIndex = message.indexOf('Custom global override');
+      const actionableIndex = decoded3.indexOf('Only report actionable findings');
+      const overrideIndex = decoded3.indexOf('Custom global override');
       expect(actionableIndex).toBeGreaterThan(-1);
       expect(overrideIndex).toBeGreaterThan(-1);
       expect(actionableIndex).toBeLessThan(overrideIndex);
