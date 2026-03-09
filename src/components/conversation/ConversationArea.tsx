@@ -576,6 +576,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // We track the first visible data index per conversation via Virtuoso's rangeChanged.
   // On remount (key change), Virtuoso uses initialTopMostItemIndex — no animation, no flash.
   const isAtBottomRef = useRef(true);
+  const forceFollowRef = useRef(false);
 
   // Continuously track the visible range — called by Virtuoso on every scroll
   const handleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
@@ -589,6 +590,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Compute initialTopMostItemIndex for the current conversation.
   // Read from the module-level map — this is computed fresh each render when
   // selectedConversationId changes (which triggers Virtuoso remount via key).
+  // Clear forceFollow on conversation switch to avoid stale state
+  useEffect(() => {
+    forceFollowRef.current = false;
+  }, [selectedConversationId]);
+
   const initialTopMostItemIndex = useMemo(() => {
     if (!selectedConversationId) return { index: 'LAST' as const, align: 'end' as const };
     const saved = scrollPositions.get(selectedConversationId);
@@ -603,12 +609,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     setShowScrollButton(!atBottom);
     isAtBottomRef.current = atBottom;
+    if (atBottom) {
+      forceFollowRef.current = false;
+    }
   }, []);
 
   // Force scroll to bottom (for manual button click or message submit)
   const forceScrollToBottom = useCallback(() => {
     setShowScrollButton(false);
-    messageListRef.current?.scrollToBottom('smooth');
+    messageListRef.current?.scrollToBottom('auto');
   }, []);
 
   // Stable footer for VirtualizedMessageList (avoids remounting on every render)
@@ -639,6 +648,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   // Listen for message submit events to force scroll to bottom
   useEffect(() => {
     const handleMessageSubmit = () => {
+      forceFollowRef.current = true;
       forceScrollToBottom();
     };
 
@@ -1195,6 +1205,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             footer={messageListFooter}
             isStreaming={selectedStreaming?.isStreaming ?? false}
             pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
+            forceFollowRef={forceFollowRef}
           />
           {/* Fade overlay at bottom of messages */}
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />

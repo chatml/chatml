@@ -37,6 +37,8 @@ interface VirtualizedMessageListProps {
   onRangeChanged?: (range: ListRange) => void;
   /** When true, suppress followOutput to prevent auto-scroll-to-bottom from fighting plan scroll */
   pendingPlanApproval?: boolean;
+  /** Mutable ref — when true, followOutput always returns auto-scroll regardless of isAtBottom */
+  forceFollowRef?: React.RefObject<boolean>;
 }
 
 export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, VirtualizedMessageListProps>(
@@ -58,6 +60,7 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
       initialTopMostItemIndex,
       onRangeChanged,
       pendingPlanApproval,
+      forceFollowRef,
     },
     ref
   ) {
@@ -118,10 +121,12 @@ export const VirtualizedMessageList = forwardRef<VirtualizedMessageListHandle, V
     const followOutput = useCallback(
       (isAtBottom: boolean) => {
         if (pendingPlanApproval) return false as const;
-        if (isAtBottom) return isStreaming ? true as const : 'smooth' as const;
+        if (isAtBottom || forceFollowRef?.current) {
+          return isStreaming ? true as const : 'smooth' as const;
+        }
         return false as const;
       },
-      [isStreaming, pendingPlanApproval]
+      [isStreaming, pendingPlanApproval, forceFollowRef]
     );
 
     // Footer component: streaming message + padding
