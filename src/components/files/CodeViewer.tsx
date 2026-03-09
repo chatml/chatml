@@ -1,21 +1,24 @@
 'use client';
 
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Code } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PierreEditor } from '@/components/files/PierreEditor';
 import { PierreDiffEditor } from '@/components/files/PierreDiffEditor';
+import { MonacoEditor } from '@/components/files/MonacoEditor';
 import { PROSE_CLASSES } from '@/lib/constants';
 import { CachedMarkdown } from '@/components/shared/CachedMarkdown';
 import { CopyButton } from '@/components/shared/CopyButton';
 import type { ReviewComment } from '@/lib/types';
 
+type ViewMode = 'code' | 'rendered' | 'diff' | 'edit';
+
 interface CodeViewerProps {
   content: string;
   filename: string;
   isLoading?: boolean;
-  /** If provided, shows a diff view comparing oldContent to content */
+  /** If provided, enables the Diff toggle button */
   oldContent?: string;
   /** Review comments to display in diff view */
   comments?: ReviewComment[];
@@ -27,11 +30,17 @@ interface CodeViewerProps {
   onCreateComment?: (lineNumber: number, content: string) => void;
   /** Line number to scroll to in diff view (e.g. from review comment click) */
   scrollToLine?: number;
+  /** Callback when file content is edited. Enables the Edit toggle button. */
+  onChange?: (content: string) => void;
 }
 
 function isMarkdownFile(filename: string): boolean {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   return ext === 'md' || ext === 'mdx';
+}
+
+function getDefaultViewMode(filename: string): ViewMode {
+  return isMarkdownFile(filename) ? 'rendered' : 'code';
 }
 
 export const CodeViewer = memo(function CodeViewer({
@@ -44,21 +53,65 @@ export const CodeViewer = memo(function CodeViewer({
   onDeleteComment,
   onCreateComment,
   scrollToLine,
+  onChange,
 }: CodeViewerProps) {
-  const [viewMode, setViewMode] = useState<'code' | 'rendered'>(
-    isMarkdownFile(filename) ? 'rendered' : 'code'
-  );
+  const [viewMode, setViewMode] = useState<ViewMode>(getDefaultViewMode(filename));
 
   // Reset view mode when switching files
   const [prevFilename, setPrevFilename] = useState(filename);
   if (prevFilename !== filename) {
     setPrevFilename(filename);
-    setViewMode(isMarkdownFile(filename) ? 'rendered' : 'code');
+    setViewMode(getDefaultViewMode(filename));
   }
 
   const isMarkdown = isMarkdownFile(filename);
-  const isDiffMode = typeof oldContent === 'string';
+  const hasDiff = typeof oldContent === 'string';
+  const canEdit = !!onChange;
   const getContent = useCallback(() => content, [content]);
+
+  // Toggle handler: clicking the active mode deselects it (returns to default)
+  const toggleMode = useCallback(
+    (mode: 'diff' | 'edit') => {
+      setViewMode((current) => (current === mode ? getDefaultViewMode(filename) : mode));
+    },
+    [filename],
+  );
+
+  // --- Toggle buttons (Conductor-style) — must be before early returns ---
+  const showToggles = hasDiff || canEdit;
+  const toggleButtons = useMemo(() => {
+    if (!showToggles) return null;
+    return (
+      <div className="flex items-center gap-0.5">
+        {hasDiff && (
+          <button
+            onClick={() => toggleMode('diff')}
+            className={cn(
+              'px-2 py-0.5 text-2xs font-medium rounded-sm transition-colors',
+              viewMode === 'diff'
+                ? 'bg-primary/15 text-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+            )}
+          >
+            Diff
+          </button>
+        )}
+        {canEdit && (
+          <button
+            onClick={() => toggleMode('edit')}
+            className={cn(
+              'px-2 py-0.5 text-2xs font-medium rounded-sm transition-colors',
+              viewMode === 'edit'
+                ? 'bg-primary/15 text-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+            )}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+    );
+  }, [showToggles, hasDiff, canEdit, viewMode, toggleMode]);
 
   if (isLoading) {
     return (
@@ -72,7 +125,7 @@ export const CodeViewer = memo(function CodeViewer({
   }
 
   // In diff mode with no content at all (both old and new empty), show no changes
-  if (isDiffMode && !content && !oldContent) {
+  if (hasDiff && !content && !oldContent) {
     return (
       <div className="h-full flex items-center justify-center">
         <span className="text-sm text-muted-foreground">No changes to display</span>
@@ -81,7 +134,7 @@ export const CodeViewer = memo(function CodeViewer({
   }
 
   // Show empty file only if not in diff mode and content is empty
-  if (!isDiffMode && !content) {
+  if (!hasDiff && !content && viewMode !== 'edit') {
     return (
       <div className="h-full flex items-center justify-center">
         <span className="text-sm text-muted-foreground">Empty file</span>
@@ -89,8 +142,33 @@ export const CodeViewer = memo(function CodeViewer({
     );
   }
 
-  // Render diff view — Pierre's native header + our toggle buttons via renderHeaderMetadata
-  if (isDiffMode) {
+  // --- Edit mode: Monaco editor ---
+  if (viewMode === 'edit' && canEdit) {
+    return (
+      <div className="h-full flex flex-col">
+        {/* Header with toggles */}
+        <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
+            <span className="font-mono truncate" title={filename}>{filename}</span>
+            {toggleButtons}
+          </div>
+          <div className="flex items-center gap-1">
+            <CopyButton getText={getContent} />
+          </div>
+        </div>
+        <div className="flex-1 min-h-0">
+          <MonacoEditor
+            content={content}
+            filename={filename}
+            onChange={onChange}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // --- Diff mode: Pierre diff viewer (has its own header via renderHeaderMetadata) ---
+  if (viewMode === 'diff' && hasDiff) {
     return (
       <div className="h-full">
         <PierreDiffEditor
@@ -102,18 +180,20 @@ export const CodeViewer = memo(function CodeViewer({
           onDeleteComment={onDeleteComment}
           onCreateComment={onCreateComment}
           scrollToLine={scrollToLine}
+          headerMetadata={toggleButtons}
         />
       </div>
     );
   }
 
-  // Render markdown rendered view with minimal fallback header
+  // --- Rendered markdown mode ---
   if (isMarkdown && viewMode === 'rendered') {
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between px-2 py-0.5 border-b bg-muted/30 shrink-0">
           <div className="flex items-center gap-2 text-2xs text-muted-foreground min-w-0">
             <span className="font-mono truncate" title={filename}>{filename}</span>
+            {toggleButtons}
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -139,13 +219,14 @@ export const CodeViewer = memo(function CodeViewer({
     );
   }
 
-  // Render file view — Pierre's native header + our toggle buttons via renderHeaderMetadata
+  // --- Default: Pierre code viewer ---
   return (
     <div className="h-full">
       <PierreEditor
         content={content}
         filename={filename}
         onToggleMarkdownView={isMarkdown ? () => setViewMode(v => v === 'code' ? 'rendered' : 'code') : undefined}
+        headerMetadata={toggleButtons}
       />
     </div>
   );

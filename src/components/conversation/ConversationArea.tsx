@@ -98,6 +98,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     pinFileTab,
     reorderFileTabs,
     updateFileTab,
+    updateFileTabContent,
     setPendingCloseFileTabId,
   } = useFileTabState();
 
@@ -1124,6 +1125,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                       onDeleteComment={handleDeleteComment}
                       onCreateComment={handleCreateComment}
                       scrollToLine={tab.cursorPosition?.line}
+                      onChange={(newContent) => updateFileTabContent(tab.id, newContent)}
                     />
                   </ErrorBoundary>
                 ) : (
@@ -1142,6 +1144,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                       content={tab.content || ''}
                       filename={tab.name}
                       isLoading={tab.isLoading}
+                      onChange={(newContent) => updateFileTabContent(tab.id, newContent)}
                     />
                   </ErrorBoundary>
                 )}

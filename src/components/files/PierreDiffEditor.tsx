@@ -60,6 +60,8 @@ interface PierreDiffEditorProps {
   onCreateComment?: (lineNumber: number, content: string) => void;
   /** Line number to scroll to (e.g. from review comment click) */
   scrollToLine?: number;
+  /** Extra elements to render in the header bar (e.g. Diff/Edit toggle buttons) */
+  headerMetadata?: React.ReactNode;
 }
 
 // Annotation metadata for review comments
@@ -77,6 +79,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
   onDeleteComment,
   onCreateComment,
   scrollToLine,
+  headerMetadata,
 }: PierreDiffEditorProps) {
   const themeType = useResolvedThemeType();
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
@@ -126,6 +129,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
 
   const renderHeaderMetadata = useCallback(() => (
     <div className="flex items-center gap-1">
+      {headerMetadata}
       <Button
         variant="ghost"
         size="icon"
@@ -155,7 +159,7 @@ export const PierreDiffEditor = memo(function PierreDiffEditor({
       </Button>
       <CopyButton getText={getNewContent} />
     </div>
-  ), [diffViewMode, wordWrap, getNewContent]);
+  ), [headerMetadata, diffViewMode, wordWrap, getNewContent]);
 
   const options: FileDiffOptions<CommentAnnotationData> = useMemo(() => ({
     theme: PIERRE_THEMES,
