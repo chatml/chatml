@@ -1155,7 +1155,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       )}
 
       {/* Conversation messages — hidden when file tab is active */}
-      <div className={isFileActive ? 'hidden' : 'contents'}>
+      <div className={isFileActive ? 'hidden' : 'flex flex-col flex-1 min-h-0'}>
         {/* Messages */}
         <div className="relative flex-1 min-h-0">
           {/* Chat Search Bar */}
