@@ -8,8 +8,8 @@ export function ConversationsStep() {
     <OnboardingWizardStep
       icon={
         <div className="flex items-center gap-2">
-          <MessageSquare className="w-6 h-6 text-primary" />
-          <Bot className="w-6 h-6 text-primary" />
+          <MessageSquare className="w-6 h-6 text-brand" />
+          <Bot className="w-6 h-6 text-brand" />
         </div>
       }
       title="Conversations & Agents"

@@ -141,7 +141,7 @@ function ProgressRow({ label, current, max, formatValue }: {
       </div>
       <div className="h-1 bg-muted rounded-full overflow-hidden">
         <div
-          className={cn('h-full rounded-full transition-all', isHigh ? 'bg-destructive' : 'bg-primary')}
+          className={cn('h-full rounded-full transition-all', isHigh ? 'bg-destructive' : 'bg-brand')}
           style={{ width: `${Math.min(percent, 100)}%` }}
         />
       </div>

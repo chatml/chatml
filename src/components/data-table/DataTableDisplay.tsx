@@ -285,7 +285,7 @@ export function DataTableDisplayButton({
     <Button
       variant="ghost"
       size="sm"
-      className={cn('h-8 gap-1.5', hasCustomizations && 'text-primary')}
+      className={cn('h-8 gap-1.5', hasCustomizations && 'text-brand')}
       onClick={onClick}
     >
       <SlidersHorizontal className="h-3.5 w-3.5" />

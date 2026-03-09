@@ -63,7 +63,7 @@ function ResizableHandle({
       className={cn(
         "relative z-10 flex items-center justify-center bg-transparent outline-none",
         // Visible line via pseudo-element
-        "after:absolute after:bg-border hover:after:bg-primary/50",
+        "after:absolute after:bg-border hover:after:bg-brand/50",
         isVerticalSeparator ? [
           // Vertical separator (for horizontal panel group)
           // 6px wide hit area, negative margins to not affect layout

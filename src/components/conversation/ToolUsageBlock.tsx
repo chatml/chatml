@@ -326,7 +326,7 @@ export const ToolUsageBlock = memo(function ToolUsageBlock({
         className={cn(
           'flex items-center gap-1.5 text-base w-full rounded px-1.5 py-1 transition-colors',
           'hover:bg-surface-2',
-          isActive && 'bg-primary/5'
+          isActive && 'bg-brand/5'
         )}
       >
         {/* Status indicator — fixed 3x3 box to prevent layout shift */}

@@ -93,7 +93,7 @@ export const CodeViewer = memo(function CodeViewer({
             className={cn(
               'px-2 py-0.5 text-2xs font-medium rounded-sm transition-colors',
               viewMode === 'diff'
-                ? 'bg-primary/15 text-primary'
+                ? 'bg-brand/15 text-brand'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted',
             )}
           >
@@ -106,7 +106,7 @@ export const CodeViewer = memo(function CodeViewer({
             className={cn(
               'px-2 py-0.5 text-2xs font-medium rounded-sm transition-colors',
               viewMode === 'edit'
-                ? 'bg-primary/15 text-primary'
+                ? 'bg-brand/15 text-brand'
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted',
             )}
           >

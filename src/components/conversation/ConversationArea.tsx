@@ -492,9 +492,9 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       if (isConvStreaming) {
         return (
           <div className="flex items-end gap-[1.5px] h-2.5 w-2.5">
-            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-1" />
-            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-2" />
-            <div className="w-[2px] bg-primary rounded-full animate-agent-bar-3" />
+            <div className="w-[2px] bg-brand rounded-full animate-agent-bar-1" />
+            <div className="w-[2px] bg-brand rounded-full animate-agent-bar-2" />
+            <div className="w-[2px] bg-brand rounded-full animate-agent-bar-3" />
           </div>
         );
       }
@@ -1313,7 +1313,7 @@ function SessionHomeState({ sessionName }: { sessionName?: string }) {
     <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
       <div className="max-w-md mx-auto text-center">
         {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
             <GitBranch className="w-4 h-4" />
             {sessionName}
           </div>
@@ -1347,7 +1347,7 @@ function ConversationEmptyState({ sessionName }: { sessionName?: string }) {
     <div className="pt-3 pl-5 pr-12 pb-10 animate-fade-in">
       <div className="max-w-lg mx-auto text-center">
         {sessionName && (
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-scale-in">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand/10 text-brand text-sm font-medium mb-6 animate-scale-in">
             <GitBranch className="w-4 h-4" />
             {sessionName}
           </div>

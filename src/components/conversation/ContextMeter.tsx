@@ -56,7 +56,7 @@ export function ContextMeter({ conversationId }: ContextMeterProps) {
     ? 'bg-red-500'
     : isWarning
     ? 'bg-amber-500'
-    : 'bg-primary';
+    : 'bg-brand';
 
   return (
     <Popover>

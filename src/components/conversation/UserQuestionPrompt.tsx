@@ -295,7 +295,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                     className={cn(
                       'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors duration-150 border-b border-border/40',
                       isSelected && (!otherSelected || currentQuestion.multiSelect)
-                        ? 'bg-primary/10 text-foreground'
+                        ? 'bg-brand/10 text-foreground'
                         : 'text-foreground/80 hover:bg-surface-1/40 hover:text-foreground'
                     )}
                     data-testid={`option-${index}`}
@@ -309,7 +309,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                     <span className={cn(
                       'inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded text-xs font-mono shrink-0 transition-colors duration-150',
                       isSelected && (!otherSelected || currentQuestion.multiSelect)
-                        ? 'bg-primary/20 text-primary'
+                        ? 'bg-brand/20 text-brand'
                         : 'bg-muted/50 text-muted-foreground'
                     )}>
                       {index + 1}
@@ -325,7 +325,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                 className={cn(
                   'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors duration-150',
                   otherSelected
-                    ? 'bg-primary/10 text-foreground'
+                    ? 'bg-brand/10 text-foreground'
                     : 'text-foreground/60 hover:bg-surface-1/40 hover:text-foreground'
                 )}
                 data-testid="other-option"
@@ -336,7 +336,7 @@ export function UserQuestionPrompt({ conversationId }: UserQuestionPromptProps) 
                 <span className={cn(
                   'inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded text-xs font-mono shrink-0 transition-colors duration-150',
                   otherSelected
-                    ? 'bg-primary/20 text-primary'
+                    ? 'bg-brand/20 text-brand'
                     : 'bg-muted/50 text-muted-foreground'
                 )}>
                   {otherNumber}

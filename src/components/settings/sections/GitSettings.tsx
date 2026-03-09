@@ -109,7 +109,7 @@ export function GitSettings() {
                 href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline"
+                className="text-brand hover:underline"
               >
                 configure it on GitHub
               </a>

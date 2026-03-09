@@ -102,7 +102,7 @@ export const TabItem = memo(function TabItem({
         >
           {/* Top indicator line - subtle */}
           {isActive && (
-            <div className="absolute top-0 left-0 right-0 h-px bg-primary/50" />
+            <div className="absolute top-0 left-0 right-0 h-px bg-brand/50" />
           )}
 
           {/* Pin indicator */}
@@ -129,7 +129,7 @@ export const TabItem = memo(function TabItem({
           {/* Fixed-size container for dot/close button - prevents layout shift */}
           <div className="w-4 h-4 flex items-center justify-center shrink-0">
             {showDirtyDot ? (
-              <span className="w-2 h-2 rounded-full bg-primary" />
+              <span className="w-2 h-2 rounded-full bg-brand" />
             ) : (
               <button
                 type="button"

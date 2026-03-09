@@ -1250,7 +1250,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         )}
         {/* Gradient border for streaming state (static for performance) */}
         {isStreaming && !pendingPlanApproval && (
-          <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-primary/60 via-purple-500/80 to-primary/60 opacity-70" />
+          <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-brand/60 via-purple-500/80 to-brand/60 opacity-70" />
         )}
       <div className={cn(
         'relative rounded-lg border border-border bg-card dark:bg-input',
@@ -1282,7 +1282,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         {/* Summary context indicator */}
         {selectedSummaryIds.length > 0 && (
           <div className="px-3 py-1.5 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">
+            <div className="flex items-center gap-1.5 text-xs text-brand bg-brand/10 px-2 py-1 rounded-md">
               <ScrollText className="size-3" />
               {selectedSummaryIds.length} {selectedSummaryIds.length === 1 ? 'summary' : 'summaries'} attached
               <button
@@ -1300,7 +1300,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         {/* Linked Linear issue indicator */}
         {linkedLinearIssue && (
           <div className="px-3 py-1.5 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">
+            <div className="flex items-center gap-1.5 text-xs text-brand bg-brand/10 px-2 py-1 rounded-md">
               <Link className="size-3" />
               <span className="font-mono">{linkedLinearIssue.identifier}</span>
               <span className="truncate max-w-[200px]">{linkedLinearIssue.title}</span>
@@ -1319,7 +1319,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         {/* Linked workspaces indicator */}
         {linkedWorkspaceIds.length > 0 && (
           <div className="px-3 py-1.5 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">
+            <div className="flex items-center gap-1.5 text-xs text-brand bg-brand/10 px-2 py-1 rounded-md">
               <FolderSymlink className="size-3" />
               {linkedWorkspaceIds.length} {linkedWorkspaceIds.length === 1 ? 'workspace' : 'workspaces'} linked
               <button
@@ -1559,7 +1559,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <Link className="size-4" />
                 Link Linear issue
                 {linkedLinearIssue ? (
-                  <span className="ml-auto text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                  <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
                     1
                   </span>
                 ) : (
@@ -1571,7 +1571,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <FolderSymlink className="size-4" />
                 Link workspaces
                 {linkedWorkspaceIds.length > 0 && (
-                  <span className="ml-auto text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                  <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
                     {linkedWorkspaceIds.length}
                   </span>
                 )}
@@ -1581,7 +1581,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
                 <ScrollText className="size-4" />
                 Attach conversation context
                 {selectedSummaryIds.length > 0 && (
-                  <span className="ml-auto text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
+                  <span className="ml-auto text-xs bg-brand/20 text-brand px-1.5 py-0.5 rounded-full">
                     {selectedSummaryIds.length}
                   </span>
                 )}

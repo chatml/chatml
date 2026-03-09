@@ -17,8 +17,8 @@ const ACTION_CARDS = [
     label: 'New session',
     key: 'new-session',
     requiresWorkspace: true,
-    bgClass: 'bg-primary/10 dark:bg-primary/15',
-    iconClass: 'text-primary',
+    bgClass: 'bg-brand/10 dark:bg-brand/15',
+    iconClass: 'text-brand',
   },
   {
     icon: FolderOpen,
