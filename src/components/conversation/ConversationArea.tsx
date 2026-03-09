@@ -14,6 +14,7 @@ import {
   useReviewCommentActions,
   useStreamingState,
 } from '@/stores/selectors';
+import { ConversationMarkers } from '@/components/conversation/ConversationMarkers';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -395,6 +396,11 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     }
     messageListRef.current?.scrollToIndex(targetIndex, { align: 'center', behavior: 'smooth' });
   }, [clampedMatchIndex, searchQuery, searchMatches]);
+
+  // Scroll handler for conversation markers minimap
+  const handleMarkerScrollToIndex = useCallback((index: number) => {
+    messageListRef.current?.scrollToIndex(index, { align: 'start', behavior: 'smooth' });
+  }, []);
 
   // Register keyboard shortcuts for search
   useShortcut('searchChat', useCallback(() => {
@@ -1207,6 +1213,13 @@ export function ConversationArea({ children }: ConversationAreaProps) {
             pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
             forceFollowRef={forceFollowRef}
           />
+          {/* Conversation markers minimap */}
+          {conversationMessages.length > 3 && (
+            <ConversationMarkers
+              messages={conversationMessages}
+              onScrollToIndex={handleMarkerScrollToIndex}
+            />
+          )}
           {/* Fade overlay at bottom of messages */}
           <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-chat-background to-transparent pointer-events-none z-10" />
         </div>
