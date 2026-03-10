@@ -73,7 +73,7 @@ release:
 	git diff --cached --quiet && echo "Version already at $(VERSION)" || true
 	git commit --allow-empty -m "release: v$(VERSION)"
 	git push -u origin release/v$(VERSION)
-	gh pr create --title "release: v$(VERSION)" --body "Bump version to $(VERSION)."
+	gh pr create --title "release: v$(VERSION)" --body "$$(./scripts/changelog.sh)"
 	@echo "PR created. Merge it to trigger the release build."
 
 # Initialize fresh worktree - explicit setup command
