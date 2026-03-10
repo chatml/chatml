@@ -68,8 +68,18 @@ export const CodeViewer = memo(function CodeViewer({
     setViewMode(getDefaultViewMode(filename, typeof oldContent === 'string'));
   }
 
-  const isMarkdown = isMarkdownFile(filename);
+  // Reset view mode when diff data appears/disappears (loading → loaded transition).
+  // Skip when the filename also changed — the block above already handles that case.
   const hasDiff = typeof oldContent === 'string';
+  const [prevHasDiff, setPrevHasDiff] = useState(hasDiff);
+  if (prevHasDiff !== hasDiff) {
+    setPrevHasDiff(hasDiff);
+    if (prevFilename === filename) {
+      setViewMode(getDefaultViewMode(filename, hasDiff));
+    }
+  }
+
+  const isMarkdown = isMarkdownFile(filename);
   const canEdit = !!onChange;
   const getContent = useCallback(() => content, [content]);
 
