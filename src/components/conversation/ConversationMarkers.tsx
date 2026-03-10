@@ -132,11 +132,11 @@ export const ConversationMarkers = memo(function ConversationMarkers({
   if (markers.length === 0) return null;
 
   return (
-    <div className="absolute top-3 right-3 z-[15]">
+    <div className="absolute top-3 right-5 z-[15] pointer-events-none">
       {/* Marker track — compact minimap in top-right corner */}
       <div
         ref={trackRef}
-        className="relative w-4 rounded-sm bg-muted/30 border border-border/30 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="relative w-4 rounded-sm bg-muted/30 border border-border/30 cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring pointer-events-auto"
         style={{ height: trackHeight }}
         tabIndex={0}
         role="navigation"
@@ -174,7 +174,7 @@ export const ConversationMarkers = memo(function ConversationMarkers({
         className={cn(
           'absolute top-0 right-full mr-2 transition-all duration-150 ease-out motion-reduce:transition-none',
           isOpen
-            ? 'opacity-100 translate-x-0'
+            ? 'opacity-100 translate-x-0 pointer-events-auto'
             : 'opacity-0 translate-x-2 pointer-events-none'
         )}
         onMouseEnter={handlePopoverEnter}
