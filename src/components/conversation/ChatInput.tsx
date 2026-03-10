@@ -1103,7 +1103,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     // Check both: focused combobox input OR visible combobox popover (listbox)
     const activeElement = document.activeElement as HTMLElement | null;
     const isInCombobox = activeElement?.closest('[role="combobox"]');
-    const hasOpenPopover = document.querySelector('[role="listbox"]');
+    const hasOpenPopover = document.querySelector('[role="combobox"][aria-expanded="true"]');
     if ((isInCombobox || hasOpenPopover) && (e.key === 'Enter' || e.key === 'Tab')) {
       // Let the combobox handle item selection
       return;
