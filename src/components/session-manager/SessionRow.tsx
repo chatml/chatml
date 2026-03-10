@@ -38,7 +38,7 @@ export function SessionRow({ session, workspace, onSelect, onUnarchive, onPrevie
       return { text: 'Working...', color: 'text-text-warning' };
     }
     if (session.prStatus === 'merged') {
-      return { text: 'Merged', color: 'text-brand' };
+      return { text: 'Merged', color: 'text-nav-icon-prs' };
     }
     if (session.hasMergeConflict) {
       return { text: 'Merge conflict', color: 'text-text-error' };
