@@ -69,7 +69,8 @@ release:
 	@sed -i '' '/"version":/{s/"version": "[^"]*"/"version": "$(VERSION)"/;};' src-tauri/tauri.conf.json
 	@sed -i '' '/^\[package\]/,/^\[/{s/^version = "[^"]*"/version = "$(VERSION)"/;}' src-tauri/Cargo.toml
 	pnpm install --lockfile-only
-	git add package.json pnpm-lock.yaml src-tauri/tauri.conf.json src-tauri/Cargo.toml
+	cd src-tauri && cargo update --workspace
+	git add package.json pnpm-lock.yaml src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 	git diff --cached --quiet && echo "Version already at $(VERSION)" || true
 	git commit --allow-empty -m "release: v$(VERSION)"
 	git push -u origin release/v$(VERSION)
