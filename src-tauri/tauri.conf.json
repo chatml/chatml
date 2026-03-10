@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "chatml",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "identifier": "com.chatml.app",
   "build": {
     "frontendDist": "../out",
