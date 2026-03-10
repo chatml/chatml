@@ -1,6 +1,6 @@
 [package]
 name = "chatml"
-version = "0.1.14"
+version = "0.1.15"
 description = "ChatML"
 authors = ["you"]
 license = "GPL-3.0-only"
