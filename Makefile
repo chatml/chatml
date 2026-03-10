@@ -60,7 +60,7 @@ install-debug: build-debug
 # Usage: make release VERSION=0.2.0
 release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=x.y.z"; exit 1; fi
-	git checkout main && git pull origin main
+	git checkout main && git pull origin main --tags
 	@git branch -D release/v$(VERSION) 2>/dev/null || true
 	@git push origin --delete release/v$(VERSION) 2>/dev/null || true
 	git checkout -b release/v$(VERSION)
