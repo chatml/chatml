@@ -231,7 +231,7 @@ code.hljs { padding: 3px 5px; }
   --nav-icon-branches: oklch(0.55 0.15 155);
   --nav-icon-prs: #7c3aed;
   --nav-icon-skills: oklch(0.65 0.18 85);
-  --brand: oklch(0.623 0.214 259.815);
+  --brand: oklch(0.623 0.214 292);
 }
 
 .dark {
@@ -310,7 +310,7 @@ code.hljs { padding: 3px 5px; }
   --nav-icon-branches: #4ade80;
   --nav-icon-prs: #a78bfa;
   --nav-icon-skills: #fbbf24;
-  --brand: oklch(0.707 0.165 254.624);
+  --brand: oklch(0.707 0.165 292);
 }
 
 @theme inline {
