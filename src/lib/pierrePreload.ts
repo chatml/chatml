@@ -118,6 +118,7 @@ const LANGS: Array<[string, unknown]> = [
   ['kotlin', kotlinGrammar],
   ['scss', scssGrammar],
   ['shellscript', shellGrammar],
+  ['zsh', shellGrammar],        // Pierre's getFiletypeFromFileName maps .sh/.bash → "zsh"
   ['diff', diffGrammar],
   ['dockerfile', dockerfileGrammar],
   ['graphql', graphqlGrammar],
@@ -140,6 +141,8 @@ const LANGS: Array<[string, unknown]> = [
   ['ini', iniGrammar],
   ['hcl', hclGrammar],
   ['proto', protobufGrammar],
+  ['protobuf', protobufGrammar], // Pierre's getFiletypeFromFileName maps .proto → "protobuf"
+  ['tex', latexGrammar],         // Pierre's getFiletypeFromFileName maps .tex → "tex"
 ];
 
 interface ResolvedLang {
@@ -166,5 +169,23 @@ for (const [langName, grammar] of LANGS) {
       name: langName,
       data: extractGrammar(langName, grammar),
     });
+  }
+}
+
+// Also register aliases declared in each grammar's metadata.
+// Pierre's internal getFiletypeFromFileName may return non-canonical IDs
+// (e.g. "yml" instead of "yaml") that differ from Shiki's canonical names.
+// parseDiffFromFile() does NOT copy the `lang` field from FileContents to
+// FileDiffMetadata, so the diff view always falls back to
+// getFiletypeFromFileName(filename) — making alias coverage critical.
+for (const [langName] of LANGS) {
+  const resolved = langMap.get(langName);
+  if (!resolved || resolved.data.length === 0) continue;
+  const aliases = (resolved.data[0] as { aliases?: string[] }).aliases;
+  if (!aliases) continue;
+  for (const alias of aliases) {
+    if (!langMap.has(alias)) {
+      langMap.set(alias, { name: langName, data: resolved.data });
+    }
   }
 }
