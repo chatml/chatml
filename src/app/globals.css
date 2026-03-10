@@ -229,7 +229,7 @@ code.hljs { padding: 3px 5px; }
   --nav-icon-dashboard: oklch(0.55 0.15 250);
   --nav-icon-sessions: oklch(0.60 0.15 55);
   --nav-icon-branches: oklch(0.55 0.15 155);
-  --nav-icon-prs: oklch(0.55 0.15 300);
+  --nav-icon-prs: #7c3aed;
   --nav-icon-skills: oklch(0.65 0.18 85);
   --brand: oklch(0.623 0.214 259.815);
 }
