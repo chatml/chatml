@@ -60,8 +60,7 @@ export function useActionState(
     // Helper: does the working tree have new work beyond the merged PR?
     const hasNewWork = gitStatus && (
       gitStatus.workingDirectory.hasChanges ||
-      gitStatus.sync.unpushedCommits > 0 ||
-      gitStatus.sync.aheadBy > 0
+      gitStatus.sync.unpushedCommits > 0
     );
 
     // Priority 7: PR is merged
