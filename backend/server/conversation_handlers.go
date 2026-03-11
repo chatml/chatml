@@ -32,6 +32,17 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, convs)
 }
 
+func (h *Handlers) ListWorkspaceConversations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	workspaceID := chi.URLParam(r, "id")
+	convs, err := h.store.ListConversationsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		writeDBError(w, err)
+		return
+	}
+	writeJSON(w, convs)
+}
+
 type CreateConversationRequest struct {
 	Type              string              `json:"type"`              // "task", "review", "chat"
 	Message           string              `json:"message"`           // Initial message (optional)

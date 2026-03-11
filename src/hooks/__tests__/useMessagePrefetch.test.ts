@@ -843,7 +843,7 @@ describe('useMessagePrefetch', () => {
   // ── requestIdleCallback fallback ──────────────────────────────────────
 
   describe('requestIdleCallback fallback', () => {
-    it('uses setTimeout(2000) when requestIdleCallback is unavailable for initial defer', async () => {
+    it('uses setTimeout(500) when requestIdleCallback is unavailable for initial defer', async () => {
       const useMessagePrefetch = await importHook();
 
       // Remove requestIdleCallback to trigger fallback
@@ -860,13 +860,13 @@ describe('useMessagePrefetch', () => {
 
       const { unmount } = renderHook(() => useMessagePrefetch(true));
 
-      // At 1999ms, nothing should have fired yet
+      // At 499ms, nothing should have fired yet
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(1999);
+        await vi.advanceTimersByTimeAsync(499);
       });
       expect(mockGetConversationMessages).not.toHaveBeenCalled();
 
-      // At 2000ms the fallback setTimeout fires
+      // At 500ms the fallback setTimeout fires
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1);
       });

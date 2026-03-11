@@ -425,6 +425,54 @@ export interface AgentEvent {
   // CLI crash recovery fields
   attempt?: number;
   maxAttempts?: number;
+
+  // Rate limit event fields (SDK 0.2.72)
+  rateLimitInfo?: RateLimitInfo;
+
+  // Prompt suggestion fields (SDK 0.2.72)
+  suggestion?: string;
+
+  // Tool use summary fields (SDK 0.2.72)
+  precedingToolUseIds?: string[];
+
+  // Instructions loaded hook fields (SDK 0.2.72)
+  filePath?: string;
+  memoryType?: string;
+  loadReason?: string;
+  globs?: string[];
+  triggerFilePath?: string;
+  parentFilePath?: string;
+
+  // Worktree hook fields (SDK 0.2.72)
+  worktreePath?: string;
+
+  // Elicitation fields (SDK 0.2.72)
+  mcpServerName?: string;
+  elicitationMode?: string;
+  url?: string;
+  elicitationId?: string;
+  requestedSchema?: Record<string, unknown>;
+  action?: string;
+
+  // Hook progress/started fields (SDK 0.2.72)
+  hookId?: string;
+  hookOutput?: string;
+
+  // Query response fields (SDK 0.2.72)
+  result?: unknown;
+}
+
+// Rate limit info from claude.ai subscription (SDK 0.2.72)
+export interface RateLimitInfo {
+  status: 'allowed' | 'allowed_warning' | 'rejected';
+  resetsAt?: number;
+  rateLimitType?: string;
+  utilization?: number;
+  overageStatus?: string;
+  overageResetsAt?: number;
+  overageDisabledReason?: string;
+  isUsingOverage?: boolean;
+  surpassedThreshold?: number;
 }
 
 // MCP server source — where the server configuration originated

@@ -1057,6 +1057,15 @@ export async function listConversations(
   return handleResponse<ConversationDTO[]>(res);
 }
 
+export async function listWorkspaceConversations(
+  workspaceId: string
+): Promise<ConversationDTO[]> {
+  const res = await fetchWithAuth(
+    `${getApiBase()}/api/repos/${workspaceId}/conversations`
+  );
+  return handleResponse<ConversationDTO[]>(res);
+}
+
 export async function createConversation(
   workspaceId: string,
   sessionId: string,

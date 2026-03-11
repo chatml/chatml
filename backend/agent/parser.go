@@ -94,7 +94,7 @@ type AgentEvent struct {
 	// Status fields
 	Status string `json:"status,omitempty"`
 
-	// Hook response fields
+	// Hook response fields (also used by hook_progress and hook_started events)
 	HookName  string `json:"hookName,omitempty"`
 	HookEvent string `json:"hookEvent,omitempty"`
 	Stdout    string `json:"stdout,omitempty"`
@@ -164,6 +164,41 @@ type AgentEvent struct {
 	Files       []FilePersistedEntry `json:"files,omitempty"`
 	Failed      []FileFailedEntry    `json:"failed,omitempty"`
 	ProcessedAt string               `json:"processedAt,omitempty"`
+
+	// Rate limit event fields (SDK 0.2.72)
+	RateLimitInfo map[string]interface{} `json:"rateLimitInfo,omitempty"`
+
+	// Prompt suggestion fields (SDK 0.2.72)
+	Suggestion string `json:"suggestion,omitempty"`
+
+	// Tool use summary fields (SDK 0.2.72)
+	PrecedingToolUseIds []string `json:"precedingToolUseIds,omitempty"`
+
+	// Instructions loaded hook fields (SDK 0.2.72)
+	FilePath        string `json:"filePath,omitempty"`
+	MemoryType      string `json:"memoryType,omitempty"`
+	LoadReason      string `json:"loadReason,omitempty"`
+	Globs           []string `json:"globs,omitempty"`
+	TriggerFilePath string `json:"triggerFilePath,omitempty"`
+	ParentFilePath  string `json:"parentFilePath,omitempty"`
+
+	// Worktree hook fields (SDK 0.2.72)
+	WorktreePath string `json:"worktreePath,omitempty"`
+
+	// Elicitation fields (SDK 0.2.72)
+	McpServerName   string                 `json:"mcpServerName,omitempty"`
+	ElicitationMode string                 `json:"elicitationMode,omitempty"`
+	URL             string                 `json:"url,omitempty"`
+	ElicitationId   string                 `json:"elicitationId,omitempty"`
+	RequestedSchema map[string]interface{} `json:"requestedSchema,omitempty"`
+	Action          string                 `json:"action,omitempty"`
+
+	// Hook progress/started fields (SDK 0.2.72)
+	HookId     string `json:"hookId,omitempty"`
+	HookOutput string `json:"hookOutput,omitempty"`
+
+	// Query response fields (SDK 0.2.72)
+	Result interface{} `json:"result,omitempty"`
 
 	// Generic payload passthrough for new/unknown event types forwarded from agent-runner
 	RawPayload map[string]interface{} `json:"rawPayload,omitempty"`
@@ -325,6 +360,21 @@ const (
 	EventTypeTaskProgress   = "task_progress"
 	EventTypeTaskStopped    = "task_stopped"
 	EventTypeFilesPersisted = "files_persisted"
+
+	// New event types from SDK 0.2.72
+	EventTypePromptSuggestion    = "prompt_suggestion"
+	EventTypeToolUseSummary      = "tool_use_summary"
+	EventTypeInstructionsLoaded  = "instructions_loaded"
+	EventTypeWorktreeCreated     = "worktree_created"
+	EventTypeWorktreeRemoved     = "worktree_removed"
+	EventTypeElicitationRequest  = "elicitation_request"
+	EventTypeElicitationResult   = "elicitation_result"
+	EventTypeElicitationComplete = "elicitation_complete"
+	EventTypeHookProgress        = "hook_progress"
+	EventTypeHookStarted         = "hook_started"
+	EventTypeSupportedAgents     = "supported_agents"
+	EventTypeMcpServersUpdated   = "mcp_servers_updated"
+	EventTypeInitializationResult = "initialization_result"
 )
 
 // TodoItem represents a single todo item from the agent's TodoWrite tool

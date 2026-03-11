@@ -16,7 +16,7 @@ import { registerSession, getSessionDirName } from '@/lib/tauri';
 import { navigate } from '@/lib/navigation';
 import { useToast } from '@/components/ui/toast';
 import {
-  listRepos, listAllSessions, listConversations,
+  listRepos, listAllSessions, listConversations, listWorkspaceConversations,
   mapSessionDTO, getConversationMessages, toStoreMessage,
   type RepoDTO, type ConversationDTO, type MessageDTO,
 } from '@/lib/api';
@@ -370,6 +370,38 @@ export function useAppInitialization() {
             console.error('Failed to eagerly load messages for initial conversation:', err);
           }
         }
+        // Step 6: Background prefetch conversations for other workspaces at idle
+        const otherWorkspaceIds = mappedWorkspaces
+          .filter(w => w.id !== targetWorkspaceId)
+          .map(w => w.id);
+        if (otherWorkspaceIds.length > 0) {
+          const prefetchOtherWorkspaces = async () => {
+            const results = await Promise.allSettled(
+              otherWorkspaceIds.map(wsId => listWorkspaceConversations(wsId))
+            );
+            const allMapped = results
+              .filter((r): r is PromiseFulfilledResult<ConversationDTO[]> => r.status === 'fulfilled')
+              .flatMap(r => r.value.map(conversationToConversation));
+            if (allMapped.length > 0) {
+              const existing = useAppStore.getState().conversations;
+              const existingIds = new Set(existing.map(c => c.id));
+              const deduped = allMapped.filter(c => !existingIds.has(c.id));
+              if (deduped.length > 0) {
+                setConversations([...existing, ...deduped]);
+              }
+            }
+            for (const r of results) {
+              if (r.status === 'rejected') {
+                console.debug('Failed to prefetch workspace conversations:', r.reason);
+              }
+            }
+          };
+          if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => { prefetchOtherWorkspaces(); }, { timeout: 3000 });
+          } else {
+            setTimeout(prefetchOtherWorkspaces, 500);
+          }
+        }
       } catch (error) {
         console.error('Failed to load data from backend:', error);
         showError('Failed to load workspace data. Try reloading the app.', 'Data Load Error');
@@ -397,23 +429,23 @@ export function useAppInitialization() {
     );
     if (hasConversations || workspaceSessions.length === 0) return;
 
-    // Fetch conversations for all non-archived sessions in the new workspace
-    Promise.all(
-      workspaceSessions.map(s =>
-        listConversations(selectedWorkspaceId, s.id).catch(() => [] as ConversationDTO[])
-      )
-    ).then(convsBySession => {
-      const newConvs = convsBySession.flat().map(conversationToConversation);
-      if (newConvs.length > 0) {
-        // Append to existing conversations (don't overwrite other workspaces)
-        const existing = useAppStore.getState().conversations;
-        const existingIds = new Set(existing.map(c => c.id));
-        const deduped = newConvs.filter(c => !existingIds.has(c.id));
-        if (deduped.length > 0) {
-          setConversations([...existing, ...deduped]);
+    // Fetch all conversations for the new workspace in a single request
+    listWorkspaceConversations(selectedWorkspaceId)
+      .then(convDTOs => {
+        const newConvs = convDTOs.map(conversationToConversation);
+        if (newConvs.length > 0) {
+          // Append to existing conversations (don't overwrite other workspaces)
+          const existing = useAppStore.getState().conversations;
+          const existingIds = new Set(existing.map(c => c.id));
+          const deduped = newConvs.filter(c => !existingIds.has(c.id));
+          if (deduped.length > 0) {
+            setConversations([...existing, ...deduped]);
+          }
         }
-      }
-    }).catch(() => {});
+      })
+      .catch((err) => {
+        console.debug('Failed to fetch conversations for workspace', selectedWorkspaceId, err);
+      });
   }, [selectedWorkspaceId, contentReady, backendConnected, conversationToConversation, setConversations]);
 
   // Lazy-load conversations when switching to a session that doesn't have conversations loaded yet

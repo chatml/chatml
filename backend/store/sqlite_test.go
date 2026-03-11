@@ -935,6 +935,72 @@ func TestListConversations_WithToolActions(t *testing.T) {
 	assert.False(t, convs[0].ToolSummary[1].Success)
 }
 
+func TestListConversationsByWorkspace(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	createTestRepo(t, s, "ws-2")
+	createTestSession(t, s, "sess-1", "ws-1")
+	createTestSession(t, s, "sess-2", "ws-1")
+	createTestSession(t, s, "sess-3", "ws-2") // Different workspace
+
+	createTestConversation(t, s, "c1", "sess-1")
+	createTestConversation(t, s, "c2", "sess-1")
+	createTestConversation(t, s, "c3", "sess-2")
+	createTestConversation(t, s, "c4", "sess-3") // Different workspace
+
+	// Add a message to c1 to verify message counts are loaded
+	require.NoError(t, s.AddMessageToConversation(ctx, "c1", createTestMessage("m1", "user", "Hello")))
+
+	// Add a tool action to c2 to verify tool actions are loaded
+	require.NoError(t, s.AddToolActionToConversation(ctx, "c2", models.ToolAction{
+		ID: "t1", Tool: "read_file", Target: "main.go", Success: true,
+	}))
+
+	convs, err := s.ListConversationsByWorkspace(ctx, "ws-1")
+	require.NoError(t, err)
+	assert.Len(t, convs, 3) // c1, c2, c3 — not c4
+
+	ids := make(map[string]bool)
+	convByID := make(map[string]*models.Conversation)
+	for _, c := range convs {
+		ids[c.ID] = true
+		convByID[c.ID] = c
+	}
+	assert.True(t, ids["c1"])
+	assert.True(t, ids["c2"])
+	assert.True(t, ids["c3"])
+	assert.False(t, ids["c4"]) // Different workspace
+
+	// Verify message count is loaded
+	assert.Equal(t, 1, convByID["c1"].MessageCount)
+
+	// Verify tool actions are loaded
+	require.Len(t, convByID["c2"].ToolSummary, 1)
+	assert.Equal(t, "read_file", convByID["c2"].ToolSummary[0].Tool)
+}
+
+func TestListConversationsByWorkspace_ExcludesArchivedSessions(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	createTestRepo(t, s, "ws-1")
+	sess := createTestSession(t, s, "sess-1", "ws-1")
+	createTestSession(t, s, "sess-2", "ws-1")
+
+	createTestConversation(t, s, "c1", "sess-1")
+	createTestConversation(t, s, "c2", "sess-2")
+
+	// Archive sess-1
+	require.NoError(t, s.UpdateSession(ctx, sess.ID, func(s *models.Session) {
+		s.Archived = true
+	}))
+
+	convs, err := s.ListConversationsByWorkspace(ctx, "ws-1")
+	require.NoError(t, err)
+	assert.Len(t, convs, 1) // Only c2 — sess-1 is archived
+	assert.Equal(t, "c2", convs[0].ID)
+}
+
 func TestUpdateConversation_NameChange(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
