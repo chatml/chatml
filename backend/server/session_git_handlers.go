@@ -39,6 +39,12 @@ func (h *Handlers) GetSessionGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The baseRef used for ahead/behind may be a merge-base SHA.
+	// Restore the human-readable branch name for frontend display.
+	displayBranch := session.EffectiveTargetBranch()
+	displayBranch = strings.TrimPrefix(displayBranch, session.EffectiveRemote()+"/")
+	status.Sync.BaseBranch = displayBranch
+
 	writeJSON(w, status)
 }
 

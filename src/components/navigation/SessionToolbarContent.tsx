@@ -256,6 +256,25 @@ export function SessionToolbarContent() {
       return;
     }
 
+    // Fetch the fix-issues template so it's attached as instructions
+    let templateContent: string = ACTION_TEMPLATES['fix-issues'];
+    try {
+      const merged = await fetchMergedActionTemplates(selectedWorkspaceId, getGlobalActionTemplates, getWorkspaceActionTemplates);
+      templateContent = merged['fix-issues'] ?? templateContent;
+    } catch { /* use built-in default */ }
+
+    const templateAttachment: AttachmentDTO = {
+      id: crypto.randomUUID(),
+      type: 'file',
+      name: ACTION_TEMPLATE_NAMES['fix-issues'],
+      mimeType: 'text/markdown',
+      size: new Blob([templateContent]).size,
+      lineCount: templateContent.split('\n').length,
+      base64Data: toBase64(templateContent),
+      preview: templateContent.slice(0, 200),
+      isInstruction: true,
+    };
+
     // Show short user bubble immediately (full CI context is sent to the agent separately)
     addMessage({
       id: crypto.randomUUID(),
@@ -263,6 +282,7 @@ export function SessionToolbarContent() {
       role: 'user',
       content: 'Fix the failing CI checks',
       timestamp: new Date().toISOString(),
+      attachments: [templateAttachment],
     });
     window.dispatchEvent(new CustomEvent('chat-message-submitted'));
     updateConversation(selectedConversationId, { status: 'active' });
@@ -287,12 +307,12 @@ export function SessionToolbarContent() {
       }
 
       const message = formatCIFailureMessage(context);
-      await sendConversationMessage(selectedConversationId, message);
+      await sendConversationMessage(selectedConversationId, message, [templateAttachment]);
     } catch (error) {
       console.error('Failed to fetch CI failure context:', error);
       // Fallback to generic message
       try {
-        await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks');
+        await sendConversationMessage(selectedConversationId, 'Fix the failing CI checks', [templateAttachment]);
         showWarning('Could not fetch CI details. Sent generic request.');
       } catch {
         setStreaming(selectedConversationId, false);
