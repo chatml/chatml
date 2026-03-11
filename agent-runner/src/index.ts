@@ -1,5 +1,6 @@
 import {
   query,
+  // Message types
   type SDKMessage,
   type SDKUserMessage,
   type SDKResultMessage,
@@ -10,13 +11,24 @@ import {
   type SDKToolProgressMessage,
   type SDKAuthStatusMessage,
   type SDKTaskNotificationMessage,
-  // New message types (SDK 0.2.51+)
   type SDKTaskStartedMessage,
   type SDKTaskProgressMessage,
   type SDKFilesPersistedEvent,
+  // New message types (SDK 0.2.72)
+  type SDKRateLimitEvent,
+  type SDKPromptSuggestionMessage,
+  type SDKToolUseSummaryMessage,
+  type SDKElicitationCompleteMessage,
+  type SDKHookProgressMessage,
+  type SDKHookStartedMessage,
+  // Core types
   type AgentDefinition,
   type Query,
   type HookCallback,
+  type McpServerConfig,
+  type ThinkingConfig,
+  type CanUseTool,
+  // Hook input types
   type PreToolUseHookInput,
   type PostToolUseHookInput,
   type NotificationHookInput,
@@ -27,7 +39,12 @@ import {
   type PostToolUseFailureHookInput,
   type StopHookInput,
   type PreCompactHookInput,
-  type McpServerConfig,
+  // New hook input types (SDK 0.2.72)
+  type InstructionsLoadedHookInput,
+  type WorktreeCreateHookInput,
+  type WorktreeRemoveHookInput,
+  type ElicitationHookInput,
+  type ElicitationResultHookInput,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as readline from "readline";
 import { WorkspaceContext } from "./mcp/context.js";
@@ -116,6 +133,10 @@ const mcpServersFilePath = getArg("--mcp-servers-file");
 
 // Programmatic agent definitions file (JSON object of agent definitions from backend)
 const agentsFilePath = getArg("--agents-file");
+
+// New SDK 0.2.72 options
+const enablePromptSuggestions = hasFlag("--prompt-suggestions");
+const enableAgentProgressSummaries = hasFlag("--agent-progress-summaries");
 
 // Task 5: Budget Controls
 const maxBudgetUsd = getNumericArg("--max-budget-usd");
@@ -223,7 +244,7 @@ interface Attachment {
 
 // Input message types from Go backend
 interface InputMessage {
-  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task";
+  type: "message" | "stop" | "interrupt" | "set_model" | "set_permission_mode" | "set_max_thinking_tokens" | "get_supported_models" | "get_supported_commands" | "get_mcp_status" | "get_account_info" | "rewind_files" | "user_question_response" | "plan_approval_response" | "reconnect_mcp_server" | "toggle_mcp_server" | "stop_task" | "get_supported_agents" | "set_mcp_servers" | "get_initialization_result";
   content?: string;
   model?: string;
   permissionMode?: string;
@@ -243,6 +264,8 @@ interface InputMessage {
   serverEnabled?: boolean;
   // Task management (SDK v0.2.51+)
   taskId?: string;
+  // Dynamic MCP server management (SDK 0.2.72)
+  servers?: Record<string, McpServerConfig>;
 }
 
 // Escape a string for use in XML attribute values
@@ -435,6 +458,23 @@ let messageWaiter: ((msg: QueuedMessage | null) => void) | null = null;
 // Whether stdin has been closed (signals end of input)
 let stdinClosed = false;
 
+// Helper to run a simple query command with standard error handling.
+// Reduces boilerplate for commands that follow the pattern:
+//   queryRef.method() → emit success → catch → emit command_error
+function runQueryCommand(
+  command: string,
+  fn: (q: Query) => Promise<unknown>,
+  mapResult: (result: unknown) => OutputEvent,
+): void {
+  if (!queryRef) {
+    emit({ type: "command_error", command, error: "No active query" });
+    return;
+  }
+  void fn(queryRef)
+    .then((result) => emit(mapResult(result)))
+    .catch((err: unknown) => emit({ type: "command_error", command, error: String(err) }));
+}
+
 function setupInputQueue(): void {
   rl = readline.createInterface({
     input: process.stdin,
@@ -522,7 +562,9 @@ function setupInputQueue(): void {
       if (input.type === "set_max_thinking_tokens" && input.maxThinkingTokens) {
         if (queryRef) {
           debug(`Setting max thinking tokens: ${input.maxThinkingTokens}`);
-          // TODO: migrate to setThinking() when SDK exposes it as a Query method
+          // NOTE: setMaxThinkingTokens is deprecated in SDK 0.2.72 in favor of the
+          // `thinking` query option. No setThinking() method on Query yet — keep using
+          // this until the SDK exposes a runtime method for changing thinking config.
           void queryRef.setMaxThinkingTokens(input.maxThinkingTokens).then(() => {
             emit({ type: "max_thinking_tokens_changed", maxThinkingTokens: input.maxThinkingTokens! });
           }).catch((cmdErr: unknown) => {
@@ -549,15 +591,7 @@ function setupInputQueue(): void {
       }
 
       if (input.type === "get_supported_models") {
-        if (queryRef) {
-          void queryRef.supportedModels().then((models: unknown) => {
-            emit({ type: "supported_models", models });
-          }).catch((cmdErr: unknown) => {
-            emit({ type: "command_error", command: "get_supported_models", error: String(cmdErr) });
-          });
-        } else {
-          emit({ type: "command_error", command: "get_supported_models", error: "No active query" });
-        }
+        runQueryCommand("get_supported_models", (q) => q.supportedModels(), (models) => ({ type: "supported_models", models }));
         return;
       }
 
@@ -579,29 +613,13 @@ function setupInputQueue(): void {
       }
 
       if (input.type === "get_mcp_status") {
-        if (queryRef) {
-          void queryRef.mcpServerStatus().then((status: unknown) => {
-            emit({ type: "mcp_status", servers: status });
-          }).catch((cmdErr: unknown) => {
-            emit({ type: "command_error", command: "get_mcp_status", error: String(cmdErr) });
-          });
-        } else {
-          emit({ type: "command_error", command: "get_mcp_status", error: "No active query" });
-        }
+        runQueryCommand("get_mcp_status", (q) => q.mcpServerStatus(), (servers) => ({ type: "mcp_status", servers }));
         return;
       }
 
       // MCP server management (SDK v0.2.21+)
       if (input.type === "reconnect_mcp_server" && input.serverName) {
-        if (queryRef) {
-          void queryRef.reconnectMcpServer(input.serverName).then(() => {
-            emit({ type: "mcp_server_reconnected", serverName: input.serverName! });
-          }).catch((cmdErr: unknown) => {
-            emit({ type: "command_error", command: "reconnect_mcp_server", error: String(cmdErr) });
-          });
-        } else {
-          emit({ type: "command_error", command: "reconnect_mcp_server", error: "No active query" });
-        }
+        runQueryCommand("reconnect_mcp_server", (q) => q.reconnectMcpServer(input.serverName!), () => ({ type: "mcp_server_reconnected", serverName: input.serverName! }));
         return;
       }
 
@@ -620,15 +638,7 @@ function setupInputQueue(): void {
       }
 
       if (input.type === "get_account_info") {
-        if (queryRef) {
-          void queryRef.accountInfo().then((info: unknown) => {
-            emit({ type: "account_info", info });
-          }).catch((cmdErr: unknown) => {
-            emit({ type: "command_error", command: "get_account_info", error: String(cmdErr) });
-          });
-        } else {
-          emit({ type: "command_error", command: "get_account_info", error: "No active query" });
-        }
+        runQueryCommand("get_account_info", (q) => q.accountInfo(), (info) => ({ type: "account_info", info }));
         return;
       }
 
@@ -642,6 +652,22 @@ function setupInputQueue(): void {
         } else {
           emit({ type: "files_rewound", checkpointUuid: input.checkpointUuid, success: false, error: "No active query" });
         }
+        return;
+      }
+
+      // New Query methods (SDK 0.2.72)
+      if (input.type === "get_supported_agents") {
+        runQueryCommand("get_supported_agents", (q) => q.supportedAgents(), (agents) => ({ type: "supported_agents", agents }));
+        return;
+      }
+
+      if (input.type === "set_mcp_servers" && input.servers) {
+        runQueryCommand("set_mcp_servers", (q) => q.setMcpServers(input.servers!), (result) => ({ type: "mcp_servers_updated", result }));
+        return;
+      }
+
+      if (input.type === "get_initialization_result") {
+        runQueryCommand("get_initialization_result", (q) => q.initializationResult(), (result) => ({ type: "initialization_result", result }));
         return;
       }
 
@@ -1287,6 +1313,76 @@ const subagentStopHook: HookCallback = async (input) => {
 };
 
 // ============================================================================
+// NEW HOOKS (SDK 0.2.72)
+// ============================================================================
+
+const instructionsLoadedHook: HookCallback = async (input) => {
+  const hookInput = input as InstructionsLoadedHookInput;
+  emit({
+    type: "instructions_loaded",
+    filePath: hookInput.file_path,
+    memoryType: hookInput.memory_type,
+    loadReason: hookInput.load_reason,
+    globs: hookInput.globs,
+    triggerFilePath: hookInput.trigger_file_path,
+    parentFilePath: hookInput.parent_file_path,
+    sessionId: hookInput.session_id,
+  });
+  return {};
+};
+
+const worktreeCreateHook: HookCallback = async (input) => {
+  const hookInput = input as WorktreeCreateHookInput;
+  emit({
+    type: "worktree_created",
+    name: hookInput.name,
+    sessionId: hookInput.session_id,
+  });
+  return {};
+};
+
+const worktreeRemoveHook: HookCallback = async (input) => {
+  const hookInput = input as WorktreeRemoveHookInput;
+  emit({
+    type: "worktree_removed",
+    worktreePath: hookInput.worktree_path,
+    sessionId: hookInput.session_id,
+  });
+  return {};
+};
+
+const elicitationHook: HookCallback = async (input) => {
+  const hookInput = input as ElicitationHookInput;
+  emit({
+    type: "elicitation_request",
+    mcpServerName: hookInput.mcp_server_name,
+    message: hookInput.message,
+    elicitationMode: hookInput.mode,
+    url: hookInput.url,
+    elicitationId: hookInput.elicitation_id,
+    requestedSchema: hookInput.requested_schema,
+    sessionId: hookInput.session_id,
+  });
+  // Auto-allow all MCP elicitations; the backend is notified for observability only.
+  // If user approval is needed in the future, implement a pending-request pattern
+  // similar to pendingQuestionRequests.
+  return {};
+};
+
+const elicitationResultHook: HookCallback = async (input) => {
+  const hookInput = input as ElicitationResultHookInput;
+  emit({
+    type: "elicitation_result",
+    mcpServerName: hookInput.mcp_server_name,
+    elicitationId: hookInput.elicitation_id,
+    elicitationMode: hookInput.mode,
+    action: hookInput.action,
+    sessionId: hookInput.session_id,
+  });
+  return {};
+};
+
+// ============================================================================
 // ASK USER QUESTION - PreToolUse Hook Handler
 // ============================================================================
 
@@ -1507,11 +1603,7 @@ const PLAN_MODE_DENIED_TOOLS = new Set([
 // Permission callback — enforces plan mode restrictions as defense-in-depth.
 // In bypassPermissions mode the SDK auto-allows all tools before reaching this.
 // In plan mode the SDK should enforce restrictions natively, but we double-check here.
-const canUseTool = async (
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  _options: { signal: AbortSignal; toolUseID: string } // eslint-disable-line @typescript-eslint/no-unused-vars
-): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
+const canUseTool: CanUseTool = async (toolName, toolInput, _options) => {
   // Defense-in-depth: if AskUserQuestion reaches canUseTool with cached answers,
   // provide them via updatedInput. In bypassPermissions mode (the default), the SDK
   // auto-allows before reaching this callback — this covers non-bypass modes.
@@ -1524,7 +1616,8 @@ const canUseTool = async (
   if (currentPermissionMode === "plan" && PLAN_MODE_DENIED_TOOLS.has(toolName)) {
     return { behavior: "deny", message: "This tool is not available in plan mode. Present your plan using ExitPlanMode first." };
   }
-  return { behavior: "allow", updatedInput: toolInput };
+  // SDK 0.2.72: updatedInput is now optional in PermissionResult (Zod bug fixed)
+  return { behavior: "allow" };
 };
 
 // Hooks configuration - all always enabled
@@ -1543,6 +1636,12 @@ const hooks = {
   PreCompact: [{ hooks: [preCompactHook] }],
   SubagentStart: [{ hooks: [subagentStartHook] }],
   SubagentStop: [{ hooks: [subagentStopHook] }],
+  // New hooks (SDK 0.2.72)
+  InstructionsLoaded: [{ hooks: [instructionsLoadedHook] }],
+  WorktreeCreate: [{ hooks: [worktreeCreateHook] }],
+  WorktreeRemove: [{ hooks: [worktreeRemoveHook] }],
+  Elicitation: [{ hooks: [elicitationHook] }],
+  ElicitationResult: [{ hooks: [elicitationResultHook] }],
 };
 
 // ============================================================================
@@ -1748,21 +1847,25 @@ async function main(): Promise<void> {
       outputFormat,
       maxBudgetUsd,
       maxTurns,
-      // Use new thinking config (SDK 0.2.57+) instead of deprecated maxThinkingTokens
+      // Thinking config: explicit budgetTokens for non-adaptive models (Sonnet/Haiku),
+      // adaptive thinking for Opus 4.6+ is controlled via `effort` below.
       thinking: maxThinkingTokens !== undefined
-        ? { type: "enabled" as const, budgetTokens: maxThinkingTokens }
+        ? { type: "enabled", budgetTokens: maxThinkingTokens } satisfies ThinkingConfig
         : undefined,
       settingSources,
       betas,
       model,
-      // Pass effort level to SDK as first-class option (SDK 0.2.57+)
-      ...(effort ? { effort: effort as "low" | "medium" | "high" | "max" } : {}),
+      // Effort level controls adaptive thinking depth (Opus 4.6+)
+      ...(effort ? { effort } : {}),
       fallbackModel,
       // Custom session ID — aligns SDK session with our conversation ID (SDK v0.2.33+)
       ...(customSessionId ? { sessionId: customSessionId } : {}),
       forkSession,
       // Programmatic agent definitions (SDK 0.2.62+)
       ...(programmaticAgents ? { agents: programmaticAgents } : {}),
+      // New options (SDK 0.2.72)
+      ...(enablePromptSuggestions ? { promptSuggestions: true } : {}),
+      ...(enableAgentProgressSummaries ? { agentProgressSummaries: true } : {}),
       // Debug options (SDK v0.2.30+)
       debug: sdkDebug || !!process.env.DEBUG_CLAUDE_AGENT_SDK,
       debugFile: sdkDebugFile,
@@ -2341,7 +2444,7 @@ function handleMessage(message: SDKMessage): void {
     }
 
     case "system": {
-      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent;
+      const sysMsg = message as SDKSystemMessage | SDKCompactBoundaryMessage | SDKStatusMessage | SDKHookResponseMessage | SDKTaskNotificationMessage | SDKTaskStartedMessage | SDKTaskProgressMessage | SDKFilesPersistedEvent | SDKElicitationCompleteMessage | SDKHookProgressMessage | SDKHookStartedMessage;
 
       if (sysMsg.subtype === "init") {
         const initMsg = sysMsg as SDKSystemMessage;
@@ -2461,7 +2564,74 @@ function handleMessage(message: SDKMessage): void {
           processedAt: fpMsg.processed_at,
           sessionId: fpMsg.session_id,
         });
+      } else if (sysMsg.subtype === "elicitation_complete") {
+        // MCP elicitation completed (SDK 0.2.72)
+        const elicitMsg = sysMsg as SDKElicitationCompleteMessage;
+        emit({
+          type: "elicitation_complete",
+          mcpServerName: elicitMsg.mcp_server_name,
+          elicitationId: elicitMsg.elicitation_id,
+          sessionId: elicitMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "hook_progress") {
+        // Hook execution progress (SDK 0.2.72)
+        const hookMsg = sysMsg as SDKHookProgressMessage;
+        emit({
+          type: "hook_progress",
+          hookId: hookMsg.hook_id,
+          hookName: hookMsg.hook_name,
+          hookEvent: hookMsg.hook_event,
+          stdout: hookMsg.stdout,
+          stderr: hookMsg.stderr,
+          hookOutput: hookMsg.output,
+          sessionId: hookMsg.session_id,
+        });
+      } else if (sysMsg.subtype === "hook_started") {
+        // Hook execution started (SDK 0.2.72)
+        const hookMsg = sysMsg as SDKHookStartedMessage;
+        emit({
+          type: "hook_started",
+          hookId: hookMsg.hook_id,
+          hookName: hookMsg.hook_name,
+          hookEvent: hookMsg.hook_event,
+          sessionId: hookMsg.session_id,
+        });
       }
+      break;
+    }
+
+    case "rate_limit_event": {
+      // Rate limit info from claude.ai subscription (SDK 0.2.72)
+      // Emit as "rate_limit" to match Go backend EventTypeRateLimit constant
+      const rlMsg = message as SDKRateLimitEvent;
+      emit({
+        type: "rate_limit",
+        rateLimitInfo: rlMsg.rate_limit_info,
+        sessionId: rlMsg.session_id,
+      });
+      break;
+    }
+
+    case "prompt_suggestion": {
+      // AI-generated next-prompt suggestion (SDK 0.2.72)
+      const psMsg = message as SDKPromptSuggestionMessage;
+      emit({
+        type: "prompt_suggestion",
+        suggestion: psMsg.suggestion,
+        sessionId: psMsg.session_id,
+      });
+      break;
+    }
+
+    case "tool_use_summary": {
+      // Tool use summary after turn (SDK 0.2.72)
+      const tusMsg = message as SDKToolUseSummaryMessage;
+      emit({
+        type: "tool_use_summary",
+        summary: tusMsg.summary,
+        precedingToolUseIds: tusMsg.preceding_tool_use_ids,
+        sessionId: tusMsg.session_id,
+      });
       break;
     }
 
@@ -2491,9 +2661,9 @@ function handleMessage(message: SDKMessage): void {
     }
 
     default: {
-      // Forward new/unknown message types to the Go backend (SDK 0.2.51+).
-      // This handles SDKRateLimitEvent, SDKPromptSuggestionMessage, SDKToolUseSummaryMessage
-      // and any future types added by newer SDK versions without code changes.
+      // Forward unknown message types to the Go backend as a safety net.
+      // All known SDK 0.2.72 types are handled above; this catches any
+      // future types added by newer SDK versions without code changes.
       // Prefix with "sdk_" to avoid collisions with internal event types.
       const anyMsg = message as { type: string; session_id?: string; [key: string]: unknown };
       debug(`Forwarding unhandled SDK message type: ${anyMsg.type}`);
