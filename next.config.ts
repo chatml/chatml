@@ -15,11 +15,11 @@ const nextConfig: NextConfig = {
   // @shikijs/core + @shikijs/engine-javascript, bypassing bundle-full.mjs
   // which pulls in Oniguruma WASM and hundreds of dynamic import() calls
   // that fail in Tauri release builds.
-  // Uses absolute path so the alias applies to transpiled packages
-  // (e.g. @pierre/diffs) in production builds, not just first-party code.
+  // Uses @/ path alias because Turbopack's resolveAlias prepends './' to
+  // both relative and absolute paths, breaking resolution in CI.
   turbopack: {
     resolveAlias: {
-      shiki: shikiShim,
+      shiki: '@/lib/shiki-shim',
     },
   },
   webpack: (config) => {
