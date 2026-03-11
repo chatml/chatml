@@ -545,9 +545,27 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const mimeType = file.type || 'image/png';
         const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png';
 
+        const addValidated = (attachment: Attachment) => {
+          let validationError: string | null = null;
+          setAttachments(prev => {
+            const newAttachments = [...prev, attachment];
+            const validation = validateAttachments(newAttachments);
+            if (!validation.valid) {
+              validationError = validation.error || 'Invalid attachments';
+              return prev;
+            }
+            return newAttachments;
+          });
+          if (validationError) {
+            showError(validationError);
+          } else {
+            showInfo('Image pasted as attachment');
+          }
+        };
+
         const img = new Image();
         img.onload = () => {
-          const attachment: Attachment = {
+          addValidated({
             id: generateAttachmentId(),
             type: 'image',
             name: `pasted-image.${ext}`,
@@ -556,24 +574,22 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
             width: img.naturalWidth,
             height: img.naturalHeight,
             base64Data: base64,
-          };
-          setAttachments(prev => [...prev, attachment]);
-          showInfo('Image pasted as attachment');
+          });
         };
         img.onerror = () => {
-          // Fallback without dimensions
-          const attachment: Attachment = {
+          addValidated({
             id: generateAttachmentId(),
             type: 'image',
             name: `pasted-image.${ext}`,
             mimeType,
             size: file.size,
             base64Data: base64,
-          };
-          setAttachments(prev => [...prev, attachment]);
-          showInfo('Image pasted as attachment');
+          });
         };
         img.src = dataUrl;
+      };
+      reader.onerror = () => {
+        showError('Failed to read pasted image');
       };
       reader.readAsDataURL(file);
       return;
@@ -617,13 +633,26 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         height,
         base64Data: base64,
       };
-      setAttachments(prev => [...prev, attachment]);
-      showInfo('Image pasted as attachment');
+      let validationError: string | null = null;
+      setAttachments(prev => {
+        const newAttachments = [...prev, attachment];
+        const validation = validateAttachments(newAttachments);
+        if (!validation.valid) {
+          validationError = validation.error || 'Invalid attachments';
+          return prev;
+        }
+        return newAttachments;
+      });
+      if (validationError) {
+        showError(validationError);
+      } else {
+        showInfo('Image pasted as attachment');
+      }
     };
 
     window.addEventListener('clipboard-paste-image', handleClipboardImage);
     return () => window.removeEventListener('clipboard-paste-image', handleClipboardImage);
-  }, [showInfo]);
+  }, [showInfo, showError]);
 
   // Handle attachment removal
   const handleRemoveAttachment = useCallback((id: string) => {

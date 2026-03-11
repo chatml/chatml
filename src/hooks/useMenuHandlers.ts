@@ -146,6 +146,11 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
               const { readImage } = await import('@tauri-apps/plugin-clipboard-manager');
               const img = await readImage();
               const { width, height } = await img.size();
+
+              // Guard against extremely large images (e.g., 5K retina screenshots)
+              const MAX_PIXELS = 4096 * 4096;
+              if (width * height > MAX_PIXELS) return;
+
               const rgba = await img.rgba();
 
               // Convert RGBA to PNG via canvas
