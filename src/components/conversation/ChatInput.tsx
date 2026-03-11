@@ -521,6 +521,28 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (validationError) showError(validationError);
   }, [showError]);
 
+  // Shared helper: validate and add an image attachment with user feedback.
+  // Uses a ref to avoid the race condition of reading a captured variable
+  // set inside a setState updater (fragile under React 18 concurrent mode).
+  const validationErrorRef = useRef<string | null>(null);
+  const addImageAttachment = useCallback((attachment: Attachment) => {
+    validationErrorRef.current = null;
+    setAttachments(prev => {
+      const newAttachments = [...prev, attachment];
+      const validation = validateAttachments(newAttachments);
+      if (!validation.valid) {
+        validationErrorRef.current = validation.error || 'Invalid attachments';
+        return prev;
+      }
+      return newAttachments;
+    });
+    if (validationErrorRef.current) {
+      showError(validationErrorRef.current);
+    } else {
+      showInfo('Image pasted as attachment');
+    }
+  }, [showError, showInfo]);
+
   // Handle pasted images and auto-convert long pasted text to attachment
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     // Check for pasted images
@@ -545,27 +567,9 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
         const mimeType = file.type || 'image/png';
         const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png';
 
-        const addValidated = (attachment: Attachment) => {
-          let validationError: string | null = null;
-          setAttachments(prev => {
-            const newAttachments = [...prev, attachment];
-            const validation = validateAttachments(newAttachments);
-            if (!validation.valid) {
-              validationError = validation.error || 'Invalid attachments';
-              return prev;
-            }
-            return newAttachments;
-          });
-          if (validationError) {
-            showError(validationError);
-          } else {
-            showInfo('Image pasted as attachment');
-          }
-        };
-
         const img = new Image();
         img.onload = () => {
-          addValidated({
+          addImageAttachment({
             id: generateAttachmentId(),
             type: 'image',
             name: `pasted-image.${ext}`,
@@ -577,7 +581,7 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
           });
         };
         img.onerror = () => {
-          addValidated({
+          addImageAttachment({
             id: generateAttachmentId(),
             type: 'image',
             name: `pasted-image.${ext}`,
@@ -617,42 +621,29 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     setAttachments(prev => [...prev, attachment]);
     showInfo(`Long text (${Math.round(text.length / 1000)}k chars) converted to attachment`);
-  }, [autoConvertLongText, showInfo, showError]);
+  }, [autoConvertLongText, showInfo, showError, addImageAttachment]);
 
   // Listen for clipboard-paste-image events from the custom paste handler
   useEffect(() => {
     const handleClipboardImage = (e: Event) => {
       const { base64, width, height, mimeType, size } = (e as CustomEvent).detail;
-      const attachment: Attachment = {
+      const resolvedMime = mimeType || 'image/png';
+      const ext = resolvedMime === 'image/jpeg' ? 'jpg' : resolvedMime.split('/')[1] || 'png';
+      addImageAttachment({
         id: generateAttachmentId(),
         type: 'image',
-        name: 'pasted-image.png',
-        mimeType: mimeType || 'image/png',
+        name: `pasted-image.${ext}`,
+        mimeType: resolvedMime,
         size: size || Math.round(base64.length * 0.75),
         width,
         height,
         base64Data: base64,
-      };
-      let validationError: string | null = null;
-      setAttachments(prev => {
-        const newAttachments = [...prev, attachment];
-        const validation = validateAttachments(newAttachments);
-        if (!validation.valid) {
-          validationError = validation.error || 'Invalid attachments';
-          return prev;
-        }
-        return newAttachments;
       });
-      if (validationError) {
-        showError(validationError);
-      } else {
-        showInfo('Image pasted as attachment');
-      }
     };
 
     window.addEventListener('clipboard-paste-image', handleClipboardImage);
     return () => window.removeEventListener('clipboard-paste-image', handleClipboardImage);
-  }, [showInfo, showError]);
+  }, [addImageAttachment]);
 
   // Handle attachment removal
   const handleRemoveAttachment = useCallback((id: string) => {

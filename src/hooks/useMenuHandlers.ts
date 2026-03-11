@@ -139,7 +139,9 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
                 document.execCommand('insertText', false, text);
                 return;
               }
-            } catch { /* no text in clipboard */ }
+            } catch (err) {
+              if (import.meta.env.DEV) console.warn('Clipboard text paste failed:', err);
+            }
 
             try {
               // No text — try image paste via Tauri clipboard plugin
@@ -149,7 +151,10 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
 
               // Guard against extremely large images (e.g., 5K retina screenshots)
               const MAX_PIXELS = 4096 * 4096;
-              if (width * height > MAX_PIXELS) return;
+              if (width * height > MAX_PIXELS) {
+                toastInfoRef.current('Image too large to paste');
+                return;
+              }
 
               const rgba = await img.rgba();
 
@@ -167,7 +172,9 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
               window.dispatchEvent(new CustomEvent('clipboard-paste-image', {
                 detail: { base64, width, height, mimeType: 'image/png', size: Math.round(base64.length * 0.75) }
               }));
-            } catch { /* no image in clipboard either */ }
+            } catch (err) {
+              if (import.meta.env.DEV) console.warn('Clipboard image paste failed:', err);
+            }
           })();
           break;
 
