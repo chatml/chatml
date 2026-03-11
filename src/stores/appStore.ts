@@ -206,6 +206,7 @@ interface AppState {
   workspaces: Workspace[];
   sessions: WorktreeSession[];
   conversations: Conversation[];
+  conversationsVersion: number;
   messagesByConversation: Record<string, Message[]>;
   fileChanges: FileChange[];
 
@@ -542,6 +543,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspaces: [],
   sessions: [],
   conversations: [],
+  conversationsVersion: 0,
   messagesByConversation: {},
   fileChanges: [],
   selectedWorkspaceId: null,
@@ -949,13 +951,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
 
   // Conversation actions
-  setConversations: (conversations) => set({
+  setConversations: (conversations) => set((state) => ({
     conversations,
+    conversationsVersion: state.conversationsVersion + 1,
     // Messages are loaded on-demand via getConversationMessages, not inline.
     // The useEffect in ConversationArea will fetch messages for the active conversation.
-  }),
+  })),
   addConversation: (conversation) => set((state) => ({
     conversations: [...state.conversations, conversation],
+    conversationsVersion: state.conversationsVersion + 1,
     // Also add any initial messages (e.g., system setup message from createConversation)
     messagesByConversation: conversation.messages.length > 0
       ? {

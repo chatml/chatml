@@ -10,26 +10,31 @@ const BATCH_SIZE = 3;
  * Background prefetch hook that loads messages for all visible conversations
  * after initial boot, so switching sessions is instant instead of requiring
  * a network round trip on first click.
+ *
+ * Re-triggers when conversationsVersion changes (e.g., when lazy-loaded
+ * workspace conversations are added to the store).
  */
 export function useMessagePrefetch(enabled: boolean) {
-  const abortRef = useRef(false);
+  const hasRunInitialRef = useRef(false);
+  const runIdRef = useRef(0);
+  const conversationsVersion = useAppStore((s) => s.conversationsVersion);
 
   useEffect(() => {
     if (!enabled) return;
-    abortRef.current = false;
+    const currentRun = ++runIdRef.current;
+    const isAborted = () => currentRun !== runIdRef.current;
 
     async function prefetch() {
       const state = useAppStore.getState();
       const initialConvId = state.selectedConversationId;
 
-      // Wait until the initial conversation's messages are loaded.
-      // Uses Zustand subscribe() instead of polling — resolves immediately
-      // when messagePagination is set, with no wasted CPU in between.
-      if (initialConvId && !state.messagePagination[initialConvId]) {
+      // On first run, wait until the initial conversation's messages are loaded.
+      // On subsequent runs (triggered by conversationsVersion), skip the wait.
+      if (!hasRunInitialRef.current && initialConvId && !state.messagePagination[initialConvId]) {
         await new Promise<void>((resolve) => {
-          if (abortRef.current) { resolve(); return; }
+          if (isAborted()) { resolve(); return; }
           const unsub = useAppStore.subscribe((s) => {
-            if (s.messagePagination[initialConvId!] || abortRef.current) {
+            if (s.messagePagination[initialConvId!] || isAborted()) {
               unsub();
               resolve();
             }
@@ -37,7 +42,8 @@ export function useMessagePrefetch(enabled: boolean) {
         });
       }
 
-      if (abortRef.current) return;
+      if (isAborted()) return;
+      hasRunInitialRef.current = true;
 
       // Collect all conversation IDs that need prefetching
       const { conversations, sessions, messagePagination, messagesByConversation,
@@ -75,19 +81,19 @@ export function useMessagePrefetch(enabled: boolean) {
 
       // Process in batches
       for (let i = 0; i < ordered.length; i += BATCH_SIZE) {
-        if (abortRef.current) return;
+        if (isAborted()) return;
 
         const batch = ordered.slice(i, i + BATCH_SIZE);
 
         await Promise.allSettled(
           batch.map(async (conv) => {
-            if (abortRef.current) return;
+            if (isAborted()) return;
             // Re-check in case ConversationArea already loaded this
             if (useAppStore.getState().messagePagination[conv.id]) return;
 
             try {
               const page = await getConversationMessages(conv.id, { limit: 50 });
-              if (abortRef.current) return;
+              if (isAborted()) return;
               const msgs = page.messages.map(m => toStoreMessage(m, conv.id));
               useAppStore.getState().setMessagePage(
                 conv.id, msgs, page.hasMore,
@@ -117,15 +123,15 @@ export function useMessagePrefetch(enabled: boolean) {
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     if (typeof requestIdleCallback === 'function') {
-      idleHandle = requestIdleCallback(() => { prefetch(); }, { timeout: 5000 });
+      idleHandle = requestIdleCallback(() => { prefetch(); }, { timeout: 3000 });
     } else {
-      timeoutHandle = setTimeout(() => { prefetch(); }, 2000);
+      timeoutHandle = setTimeout(() => { prefetch(); }, 500);
     }
 
     return () => {
-      abortRef.current = true;
+      runIdRef.current++;
       if (idleHandle !== undefined) cancelIdleCallback(idleHandle);
       if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     };
-  }, [enabled]);
+  }, [enabled, conversationsVersion]);
 }
