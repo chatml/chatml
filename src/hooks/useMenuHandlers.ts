@@ -128,6 +128,44 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
           break;
         }
 
+        // Edit > Paste (custom handler replacing native paste for image support)
+        case 'edit_paste':
+          (async () => {
+            try {
+              // Try text paste first (most common case)
+              const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
+              const text = await readText().catch(() => '');
+              if (text) {
+                document.execCommand('insertText', false, text);
+                return;
+              }
+            } catch { /* no text in clipboard */ }
+
+            try {
+              // No text — try image paste via Tauri clipboard plugin
+              const { readImage } = await import('@tauri-apps/plugin-clipboard-manager');
+              const img = await readImage();
+              const { width, height } = await img.size();
+              const rgba = await img.rgba();
+
+              // Convert RGBA to PNG via canvas
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+              const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+              ctx.putImageData(imageData, 0, 0);
+              const dataUrl = canvas.toDataURL('image/png');
+              const base64 = dataUrl.split(',')[1];
+
+              window.dispatchEvent(new CustomEvent('clipboard-paste-image', {
+                detail: { base64, width, height, mimeType: 'image/png', size: Math.round(base64.length * 0.75) }
+              }));
+            } catch { /* no image in clipboard either */ }
+          })();
+          break;
+
         // Edit > Find
         case 'find':
           window.dispatchEvent(new CustomEvent('search-chat'));

@@ -146,6 +146,9 @@
     "deep-link:default",
     "stronghold:default",
     "clipboard-manager:allow-read-text",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-image",
+    "core:image:allow-rgba",
+    "core:image:allow-size"
   ]
 }
