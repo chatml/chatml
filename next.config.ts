@@ -15,11 +15,9 @@ const nextConfig: NextConfig = {
   // @shikijs/core + @shikijs/engine-javascript, bypassing bundle-full.mjs
   // which pulls in Oniguruma WASM and hundreds of dynamic import() calls
   // that fail in Tauri release builds.
-  // Turbopack resolveAlias requires a relative path (prefixed with ./) —
-  // absolute paths get treated as relative to the server root and fail in CI.
   turbopack: {
     resolveAlias: {
-      shiki: './src/lib/shiki-shim.ts',
+      shiki: '@/lib/shiki-shim',
     },
   },
   webpack: (config) => {
