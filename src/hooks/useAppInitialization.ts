@@ -33,7 +33,8 @@ import type { SetupInfo } from '@/lib/types';
 export function useAppInitialization() {
   const [mounted, setMounted] = useState(false);
   const [backendConnected, setBackendConnected] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [shellReady, setShellReady] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
 
   const { error: showError } = useToast();
 
@@ -214,17 +215,18 @@ export function useAppInitialization() {
     if (!backendConnected) return;
 
     async function loadData() {
-      setIsLoadingData(true);
       try {
-        // Step 1: Fetch all workspaces
-        const repos = await listRepos();
-        let mappedWorkspaces = repos.map(repoToWorkspace);
+        // Phase 1: Fetch workspaces + sessions in parallel (independent calls)
+        const [repos, sessionDTOs] = await Promise.all([
+          listRepos(),
+          listAllSessions(true),
+        ]);
 
-        // Apply persisted workspace order (if any)
+        // Process workspaces
+        let mappedWorkspaces = repos.map(repoToWorkspace);
         const { workspaceOrder } = useSettingsStore.getState();
         const reordered = applyWorkspaceOrder(mappedWorkspaces, workspaceOrder);
         if (reordered) mappedWorkspaces = reordered;
-
         setWorkspaces(mappedWorkspaces);
 
         // Prefetch branch lists for all workspaces (fire-and-forget)
@@ -233,8 +235,7 @@ export function useAppInitialization() {
           prefetchBranches(ws.id).catch(() => {});
         }
 
-        // Step 2: Fetch all sessions across all workspaces in a single request
-        const sessionDTOs = await listAllSessions(true);
+        // Process sessions
         const allSessions = sessionDTOs.map(s => mapSessionDTO(s));
         setSessions(allSessions);
 
@@ -248,7 +249,7 @@ export function useAppInitialization() {
           }
         }
 
-        // Determine which workspace to select (needed to scope conversation fetching)
+        // Determine target workspace and session from persisted tab state
         const tabState = ENABLE_BROWSER_TABS ? useTabStore.getState() : null;
         const activeTab = tabState?.tabs[tabState.activeTabId];
         const hasPersistedTab = ENABLE_BROWSER_TABS && activeTab && tabState!.tabOrder.length > 0 &&
@@ -260,23 +261,13 @@ export function useAppInitialization() {
           ? activeTab.selectedWorkspaceId
           : mappedWorkspaces[0]?.id ?? null;
 
-        // Step 3: Fetch conversations for the target workspace's non-archived sessions in parallel
-        const targetSessions = targetWorkspaceId
-          ? allSessions.filter(s => s.workspaceId === targetWorkspaceId && !s.archived)
-          : [];
-        const convsBySession = await Promise.all(
-          targetSessions.map(s =>
-            listConversations(targetWorkspaceId!, s.id).catch(() => [] as ConversationDTO[])
-          )
-        );
-        const allConversations = convsBySession.flat().map(conversationToConversation);
-        setConversations(allConversations);
-
-        // Step 4: Restore persisted state or select defaults
+        // Determine target session before fetching conversations (only need active session's convs)
         const sessionValid = hasPersistedTab && activeTab.selectedSessionId &&
           allSessions.some(s => s.id === activeTab.selectedSessionId && !s.archived);
-        const conversationValid = sessionValid && activeTab.selectedConversationId &&
-          allConversations.some(c => c.id === activeTab.selectedConversationId);
+        const targetSessionId = sessionValid
+          ? activeTab.selectedSessionId
+          : allSessions.find(s => s.workspaceId === targetWorkspaceId && !s.archived)?.id ?? null;
+
         const contentViewWorkspaceId = activeTab?.contentView &&
           'workspaceId' in activeTab.contentView
           ? (activeTab.contentView as { workspaceId?: string }).workspaceId
@@ -287,6 +278,7 @@ export function useAppInitialization() {
         const hasValidPersistedState = workspaceValid || sessionValid ||
           (hasPersistedTab && activeTab.contentView.type !== 'conversation' && contentViewWorkspaceValid);
 
+        // Restore workspace/session selections
         if (hasValidPersistedState) {
           if (workspaceValid) {
             selectWorkspace(activeTab.selectedWorkspaceId);
@@ -296,15 +288,56 @@ export function useAppInitialization() {
             }
           }
           if (sessionValid) selectSession(activeTab.selectedSessionId);
-          if (conversationValid) selectConversation(activeTab.selectedConversationId);
           useSettingsStore.getState().setContentView(activeTab!.contentView);
           useNavigationStore.getState().setActiveTabId(tabState!.activeTabId);
         } else if (mappedWorkspaces.length > 0) {
           selectWorkspace(mappedWorkspaces[0].id);
-          const firstSession = allSessions.find(s => s.workspaceId === mappedWorkspaces[0].id && !s.archived);
-          if (firstSession) {
-            const sessionConvs = allConversations.filter(c => c.sessionId === firstSession.id);
-            if (sessionConvs.length === 0) {
+          if (targetSessionId) {
+            selectSession(targetSessionId);
+          }
+        }
+
+        // Shell is ready — sidebar, toolbar, and layout chrome can render
+        setShellReady(true);
+
+        // Phase 2: Fetch conversations for active session only (not all sessions in workspace)
+        // Start conversation fetch
+        const convsPromise = targetSessionId && targetWorkspaceId
+          ? listConversations(targetWorkspaceId, targetSessionId).catch(() => [] as ConversationDTO[])
+          : Promise.resolve([] as ConversationDTO[]);
+
+        // Speculative: start loading messages before confirming conversation exists.
+        // If the persisted ID is stale, the result is discarded when conversationValid is false.
+        const conversationIdFromTab = sessionValid ? activeTab.selectedConversationId : null;
+        const earlyMsgPromise = conversationIdFromTab
+          ? getConversationMessages(conversationIdFromTab, { limit: 50 }).catch(() => null)
+          : Promise.resolve(null);
+
+        // Await conversations
+        const activeSessionConvs = await convsPromise;
+        const allConversations = activeSessionConvs.map(conversationToConversation);
+        setConversations(allConversations);
+
+        // Select conversation and handle empty session
+        const conversationValid = conversationIdFromTab &&
+          allConversations.some(c => c.id === conversationIdFromTab);
+
+        if (conversationValid) {
+          selectConversation(conversationIdFromTab);
+        } else if (targetSessionId) {
+          // Persisted conversation is stale or missing — fall back to first available
+          const fallbackConv = allConversations.find(c => c.sessionId === targetSessionId);
+          if (fallbackConv) {
+            selectConversation(fallbackConv.id);
+          }
+        }
+
+        if (!hasValidPersistedState && targetSessionId) {
+          // No persisted state — check if session has conversations, create one if needed
+          const sessionConvs = allConversations.filter(c => c.sessionId === targetSessionId);
+          if (sessionConvs.length === 0) {
+            const firstSession = allSessions.find(s => s.id === targetSessionId);
+            if (firstSession) {
               const convId = `conv-${firstSession.id}`;
               addConversation({
                 id: convId,
@@ -318,17 +351,21 @@ export function useAppInitialization() {
                 updatedAt: new Date().toISOString(),
               });
             }
-            selectSession(firstSession.id);
           }
         }
 
-        // Step 5: Eagerly load messages for the initially-selected conversation
+        // Load messages for the initially-selected conversation
         const initialConvId = useAppStore.getState().selectedConversationId;
         if (initialConvId) {
           try {
-            const page = await getConversationMessages(initialConvId, { limit: 50 });
-            const messages = page.messages.map((m) => toStoreMessage(m, initialConvId));
-            setMessagePage(initialConvId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+            // Reuse early-fetched messages if they match, otherwise fetch now
+            const page = initialConvId === conversationIdFromTab
+              ? await earlyMsgPromise
+              : await getConversationMessages(initialConvId, { limit: 50 });
+            if (page) {
+              const messages = page.messages.map((m) => toStoreMessage(m, initialConvId));
+              setMessagePage(initialConvId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
+            }
           } catch (err) {
             console.error('Failed to eagerly load messages for initial conversation:', err);
           }
@@ -337,7 +374,8 @@ export function useAppInitialization() {
         console.error('Failed to load data from backend:', error);
         showError('Failed to load workspace data. Try reloading the app.', 'Data Load Error');
       } finally {
-        setIsLoadingData(false);
+        setShellReady(true);
+        setContentReady(true);
       }
     }
 
@@ -346,9 +384,10 @@ export function useAppInitialization() {
 
   // Lazy-load conversations when switching to a workspace whose sessions don't have conversations loaded yet
   const selectedWorkspaceId = useAppStore((s) => s.selectedWorkspaceId);
+  const selectedSessionId = useAppStore((s) => s.selectedSessionId);
 
   useEffect(() => {
-    if (isLoadingData || !backendConnected || !selectedWorkspaceId) return;
+    if (!contentReady || !backendConnected || !selectedWorkspaceId) return;
 
     const state = useAppStore.getState();
     const workspaceSessions = state.sessions.filter(s => s.workspaceId === selectedWorkspaceId && !s.archived);
@@ -375,13 +414,41 @@ export function useAppInitialization() {
         }
       }
     }).catch(() => {});
-  }, [selectedWorkspaceId, isLoadingData, backendConnected, conversationToConversation, setConversations]);
+  }, [selectedWorkspaceId, contentReady, backendConnected, conversationToConversation, setConversations]);
+
+  // Lazy-load conversations when switching to a session that doesn't have conversations loaded yet
+  useEffect(() => {
+    if (!contentReady || !backendConnected || !selectedSessionId) return;
+
+    const state = useAppStore.getState();
+    const session = state.sessions.find(s => s.id === selectedSessionId);
+    if (!session || session.archived) return;
+
+    // Skip if this session already has conversations
+    const hasConversations = state.conversations.some(c => c.sessionId === selectedSessionId);
+    if (hasConversations) return;
+
+    listConversations(session.workspaceId, selectedSessionId)
+      .then(convs => {
+        const mapped = convs.map(conversationToConversation);
+        if (mapped.length > 0) {
+          const existing = useAppStore.getState().conversations;
+          const existingIds = new Set(existing.map(c => c.id));
+          const deduped = mapped.filter(c => !existingIds.has(c.id));
+          if (deduped.length > 0) {
+            setConversations([...existing, ...deduped]);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [selectedSessionId, contentReady, backendConnected, conversationToConversation, setConversations]);
 
   return {
     mounted,
     backendConnected,
     setBackendConnected,
-    isLoadingData,
+    shellReady,
+    contentReady,
     authLoading,
     isAuthenticated,
     repoToWorkspace,

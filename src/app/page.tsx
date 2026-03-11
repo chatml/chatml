@@ -144,7 +144,7 @@ export default function Home() {
     mounted,
     backendConnected,
     setBackendConnected,
-    isLoadingData,
+    contentReady,
     authLoading,
     isAuthenticated,
     repoToWorkspace,
@@ -204,7 +204,7 @@ export default function Home() {
   useExternalLinkGuard();
   useDesktopNotifications();
   useFontSize();
-  useMessagePrefetch(!isLoadingData && backendConnected);
+  useMessagePrefetch(contentReady && backendConnected);
 
   // ─── Auto-Save ────────────────────────────────────────────────────────
   const handleSaveError = useCallback((filePath: string, error: unknown) => {
@@ -607,7 +607,7 @@ export default function Home() {
 
               {/* Content Area */}
               <div className="flex-1 min-h-0">
-                {isLoadingData ? (
+                {!contentReady ? (
                   <ConversationSkeleton />
                 ) : isFullContentView || (!selectedSessionId && contentView.type === 'conversation') ? (
                   <ContentRouter
@@ -762,7 +762,7 @@ export default function Home() {
         )}
 
         {/* Guided Tour Overlay */}
-        {showGuidedTour && !isLoadingData && (
+        {showGuidedTour && contentReady && (
           <GuidedTour onComplete={completeTour} onDismiss={completeTour} />
         )}
 
