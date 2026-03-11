@@ -1020,6 +1020,55 @@ func (s *SQLiteStore) ListConversations(ctx context.Context, sessionID string) (
 	return convs, nil
 }
 
+// ListConversationsByWorkspace returns all conversations across all non-archived sessions
+// in a workspace. Uses 3 queries total (conversations JOIN sessions + message counts + tool actions).
+func (s *SQLiteStore) ListConversationsByWorkspace(ctx context.Context, workspaceID string) ([]*models.Conversation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.session_id, c.type, c.name, c.status, c.model, c.agent_session_id, c.created_at, c.updated_at
+		FROM conversations c
+		JOIN sessions s ON c.session_id = s.id
+		WHERE s.workspace_id = ? AND s.archived = 0`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("ListConversationsByWorkspace: %w", err)
+	}
+
+	convs := []*models.Conversation{}
+	convMap := make(map[string]*models.Conversation)
+	convIDs := []string{}
+
+	for rows.Next() {
+		var conv models.Conversation
+		if err := rows.Scan(&conv.ID, &conv.SessionID, &conv.Type, &conv.Name,
+			&conv.Status, &conv.Model, &conv.AgentSessionID, &conv.CreatedAt, &conv.UpdatedAt); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("ListConversationsByWorkspace scan: %w", err)
+		}
+		conv.Messages = []models.Message{}
+		conv.ToolSummary = []models.ToolAction{}
+		convs = append(convs, &conv)
+		convMap[conv.ID] = &conv
+		convIDs = append(convIDs, conv.ID)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListConversationsByWorkspace rows: %w", err)
+	}
+
+	if len(convIDs) == 0 {
+		return convs, nil
+	}
+
+	if err := s.loadMessageCountsForConversations(ctx, convMap, convIDs); err != nil {
+		return nil, err
+	}
+
+	if err := s.loadToolActionsForConversations(ctx, convMap, convIDs); err != nil {
+		return nil, err
+	}
+
+	return convs, nil
+}
+
 // loadMessageCountsForConversations loads message counts for multiple conversations in a single query.
 func (s *SQLiteStore) loadMessageCountsForConversations(ctx context.Context, convMap map[string]*models.Conversation, convIDs []string) error {
 	if len(convIDs) == 0 {
