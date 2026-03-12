@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Loader2, ChevronDown } from 'lucide-react';
@@ -159,24 +160,28 @@ export function ActionButton({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {action.dropdownActions?.map((dropdownAction) => {
+            {action.dropdownActions?.map((dropdownAction, index) => {
               const DropdownIcon = dropdownAction.icon;
+              const prevAction = action.dropdownActions?.[index - 1];
+              const showSeparator = index > 0 && !!dropdownAction.description !== !!prevAction?.description;
               return (
-                <DropdownMenuItem
-                  key={dropdownAction.label}
-                  onClick={() => handleDropdownClick(dropdownAction.message)}
-                  className={dropdownAction.description ? 'flex-col items-start py-2' : ''}
-                >
-                  <div className="flex items-center gap-2">
-                    {DropdownIcon && <DropdownIcon className="size-4" />}
-                    <span className="font-medium">{dropdownAction.label}</span>
-                  </div>
-                  {dropdownAction.description && (
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                      {dropdownAction.description}
-                    </p>
-                  )}
-                </DropdownMenuItem>
+                <Fragment key={dropdownAction.label}>
+                  {showSeparator && <DropdownMenuSeparator />}
+                  <DropdownMenuItem
+                    onClick={() => handleDropdownClick(dropdownAction.message)}
+                    className={dropdownAction.description ? 'flex-col items-start py-2' : ''}
+                  >
+                    <div className="flex items-center gap-2">
+                      {DropdownIcon && <DropdownIcon className="size-4" />}
+                      <span className="font-medium">{dropdownAction.label}</span>
+                    </div>
+                    {dropdownAction.description && (
+                      <p className="text-xs text-muted-foreground mt-1 pl-6 leading-relaxed">
+                        {dropdownAction.description}
+                      </p>
+                    )}
+                  </DropdownMenuItem>
+                </Fragment>
               );
             })}
             {action.secondaryAction && (
