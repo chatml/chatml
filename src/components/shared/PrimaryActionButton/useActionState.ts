@@ -9,6 +9,7 @@ import {
   Archive,
   FileEdit,
   GitMerge,
+  Combine,
   Rocket,
   Download,
 } from 'lucide-react';
@@ -240,16 +241,19 @@ export function useActionState(
           label: 'Create a merge commit',
           message: 'Merge the pull request with a merge commit',
           description: 'All commits from this branch will be added to the base branch via a merge commit.',
+          icon: GitMerge,
         },
         {
           label: 'Squash and merge',
           message: 'Squash and merge the pull request',
           description: 'The commits from this branch will be combined into one commit in the base branch.',
+          icon: Combine,
         },
         {
           label: 'Rebase and merge',
           message: 'Rebase and merge the pull request',
           description: 'The commits from this branch will be rebased and added to the base branch.',
+          icon: GitBranch,
         },
       );
 
