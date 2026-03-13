@@ -33,7 +33,7 @@ func setupTestRouter(t *testing.T) (http.Handler, *store.SQLiteStore) {
 	wm := gitpkg.NewWorktreeManager()
 	agentMgr := agent.NewManager(context.Background(), s, wm, 9876)
 	ghClient := github.NewClient("", "")
-	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 10*time.Minute, 100)
 	t.Cleanup(func() { prCache.Close() })
 
 	linearClient := linear.NewClient("")

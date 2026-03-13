@@ -249,7 +249,7 @@ func TestPRWatcher_UpdateSessionBranch_UpdatesEntry(t *testing.T) {
 
 func TestPRWatcher_UpdateSessionBranch_InvalidatesPRCache(t *testing.T) {
 	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
-	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute, 100)
 	w := newTestPRWatcher(newMockStore(), repoMgr, prCache)
 	defer w.Close()
 
@@ -913,7 +913,7 @@ func TestPRWatcher_CheckSessionsWithoutPR_SkipsCache(t *testing.T) {
 	// skip the cache and fetch from GitHub, where the new PR now exists.
 	store := newMockStore()
 	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
-	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute, 100)
 	defer prCache.Close()
 
 	// Pre-populate the cache with NO open PRs (simulates cache set before PR creation).
@@ -1020,7 +1020,7 @@ func TestPRWatcher_CheckSessionsWithPR_UsesCache(t *testing.T) {
 	// cache for the PR list, unlike checkSessionsWithoutPR which skips it.
 	store := newMockStore()
 	repoMgr := &mockPRWatcherRepoManager{owner: "org", repo: "myrepo"}
-	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute)
+	prCache := github.NewPRCache(5*time.Minute, 30*time.Minute, 100)
 	defer prCache.Close()
 
 	// Pre-populate cache with an open PR on "feature/bar" including details,
