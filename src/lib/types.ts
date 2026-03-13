@@ -224,6 +224,18 @@ export interface Attachment {
   base64Data?: string;       // Loaded on demand before send
   preview?: string;          // Text preview (first N chars)
   isInstruction?: boolean;   // Frontend-only: visual distinction for template/instruction attachments (not persisted by backend)
+  contextType?: AttachmentContextType;
+  contextMeta?: AttachmentContextMeta;
+}
+
+export type AttachmentContextType = 'github-issue' | 'linear-issue';
+
+export interface AttachmentContextMeta {
+  number?: number;
+  identifier?: string;
+  title?: string;
+  url?: string;
+  state?: string;
 }
 
 // SuggestionPill = A clickable suggestion option

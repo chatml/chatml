@@ -19,7 +19,7 @@ interface ContentRouterProps {
   onOpenShortcuts: () => void;
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onNewSession: () => void;
-  onCreateFromPR: () => void;
+  onCreateSession: () => void;
 }
 
 /**
@@ -37,7 +37,7 @@ export function ContentRouter({
   onOpenShortcuts,
   onOpenWorkspaceSettings,
   onNewSession,
-  onCreateFromPR,
+  onCreateSession,
 }: ContentRouterProps) {
   const contentView = useSettingsStore((s) => s.contentView);
 
@@ -75,7 +75,7 @@ export function ContentRouter({
           onOpenProject={onOpenProject}
           onCloneFromUrl={onCloneFromUrl}
           onNewSession={onNewSession}
-          onCreateFromPR={onCreateFromPR}
+          onCreateSession={onCreateSession}
           onOpenSettings={onOpenSettings}
           onOpenShortcuts={onOpenShortcuts}
           showLeftSidebar={showLeftSidebar}

@@ -987,7 +987,7 @@ export function WorkspaceSidebar({ onOpenProject, onCloneFromUrl, onGitHubRepos,
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                   )}
-                  <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('create-from-pr'))}>
+                  <DropdownMenuItem onClick={() => window.dispatchEvent(new CustomEvent('create-session'))}>
                     <Link className="h-4 w-4" />
                     Create Session from...
                     <DropdownMenuShortcut>⌘⇧O</DropdownMenuShortcut>

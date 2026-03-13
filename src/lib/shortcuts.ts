@@ -61,7 +61,7 @@ export const SHORTCUTS: Shortcut[] = [
     category: 'General',
   },
   {
-    id: 'createFromPR',
+    id: 'createSession',
     key: 'o',
     modifiers: ['meta', 'shift'],
     label: 'Create Session from...',

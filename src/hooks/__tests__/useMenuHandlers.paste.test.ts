@@ -96,7 +96,7 @@ function makeOptions() {
     onOpenSettings: vi.fn(),
     onCloseSettings: vi.fn(),
     onShowAddWorkspace: vi.fn(),
-    onShowCreateFromPR: vi.fn(),
+    onShowCreateSession: vi.fn(),
     onShowShortcuts: vi.fn(),
     onShowBottomTerminal: vi.fn(),
   };

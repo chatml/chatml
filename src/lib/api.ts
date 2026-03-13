@@ -1,7 +1,7 @@
 import { HEALTH_CHECK_REQUEST_TIMEOUT_MS } from '@/lib/constants';
 import { getAuthToken } from '@/lib/auth-token';
 import { getBackendPortSync, getBackendPort, initBackendPort } from '@/lib/backend-port';
-import type { McpServerConfig } from '@/lib/types';
+import type { McpServerConfig, AttachmentContextType, AttachmentContextMeta } from '@/lib/types';
 
 // Re-export for convenience
 export { initBackendPort };
@@ -961,6 +961,8 @@ export interface AttachmentDTO {
   base64Data?: string;
   preview?: string;
   isInstruction?: boolean; // Frontend-only: not persisted by the backend
+  contextType?: AttachmentContextType;
+  contextMeta?: AttachmentContextMeta;
 }
 
 export interface ToolUsageDTO {

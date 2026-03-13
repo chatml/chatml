@@ -31,7 +31,7 @@ interface MenuHandlersOptions {
   onOpenSettings: (category?: string) => void;
   onCloseSettings: () => void;
   onShowAddWorkspace: () => void;
-  onShowCreateFromPR: () => void;
+  onShowCreateSession: () => void;
   onShowShortcuts: () => void;
   onShowBottomTerminal: () => void;
 }
@@ -100,8 +100,8 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
         case 'new_conversation':
           handleNewConversationRef.current();
           break;
-        case 'create_from_pr':
-          window.dispatchEvent(new CustomEvent('create-from-pr'));
+        case 'create_session':
+          window.dispatchEvent(new CustomEvent('create-session'));
           break;
         case 'add_workspace':
           options.onShowAddWorkspace();
@@ -379,7 +379,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
     const handleSpawnAgent = () => handleNewSessionRef.current();
     const handleNewConv = () => handleNewConversationRef.current();
     const handleAddWorkspace = () => options.onShowAddWorkspace();
-    const handleCreateFromPR = () => options.onShowCreateFromPR();
+    const handleCreateSession = () => options.onShowCreateSession();
     const handleToggleTheme = () => {
       setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
     };
@@ -400,7 +400,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
     window.addEventListener('spawn-agent', handleSpawnAgent);
     window.addEventListener('new-conversation', handleNewConv);
     window.addEventListener('add-workspace', handleAddWorkspace);
-    window.addEventListener('create-from-pr', handleCreateFromPR);
+    window.addEventListener('create-session', handleCreateSession);
     window.addEventListener('toggle-theme', handleToggleTheme);
     window.addEventListener('toggle-left-panel', handleToggleLeftPanel);
     window.addEventListener('toggle-right-panel', handleToggleRightPanel);
@@ -414,7 +414,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
       window.removeEventListener('spawn-agent', handleSpawnAgent);
       window.removeEventListener('new-conversation', handleNewConv);
       window.removeEventListener('add-workspace', handleAddWorkspace);
-      window.removeEventListener('create-from-pr', handleCreateFromPR);
+      window.removeEventListener('create-session', handleCreateSession);
       window.removeEventListener('toggle-theme', handleToggleTheme);
       window.removeEventListener('toggle-left-panel', handleToggleLeftPanel);
       window.removeEventListener('toggle-right-panel', handleToggleRightPanel);

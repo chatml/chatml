@@ -7,7 +7,7 @@ interface QuickActionsProps {
   onOpenProject: () => void;
   onCloneFromUrl: () => void;
   onNewSession: () => void;
-  onCreateFromPR: () => void;
+  onCreateSession: () => void;
   hasWorkspace: boolean;
 }
 
@@ -47,7 +47,7 @@ export function QuickActions({
   onOpenProject,
   onCloneFromUrl,
   onNewSession,
-  onCreateFromPR,
+  onCreateSession,
   hasWorkspace,
 }: QuickActionsProps) {
   const handleCardClick = (key: string) => {
@@ -62,7 +62,7 @@ export function QuickActions({
         onNewSession();
         break;
       case 'from-pr':
-        onCreateFromPR();
+        onCreateSession();
         break;
     }
   };

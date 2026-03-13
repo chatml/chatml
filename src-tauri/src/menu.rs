@@ -48,7 +48,7 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id("create_from_pr", "Create Session from...")
+            &MenuItemBuilder::with_id("create_session", "Create Session from...")
                 .accelerator("CmdOrCtrl+Shift+O")
                 .enabled(false)
                 .build(app)?,
