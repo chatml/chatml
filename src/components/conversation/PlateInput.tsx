@@ -146,7 +146,10 @@ export const PlateInput = forwardRef<PlateInputHandle, PlateInputProps>(
       },
       clear: () => {
         editor.tf.reset();
-        editor.tf.focus();
+        // Defer until React reconciles the DOM after reset
+        setTimeout(() => {
+          editor.tf.focus();
+        }, 0);
       },
       getText: () => {
         return extractText(editor.children);
