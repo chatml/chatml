@@ -487,7 +487,7 @@ export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps)
       await createSessionAndNavigate(selectedWorkspaceId, {
         branch: '',
         checkoutExisting: false,
-        task: issue.title,
+        task: `#${issue.number} ${issue.title}`,
         systemMessage,
       }, { text: '', attachments: [issueAttachment] });
     } catch (err) {
@@ -523,7 +523,7 @@ export function CreateSessionModal({ isOpen, onClose }: CreateSessionModalProps)
       await createSessionAndNavigate(selectedWorkspaceId, {
         branch: '',
         checkoutExisting: false,
-        task: issue.title,
+        task: `${issue.identifier} ${issue.title}`,
         systemMessage,
       }, { text: '', attachments: [linearAttachment] });
     } catch (err) {

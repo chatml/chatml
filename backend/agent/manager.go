@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chatml/chatml-backend/ai"
 	"github.com/chatml/chatml-backend/crypto"
@@ -2316,7 +2317,28 @@ func (m *Manager) generateAndApplySessionTitle(sessionID, convID, userMessage st
 	ctx, cancel := context.WithTimeout(m.ctx, 15*time.Second)
 	defer cancel()
 
-	title, err := client.GenerateSessionTitle(ctx, userMessage)
+	// Enrich title input with the session's task field (e.g., GitHub/Linear issue title)
+	// so the AI generates a meaningful name instead of a generic one from a vague user message.
+	titleInput := userMessage
+	dbCtx, dbCancel := context.WithTimeout(m.ctx, 3*time.Second)
+	defer dbCancel()
+	if sess, err := m.store.GetSession(dbCtx, sessionID); err == nil && sess != nil && sess.Task != "" {
+		const shortMessageThreshold = 20 // runes, not bytes
+		task := sess.Task
+		const maxTaskLen = 500
+		if utf8.RuneCountInString(task) > maxTaskLen {
+			// Truncate to maxTaskLen runes
+			runes := []rune(task)
+			task = string(runes[:maxTaskLen])
+		}
+		if userMessage == "" || utf8.RuneCountInString(userMessage) < shortMessageThreshold {
+			titleInput = task
+		} else {
+			titleInput = fmt.Sprintf("Task: %s\n\nUser message: %s", task, userMessage)
+		}
+	}
+
+	title, err := client.GenerateSessionTitle(ctx, titleInput)
 	if err != nil {
 		logger.Manager.Warnf("Failed to generate session title for session %s: %v", sessionID, err)
 		m.resetAutoNamed(sessionID)
