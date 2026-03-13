@@ -140,7 +140,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
                 return;
               }
             } catch (err) {
-              if (import.meta.env.DEV) console.warn('Clipboard text paste failed:', err);
+              if (process.env.NODE_ENV === 'development') console.warn('Clipboard text paste failed:', err);
             }
 
             try {
@@ -173,7 +173,7 @@ export function useMenuHandlers(options: MenuHandlersOptions) {
                 detail: { base64, width, height, mimeType: 'image/png', size: Math.round(base64.length * 0.75) }
               }));
             } catch (err) {
-              if (import.meta.env.DEV) console.warn('Clipboard image paste failed:', err);
+              if (process.env.NODE_ENV === 'development') console.warn('Clipboard image paste failed:', err);
             }
           })();
           break;
