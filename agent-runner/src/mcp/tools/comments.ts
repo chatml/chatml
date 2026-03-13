@@ -58,11 +58,11 @@ export function createCommentTools(context: WorkspaceContext) {
             };
           }
 
-          await response.json();
+          const comment = await response.json();
           return {
             content: [{
               type: "text",
-              text: `Added ${severity || "review"} comment to ${filePath}:${lineNumber}`,
+              text: `Added ${severity || "review"} comment to ${filePath}:${lineNumber} (id: ${comment.id})`,
             }],
           };
         } catch (error) {
@@ -116,8 +116,10 @@ export function createCommentTools(context: WorkspaceContext) {
 
           // Format comments for display
           interface CommentResponse {
+            id: string;
             filePath: string;
             lineNumber: number;
+            title?: string;
             content: string;
             severity?: string;
             resolved?: boolean;
@@ -125,7 +127,8 @@ export function createCommentTools(context: WorkspaceContext) {
           const formatted = comments.map((c: CommentResponse) => {
             const severityTag = c.severity ? `[${c.severity.toUpperCase()}] ` : "";
             const resolved = c.resolved ? " (resolved)" : "";
-            return `${c.filePath}:${c.lineNumber} - ${severityTag}${c.content}${resolved}`;
+            const titlePart = c.title ? `${c.title} - ` : "";
+            return `[${c.id}] ${c.filePath}:${c.lineNumber} - ${titlePart}${severityTag}${c.content}${resolved}`;
           }).join("\n\n");
 
           return {
