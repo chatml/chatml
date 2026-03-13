@@ -218,7 +218,7 @@ describe('useMessagePrefetch', () => {
 
     await drainTimers();
 
-    expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-toggle', { limit: 50 });
+    expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-toggle', { limit: 50, compact: true });
   });
 
   // ── Initial load polling ──────────────────────────────────────────────
@@ -265,7 +265,7 @@ describe('useMessagePrefetch', () => {
       });
       await drainTimers();
 
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-target', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-target', { limit: 50, compact: true });
     });
 
     it('polls at 200ms intervals until initial conversation is loaded', async () => {
@@ -312,7 +312,7 @@ describe('useMessagePrefetch', () => {
       });
       await drainTimers();
 
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-other', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-other', { limit: 50, compact: true });
     });
 
     it('skips polling when no initial conversation is selected', async () => {
@@ -330,7 +330,7 @@ describe('useMessagePrefetch', () => {
 
       await drainTimers();
 
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-no-init', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-no-init', { limit: 50, compact: true });
     });
 
     it('skips polling when initial conversation already has pagination', async () => {
@@ -351,7 +351,7 @@ describe('useMessagePrefetch', () => {
 
       await drainTimers();
 
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-needs-fetch', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-needs-fetch', { limit: 50, compact: true });
     });
 
     it('aborts polling on unmount', async () => {
@@ -731,7 +731,7 @@ describe('useMessagePrefetch', () => {
       await drainTimers(MULTI_BATCH_DRAIN_ROUNDS);
 
       // conv-ok should still have been fetched despite conv-err failing
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-ok', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-ok', { limit: 50, compact: true });
 
       // conv-ok should be in the store, conv-err should not
       const pagination = useAppStore.getState().messagePagination;
@@ -872,7 +872,7 @@ describe('useMessagePrefetch', () => {
       });
       await drainTimers();
 
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-fallback', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-fallback', { limit: 50, compact: true });
 
       // Restore polyfill before unmount
       installIdleCallbackPolyfill();
@@ -961,7 +961,7 @@ describe('useMessagePrefetch', () => {
       // Orphan conversation: its session is not in archivedSessionIds (only matching IDs
       // that have archived=true go there), so it passes the filter. The session lookup
       // returns undefined so it goes to otherWorkspaces.
-      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-orphan', { limit: 50 });
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('conv-orphan', { limit: 50, compact: true });
     });
   });
 });

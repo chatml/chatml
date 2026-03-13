@@ -224,7 +224,7 @@ describe('useWebSocket — streaming snapshot recovery', () => {
             store.updateConversation(convId, { status: 'completed' });
 
             try {
-              const page = await getConversationMessages(convId);
+              const page = await getConversationMessages(convId, { compact: true });
               const messages = page.messages.map(m => toStoreMessage(m, convId));
               store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
             } catch {
@@ -238,7 +238,7 @@ describe('useWebSocket — streaming snapshot recovery', () => {
                 store.restoreStreamingFromSnapshot(convId, snapshot);
               } else {
                 try {
-                  const page = await getConversationMessages(convId);
+                  const page = await getConversationMessages(convId, { compact: true });
                   const messages = page.messages.map(m => toStoreMessage(m, convId));
                   store.setMessagePage(convId, messages, page.hasMore, page.oldestPosition ?? 0, page.totalCount);
                 } catch {
