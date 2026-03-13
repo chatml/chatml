@@ -218,6 +218,7 @@ func (s *SQLiteStore) initSchema() error {
 		FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_file_tabs_workspace ON file_tabs(workspace_id);
+	CREATE INDEX IF NOT EXISTS idx_file_tabs_workspace_position ON file_tabs(workspace_id, position);
 
 	-- Review Comments
 	CREATE TABLE IF NOT EXISTS review_comments (
@@ -273,6 +274,7 @@ func (s *SQLiteStore) initSchema() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_summaries_conversation ON summaries(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_summaries_session ON summaries(session_id);
+	CREATE INDEX IF NOT EXISTS idx_summaries_session_status ON summaries(session_id, status);
 
 	-- Checkpoints (file state snapshots from Agent SDK)
 	CREATE TABLE IF NOT EXISTS checkpoints (
