@@ -19,6 +19,8 @@ interface BranchCacheState {
   invalidateAll: () => void;
 }
 
+const inFlightFetches = new Map<string, Promise<BranchDTO[]>>();
+
 export const useBranchCacheStore = create<BranchCacheState>((set, get) => ({
   cache: {},
 
@@ -32,12 +34,22 @@ export const useBranchCacheStore = create<BranchCacheState>((set, get) => ({
 
     // If we have cached data but it's stale, return it and refresh in background
     if (entry?.branches.length && !force) {
-      // Fire background refresh (don't await)
-      doFetch(workspaceId, set).catch(() => {});
+      if (!inFlightFetches.has(workspaceId)) {
+        const promise = doFetch(workspaceId, set).finally(() => {
+          inFlightFetches.delete(workspaceId);
+        });
+        inFlightFetches.set(workspaceId, promise);
+        promise.catch(() => {}); // Prevent unhandled rejection for background refresh
+      }
       return entry.branches;
     }
 
-    // No cached data — fetch and wait
+    // No cached data or forced — fetch and wait (deduplicated)
+    const existing = inFlightFetches.get(workspaceId);
+    if (existing && !force) {
+      return existing;
+    }
+
     set((state) => ({
       cache: {
         ...state.cache,
@@ -45,10 +57,15 @@ export const useBranchCacheStore = create<BranchCacheState>((set, get) => ({
       },
     }));
 
-    return doFetch(workspaceId, set);
+    const promise = doFetch(workspaceId, set).finally(() => {
+      inFlightFetches.delete(workspaceId);
+    });
+    inFlightFetches.set(workspaceId, promise);
+    return promise;
   },
 
   invalidateAll: () => {
+    inFlightFetches.clear();
     set((state) => {
       const updated: Record<string, BranchCacheEntry> = {};
       for (const [id, entry] of Object.entries(state.cache)) {
