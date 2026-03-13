@@ -406,6 +406,54 @@ func (s *SQLiteStore) ListRepos(ctx context.Context) ([]*models.Repo, error) {
 	return repos, nil
 }
 
+// GetReposByIDs returns repos for the given IDs as a map keyed by repo ID.
+// Returns an empty map when ids is empty (no query executed).
+// IDs are queried in batches to stay within SQLite's parameter limit.
+func (s *SQLiteStore) GetReposByIDs(ctx context.Context, ids []string) (map[string]*models.Repo, error) {
+	result := make(map[string]*models.Repo, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	const batchSize = 500 // well under SQLite's default 999 parameter limit
+	for i := 0; i < len(ids); i += batchSize {
+		end := i + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[i:end]
+
+		placeholders := make([]string, len(batch))
+		args := make([]interface{}, len(batch))
+		for j, id := range batch {
+			placeholders[j] = "?"
+			args[j] = id
+		}
+
+		query := `SELECT id, name, path, branch, remote, branch_prefix, custom_prefix, created_at
+			FROM repos WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("GetReposByIDs: %w", err)
+		}
+
+		for rows.Next() {
+			var repo models.Repo
+			if err := rows.Scan(&repo.ID, &repo.Name, &repo.Path, &repo.Branch, &repo.Remote, &repo.BranchPrefix, &repo.CustomPrefix, &repo.CreatedAt); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("GetReposByIDs scan: %w", err)
+			}
+			result[repo.ID] = &repo
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("GetReposByIDs rows: %w", err)
+		}
+		rows.Close()
+	}
+	return result, nil
+}
+
 func (s *SQLiteStore) GetRepoByPath(ctx context.Context, path string) (*models.Repo, error) {
 	var repo models.Repo
 	err := s.db.QueryRowContext(ctx, `
