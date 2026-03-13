@@ -126,7 +126,7 @@ export const useSessionConversations = (sessionId: string | null) =>
   useAppStore(
     useShallow((s) =>
       sessionId
-        ? s.conversations.filter((c) => c.sessionId === sessionId)
+        ? (s.conversationsBySession[sessionId] ?? EMPTY_CONVERSATIONS)
         : EMPTY_CONVERSATIONS
     )
   );
@@ -145,9 +145,10 @@ export const useSessionActivityState = (sessionId: string): SessionActivityState
     useCallback(
       (state) => {
         let highestState: SessionActivityState = 'idle';
+        const convs = state.conversationsBySession[sessionId] ?? [];
 
-        for (const c of state.conversations) {
-          if (c.sessionId !== sessionId || c.status !== 'active') continue;
+        for (const c of convs) {
+          if (c.status !== 'active') continue;
 
           const convId = c.id;
           if (state.pendingUserQuestion[convId]) return 'awaiting_input';
@@ -179,8 +180,9 @@ export const useActiveSessions = <T extends { id: string }>(sessions: T[]): T[] 
           const ids: string[] = [];
           for (const sid of sessionIds) {
             let activity: SessionActivityState = 'idle';
-            for (const c of state.conversations) {
-              if (c.sessionId !== sid || c.status !== 'active') continue;
+            const convs = state.conversationsBySession[sid] ?? [];
+            for (const c of convs) {
+              if (c.status !== 'active') continue;
               const convId = c.id;
               if (state.pendingUserQuestion[convId]) { activity = 'awaiting_input'; break; }
               if (state.streamingState[convId]?.pendingPlanApproval) {

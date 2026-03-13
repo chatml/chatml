@@ -206,6 +206,7 @@ interface AppState {
   workspaces: Workspace[];
   sessions: WorktreeSession[];
   conversations: Conversation[];
+  conversationsBySession: Record<string, Conversation[]>; // sessionId → conversations (index)
   conversationsVersion: number;
   messagesByConversation: Record<string, Message[]>;
   fileChanges: FileChange[];
@@ -538,11 +539,21 @@ interface AppState {
   setLastFileChange: (event: { workspaceId: string; path: string; fullPath: string }) => void;
 }
 
+/** Build a sessionId → Conversation[] lookup from a flat conversations array. */
+function buildConversationsBySession(conversations: Conversation[]): Record<string, Conversation[]> {
+  const index: Record<string, Conversation[]> = {};
+  for (const c of conversations) {
+    (index[c.sessionId] ??= []).push(c);
+  }
+  return index;
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   // New state
   workspaces: [],
   sessions: [],
   conversations: [],
+  conversationsBySession: {},
   conversationsVersion: 0,
   messagesByConversation: {},
   fileChanges: [],
@@ -669,12 +680,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => {
     // Get all sessions for this workspace
     const workspaceSessions = state.sessions.filter((s) => s.workspaceId === id);
-    const workspaceSessionIds = workspaceSessions.map((s) => s.id);
+    const workspaceSessionIds = new Set(workspaceSessions.map((s) => s.id));
 
     // Get all conversation IDs for these sessions
-    const workspaceConvIds = state.conversations
-      .filter((c) => workspaceSessionIds.includes(c.sessionId))
-      .map((c) => c.id);
+    const workspaceConvIds = new Set(
+      state.conversations
+        .filter((c) => workspaceSessionIds.has(c.sessionId))
+        .map((c) => c.id)
+    );
 
     // Clean up streaming state, active tools, and agent todos
     const cleanedStreamingState = { ...state.streamingState };
@@ -707,15 +720,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     return {
       workspaces: state.workspaces.filter((w) => w.id !== id),
       sessions: state.sessions.filter((s) => s.workspaceId !== id),
-      conversations: state.conversations.filter((c) => !workspaceSessionIds.includes(c.sessionId)),
+      conversations: state.conversations.filter((c) => !workspaceSessionIds.has(c.sessionId)),
+      conversationsBySession: Object.fromEntries(
+        Object.entries(state.conversationsBySession).filter(([sid]) => !workspaceSessionIds.has(sid))
+      ),
       messagesByConversation: Object.fromEntries(
-        Object.entries(state.messagesByConversation).filter(([convId]) => !workspaceConvIds.includes(convId))
+        Object.entries(state.messagesByConversation).filter(([convId]) => !workspaceConvIds.has(convId))
       ),
       selectedWorkspaceId: state.selectedWorkspaceId === id ? null : state.selectedWorkspaceId,
-      selectedSessionId: workspaceSessionIds.includes(state.selectedSessionId || '')
+      selectedSessionId: workspaceSessionIds.has(state.selectedSessionId || '')
         ? null
         : state.selectedSessionId,
-      selectedConversationId: workspaceConvIds.includes(state.selectedConversationId || '')
+      selectedConversationId: workspaceConvIds.has(state.selectedConversationId || '')
         ? null
         : state.selectedConversationId,
       streamingState: cleanedStreamingState,
@@ -811,10 +827,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { [id]: _activeTerminal, ...remainingActiveTerminalId } = state.activeTerminalId;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _panelVisible, ...remainingTerminalPanelVisible } = state.terminalPanelVisible;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _convsBySession, ...remainingConversationsBySession } = state.conversationsBySession;
 
       return {
         sessions: state.sessions.filter((s) => s.id !== id),
         conversations: state.conversations.filter((c) => c.sessionId !== id),
+        conversationsBySession: remainingConversationsBySession,
         messagesByConversation: Object.fromEntries(
           Object.entries(state.messagesByConversation).filter(([convId]) => !convIds.includes(convId))
         ),
@@ -953,12 +972,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Conversation actions
   setConversations: (conversations) => set((state) => ({
     conversations,
+    conversationsBySession: buildConversationsBySession(conversations),
     conversationsVersion: state.conversationsVersion + 1,
     // Messages are loaded on-demand via getConversationMessages, not inline.
     // The useEffect in ConversationArea will fetch messages for the active conversation.
   })),
   addConversation: (conversation) => set((state) => ({
     conversations: [...state.conversations, conversation],
+    conversationsBySession: {
+      ...state.conversationsBySession,
+      [conversation.sessionId]: [...(state.conversationsBySession[conversation.sessionId] ?? []), conversation],
+    },
     conversationsVersion: state.conversationsVersion + 1,
     // Also add any initial messages (e.g., system setup message from createConversation)
     messagesByConversation: conversation.messages.length > 0
@@ -971,11 +995,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       : state.messagesByConversation,
   })),
-  updateConversation: (id, updates) => set((state) => ({
-    conversations: state.conversations.map((c) =>
+  updateConversation: (id, updates) => set((state) => {
+    const newConversations = state.conversations.map((c) =>
       c.id === id ? { ...c, ...updates } : c
-    ),
-  })),
+    );
+    const orig = state.conversations.find((c) => c.id === id);
+    const sid = orig?.sessionId;
+    // If sessionId changed or conversation not found, rebuild the full index
+    if (!sid || ('sessionId' in updates && updates.sessionId !== sid)) {
+      return {
+        conversations: newConversations,
+        conversationsBySession: buildConversationsBySession(newConversations),
+      };
+    }
+    return {
+      conversations: newConversations,
+      conversationsBySession: {
+        ...state.conversationsBySession,
+        [sid]: (state.conversationsBySession[sid] ?? []).map((c) =>
+          c.id === id ? { ...c, ...updates } : c
+        ),
+      },
+    };
+  }),
   removeConversation: (id) => {
     // Clean up external buffers before updating Zustand state
     clearToolTimeoutsForConversations([id]);
@@ -1025,6 +1067,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return {
       conversations: newConversations,
+      conversationsBySession: buildConversationsBySession(newConversations),
       messagesByConversation: (() => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { [id]: _removedMsgs, ...rest } = state.messagesByConversation;
