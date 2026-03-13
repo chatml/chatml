@@ -64,7 +64,7 @@ export const SHORTCUTS: Shortcut[] = [
     id: 'createFromPR',
     key: 'o',
     modifiers: ['meta', 'shift'],
-    label: 'New session from PR/Branch',
+    label: 'Create from...',
     category: 'General',
   },
   {

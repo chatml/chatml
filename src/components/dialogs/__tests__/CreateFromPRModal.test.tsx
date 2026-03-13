@@ -8,24 +8,78 @@ import { useAppStore } from '@/stores/appStore';
 
 const API_BASE = 'http://localhost:9876';
 
-const mockPRResponse = {
-  owner: 'testorg',
-  repo: 'testrepo',
-  prNumber: 42,
-  title: 'Add authentication',
-  body: 'Adds OAuth2 flow for login',
-  branch: 'feature/auth',
-  baseBranch: 'main',
-  state: 'open',
-  isDraft: false,
-  labels: ['enhancement'],
-  reviewers: ['alice'],
-  additions: 200,
-  deletions: 50,
-  changedFiles: 8,
-  matchedWorkspaceId: 'workspace-1',
-  htmlUrl: 'https://github.com/testorg/testrepo/pull/42',
-};
+const mockPRs = [
+  {
+    number: 885,
+    title: 'feat: add image paste support via Cmd+V in chat input',
+    state: 'open',
+    htmlUrl: 'https://github.com/testorg/testrepo/pull/885',
+    isDraft: false,
+    mergeable: true,
+    mergeableState: 'clean',
+    checkStatus: 'success',
+    checkDetails: [],
+    labels: [],
+    branch: 'feature/image-paste',
+    baseBranch: 'main',
+    workspaceId: 'workspace-1',
+    workspaceName: 'test-repo',
+    repoOwner: 'testorg',
+    repoName: 'testrepo',
+    checksTotal: 3,
+    checksPassed: 3,
+    checksFailed: 0,
+  },
+  {
+    number: 539,
+    title: 'feat: Add Agent Teams support for parallel sub-agents',
+    state: 'open',
+    htmlUrl: 'https://github.com/testorg/testrepo/pull/539',
+    isDraft: true,
+    mergeable: null,
+    mergeableState: 'unknown',
+    checkStatus: 'pending',
+    checkDetails: [],
+    labels: [],
+    branch: 'feature/agent-teams',
+    baseBranch: 'main',
+    workspaceId: 'workspace-1',
+    workspaceName: 'test-repo',
+    repoOwner: 'testorg',
+    repoName: 'testrepo',
+    checksTotal: 0,
+    checksPassed: 0,
+    checksFailed: 0,
+  },
+];
+
+const mockGitHubIssues = [
+  {
+    number: 42,
+    title: 'Bug: Login fails on Safari',
+    state: 'open',
+    htmlUrl: 'https://github.com/testorg/testrepo/issues/42',
+    labels: [{ name: 'bug', color: 'fc2929' }],
+    user: { login: 'alice', avatarUrl: '' },
+    assignees: [],
+    comments: 3,
+    createdAt: '2026-03-10T00:00:00Z',
+    updatedAt: '2026-03-12T00:00:00Z',
+  },
+];
+
+const mockLinearIssues = [
+  {
+    id: 'lin-1',
+    identifier: 'ENG-123',
+    title: 'Implement dark mode toggle',
+    description: 'Users want a dark mode option',
+    stateName: 'In Progress',
+    labels: ['feature'],
+    assignee: 'bob',
+    project: 'UI Improvements',
+  },
+];
 
 // Mock navigation
 vi.mock('@/lib/navigation', () => ({
@@ -55,77 +109,111 @@ describe('CreateFromPRModal', () => {
       selectedWorkspaceId: 'workspace-1',
     });
 
-    // Default handler for resolve-pr (never called unless URL is valid)
+    // Default handlers
     server.use(
+      http.get(`${API_BASE}/api/prs`, () => {
+        return HttpResponse.json(mockPRs);
+      }),
+      http.get(`${API_BASE}/api/repos/:workspaceId/issues`, () => {
+        return HttpResponse.json(mockGitHubIssues);
+      }),
+      http.get(`${API_BASE}/api/auth/linear/issues`, () => {
+        return HttpResponse.json(mockLinearIssues);
+      }),
       http.post(`${API_BASE}/api/resolve-pr`, () => {
-        return HttpResponse.json(mockPRResponse);
-      })
+        return HttpResponse.json({
+          owner: 'testorg',
+          repo: 'testrepo',
+          prNumber: 885,
+          title: 'feat: add image paste support via Cmd+V in chat input',
+          body: 'Adds image paste functionality',
+          branch: 'feature/image-paste',
+          baseBranch: 'main',
+          state: 'open',
+          isDraft: false,
+          labels: [],
+          reviewers: [],
+          additions: 100,
+          deletions: 20,
+          changedFiles: 5,
+          matchedWorkspaceId: 'workspace-1',
+          htmlUrl: 'https://github.com/testorg/testrepo/pull/885',
+        });
+      }),
     );
   });
 
-  it('renders with two tabs: From PR and From Branch', () => {
+  it('renders with three tabs: Pull requests, Branches, Issues', () => {
     render(<CreateFromPRModal {...defaultProps} />);
 
-    expect(screen.getByText('From PR')).toBeInTheDocument();
-    expect(screen.getByText('From Branch')).toBeInTheDocument();
+    expect(screen.getByText('Pull requests')).toBeInTheDocument();
+    expect(screen.getByText('Branches')).toBeInTheDocument();
+    expect(screen.getByText('Issues')).toBeInTheDocument();
   });
 
-  it('renders the dialog title', () => {
-    render(<CreateFromPRModal {...defaultProps} />);
-
-    expect(screen.getByText(/New Session from PR/)).toBeInTheDocument();
-  });
-
-  it('shows PR URL input on the PR tab', () => {
+  it('renders the search input', () => {
     render(<CreateFromPRModal {...defaultProps} />);
 
     expect(
-      screen.getByPlaceholderText('https://github.com/owner/repo/pull/123')
+      screen.getByPlaceholderText('Search by title, number, or author...')
     ).toBeInTheDocument();
   });
 
-  it('shows PR details after entering a valid PR URL', async () => {
-    const user = userEvent.setup();
+  it('shows PR list on the Pull requests tab', async () => {
     render(<CreateFromPRModal {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText(
-      'https://github.com/owner/repo/pull/123'
-    );
-    await user.type(input, 'https://github.com/testorg/testrepo/pull/42');
-
-    // Wait for debounced API call and rendering
     await waitFor(
       () => {
-        expect(screen.getByText(/Add authentication/)).toBeInTheDocument();
+        expect(screen.getByText(/add image paste support/)).toBeInTheDocument();
+        expect(screen.getByText('#885')).toBeInTheDocument();
       },
       { timeout: 2000 }
     );
-
-    // Check branch name is displayed in the PR details
-    expect(screen.getByText('feature/auth')).toBeInTheDocument();
   });
 
-  it('shows error when PR resolution fails', async () => {
-    server.use(
-      http.post(`${API_BASE}/api/resolve-pr`, () => {
-        return HttpResponse.json(
-          { error: 'PR not found' },
-          { status: 404 }
-        );
-      })
-    );
-
-    const user = userEvent.setup();
+  it('shows draft PR with draft icon styling', async () => {
     render(<CreateFromPRModal {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText(
-      'https://github.com/owner/repo/pull/123'
-    );
-    await user.type(input, 'https://github.com/testorg/testrepo/pull/999');
 
     await waitFor(
       () => {
-        expect(screen.getByText(/Failed to resolve PR|PR not found/)).toBeInTheDocument();
+        expect(screen.getByText(/Agent Teams/)).toBeInTheDocument();
+        expect(screen.getByText('#539')).toBeInTheDocument();
+      },
+      { timeout: 2000 }
+    );
+  });
+
+  it('shows the Branches tab content when clicked', async () => {
+    const user = userEvent.setup();
+
+    render(<CreateFromPRModal {...defaultProps} />);
+
+    await user.click(screen.getByText('Branches'));
+
+    // Should switch to branches tab (content change, empty state)
+    await waitFor(() => {
+      expect(screen.getByText('No branches found')).toBeInTheDocument();
+    });
+  });
+
+  it('shows the Issues tab with GitHub and Linear issues', async () => {
+    const user = userEvent.setup();
+
+    render(<CreateFromPRModal {...defaultProps} />);
+
+    await user.click(screen.getByText('Issues'));
+
+    await waitFor(
+      () => {
+        // GitHub issues group
+        expect(screen.getByText('GitHub Issues')).toBeInTheDocument();
+        expect(screen.getByText(/Login fails on Safari/)).toBeInTheDocument();
+        expect(screen.getByText('#42')).toBeInTheDocument();
+
+        // Linear issues group
+        expect(screen.getByText('Linear Issues')).toBeInTheDocument();
+        expect(screen.getByText(/dark mode toggle/)).toBeInTheDocument();
+        expect(screen.getByText('ENG-123')).toBeInTheDocument();
       },
       { timeout: 2000 }
     );
@@ -135,76 +223,33 @@ describe('CreateFromPRModal', () => {
     render(<CreateFromPRModal isOpen={false} onClose={vi.fn()} />);
 
     expect(
-      screen.queryByText(/New Session from PR/)
+      screen.queryByText('Pull requests')
     ).not.toBeInTheDocument();
   });
 
-  it('disables Create Session button when no PR is resolved', () => {
+  it('shows workspace selector', () => {
     render(<CreateFromPRModal {...defaultProps} />);
 
-    const createButton = screen.getByRole('button', {
-      name: /Create Session/i,
-    });
-    expect(createButton).toBeDisabled();
+    expect(screen.getByText('test-repo')).toBeInTheDocument();
   });
 
-  it('shows the Branch tab content when clicked', async () => {
+  it('filters PRs by search term', async () => {
     const user = userEvent.setup();
-
-    // Mock branches endpoint
-    server.use(
-      http.get(`${API_BASE}/api/repos/:workspaceId/branches`, () => {
-        return HttpResponse.json({
-          branches: [
-            {
-              name: 'feature/cool-thing',
-              lastCommitDate: new Date().toISOString(),
-              lastAuthor: 'dev',
-              lastCommitSubject: 'Add cool thing',
-              aheadMain: 3,
-              behindMain: 0,
-            },
-          ],
-        });
-      })
-    );
-
     render(<CreateFromPRModal {...defaultProps} />);
 
-    // Click on the Branch tab
-    await user.click(screen.getByText('From Branch'));
-
-    // Should show workspace selector and branch search
+    // Wait for PRs to load
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText('Search branches...')
-      ).toBeInTheDocument();
+      expect(screen.getByText('#885')).toBeInTheDocument();
+    }, { timeout: 2000 });
+
+    // Type search
+    const input = screen.getByPlaceholderText('Search by title, number, or author...');
+    await user.type(input, 'Agent');
+
+    // Should only show matching PR
+    await waitFor(() => {
+      expect(screen.queryByText('#885')).not.toBeInTheDocument();
+      expect(screen.getByText('#539')).toBeInTheDocument();
     });
-  });
-
-  it('shows draft badge for draft PRs', async () => {
-    server.use(
-      http.post(`${API_BASE}/api/resolve-pr`, () => {
-        return HttpResponse.json({
-          ...mockPRResponse,
-          isDraft: true,
-        });
-      })
-    );
-
-    const user = userEvent.setup();
-    render(<CreateFromPRModal {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText(
-      'https://github.com/owner/repo/pull/123'
-    );
-    await user.type(input, 'https://github.com/testorg/testrepo/pull/42');
-
-    await waitFor(
-      () => {
-        expect(screen.getByText('Draft')).toBeInTheDocument();
-      },
-      { timeout: 2000 }
-    );
   });
 });

@@ -27,6 +27,7 @@ import {
   Settings,
   Layers,
   GitPullRequest,
+  Link,
   Archive,
   // Actions
   Plus,
@@ -185,10 +186,10 @@ const COMMANDS: Command[] = [
   {
     id: 'create-from-pr',
     category: 'Actions',
-    label: 'New Session from PR/Branch',
-    icon: GitPullRequest,
+    label: 'Create from...',
+    icon: Link,
     shortcutId: 'createFromPR',
-    keywords: ['pull request', 'pr', 'branch', 'checkout', 'review'],
+    keywords: ['pull request', 'pr', 'branch', 'issue', 'linear', 'github', 'checkout', 'review'],
     action: () => window.dispatchEvent(new CustomEvent('create-from-pr')),
   },
   {
