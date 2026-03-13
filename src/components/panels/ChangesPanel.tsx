@@ -323,6 +323,10 @@ export function ChangesPanel() {
     // Check frontend diff cache first — avoids HTTP round-trip on re-open
     const cachedDiff = getDiffFromCache(workspaceId, sessionId, path);
     if (cachedDiff) {
+      if (cachedDiff.truncated) {
+        updateFileTab(tabId, { isLoading: false, isTooLarge: true, unifiedDiff: cachedDiff.unifiedDiff });
+        return;
+      }
       const totalSize = (cachedDiff.oldContent?.length || 0) + (cachedDiff.newContent?.length || 0);
       if (totalSize > MAX_DIFF_SIZE) {
         updateFileTab(tabId, { isLoading: false, isTooLarge: true });
@@ -345,6 +349,11 @@ export function ChangesPanel() {
 
       // Cache the result for fast re-opens
       setDiffInCache(workspaceId, sessionId, path, diffData);
+
+      if (diffData.truncated) {
+        updateFileTab(tabId, { isLoading: false, isTooLarge: true, unifiedDiff: diffData.unifiedDiff });
+        return;
+      }
 
       const totalSize = (diffData.oldContent?.length || 0) + (diffData.newContent?.length || 0);
       if (totalSize > MAX_DIFF_SIZE) {

@@ -41,6 +41,7 @@ import {
   Eye,
   RefreshCw,
   FileText,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileTab, Conversation } from '@/lib/types';
@@ -713,26 +714,34 @@ export function ConversationArea({ children }: ConversationAreaProps) {
         // Check frontend diff cache first
         const cachedDiff = getDiffFromCache(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
         if (cachedDiff) {
-          updateFileTab(currentFileTab.id, {
-            diff: {
-              oldContent: cachedDiff.oldContent ?? '',
-              newContent: cachedDiff.newContent ?? '',
-            },
-            isLoading: false,
-          });
+          if (cachedDiff.truncated) {
+            updateFileTab(currentFileTab.id, { isLoading: false, isTooLarge: true, unifiedDiff: cachedDiff.unifiedDiff });
+          } else {
+            updateFileTab(currentFileTab.id, {
+              diff: {
+                oldContent: cachedDiff.oldContent ?? '',
+                newContent: cachedDiff.newContent ?? '',
+              },
+              isLoading: false,
+            });
+          }
           return;
         }
         updateFileTab(currentFileTab.id, { isLoading: true });
         try {
           const diffData = await getSessionFileDiff(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path);
           setDiffInCache(currentFileTab.workspaceId, currentFileTab.sessionId, currentFileTab.path, diffData);
-          updateFileTab(currentFileTab.id, {
-            diff: {
-              oldContent: diffData.oldContent ?? '',
-              newContent: diffData.newContent ?? '',
-            },
-            isLoading: false,
-          });
+          if (diffData.truncated) {
+            updateFileTab(currentFileTab.id, { isLoading: false, isTooLarge: true, unifiedDiff: diffData.unifiedDiff });
+          } else {
+            updateFileTab(currentFileTab.id, {
+              diff: {
+                oldContent: diffData.oldContent ?? '',
+                newContent: diffData.newContent ?? '',
+              },
+              isLoading: false,
+            });
+          }
         } catch (error) {
           console.error('Failed to load diff:', error);
           updateFileTab(currentFileTab.id, {
@@ -1104,13 +1113,25 @@ export function ConversationArea({ children }: ConversationAreaProps) {
                     </div>
                   </div>
                 ) : tab.isTooLarge ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-                      <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
-                      <p className="text-xs text-muted-foreground">File is too large to display</p>
+                  tab.unifiedDiff ? (
+                    <div className="h-full flex flex-col">
+                      <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-amber-500 border-b border-border/50">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>File too large for inline diff — showing unified diff</span>
+                      </div>
+                      <pre className="flex-1 overflow-auto text-xs bg-muted/30 p-3 whitespace-pre font-mono">
+                        {tab.unifiedDiff}
+                      </pre>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center">
+                      <div className="text-center">
+                        <FileQuestion className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                        <p className="text-sm font-medium text-foreground mb-1">{tab.name}</p>
+                        <p className="text-xs text-muted-foreground">File is too large to display</p>
+                      </div>
+                    </div>
+                  )
                 ) : tab.isEmpty ? (
                   <div className="h-full flex items-center justify-center">
                     <div className="text-center">

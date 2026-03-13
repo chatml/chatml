@@ -215,6 +215,8 @@ export interface FileDiffDTO {
   newFilename: string;
   hasConflict: boolean;
   isDeleted: boolean;
+  truncated?: boolean;
+  unifiedDiff?: string;
 }
 
 export async function getFileDiff(repoId: string, filePath: string, baseBranch?: string): Promise<FileDiffDTO> {

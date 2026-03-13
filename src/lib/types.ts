@@ -696,6 +696,7 @@ export interface FileTab {
   };
   isBinary?: boolean;
   isTooLarge?: boolean;
+  unifiedDiff?: string;       // Unified diff fallback for files too large for inline diff
   isEmpty?: boolean;          // File has no content (0 bytes)
   loadError?: string;         // Error message if loading failed
   saveError?: string;         // Error message if saving failed
