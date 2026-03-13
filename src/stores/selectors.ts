@@ -15,7 +15,7 @@
  * if referential stability is needed for downstream dependencies.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from './appStore';
 import { useSettingsStore } from './settingsStore';
@@ -34,6 +34,7 @@ const EMPTY_REVIEW_COMMENTS: readonly ReviewComment[] = [];
 const EMPTY_CONVERSATIONS: readonly Conversation[] = [];
 const EMPTY_SUB_AGENTS: readonly SubAgent[] = [];
 const EMPTY_ACTIVE_IDS: readonly string[] = [];
+const EMPTY_SEGMENT_STUBS: readonly { id: string; timestamp: number }[] = [];
 const EMPTY_FILE_COMMENT_STATS = new Map<string, { total: number; unresolved: number }>();
 
 // ============================================================================
@@ -219,13 +220,132 @@ export const useIsSessionUnread = (sessionId: string): boolean =>
 
 /**
  * Streaming state scoped to a single conversation.
- * Use in: StreamingMessage, ConversationArea
- *
- * Returns the existing store object directly - no useShallow needed since
- * we're selecting an existing value, not constructing a new object.
+ * @deprecated Use useStreamingMeta, useStreamingSegmentIds, useStreamingSegmentText,
+ * useStreamingConversationArea, or useStreamingChatInput instead for fine-grained subscriptions.
  */
 export const useStreamingState = (conversationId: string | null) =>
   useAppStore((s) => (conversationId ? s.streamingState[conversationId] ?? null : null));
+
+/**
+ * Structural streaming metadata — changes only on discrete events (thinking start,
+ * plan approval, error, etc.), NOT on every text or thinking delta.
+ * Thinking *text* is excluded — subscribe to it separately via useStreamingThinking
+ * so that thinking token deltas don't recompute the timeline.
+ * Use in: StreamingMessage (timeline useMemo)
+ */
+export const useStreamingMeta = (conversationId: string | null) =>
+  useAppStore(
+    useShallow((s) => {
+      const st = conversationId ? s.streamingState[conversationId] : null;
+      if (!st) return null;
+      return {
+        isStreaming: st.isStreaming,
+        isThinking: st.isThinking,
+        hasThinking: !!st.thinking,
+        error: st.error,
+        startTime: st.startTime,
+        planModeActive: st.planModeActive,
+        pendingPlanApproval: st.pendingPlanApproval,
+        approvedPlanContent: st.approvedPlanContent,
+        approvedPlanTimestamp: st.approvedPlanTimestamp,
+        recovery: st.recovery,
+        turnStartMeta: st.turnStartMeta,
+      };
+    })
+  );
+
+/**
+ * Thinking text content — changes on every thinking token delta.
+ * Separated from useStreamingMeta so thinking deltas don't recompute the timeline.
+ * Returns a primitive string (no useShallow needed).
+ * Use in: StreamingThinkingSegment
+ */
+export const useStreamingThinking = (conversationId: string | null) =>
+  useAppStore((s) => {
+    if (!conversationId) return '';
+    return s.streamingState[conversationId]?.thinking ?? '';
+  });
+
+/**
+ * Segment id+timestamp stubs for timeline structure — changes only when a new
+ * segment is created, not on every text append within an existing segment.
+ * Uses a custom equality function that compares id+timestamp per element,
+ * because useShallow would fail on the fresh objects produced by .map().
+ * Use in: StreamingMessage (timeline useMemo)
+ */
+const segmentStubsEqual = (
+  a: readonly { id: string; timestamp: number }[],
+  b: readonly { id: string; timestamp: number }[]
+): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].timestamp !== b[i].timestamp) return false;
+  }
+  return true;
+};
+
+export function useStreamingSegmentIds(conversationId: string | null) {
+  const prevRef = useRef(EMPTY_SEGMENT_STUBS);
+  return useAppStore((s) => {
+    const segments = conversationId
+      ? s.streamingState[conversationId]?.segments
+      : undefined;
+    if (!segments || segments.length === 0) {
+      prevRef.current = EMPTY_SEGMENT_STUBS;
+      return EMPTY_SEGMENT_STUBS;
+    }
+    const next = segments.map((seg) => ({ id: seg.id, timestamp: seg.timestamp }));
+    if (segmentStubsEqual(prevRef.current, next)) return prevRef.current;
+    prevRef.current = next;
+    return next;
+  });
+}
+
+/**
+ * Text content of a single segment — only the component rendering this segment
+ * re-renders on text deltas. Returns a primitive string (no useShallow needed).
+ * Use in: StreamingTextSegment
+ */
+export const useStreamingSegmentText = (conversationId: string, segmentId: string) =>
+  useAppStore((s) => {
+    const seg = s.streamingState[conversationId]?.segments?.find(
+      (seg) => seg.id === segmentId
+    );
+    return seg?.text ?? '';
+  });
+
+/**
+ * Minimal streaming fields for ConversationArea.
+ * Use in: ConversationArea
+ */
+export const useStreamingConversationArea = (conversationId: string | null) =>
+  useAppStore(
+    useShallow((s) => {
+      const st = conversationId ? s.streamingState[conversationId] : null;
+      return {
+        isStreaming: st?.isStreaming ?? false,
+        recovery: st?.recovery,
+        hasPendingPlanApproval: !!st?.pendingPlanApproval,
+      };
+    })
+  );
+
+/**
+ * Minimal streaming fields for ChatInput.
+ * Use in: ChatInput
+ */
+export const useStreamingChatInput = (conversationId: string | null) =>
+  useAppStore(
+    useShallow((s) => {
+      const st = conversationId ? s.streamingState[conversationId] : null;
+      return {
+        isStreaming: st?.isStreaming ?? false,
+        pendingPlanApproval: st?.pendingPlanApproval ?? null,
+        planModeActive: st?.planModeActive ?? false,
+      };
+    })
+  );
 
 /**
  * Active tools scoped to a conversation.

@@ -12,7 +12,7 @@ import {
   useConversationsWithUserMessages,
   useReviewComments,
   useReviewCommentActions,
-  useStreamingState,
+  useStreamingConversationArea,
 } from '@/stores/selectors';
 import { ConversationMarkers } from '@/components/conversation/ConversationMarkers';
 import { Button } from '@/components/ui/button';
@@ -134,7 +134,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     };
   }, [selectedSessionId]);
   // Session-scoped streaming state for the selected conversation only
-  const selectedStreaming = useStreamingState(selectedConversationId);
+  const selectedStreaming = useStreamingConversationArea(selectedConversationId);
   const queuedMessages = useAppStore(
     (s) => selectedConversationId ? s.queuedMessages[selectedConversationId] ?? EMPTY_QUEUED_MESSAGES : EMPTY_QUEUED_MESSAGES
   );
@@ -1012,7 +1012,7 @@ export function ConversationArea({ children }: ConversationAreaProps) {
       )}
 
       {/* Agent crash recovery banner */}
-      {selectedStreaming?.recovery && (
+      {selectedStreaming.recovery && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-2 animate-fade-in">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
@@ -1209,8 +1209,8 @@ export function ConversationArea({ children }: ConversationAreaProps) {
               ) : undefined
             }
             footer={messageListFooter}
-            isStreaming={selectedStreaming?.isStreaming ?? false}
-            pendingPlanApproval={!!selectedStreaming?.pendingPlanApproval}
+            isStreaming={selectedStreaming.isStreaming}
+            pendingPlanApproval={selectedStreaming.hasPendingPlanApproval}
             forceFollowRef={forceFollowRef}
           />
           {/* Conversation markers minimap */}
