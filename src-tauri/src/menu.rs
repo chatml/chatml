@@ -100,7 +100,11 @@ pub fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .separator()
         .item(&PredefinedMenuItem::cut(app, None)?)
         .item(&PredefinedMenuItem::copy(app, None)?)
-        .item(&PredefinedMenuItem::paste(app, None)?)
+        .item(
+            &MenuItemBuilder::with_id("edit_paste", "Paste")
+                .accelerator("CmdOrCtrl+V")
+                .build(app)?,
+        )
         .item(&PredefinedMenuItem::select_all(app, None)?)
         .separator()
         .item(&find_submenu)

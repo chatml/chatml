@@ -43,7 +43,7 @@ import { listenForFileDrop, listenForDragEnter, listenForDragLeave, openFileDial
 import type { Attachment, SuggestionPill } from '@/lib/types';
 import { AttachmentGrid } from './AttachmentGrid';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
-import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId } from '@/lib/attachments';
+import { processDroppedFiles, validateAttachments, SUPPORTED_EXTENSIONS, loadAllAttachmentContents, generateAttachmentId, ATTACHMENT_LIMITS } from '@/lib/attachments';
 import { UserQuestionPrompt } from './UserQuestionPrompt';
 import { usePendingUserQuestion, useStreamingState, useSelectedIds, useConversationState, useChatInputActions, useConversationHasMessages } from '@/stores/selectors';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -521,8 +521,85 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
     if (validationError) showError(validationError);
   }, [showError]);
 
-  // Auto-convert long pasted text to attachment
+  // Shared helper: validate and add an image attachment with user feedback.
+  // Uses a ref to avoid the race condition of reading a captured variable
+  // set inside a setState updater (fragile under React 18 concurrent mode).
+  const validationErrorRef = useRef<string | null>(null);
+  const addImageAttachment = useCallback((attachment: Attachment) => {
+    validationErrorRef.current = null;
+    setAttachments(prev => {
+      const newAttachments = [...prev, attachment];
+      const validation = validateAttachments(newAttachments);
+      if (!validation.valid) {
+        validationErrorRef.current = validation.error || 'Invalid attachments';
+        return prev;
+      }
+      return newAttachments;
+    });
+    if (validationErrorRef.current) {
+      showError(validationErrorRef.current);
+    } else {
+      showInfo('Image pasted as attachment');
+    }
+  }, [showError, showInfo]);
+
+  // Handle pasted images and auto-convert long pasted text to attachment
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    // Check for pasted images
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find(item => item.type.startsWith('image/'));
+    if (imageItem) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const file = imageItem.getAsFile();
+      if (!file) return;
+
+      if (file.size > ATTACHMENT_LIMITS.MAX_FILE_SIZE) {
+        showError(`Pasted image exceeds ${Math.round(ATTACHMENT_LIMITS.MAX_FILE_SIZE / 1024 / 1024)}MB limit`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(',')[1];
+        const mimeType = file.type || 'image/png';
+        const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png';
+
+        const img = new Image();
+        img.onload = () => {
+          addImageAttachment({
+            id: generateAttachmentId(),
+            type: 'image',
+            name: `pasted-image.${ext}`,
+            mimeType,
+            size: file.size,
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            base64Data: base64,
+          });
+        };
+        img.onerror = () => {
+          addImageAttachment({
+            id: generateAttachmentId(),
+            type: 'image',
+            name: `pasted-image.${ext}`,
+            mimeType,
+            size: file.size,
+            base64Data: base64,
+          });
+        };
+        img.src = dataUrl;
+      };
+      reader.onerror = () => {
+        showError('Failed to read pasted image');
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Auto-convert long pasted text to attachment
     if (!autoConvertLongText) return;
     const text = e.clipboardData.getData('text/plain');
     if (text.length <= 5000) return;
@@ -544,7 +621,29 @@ export function ChatInput({ onMessageSubmit }: ChatInputProps) {
 
     setAttachments(prev => [...prev, attachment]);
     showInfo(`Long text (${Math.round(text.length / 1000)}k chars) converted to attachment`);
-  }, [autoConvertLongText, showInfo]);
+  }, [autoConvertLongText, showInfo, showError, addImageAttachment]);
+
+  // Listen for clipboard-paste-image events from the custom paste handler
+  useEffect(() => {
+    const handleClipboardImage = (e: Event) => {
+      const { base64, width, height, mimeType, size } = (e as CustomEvent).detail;
+      const resolvedMime = mimeType || 'image/png';
+      const ext = resolvedMime === 'image/jpeg' ? 'jpg' : resolvedMime.split('/')[1] || 'png';
+      addImageAttachment({
+        id: generateAttachmentId(),
+        type: 'image',
+        name: `pasted-image.${ext}`,
+        mimeType: resolvedMime,
+        size: size || Math.round(base64.length * 0.75),
+        width,
+        height,
+        base64Data: base64,
+      });
+    };
+
+    window.addEventListener('clipboard-paste-image', handleClipboardImage);
+    return () => window.removeEventListener('clipboard-paste-image', handleClipboardImage);
+  }, [addImageAttachment]);
 
   // Handle attachment removal
   const handleRemoveAttachment = useCallback((id: string) => {
