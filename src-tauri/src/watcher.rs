@@ -227,7 +227,9 @@ pub fn start_global_watcher(
                     if let Some(window) = app_handle.get_webview_window("main") {
                         for (workspace_id, files) in &workspace_changes {
                             let count = files.len();
-                            let Some((last_path, last_full)) = files.last() else { continue };
+                            let Some((last_path, last_full)) = files.last() else {
+                                continue;
+                            };
                             let file_list: Vec<serde_json::Value> = files
                                 .iter()
                                 .map(|(path, full)| {
