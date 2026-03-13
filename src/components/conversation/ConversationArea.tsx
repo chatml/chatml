@@ -9,7 +9,8 @@ import {
   useFileTabState,
   useMessages,
   useMessagePagination,
-  useConversationsWithUserMessages,
+  useHasUserMessages,
+  useConversationFreshness,
   useReviewComments,
   useReviewCommentActions,
   useStreamingConversationArea,
@@ -148,15 +149,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const setMessagePage = useAppStore((s) => s.setMessagePage);
   const prependMessages = useAppStore((s) => s.prependMessages);
   const setLoadingMoreMessages = useAppStore((s) => s.setLoadingMoreMessages);
-  // Get Set of conversation IDs that have user messages (avoids subscribing to all messages)
-  const conversationsWithUserMessages = useConversationsWithUserMessages();
+  // Check if the selected conversation has any user messages (O(1) lookup + O(m) scan)
+  const hasUserMessages = useHasUserMessages(selectedConversationId);
 
   // Hide the setupInfo system card once the user has sent their first message
   const conversationMessages = useMemo(() => {
     if (!selectedConversationId) return allConversationMessages;
-    if (!conversationsWithUserMessages.includes(selectedConversationId)) return allConversationMessages;
+    if (!hasUserMessages) return allConversationMessages;
     return allConversationMessages.filter(m => !(m.role === 'system' && m.setupInfo));
-  }, [allConversationMessages, selectedConversationId, conversationsWithUserMessages]);
+  }, [allConversationMessages, selectedConversationId, hasUserMessages]);
 
   // Review comments for current session
   const reviewComments = useReviewComments(selectedSessionId);
@@ -462,12 +463,6 @@ export function ConversationArea({ children }: ConversationAreaProps) {
     selectConversation(sessionConversations[0].id);
   }, [selectedSessionId, selectedConversationId, sessionConversations, selectConversation]);
 
-  // Check if a conversation is fresh (no user messages yet)
-  const isFreshConversation = useCallback(
-    (convId: string) => !conversationsWithUserMessages.includes(convId),
-    [conversationsWithUserMessages]
-  );
-
   // Session-scoped streaming states for conversation tab indicators.
   // Only subscribes to isStreaming/error for this session's conversations,
   // preventing cross-session re-renders. Flattened to primitives so
@@ -475,6 +470,15 @@ export function ConversationArea({ children }: ConversationAreaProps) {
   const sessionConvIds = useMemo(
     () => sessionConversations.map((c) => c.id),
     [sessionConversations]
+  );
+
+  // Reactive freshness map — only subscribes to this session's conversations
+  const conversationFreshness = useConversationFreshness(sessionConvIds);
+
+  // Check if a conversation is fresh (no user messages yet)
+  const isFreshConversation = useCallback(
+    (convId: string) => !conversationFreshness[convId],
+    [conversationFreshness]
   );
   const sessionStreamingFlat = useAppStore(
     useShallow(

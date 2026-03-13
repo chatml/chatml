@@ -95,28 +95,21 @@ export const useHasUserMessages = (conversationId: string | null) =>
       : false
   );
 
-// Stable empty array for conversations with user messages
-const EMPTY_CONVERSATION_IDS: readonly string[] = [];
-
 /**
- * Get an array of conversation IDs that have user messages.
- * Use in: ConversationArea for checking "fresh" status across multiple conversations
+ * Track which conversation IDs (from a given set) have user messages.
+ * Use in: ConversationArea tab indicators for "fresh" status.
  *
- * This avoids subscribing to the entire messages array when you need to check
- * freshness for multiple conversations (e.g., in tab rendering).
- *
- * Returns a stable reference when empty to avoid infinite re-render loops.
+ * Scoped to the provided IDs so it only reacts to relevant conversations,
+ * unlike the old useConversationsWithUserMessages which iterated ALL conversations.
  */
-export const useConversationsWithUserMessages = () =>
+export const useConversationFreshness = (conversationIds: string[]) =>
   useAppStore(
     useShallow((s) => {
-      const ids: string[] = [];
-      for (const [convId, msgs] of Object.entries(s.messagesByConversation)) {
-        if (msgs.some((m) => m.role === 'user')) {
-          ids.push(convId);
-        }
+      const map: Record<string, boolean> = {};
+      for (const id of conversationIds) {
+        map[id] = (s.messagesByConversation[id] ?? []).some((m) => m.role === 'user');
       }
-      return ids.length > 0 ? ids : EMPTY_CONVERSATION_IDS;
+      return map;
     })
   );
 
