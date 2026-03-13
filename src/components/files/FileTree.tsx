@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Icon } from '@iconify/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
@@ -52,16 +52,27 @@ function collectAllDirPaths(nodes: FileNode[]): string[] {
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree({ files, onFileSelect }, ref) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [prevFiles, setPrevFiles] = useState(files);
+  const filesKey = useMemo(() => {
+    const paths: string[] = [];
+    function walk(nodes: FileNode[]) {
+      for (const n of nodes) {
+        paths.push(n.path);
+        if (n.children) walk(n.children);
+      }
+    }
+    walk(files);
+    return paths.join('\0');
+  }, [files]);
+  const [prevKey, setPrevKey] = useState(filesKey);
 
   // Preload folder icons on first render
   useEffect(() => {
     ensureIconsPreloaded();
   }, []);
 
-  // Reset expanded state when files change (e.g., switching sessions)
-  if (prevFiles !== files) {
-    setPrevFiles(files);
+  // Reset expanded state when file list content changes (e.g., switching sessions)
+  if (prevKey !== filesKey) {
+    setPrevKey(filesKey);
     setExpandedPaths(new Set());
   }
 
