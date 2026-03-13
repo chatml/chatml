@@ -446,7 +446,7 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			// If details are missing (previous fetch failed), trigger background refresh
 			if len(prDetailsMap) == 0 && len(ghPRs) > 0 {
 				if h.prCache.TryStartRefresh(owner, repoName) {
-					go h.refreshPRCache(owner, repoName)
+					h.goBackground(func() { h.refreshPRCache(owner, repoName) })
 				}
 			}
 
@@ -456,7 +456,7 @@ func (h *Handlers) ListPRs(w http.ResponseWriter, r *http.Request) {
 			prDetailsMap = cacheEntry.Details
 
 			if h.prCache.TryStartRefresh(owner, repoName) {
-				go h.refreshPRCache(owner, repoName)
+				h.goBackground(func() { h.refreshPRCache(owner, repoName) })
 			}
 
 		default:
@@ -574,16 +574,8 @@ func (h *Handlers) refreshPRCache(owner, repoName string) {
 		}
 	}()
 
-	// Derive a context that cancels on timeout OR server shutdown (whichever comes first)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(h.serverCtx, 30*time.Second)
 	defer cancel()
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-h.prCache.Done():
-			cancel()
-		}
-	}()
 
 	// Use cached ETag for conditional request
 	etag := h.prCache.GetETag(owner, repoName)

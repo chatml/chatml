@@ -80,7 +80,7 @@ func (h *Handlers) ListAllSessions(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if len(uncached) > 0 && h.hub != nil {
-				go h.computeAndBroadcastStats(uncached)
+				h.goBackground(func() { h.computeAndBroadcastStats(uncached) })
 			}
 		}
 	}
@@ -124,7 +124,7 @@ func (h *Handlers) ListSessions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if len(uncached) > 0 && h.hub != nil {
-			go h.computeAndBroadcastStats(uncached)
+			h.goBackground(func() { h.computeAndBroadcastStats(uncached) })
 		}
 	}
 
@@ -676,7 +676,7 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 				logger.Error.Errorf("Failed to set generating status for session %s: %v", id, err)
 			} else {
 				session.ArchiveSummaryStatus = models.SummaryStatusGenerating
-				go h.generateArchiveSummary(id, aiClient)
+				h.goBackground(func() { h.generateArchiveSummary(id, aiClient) })
 			}
 		}
 	}
@@ -729,7 +729,7 @@ func (h *Handlers) UpdateSession(w http.ResponseWriter, r *http.Request) {
 
 // generateArchiveSummary fetches all conversations for a session and generates a combined summary.
 func (h *Handlers) generateArchiveSummary(sessionID string, aiClient ai.Provider) {
-	bgCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	bgCtx, cancel := context.WithTimeout(h.serverCtx, 90*time.Second)
 	defer cancel()
 
 	// Fetch all conversations for this session
