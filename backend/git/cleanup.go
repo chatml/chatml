@@ -310,7 +310,7 @@ func (rm *RepoManager) getMergedBranches(ctx context.Context, repoPath string, r
 			args = append(args, "-r")
 		}
 
-		cmd, cancel := gitCmdWithContext(ctx, repoPath, args...)
+		cmd, cancel := gitCmdWithContext(ctx, TimeoutSlow, repoPath, args...)
 		out, err := cmd.Output()
 		cancel()
 		if err != nil {
@@ -341,7 +341,7 @@ func (rm *RepoManager) getOrphanedBranches(ctx context.Context, repoPath string)
 	orphaned := make(map[string]bool)
 
 	// Get all local branches with their upstream
-	cmd, cancel := gitCmdWithContext(ctx, repoPath,
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutSlow, repoPath,
 		"for-each-ref", "--format=%(refname:short) %(upstream)", "refs/heads/")
 	out, err := cmd.Output()
 	cancel()
@@ -468,7 +468,7 @@ func (rm *RepoManager) deleteLocalBranch(ctx context.Context, repoPath string, n
 		flag = "-D"
 	}
 
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "branch", flag, name)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutMedium, repoPath, "branch", flag, name)
 	defer cancel()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -479,7 +479,7 @@ func (rm *RepoManager) deleteLocalBranch(ctx context.Context, repoPath string, n
 
 // deleteRemoteBranch deletes a remote branch
 func (rm *RepoManager) deleteRemoteBranch(ctx context.Context, repoPath string, name string) error {
-	cmd, cancel := gitCmdWithContext(ctx, repoPath, "push", "origin", "--delete", name)
+	cmd, cancel := gitCmdWithContext(ctx, TimeoutHeavy, repoPath, "push", "origin", "--delete", name)
 	defer cancel()
 	out, err := cmd.CombinedOutput()
 	if err != nil {

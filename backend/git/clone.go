@@ -10,11 +10,16 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/chatml/chatml-backend/logger"
 )
 
-// cloneCommandTimeout is the timeout for git clone operations.
-// Clone can take much longer than regular git commands for large repos.
-const cloneCommandTimeout = 5 * time.Minute
+// Clone retry configuration
+const (
+	cloneMaxRetries = 2
+	cloneBaseDelay  = 2 * time.Second
+	cloneMaxDelay   = 30 * time.Second
+)
 
 // validGitURLPattern validates common git URL formats.
 // Also allows file:// for local repos (used in testing and local clones).
@@ -28,6 +33,7 @@ func IsValidGitURL(url string) bool {
 }
 
 // CloneRepo clones a git repository from url into parentDir/dirName.
+// Retries transient failures (timeouts, network errors) with exponential backoff.
 // Returns the full path of the cloned repository.
 func (rm *RepoManager) CloneRepo(ctx context.Context, url, parentDir, dirName string) (string, error) {
 	if !IsValidGitURL(url) {
@@ -59,8 +65,41 @@ func (rm *RepoManager) CloneRepo(ctx context.Context, url, parentDir, dirName st
 		return "", fmt.Errorf("directory already exists: %s", targetPath)
 	}
 
-	// Run git clone with a dedicated timeout
-	cloneCtx, cancel := context.WithTimeout(ctx, cloneCommandTimeout)
+	var lastErr error
+	for attempt := 0; attempt <= cloneMaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := cloneBaseDelay * time.Duration(1<<uint(attempt-1)) // 2s, 4s, 8s
+			if delay > cloneMaxDelay {
+				delay = cloneMaxDelay
+			}
+			logger.Main.Infof("Clone attempt %d/%d failed, retrying in %s: %v", attempt+1, cloneMaxRetries+1, delay, lastErr)
+
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("git clone cancelled: %w", ctx.Err())
+			case <-time.After(delay):
+			}
+
+		}
+
+		path, err := rm.doClone(ctx, url, targetPath)
+		if err == nil {
+			return path, nil
+		}
+		lastErr = err
+
+		// Don't retry non-transient errors
+		if isNonRetryableCloneError(err) {
+			return "", err
+		}
+	}
+
+	return "", fmt.Errorf("clone failed after %d attempts: %w", cloneMaxRetries+1, lastErr)
+}
+
+// doClone executes a single clone attempt.
+func (rm *RepoManager) doClone(ctx context.Context, url, targetPath string) (string, error) {
+	cloneCtx, cancel := context.WithTimeout(ctx, TimeoutClone)
 	defer cancel()
 
 	cmd := exec.CommandContext(cloneCtx, "git", "clone", url, targetPath)
@@ -78,7 +117,7 @@ func (rm *RepoManager) CloneRepo(ctx context.Context, url, parentDir, dirName st
 		os.RemoveAll(targetPath)
 
 		if cloneCtx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("git clone timed out after %s", cloneCommandTimeout)
+			return "", fmt.Errorf("git clone timed out after %s", TimeoutClone)
 		}
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("git clone cancelled: %w", ctx.Err())
@@ -89,6 +128,20 @@ func (rm *RepoManager) CloneRepo(ctx context.Context, url, parentDir, dirName st
 	}
 
 	return targetPath, nil
+}
+
+// isNonRetryableCloneError returns true for errors that should not be retried
+// (authentication failures, repository not found, etc.)
+func isNonRetryableCloneError(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "authentication failed") ||
+		strings.Contains(msg, "ssh authentication failed") ||
+		strings.Contains(msg, "repository not found") ||
+		strings.Contains(msg, "invalid git url") ||
+		strings.Contains(msg, "directory already exists") ||
+		strings.Contains(msg, "parent directory does not exist") ||
+		strings.Contains(msg, "invalid directory name") ||
+		strings.Contains(msg, "cancelled")
 }
 
 // classifyCloneError maps common git stderr messages to user-friendly error messages.
