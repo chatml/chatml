@@ -25,8 +25,8 @@ struct GlobalFileWatcher {
 /// Global state: single watcher instance instead of per-workspace watchers
 static GLOBAL_WATCHER: Mutex<Option<GlobalFileWatcher>> = Mutex::new(None);
 
-/// Per-workspace accumulated file changes: (last_relative_path, last_full_path, count, all_files)
-type WorkspaceChanges = (String, String, usize, Vec<(String, String)>);
+/// Per-workspace accumulated file changes: vec of (relative_path, full_path)
+type WorkspaceChanges = Vec<(String, String)>;
 
 /// Directories to ignore when watching for file changes
 const IGNORED_DIRECTORIES: &[&str] = &[
@@ -216,21 +216,20 @@ pub fn start_global_watcher(
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_else(|_| event_path_str.clone());
 
-                            let entry = workspace_changes
-                                .entry(workspace_id.clone())
-                                .or_insert_with(|| (String::new(), String::new(), 0, Vec::new()));
-                            entry.0 = relative_path.clone();
-                            entry.1 = event_path_str.clone();
-                            entry.2 += 1;
-                            entry.3.push((relative_path, event_path_str));
+                            workspace_changes
+                                .entry(workspace_id)
+                                .or_default()
+                                .push((relative_path, event_path_str));
                         }
                     }
 
                     // Emit one event per workspace with all changed file paths
                     if let Some(window) = app_handle.get_webview_window("main") {
-                        for (workspace_id, (last_path, last_full, count, files)) in
-                            &workspace_changes
-                        {
+                        for (workspace_id, files) in &workspace_changes {
+                            let count = files.len();
+                            let Some((last_path, last_full)) = files.last() else {
+                                continue;
+                            };
                             let file_list: Vec<serde_json::Value> = files
                                 .iter()
                                 .map(|(path, full)| {
